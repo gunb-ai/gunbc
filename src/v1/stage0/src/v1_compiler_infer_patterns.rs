@@ -14,8 +14,8 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
-    lookup_type_by_name, lookup_type_for, node_with_children, node_with_inferred,
-    substitute_type_slots, substitute_type_slots_scoped, symbol_index_lookup, TypeEnv,
+    lookup_type_by_name, lookup_type_for, node_with_children, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, TypeEnv,
 };
 pub use crate::v1_compiler_infer_resolve::{is_user_generic_use_site, resolve_generic_use_decl};
 pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};
@@ -310,26 +310,11 @@ pub fn expand_scrut_type_for_variant_lookup(
             } else {
                 match scrut_node.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
-                        match bind_scrutinee_variant_field_types(
-                            scrut_node.clone(),
-                            target.clone(),
-                            env.clone(),
-                        ) {
-                            Some(bound) => {
-                                let __tco_0 = bound.clone();
-                                let __tco_1 = env;
-                                __tco_loop_scrut_node = __tco_0;
-                                __tco_loop_env = __tco_1;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                let __tco_0 = target.clone();
-                                let __tco_1 = env;
-                                __tco_loop_scrut_node = __tco_0;
-                                __tco_loop_env = __tco_1;
-                                continue;
-                            }
-                        }
+                        let __tco_0 = target.clone();
+                        let __tco_1 = env;
+                        __tco_loop_scrut_node = __tco_0;
+                        __tco_loop_env = __tco_1;
+                        continue;
                     }
                     _ => {
                         break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
@@ -337,126 +322,6 @@ pub fn expand_scrut_type_for_variant_lookup(
                 }
             }
         }
-    }
-}
-
-pub fn bind_scrutinee_variant_field_types(
-    use_site: Rc<Node>,
-    target: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<Node>> {
-    {
-        let use_site_has_args = ((use_site.connective.clone() == Connective::NoConnective)
-            && ((use_site.children.clone().len() as i64) > 0));
-        let coproduct_decl =
-            crate::v1_compiler_infer_resolve::resolve_generic_use_decl(env.clone(), target.clone());
-        let target_is_parameterized_disj = ((target.connective.clone() == Connective::Disj)
-            && ((coproduct_decl.params.clone().len() as i64) > 0));
-        if (use_site_has_args.clone() && target_is_parameterized_disj.clone()) {
-            {
-                let decl_name = crate::v1_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    coproduct_decl.clone(),
-                );
-                let slot_bindings = Rc::new(
-                    coproduct_decl
-                        .params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                    |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                        let slot = crate::v1_std_core::generic_param_name_at(
-                            pair.1.clone(),
-                            env.source_indices.clone(),
-                        );
-                        match use_site
-                            .children
-                            .clone()
-                            .get((pair.0.clone()) as usize)
-                            .cloned()
-                        {
-                            Some(arg) => {
-                                v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone())
-                            }
-                            std::option::Option::None => acc.clone(),
-                        }
-                    },
-                );
-                let bound_variants = Rc::new({
-                    let mut __result = Vec::new();
-                    for variant in target.children.clone().iter().cloned() {
-                        __result.push(substitute_variant_field_types(
-                            variant.clone(),
-                            slot_bindings.clone(),
-                            decl_name.clone(),
-                            env.source_indices.clone(),
-                        ));
-                    }
-                    __result
-                });
-                Some(crate::v1_compiler_infer_env::node_with_children(
-                    target.clone(),
-                    bound_variants,
-                ))
-            }
-        } else {
-            std::option::Option::None
-        }
-    }
-}
-
-pub fn substitute_variant_field_types(
-    variant: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let bound_fields = Rc::new({
-            let mut __result = Vec::new();
-            for field in variant.children.clone().iter().cloned() {
-                __result.push(substitute_field_resolved_type(
-                    field.clone(),
-                    slot_bindings.clone(),
-                    decl_name.clone(),
-                    source_indices.clone(),
-                ));
-            }
-            __result
-        });
-        crate::v1_compiler_infer_env::node_with_children(variant.clone(), bound_fields)
-    }
-}
-
-pub fn substitute_field_resolved_type(
-    field: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    match field.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: resolved, .. }) => {
-            crate::v1_compiler_infer_env::node_with_inferred(
-                field.clone(),
-                Some(Rc::new(InferredNode::Resolved {
-                    node: crate::v1_compiler_infer_env::substitute_type_slots(
-                        resolved.clone(),
-                        slot_bindings,
-                        decl_name,
-                        source_indices,
-                    ),
-                })),
-            )
-        }
-        _ => field.clone(),
     }
 }
 

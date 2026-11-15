@@ -1,0 +1,28 @@
+module v2.test.claim.workflow.orch_bash_emit_append_both
+
+// The emit witness for the RedirectSpec.AppendBoth carrier. It is the named consumer over an executing
+// route for the bash_redir_append_both row: it builds a Run whose redirect is AppendBoth and pins the
+// emitted bytes to ">> <path> 2>&1" -- append to the file AND merge stderr -- which is what a cron log
+// needs and is exactly what the ToFile ("> <path>") carrier does NOT produce. The witness fails if the
+// row regresses to truncation or drops the stderr merge, because then the emitted line would not contain
+// this substring. The refused_poison sentinel is a string the valid render can never contain, so a refusal
+// (rather than a real render) also fails the assertion.
+
+import std.optional { Absent, Present }
+import std.types { Bool, String }
+import v2.std.orchestration { AppendBoth, Do, FailFast, Pipeline, PipelineStep, Run }
+import v2.workflow.orchestration_bash_emit_support { orch_bash_emit_pipeline }
+
+test fn orch_bash_emit_append_both_renders_append_and_stderr() -> Bool {
+  let step: PipelineStep = Do {
+    run: Run {
+      command: "prog",
+      env: Empty,
+      redirect: Present { value: AppendBoth { path: "/var/log/x" } },
+      capture: Absent
+    }
+  }
+  let p = Pipeline { steps: [step], on_failure: FailFast }
+  let rendered = orch_bash_emit_pipeline(p: p, refused_poison: "<<orch-append-both-refused>>")
+  string_contains(s: rendered, pattern: ">> /var/log/x 2>&1")
+}

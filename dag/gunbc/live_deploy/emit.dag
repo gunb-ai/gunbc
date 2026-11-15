@@ -69,6 +69,7 @@ import extdeps.tailscale.serve {
 }
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
+  systemctl_restart_argv,
   systemctl_show_load_state_argv,
   systemctl_user_daemon_reload_argv,
 }
@@ -1469,23 +1470,36 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
 
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
-// restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
-// error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (gunbc.design_argument::fail_closed — a stopped, typed, but unlocated
-// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
-// is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
-// runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
-// never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
-// gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
-// failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (gunbc.design_argument::fail_closed forbids proceeding as if the refusal had not fired).
+// restart' stderr never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
+// unit's own journal. This restart is SYNCHRONOUS, ahead of the poll-based unit_diagnosis capture
+// entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own diagnosis
+// rather than waiting on one that never runs.
+//
+// WHAT THIS ROW RETIRES (dp-m2-shell-residue-retired). It used to splice the diagnosis onto the
+// command string as a `|| { echo ... >&2; ... >&2; exit 1; }` brace-group -- the shell control words
+// (||, ;, &&) this row exists to retire. It cannot survive that way: a single Do-effect leaf
+// (v2.std.orchestration.Run) carries ONE command and cannot hold a failure branch, and splicing one
+// onto the command string is exactly the anemic-leaf residue the node dissolves. So the step now
+// realizes ONE typed privileged argv -- the words from systemd.systemctl's own systemctl_restart_argv
+// row, elevated through the one seam (extdeps.sudo.elevation.sudo_elevate_argv) and rendered by the
+// shared argv serializer's structural quoting (never a format string, never the privileged
+// shell-text builder). Emitted as its own step under the apply plan's FailFast policy it STILL halts
+// the script when the restart fails -- a privileged command fails the pipeline just as firmly as the
+// brace-group did, so the failure is never masked (gunbc.design_argument::fail_closed: a restart that
+// fails must not proceed as if the refusal had not fired). What is gone is only the diagnosis that
+// rode on the command as text: the unit-status diagnosis survives as DATA on the apply plan's typed
+// leg (gunbc.live_deploy.apply_legs ApplyLegDiagnosedCommand.diagnosis = sudo_elevate_command(command:
+// systemctl_status_argv(unit: ...))), where an observation's exit code belongs as a value the plan
+// reads -- not as bytes appended to the command that failed.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join([
-    deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
-    " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
-    live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
-    " >&2; exit 1; }",
-  ], ""))
+  Do {
+    run: Run {
+      command: shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name))),
+      env: Empty,
+      redirect: Absent,
+      capture: Absent,
+    }
+  }
 }
 
 // THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve
@@ -1501,9 +1515,21 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 // and the teardown cannot disagree about the flags — which is the property the upstream `off` form
 // actually requires.
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-  ))
+  // ONE typed privileged argv as a single Do-effect leaf: the serve words come from
+  // extdeps.tailscale.serve, elevation goes through the one seam
+  // (extdeps.sudo.elevation.sudo_elevate_argv -- the same pattern this file's
+  // deployment_serve_route_command already carries), and the command text is the shared argv
+  // serializer's structural quoting. The privileged shell-text builder
+  // (shell_privileged_command_text_of_argv) and the deploy_raw escape hatch are both retired on this
+  // step (dp-m2-shell-residue-retired); the words reaching exec are identical, minus the extra layer.
+  Do {
+    run: Run {
+      command: shell_command_text_of_argv(argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)))),
+      env: Empty,
+      redirect: Absent,
+      capture: Absent,
+    }
+  }
 }
 
 // THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR

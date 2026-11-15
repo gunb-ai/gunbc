@@ -2,24 +2,28 @@ module gunbc.fleet.probe_identity_observe_step
 
 // THE PROBE IDENTITY OBSERVE RUN STEP lives here, beside fleet_probe_identity_observe which owns the
 // observation it runs, not in the central ci_spec. The machinery it borrows is shared and imported,
-// never reached through ci_spec: gunbc_run_step_script from v2.workflow.gunbc_invoke_step_emit and
+// never reached through ci_spec: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit and
 // witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
-
-data gunbc_ci_probe_identity_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/fleet_probe_identity_observe.dag",
-  function: "fleet_probe_identity_observe_wet",
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
 }
 
+data gunbc_ci_probe_identity_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_probe_identity_observe",
+  function: "fleet_probe_identity_observe_wet",
+)
+
 fn gunbc_ci_probe_identity_observe_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_probe_identity_observe_target.entry,
-    function: gunbc_ci_probe_identity_observe_target.function,
+    target: gunbc_ci_probe_identity_observe_target,
     claim_run: false,
     receipt_rel: "target/fleet-probe-identity-observe-receipt.txt"
   )

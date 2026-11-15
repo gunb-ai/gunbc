@@ -12,17 +12,25 @@ module test.claim.emitter_generic_match_field_binding_witness
 // interpretation never read that static field type -- only the native emitter does (its read-node.inferred
 // contract), so the refusal appeared solely at emit. Fixed at the constructor: the mint now carries the
 // declaration's parameter (gunbc.design_argument::earliest_unjustified_boundary; the mint was the one
-// node violating what kernel_optional_shape_refusal already demands of every Optional declaration), and
-// expand_scrut_type_for_variant_lookup substitutes the use-site argument into each variant field's
-// resolved node (the existing substitute_type_slots_scoped cannot reach a field's Resolved{node}).
+// node violating what kernel_optional_shape_refusal already demands of every Optional declaration), so
+// generic_use_slot_bindings resolves the slot and the ONE substitution a generic scrutinee already passes
+// through -- substitute_type_slots_scoped in v1.compiler.infer_patterns expand_scrut_from_decl, fed by
+// that map -- rewrites each variant field's resolved node on its way through the coproduct. Measured, not
+// assumed: a seed carrying the mint fix and NOTHING added in v1.compiler.infer_patterns already emits
+// controls A/B/C green, so no second binding pass was added -- a pass that changes nothing is a second
+// path (gunbc.design_argument::single_authority), which is also what review 95641 refused in the first
+// attempt: a generic scrutinee is instantiated in exactly one place (instantiate_scrutinee_expansion) and
+// its field types are bound in exactly one place, the substitution above.
 //
 // These are the EMISSION half of the boundary. Control A/B (a GENERIC Optional<T> field-binding) refuse
 // on the unfixed seed with the named compile_error! and emit the realized cast after the fix; they name
 // the distinct acquisition paths the defect was bisected across (a parameter-typed scrutinee, and an
-// fn-returned scrutinee). Control G (a NON-generic enum field-binding) emits on both sides and is the
-// negative control pinning that the defect is specific to generic-enum field bindings -- not any match
-// binding, not arm order, not fn-return. Tracked at gunbc.recurring_failure_mode
-// generic_match_field_binding_keeps_its_type_parameter.
+// fn-returned scrutinee). Control C puts the scrutinee behind a GENERIC CALLEE (fn f<T>(x: T) ->
+// Optional<T>), the double-bind the kernel's own comment warns about: a second substitution beside the
+// coproduct's slots rebinds the same slot from the callee's return type. Control G (a NON-generic enum
+// field-binding) emits on both sides and is the negative control pinning that the defect is specific to
+// generic-enum field bindings -- not any match binding, not arm order, not fn-return. Tracked at
+// gunbc.recurring_failure_mode generic_match_field_binding_keeps_its_type_parameter.
 
 fn w_generic_optional_field_binding_from_a_parameter_realizes_the_cast() -> Bool {
   compile_dag_rust_emit_check(
@@ -47,6 +55,24 @@ fn w_nongeneric_enum_field_binding_still_emits() -> Bool {
     "module genmbind_g\nimport std.types { String, Bool, NonEmptyStr }\n\ntype GEnum = GOne { value: NonEmptyStr } | GOther\n\ndata g_one: GEnum = GOne { value: \"g\" as NonEmptyStr }\n\nfn use_g(e: GEnum) -> String {\n  match e {\n    GOne { value: v } => v as String\n    GOther => \"other\"\n  }\n}\n\ndata emit_hook_g: String = use_g(e: g_one)\n",
     "src/genmbind_g.rs",
     ["v.clone()"],
+    ["compile_error!"]
+  )
+}
+
+// THE DOUBLE-BIND CASE THE KERNEL'S OWN COMMENT WARNS ABOUT (v1.compiler.infer_patterns
+// instantiate_scrutinee_expansion): the scrutinee arrives from a GENERIC CALLEE
+// (`fn f<T>(x: T) -> Optional<T>`), whose returned type node carries the CALLEE's own type parameter.
+// A substitution built beside the coproduct's slots -- from that returned node instead of the use
+// site -- binds the same slot twice and rewires the callee's parameter into the scrutinee's slots
+// (gunbc.design_argument::single_authority). Nothing here adds one: the instantiation expands from the
+// COPRODUCT DECLARATION with the use site's resolved arguments, and that is the one place the field's
+// resolved node is bound, so the `as` crossing on the field bound out of the match emits realized with no
+// ``compile_error!``. This is the control that keeps a second path from coming back.
+fn w_generic_callee_field_binding_realizes_the_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module genmbind_c\nimport std.types { String, Bool, NonEmptyStr }\n\nfn f<T>(x: T) -> Optional<T> {\n  Present { value: x }\n}\n\nfn use_c(x: NonEmptyStr) -> String {\n  let p = f(x: x)\n  match p {\n    Absent {} => \"none\"\n    Present { value: v } => v as String\n  }\n}\n\ndata emit_hook_c: String = use_c(x: \"c\" as NonEmptyStr)\n",
+    "src/genmbind_c.rs",
+    ["Some(v) => v.clone()"],
     ["compile_error!"]
   )
 }

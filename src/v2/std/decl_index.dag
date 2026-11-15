@@ -92,7 +92,10 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
               rel_path: fact.rel_path
             }))
           })
-        _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        TypeItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        DataItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        ServiceItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        OtherItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
       }
     })
   })
@@ -212,5 +215,4 @@ fn decl_facts_fn_item_count(pool_roots: List<String>) -> Int {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "export_signature_declared_arrow" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "export_signature_declared_facts" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
