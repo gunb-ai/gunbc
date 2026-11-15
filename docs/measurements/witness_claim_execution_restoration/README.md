@@ -23,6 +23,25 @@ current `main` push logs **zero** floor markers.
 
 ---
 
+## Current policy — no CI claim tests until the native frontier clears (2026-11-15)
+
+**Decided 2026-11-15 on escalation msg_b70677a1 ("No CI tests until native frontier clears", by
+default on timeout). No stopgap route.** No CI claim execution is authorized: not the native
+instrument row proposed below, and **not** a v1-interpreter `claim_batch`/floor stopgap. The
+required-witnesses-floor job stays deleted; no CI job runs witness claims today. This is why a
+green `v2-bootstrap` is not claim execution (see the header) — CI parses and typechecks, it does
+not execute claims.
+
+**Restoration trigger**, named per `gunbc.design_argument::guarantee_ladder` meta-obligation 3 (the
+trigger names the capability restored): **native claim row green on a required job** — `gunbc.rung_drop`
+`v1_required_lanes_withdrawn`'s own full restoration trigger (1a), the native binary executing the
+**complete** `local_repo_wet_schedule` claims on a required job with their host effects bounded. A
+partial native row "judges part of the population … retires nothing" (the drop's own words), so a
+step running only some members does not discharge this policy. Until that fires: measure, model,
+keep the model honest (PR #16512) — but add no CI claim execution.
+
+---
+
 ## Route honesty (the load-bearing caveat)
 
 There are **two** execution routes and their numbers are **not** interchangeable:
@@ -202,11 +221,16 @@ steps. **CI green is a different claim:** a green `v2-bootstrap` run shows only 
 change parses and typechecks and the `floor_expected_red` enrolment is well-formed — it does
 **not** mean the row executed, because nothing in CI executes claims (see the header).
 
-## Proposed step (needs operator sign-off — not authorized to merge)
+## Proposed step (ON HOLD — see Current policy above; not authorized to merge or add)
+
+Per the current policy (msg_b70677a1, 2026-11-15), this step is **not authorized** until the
+restoration trigger fires (native claim row green on a required job); the operator's ruling is no CI
+claim tests until the native frontier clears, with no stopgap. Recorded here as the design the
+restoration will follow when it is unblocked, not as a live proposal.
 
 Add a **native instrument row** (D1 shape; not a `claim_executor --required-*` flag) to
 `v2-bootstrap` that runs the **deterministic, non-host-gated** required-floor population on the
 already-built tree, each claim behind a **10 s killable boundary** plus the model's 8 s guard,
 with net-only / host claims excluded (`CLAIM_NET_ONLY_SITES` / `CLAIM_SITE_GATED`). Once the
 frontier zeroes, the claim wall is ~1–2 min on top of the build-dominated route. **No standing
-CI-time growth is proposed without the operator's explicit sign-off.**
+CI-time growth without the operator's explicit sign-off** (`ci_job_budgets_closed_to_growth`).
