@@ -1,0 +1,145 @@
+module gunbc.host.bmc_cold_reset
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.optional { Present, Absent, Optional }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation_text }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, McInfoReported, McInfoUnreadable, ipmitool_mc_info_of, ipmitool_mc_info_firmware_text }
+
+// A CONTROLLER COLD RESET, JUDGED. The pure half of a cold reset (extdeps.bmc.ipmi McResetCold): what one mc info
+// poll says, how the watch decides the controller stopped answering and answered again within a bound, and what
+// the host power readings before and after the reset make of it. Nothing here performs a read; a unit's route
+// supplies parsed live readings (gunbc.machine_intake.mtcollins1_bmc_cold_reset), and the bound is that unit's
+// policy, passed in. An exit 0 from the reset only says the request left (extdeps.bmc.ipmitool_mc_reset), so
+// the reset is judged to have happened only when the controller is seen to stop answering and then answer.
+
+// HOW LONG THE WATCH WAITS, in polls: for the controller to stop answering after the reset is sent, and then to
+// answer again. Which counts a unit uses is that unit's policy.
+type ColdResetWatchBounds { drop_polls: Int, answer_polls: Int }
+
+// ── ONE POLL, PARSED ─────────────────────────────────────────────────────────────────────────────
+// The controller ANSWERS when mc info exits 0 with a decodable report that says Device Available: yes. A
+// report saying it is still initializing (Device Available: no) is the controller not yet back, so it is not
+// an answer.
+type ColdResetPoll
+  = ControllerAnswered { report: IpmiMcInfoReport }
+  | ControllerSilent { cause: NonEmptyStr }
+
+fn cold_reset_poll_of(success: Bool, stdout: String) -> ColdResetPoll {
+  if success == false {
+    ControllerSilent { cause: "mc info did not answer (nonzero exit or timeout)" as NonEmptyStr }
+  } else {
+    match ipmitool_mc_info_of(stdout: stdout) {
+      McInfoUnreadable { cause: c } => ControllerSilent { cause: join(["mc info answered undecodably: ", c as String], "") as NonEmptyStr }
+      McInfoReported { report: r } =>
+        if r.device_available {
+          ControllerAnswered { report: r }
+        } else {
+          ControllerSilent { cause: "mc info reports Device Available: no (the controller is still initializing)" as NonEmptyStr }
+        }
+    }
+  }
+}
+
+fn cold_reset_poll_text(poll: ColdResetPoll) -> String {
+  match poll {
+    ControllerAnswered { report: r } => join(["answered, firmware ", ipmitool_mc_info_firmware_text(report: r) as String], "")
+    ControllerSilent { cause: c } => concat("silent: ", c as String)
+  }
+}
+
+// ── THE WATCH: stop answering, then answer again ─────────────────────────────────────────────────
+type ColdResetWatch
+  = WatchingForDrop { polls: Int }
+  | WatchingForAnswer { polls_to_drop: Int, polls: Int }
+
+type ColdResetWatchEnd
+  = WatchRestarted { polls_to_drop: Int, polls_to_answer: Int, report: IpmiMcInfoReport }
+  | WatchNeverDropped { polls: Int }
+  | WatchNeverAnswered { polls_to_drop: Int, polls: Int, last: NonEmptyStr }
+
+type ColdResetWatchStep
+  = WatchContinues { watch: ColdResetWatch }
+  | WatchEnded { end: ColdResetWatchEnd }
+
+data cold_reset_watch_start: ColdResetWatch = WatchingForDrop { polls: 0 }
+
+fn cold_reset_watch_step(watch: ColdResetWatch, poll: ColdResetPoll, bounds: ColdResetWatchBounds) -> ColdResetWatchStep {
+  match watch {
+    WatchingForDrop { polls: n } =>
+      match poll {
+        ControllerSilent { cause: _ } => WatchContinues { watch: WatchingForAnswer { polls_to_drop: n + 1, polls: 0 } }
+        ControllerAnswered { report: _ } =>
+          if n + 1 >= bounds.drop_polls {
+            WatchEnded { end: WatchNeverDropped { polls: n + 1 } }
+          } else {
+            WatchContinues { watch: WatchingForDrop { polls: n + 1 } }
+          }
+      }
+    WatchingForAnswer { polls_to_drop: d, polls: n } =>
+      match poll {
+        ControllerAnswered { report: r } => WatchEnded { end: WatchRestarted { polls_to_drop: d, polls_to_answer: n + 1, report: r } }
+        ControllerSilent { cause: c } =>
+          if n + 1 >= bounds.answer_polls {
+            WatchEnded { end: WatchNeverAnswered { polls_to_drop: d, polls: n + 1, last: c } }
+          } else {
+            WatchContinues { watch: WatchingForAnswer { polls_to_drop: d, polls: n + 1 } }
+          }
+      }
+  }
+}
+
+// ── THE VERDICT ──────────────────────────────────────────────────────────────────────────────────
+type ColdResetVerdict
+  = ColdResetConverged { power_on: Bool, polls_to_drop: Int, polls_to_answer: Int, report: IpmiMcInfoReport }
+  | ColdResetPowerChanged { before_on: Bool, after_on: Bool }
+  | ColdResetPowerUnreadAfter { before_on: Bool, after: ChassisPowerObservation }
+  | ColdResetNoAnswerWithinBound { polls_to_drop: Int, polls: Int, last: NonEmptyStr }
+  | ColdResetNeverDropped { polls: Int }
+
+// The power state after is judged only once the controller answered again; there is nothing to read before that.
+fn cold_reset_verdict(before_on: Bool, end: ColdResetWatchEnd, after: ChassisPowerObservation?) -> ColdResetVerdict {
+  match end {
+    WatchNeverDropped { polls: n } => ColdResetNeverDropped { polls: n }
+    WatchNeverAnswered { polls_to_drop: d, polls: n, last: c } => ColdResetNoAnswerWithinBound { polls_to_drop: d, polls: n, last: c }
+    WatchRestarted { polls_to_drop: d, polls_to_answer: a, report: r } =>
+      match after {
+        Absent => ColdResetPowerUnreadAfter { before_on: before_on, after: ChassisUnreadable }
+        Present { value: obs } =>
+          match obs {
+            ChassisPowerRead { power_on: p } =>
+              if p == before_on {
+                ColdResetConverged { power_on: p, polls_to_drop: d, polls_to_answer: a, report: r }
+              } else {
+                ColdResetPowerChanged { before_on: before_on, after_on: p }
+              }
+            ChassisStatusUndecodable { cause: _ } => ColdResetPowerUnreadAfter { before_on: before_on, after: obs }
+            ChassisUnreadable => ColdResetPowerUnreadAfter { before_on: before_on, after: obs }
+          }
+      }
+  }
+}
+
+fn cold_reset_verdict_converged(verdict: ColdResetVerdict) -> Bool {
+  match verdict {
+    ColdResetConverged { power_on: _, polls_to_drop: _, polls_to_answer: _, report: _ } => true
+    _ => false
+  }
+}
+
+fn cold_reset_power_text(on: Bool) -> String { if on { "on" } else { "off" } }
+
+fn cold_reset_verdict_text(verdict: ColdResetVerdict) -> String {
+  match verdict {
+    ColdResetConverged { power_on: p, polls_to_drop: d, polls_to_answer: a, report: r } =>
+      join(["converged: the controller stopped answering after ", to_string(d), " poll(s) and answered again after ", to_string(a), " more (firmware ", ipmitool_mc_info_firmware_text(report: r) as String, "); host power ", cold_reset_power_text(on: p), " before and after"], "")
+    ColdResetPowerChanged { before_on: b, after_on: a } =>
+      join(["REFUSED: host power changed across the reset (", cold_reset_power_text(on: b), " before, ", cold_reset_power_text(on: a), " after)"], "")
+    ColdResetPowerUnreadAfter { before_on: b, after: o } =>
+      join(["REFUSED: host power was ", cold_reset_power_text(on: b), " before and could not be read after the controller answered again: ", chassis_observation_text(observation: o)], "")
+    ColdResetNoAnswerWithinBound { polls_to_drop: d, polls: n, last: c } =>
+      join(["REFUSED: the controller stopped answering after ", to_string(d), " poll(s) and did not answer again within the bound (", to_string(n), " polls); last: ", c as String], "")
+    ColdResetNeverDropped { polls: n } =>
+      join(["REFUSED: the controller kept answering for ", to_string(n), " polls after the reset was sent, so the reset was not observed to take effect"], "")
+  }
+}
+

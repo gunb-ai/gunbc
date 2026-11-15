@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_boot_step
 
 import gunbc.machine_intake.mtcollins1_pxe_mac_discovery { mtcollins1_pxe_mac_discovery_receipt_path, mtcollins1_pxe_mac_discovery_receipt_absent_line }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_receipt_absent_line }
 import std.types { List, String }
 import std.measure { second_count }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -69,6 +70,13 @@ data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_mtcollins1_pxe_mac_discovery_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_pxe_mac_discovery.dag",
   function: "mtcollins1_pxe_mac_discovery_wet",
+}
+
+// THE CONTROLLER COLD RESET (gunbc.machine_intake.mtcollins1_bmc_cold_reset), run in the boot job under the same
+// federated credential seam and unit hold.
+data gunbc_ci_mtcollins1_bmc_cold_reset_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_bmc_cold_reset.dag",
+  function: "mtcollins1_bmc_cold_reset_wet",
 }
 
 // THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
@@ -374,35 +382,63 @@ fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
     .concat(gunbc_ci_mtcollins1_bmc_credential_fetch_statements())
 }
 
-data mtcollins1_pxe_mac_discovery_run_line_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: v2.workflow.gunbc_invoke_step_emit gunbc_run_command returning bash_build Nodes instead of rendered text — the run line below is a string only because that renderer returns text, so the deferred exit capture (` || DISCOVERY_RC=$?`) cannot join the Node statements around it; every other statement of this step is a Node")
+data mtcollins1_receipted_run_line_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: v2.workflow.gunbc_invoke_step_emit gunbc_run_command returning bash_build Nodes instead of rendered text — the run line below is a string only because that renderer returns text, so the deferred exit capture (` || <step>_RC=$?`) cannot join the Node statements around it; every other statement of this step is a Node")
 
-fn mtcollins1_discovery_receipt_file() -> Node {
-  bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "ROOT"), bash_build_word_lit(text: concat("/", mtcollins1_pxe_mac_discovery_receipt_path))])
+// A RECEIPTED RUN STEP: the credential prelude, then the entry run with its exit status deferred so the typed
+// receipt it wrote is printed whatever it returned, then that status. One shape for every boot-job entry that
+// writes a receipt (the MAC-discovery cycle and the controller cold reset); each passes its own target, receipt
+// path, absence line and status variable.
+type ReceiptedRun { target: GunbcRunStepTarget, receipt_path: String, absent_line: String, rc_name: String }
+
+fn receipted_run_receipt_file(run: ReceiptedRun) -> Node {
+  bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "ROOT"), bash_build_word_lit(text: concat("/", run.receipt_path))])
 }
 
 // BEFORE THE RUN: the receipt is invalidated, so whatever the tail prints was written by this invocation, and the exit status starts at success.
-fn gunbc_ci_mtcollins1_pxe_mac_discovery_pre_statements() -> List<Node> {
+fn receipted_run_pre_statements(run: ReceiptedRun) -> List<Node> {
   [
     bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "ROOT"), bash_build_word_lit(text: "/target")])]),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), mtcollins1_discovery_receipt_file()]),
-    bash_build_assign(name: "DISCOVERY_RC", value: bash_build_word_lit(text: "0")),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), receipted_run_receipt_file(run: run)]),
+    bash_build_assign(name: run.rc_name, value: bash_build_word_lit(text: "0")),
   ]
 }
 
 // AFTER THE RUN: the receipt the entry wrote, or an explicit absence line (a read that fails is never silent and never another run's file), then the entry's own status.
-fn gunbc_ci_mtcollins1_pxe_mac_discovery_tail_statements() -> List<Node> {
+fn receipted_run_tail_statements(run: ReceiptedRun) -> List<Node> {
   [
-    bash_build_or_else(left: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), mtcollins1_discovery_receipt_file()]), right: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_lit(text: mtcollins1_pxe_mac_discovery_receipt_absent_line)])),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: "DISCOVERY_RC")]),
+    bash_build_or_else(left: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), receipted_run_receipt_file(run: run)]), right: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_lit(text: run.absent_line)])),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: run.rc_name)]),
   ]
 }
 
-fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> String {
+fn receipted_run_invoke(run: ReceiptedRun) -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_pre_statements(), set_e: false), "\n",
-    "# ", dissolution_description(condition: mtcollins1_pxe_mac_discovery_run_line_dissolution_trigger), "\n",
-    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_pxe_mac_discovery_target.entry, function: gunbc_ci_mtcollins1_pxe_mac_discovery_target.function, claim_run: false), " || DISCOVERY_RC=$?\n",
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_tail_statements(), set_e: false), "\n",
+    gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false), "\n",
+    "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: run.target.entry, function: run.target.function, claim_run: false), " || ", run.rc_name, "=$?\n",
+    gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
   ], "")
+}
+
+data mtcollins1_pxe_mac_discovery_receipted_run: ReceiptedRun = ReceiptedRun {
+  target: gunbc_ci_mtcollins1_pxe_mac_discovery_target,
+  receipt_path: mtcollins1_pxe_mac_discovery_receipt_path,
+  absent_line: mtcollins1_pxe_mac_discovery_receipt_absent_line,
+  rc_name: "DISCOVERY_RC",
+}
+
+data mtcollins1_bmc_cold_reset_receipted_run: ReceiptedRun = ReceiptedRun {
+  target: gunbc_ci_mtcollins1_bmc_cold_reset_target,
+  receipt_path: mtcollins1_bmc_cold_reset_receipt_path,
+  absent_line: mtcollins1_bmc_cold_reset_receipt_absent_line,
+  rc_name: "RESET_RC",
+}
+
+fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> String {
+  receipted_run_invoke(run: mtcollins1_pxe_mac_discovery_receipted_run)
+}
+
+fn gunbc_ci_mtcollins1_bmc_cold_reset_invoke() -> String {
+  receipted_run_invoke(run: mtcollins1_bmc_cold_reset_receipted_run)
 }

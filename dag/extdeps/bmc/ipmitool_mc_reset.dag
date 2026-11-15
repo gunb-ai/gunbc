@@ -1,0 +1,77 @@
+module extdeps.bmc.ipmitool_mc_reset
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains, trim }
+import std.integer { int_to_decimal_string }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.ipmi { extdeps_intel_ipmi_spec_citation }
+
+// `ipmitool mc reset cold`, READ BACK. ipmitool 1.8.19 lib/ipmi_mc.c ipmi_mc_reset sends IPMI v2.0 §20.2
+// Cold Reset (NetFn App 06h, command 02h) with intf->noanswer set, treats a missing response as expected
+// (its comment cites "20.2 Cold Reset Command, p.243, IPMIv2.0 rev1.0"), prints "Sent cold reset command
+// to MC" and returns 0. It returns -1 (the process exits nonzero) on a nonzero completion code ("MC reset
+// command failed: <cc>"), and the session open before it fails the same way when the controller is not
+// answering. So the reply has three readings and NONE of them is "the controller reset": the sent line is
+// the request leaving, and the restart is observed by a later read that this module does not make.
+//
+// NOTHING HERE DECIDES A GUNBC OUTCOME (gunbc.design_argument::single_authority): whether a sent reset took
+// effect, and what host power must read after it, belong to the caller
+// (gunbc.machine_intake.mtcollins1_bmc_cold_reset).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/IPMITOOL_1_8_19/lib/ipmi_mc.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmitool_mc_reset",
+      decl_name: "IpmitoolMcResetColdReply",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_intel_ipmi_spec_citation]
+}
+
+// The line ipmi_mc_reset prints once the request has been sent ("Sent %s reset command to MC\n" with "cold").
+data ipmitool_mc_reset_cold_sent_line: String = "Sent cold reset command to MC"
+
+// WHAT THE REPLY SAID.
+// - McResetColdSent: exit 0 with the sent line. The request left; nothing more.
+// - McResetColdRefused: nonzero exit, from a completion code or a session that never opened. Nothing was sent
+//   that the controller acknowledged, so a refusal is never read as a reset.
+// - McResetColdUnrecognised: exit 0 WITHOUT the sent line, which 1.8.19 does not produce; kept apart rather
+//   than read as sent, because a different ipmitool answering differently is a fact to surface.
+type IpmitoolMcResetColdReply
+  = McResetColdSent
+  | McResetColdRefused { exit_code: Int, detail: NonEmptyStr }
+  | McResetColdUnrecognised { stdout: String }
+
+fn ipmitool_mc_reset_cold_reply_of(success: Bool, exit_code: Int, stdout: String, stderr: String) -> IpmitoolMcResetColdReply {
+  if success {
+    if string_contains(s: stdout, pattern: ipmitool_mc_reset_cold_sent_line) {
+      McResetColdSent
+    } else {
+      McResetColdUnrecognised { stdout: stdout }
+    }
+  } else {
+    McResetColdRefused {
+      exit_code: exit_code,
+      detail: join(["ipmitool mc reset cold exited ", int_to_decimal_string(value: exit_code), "; stderr: ", trim(s: stderr)], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn ipmitool_mc_reset_cold_reply_text(reply: IpmitoolMcResetColdReply) -> String {
+  match reply {
+    McResetColdSent => "sent (ipmitool printed the sent line; the controller does not answer a cold reset)"
+    McResetColdRefused { exit_code: _, detail: d } => concat("refused: ", d as String)
+    McResetColdUnrecognised { stdout: s } => concat("exit 0 without the sent line; stdout: ", trim(s: s))
+  }
+}

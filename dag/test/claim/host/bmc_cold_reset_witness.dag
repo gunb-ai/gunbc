@@ -1,0 +1,185 @@
+module test.claim.host.bmc_cold_reset_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent, Optional }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, ipmitool_mc_info_firmware_text }
+import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdSent, McResetColdRefused, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_of }
+import gunbc.host.bmc_cold_reset {
+  ColdResetWatchBounds, ColdResetPoll, ControllerAnswered, ControllerSilent, cold_reset_poll_of,
+  ColdResetWatch, ColdResetWatchEnd, WatchRestarted, WatchNeverDropped, WatchNeverAnswered, WatchEnded, WatchContinues,
+  cold_reset_watch_start, cold_reset_watch_step,
+  ColdResetVerdict, ColdResetConverged, ColdResetPowerChanged, ColdResetPowerUnreadAfter, ColdResetNoAnswerWithinBound, ColdResetNeverDropped,
+  cold_reset_verdict, cold_reset_verdict_converged,
+}
+
+// THE CONTROLS FOR THE CONTROLLER COLD RESET (gunbc.host.bmc_cold_reset). Each claim decides through the
+// production folds the live route calls: cold_reset_poll_of parses each mc info read, cold_reset_watch_step
+// judges each poll, cold_reset_verdict judges the power readings. The effectful route
+// (gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_held) is those folds with an
+// ipmitool read and a sleep between them, so folding a sequence of parsed reads here exercises the decision
+// the live watch makes, poll by poll. THE READINGS ARE PARSED, NOT CONSTRUCTED: every poll and power reading
+// below comes out of the same parsers the route uses, and the inhabitance claims at the bottom feed them this
+// unit's REAL captured bytes.
+
+// ── THIS UNIT'S REAL BYTES ──────────────────────────────────────────────────────────────────────
+// `ipmitool mc info` as mtcollins1's controller answered it at firmware 0.45 (boot run 41573858366).
+data real_mc_info_path: String = "artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-mc-info-41573858366.txt"
+// `ipmitool chassis status` as mtcollins1's controller answered it (2026-09-11, the 32-DIMM state capture,
+// whose chassis status section prints one System Power line, on).
+data real_chassis_state_path: String = "artifacts/bmc/mtcollins1-32dimm/01-state.txt"
+
+fn real_mc_info() -> String { Filesystem.Read(path: real_mc_info_path).content }
+fn real_chassis_state() -> String { Filesystem.Read(path: real_chassis_state_path).content }
+
+fn answered() -> ColdResetPoll { cold_reset_poll_of(success: true, stdout: real_mc_info()) }
+fn silent() -> ColdResetPoll { cold_reset_poll_of(success: false, stdout: "") }
+fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
+fn power_off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
+
+data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4 }
+
+// Fold a poll sequence through the watch. Polls after the watch ended are never consulted, as in the live
+// route, which stops polling there. A sequence that runs out before the watch ends is Absent.
+fn watch(polls: List<ColdResetPoll>) -> ColdResetWatchEnd? {
+  let last = fold(polls, init: WatchContinues { watch: cold_reset_watch_start }, f: (acc, p) => match acc {
+    WatchEnded { end: e } => WatchEnded { end: e }
+    WatchContinues { watch: w } => cold_reset_watch_step(watch: w, poll: p, bounds: bounds)
+  })
+  match last {
+    WatchEnded { end: e } => Present { value: e }
+    WatchContinues { watch: _ } => none
+  }
+}
+
+fn verdict_of(before_on: Bool, polls: List<ColdResetPoll>, after: ChassisPowerObservation?) -> ColdResetVerdict? {
+  match watch(polls: polls) {
+    Absent => none
+    Present { value: e } => Present { value: cold_reset_verdict(before_on: before_on, end: e, after: after) }
+  }
+}
+
+// ── POSITIVE ────────────────────────────────────────────────────────────────────────────────────
+// Answered once, silent twice, answered again; power on before and after: converged, and the counts the
+// receipt prints are the polls it took.
+test fn a_reset_seen_to_drop_and_return_with_power_unchanged_converges() -> Bool {
+  match verdict_of(before_on: true, polls: [answered(), silent(), silent(), answered()], after: Present { value: power_on() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetConverged { power_on: p, polls_to_drop: d, polls_to_answer: a, report: _ } => p && d == 2 && a == 2
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ── RED: host power changed ─────────────────────────────────────────────────────────────────────
+test fn a_power_state_change_across_the_reset_refuses_naming_both_states() -> Bool {
+  match verdict_of(before_on: true, polls: [silent(), answered()], after: Present { value: power_off() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetPowerChanged { before_on: b, after_on: a } => b && !a
+        _ => false
+      }
+    Absent => false
+  }
+    && match verdict_of(before_on: false, polls: [silent(), answered()], after: Present { value: power_on() }) {
+         Present { value: v } => match v { ColdResetPowerChanged { before_on: b, after_on: a } => !b && a  _ => false }
+         Absent => false
+       }
+}
+
+// A power reading that cannot be decoded after the controller is back is not "unchanged".
+test fn an_unreadable_power_state_after_the_reset_refuses() -> Bool {
+  match verdict_of(before_on: true, polls: [silent(), answered()], after: Present { value: chassis_observation(success: false, stdout: "") }) {
+    Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: b, after: _ } => b  _ => false }
+    Absent => false
+  }
+    && match verdict_of(before_on: true, polls: [silent(), answered()], after: Present { value: chassis_observation(success: true, stdout: "no power line here\n") }) {
+         Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: _, after: _ } => true  _ => false }
+         Absent => false
+       }
+}
+
+// ── RED: no answer within the bound ─────────────────────────────────────────────────────────────
+// The poll that first finds the controller silent ends the drop watch and is not counted against the answer
+// bound. Silent for answer_polls (4) further polls: refused at the fourth, and an answer that would have come on
+// the next poll is never consulted, so the bound is a bound and not a hint.
+test fn a_controller_silent_past_the_bound_refuses_and_a_late_answer_does_not_rescue_it() -> Bool {
+  match verdict_of(before_on: true, polls: [answered(), silent(), silent(), silent(), silent(), silent(), answered()], after: Present { value: power_on() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetNoAnswerWithinBound { polls_to_drop: d, polls: n, last: _ } => d == 2 && n == 4
+        _ => false
+      }
+    Absent => false
+  }
+    // Answering on the last poll inside the bound still converges: the refusal is the count, not the silence.
+    && match verdict_of(before_on: true, polls: [silent(), silent(), silent(), silent(), answered()], after: Present { value: power_on() }) {
+         Present { value: v } => cold_reset_verdict_converged(verdict: v)
+         Absent => false
+       }
+}
+
+// A controller that never stops answering was not observed to reset: refused, never read as converged.
+test fn a_controller_that_never_stops_answering_refuses_as_not_observed() -> Bool {
+  match verdict_of(before_on: true, polls: [answered(), answered(), answered()], after: Present { value: power_on() }) {
+    Present { value: v } => match v { ColdResetNeverDropped { polls: n } => n == 3  _ => false }
+    Absent => false
+  }
+}
+
+// A controller that answers but reports itself still initializing is not back yet.
+test fn device_available_no_is_silence_not_an_answer() -> Bool {
+  let initializing = cold_reset_poll_of(success: true, stdout: string_replace_available(s: real_mc_info()))
+  match initializing {
+    ControllerSilent { cause: c } => string_contains(s: c as String, pattern: "Device Available: no")
+    ControllerAnswered { report: _ } => false
+  }
+}
+
+fn string_replace_available(s: String) -> String { replace(s: s, from: "Device Available          : yes", to: "Device Available          : no") }
+
+// ── THE REPLY ───────────────────────────────────────────────────────────────────────────────────
+// ipmitool 1.8.19 prints the sent line and exits 0; a nonzero exit is a refusal; exit 0 without the line is
+// kept apart, never read as sent.
+test fn the_reset_reply_reads_sent_only_from_the_sent_line() -> Bool {
+  match ipmitool_mc_reset_cold_reply_of(success: true, exit_code: 0, stdout: "Sent cold reset command to MC\n", stderr: "") { McResetColdSent => true  _ => false }
+    && match ipmitool_mc_reset_cold_reply_of(success: false, exit_code: 1, stdout: "", stderr: "Error: Unable to establish IPMI v2 / RMCP+ session\n") {
+         McResetColdRefused { exit_code: c, detail: d } => c == 1 && string_contains(s: d as String, pattern: "RMCP+ session")
+         _ => false
+       }
+    && match ipmitool_mc_reset_cold_reply_of(success: true, exit_code: 0, stdout: "", stderr: "") { McResetColdUnrecognised { stdout: _ } => true  _ => false }
+}
+
+// ── THE READBACK IS REAL, NOT SUPPLIED (the §3 pairing obligation) ──────────────────────────────
+// The real mc info bytes parse, through the route's own poll parser, to an answer at the firmware the capture
+// names, and the real chassis status bytes to power on. If either parser drifted from what this controller
+// prints, the watch could never see it answer and the verdict could never read its power: this claim is
+// what goes red then.
+test fn this_units_real_mc_info_and_chassis_status_parse_to_an_answer_and_power_on() -> Bool {
+  match answered() {
+    ControllerAnswered { report: r } => (ipmitool_mc_info_firmware_text(report: r) as String) == "0.45"
+    ControllerSilent { cause: _ } => false
+  }
+    && match power_on() { ChassisPowerRead { power_on: p } => p  _ => false }
+}
+
+// THE AFTER READING DECIDES: with the before reading and the watch held fixed, changing only the bytes read
+// AFTER the controller answered flips converged to refused. A verdict that judged a supplied or reused
+// reading (the before reading again, say) would not move here.
+test fn only_the_after_reading_moves_the_verdict() -> Bool {
+  let polls = [answered(), silent(), answered()]
+  let kept = verdict_of(before_on: true, polls: polls, after: Present { value: power_on() })
+  let moved = verdict_of(before_on: true, polls: polls, after: Present { value: power_off() })
+  match kept {
+    Present { value: k } => cold_reset_verdict_converged(verdict: k)
+    Absent => false
+  }
+    && match moved {
+         Present { value: m } => !cold_reset_verdict_converged(verdict: m)
+         Absent => false
+       }
+}

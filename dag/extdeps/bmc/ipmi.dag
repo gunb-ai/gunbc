@@ -705,6 +705,33 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // THE CONTROLLER'S OWN COLD RESET: IPMI v2.0 §20.2 Cold Reset (NetFn App 06h, command 02h), sent by
+  // `ipmitool mc reset cold` (ipmitool 1.8.19 lib/ipmi_mc.c ipmi_mc_reset). The spec directs the
+  // responder to reinitialize its event, communication and sensor functions, so the controller drops
+  // off the LAN and restarts. ipmitool sets intf->noanswer for a cold reset and treats a missing
+  // response as expected, then prints "Sent cold reset command to MC" and exits 0; a nonzero
+  // completion code or an unopened session exits nonzero. AN EXIT 0 THEREFORE SAYS ONLY THAT THE
+  // REQUEST WAS SENT, never that the controller reset: whether it did is read back by whoever calls
+  // this (extdeps.bmc.ipmitool_mc_reset reads the reply; the restart is observed separately). The
+  // spec says nothing about host power, and this operation claims nothing about it either. NOT
+  // `readonly`: it restarts the controller, and its RMCP+ login can spend the lockout budget like
+  // every authenticated write here. Bounded under coreutils `timeout` like its siblings.
+  operation McResetCold {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "mc", "reset", "cold"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool mc reset cold failed"
+    }
+  }
+
 }
 
 // ── COMPLETION CODES ───────────────────────────────────────────────────────────────────────────
