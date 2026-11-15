@@ -19,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.access.posix_effective_principal_read_op",
-      decl_name: "access",
+      decl_name: "access.PosixEffectivePrincipal",
       field: WholeDeclaration
     }
   },

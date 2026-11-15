@@ -16,7 +16,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cron",
-      decl_name: "cron",
+      decl_name: "cron.Tab",
       field: WholeDeclaration
     }
   },

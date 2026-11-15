@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.gcp.iam_admin",
-      decl_name: "gcp",
+      decl_name: "gcp.IamAdmin",
       field: WholeDeclaration
     }
   },
