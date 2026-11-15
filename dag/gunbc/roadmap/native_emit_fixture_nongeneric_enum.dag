@@ -1,0 +1,16 @@
+module gunbc.roadmap.native_emit_fixture_nongeneric_enum
+// CONTROL G (RED CONTROL for native-emit-match-binding-keeps-its-type): match a NON-generic enum variant
+// field-binding and cross it with `as`. This EMITS today and MUST keep emitting. Paired with control A (a
+// GENERIC Optional<T> field-binding, which refuses today and must emit after the fix), it pins the precise
+// boundary: the defect is GENERIC-enum variant field-bindings not getting the scrutinee's concrete type
+// argument substituted -- not any match binding, and not arm-order or fn-return.
+import std.types { String, Bool, NonEmptyStr }
+type GEnum = GOne { value: NonEmptyStr } | GOther
+data g_one: GEnum = GOne { value: "g" as NonEmptyStr }
+fn use_g(e: GEnum) -> String {
+  match e {
+    GOne { value: v } => v as String
+    GOther => "other"
+  }
+}
+data fixture_emit_hook_g: String = use_g(e: g_one)
