@@ -2,10 +2,9 @@ module extdeps.cron.schedule_model
 
 import std.integer { NonNegativeInt, PositiveInt }
 import std.types { List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.nat { nat_to_decimal_string }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -15,9 +14,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: pubs.opengroup.org owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its type declaration CronField, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {

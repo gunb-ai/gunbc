@@ -1,6 +1,6 @@
 module extdeps.cloud.ubicloud
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import std.measure {
@@ -28,8 +28,6 @@ import extdeps.ci_runner.types {
 }
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -37,14 +35,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: ubicloud.com owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration ubicloud_standard_2_catalog, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.ubicloud",
-      decl_name: "ubicloud_standard_2_catalog",
+      decl_name: "UbicloudRunnerCatalogRow",
       field: WholeDeclaration
     }
   },

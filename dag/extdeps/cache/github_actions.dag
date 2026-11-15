@@ -33,9 +33,8 @@ import std.cache_interface {
 import std.measure { ByteSize, Second, byte_size, second, seconds_per_day }
 import std.types { Bool }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -45,9 +44,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: docs.github.com owns the surface this module models, cited by the authority above. The
-// module's subject under that citation is its data declaration gha_actions_cache_id, so that is the scope's
-// subject and the citation above is its first citation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
