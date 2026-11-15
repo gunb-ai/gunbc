@@ -255,3 +255,25 @@ jobs:
             /tmp/route_exit
             /tmp/seed_build.log
           if-no-files-found: warn
+
+      # GREEN MEANS THE ROUTE ACTUALLY RAN AND PASSED — no fabricated success.
+      # The route step is continue-on-error (so numbers are always captured even
+      # on a crash/timeout), which means the job would otherwise show green even
+      # when the route aborted — exactly the vacuous 0.0s "success" the cgroup
+      # bind refusal produced earlier. DESIGN.md Fail-closed
+      # (gunbc.design_argument::fail_closed): "no plausible output is fabricated."
+      # So after the numbers are captured, fail the job when the route did not
+      # genuinely execute to a verdict, or exited non-zero.
+      - name: 'gate: green only if the route truly ran and passed'
+        if: always()
+        run: |
+          rc=$(cat /tmp/route_exit 2>/dev/null || echo MISSING)
+          if [ ! -s /tmp/route.log ] || ! grep -qE "census|adjudicate|FRESH PRODUCT RECEIPT" /tmp/route.log 2>/dev/null; then
+            echo "::error::route produced no verdicts/census (ROUTE_EXIT=$rc) — failing so a green run can never be read as 'route passed' when it did not (fail_closed: no plausible output is fabricated). See the report-measurements summary + route.log artifact."
+            exit 1
+          fi
+          if [ "$rc" != "0" ]; then
+            echo "::error::route exited non-zero (ROUTE_EXIT=$rc); the captured numbers are in the 'report measurements' summary — failing so a green run cannot be misread as 'route passed' (fail_closed)."
+            exit 1
+          fi
+          echo "route executed to a verdict and passed (ROUTE_EXIT=0, verdicts present)"
