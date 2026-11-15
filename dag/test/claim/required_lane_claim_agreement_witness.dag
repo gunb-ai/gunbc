@@ -15,6 +15,7 @@ import test.fixture.required_lane_claim.stale_claim_fixture {
   stale_claim_fixture_rostered_job_ids,
 }
 import gunbc.witness.witness_floor_lanes { RequiredLane, required_lanes_roster }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 
@@ -121,4 +122,35 @@ test fn w_no_projected_ledger_denies_a_lane_the_roster_requires() -> Bool {
     RequiredLaneClaimsAgree { checked_document_count: _, checked_lane_count: _ } => true
     RequiredLaneClaimRefused { sites: _ } => false
   }
+}
+
+// ── THE MATERIALIZED-WORKFLOW CHECK (node adhoc-3808adaf-cb0) ──────────────────────────────────
+//
+// WHY: `required_lanes_roster()` still rosters the two v1 witnesses lanes
+// (`required-witnesses-build` + `required-witnesses-floor`), but the workflow that actually gates
+// today is the single job emitted by `gunbc.witness.compiler_gate_workflow` (v2-bootstrap); neither
+// rostered job exists in it any more. The wall above reads only the PROJECTED LEDGERS, so it stays
+// green against a job that is not in the materialized workflow at all. This row closes that gap at
+// the model's OWN generated workflow surface -- the job-id set `compiler_gate_workflow` renders --
+// NOT a YAML file read from disk, which is the
+// `a_claim_reads_yaml_directly_from_the_source_root_and_reports_the_shape_it_believes_is_in_force`
+// recurring failure mode this family forbids.
+//
+// THE RED IS THE TRUTH, ENROLLED AS TRACKED DEBT. This row is RED at this head because the roster
+// names jobs the emitted workflow does not have. It is enrolled in `v2.workflow.floor_expected_red`
+// with this dissolution trigger: when the native claim row lands as a step on a required job -- the
+// restoration trigger named by `gunbc.rung_drop` `v1_required_lanes_withdrawn`, the native binary
+// executing the `local_repo_wet_schedule` claims on a required job -- the rostered population and
+// the emitted workflow agree and this row retires by becoming TRUE, kept thereafter as a permanent
+// regression control (`gunbc.design_argument::guarantee_ladder`, dissolution on climb). It is NOT a
+// skip: the property is genuinely false today and this row says so.
+data emitted_job_ids: List<String> = list_map(xs: compiler_gate_workflow.jobs, f: fn(j) { j.id })
+
+test fn w_every_rostered_lane_appears_as_an_emitted_workflow_job() -> Bool {
+  // Every job the roster declares required must exist among the jobs the emitted required workflow
+  // actually renders. A rostered lane with no emitted job is a claim that gates a job which does not
+  // exist -- exactly the green-against-nothing this row exists to refuse.
+  count_where(xs: rostered_job_ids, predicate: fn(id) {
+    count_where(xs: emitted_job_ids, predicate: fn(e) { e == id }) == 0
+  }) == 0
 }
