@@ -160,6 +160,9 @@ fn serve_read_declares_the_tree(s: DeploymentArtifactStep) -> Bool {
     let tree = srv1_inst().repo_root as String
     match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
       Declared { reads: reads } => list_member(xs: paths_of(reads), x: tree, eq: eq_str)
+      NoReadOfRecord => false
+      EndpointDependency { endpoint: _ } => false
+      InstalledArtifact => false
       NotYetModeled { reason: _ } => false
     }
   } else { true }
@@ -569,6 +572,9 @@ test fn the_serve_unit_row_reads_the_installed_serve_binary() -> Bool {
     if kind_is_systemd_unit(s) {
       match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
         Declared { reads: reads } => list_member(xs: paths_of(reads), x: want, eq: eq_str)
+        NoReadOfRecord => false
+        EndpointDependency { endpoint: _ } => false
+        InstalledArtifact => false
         NotYetModeled { reason: _ } => false
       }
     } else { true }
