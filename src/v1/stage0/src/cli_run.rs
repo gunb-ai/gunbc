@@ -6885,11 +6885,55 @@ pub enum IndexResidency {
 pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let transaction_started = std::time::Instant::now();
     let run = compile_emission_over_inner(request, residency);
+    // Attribute the cold-compile resolve/type floor. The run path emits these exclusive
+    // resolve-stage rows from `report_pre_entry_phases` (main.rs); the compile path emitted
+    // none, so a cold serve-entry compile left its whole resolve+type wall in
+    // `compile_transaction_unattributed` (roadmap node demand-serve-entry-compile-time first
+    // slice). Record the SAME exclusive rows the run path records (no assembly sub-rows or
+    // counters: those are host-side projections printed by `resolve_partition_lines`, never
+    // recorded here, so the accounting law is untouched), then print the receipt.
+    record_compile_resolve_phase_rows();
     crate::cli_run::pre_entry_phase::print_compile_transaction_receipt(
         &request.subject.label(),
         transaction_started,
     );
     run
+}
+
+/// Record the resolve-stage exclusive-partition rows for a compile transaction. These are the
+/// eight closure-scaled rows plus the two per-root reconcile rows the run path records; they
+/// share the run path's `record` accumulator so `disjoint_root_cover` prices them against
+/// `compile_transaction` exactly as it does the pool rows, and the floor that remains is the
+/// emission/materialization residue this node is measuring.
+fn record_compile_resolve_phase_rows() {
+    use crate::cli_run::pre_entry_phase::{record, PhaseScale};
+    let st = resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    for (name, nanos) in [
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(
+            name,
+            crate::cli_run::pre_entry_phase::index_scale(),
+            ns(nanos),
+        );
+    }
 }
 
 fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
