@@ -175,7 +175,7 @@ service github.ActionsJitRunners {
     }
     transport rest {
       method: POST,
-      path: "/orgs/\{org\}/actions/runners/generate-jitconfig",
+      path: join([github_jit_config_path_prefix, "\{org\}", github_jit_config_path_suffix], ""),
       body: {
         name: name,
         runner_group_id: runner_group_id,
