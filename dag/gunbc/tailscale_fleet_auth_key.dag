@@ -28,6 +28,7 @@ module gunbc.tailscale_fleet_auth_key
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.tailscale.acl { tag_ci }
 import extdeps.tailscale.join {
+  AuthKeyExpiryUnverifiable,
   AuthKeyExpiredOn,
   AuthKeyPreApproved,
   AuthKeyReusable,
@@ -196,6 +197,9 @@ fn tailscale_fleet_auth_key_usable_on(today: Optional<Iso8601CivilDate>) -> Bool
           match tailscale_auth_key_expiry_verdict(expires_on: expires_on, today: day) {
             AuthKeyStillValid => true
             AuthKeyExpiredOn { on: _ } => false
+            // A date no checked constructor would have produced (the type is not sole_constructor, so a
+            // raw literal can reach here) is not a vouchable expiry -- refuse (fail_closed).
+            AuthKeyExpiryUnverifiable { detail: _ } => false
           }
       }
   }

@@ -17,12 +17,20 @@ import std.measure { second, second_count, seconds_per_day }
 import std.types { NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.tailscale.acl { tag_ci }
-import extdeps.units.iso8601_calendar { iso8601_civil_date, iso8601_days_from_civil }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_civil_date,
+  iso8601_days_from_civil,
+}
 import extdeps.tailscale.join {
   AuthKeyReusable,
   AuthKeyPreApproved,
   AuthKeyPolicyAccepted,
   tailscale_auth_key_expiry_window_is_upstream,
+  tailscale_auth_key_expiry_verdict,
+  AuthKeyExpiredOn,
+  AuthKeyStillValid,
+  AuthKeyExpiryUnverifiable,
   tailscale_auth_key_file_argument,
   tailscale_up_join_argv_carries_no_key_material,
   tailscale_auth_key_kind_wire,
@@ -194,6 +202,51 @@ test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
       month: 1,
       day: 1,
     ))
+}
+
+// THE RUNG THE JOIN ACTUALLY STANDS ON (review 95863): Iso8601CivilDate is not sole_constructor -- the
+// corpus has raw record literals of it today (dag/test/claim/gpu_market_listing_witness.dag writes one
+// -- so a month-13 date CAN reach the expiry comparison. The guarantee is therefore a CHECK, not
+// unwritability, and this test exercises exactly the path a checked constructor cannot guard: a raw
+// literal handed to the verdict. It must answer Unverifiable, never the plausible AuthKeyStillValid, and
+// the fleet module's usable_on must refuse it. Real dates still answer the ordinary way.
+test fn w_raw_literal_date_verifies_unverifiable_never_valid() -> Bool {
+  let bogus_expires = Iso8601CivilDate { year: 2026, month: 13, day: 40 }
+  let bogus_today = Iso8601CivilDate { year: 2026, month: 2, day: 30 }
+  let good_expires = match tailscale_fleet_auth_key_expires_on {
+    Present { value: d } => d
+    Absent => Iso8601CivilDate { year: 2027, month: 2, day: 13 }
+  }
+  let good_today = iso8601_civil_date(year: 2026, month: 11, day: 16)
+  let bad_matches = match good_today {
+    // Bogus expiry, real today -> Unverifiable.
+    Present { value: t } =>
+      match tailscale_auth_key_expiry_verdict(expires_on: bogus_expires, today: t) {
+        AuthKeyExpiryUnverifiable { detail: _ } => true
+        AuthKeyStillValid => false
+        AuthKeyExpiredOn { on: _ } => false
+      }
+      // Real expiry, bogus today -> Unverifiable.
+      && match tailscale_auth_key_expiry_verdict(expires_on: good_expires, today: bogus_today) {
+        AuthKeyExpiryUnverifiable { detail: _ } => true
+        AuthKeyStillValid => false
+        AuthKeyExpiredOn { on: _ } => false
+      }
+    Absent => false
+  }
+  let good_matches = match good_today {
+    // The checked constructor's own dates still take the ordinary path.
+    Present { value: t } =>
+      match tailscale_auth_key_expiry_verdict(expires_on: good_expires, today: t) {
+        AuthKeyStillValid => true
+        AuthKeyExpiredOn { on: _ } => false
+        AuthKeyExpiryUnverifiable { detail: _ } => false
+      }
+    Absent => false
+  }
+  bad_matches && good_matches
+    // usable_on fails closed on a raw-literal today, not just a missing one.
+    && !tailscale_fleet_auth_key_usable_on(today: Present { value: bogus_today })
 }
 
 // ── THE KEY NEVER TRAVELS IN ARGV ────────────────────────────────────────────────────────────────────
