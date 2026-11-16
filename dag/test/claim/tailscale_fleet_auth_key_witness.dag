@@ -16,12 +16,12 @@ import std.algebra { string_contains }
 import std.measure { second, second_count, seconds_per_day }
 import std.types { NonEmptyStr }
 import std.optional { Present, Absent }
+import extdeps.tailscale.acl { tag_ci }
+import extdeps.units.iso8601_calendar { iso8601_civil_date, iso8601_days_from_civil }
 import extdeps.tailscale.join {
   AuthKeyReusable,
   AuthKeyPreApproved,
   AuthKeyPolicyAccepted,
-  tailscale_calendar_date,
-  tailscale_calendar_date_precedes,
   tailscale_auth_key_expiry_window_is_upstream,
   tailscale_auth_key_file_argument,
   tailscale_up_join_argv_carries_no_key_material,
@@ -115,7 +115,7 @@ test fn w_key_carries_exactly_the_ci_tag() -> Bool {
   match tailscale_fleet_auth_key_policy.key_tags {
     Cons { head: head, tail: Empty } => head == tailscale_fleet_node_tag
     _ => false
-  } && (tailscale_fleet_node_tag as String) == "tag:ci"
+  } && (tailscale_fleet_node_tag as String) == (tag_ci as String)
 }
 
 test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
@@ -147,7 +147,12 @@ test fn w_expiry_window_is_the_operators_date() -> Bool {
             && expires.year == 2027
             && expires.month == 2
             && expires.day == 13
-            && tailscale_calendar_date_precedes(earlier: generated, later: expires)
+            // Ordered on the corpus calendar authority's own day count, not a comparison this module
+            // invents: the window between the two recorded dates is exactly the 90 days the policy
+            // declares.
+            && iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day)
+              - iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day)
+              == 90
       }
   }
 }
@@ -157,12 +162,12 @@ test fn w_expiry_window_is_the_operators_date() -> Bool {
 // the date rather than as a hang.
 test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
   tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on)
-    && !tailscale_fleet_auth_key_usable_on(today: tailscale_calendar_date(
+    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
       year: 2027,
       month: 2,
       day: 14,
     ))
-    && !tailscale_fleet_auth_key_usable_on(today: tailscale_calendar_date(
+    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
       year: 2025,
       month: 1,
       day: 1,

@@ -26,6 +26,7 @@ module gunbc.tailscale_fleet_auth_key
 // that tag lives).
 
 import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.tailscale.acl { tag_ci }
 import extdeps.tailscale.join {
   AuthKeyExpiredOn,
   AuthKeyPreApproved,
@@ -33,16 +34,15 @@ import extdeps.tailscale.join {
   AuthKeyStillValid,
   TailscaleAuthKeyFile,
   TailscaleAuthKeyPolicy,
-  TailscaleCalendarDate,
   TailscaleAuthKeyPolicyVerdict,
   tailscale_auth_key_approval_wire,
   tailscale_auth_key_file_at,
   tailscale_auth_key_policy_of,
-  tailscale_calendar_date,
   tailscale_auth_key_kind_wire,
   tailscale_auth_key_expiry_verdict,
   tailscale_auth_key_policy_admit,
 }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_date }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import std.measure { Second, second, seconds_per_day }
@@ -102,9 +102,12 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // tagged key "assumes the identity of the auth key's tags", so the tag the key carries IS the identity the
 // ACL will apply. tag:ci was chosen because it already exists in the tailnet's tagOwners and because srv1
 // and srv2 already carry it alongside tag:dashboard -- so a key that leaks enrolls a node into the tag the
-// ACL already treats as unprivileged, and nothing new is minted. The tag string is spelled here in full,
-// `tag:` prefix and all, because this is also the string the ACL is written in and the two have to be
-// comparable (extdeps.tailscale.acl).
+// ACL already treats as unprivileged, and nothing new is minted. The value is IMPORTED --
+// extdeps.tailscale.acl::tag_ci is the fleet's ACL authority for this tag, the ACL is written against
+// it, and the join advertises exactly that identity; a hand-copied string here would be a second place
+// independently deciding the tag the ACL governs
+// (@ref(gunbc.design_argument::single_authority): "a second place that independently decides it is a
+// fork"), so the witness asserts this value and the ACL's word are one value.
 //
 // 90 DAYS, upstream's maximum ("The maximum key expiration is 90 days"). The expiry is not a security
 // theater and not an outage risk: an expired auth key "will not work after that date, but the nodes it
@@ -113,7 +116,7 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // converge re-run for the hosts still to join.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-data tailscale_fleet_node_tag: NonEmptyStr = "tag:ci"
+data tailscale_fleet_node_tag: NonEmptyStr = tag_ci
 
 data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_key_policy_of(
   kind: AuthKeyReusable,
@@ -157,7 +160,7 @@ fn tailscale_fleet_auth_key_approval_wire() -> String {
 // lives, and the expiry verdict is consulted only on the arm that would actually use the credential.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-data tailscale_fleet_auth_key_generated_on: Optional<TailscaleCalendarDate> = tailscale_calendar_date(
+data tailscale_fleet_auth_key_generated_on: Optional<Iso8601CivilDate> = iso8601_civil_date(
   year: 2026,
   month: 11,
   day: 15,
@@ -166,7 +169,7 @@ data tailscale_fleet_auth_key_generated_on: Optional<TailscaleCalendarDate> = ta
 // The recorded expiry, checked at the constructor: if this record ever reads Absent, the model has been
 // edited into an impossible date and every join using the key REFUSES (tailscale_fleet_auth_key_usable_on
 // fails closed on Absent), rather than comparing a month-13 number forever.
-data tailscale_fleet_auth_key_expires_on: Optional<TailscaleCalendarDate> = tailscale_calendar_date(
+data tailscale_fleet_auth_key_expires_on: Optional<Iso8601CivilDate> = iso8601_civil_date(
   year: 2027,
   month: 2,
   day: 13,
@@ -177,7 +180,7 @@ data tailscale_fleet_auth_key_expires_on: Optional<TailscaleCalendarDate> = tail
 // same way gunbc.tailscale_machine_name_converge reads its host selector), so the same plan can be
 // re-derived -- and re-refused -- on any date without a hidden dependency on the wall clock of whoever
 // compiled it.
-fn tailscale_fleet_auth_key_usable_on(today: Optional<TailscaleCalendarDate>) -> Bool {
+fn tailscale_fleet_auth_key_usable_on(today: Optional<Iso8601CivilDate>) -> Bool {
   match tailscale_fleet_auth_key_expires_on {
     // A key whose recorded expiry is not a real date cannot be vouched for -- refuse.
     Absent => false

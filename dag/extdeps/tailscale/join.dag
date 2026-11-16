@@ -44,6 +44,10 @@ import extdeps.languages.json.parse {
 import extdeps.tailscale.serve { tailscale_program }
 import extdeps.uri { Https, Uri }
 import std.measure { Second, second_count, seconds_per_day }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_days_from_civil,
+}
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
 
@@ -176,40 +180,14 @@ fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> Strin
   }
 }
 
-// A CALENDAR DATE, as three integers, because no clock type in the corpus carries one and an auth key's
-// expiry IS a calendar date the operator read off the admin console. Order is lexicographic on
-// (year, month, day), which is what a date order means.
-type TailscaleCalendarDate sole_constructor {
-  year: Int,
-  month: Int,
-  day: Int,
-}
-
-// THE CHECKED CONSTRUCTOR, exported instead of the record: a sole_constructor type is buildable only here,
-// and an out-of-range component yields Absent rather than a date that compares as a number forever -- a
-// key recorded as expiring on month 13 is UNWRITABLE, not merely detectable
+// THE DATE AN EXPIRY IS, REUSED RATHER THAN RE-MINTED: extdeps.units.iso8601_calendar::Iso8601CivilDate
+// is already the corpus authority for a proleptic-Gregorian civil date -- built by checked parsers and
+// ordered through that module's own day-count algorithm -- and an auth key's expiry IS such a date: the
+// day the operator read off the admin console. A key recorded as expiring on month 13 or on February 30
+// is UNWRITABLE through it, because the only surface yielding one is that module's checked constructor
 // (@ref(gunbc.design_argument::fail_closed): "stronger than catching a wrong state is making it
-// unwritable"). Not a calendar library: day-of-month is bounded to 1..31, which refuses nonsense without
-// pretending to know leap years.
-fn tailscale_calendar_date(year: Int, month: Int, day: Int) -> Optional<TailscaleCalendarDate> {
-  if 1970 <= year && year <= 9999 && 1 <= month && month <= 12 && 1 <= day && day <= 31 {
-    Present { value: TailscaleCalendarDate { year: year, month: month, day: day } }
-  } else {
-    Absent
-  }
-}
-
-// Whether `earlier` strictly precedes `later`. Named for the reading a caller takes: a key's expiry is
-// `earlier` than today exactly when the key is expired.
-fn tailscale_calendar_date_precedes(earlier: TailscaleCalendarDate, later: TailscaleCalendarDate) -> Bool {
-  if earlier.year != later.year {
-    earlier.year < later.year
-  } else if earlier.month != later.month {
-    earlier.month < later.month
-  } else {
-    earlier.day < later.day
-  }
-}
+// unwritable"; DESIGN §2: minting a fresh authority for a concept that already exists is a failed
+// decomposition -- this module keeps no date type of its own).
 
 // The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90
 // DAYS. The duration is carried as std.measure::Second -- the corpus authority for elapsed time
@@ -255,13 +233,15 @@ fn tailscale_auth_key_policy_admit(policy: TailscaleAuthKeyPolicy) -> TailscaleA
 // failure whose cause would then be ambiguous between an expired key and a broken network. THE EXPIRY DATE
 // ITSELF IS THE DAY THE KEY STILL WORKS: a key expiring today has not expired yet, and the refusal starts
 // the day after, which is what the console's "expires on" reading means.
-type TailscaleAuthKeyExpiryVerdict = AuthKeyExpiredOn { on: TailscaleCalendarDate } | AuthKeyStillValid
+type TailscaleAuthKeyExpiryVerdict = AuthKeyExpiredOn { on: Iso8601CivilDate } | AuthKeyStillValid
 
 fn tailscale_auth_key_expiry_verdict(
-  expires_on: TailscaleCalendarDate,
-  today: TailscaleCalendarDate,
+  expires_on: Iso8601CivilDate,
+  today: Iso8601CivilDate,
 ) -> TailscaleAuthKeyExpiryVerdict {
-  if tailscale_calendar_date_precedes(earlier: expires_on, later: today) {
+  let expires_days = iso8601_days_from_civil(y: expires_on.year, m: expires_on.month, d: expires_on.day)
+  let today_days = iso8601_days_from_civil(y: today.year, m: today.month, d: today.day)
+  if today_days > expires_days {
     AuthKeyExpiredOn { on: expires_on }
   } else {
     AuthKeyStillValid

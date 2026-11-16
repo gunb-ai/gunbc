@@ -81,7 +81,6 @@ import extdeps.package_managers.dpkg {
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.tailscale.join {
-  TailscaleCalendarDate,
   JoinStateJoined,
   JoinStateNotJoined,
   JoinStateUnreadable,
@@ -101,6 +100,7 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
 }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import extdeps.tailscale.machine_name { tailscale_status_json_argv }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.file_access { FileTreeScope }
@@ -616,7 +616,7 @@ fn tailscale_join_host(
   context: FleetSshExecutionContext,
   key_material: Secret,
   resolved_version: SmResolvedVersionIdentity,
-  today: Optional<TailscaleCalendarDate>,
+  today: Optional<Iso8601CivilDate>,
 ) -> TailscaleJoinOutcome {
   match administrator_ssh_target(host: operator_host_srv1) {
     // The read-back is asked FROM the router, so a router this converge cannot reach over its own transport
