@@ -89,6 +89,15 @@ type EmittedSubjectBuildRow {
 data emitted_subject_self_host_step_id: String = "emit_build_self_host"
 data emitted_subject_v2_native_cli_step_id: String = "emit_build_v2_native_cli"
 
+// THE FLOOR'S STEPS COME FROM gunbc.witness.compiler_gate_workflow::compiler_gate_floor_steps_after_checkout,
+// which selects these rows AFTER applying the floor's own filters; the ORDER of the two rows is the order
+// main runs them. DO NOT reorder to "native-cli first" for fast-lane reasons: both emit steps append
+// `gunbc-read-set.txt` (GUNBC_READ_SET_OUT), the unit's read set is the UNION of the two products' reads,
+// and that union is what carries the claim for the self-host step the reuse path skips -- a unit saved after
+// the native-CLI step alone either carries a partial read set (a pull request touching a self-host-only
+// input would then reuse, which widens the gate) or would have to run self-host anyway on reuse (17m, the
+// fast lane's point gone). Measured and settled 2026-11-16 (node adhoc-66aa884a-406): the order is neutral
+// for unit availability; earlier publishing came from moving the STAGE/SAVE, not the rows.
 fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
   [
     EmittedSubjectBuildRow { label: self_host_label(), step_id: emitted_subject_self_host_step_id },

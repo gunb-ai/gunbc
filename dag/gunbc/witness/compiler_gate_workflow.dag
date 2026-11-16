@@ -204,6 +204,8 @@ import gunbc.read_set_restore {
   fast_lane_layout_check_step_name,
   fast_lane_reference_check_step,
   fast_lane_reference_check_step_name,
+  fl_wait_step,
+  fast_lane_wait_step_name,
 }
 import gunbc.parse_verdict_publish {
   parse_verdict_publish_walk_step,
@@ -832,6 +834,11 @@ fn compiler_gate_fast_lane_decision_bound_steps() -> List<CompilerGateBoundStep>
           step: parse_verdict_locate_step(),
           role: capability_neutral,
           step_name: parse_verdict_locate_step_name,
+        },
+        CompilerGateBoundStep {
+          step: fl_wait_step(),
+          role: capability_neutral,
+          step_name: fast_lane_wait_step_name,
         },
       ],
       fold_list(
