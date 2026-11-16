@@ -1,7 +1,7 @@
 module gunbc.live_deploy.unit_standing
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
-import std.algebra { trim, length, list_append }
+import std.algebra { trim, length, list_push }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -193,14 +193,24 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
 //     the start the deploy performs; their binaries are not required reads for bring-up.
 //   * everything else (Restart/RestartSec knobs, User, Group, Slice, Nice, Timeout*, StandardOutput, ...)
 //     -- a scalar setting the unit carries, no file the unit reads to come up.
-fn service_directive_required_read_paths(directives: List<SystemdServiceDirective>) -> List<String> {
+// The single classification: what each service directive contributes to the unit's REQUIRED reads (the
+// files it must have installed to come up). The class -- not the raw path -- is the meaning; each deploy
+// layer maps it to its own read representation (the lower stack -> a path string; the gate -> a
+// DeclaredRead with a kind). ReadUnparsable marks an Exec command whose argv[0] could not be extracted:
+// the consuming layer maps it to NotYetModeled rather than fabricating an empty path (fail_closed: "no
+// plausible output is fabricated").
+type DirectiveReadClass = ReadCommand | ReadWorkingDirectory | ReadRequiredFile | ReadUnparsable
+
+type RequiredDirectiveRead = RequiredDirectiveRead { path: String, class: DirectiveReadClass }
+
+fn service_directive_required_reads(directives: List<SystemdServiceDirective>) -> List<RequiredDirectiveRead> {
   fold(directives, init: [], f: (acc, d) => match d {
-    ExecStart { command: c } => list_append(acc, argv0_of_command(c))
-    ExecStartPre { command: c } => list_append(acc, argv0_of_command(c))
-    ExecStartPost { command: c } => list_append(acc, argv0_of_command(c))
-    WorkingDirectory { path: p } => list_append(acc, p as String)
-    EnvironmentFile { path: p } => list_append(acc, p as String)
-    LoadCredential { identifier: _, source: s } => list_append(acc, s as String)
+    ExecStart { command: c } => push_command_read(acc, command: c)
+    ExecStartPre { command: c } => push_command_read(acc, command: c)
+    ExecStartPost { command: c } => push_command_read(acc, command: c)
+    WorkingDirectory { path: p } => list_push(xs: acc, item: RequiredDirectiveRead { path: p as String, class: ReadWorkingDirectory })
+    EnvironmentFile { path: p } => list_push(xs: acc, item: RequiredDirectiveRead { path: p as String, class: ReadRequiredFile })
+    LoadCredential { identifier: _, source: s } => list_push(xs: acc, item: RequiredDirectiveRead { path: s as String, class: ReadRequiredFile })
     EnvironmentFileIfPresent { path: _ } => acc
     ExecStop { command: _ } => acc
     ExecStopPost { command: _ } => acc
@@ -231,20 +241,30 @@ fn service_directive_required_read_paths(directives: List<SystemdServiceDirectiv
   })
 }
 
-// argv[0] of a systemd Exec command line is the binary the unit reads. A NonEmptyStr command always
-// splits to at least one token, so first is always Present.
-fn argv0_of_command(command: NonEmptyStr) -> String {
-  match first(xs: split(s: command as String, delimiter: " ")) {
-    Present { value: tok } => tok
-    Absent => ""
+// one start command -> a ReadCommand read carrying its argv[0], or a ReadUnparsable marker when argv[0]
+// cannot be extracted (empty/absent first token) so the consuming layer refuses instead of fabricating.
+fn push_command_read(acc: List<RequiredDirectiveRead>, command: NonEmptyStr) -> List<RequiredDirectiveRead> {
+  match argv0_of_command(command as String) {
+    Present { value: b } => list_push(xs: acc, item: RequiredDirectiveRead { path: b, class: ReadCommand })
+    Absent => list_push(xs: acc, item: RequiredDirectiveRead { path: "", class: ReadUnparsable })
   }
 }
 
-// The required read paths of an emitted unit file: its service directives (empty for a non-service
-// unit file) passed to the single exhaustive classifier above.
-fn service_directive_required_read_paths_of_unit_file(file: SystemdUnitFile) -> List<String> {
+// argv[0] of a systemd Exec command line: the first whitespace-delimited token, absent when the token is
+// empty (e.g. a leading-space command) or there is none. This is the ONE argv[0] extraction; the presence
+// reader exec_start_binary_of_unit_file is built on it (single authority), not a second split.
+fn argv0_of_command(command: String) -> String? {
+  match first(xs: split(s: command, delimiter: " ")) {
+    Present { value: tok } => if tok == "" { none } else { Present { value: tok } }
+    Absent => none
+  }
+}
+
+// The required reads of an emitted unit file: its service directives (empty for a non-service unit file)
+// passed to the single exhaustive classifier above.
+fn service_directive_required_reads_of_unit_file(file: SystemdUnitFile) -> List<RequiredDirectiveRead> {
   match file {
-    ServiceUnitFile { unit: _, service: ds, install: _ } => service_directive_required_read_paths(ds)
+    ServiceUnitFile { unit: _, service: ds, install: _ } => service_directive_required_reads(ds)
     TimerUnitFile { unit: _, timer: _, install: _ } => []
     SliceUnitFile { unit: _, slice: _, install: _ } => []
     PathUnitFile { unit: _, path: _, install: _ } => []
@@ -593,7 +613,7 @@ fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
   match file {
     ServiceUnitFile { unit: _, service: ds, install: _ } =>
       match service_directive_exec_start(directives: ds) {
-        Present { value: cmd } => first(xs: split(s: cmd, delimiter: " "))
+        Present { value: cmd } => argv0_of_command(cmd)
         Absent => none
       }
     _ => none

@@ -44,6 +44,7 @@ import gunbc.live_deploy.emit {
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_approval_broker_unit_file,
+  device_crypto_deployed_digest_env_file_path,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
@@ -419,43 +420,43 @@ test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
 // the unit's read set declared only argv[0] + WorkingDirectory, so with the binary and its directory
 // installed and the digest env file ABSENT, the broker row read Allowed and the gate Proceeded -- a
 // false admission. The read set is now derived by ONE exhaustive match over SystemdServiceDirective
-// (gunbc.live_deploy.unit_standing::service_directive_required_read_paths), which declares the required
-// EnvironmentFile. Discriminating, THROUGH THE REAL BROKER ADAPTER (deployment_artifact_read_set over
-// the srv1 broker step): with only the binary and directory installed, the row is Refused and the gate
-// Halts naming that env file; with the complete installed set, it is Allowed and the gate Proceeds. This
-// control goes RED if the classifier ever drops EnvironmentFile (then no declared read is neither the
-// binary nor the directory, so the env file to omit cannot be found).
+// (gunbc.live_deploy.unit_standing::service_directive_required_reads), which declares the required
+// EnvironmentFile. STRENGTHENED (per the manager): the derived read set must EQUAL the independently
+// spelled set {start binary, WorkingDirectory, digest env file} -- the env path comes from
+// device_crypto_deployed_digest_env_file_path over the spec's broker root, NOT from the derived set -- so
+// a char-split, a dropped path, or a spurious element goes RED, not just a dropped EnvironmentFile. Then,
+// through the real broker adapter: with only the binary and directory installed the row is Refused and the
+// gate Halts naming that env file; with the complete installed set it is Allowed and the gate Proceeds.
 test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
   let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   let binary = unit_argv0(f)
   let wd = unit_wd(f)
+  let env = device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+  let expected = [binary, wd, env]
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
     Absent => false
     Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
       Declared { paths: paths } =>
-        match first_where(xs: paths, keep: fn(p) { p != binary && p != wd }) {
-          Absent => false
-          Present { value: env } =>
-            let row = ReadRow { located: s.path as String, reads: Declared { paths: paths } }
-            let partial = [binary, wd]
-            let refused_names_env = match deploy_closure_verdict(rows: [row], installed: partial) {
-              Refused { located: _, artifact: a } => a == env
-              _ => false
-            }
-            let halts_names_env = match deploy_gate(rows: [row], installed: partial) {
-              Halt { cause: MissingArtifact { located: _, artifact: a } } => a == env
-              _ => false
-            }
-            let allowed = match deploy_closure_verdict(rows: [row], installed: paths) {
-              Allowed => true
-              _ => false
-            }
-            let proceeds = match deploy_gate(rows: [row], installed: paths) {
-              Proceed => true
-              _ => false
-            }
-            refused_names_env && halts_names_env && allowed && proceeds
+        let row = ReadRow { located: s.path as String, reads: Declared { paths: paths } }
+        let partial = [binary, wd]
+        let same_set = list_cover(held: paths, expected: expected, eq: eq_str) && list_cover(held: expected, expected: paths, eq: eq_str)
+        let refused_names_env = match deploy_closure_verdict(rows: [row], installed: partial) {
+          Refused { located: _, artifact: a } => a == env
+          _ => false
         }
+        let halts_names_env = match deploy_gate(rows: [row], installed: partial) {
+          Halt { cause: MissingArtifact { located: _, artifact: a } } => a == env
+          _ => false
+        }
+        let allowed = match deploy_closure_verdict(rows: [row], installed: expected) {
+          Allowed => true
+          _ => false
+        }
+        let proceeds = match deploy_gate(rows: [row], installed: expected) {
+          Proceed => true
+          _ => false
+        }
+        same_set && refused_names_env && halts_names_env && allowed && proceeds
       _ => false
     }
   }
