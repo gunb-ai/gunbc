@@ -39,8 +39,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
   host_capacity_home, compute_build_memory_ceiling_default,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation }
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
 //
@@ -341,39 +340,63 @@ fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarg
 
 // THE ONE RUNNER SLOT THE BUILD POOL IS CARVED FROM, ON srv3/srv4. A host with no dashboard
 // instance has no ceilings to appropriate from, so its build pool is DECLARED and the declaration is
-// DERIVED, not a fresh figure: it is exactly one CI runner slot -- gunbc.runner's
-// gunbc_runner_slot_memory_max (25 GiB) -- given to the pool, per the operator's standing
-// "build-pool reservation carved from CI runner width, one runner slot per host on srv3/srv4" (the
-// admitted-scaffold provenance on gunbc.design_ruling.remote_build_ssh_dispatch_is_an_admitted_scaffold).
-// The seat is that one slot split across the pool's seats (compute_pool_slots, this module's own
-// constant), so host_capacity_pool_appropriation(BuildPool) = seat * compute_pool_slots reproduces the
-// carved slot exactly rather than restating 25 GiB. The SAME figure is subtracted from srv3/srv4's CI
-// memory envelope in gunbc.runner.runner_slot_allocation (host_build_pool_reservation), so the width
-// drops by one slot AND the pool gains that slot -- the conservation statement, spelled once.
+// DERIVED, not a fresh figure: it is exactly one CI runner slot given to the pool, per the operator's
+// standing "build-pool reservation carved from CI runner width, one runner slot per host on srv3/srv4"
+// (the admitted-scaffold provenance on gunbc.design_ruling.remote_build_ssh_dispatch_is_an_admitted_scaffold).
+// WHICH hosts are carved, and by how much, is decided in exactly ONE place --
+// gunbc.runner.runner_slot_desired.host_build_pool_reservation, the same reservation subtracted from
+// that host's CI memory envelope. This function READS that reservation and divides it across the pool's
+// seats (compute_pool_slots, this module's own constant); it does NOT re-test the host list. That is
+// gunbc.design_argument::single_authority: a second place that independently decides the carve is a fork
+// that can drift -- add srv5 to one list and not the other and you get a host whose CI width drops with
+// no pool seat, or one that gains a seat with no width removed. The account witness now pins the seat
+// against the reservation, so the two cannot silently diverge. A host with no carve (reservation 0 --
+// srv1, srv2) keeps the default compute-build ceiling as its seat, so host_capacity_pool_appropriation
+// (BuildPool) = seat * compute_pool_slots reproduces the carved slot exactly on the carved hosts rather
+// than restating 25 GiB.
 fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
-  if host == operator_host_srv3 || host == operator_host_srv4 {
-    byte_size(byte_size_count(gunbc_runner_slot_memory_max) / compute_pool_slots)
+  let reservation = host_build_pool_reservation(host: host)
+  if byte_size_count(reservation) > 0 {
+    byte_size(byte_size_count(reservation) / compute_pool_slots)
   } else {
     compute_build_memory_ceiling_default
   }
 }
 
-// THE LEDGER IS FOUND BY HOST. A host on the remote-build roster has ONE capacity home at
-// /opt/gunbc/compute/capacity and it is found HERE, by host identity -- not by walking
-// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host to whatever instance the host
-// happens to resolve. That walk was the whole defect: srv1 resolved to its /opt/gunbc instance (the
+// THE ONE TABLE: WHERE EACH HOST'S LEDGER LIVES, found by host. A host on the remote-build roster
+// has ONE capacity home at /opt/gunbc/compute/capacity and it is found HERE, by host identity -- not by
+// walking gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host to whatever instance the
+// host happens to resolve. That walk was the whole defect: srv1 resolved to its /opt/gunbc instance (the
 // one path that happened to be right), srv2 resolved to a /home/briansrls instance the gunbc-build
-// account cannot traverse, and srv3/srv4 resolved nothing and so had no ledger. The home exists for a
-// host IFF that host is on the roster (gunbc.compute.remote_build_hosts.remote_build_host_is_serving),
-// which is the "ledger home exists in the model" test the PR body's roster is built from. srv1's home
-// is byte-identical on every field the ledger reads, so srv1 does not migrate.
-fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
-  if remote_build_host_is_serving(host: instance.host_identity as HostIdentity) {
-    let home = host_capacity_home(host: instance.host_identity, build_seat: host_capacity_build_seat(host: instance.host_identity as HostIdentity))
-    let ledger = host_capacity_subject_in(requesting: instance, host_instance: home, pool: pool)
-    ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
+// account cannot traverse, and srv3/srv4 resolved nothing and so had no ledger. EVERY OTHER host --
+// macbook-local (gunbc.roadmap.roadmap_dashboard_instance.macbook_local_dashboard_id) and any future
+// instance host -- keeps the dashboard instance it resolved BEFORE this PR, unchanged, so the local
+// compute provider still resolves a subject where it always did. This is one per-host function covering
+// every host, not a fallback that returns nothing off-roster: off-roster it is exactly the pre-PR
+// dashboard_instance_for_host walk.
+fn host_capacity_home_for_host(host: NonEmptyStr) -> DashboardInstanceByHost {
+  if remote_build_host_is_serving(host: host as HostIdentity) {
+    DashboardInstanceForHost {
+      instance: host_capacity_home(host: host, build_seat: host_capacity_build_seat(host: host as HostIdentity)),
+    }
   } else {
-    ComputeSubjectHostUnresolved { host: instance.host_identity }
+    dashboard_instance_for_host(host: host as String)
+  }
+}
+
+// THE LEDGER IS FOUND BY HOST. host_capacity_subject resolves the host's ledger home through
+// host_capacity_home_for_host -- the roster arm's host home, or (off-roster) the host's dashboard
+// instance exactly as before this PR. A host with neither a roster entry nor a dashboard instance
+// resolves nothing and is refused; a host with a dashboard instance ALWAYS resolves a subject, so no
+// previously-working host loses its ledger. srv1's roster home is byte-identical on every field the
+// ledger reads, so srv1 does not migrate.
+fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
+  match host_capacity_home_for_host(host: instance.host_identity) {
+    DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
+    DashboardInstanceForHost { instance: host_instance } => {
+      let ledger = host_capacity_subject_in(requesting: instance, host_instance: host_instance, pool: pool)
+      ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
+    }
   }
 }
 

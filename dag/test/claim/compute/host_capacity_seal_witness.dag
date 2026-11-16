@@ -117,3 +117,21 @@ test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot
   }
   one_slot_kib > 0 && srv3_app == one_slot_kib && srv1_app != srv3_app
 }
+
+// A NON-ROSTER HOST STILL RESOLVES ITS SUBJECT THROUGH ITS DASHBOARD INSTANCE (PR 4, review fix --
+// review 38602 / artifact 95775). host_capacity_home_for_host is ONE table covering EVERY host: a roster
+// host's home is the /opt/gunbc host home (the two cells above); every OTHER host keeps the dashboard
+// instance it resolved BEFORE this PR. macbook (host_identity "macbook"; instance_id
+// macbook_local_dashboard_id) is off-roster, so its ledger resolves through dashboard_instance_for_host
+// and lands under ITS OWN instance root, NOT the host home. This pins the defect clever-raven caught: the
+// first cut returned ComputeSubjectHostUnresolved for any host off the roster, which would have made the
+// local compute provider on macbook refuse. If host_capacity_subject refuses a non-roster host that has a
+// dashboard instance, this cell reds -- while the two roster cells above stay green -- so BOTH arms of the
+// one table are pinned, and "found by host" cannot silently collapse back to "found only on the roster."
+test fn a_host_off_the_roster_still_resolves_a_subject_through_its_instance() -> Bool {
+  match host_capacity_subject(instance: host_capacity_home(host: "macbook", build_seat: byte_size(0)), pool: ComputeBuildPool) {
+    ComputeSubjectHostUnresolved { host: _ } => false
+    ComputeSubjectResolved { subject: s, appropriation: _ } =>
+      (compute_capacity_root(host_instance: s.instance) as String) != "/opt/gunbc/compute/capacity"
+  }
+}

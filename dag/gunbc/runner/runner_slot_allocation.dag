@@ -27,7 +27,7 @@ import gunbc.floor.floor_demand { gunbc_floor_measured_peak_observation, gunbc_f
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
 import gunbc.fleet.fleet_intent { ComputeHost, compute_host_cpu_threads }
-import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved }
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, host_build_pool_reservation, CpuQuotaResolved }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 
 type HostRunnerSlotAllocation {
@@ -559,37 +559,14 @@ fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: B
   }
 }
 
-// THE BUILD-POOL CARVE, ON THE HOSTS THAT HAVE NO DASHBOARD INSTANCE TO CARRY ITS OWN RESERVATION.
-// srv3 and srv4 run remote builds but resolve no HostDashboardInstance, so unlike srv1 (whose serving
-// reservation reaches the envelope through host_memory_reserved) their remote-build build pool had
-// nothing charging it. The operator's standing ruling (the admitted-scaffold provenance) carves ONE CI
-// runner slot per host on srv3/srv4 for that pool. This is that carve: exactly one slot,
-// gunbc_runner_slot_memory_max, given to the pool. Every other host carves nothing (byte_size(0)), so
-// srv1/srv2 and the fleet are untouched. It is SUBTRACTED from the memory envelope below, so the
-// quotient -- committed width -- drops by exactly one slot on srv3/srv4 (17 -> 16), and the SAME figure
-// is what gunbc.compute.host_capacity host_capacity_build_seat hands the pool (as one slot split across
-// the pool's compute_pool_slots seats), so width reduction and appropriation are the ONE carve, derived
-// once and spelled from a single source -- never two numbers that could drift.
-//
-// CONSERVATION AGAINST THE WALL (gunbc.ci.ci_runner_placement), stated rather than rewired. That wall
-// is an UPPER BOUND: it sums each host's committed runner width priced at the slot, plus the per-host
-// session slice and fixed overhead, and requires the total to stay <= OS-usable RAM. Carving one slot
-// off srv3/srv4's envelope only ever makes the runner side SMALLER -- a smaller sum cannot violate a <=
-// bound, so ConservationTotal holds a fortiori by the same node_conserves argument it held before, and
-// no host is overbooked. The carved slot is not double-counted: on the runner side it is removed from
-// the CI quotient (here); on the ledger side it is held once, as the srv3/srv4 build-pool appropriation
-// in the capacity ledger (gunbc.compute.host_capacity host_capacity_pool_appropriation for BuildPool).
-// The two authorities together never exceed the CI budget the slot came from -- that is the whole point
-// of "carved from CI runner width" -- and this module keeps its declared frontier: conservation against
-// host RAM stays gunbc.ci.ci_runner_placement's to certify, which it still does, now over one slot that
-// has simply moved from the CI side to the ledger side of the same machine.
-fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
-  if (host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String) {
-    gunbc_runner_slot_memory_max
-  } else {
-    byte_size(0)
-  }
-}
+// host_build_pool_reservation MOVED to gunbc.runner.runner_slot_desired -- the leaf that already owns
+// gunbc_runner_slot_memory_max and the srv3/srv4 host constants -- so BOTH it (subtracted from the
+// envelope_final below) and gunbc.compute.host_capacity host_capacity_build_seat (which divides it into
+// the pool seat) read the carve from ONE function. host_capacity cannot import this module (it already
+// reaches it transitively via gunbc.compute.unit_bounds -> the fabric chain, so a host_capacity ->
+// runner_slot_allocation edge closes a cycle the resolver rejects); the leaf is the shared source. See
+// the full single-authority + ci_runner_placement conservation docstring at
+// gunbc.runner.runner_slot_desired.host_build_pool_reservation.
 
 fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize, build_pool: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
