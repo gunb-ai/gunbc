@@ -1029,9 +1029,17 @@ data seed_deletion_observation_is_the_v1_programs_acceptance_gate: DesignRuling 
   provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), answering open question 4 of gunbc.plans.v2_self_host (SelfHostSeedRetirement reads NotDerivable until an instrument observes the seed families' absence; which node owns that instrument). Operator words, verbatim: \"i think this is just an acceptance gate on the project - like towards the end we need a clear project that confirms/winds down the rest of v1\". RULED, in those words: the seed-deletion observation is the acceptance gate of the v1 deletion program, not a separate instrument node. INTERPRETATION (not operator words): the observation is owed by the terminal node of v1-deletion-program, v1-products-v1-free, whose handback already names the builds, the product runs and the list of anything deliberately kept; SelfHostSeedRetirement is read from that node's acceptance evidence, and the program's acceptance confirms and winds down the rest of v1. The same words answer the 2026-11-16 planning question of how the end of v1 is confirmed: by one clear project's acceptance, recorded as an event."
 }
 
+data imports_are_deleted_before_v2_is_accepted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "imports_are_deleted_before_v2_is_accepted"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), closing the clause that gunbc.design_ruling::v2_landing_waits_on_the_namespace_program held open against gunbc.design_ruling::imports_are_the_terminal_name_mechanism. Operator words, verbatim: \"thanks, for keeping me consistent on the import stuff - i think my contradiction is basically that - i need to keep v2 moving, but also by the time v2 accepts, we should have killed imports for good - they cause a lot of problems - and i honestly feel that project has been consistently mishandled (by me mostly)\". RULED, in those words: deleting the import concept is restored as a goal, and it is sequenced: it must be done by the time v2 is accepted as the production route, and it does not stop v2 moving before then. SUPERSEDES the withdrawal half of the 2026-11-08 D2 ruling (import-grammar deletion withdrawn as a goal); D2's binding rule (a name binds by declaration, explicit import or qualified path) stands until the cut lands, and the 2026-11-08 D1 ruling (native-seven depends only on its own closure) stands in full. INTERPRETATION (not operator words): the intention is gunbc.plans.names_without_imports; the roadmap edge native-production-admission <- namespace-unique-on-chain already declared under v2_landing_waits_on_the_namespace_program is the only ordering fixed; the interlock milestone NamespaceGrammarRetired, superseded 2026-11-08, is to be re-admitted as a prerequisite on its carrier by the realization that picks the program up, not by the plan change recording this ruling; the roadmap texts that say XL-7 is withdrawn carry a dated note rather than a rewrite."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     v2_landing_waits_on_the_namespace_program,
+    imports_are_deleted_before_v2_is_accepted,
     native_frontier_step_budget_may_rise_once_its_checks_are_stated,
     seed_deletion_observation_is_the_v1_programs_acceptance_gate,
     no_ci_claim_execution_until_native_frontier_clears,

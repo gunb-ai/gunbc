@@ -1004,7 +1004,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-v2-import-completion",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Decide whether an import list binds, and make it enforceable",
           boundary: "The symbol index is built from a tree-wide census, while the compiled population is the import closure. One answer is needed: either the import list binds and a name resolving outside it refuses, or bare references are reconciled for every file. #12782 made the 77 files' implicit imports explicit with zero binding change.",
           displaced_cost: "A file that declares any import silently gets no bare edges, so the compiled population is decided by accident.",
@@ -1012,7 +1012,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "Strict binding: a reference outside the declared closure refuses, located at file and name. Reconciliation: a permitted bare dependency enters the population and its effect summary. The existing import-list flip control stays as the regression probe.",
           out_of_scope: "Quieting the effect-summary join. (Deleting import syntax, XL-7, is withdrawn.)",
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
-        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
+        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path."), on: "2026-11-16", note: "The question this node asks is answered by gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted: an import list does not bind, because the import concept is deleted before v2 is accepted; in-scope is the switch-over's single definition. The out_of_scope parenthesis (XL-7 withdrawn) is superseded by that ruling and left as written. Serves gunbc.plans.names_without_imports.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before resolution can say what a name sees."),
     ),
@@ -2328,14 +2328,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-unique-on-chain",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
           approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
           red_control: "A name answered two ways by two code paths is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "Every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
-        )),
+        ), on: "2026-11-16", note: "Operator ruling gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted restores import deletion as this project's goal, sequenced before v2's acceptance as the production route and after native-seven: the edge native-production-admission <- namespace-unique-on-chain is declared, and the handback's 'explicit import' arm ends when the cut lands. The intention is gunbc.plans.names_without_imports. The boundary text above records the 2026-11-08 reading and is not rewritten here.")),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
 

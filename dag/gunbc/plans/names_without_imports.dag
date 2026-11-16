@@ -1,0 +1,54 @@
+module gunbc.plans.names_without_imports
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
+
+fn names_without_imports_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`). The work items live under the `namespace-unique-on-chain` project in `gunbc.roadmap.roadmap_authority` and name this intention; this plan does not list them."),
+      p(text: "**Grounding:** `gunbc.design_argument::single_authority` (one name, one way to decide it; the name-to-path mapping runs one way), `gunbc.design_argument::replacement_migration` (the old authority ends in one motion at its root), `gunbc.design_argument::root_generalization`, `gunbc.design_argument::closed_grounded_substrate`, `gunbc.design_argument::epistemic_humility`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** every name in a `.dag` program is decided one canonical way, by declaration in scope or by qualified path, through one binding kernel, and the import concept is gone from the language: no import grammar, no import closure deciding the compiled population, no import retry, no global pool of bare names, and no second deciding mechanism in the seed."),
+    p(text: "**Why (operator, 2026-11-16):** imports cause a lot of problems, and by the time v2 is accepted they must be gone for good. The problems are on record: a file that declares any import silently gets no bare edges, so the compiled population is decided by accident (`namespace-v2-import-completion`); the symbol index is built from a tree-wide census while the compiled population is the import closure, two answers to what a name sees; and a name answered two ways by two code paths is this project's own red control. The operator also recorded that the project has been consistently mishandled, mostly by the operator: it has been re-scoped at least four times (the staged XL migration program withdrawn 2026-11-10, import-grammar deletion withdrawn 2026-11-08, re-admitted 2026-11-16), so this plan fixes the intention first and lets the realization be redrawn under it."),
+    p(text: "**Done when** (each assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "The v2 grammar has no import production, and a `.dag` file containing an import line refuses at parse with a located diagnostic naming the qualified-path spelling that replaces it."),
+      li(text: "Every name reference carries its declaration (`declaration-identity-switchover`), decided by the one kernel handed its candidates (`namespace-binding-kernel`), with genuinely ambiguous names settled by discharge, not by order of loading (`namespace-ambiguity-discharge`)."),
+      li(text: "Each file's dependencies are derived from what its names resolve to, so the compiled population is a consequence of references and never of an authored list (`namespace-reference-derived-closure`)."),
+      li(text: "The legacy deciding mechanisms are at zero: name-string matching, parent-chain walking, the bare-name pool, the import retry, and the seed's own none/one/many mirror (`namespace-legacy-choice-retirement`'s handback)."),
+      li(text: "`native-production-admission` consumes this: v2 is not admitted as the production route while any of the above is open (`gunbc.design_ruling::v2_landing_waits_on_the_namespace_program`, `gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted`)."),
+      li(text: "Operator's judgement: the corpus reads better without imports than with them; a migration that merely moved the import lists into longer spellings at every reference has not achieved this."),
+    ]),
+    h2(text: "2. The backward structure, read at e346a2c89daa"),
+    p(text: "The project's eleven members declare no edges among themselves, so this is read from their texts. Each layer states what must already be true for the one above it."),
+    ol(items: [
+      li(text: "**The goal.** No import grammar, and the compiled population derived from references. This is the last cut, because deleting the grammar before every name binds without it would refuse the whole corpus at once."),
+      li(text: "**Just before it.** The legacy deciding mechanisms are deleted (`namespace-legacy-choice-retirement`), which is possible only when every ordinary consumer already uses the one rule."),
+      li(text: "**Before that.** Every reference carries its declaration (`declaration-identity-switchover`), which needs the kernel (`namespace-binding-kernel`), exact occurrence identity (`namespace-occurrence-transport`), what a name can see from where it is written (`namespace-structural-observations`), dependencies derived from references (`namespace-reference-derived-closure`, with its producer bounded by `namespace-reference-derived-producer-bounded`), and the genuinely-many cases settled (`namespace-ambiguity-discharge`). `namespace-v2-import-completion`'s question (does an import list bind?) is answered by this intention: it does not; the import list is deleted, and in-scope is the switch-over's single definition."),
+      li(text: "**The scale, measured.** The 2026-11-16 parse sweep counts 10343 modules and about 292,000 import members. Every one of those lines is rewritten or made unnecessary by this program, so the realization is a generated rewrite through one generator over the whole corpus, never a hand migration, and it lands as one cut at the root with the generator as its offline differential oracle (`gunbc.design_argument::replacement_migration`)."),
+    ]),
+    p(text: "**Today's frontier**, read the same way: the kernel, occurrence transport and structural observations are the roots; the bounded producer is gated on gunb-ai/gunbc#11683 and gunb-ai/gunbc#11574 by its own text; `declaration-provider-outcomes` is also a parent of `native-seven` and is the member whose landing moves both intentions at once."),
+    h2(text: "3. What this intention does not gate"),
+    p(text: "`native-seven` and every landing before production admission. The 2026-11-08 ruling that native-seven depends only on its own closure stands (`gunbc.design_ruling::n7_requires_only_its_own_closure`), and imports remain the binding mechanism until the cut lands (`gunbc.design_ruling::imports_are_the_terminal_name_mechanism`, whose withdrawal of grammar deletion is superseded but whose binding rule is not). The two intentions meet at `native-production-admission`."),
+    h2(text: "4. Open questions"),
+    ul(items: [
+      li(text: "**The qualified-path spelling without imports.** A file that names a foreign declaration today spells `decl` after importing it; without imports it spells the declaration's path. Whether the path is the full module path or a declared shorter form is a language design decision the kernel must make once, and it is the first thing a realization has to settle because the generated rewrite depends on it."),
+      li(text: "**The interlock milestone.** `NamespaceGrammarRetired` was superseded on 2026-11-08 and is no longer a prerequisite in `gunbc.compiler_frontend_program_interlock`. Re-admitting it as a prerequisite of `SelfHostSeedRetirement` (or of production admission) is a realization act on that carrier, owed by whoever picks this program up, and not done in the plan change that recorded the ruling."),
+      li(text: "**The seed.** The v1 seed parses imports and is semantics-frozen under a purpose test (`gunbc.v1.v1_maintenance_standing::v1_seed_standing`). Whether the seed learns the new spelling or the cut waits for the seed's retirement is an ordering decision between this intention and `gunbc.plans.v2_self_host`; the ruling that namespace gates production admission, not native-seven, is the only ordering fixed so far."),
+    ]),
+    h2(text: "5. Realization"),
+    p(text: "Not authored here. The first realization acts are to declare the edges section 2 read from prose and to settle the spelling question; after that, what a landing reports is which legacy mechanism's inventory reached zero, or which binding capability now executes on the native route, never a count of files rewritten."),
+  ]
+}
+
+data names_without_imports_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "names-without-imports",
+  title: "Names without imports: every name decided one way, and the import concept gone before v2 is accepted",
+  body: names_without_imports_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: no import grammar, every reference carrying its declaration through the one kernel, the legacy mechanisms at zero, and native-production-admission consuming it.") },
+}
