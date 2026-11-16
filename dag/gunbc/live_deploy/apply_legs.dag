@@ -1677,18 +1677,11 @@ fn kept_member_owned(member: ConvergedMember, spec: DeploymentSpec, instance: Ho
 // (zero legs added); only a Halt adds a refusal -- the gate never widens the plan (refuse-only).
 // A converger's kind, taken from its unit's OWN [Service] Type=. Which leg counts as "the plan RUNS the
 // converger" is decided by this kind as a TOTAL match -- not "either leg will do for both".
-// A oneshot converger (e.g. tree-remote, a typed oneshot -- #16544) RUNS during the deploy; a long-running
-// converger is brought up by being ENABLED (starts and stays up).
+// A oneshot converger (the tree-sync publication unit, a typed oneshot -- #16544) RUNS during the deploy;
+// a long-running converger is brought up by being ENABLED (starts and stays up).
 type ConvergerUnitKind =
   | Oneshot
   | LongRunning
-
-fn leg_step_present(legs: List<DeployApplyLeg>, step: String) -> Bool {
-  match first_where(xs: legs, keep: fn(l) { deploy_apply_leg_step(l) == step }) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
 
 // THE TYPED SYSTEMCTL MATCHER: checks whether any leg carries the given (action, unit) pair as its typed
 // fields. The gate uses this instead of step-string matching — a leg is identified by what it DOES (Restart
