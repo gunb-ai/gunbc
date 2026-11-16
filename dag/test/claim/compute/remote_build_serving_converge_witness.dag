@@ -29,6 +29,11 @@ fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: true }
 }
 
+// Elevation precondition for hermetic cells (review 95915): the sudo grant works.
+fn est_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
 fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: false }
 }
@@ -56,6 +61,7 @@ fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved
 // receipt must render by NAME only.
 fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
   serving_observed_from_reads(
+    elevation: est_elevation(),
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
     group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
     authorized_keys: est_s(dline),
@@ -112,6 +118,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
     Absent => false
     Present { value: line } => {
       let a = serving_assess(d: d, o: serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
         authorized_keys: est_s(line),

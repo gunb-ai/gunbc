@@ -68,6 +68,20 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // or a refused leg is unobservable (Absent), so the plan reads Missing rather than a
 // false not-Met or a false Met.
 
+// The elevation precondition, read ONCE per observe run. 'sudo -n true' is the canonical elevation probe:
+// exit 0 establishes elevation. Any other exit — including the exit 1 that 'sudo -n' ITSELF returns when it
+// refuses (no grant / password required / command not allowed) — is a REFUSAL of elevation, not a host fact.
+// This single leg is the typed precondition the 'test'-based legs take, so a drifted sudo grant can never be
+// misread as "the file is absent" (see serving_observed_from_reads; review 95915).
+fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
+  let r = typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"])
+  if r.success == false {
+    ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
+  } else {
+    ObservationEstablished { observed: true }
+  }
+}
+
 fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
@@ -80,15 +94,20 @@ fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionC
 
 // A `test <predicate> <path>` leg: exit 0 -> established PRESENT, exit 1 -> established
 // ABSENT (a confirmed not-present the apply may create), any other exit or a refused leg ->
-// unobservable (a ServingUnknown), never a proven absence.
-fn serving_leg_test(item: String, target: SshTarget, context: FleetSshExecutionContext, predicate: String, path: String) -> ObservationAttempt<Bool, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", predicate, path]) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-      true => ObservationEstablished { observed: true }
-      false => match r.exit_code == 1 {
-        true => ObservationEstablished { observed: false }
-        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
+// unobservable (a ServingUnknown), never a proven absence. The elevation precondition short-circuits
+// it: when 'sudo -n true' was refused the leg never runs (a sudo refusal shares the exit 1 this leg
+// would read as "absent", review 95915), so it is ObservationRefused.
+fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, predicate: String, path: String) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match elevation {
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", predicate, path]) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+      TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+        true => ObservationEstablished { observed: true }
+        false => match r.exit_code == 1 {
+          true => ObservationEstablished { observed: false }
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
+        }
       }
     }
   }
@@ -98,14 +117,17 @@ fn serving_leg_test(item: String, target: SshTarget, context: FleetSshExecutionC
 // established content is "", read as "no forced command") — while a present-but-unreadable
 // file, or an errored/SSH-refused leg, is ObservationRefused (unobservable), not a false
 // "no key". Only a confirmed-present file is then `cat`-read.
-fn serving_leg_authorized_keys(item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", "-f", path]) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-    TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-      true => ObservationEstablished { observed: "" }
-      false => match t.exit_code == 0 {
-        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-        true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
+fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
+  match elevation {
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", "-f", path]) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
+        true => ObservationEstablished { observed: "" }
+        false => match t.exit_code == 0 {
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
+          true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
+        }
       }
     }
   }
@@ -245,15 +267,20 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
 }
 
 fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingObservedView {
+  // The elevation precondition is read ONCE and handed to the sudo-dependent legs (typed precondition, not
+  // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and
+  // serving_observed_from_reads forces them refused + serving_assess folds the elevation unknown => Indeterminate.
+  let elevation = serving_elevation_leg(target: target, context: context)
   let o = serving_observed_from_reads(
+    elevation: elevation,
     passwd: serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd")),
     group: serving_leg_read(item: "group.members", target: target, context: context, argv: serving_cat_sudo("/etc/group")),
-    authorized_keys: serving_leg_authorized_keys(item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path),
-    store_root: serving_leg_test(item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root),
-    store_staging: serving_leg_test(item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging),
-    serve_binary: serving_leg_test(item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary),
-    checkout: serving_leg_test(item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir),
-    toolchain: serving_leg_test(item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home),
+    authorized_keys: serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path),
+    store_root: serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root),
+    store_staging: serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging),
+    serve_binary: serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary),
+    checkout: serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir),
+    toolchain: serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home),
     serve_binary_sha256: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: d.serve_binary),
     checkout_revision: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name),
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),

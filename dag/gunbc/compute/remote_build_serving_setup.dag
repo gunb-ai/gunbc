@@ -810,6 +810,24 @@ fn serving_authorized_keys_line(text: String?) -> String? {
 // SSH legs; the witness from crafted strings/flags. Parsing to values happens in serving_assess
 // (which holds the desired account/group names), so the red controls and the indeterminate
 // control (a refused leg) all flow through the SAME comparison code the wet receipt takes.
+// Elevation gate (review 95915): when the 'sudo -n true' elevation leg was refused, force a sudo-dependent
+// leg to ObservationRefused, keeping the leg's OWN item so the resulting unknown names the real item. When
+// elevation is established, the leg's own reading passes through untouched. Typed top-level fns (String and
+// Bool attempt flavours) rather than a shared lambda, so each keeps its concrete attempt type.
+fn serving_elevation_gate_str(elevation: ObservationAttempt<Bool, ServingLegFailure>, name: String, a: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<String, ServingLegFailure> {
+  match elevation {
+    ObservationEstablished { observed: _ } => a
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: name, cause: "sudo -n refused" } }
+  }
+}
+
+fn serving_elevation_gate_bool(elevation: ObservationAttempt<Bool, ServingLegFailure>, name: String, a: ObservationAttempt<Bool, ServingLegFailure>) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match elevation {
+    ObservationEstablished { observed: _ } => a
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: name, cause: "sudo -n refused" } }
+  }
+}
+
 fn serving_observed_from_reads(
   elevation: ObservationAttempt<Bool, ServingLegFailure>,
   passwd: ObservationAttempt<String, ServingLegFailure>,
@@ -827,26 +845,20 @@ fn serving_observed_from_reads(
 ) -> ServingObserved {
   // The elevation precondition applied ONCE here (not re-checked in each leg): when 'sudo -n true' was
   // refused, every sudo-dependent leg is ObservationRefused regardless of what the leg would have read,
-  // because its exit status is not trustworthy (sudo's own refusal shares the 'test' legs' exit 1). The
-  // non-sudo legs (passwd, group, toolchain, the three pins, the stat'd ledger) pass through unchanged.
-  let sudo_str = (a: ObservationAttempt<String, ServingLegFailure>) => match elevation {
-    ObservationEstablished { observed: _ } => a
-    ObservationRefused { cause: c } => ObservationRefused { cause: ServingLegFailure { item: c.item, cause: "sudo -n refused" } }
-  }
-  let sudo_bool = (a: ObservationAttempt<Bool, ServingLegFailure>) => match elevation {
-    ObservationEstablished { observed: _ } => a
-    ObservationRefused { cause: c } => ObservationRefused { cause: ServingLegFailure { item: c.item, cause: "sudo -n refused" } }
-  }
+  // because its exit status is not trustworthy (sudo's own refusal shares the 'test' legs' exit 1). Each
+  // forced refusal keeps the LEG's own item (passed in), so the resulting unknowns name the real item
+  // (store.root, …), while serving_assess adds the single 'elevation' unknown separately. Non-sudo legs
+  // (passwd, group, the three pins, the stat'd ledger) pass through unchanged.
   {
     elevation: elevation,
     passwd: passwd,
     group: group,
-    authorized_keys: sudo_str(authorized_keys),
-    store_root: sudo_bool(store_root),
-    store_staging: sudo_bool(store_staging),
-    serve_binary: sudo_bool(serve_binary),
-    checkout: sudo_bool(checkout),
-    toolchain: sudo_bool(toolchain),
+    authorized_keys: serving_elevation_gate_str(elevation, "authorized_keys.forced_command", authorized_keys),
+    store_root: serving_elevation_gate_bool(elevation, "store.root", store_root),
+    store_staging: serving_elevation_gate_bool(elevation, "store.staging", store_staging),
+    serve_binary: serving_elevation_gate_bool(elevation, "seed.serve_binary", serve_binary),
+    checkout: serving_elevation_gate_bool(elevation, "checkout", checkout),
+    toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),
     serve_binary_sha256: serve_binary_sha256,
     checkout_revision: checkout_revision,
     target_arch: target_arch,
