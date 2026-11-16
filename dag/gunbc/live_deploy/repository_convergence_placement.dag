@@ -53,6 +53,7 @@ import extdeps.languages.json.parse {
   parse_json_document,
 }
 import extdeps.systemd.unit_file {
+  SystemdUnitFile,
   ServiceUnitFile,
   Description,
   ServiceType, OneshotMode,
@@ -738,30 +739,66 @@ fn convergence_slice_refusal_text(oneshot: ConvergenceOneshot, slice: NonEmptySt
   ], "")
 }
 
+// THE ONE SLICE-ADMISSION MATCH FOR A CONVERGENCE ONESHOT. Every consumer — the production renderer
+// (convergence_oneshot_unit_text), the typed renderer (convergence_oneshot_rendering, what the oracle
+// pins), and the deploy-artifact closure (convergence_oneshot_service_unit_file_if_admitted) — asks
+// THIS function, so there is exactly one match over convergence_slice_admission for oneshots (the
+// repair in gunbc.recurring_failure_mode.convergence_oneshot_in_a_serving_slice reads "renders every
+// convergence oneshot through one path"; a second match anywhere is a second path waiting to drift).
+// It answers either the TYPED UNIT FILE, built by the one place that builds it
+// (convergence_oneshot_service_unit_file), or the TYPED REFUSAL carrying convergence_slice_refusal_text
+// — the located reason naming the oneshot, its slice, and the serving slice it sits inside. The
+// renderer serializes the file or writes the deploy-unreachable marker WITH that reason; the closure
+// takes the file or treats the refusal as unclosed.
+type ConvergenceOneshotAdmission
+  = ConvergenceOneshotAdmitted { unit_file: SystemdUnitFile }
+  | ConvergenceOneshotRefused { reason: String }
+
+fn convergence_oneshot_admission(spec: DeploymentSpec, slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> ConvergenceOneshotAdmission {
+  match convergence_slice_admission(spec: spec, slice: slice) {
+    ConvergenceSliceAdmitted { name: admitted } =>
+      ConvergenceOneshotAdmitted { unit_file: convergence_oneshot_service_unit_file(slice: admitted, oneshot: oneshot) }
+    ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
+      ConvergenceOneshotRefused { reason: convergence_slice_refusal_text(oneshot: oneshot, slice: n, serving: s) }
+  }
+}
+
 // THE PRODUCTION UNIT IS THE ADMITTED RENDERING OVER THE DECLARED CONVERGENCE SLICE. The refused arm
 // is unreachable from the declared row -- the witness pins that -- and it renders a poison marker
 // rather than a unit, in the same shape as gunbc.live_deploy.release_locus release_revision_not_installed_poison:
 // systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
 // the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
+// The marker carries the LOCATED reason from the one admission (convergence_slice_refusal_text naming
+// the oneshot, the slice, and its serving slice), so the printed diagnosis says which slice moved (the
+// reason is never flattened to a fixed string).
 fn convergence_oneshot_unit_text(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> String {
-  match convergence_oneshot_rendering(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
-    ConvergenceUnitRendered { text: t } => t
-    ConvergenceUnitPlacementRefused { reason: r } =>
-      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
+  match convergence_oneshot_admission(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
+    ConvergenceOneshotAdmitted { unit_file: unit } => serialize_systemd_unit_file(file: unit)
+    ConvergenceOneshotRefused { reason: reason } => concat("__GUNBC_DEPLOY_UNREACHABLE__ ", reason)
   }
 }
 
+// THE TYPED RENDERING, over the same ONE admission — the shape the emission oracle pins
+// (test.claim.live_deploy_unit_emission_oracle_witness the_tree_remote_oneshot_in_a_serving_slice_refuses),
+// which is therefore the same decision production renders from, not a parallel path.
 fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> ConvergenceUnitRendering {
-  match convergence_slice_admission(spec: spec, slice: slice) {
-    ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
-      ConvergenceUnitPlacementRefused { reason: convergence_slice_refusal_text(oneshot: oneshot, slice: n, serving: s) }
-    ConvergenceSliceAdmitted { name: admitted } =>
-      ConvergenceUnitRendered { text: convergence_oneshot_text_in(slice: admitted, oneshot: oneshot) }
+  match convergence_oneshot_admission(spec: spec, slice: slice, oneshot: oneshot) {
+    ConvergenceOneshotRefused { reason: reason } => ConvergenceUnitPlacementRefused { reason: reason }
+    ConvergenceOneshotAdmitted { unit_file: unit } =>
+      ConvergenceUnitRendered { text: serialize_systemd_unit_file(file: unit) }
   }
 }
 
-fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
-  serialize_systemd_unit_file(file: ServiceUnitFile {
+// THE ONE typed oneshot unit file, given an ADMITTED slice. This is the single place the oneshot's
+// ServiceUnitFile is built: the ONE admission (convergence_oneshot_admission) wraps it, and its
+// consumers — the deploy-emitted text (convergence_oneshot_unit_text), the typed renderer
+// (convergence_oneshot_rendering), and the deploy-artifact closure
+// (convergence_oneshot_service_unit_file_if_admitted, called by emit's
+// live_deploy_tree_remote_unit_file_for_closure) — all serialize or take THAT file. Keeping the build
+// here (in the placement authority) is what the fold review required — no second copy, and no
+// consumer re-matches slice admission.
+fn convergence_oneshot_service_unit_file(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> SystemdUnitFile {
+  ServiceUnitFile {
     unit: [Description { text: oneshot.description }],
     service: concat(
       concat(
@@ -782,7 +819,18 @@ fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) 
       ],
     ),
     install: NotInstallable,
-  })
+  }
+}
+
+// The declared-row view of the oneshot file under the deployment's CONVERGENCE slice: Present when the
+// ONE admission admits it, Absent when it refuses (a refused convergence slice brings up no convergence
+// unit — the read row is then unclosed, exactly as convergence_oneshot_unit_text's marker arm says no
+// unit is loadable). This consumes the admission; it does not match convergence_slice_admission itself.
+fn convergence_oneshot_service_unit_file_if_admitted(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> SystemdUnitFile? {
+  match convergence_oneshot_admission(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
+    ConvergenceOneshotAdmitted { unit_file: unit } => Present { value: unit }
+    ConvergenceOneshotRefused { reason: _ } => Absent
+  }
 }
 
 // THE TREE-SYNC ONESHOT: git-native convergence of the deployed repository to the candidate.
