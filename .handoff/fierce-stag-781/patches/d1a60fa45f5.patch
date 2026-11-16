@@ -1,0 +1,223 @@
+commit d1a60fa45f560a8d1d198202c9b2addb00f8bf90
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 16:01:49 2026 +0000
+
+    live_deploy: third read arm NoReadOfRecord, stated by the owning module
+    
+    Manager-accepted design fork (msg_a8f6dc52 item 3), with its conditions:
+    
+    - ArtifactReadSet gains NoReadOfRecord { reason }. The closure verdict maps it to Allowed: a unit that
+      positively asserts it reads no installed artifact of record closes, and the deploy gate proceeds.
+    - The arm is NEVER a default or fallback: it is only reachable where a kind's OWN module asserts a no-read
+      with its OWN typed reason. The adapter's exhaustive match has a distinct arm per kind, so an unmodeled
+      kind is structurally unable to borrow a no-read; it keeps its NotYetModeled arm and still halts.
+    - TailscaleServeMapping is the first such kind: gunbc.tailscale_serve_scope owns the reason
+      (tailscale_serve_mapping_no_read_reason) — a serve mapping is applied via the Tailscale serve CLI, so it
+      reads no installed file. The adapter states no reason of its own; it calls the owner.
+    - ArtifactInventoryRow gains NoReadRow { located, reason } so the no-read is countable and located
+      (fail_closed: "every degradation is typed, located and countable").
+    
+    Controls (all PASS on base-matched seed sha256 900599bd...):
+    - a_no_read_of_record_row_allows_the_deploy_gate: a lone NoRead row PROCEEDS (not secretly Unclosed).
+    - no_read_is_never_a_fallback_for_an_unmodeled_kind: over the REAL srv1 roster, TailscaleServeMapping
+      yields NoReadRow while DeployedTreeRemoteUnit (also unconditional, still unmodeled) yields UnclosedRow.
+    - inventory_maps_every_row_to_derived_noread_or_unclosed: three-way mapping, NoRead located+reason non-empty.
+    - reason_is_present extended; regressions a_fresh_host / roster / every_enabled_step green.
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59).
+
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_closure.dag b/dag/gunbc/live_deploy/deploy_artifact_closure.dag
+index 082df1a0813..d01ad81877d 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_closure.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_closure.dag
+@@ -64,11 +64,16 @@ import std.list { list_member }
+ //   concrete artifact paths; NotYetModeled is a typed, located, countable "unknown" — it
+ //   is NOT silently treated as allowed (fail_closed: "Failing to compute the answer is a
+ //   different outcome from computing a conservative one", and "every degradation is typed,
+-//   located and countable").
++//   located and countable"). NoReadOfRecord is a POSITIVE assertion, made by the kind's OWN
++//   module, that the unit reads no installed artifact of record (e.g. the tailscale serve CLI
++//   mapping). It is NOT a default or fallback and is NEVER produced for a merely-unmodeled
++//   kind: only a module that owns the concept asserts it, and the adapter enumerates every kind
++//   explicitly, so a kind with no explicit arm is a compile error, not an implicit NoReadOfRecord.
+ // ─────────────────────────────────────────────────────────────────────────────────
+ 
+ type ArtifactReadSet
+   = Declared { paths: List<String> }
++  | NoReadOfRecord { reason: String }
+   | NotYetModeled { reason: String }
+ 
+ // A resolved enable row: `located` is where the unit lives (its owned path / identity),
+@@ -153,6 +158,10 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
+         Empty => Allowed
+       }
+     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
++    // A NoReadOfRecord row is a POSITIVE assertion by the kind's own module that it reads no installed
++    // artifact; the closure allows it. It is reached only where a module explicitly asserts it (the adapter
++    // has no catch-all), so it is never a fallback for an unmodeled kind — those stay NotYetModeled → Unclosed.
++    ReadRow { located: _, reads: NoReadOfRecord { reason: _ } } => Allowed
+   }
+ }
+ 
+@@ -201,16 +210,19 @@ fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) ->
+ //   verify over.
+ // ─────────────────────────────────────────────────────────────────────────────────
+ 
+-// The three closure states, mirrored from ArtifactReadSet:
+-//   DerivedRow   — the unit's read set is declared, so the closure can check it.
+-//   UnclosedRow  — the unit's read set is not yet declared (a typed, located degradation).
++// The closure states, mirrored from ArtifactReadSet:
++//   DerivedRow     — the unit's read set is declared, so the closure can check it.
++//   NoReadRow      — the unit's own module positively asserted it reads no installed artifact (allowed).
++//   UnclosedRow    — the unit's read set is not yet declared (a typed, located degradation).
+ type ArtifactInventoryRow
+   = DerivedRow { located: String, artifacts: List<String> }
++  | NoReadRow { located: String, reason: String }
+   | UnclosedRow { located: String, reason: String }
+ 
+ fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
+   match row {
+     ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
++    ReadRow { located: loc, reads: NoReadOfRecord { reason: r } } => NoReadRow { located: loc, reason: r }
+     ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+   }
+ }
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+index b242ef4ddea..49edbefc2df 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+@@ -21,7 +21,8 @@ module gunbc.live_deploy.deploy_artifact_read_sets
+ import std.types { List, String }
+ import std.optional { Optional, Present, Absent }
+ import std.algebra { list_map }
+-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
++import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled }
++import gunbc.tailscale_serve_scope { tailscale_serve_mapping_no_read_reason }
+ import gunbc.live_deploy.spec {
+   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
+   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+@@ -115,7 +116,11 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
+       // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
+       // AttemptUnitDrainPathUnit row's obligation.
+       BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
+-      TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is applied via the tailscale CLI, not an enabled systemd unit with an ExecStart or a file it reads. DISSOLUTION: none expected while it stays a CLI mapping; if it becomes a unit with a read, declare it" }
++      // A tailscale serve mapping is applied via the Tailscale serve CLI on the tailnet device; the module
++      // that OWNS the mapping (gunbc.tailscale_serve_scope) positively asserts it reads no installed artifact
++      // of record, so this arm is NoReadOfRecord — the reason is the OWNER's, not one written here. It is NOT
++      // a fallback and NOT reachable for a merely-unmodeled kind (those keep their own NotYetModeled arm).
++      TailscaleServeMapping => NoReadOfRecord { reason: tailscale_serve_mapping_no_read_reason() }
+       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
+       // The publication helper .path unit watches the request spool becoming non-empty; those watched
+       // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
+diff --git a/dag/gunbc/tailscale_serve_scope.dag b/dag/gunbc/tailscale_serve_scope.dag
+index eae965bfa09..f5e1db923f9 100644
+--- a/dag/gunbc/tailscale_serve_scope.dag
++++ b/dag/gunbc/tailscale_serve_scope.dag
+@@ -93,3 +93,14 @@ data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRout
+     state_eq: tailscale_endpoint_state_eq,
+   },
+ }
++
++// THE READ OF RECORD of a tailscale serve mapping, stated by the module that owns the mapping (not by the
++// closure, and never as a default/fallback). A serve mapping is applied through the Tailscale `serve` CLI
++// surface (TailscaleServeService = ServeCli) on the fleet tailnet device — it is NOT an enabled systemd unit
++// with an ExecStart and NOT a file the deploy installs and the mapping reads. There is therefore no on-disk
++// artifact of record for it, so it declares none; the deploy artifact closure treats that as allowed. This
++// is asserted here, positively, by the owner. DISSOLUTION: if a serve mapping ever becomes a unit with a
++// real read of an installed file, replace this with that unit's read-set and the closure will then check it.
++fn tailscale_serve_mapping_no_read_reason() -> String {
++  "tailscale serve mapping is applied via the Tailscale serve CLI on the tailnet device; it is not an enabled unit with an ExecStart and reads no installed file, so it has no artifact of record (owner: gunbc.tailscale_serve_scope)"
++}
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index b03670f39ea..bfb3f555e8b 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -22,17 +22,17 @@ import std.types { CommitSha, NonEmptyStr }
+ import std.algebra { fold_list, list_map, non_empty }
+ import std.list { list_member, list_cover, first_where }
+ import gunbc.live_deploy.deploy_artifact_closure {
+-  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
++  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled,
+   ClosureVerdict, Allowed, Refused, Unclosed,
+   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
+   deploy_gate_decision, deploy_gate,
+   unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
+-  first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow
++  first_missing_artifact, deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, UnclosedRow
+ }
+ import gunbc.live_deploy.spec {
+   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
+-  BeltEventPathUnit, PublicationHelperPathUnit,
++  BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
+   deployment_owned_steps
+ }
+ import gunbc.live_deploy.deploy_artifact_read_sets {
+@@ -126,6 +126,7 @@ fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
+ fn reason_is_present(rs: ArtifactReadSet) -> Bool {
+   match rs {
+     Declared { paths: _ } => true
++    NoReadOfRecord { reason: r } => r != ""
+     NotYetModeled { reason: r } => r != ""
+   }
+ }
+@@ -199,13 +200,57 @@ fn is_empty_list(xs: List<String>) -> Bool {
+   match xs { Empty => true, Cons { head: _, tail: _ } => false }
+ }
+ 
+-test fn inventory_maps_every_row_to_derived_or_unclosed() -> Bool {
++test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
+   let rows = [
+     ReadRow { located: "/a", reads: Declared { paths: ["/a"] } },
++    ReadRow { located: "/t", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } },
+     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
+   ]
+   let inv = deploy_artifact_inventory(rows: rows)
+-  count_of(inv) == 2 && all(inv, fn(r) { match r { DerivedRow { located: _, artifacts: _ } => true, UnclosedRow { located: _, reason: _ } => true } })
++  count_of(inv) == 3
++    && all(inv, fn(r) { match r {
++         DerivedRow { located: _, artifacts: _ } => true
++         NoReadRow { located: _, reason: _ } => true
++         UnclosedRow { located: _, reason: _ } => true
++       } })
++    // The NoRead row is located at its unit and carries the owner's reason, not a fabricated one.
++    && any(inv, fn(r) { match r { NoReadRow { located: loc, reason: _ } => loc == "/t", _ => false } })
++}
++
++// NoReadOfRecord is ALLOWED by the closure and halts nothing: a deploy whose only unit makes a positive
++// no-read assertion PROCEEDS, proving the third arm is not secretly treated as Unclosed.
++test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
++  let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord { reason: "tailscale CLI mapping" } }
++  match deploy_gate(rows: [row], installed: []) {
++    Proceed => true
++    Halt { cause: _ } => false
++  }
++}
++
++// A no-read is NOT a fallback for an unmodeled kind: from the REAL adapter over the srv1 roster, the tailscale
++// mapping yields a NoReadRow (allowed) while an enabled-but-unmodeled kind (the tree-remote unit, still
++// NotYetModeled until its module exports its ExecStart) yields an UnclosedRow. Both are unconditional roster
++// members, so this checks the REAL adapter on kinds srv1 always enables: a no-read kind cannot silently borrow
++// another's assertion, because the adapter has a distinct, explicit arm per kind.
++test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
++  let steps = srv1_steps()
++  let tailscale_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
++  let remote_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
++  match tailscale_step {
++    Present { value: ts } => match remote_step {
++      Present { value: rs } =>
++        match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
++          NoReadRow { located: _, reason: r } => non_empty(r)
++            && match deploy_artifact_inventory_row(row: ReadRow { located: rs.path as String, reads: deployment_artifact_read_set(step: rs, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
++                 UnclosedRow { located: _, reason: _ } => true
++                 _ => false
++               }
++          _ => false
++        }
++      Absent => false
++    }
++    Absent => false
++  }
+ }
+ 
+ // ─────────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,281 @@
+commit ebd8b0ba54823fe326a85ec3acc4309990b715c6
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 17:39:13 2026 +0000
+
+    prep: a ReleaseLocus record carries revision+spine+locus to one install (pure refactor)
+    
+    deploy-intent-owns-artifact-closure preparatory PR for the artifact-closure gate.
+    
+    - ONE function mints a ReleaseLocus record from (base_root, revision), carrying revision,
+      spine and the locus directory together (release_locus_record). The install now takes that
+      record and NO separate revision argument, so a locus cannot be paired with a revision it
+      was not minted for (review 95699; gunbc.design_argument::fail_closed: making a wrong state
+      unwritable beats catching it).
+    - EXACTLY ONE install function: the pass-through approval_broker_tree_install wrapper is
+      folded into the install and the _at variant deleted. Every caller (live_deploy broker_tree
+      port, dark_stage_broker_tree, microvm controller tree step, the two install witnesses) mints
+      the record via release_locus_record and calls the one install; nothing re-derives the locus.
+    - dark_helper_snapshot_at / dark_helper_verify_at take the computed dir as a required arg
+      (stop deriving helper_locus_dir internally); live_deploy_apply_root_helper_snapshot_on_host
+      takes dir and its 2 port callers (live_deploy, fleet board_function_converge) compute via
+      helper_locus_dir. dark_helper_retire_at unchanged (operates on locus.base).
+    - No behavior change: every caller writes to the same place it did before, only now the place
+      is carried on one record that the caller mints.
+    
+    Node: node://adhoc-3e6e9bfb-d59 (rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T)
+
+diff --git a/dag/gunbc/fleet/board_function_converge_delivery.dag b/dag/gunbc/fleet/board_function_converge_delivery.dag
+index ed42f48e5da..ed966bec616 100644
+--- a/dag/gunbc/fleet/board_function_converge_delivery.dag
++++ b/dag/gunbc/fleet/board_function_converge_delivery.dag
+@@ -33,7 +33,7 @@ import gunbc.live_deploy.apply_legs {
+   DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, board_function_converge_install_plan,
+   BoardFunctionConvergeUngatedStage, BoardFunctionConvergeGateStage,
+ }
+-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
++import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, helper_locus_dir }
+ 
+ // HOW THE CONVERGE REACHES A HOST THAT RUNS NO LIVE DEPLOYMENT (srv2-srv4, the other ALTRAD8UD-1L2T hosts),
+ // which is the frontier row of gunbc.fleet.board_function_admission. The fleet-converge job runs on a fleet
+@@ -105,7 +105,7 @@ fn delivery_ports(source_root: String, transport: HostEffectTransport) -> Deploy
+     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
+     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "the board-function converge delivery ensures no owned directory" } },
+     state_directories: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker state directories") },
+-    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
++    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, dir: helper_locus_dir(locus: locus, revision: r), source_root: source_root, transport: transport) },
+     broker_tree: fn(r) { delivery_port_refused(reason: "the board-function converge delivery installs no broker tree") },
+     dependency: fn(d) { delivery_port_refused(reason: "the board-function converge delivery installs no dependency step") },
+     retract: deploy_retract_ports_on_host(transport: transport),
+diff --git a/dag/gunbc/host/host_effect_realize.dag b/dag/gunbc/host/host_effect_realize.dag
+index d6d7d8f27d5..0e525c833e1 100644
+--- a/dag/gunbc/host/host_effect_realize.dag
++++ b/dag/gunbc/host/host_effect_realize.dag
+@@ -120,7 +120,7 @@ import gunbc.live_deploy.emit {
+ }
+ import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+ import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
+-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
++import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+ import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
+ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+ import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
+@@ -6047,7 +6047,7 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
+     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
+     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
+     state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
+-    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
++    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, dir: helper_locus_dir(locus: locus, revision: r), source_root: source_root, transport: transport) },
+     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
+     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
+     retract: deploy_retract_ports_on_host(transport: transport),
+@@ -6114,10 +6114,10 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
+ // grant runs (dark_helper_snapshot_at, dark_helper_retire_at). The install and the retire are separate
+ // legs because the units that name the snapshot are installed between them: the superseded snapshot is
+ // retired only after the new units stand.
+-fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
++fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, dir: String, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+   match (match action {
+-    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
++    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, dir: dir, source_root: source_root, transport: transport)
++    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, dir: dir, transport: transport)
+     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
+   }) {
+     DarkOk => Absent
+@@ -6229,11 +6229,11 @@ fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractP
+ 
+ // THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
+ fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
++  let base_root: String = spec.approval_broker.repo_root as String
+   match approval_broker_tree_install(
+     owner: spec.service.service_user,
+-    base_root: spec.approval_broker.repo_root as String,
++    locus: release_locus_record(base_root: base_root, revision: revision),
+     source_root: source_root,
+-    revision: revision,
+     executables: approval_broker_release_locus_executables,
+     transport: one_transport_route(transport: transport),
+   ) {
+@@ -7026,40 +7026,19 @@ fn tree_archive_member_of_line(line: String, archive_owner: NonEmptyStr) -> Tree
+ 
+ fn approval_broker_tree_install(
+   owner: NonEmptyStr,
+-  base_root: String,
++  locus: ReleaseLocus,
+   source_root: String,
+-  revision: ReleaseRevisionBinding,
+   executables: List<String>,
+   transport: HostEffectElevationRoute,
+ ) -> ApprovalBrokerTreeInstallVerdict {
+-  approval_broker_tree_install_at(
+-    owner: owner,
+-    spine: [base_root, release_locus_releases_dir(root: base_root)],
+-    locus: release_locus_dir(root: base_root, revision: revision),
+-    source_root: source_root,
+-    revision: revision,
+-    executables: executables,
+-    transport: transport,
++  tree_install_in_realm(
++    realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
++    revision: locus.revision, executables: executables, transport: transport,
+   )
+ }
+ 
+ // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
+ // /releases/ segment), so one install serves both rather than a copy per locus.
+-fn approval_broker_tree_install_at(
+-  owner: NonEmptyStr,
+-  spine: List<String>,
+-  locus: String,
+-  source_root: String,
+-  revision: ReleaseRevisionBinding,
+-  executables: List<String>,
+-  transport: HostEffectElevationRoute,
+-) -> ApprovalBrokerTreeInstallVerdict {
+-  tree_install_in_realm(
+-    realm: TreeInstallElevated { owner: owner }, spine: spine, locus: locus, source_root: source_root,
+-    revision: revision, executables: executables, transport: transport,
+-  )
+-}
+-
+ // THE TREE INSTALL, IN EITHER REALM (TreeInstallRealm): the one fold both the elevated deploy install
+ // and the staged release build run.
+ fn tree_install_in_realm(
+@@ -7605,7 +7584,7 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+ // incident never got.
+ // ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
+ // the declared executable plus release_locus_tree_subdirs -- the same declarations
+-// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
++// approval_broker_tree_install consumes at install time. Adding a fourth payload root to the
+ // carrier moves install and verify together; verify can no longer pass over a snapshot missing a
+ // root the install copies (review 90757).
+ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+@@ -7624,27 +7603,24 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+ // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
+ // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
+ // workers into one refused apply step.
+-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
++fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, dir: String, transport: HostEffectTransport) -> DarkState {
+   dark_run_legs(
+-    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
++    legs: dark_helper_verify_legs(locus: locus, dir: dir),
+     transport: transport,
+   )
+ }
+ 
+-fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
+-  let dir = helper_locus_dir(locus: locus, revision: revision)
++fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, dir: String, source_root: String, transport: HostEffectTransport) -> DarkState {
+   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
+     step: DarkStepSnapshot,
+     command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+   }) {
+     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+     DarkOk =>
+-      match approval_broker_tree_install_at(
++      match approval_broker_tree_install(
+         owner: locus.owner,
+-        spine: spine,
+-        locus: dir,
++        locus: ReleaseLocus { base_root: locus.base, revision: revision, spine: spine, locus: dir },
+         source_root: source_root,
+-        revision: revision,
+         executables: [gunbc_release_bin_name],
+         transport: one_transport_route(transport: transport),
+       ) {
+@@ -7697,11 +7673,11 @@ fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, dig
+ }
+ 
+ fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
++  let base_root: String = i.spec.approval_broker.repo_root as String
+   match approval_broker_tree_install(
+     owner: i.spec.service.service_user,
+-    base_root: i.spec.approval_broker.repo_root as String,
++    locus: release_locus_record(base_root: base_root, revision: i.revision),
+     source_root: i.source_root,
+-    revision: i.revision,
+     executables: approval_broker_release_locus_executables,
+     transport: one_transport_route(transport: i.transport),
+   ) {
+@@ -11303,9 +11279,8 @@ fn realize_microvm_controller_install_on_host(
+                 MicrovmControllerTreeStep { name: name } =>
+                   match approval_broker_tree_install(
+                     owner: microvm_controller_owner,
+-                    base_root: microvm_controller_root,
++                    locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
+                     source_root: source_root,
+-                    revision: revision,
+                     executables: [gunbc_release_bin_name],
+                     transport: transport,
+                   ) {
+diff --git a/dag/gunbc/live_deploy/release_locus.dag b/dag/gunbc/live_deploy/release_locus.dag
+index ccb748c4341..b7d8ca12a84 100644
+--- a/dag/gunbc/live_deploy/release_locus.dag
++++ b/dag/gunbc/live_deploy/release_locus.dag
+@@ -73,6 +73,31 @@ fn release_locus_releases_dir(root: String) -> String {
+   join([root, "/releases"], "")
+ }
+ 
++// A RELEASE LOCUS IS ONE RECORD, NOT A HANDFUL OF STRINGS THAT CAN DRIFT APART. The install that lays
++// a tree into a locus needs the spine (the parent directories it may create), the locus directory and
++// the revision the locus is named for; when those were three arguments, a caller could pair a locus
++// built for one revision with a different revision argument and nothing in the signature stopped it
++// (review 95699). They now travel together, minted by ONE fold from (base_root, revision) so the locus
++// cannot disagree with the revision it names (gunbc.design_argument::fail_closed: "stronger than
++// catching a wrong state is making it unwritable"). A non-release locus (the root-helper snapshot under
++// a HelperLocus) builds the same record directly with its own spine and directory -- the record is the
++// carrier, this fold is the one mint for the release shape.
++type ReleaseLocus {
++  base_root: String
++  revision: ReleaseRevisionBinding
++  spine: List<String>
++  locus: String
++}
++
++fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
++  ReleaseLocus {
++    base_root: base_root,
++    revision: revision,
++    spine: [base_root, release_locus_releases_dir(root: base_root)],
++    locus: release_locus_dir(root: base_root, revision: revision),
++  }
++}
++
+ // A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
+ // device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
+ fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
+diff --git a/dag/test/claim/host/approval_broker_tree_install_witness.dag b/dag/test/claim/host/approval_broker_tree_install_witness.dag
+index 5cfedb46237..1855dbcc893 100644
+--- a/dag/test/claim/host/approval_broker_tree_install_witness.dag
++++ b/dag/test/claim/host/approval_broker_tree_install_witness.dag
+@@ -22,7 +22,7 @@ import gunbc.host.host_effect_realize {
+   TreeStepSourceObserve,
+   TreeStepRevision,
+ }
+-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
++import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables, release_locus_record }
+ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+ import std.algebra { list_map }
+ import gunbc.host.host_effect_realize {
+@@ -111,9 +111,8 @@ fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool
+ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
+   refused_at(v: approval_broker_tree_install(
+     owner: "gunbc" as NonEmptyStr,
+-    base_root: "/nonexistent-w6-base",
++    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
+     source_root: "/nonexistent-w6-source",
+-    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
+     executables: approval_broker_release_locus_executables,
+     transport: one_transport_route(transport: LocalShell),
+   ), at: TreeStepSourceObserve)
+@@ -122,9 +121,8 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() ->
+ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
+   refused_at(v: approval_broker_tree_install(
+     owner: "gunbc" as NonEmptyStr,
+-    base_root: "/nonexistent-w6-base",
++    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionNotInstalled),
+     source_root: "/nonexistent-w6-source",
+-    revision: RevisionNotInstalled,
+     executables: approval_broker_release_locus_executables,
+     transport: one_transport_route(transport: LocalShell),
+   ), at: TreeStepRevision)

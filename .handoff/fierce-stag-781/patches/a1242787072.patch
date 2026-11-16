@@ -1,0 +1,236 @@
+commit a1242787072ae7d1b338ca97099611308328a12f
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 17:28:31 2026 +0000
+
+    live_deploy: OidcConfigArtifact is an installed artifact; serve declares reading its config
+    
+    Manager-approved (msg msg_26b106e3): model (A) + (1), with the correction that a non-unit must never be
+    carried as NotYetModeled (that label means "unit whose reads aren't modeled yet" — a false TODO for a config
+    document).
+    
+    - closure: ArtifactReadSet gains a truthful InstalledArtifact arm (a non-executable artifact the deploy
+      installs, read by the units that declare it). It is NEVER in the gate population (enable legs only), so it
+      is never consulted as a unit's read; its inventory row InstalledArtifactRow keeps it located and countable.
+    - adapter: OidcConfigArtifact => InstalledArtifact (was the false NotYetModeled). The serve unit (SystemdUnit)
+      read-set now GAINS the OIDC config path it reads at startup, sourced from deployment_oidc_config_steps — the
+      SAME authority that installs the OidcConfigArtifact (its path is tracker_web placement cfg.config_path) — so
+      serve's read and the owned artifact are one string, never a second spelling (single_authority). When OIDC is
+      unplaced the list is empty and serve reads no config, exactly as the emitted unit carries no OIDC Environment.
+    
+    Controls (base-matched seed sha256 900599bd...):
+    - the_serve_unit_read_set_includes_the_oidc_config_it_reads: the serve read-set contains the INSTALLED
+      OidcConfigArtifact step's path (srv1 has OIDC placed; Absent => false, not a decoration).
+    - the_oidc_config_artifact_is_an_installed_artifact_not_a_reader: its row maps to InstalledArtifactRow, never
+      Declared/Unclosed.
+    - regressions inventory_maps / every_enabled_step / a_fresh_host / roster PASS.
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59).
+
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_closure.dag b/dag/gunbc/live_deploy/deploy_artifact_closure.dag
+index 023e2683cec..4675f86685b 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_closure.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_closure.dag
+@@ -77,6 +77,11 @@ import std.list { list_member }
+ type ArtifactReadSet
+   = Declared { paths: List<String> }
+   | NoReadOfRecord
++  // A NON-EXECUTABLE artifact the deploy INSTALLS (e.g. an OIDC config document). It is not a unit and performs
++  // no read of record — it is the thing OTHER units declare reading. The gate's population is the enable legs
++  // (executable units), so this arm is NEVER consulted by the gate; it is truthful bookkeeping, not the false
++  // "unit whose reads aren't modeled yet" that NotYetModeled means. (manager: never leave a non-unit NotYetModeled.)
++  | InstalledArtifact
+   | NotYetModeled { reason: String }
+ 
+ // A resolved enable row: `located` is where the unit lives (its owned path / identity),
+@@ -165,6 +170,10 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
+     // artifact; the closure allows it. It is reached only where a module explicitly asserts it (the adapter
+     // has no catch-all), so it is never a fallback for an unmodeled kind — those stay NotYetModeled → Unclosed.
+     ReadRow { located: _, reads: NoReadOfRecord } => Allowed
++    // A non-executable installed artifact imposes NO read obligation on itself (it is read by the units that
++    // declare it). It must not appear in the gate population at all — the gate population is the enable legs —
++    // so this arm is defensive bookkeeping; Allowed means "nothing to check for this row," never a unit's read.
++    ReadRow { located: _, reads: InstalledArtifact } => Allowed
+   }
+ }
+ 
+@@ -219,15 +228,19 @@ fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) ->
+ //                    artifact; located and countable, carrying no free-form reason (the allow is not
+ //                    justified by a String).
+ //   UnclosedRow    — the unit's read set is not yet declared (a typed, located degradation).
++//   InstalledArtifactRow — a non-executable artifact the deploy installs; never in the gate population (enable
++//                    legs only), recorded here only so it is countable and located, not a silent extra.
+ type ArtifactInventoryRow
+   = DerivedRow { located: String, artifacts: List<String> }
+   | NoReadRow { located: String }
++  | InstalledArtifactRow { located: String }
+   | UnclosedRow { located: String, reason: String }
+ 
+ fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
+   match row {
+     ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
+     ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
++    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
+     ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+   }
+ }
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+index 85a29a1404d..7ee76923a69 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+@@ -20,15 +20,16 @@ module gunbc.live_deploy.deploy_artifact_read_sets
+ 
+ import std.types { List, String }
+ import std.optional { Optional, Present, Absent }
+-import std.algebra { list_map }
+-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled }
++import std.algebra { list_map, list_append }
++import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled }
+ import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
+ import gunbc.live_deploy.spec {
+   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
+   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+   TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
+   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
+-  DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor
++  DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor,
++  deployment_oidc_config_steps
+ }
+ import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths }
+ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+@@ -79,13 +80,30 @@ fn unit_file_read_set(file: SystemdUnitFile?) -> ArtifactReadSet {
+   }
+ }
+ 
++// The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one the deploy
++// emits), PLUS the OIDC config document it reads at startup when this instance has OIDC placed. The config path
++// is taken from deployment_oidc_config_steps — the SAME authority that installs the OidcConfigArtifact (its path
++// is tracker_web placement cfg.config_path) — so serve's read and the installed artifact are ONE string, never a
++// second spelling that could drift (single_authority). When OIDC is unassigned/unbound the list is empty and
++// serve simply reads no config, exactly as the emitted unit carries no OIDC Environment.
++fn serve_unit_read_set(spec: DeploymentSpec, revision: ReleaseRevisionBinding, instance: HostDashboardInstance) -> ArtifactReadSet {
++  let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) })
++  let oidc_paths = list_map(deployment_oidc_config_steps(instance: instance), fn(s) { s.path as String })
++  match base {
++    Declared { paths: ps } => Declared { paths: list_append(left: ps, right: oidc_paths) }
++    other => other
++  }
++}
++
+ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSpec, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> ArtifactReadSet {
+   match step.kind {
+     ComposeOwned { kind: ck } => match ck {
+-      // THE SERVED UNIT reads {its ExecStart binary, its WorkingDirectory tree}, both read from its OWN
+-      // typed unit file (live_deploy_serve_unit_file_over with the OIDC Environment factored to []) via the
+-      // unit_standing readers — the same file the deploy emits, so if its ExecStart changes the read follows.
+-      SystemdUnit => unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) })
++      // THE SERVED UNIT reads {its ExecStart binary, its WorkingDirectory tree} from its OWN typed unit file
++      // (live_deploy_serve_unit_file_over, OIDC Environment factored to [] for the argv[0]/WorkingDirectory
++      // readers) PLUS the OIDC config document it reads at startup when OIDC is placed for this instance. The
++      // config path comes from deployment_oidc_config_steps — the SAME authority that installs the
++      // OidcConfigArtifact — so serve's read and the installed artifact are one string, never re-spelled.
++      SystemdUnit => serve_unit_read_set(spec: spec, revision: revision, instance: instance)
+       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
+       FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
+       FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping for fabric has no ExecStart and is excluded with fabric storage (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). DISSOLUTION: if it becomes a unit with a declared read, or the ruling is lifted" }
+@@ -93,7 +111,13 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
+       // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
+       TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision))
+       AgentDoorServeUnit => unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision))
+-      OidcConfigArtifact => NotYetModeled { reason: "an OIDC config file (its own path) is read by the serve/SystemdUnit at startup, not by its own ExecStart; its reader is the serve unit row, not this artifact step. DISSOLUTION: the reader's read-set (the SystemdUnit dissolution above) declares it, or a reader-of-record for the config is added" }
++      // The OIDC config is a written DOCUMENT the deploy installs, NOT an executable unit: it has no ExecStart
++      // and reads nothing of record. Its reader is the SERVE unit (SystemdUnit row below), whose read-set
++      // gains exactly this config path from the SAME owner authority (deployment_oidc_config_steps ->
++      // tracker_web placement cfg.config_path). So this step is a truthful InstalledArtifact, never the false
++      // "not yet modeled" TODO label (manager: a non-unit must not be NotYetModeled). The gate population is
++      // the enable legs, so this row is never consulted by the gate; it is countable bookkeeping.
++      OidcConfigArtifact => InstalledArtifact
+     }
+     UpsertOwned { kind: uk } => match uk {
+       // The serve unit's ExecStart (gunbc.live_deploy.emit live_deploy_serve_unit_file_over_listener)
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index 8d6f3f737ef..351f2034eaf 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -22,18 +22,18 @@ import std.types { CommitSha, NonEmptyStr }
+ import std.algebra { fold_list, list_map, non_empty, string_contains }
+ import std.list { list_member, list_cover, first_where }
+ import gunbc.live_deploy.deploy_artifact_closure {
+-  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled,
++  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled,
+   ClosureVerdict, Allowed, Refused, Unclosed,
+   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
+   deploy_gate_decision, deploy_gate,
+   unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
+-  first_missing_artifact, deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, UnclosedRow
++  first_missing_artifact, deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, InstalledArtifactRow, UnclosedRow
+ }
+ import gunbc.live_deploy.spec {
+   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
+-  BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
+-  deployment_owned_steps
++  BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, OidcConfigArtifact,
++  deployment_owned_steps, deployment_oidc_config_steps
+ }
+ import gunbc.live_deploy.deploy_artifact_read_sets {
+   deployment_artifact_read_rows, deployment_artifact_read_set
+@@ -130,6 +130,7 @@ fn reason_is_present(rs: ArtifactReadSet) -> Bool {
+   match rs {
+     Declared { paths: _ } => true
+     NoReadOfRecord => true
++    InstalledArtifact => true
+     NotYetModeled { reason: r } => r != ""
+   }
+ }
+@@ -214,6 +215,7 @@ test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
+     && all(inv, fn(r) { match r {
+          DerivedRow { located: _, artifacts: _ } => true
+          NoReadRow { located: _ } => true
++         InstalledArtifactRow { located: _ } => true
+          UnclosedRow { located: _, reason: _ } => true
+        } })
+     // The NoRead row is located at its unit; it carries no free-form reason (the allow is not justified by a
+@@ -298,6 +300,43 @@ test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
+   }
+ }
+ 
++// The serve unit's read-set gains the OIDC config document it reads at startup, and that path is the SAME string
++// as the INSTALLED OidcConfigArtifact step's path — both come from deployment_oidc_config_steps (tracker_web
++// placement cfg.config_path), so serve's read and the owned artifact can never drift and the gate can see the
++// read is satisfied by what the deploy installs. srv1 has OIDC placed, so the artifact step is present; Absent
++// is a failure (a control that silently checks nothing when OIDC is off is a decoration, guarantee_ladder).
++test fn the_serve_unit_read_set_includes_the_oidc_config_it_reads() -> Bool {
++  let inst = srv1_inst()
++  let steps = srv1_steps()
++  let serve = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: SystemdUnit } => true, _ => false } })
++  let oidc_artifact = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
++  match serve {
++    Present { value: su } => match oidc_artifact {
++      Present { value: oc } =>
++        match deployment_artifact_read_set(step: su, spec: srv1_spec(), instance: inst, revision: srv1_rev()) {
++          Declared { paths: ps } => list_member(xs: ps, x: oc.path as String, eq: fn(a, b) { a == b })
++          _ => false
++        }
++      Absent => false
++    }
++    Absent => false
++  }
++}
++
++// OidcConfigArtifact is a written, installed artifact — NOT a modeled reader and NOT the false NotYetModeled
++// TODO label. Its row maps to InstalledArtifactRow (located, countable), never Declared or Unclosed.
++test fn the_oidc_config_artifact_is_an_installed_artifact_not_a_reader() -> Bool {
++  let oc = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
++  match oc {
++    Present { value: s } =>
++      match deploy_artifact_inventory_row(row: ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
++        InstalledArtifactRow { located: _ } => true
++        _ => false
++      }
++    Absent => false
++  }
++}
++
+ // ─────────────────────────────────────────────────────────────────────────────────
+ // INTEGRATION CONTROLS (driven by the deploy enable authority — srv1 roster)
+ // ─────────────────────────────────────────────────────────────────────────────────

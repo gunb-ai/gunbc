@@ -1,0 +1,24 @@
+commit b15370692717ab383f6d2b98d07becb525f6cde1
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 22:29:14 2026 +0000
+
+    witness: import ComposeOwned by name (review 95739 P2, #16546)
+    
+    The closure witness matches ComposeOwned { kind: ... } in 6 places (new serve/oidc
+    controls + pre-existing kind_is_* helpers) but the spec import omitted it. It resolves
+    transitively today (the controls ran green), but the repo imports constructors by name
+    (deploy_artifact_read_sets imports ComposeOwned by name), so add it explicitly.
+
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index 351f2034eaf..757e3292d6f 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -30,7 +30,7 @@ import gunbc.live_deploy.deploy_artifact_closure {
+   first_missing_artifact, deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, InstalledArtifactRow, UnclosedRow
+ }
+ import gunbc.live_deploy.spec {
+-  DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
++  DeploymentSpec, DeploymentArtifactStep, ComposeOwned, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
+   BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, OidcConfigArtifact,
+   deployment_owned_steps, deployment_oidc_config_steps

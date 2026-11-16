@@ -1,0 +1,216 @@
+commit 4023df5e4021560fbd70b0225edc3f4e2b93c0ec
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 14:02:21 2026 +0000
+
+    live_deploy: the .path units' read of record is their watched dir (item 2)
+    
+    Item 2 of the deploy-intent artifact-closure re-plan (manager msg_a8f6dc52): a systemd .path unit is
+    NOT no-read. A DirectoryNotEmpty= level trigger fires only when the watched directory exists, so the
+    watched dir IS the unit's read of record and its absence is a real outage (the trigger never starts the
+    drain/helper). Close BeltEventPathUnit and PublicationHelperPathUnit by declaring their watched dirs.
+    
+    No second watched list: the read comes from the module that RENDERS the unit, live_deploy_{belt_event,publication}_path_read_paths,
+    which consume the SAME single authority the renderers already use (spool_watched_roles + spool_role_dirs).
+    The renderers (live_deploy_belt_exit_path_unit_file / live_deploy_publication_path_unit_file) are refactored
+    to consume those exported fns, so the watched set is computed exactly once and cannot drift from the read.
+    unit_standing gains watched_paths_of_unit_file, which reads DirectoryNotEmpty= off a unit's own PathUnitFile,
+    so a control can compare the recorded read to what the unit actually watches WITHOUT going through the same
+    helper both sides call (no read-is-f(read) self-check).
+    
+    Controls: the_belt_path_unit_reads_its_watched_dirs / the_publication_path_unit_reads_its_watched_dirs compare
+    each roster row to the DirectoryNotEmpty dirs of the unit's OWN rendered file, and assert the set is non-empty
+    (a non-empty forbidden state, so the control can go red). The roster and both fresh-host gate controls stay
+    green after the flip (a watched dir that is not installed is MissingArtifact under a fresh host, so the roster
+    still halts — closing a read never weakens the halt).
+    
+    Evidence: PASS on base-matched seed sha256 900599bd... (Rust = branch base da9e9f5, src clean): the 2 new
+    .path controls + the_deploy_roster_is_one_read_row_per_enabled_step + a_fresh_host_never_allows_the_whole_roster
+    + the_fresh_host_gate_halts_the_roster_never_proceeds.
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59). Stacked on #16535; retarget to main on merge.
+
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+index 333469de05f..b242ef4ddea 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+@@ -37,6 +37,7 @@ import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working
+ import gunbc.live_deploy.emit {
+   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
+   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
++  live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
+ }
+ import extdeps.systemd.unit_file { SystemdUnitFile }
+ 
+@@ -107,14 +108,19 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
+       // (fail_closed: "every degradation is typed, located and countable"). When the gate is wired, both
+       // reads match the tree-install leg's target from the apply-leg authority.
+       GunbcSourceTree => Declared { paths: [step.path as String] }
+-      // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
+-      // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
+-      // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read
+-      // is a distinct obligation, not yet declared by a unit module.
+-      BeltEventPathUnit => NotYetModeled { reason: "the belt exit .path unit has no ExecStart; it watches the exit inbox becoming non-empty and starts the drain service (whose read the AttemptUnitDrainPathUnit row owns). The .path unit's own watched-inbox read is not declared by a unit module here. DISSOLUTION: a unit module exports the watched-inbox path the .path unit monitors and this arm consumes it" }
++      // The belt is a systemd .path unit (BeltEventPathUnit). Its read of record is the set of watched
++      // directories it puts DirectoryNotEmpty= on: each must EXIST for the level trigger to fire, so a
++      // missing watched dir is a real outage (the exit drain never starts). The dirs derive from the same
++      // single authority the renderer uses — live_deploy_belt_event_path_read_paths -> spool_watched_roles
++      // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
++      // AttemptUnitDrainPathUnit row's obligation.
++      BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
+       TailscaleServeMapping => NotYetModeled { reason: "a tailscale serve mapping is applied via the tailscale CLI, not an enabled systemd unit with an ExecStart or a file it reads. DISSOLUTION: none expected while it stays a CLI mapping; if it becomes a unit with a read, declare it" }
+       DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
+-      PublicationHelperPathUnit => NotYetModeled { reason: "the publication helper .path unit has no ExecStart; it triggers a service whose read is not declared by that service's module. DISSOLUTION: the triggered service's module exports its read-set and this arm consumes it" }
++      // The publication helper .path unit watches the request spool becoming non-empty; those watched
++      // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
++      // belt unit — live_deploy_publication_path_read_paths -> spool_watched_roles + spool_role_dirs.
++      PublicationHelperPathUnit => Declared { paths: live_deploy_publication_path_read_paths(spec) }
+       // The drain service ExecStarts a helper from its revision-bound launcher snapshot. Its read and
+       // the snapshot that installs it are BOTH derived from gunbc.roadmap.attempt_system_unit_launch
+       // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list
+diff --git a/dag/gunbc/live_deploy/emit.dag b/dag/gunbc/live_deploy/emit.dag
+index 3cdc2407c71..59f4ce8fe71 100644
+--- a/dag/gunbc/live_deploy/emit.dag
++++ b/dag/gunbc/live_deploy/emit.dag
+@@ -994,6 +994,14 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
+ // retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
+ // refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
+ // the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
++// THE WATCHED DIRECTORIES of the publication helper .path unit: the dirs
++// live_deploy_publication_path_unit_file puts DirectoryNotEmpty= on. Same authority as the belt unit
++// (spool_watched_roles + spool_role_dirs, SpoolPublication kind): the watched dir must exist for the trigger
++// to fire, so it is the unit's read of record and the renderer consumes this — no second watched list.
++fn live_deploy_publication_path_read_paths(spec: DeploymentSpec) -> List<String> {
++  spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication))
++}
++
+ fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+   PathUnitFile {
+     unit: [
+@@ -1004,7 +1012,7 @@ fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
+     path: concat(
+       concat(
+         [PathUnit { target: deployment_publication_service_unit_name(names: spec.names) }],
+-        map(spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
++        map(live_deploy_publication_path_read_paths(spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+       ),
+       [
+         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+@@ -1221,13 +1229,22 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
+   }
+ }
+ 
++// THE WATCHED DIRECTORIES of the belt exit .path unit: the very dirs live_deploy_belt_exit_path_unit_file
++// puts DirectoryNotEmpty= on. A level trigger fires only when a watched dir is non-empty, so each watched
++// dir must EXIST for the unit to work — the watched dir is this unit's read of record, and its absence is a
++// real outage (the exit drain never triggers). spool_watched_roles + spool_role_dirs are the single
++// authority (they declare what a .path unit watches); the renderer consumes this, so no second list exists.
++fn live_deploy_belt_event_path_read_paths(spec: DeploymentSpec) -> List<String> {
++  spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit))
++}
++
+ fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+   PathUnitFile {
+     unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
+     path: concat(
+       concat(
+         [PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) }],
+-        map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
++        map(live_deploy_belt_event_path_read_paths(spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+       ),
+       [
+         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+diff --git a/dag/gunbc/live_deploy/unit_standing.dag b/dag/gunbc/live_deploy/unit_standing.dag
+index 4e9d3332ba6..fc1c8b35bfd 100644
+--- a/dag/gunbc/live_deploy/unit_standing.dag
++++ b/dag/gunbc/live_deploy/unit_standing.dag
+@@ -231,6 +231,21 @@ fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
+   }
+ }
+ 
++// THE DirectoryNotEmpty= watched directories of a [Path] UNIT, in order. A .path unit has no ExecStart;
++// its read of record is what it watches — the dirs that must EXIST for the level trigger to fire. Read
++// from the unit's own PathUnitFile so a closure control can compare it to the read the intent records
++// without going through the same helper both sides call.
++fn watched_paths_of_unit_file(file: SystemdUnitFile) -> List<String> {
++  match file {
++    PathUnitFile { unit: _, path: pd, install: _ } =>
++      fold(pd, init: [] as List<String>, f: (acc, d) => match d {
++        DirectoryNotEmpty { path: p } => list_append(left: acc, right: [p as String])
++        _ => acc
++      })
++    _ => [] as List<String>
++  }
++}
++
+ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
+   fold(directives, init: none, f: (acc, d) => match acc {
+     Present { value: v } => Present { value: v }
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index ce63f94dcb0..60103dc7f10 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -32,6 +32,7 @@ import gunbc.live_deploy.deploy_artifact_closure {
+ import gunbc.live_deploy.spec {
+   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
++  BeltEventPathUnit, PublicationHelperPathUnit,
+   deployment_owned_steps
+ }
+ import gunbc.live_deploy.deploy_artifact_read_sets {
+@@ -43,11 +44,12 @@ import gunbc.live_deploy.emit {
+   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
+   live_deploy_approval_broker_unit_file_for_closure,
+   live_deploy_approval_broker_unit_file,
++  live_deploy_belt_exit_path_unit_file, live_deploy_publication_path_unit_file,
+   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
+   LiveDeployTailnetDoorUnitOidcReadbackRefused,
+ }
+ import gunbc.live_deploy.unit_standing {
+-  exec_start_binary_of_unit_file, working_directory_of_unit_file
++  exec_start_binary_of_unit_file, working_directory_of_unit_file, watched_paths_of_unit_file
+ }
+ import extdeps.systemd.unit_file { SystemdUnitFile }
+ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
+@@ -419,3 +421,42 @@ test fn the_serve_unit_row_reads_the_installed_serve_binary() -> Bool {
+     } else { true }
+   })
+ }
++
++// ─────────────────────────────────────────────────────────────────────────────────
++// .path UNIT READ CONTROLS (item 2). A .path unit has no ExecStart, but it is NOT no-read: a
++// DirectoryNotEmpty= level trigger fires only when the watched dir exists, so the watched dir IS its
++// read of record and a missing one is a real outage. The read is sourced from the module that RENDERS
++// the unit (spool_watched_roles + spool_role_dirs via live_deploy_*_path_read_paths); the control
++// compares the adapter's row to the DirectoryNotEmpty dirs of the unit's OWN rendered file — an
++// independent read, not a fn-vs-fn self-check.
++// ─────────────────────────────────────────────────────────────────────────────────
++
++fn kind_is_belt(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: BeltEventPathUnit } => true, _ => false } }
++fn kind_is_publication(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: PublicationHelperPathUnit } => true, _ => false } }
++
++fn is_nonempty(xs: List<String>) -> Bool {
++  match first_where(xs: xs, keep: fn(_s) { true }) { Present { value: _ } => true, Absent => false }
++}
++
++// THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit
++// file (and is non-empty). RED if the adapter stops sourcing the watched dirs, or they drift off what
++// the unit actually watches.
++test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
++  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
++    Present { value: s } =>
++      let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
++      is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
++    Absent => true
++  }
++}
++
++// THE PUBLICATION helper .path unit's declared read equals the DirectoryNotEmpty dirs of its own
++// rendered unit file (and is non-empty). Same contract as the belt unit.
++test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
++  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
++    Present { value: s } =>
++      let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
++      is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
++    Absent => true
++  }
++}

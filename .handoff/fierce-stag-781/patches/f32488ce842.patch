@@ -1,0 +1,85 @@
+commit f32488ce8421738a659a2a1b297e0a903c64a6b9
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 19:19:20 2026 +0000
+
+    prep: close review 95716 -- drop dangling base_root, fix two overclaiming comments
+    
+    - F1 (Consumption): ReleaseLocus.base_root was set by both constructors but read by no
+      consumer. Deleted the field (and the locus.base assignment in the helper mint). base_root
+      remains only as release_locus_record's local parameter, which is used to derive spine and
+      the locus directory -- a real use, not a stored field.
+    - F2 (Source annotations): removed the port comment's forward-reference to a "gate's
+      leg_installed_paths" check that does not exist on this branch; the comment now states only
+      what this diff actually establishes (dark_helper_snapshot_at installs the minted record, so
+      the directory and the revision it names cannot diverge).
+    - F3 (Epistemic humility): the helper-mint comment claimed board-function now mints once; the
+      board-function converge / srv1 gpu-power-cap UNIT renderers and the attempt-system-unit launch
+      still call helper_locus_dir directly for their own verify/display path (unrelated to the
+      install port). Comment scoped to the root-helper snapshot INSTALL PORT only.
+    
+    Node: node://adhoc-3e6e9bfb-d59 (rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T)
+
+diff --git a/dag/gunbc/host/host_effect_realize.dag b/dag/gunbc/host/host_effect_realize.dag
+index c417608e6ea..d96ef559495 100644
+--- a/dag/gunbc/host/host_effect_realize.dag
++++ b/dag/gunbc/host/host_effect_realize.dag
+@@ -6115,10 +6115,10 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
+ // legs because the units that name the snapshot are installed between them: the superseded snapshot is
+ // retired only after the new units stand.
+ fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+-  // ONE mint from the leg's own (locus, spine, revision): the directory the snapshot installs into is
++  // ONE mint from the port's own (locus, spine, revision): the directory the snapshot installs into is
+   // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
+-  // beside an independent revision argument (review 95713). The gate's leg_installed_paths takes the same
+-  // fold over the same leg fields, so the declared read and the install cannot diverge.
++  // beside an independent revision argument (review 95713). dark_helper_snapshot_at installs this record
++  // directly, so the directory and the revision it names cannot diverge.
+   let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
+   match (match action {
+     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+diff --git a/dag/gunbc/live_deploy/release_locus.dag b/dag/gunbc/live_deploy/release_locus.dag
+index eaa23b1336f..cfe293dd72e 100644
+--- a/dag/gunbc/live_deploy/release_locus.dag
++++ b/dag/gunbc/live_deploy/release_locus.dag
+@@ -86,7 +86,6 @@ fn release_locus_releases_dir(root: String) -> String {
+ // NOT "a mismatched record is unwritable" -- the constructor is public. Stated at that rung per
+ // gunbc.design_argument::guarantee_ladder: the reported rung equals the rung the code establishes.
+ type ReleaseLocus {
+-  base_root: String
+   revision: ReleaseRevisionBinding
+   spine: List<String>
+   locus: String
+@@ -94,7 +93,6 @@ type ReleaseLocus {
+ 
+ fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+   ReleaseLocus {
+-    base_root: base_root,
+     revision: revision,
+     spine: [base_root, release_locus_releases_dir(root: base_root)],
+     locus: release_locus_dir(root: base_root, revision: revision),
+@@ -144,15 +142,18 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
+   }
+ }
+ 
+-// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT SHAPE. Its directory is helper_locus_dir(locus, revision) --
+-// derived from the SAME revision the record carries, so the two port call sites (deploy_apply_ports_on_host
+-// and the fleet board-function converge delivery) mint it once instead of hand-computing the directory
+-// beside an independent revision argument (review 95713: a hand-copied dir could drift from the revision
+-// it was built for -- the very split this record exists to remove). The spine is a caller-supplied list
+-// (the helper's parent dirs are not derived from base_root the way the release spine is).
++// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT INSTALL. Its directory is helper_locus_dir(locus, revision) --
++// derived from the SAME revision the record carries. The root-helper snapshot install port
++// (live_deploy_apply_root_helper_snapshot_on_host, reached from deploy_apply_ports_on_host and the fleet
++// board-function converge delivery) now mints the directory once from (locus, revision) instead of its two
++// call sites hand-computing helper_locus_dir beside an independent revision argument (review 95713: a
++// hand-copied dir could drift from the revision it was built for -- the very split this record exists to
++// remove). Other helper_locus_dir callers (the board-function converge / srv1 gpu-power-cap unit renderers,
++// the attempt-system-unit launch) compute a path for their OWN verify/display purpose, not the install
++// directory; they are unrelated and unchanged. The spine is a caller-supplied list (the helper's parent
++// dirs are not derived from a base root the way the release spine is).
+ fn helper_release_locus_record(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+   ReleaseLocus {
+-    base_root: locus.base,
+     revision: revision,
+     spine: spine,
+     locus: helper_locus_dir(locus: locus, revision: revision),

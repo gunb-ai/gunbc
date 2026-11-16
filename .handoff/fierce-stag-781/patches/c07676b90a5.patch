@@ -1,0 +1,57 @@
+commit c07676b90a51171dc414c47f08c8c59ac7045816
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 14:41:09 2026 +0000
+
+    live_deploy: belt/publication watched-dir controls require the step (review 95659)
+    
+    the_belt_path_unit_reads_its_watched_dirs / the_publication_path_unit_reads_its_watched_dirs returned
+    Absent => true when srv1_steps() had no such step — a decoration that could go green while checking
+    nothing if srv1 stopped owning a .path unit (guarantee_ladder: "a check whose forbidden state is
+    expressible nowhere it runs is a decoration").
+    
+    Fix: srv1 MUST own a BeltEventPathUnit and a PublicationHelperPathUnit step; Absent is now a fixture
+    defect and returns false, so the check is only green via the Present arm comparing the roster row to the
+    DirectoryNotEmpty dirs of the unit's own rendered file (and non-empty).
+    
+    Verified: both still PASS on base-matched seed sha256 900599bd... (Rust = branch base da9e9f5, src
+    clean), confirming the Present arm is taken — srv1 does own these .path units.
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59).
+
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index 60103dc7f10..d5079f74702 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -439,24 +439,27 @@ fn is_nonempty(xs: List<String>) -> Bool {
+ }
+ 
+ // THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit
+-// file (and is non-empty). RED if the adapter stops sourcing the watched dirs, or they drift off what
+-// the unit actually watches.
++// file (and is non-empty). srv1 MUST own a BeltEventPathUnit step (a deploy whose units watch the exit
++// spool); if it ever stops owning one this check goes RED rather than silently passing — a check whose
++// step could be absent is a decoration (guarantee_ladder). RED also if the adapter stops sourcing the
++// watched dirs or they drift off what the unit actually watches.
+ test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
+   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
+     Present { value: s } =>
+       let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
+       is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
+-    Absent => true
++    Absent => false
+   }
+ }
+ 
+ // THE PUBLICATION helper .path unit's declared read equals the DirectoryNotEmpty dirs of its own
+-// rendered unit file (and is non-empty). Same contract as the belt unit.
++// rendered unit file (and is non-empty). srv1 MUST own a PublicationHelperPathUnit step; absence is a
++// defect and goes RED. Same contract as the belt unit.
+ test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
+   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
+     Present { value: s } =>
+       let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
+       is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
+-    Absent => true
++    Absent => false
+   }
+ }

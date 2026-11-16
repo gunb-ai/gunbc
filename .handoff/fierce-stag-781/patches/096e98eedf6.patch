@@ -1,0 +1,39 @@
+commit 096e98eedf6848e48a51debd1eb5ef71211adbfa
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 19:35:57 2026 +0000
+
+    prep: close review 95719 -- dark_helper_verify_at takes the minted ReleaseLocus
+    
+    The verify arm had the same dir-beside-revision split the PR removes elsewhere (review
+    95713 forbade it in a comment right next to it). dark_helper_verify_at now takes the minted
+    tree: ReleaseLocus and reads tree.locus; the dead `revision` and loose `dir: String`
+    parameters are dropped. Same single-mint authority as the install arm (dark_helper_snapshot_at);
+    root_generalization / single_authority: the verify and install arms now take one shape.
+    
+    Node: node://adhoc-3e6e9bfb-d59 (rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T)
+
+diff --git a/dag/gunbc/host/host_effect_realize.dag b/dag/gunbc/host/host_effect_realize.dag
+index d96ef559495..d1d4335d5ac 100644
+--- a/dag/gunbc/host/host_effect_realize.dag
++++ b/dag/gunbc/host/host_effect_realize.dag
+@@ -6122,7 +6122,7 @@ fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: Lis
+   let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
+   match (match action {
+     HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, dir: tree.locus, transport: transport)
++    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, tree: tree, transport: transport)
+     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
+   }) {
+     DarkOk => Absent
+@@ -7608,9 +7608,9 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+ // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
+ // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
+ // workers into one refused apply step.
+-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, dir: String, transport: HostEffectTransport) -> DarkState {
++fn dark_helper_verify_at(locus: HelperLocus, tree: ReleaseLocus, transport: HostEffectTransport) -> DarkState {
+   dark_run_legs(
+-    legs: dark_helper_verify_legs(locus: locus, dir: dir),
++    legs: dark_helper_verify_legs(locus: locus, dir: tree.locus),
+     transport: transport,
+   )
+ }

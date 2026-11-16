@@ -1,0 +1,257 @@
+module gunbc.live_deploy.deploy_artifact_closure
+
+// Roadmap node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59, identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T,
+//   dag/gunbc/roadmap/roadmap_authority.dag, landed by #16504).
+//   Node boundary: "the closure is read from each unit's own declaration, and the refusal is produced by the same
+//   closure, never skipped."
+//   Red_control 2: "A deploy whose intent omits an artifact a unit reads refuses before any unit is enabled;
+//   RED for each artifact the closure does not yet own."
+// This module is that same closure and the refusal computed from it. It is a check-first primitive: an evaluation
+// that decides whether a deploy may proceed, and it is deliberately NOT a mutating actuator (no install, no write,
+// no unit state change).
+
+import std.types { List }
+import std.algebra { fold_list, list_map }
+import std.list { list_member }
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// SCOPE — what this module is, and what it is NOT yet
+//
+//   WHAT THIS PR DELIVERS: the artifact-closure PRIMITIVE — the read-of-record, the
+//   per-row classification, the three-valued verdict, and the inventory of units by
+//   closure status. It is GENERIC over enable rows, so any enable authority can feed
+//   it; it knows nothing about the deploy model or the fleet.
+//
+//   NAMED CONSUMER (frontier, under Consumption): the next PR in this node's series
+//   adds a closure-VERIFY leg to the apply chain (gunbc.live_deploy.apply_legs) that
+//   calls deploy_closure_verdict and REFUSES before any enable step runs.
+//   Today this primitive is consumed by its own witness controls only; no apply leg
+//   calls it yet, so "the refusal is produced, never skipped" is a property OF THE
+//   PRIMITIVE (the only route through it computes a verdict; there is no skip arm),
+//   NOT yet a property of a live deploy. The PR does not claim a live deploy refuses
+//   today. The apply_legs wiring is the named follow-up.
+//
+//   GENERICS (single_authority, minimize_redundancy): the roster is not a second unit
+//   list kept here. The live-deploy enable authority is gunbc.live_deploy.spec
+//   deployment_owned_steps; gunbc.live_deploy.spec derives each step's read-set via
+//   deployment_artifact_read_set (a total match over step.kind, placed exactly like the
+//   existing owned_artifact_teardown_disposition precedent — the model owns per-kind
+//   facts, the consumer stays generic, a new kind cannot inherit an answer by omission).
+//   THIS module holds only the generic verdict machinery over already-resolved rows, so
+//   the fleet-converge actuation path can later feed its OWN enable rows against the same
+//   closure. Each enabled unit's read set is declared by its OWN module (or by the model's
+//   total match sourced from it) and reaches the closure through deployment_artifact_read_set;
+//   this module never re-spells a unit or a path. A follow-up adds one module fn + flips one
+//   match arm in the model; nothing in this module changes.
+//
+//   EVIDENCE: run provenance is a receipt and lives in the pull request, not here. The bug-6
+//   first-slice reading (red_control 1: two installs of one tree at one revision must produce one
+//   receipt digest) is computed by test.claim.host.approval_broker_tree_install_witness
+//   two_installs_of_one_tree_reproduce_one_receipt_digest, which compares two tree_receipt_body
+//   outputs at the revision threaded into them.
+//
+//   BeltExitDrain is a live enabled unit (BeltEventPathUnit is in deployment_owned_steps),
+//   so it is classified like any other enabled unit — a missing artifact under it is a real
+//   outage. It is excluded only by removal from the enable authority, at which point it
+//   simply is not in the roster. There is no separate Excluded concept here.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// READ-OF-RECORD — what an enabled unit declares it reads
+//
+//   ArtifactReadSet is a unit's read declaration, sourced from the unit's OWN module (or
+//   the model's total match over kinds, sourced from each unit module). Declared carries
+//   concrete artifact paths; NotYetModeled is a typed, located, countable "unknown" — it
+//   is NOT silently treated as allowed (fail_closed: "Failing to compute the answer is a
+//   different outcome from computing a conservative one", and "every degradation is typed,
+//   located and countable"). NoReadOfRecord is a nullary, POSITIVE assertion — it carries NO
+//   free-form reason, because a String whose only purpose is commentary must not be what lets a
+//   deploy proceed (source_annotations; fail_closed). The allow rests on the CONSTRUCTION PATH:
+//   it is produced only by a kind's OWN module from a DERIVED, total match over that kind's
+//   modeled facts (e.g. gunbc.tailscale_serve_scope matching TailscaleServeService), so the
+//   assertion cannot survive the realization lying. It is NOT a default or fallback and is NEVER
+//   produced for a merely-unmodeled kind: the adapter enumerates every kind explicitly, so a kind
+//   with no explicit arm is a compile error, never an implicit NoReadOfRecord.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+type ArtifactReadSet
+  = Declared { paths: List<String> }
+  | NoReadOfRecord
+  // A NON-EXECUTABLE artifact the deploy INSTALLS (e.g. an OIDC config document). It is not a unit and performs
+  // no read of record — it is the thing OTHER units declare reading. The gate's population is the enable legs
+  // (executable units), so this arm is NEVER consulted by the gate; it is truthful bookkeeping, not the false
+  // "unit whose reads aren't modeled yet" that NotYetModeled means. (manager: never leave a non-unit NotYetModeled.)
+  | InstalledArtifact
+  | NotYetModeled { reason: String }
+
+// A resolved enable row: `located` is where the unit lives (its owned path / identity),
+// `reads` is what that unit's own declaration says it reads. Rows are produced by an
+// enable authority (for the deploy path: gunbc.live_deploy.spec deployment_artifact_read_rows).
+type DeployReadRow
+  = ReadRow { located: String, reads: ArtifactReadSet }
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// THREE-VALUED VERDICT — allow / refuse / unclosed (never silent pass-through)
+//
+//   A row whose reads are Declared and every artifact is installed => Allowed.
+//   A row whose reads are Declared but an artifact is missing       => Refused (names it).
+//   A row whose reads are NotYetModeled                              => Unclosed.
+//
+//   The obligation that an Unclosed read halts the deploy is NOT carried by this comment: it is
+//   implemented in deploy_gate_decision (a total combinator over ClosureVerdict with no Proceed arm
+//   for Unclosed, defined below) and covered by the controls
+//   unclosed_reads_halt_the_deploy_gate_never_proceeds and allowed_reads_proceed_and_missing_read_halts.
+//   The apply_legs closure-verify leg (node deploy-intent-owns-artifact-closure red_control 2) will
+//   call deploy_gate before any enable step and halt on Halt for either cause; there is no "warn and
+//   continue" arm.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+type ClosureVerdict
+  = Allowed
+  | Refused { located: String, artifact: String }
+  | Unclosed { located: String }
+
+// The deploy-gate DECISION a consumer acts on. The obligation that an Unclosed read must halt the
+// deploy lives HERE, in a total combinator, not in a comment (Source annotations: an invariant
+// belongs in a typed carrier; nothing may depend on a comment for correctness). deploy_gate_decision
+// is total over ClosureVerdict and maps Unclosed to Halt — there is no Proceed arm for Unclosed, so
+// it is unrepresentable for an uncheckable read to pass the gate. The apply_legs closure-verify leg
+// (the named follow-up, node deploy-intent-owns-artifact-closure red_control 2) calls deploy_gate
+// before any enable step and must halt on Halt, for either cause; there is no "warn and continue".
+type DeployHaltCause
+  = MissingArtifact { located: String, artifact: String }
+  | UnclosedRead { located: String }
+
+type DeployGateDecision
+  = Proceed
+  | Halt { cause: DeployHaltCause }
+
+fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
+  match verdict {
+    Allowed => Proceed
+    Refused { located: loc, artifact: art } => Halt { cause: MissingArtifact { located: loc, artifact: art } }
+    Unclosed { located: loc } => Halt { cause: UnclosedRead { located: loc } }
+  }
+}
+
+fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGateDecision {
+  deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
+}
+
+// first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
+// as a singleton list, or Empty when every artifact is installed. The recursion keeps the
+// installed set fixed (it does NOT prune it), so an artifact appearing later in the read list
+// is still checked against the full install set.
+fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
+  match artifacts {
+    Empty => Empty {  }
+    Cons { head: artifact, tail: rest } =>
+      if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
+        first_missing_artifact(artifacts: rest, installed: installed)
+      } else {
+        Cons { head: artifact, tail: Empty {  } }
+      }
+  }
+}
+
+// unit_closure_verdict is the single source that decides Allowed / Refused / Unclosed for one
+// row from its own read declaration. It is the only route: a Declared row with a missing
+// artifact yields Refused naming the artifact; a NotYetModeled row yields Unclosed; never a
+// silent pass-through.
+fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureVerdict {
+  match row {
+    ReadRow { located: loc, reads: Declared { paths: paths } } =>
+      match first_missing_artifact(artifacts: paths, installed: installed) {
+        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
+        Empty => Allowed
+      }
+    ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
+    // A NoReadOfRecord row is a POSITIVE assertion by the kind's own module that it reads no installed
+    // artifact; the closure allows it. It is reached only where a module explicitly asserts it (the adapter
+    // has no catch-all), so it is never a fallback for an unmodeled kind — those stay NotYetModeled → Unclosed.
+    ReadRow { located: _, reads: NoReadOfRecord } => Allowed
+    // A non-executable installed artifact imposes NO read obligation on itself (it is read by the units that
+    // declare it). It must not appear in the gate population at all — the gate population is the enable legs —
+    // so this arm is defensive bookkeeping; Allowed means "nothing to check for this row," never a unit's read.
+    ReadRow { located: _, reads: InstalledArtifact } => Allowed
+  }
+}
+
+// combine_closure_verdicts folds row verdicts into a deploy verdict. The PRECEDENCE it applies is
+// order-independent: a concrete Refused always wins over any Unclosed, so WHETHER a deploy refuses
+// for a missing owned artifact is decided independently of roster order (fail_closed: "every
+// degradation is typed, located and countable"). The specific diagnostic is NOT order-independent:
+// of two Refused the one earlier in fold order is kept (and likewise the first Unclosed when none
+// is Refused) — enough to type, locate and count a halt, not an exhaustive list; reporting every
+// halt at once is a separate obligation on the gate combinator. All-Allowed is Allowed.
+fn combine_closure_verdicts(a: ClosureVerdict, b: ClosureVerdict) -> ClosureVerdict {
+  match a {
+    Allowed => b
+    Refused { located: la, artifact: aa } =>
+      match b {
+        Refused { located: lb, artifact: ab } => Refused { located: la, artifact: aa }
+        Unclosed { located: _ } => Refused { located: la, artifact: aa }
+        Allowed => Refused { located: la, artifact: aa }
+      }
+    Unclosed { located: lu } =>
+      match b {
+        Refused { located: lb, artifact: ab } => Refused { located: lb, artifact: ab }
+        Unclosed { located: _ } => Unclosed { located: lu }
+        Allowed => Unclosed { located: lu }
+      }
+  }
+}
+
+// deploy_closure_verdict folds the rows through their own verdicts. combine_closure_verdicts makes
+// the Refused-over-Unclosed PRECEDENCE order-independent (a deploy refuses for a missing owned
+// artifact whatever the enable order), but WHICH single Refused or Unclosed is reported is the one
+// earliest in fold order — a typed, located, countable halt, not an exhaustive or order-free
+// diagnostic. A deploy with at least one unowned artifact refuses, and a deploy whose every row is
+// closed allows.
+fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) -> ClosureVerdict {
+  fold_list(
+    xs: rows,
+    empty: Allowed,
+    cons: fn(acc, row) { combine_closure_verdicts(a: acc, b: unit_closure_verdict(row: row, installed: installed)) }
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// INVENTORY — every row classified by what its read declaration says
+//
+//   The inventory is DERIVED from each row's own read declaration (fail_closed: no uncounted
+//   unit). It is produced FROM the mechanism, not a hand-typed list beside it: it walks the
+//   rows, and each row's classification reads that row's reads — a re-spelled list beside the
+//   unit cannot appear, so the population can never disagree with the mechanism the controls
+//   verify over.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// The closure states, mirrored from ArtifactReadSet:
+//   DerivedRow     — the unit's read set is declared, so the closure can check it.
+//   NoReadRow      — the unit's own module DERIVED (total match, not prose) that it reads no installed
+//                    artifact; located and countable, carrying no free-form reason (the allow is not
+//                    justified by a String).
+//   UnclosedRow    — the unit's read set is not yet declared (a typed, located degradation).
+//   InstalledArtifactRow — a non-executable artifact the deploy installs; never in the gate population (enable
+//                    legs only), recorded here only so it is countable and located, not a silent extra.
+type ArtifactInventoryRow
+  = DerivedRow { located: String, artifacts: List<String> }
+  | NoReadRow { located: String }
+  | InstalledArtifactRow { located: String }
+  | UnclosedRow { located: String, reason: String }
+
+fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
+  match row {
+    ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
+    ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
+    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
+    ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+  }
+}
+
+// deploy_artifact_inventory classifies every row in the roster. It maps over the enable rows
+// (from deployment_owned_steps), so the population it reports is the population the deploy
+// actually enables — never a separately maintained list.
+fn deploy_artifact_inventory(rows: List<DeployReadRow>) -> List<ArtifactInventoryRow> {
+  list_map(xs: rows, f: fn(row) { deploy_artifact_inventory_row(row: row) })
+}

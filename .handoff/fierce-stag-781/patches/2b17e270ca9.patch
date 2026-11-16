@@ -1,0 +1,76 @@
+commit 2b17e270ca9420bde885ea25243d76e2f4df95a8
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 15:05:02 2026 +0000
+
+    live_deploy: use std non_empty; state what the .path controls prove (review 95667)
+    
+    - is_nonempty re-implemented emptiness over a first_where probe; std.algebra::non_empty is the canonical
+      surface. Import and use it (minimize_redundancy: "net concepts must not grow by re-invention"; search
+      the concept graph first).
+    - Rung honesty on the control comment: it proves the adapter read-set arm and the renderer's
+      DirectoryNotEmpty= dirs trace to ONE source (they cannot drift) — the single-authority property. It does
+      NOT prove the watched ROLES are correct (both sides go through spool_role_dirs), which is spool_queue's
+      own concern. The comment now says exactly that instead of claiming an independent read.
+    
+    Controls re-verified PASS on base-matched seed sha256 900599bd... (Present arm; srv1 owns both .path units).
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59).
+
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index d5079f74702..b03670f39ea 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -19,7 +19,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
+ //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
+ 
+ import std.types { CommitSha, NonEmptyStr }
+-import std.algebra { fold_list, list_map }
++import std.algebra { fold_list, list_map, non_empty }
+ import std.list { list_member, list_cover, first_where }
+ import gunbc.live_deploy.deploy_artifact_closure {
+   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled,
+@@ -425,19 +425,18 @@ test fn the_serve_unit_row_reads_the_installed_serve_binary() -> Bool {
+ // ─────────────────────────────────────────────────────────────────────────────────
+ // .path UNIT READ CONTROLS (item 2). A .path unit has no ExecStart, but it is NOT no-read: a
+ // DirectoryNotEmpty= level trigger fires only when the watched dir exists, so the watched dir IS its
+-// read of record and a missing one is a real outage. The read is sourced from the module that RENDERS
+-// the unit (spool_watched_roles + spool_role_dirs via live_deploy_*_path_read_paths); the control
+-// compares the adapter's row to the DirectoryNotEmpty dirs of the unit's OWN rendered file — an
+-// independent read, not a fn-vs-fn self-check.
++// read of record and a missing one is a real outage. What each control PROVES: the adapter's declared
++// read equals the DirectoryNotEmpty= dirs of the unit's OWN rendered file, i.e. the read-set arm and the
++// renderer are wired to one source (live_deploy_*_path_read_paths -> spool_watched_roles + spool_role_dirs)
++// and cannot drift — the single-authority property the gate relies on. What it does NOT prove: that the
++// chosen watched ROLES are correct; both sides trace to spool_role_dirs, so a wrong spool_watched_roles
++// choice would move them together. That correctness is owned by spool_queue's own controls, not here
++// (rung honesty: state the guarantee the check actually gives).
+ // ─────────────────────────────────────────────────────────────────────────────────
+ 
+ fn kind_is_belt(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: BeltEventPathUnit } => true, _ => false } }
+ fn kind_is_publication(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: PublicationHelperPathUnit } => true, _ => false } }
+ 
+-fn is_nonempty(xs: List<String>) -> Bool {
+-  match first_where(xs: xs, keep: fn(_s) { true }) { Present { value: _ } => true, Absent => false }
+-}
+-
+ // THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit
+ // file (and is non-empty). srv1 MUST own a BeltEventPathUnit step (a deploy whose units watch the exit
+ // spool); if it ever stops owning one this check goes RED rather than silently passing — a check whose
+@@ -447,7 +446,7 @@ test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
+   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
+     Present { value: s } =>
+       let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
+-      is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
++      non_empty(xs: watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
+     Absent => false
+   }
+ }
+@@ -459,7 +458,7 @@ test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
+   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
+     Present { value: s } =>
+       let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
+-      is_nonempty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
++      non_empty(xs: watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
+     Absent => false
+   }
+ }

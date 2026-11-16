@@ -1,0 +1,179 @@
+commit 6a71d58502ba24ce05d12401750256681999c499
+Author: clever-wolf-203 <clever-wolf-203@invalid>
+Date:   Sun Nov 15 16:52:38 2026 +0000
+
+    live_deploy: close DeployedTreeRemoteUnit by reading its own typed oneshot unit file
+    
+    The tree-remote convergence oneshot was NotYetModeled ("ExecStart not exported by its module"). Its module
+    (repository_convergence_placement) does model it — as a typed ConvergenceOneshot whose ExecStart/WorkingDirectory
+    the host text is serialized from. Manager's item-1 rule: "closes the same way once its module exports its unit
+    file." So:
+    
+    - repository_convergence_placement: factor convergence_oneshot_service_unit_file(slice, oneshot) -> SystemdUnitFile
+      out of convergence_oneshot_text_in (pure extract; the host text is now serialize(that file)). ONE authority for
+      what a oneshot runs.
+    - emit: live_deploy_tree_remote_unit_file_for_closure(spec) builds that file, at the ADMITTED convergence slice,
+      from the same tree_remote_convergence_oneshot the deploy emits — Absent only when the slice is refused.
+    - adapter: DeployedTreeRemoteUnit => unit_file_read_set(<the accessor>) — the SAME argv[0]/WorkingDirectory readers
+      the doors/broker/serve use. No second parser (item-1 rule).
+    
+    Control the_tree_remote_read_set_matches_the_emitted_host_text compares the CLOSURE read against the SERIALIZED
+    host text (convergence_oneshot_unit_text), not against the shared helper: it goes red if the readers drift from
+    what the serialization emits. srv1 admits the convergence slice (unit is Declared); a refused slice is not
+    silently green. Regressions a_fresh_host / roster / every_enabled_step PASS on base-matched seed sha256 900599bd...
+    
+    Node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59).
+
+diff --git a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+index 147261496c9..85a29a1404d 100644
+--- a/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
++++ b/dag/gunbc/live_deploy/deploy_artifact_read_sets.dag
+@@ -38,6 +38,7 @@ import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working
+ import gunbc.live_deploy.emit {
+   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
+   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
++  live_deploy_tree_remote_unit_file_for_closure,
+   live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
+ }
+ import extdeps.systemd.unit_file { SystemdUnitFile }
+@@ -127,7 +128,11 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
+         } else {
+           NoReadOfRecord
+         }
+-      DeployedTreeRemoteUnit => NotYetModeled { reason: "the tree-remote unit ExecStarts its remote-tree sync script; that ExecStart is not exported by its module here. DISSOLUTION: a follow-up exports the tree-remote unit's ExecStart read from its own module (its install/serve authority) and this arm consumes it" }
++      // The tree-remote oneshot reads its ExecStart binary + WorkingDirectory, read off the SAME typed unit
++      // file the deploy serializes to the host (emit.live_deploy_tree_remote_unit_file_for_closure -> the
++      // placement module's convergence_oneshot_service_unit_file), via the shared unit_file_read_set readers —
++      // never a second spelling (single_authority). Absent only when the convergence slice is refused.
++      DeployedTreeRemoteUnit => unit_file_read_set(live_deploy_tree_remote_unit_file_for_closure(spec: spec))
+       // The publication helper .path unit watches the request spool becoming non-empty; those watched
+       // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
+       // belt unit — live_deploy_publication_path_read_paths -> spool_watched_roles + spool_role_dirs.
+diff --git a/dag/gunbc/live_deploy/emit.dag b/dag/gunbc/live_deploy/emit.dag
+index 59f4ce8fe71..f1657a235fd 100644
+--- a/dag/gunbc/live_deploy/emit.dag
++++ b/dag/gunbc/live_deploy/emit.dag
+@@ -76,6 +76,12 @@ import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_sp
+ import gunbc.live_deploy.repository_convergence_placement {
+   ConvergenceOneshot,
+   convergence_oneshot_unit_text,
++  convergence_oneshot_service_unit_file,
++  convergence_slice_admission,
++  ConvergenceSliceAdmission,
++  ConvergenceSliceAdmitted,
++  ConvergenceSliceInsideServingSlice,
++  gunbc_repository_convergence_slice_unit_name,
+   convergence_receipt_path,
+   convergence_unit_doc,
+   convergence_placement_entry_path,
+@@ -1321,6 +1327,21 @@ fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+   doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
+ }
+ 
++// THE CLOSURE VIEW of the tree-remote convergence oneshot: the SAME typed unit file the deploy serializes to
++// the host (repository_convergence_placement.convergence_oneshot_service_unit_file), at the admitted slice —
++// Absent only when the convergence slice is refused (no enabled unit to check). Reading ExecStart argv[0] and
++// WorkingDirectory off THIS file (unit_standing readers) is what makes the byte the host receives and the read
++// the closure records ONE representation, never a second spelling (single_authority). The unit is a oneshot
++// that runs the serve binary against the deployed tree; its ExecStart argv[0] is that binary and its
++// WorkingDirectory the repo root — the artifacts the closure must see owned.
++fn live_deploy_tree_remote_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
++  match convergence_slice_admission(spec: spec, slice: gunbc_repository_convergence_slice_unit_name) {
++    ConvergenceSliceAdmitted { name: admitted } =>
++      Present { value: convergence_oneshot_service_unit_file(slice: admitted, oneshot: tree_remote_convergence_oneshot(spec: spec)) }
++    ConvergenceSliceInsideServingSlice { name: _, serving: _ } => Absent
++  }
++}
++
+ // apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile
+ // (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members,
+ // observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed =
+diff --git a/dag/gunbc/live_deploy/repository_convergence_placement.dag b/dag/gunbc/live_deploy/repository_convergence_placement.dag
+index 542cd6b13b2..5c8f6468903 100644
+--- a/dag/gunbc/live_deploy/repository_convergence_placement.dag
++++ b/dag/gunbc/live_deploy/repository_convergence_placement.dag
+@@ -760,8 +760,13 @@ fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, onesh
+   }
+ }
+ 
+-fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
+-  serialize_systemd_unit_file(file: ServiceUnitFile {
++// THE TYPED UNIT FILE FOR A CONVERGENCE ONESHOT, at an admitted slice. This is THE authority for what a
++// convergence oneshot runs: it carries ExecStart (argv[0] first) and WorkingDirectory. The host text is one
++// serialization of THIS file (convergence_oneshot_text_in), and the deploy-artifact closure reads the same
++// file (via unit_standing's ExecStart/WorkingDirectory readers) -- so the byte the host receives and the read
++// the closure records are one representation, never a second spelling (single_authority).
++fn convergence_oneshot_service_unit_file(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> SystemdUnitFile {
++  ServiceUnitFile {
+     unit: [Description { text: oneshot.description }],
+     service: concat(
+       concat(
+@@ -782,7 +787,11 @@ fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot)
+       ],
+     ),
+     install: NotInstallable,
+-  })
++  }
++}
++
++fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
++  serialize_systemd_unit_file(file: convergence_oneshot_service_unit_file(slice: slice, oneshot: oneshot))
+ }
+ 
+ // THE TREE-SYNC ONESHOT: git-native convergence of the deployed repository to the candidate.
+diff --git a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+index 6a520d943cd..8d6f3f737ef 100644
+--- a/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
++++ b/dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag
+@@ -19,7 +19,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
+ //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
+ 
+ import std.types { CommitSha, NonEmptyStr }
+-import std.algebra { fold_list, list_map, non_empty }
++import std.algebra { fold_list, list_map, non_empty, string_contains }
+ import std.list { list_member, list_cover, first_where }
+ import gunbc.live_deploy.deploy_artifact_closure {
+   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, NotYetModeled,
+@@ -45,10 +45,12 @@ import gunbc.live_deploy.emit {
+   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
+   live_deploy_approval_broker_unit_file_for_closure,
+   live_deploy_approval_broker_unit_file,
++  tree_remote_convergence_oneshot,
+   live_deploy_belt_exit_path_unit_file, live_deploy_publication_path_unit_file,
+   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
+   LiveDeployTailnetDoorUnitOidcReadbackRefused,
+ }
++import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
+ import gunbc.live_deploy.unit_standing {
+   exec_start_binary_of_unit_file, working_directory_of_unit_file, watched_paths_of_unit_file
+ }
+@@ -273,6 +275,29 @@ test fn the_tailscale_no_read_is_derived_from_the_serve_service() -> Bool {
+        }
+ }
+ 
++// The tree-remote unit's closure read is the SAME argv[0]/WorkingDirectory the deploy writes to the host. Both
++// trace to repository_convergence_placement.convergence_oneshot_service_unit_file, but this control compares
++// the CLOSURE read against the SERIALIZED HOST TEXT (convergence_oneshot_unit_text): it goes red if the
++// ExecStart/WorkingDirectory readers drift from what the serialization emits. srv1 admits the convergence
++// slice so the unit is Declared; a refused slice (Absent => false) is never silently green.
++test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
++  let spec = srv1_spec()
++  let remote = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
++  match remote {
++    Present { value: s } =>
++      match deployment_artifact_read_set(step: s, spec: spec, instance: srv1_inst(), revision: srv1_rev()) {
++        Declared { paths: reads } =>
++          let host = convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
++          non_empty(reads)
++            && string_contains(s: host, pattern: "ExecStart=/")
++            && string_contains(s: host, pattern: "WorkingDirectory=")
++            && all(reads, fn(r) { string_contains(s: host, pattern: r) })
++        _ => false
++      }
++    Absent => false
++  }
++}
++
+ // ─────────────────────────────────────────────────────────────────────────────────
+ // INTEGRATION CONTROLS (driven by the deploy enable authority — srv1 roster)
+ // ─────────────────────────────────────────────────────────────────────────────────
