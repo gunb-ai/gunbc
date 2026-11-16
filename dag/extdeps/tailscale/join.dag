@@ -1,0 +1,705 @@
+module extdeps.tailscale.join
+
+// UPSTREAM FACTS AND TYPED argv FOR THE ONE THING A HOST MUST DO TO BE ON THE TAILNET AT ALL: JOIN IT.
+//
+// @ref(gunbc.tailscale_join_converge::tailscale_join_host) is the fleet-side converge that reads these
+// rows; this module is the
+// upstream surface only -- what `tailscale up` takes, what a join's success is made of, and what an auth
+// key is allowed to be. Nothing here names a host, a tag the fleet happens to use, a Secret Manager
+// secret, or a window: those are product facts (gunbc.tailscale_fleet_auth_key, gunbc.fleet.fleet_tailnet).
+//
+// WHY A JOIN IS MODELLED AT ALL, WHEN A MACHINE NAME MODULE ALREADY EXISTS. extdeps.tailscale.machine_name
+// covers a device that is ALREADY a member: `status`, `set --hostname`. Neither works on a host that has
+// never joined -- `tailscale set` on an unjoined node has no prefs to change, and `status` reports a
+// backend that is not logged in. Membership itself is a different upstream verb with different inputs
+// (`up`, with an authorization credential), and the fleet has hosts that are not members while the router
+// is meant to reach its upstreams by tailnet name. So this is the join half of the same tailnet.
+//
+// THE CREDENTIAL NEVER TRAVELS IN argv. That is the load-bearing rule of this module, and it is why the
+// argv rows below take a TailscaleAuthKeyFile -- a PATH -- and no function here takes key material at all.
+// Tailscale documents the credential as a bearer secret ("Treat the auth key like a password, because that
+// is what it is") and its own examples interpolate it into the command line; an argv is readable on the
+// host for the lifetime of the process, and this fleet's own custody module refuses to write a secret's
+// material into an argument for the same reason (gunbc.fleet.host_credential_custody_converge: THE ONE
+// ARGUMENT THAT IS NOT A PATH). Upstream gives the safe route, and it is the only one modelled here -- the
+// `--auth-key` value may be a file reference, spelled `file:<path>` (cmd/tailscale/cli/up.go, the
+// `--auth-key` flag registration: `node authorization key; if it begins with "file:", then it's a path to
+// a file containing the authkey`). What this fleet does to GET the key into that file is custody's
+// business (gunbc.fleet.host_credential_custody_converge), not this module's.
+
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.parse {
+  FieldAbsent,
+  FieldMalformed,
+  FieldRead,
+  JsonDocumentMalformedAt,
+  JsonDocumentParsed,
+  JsonDocumentTrailingContentAt,
+  JsonDocumentUnreadable,
+  json_field_string,
+  parse_json_document,
+}
+import extdeps.tailscale.serve { tailscale_program }
+import extdeps.uri { Https, Uri }
+import std.measure { Second, second_count, seconds_per_day }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_days_from_civil,
+  iso8601_utc_instant_parts_are_valid,
+}
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
+
+// THE AUTHORITY FOR THE SUBJECT. Tailscale's own auth-key page: what the kinds are, what each is for,
+// how long a key may live, and what happens when it expires.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "tailscale.com/kb/1085/auth-keys" }
+}
+
+// THE CLI REFERENCE, for the `up` and `ping` verbs as documented prose.
+data extdeps_cli_reference_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "tailscale.com/kb/1080/cli" }
+}
+
+// THE IMPLEMENTATION, for what the documented prose does not spell out: the `file:` prefix the KB page
+// does not mention, the flag defaults, and the status JSON's backend-state values. Where the two disagree,
+// the implementation is what runs; the divergence is stated where it matters.
+data extdeps_cli_source_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/up.go" }
+}
+
+data extdeps_ping_source_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale/blob/main/cmd/tailscale/cli/ping.go" }
+}
+
+data extdeps_status_source_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale/blob/main/ipn/ipnstate/ipnstate.go" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tailscale.join",
+      decl_name: "TailscaleUpJoinSpec",
+      field: WholeDeclaration,
+    }
+  }
+  first_citation: extdeps_external_authority_anchor
+  further_citations: [
+    extdeps_cli_reference_citation,
+    extdeps_cli_source_citation,
+    extdeps_ping_source_citation,
+    extdeps_status_source_citation,
+  ]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE AUTH KEY, AS AN UPSTREAM OBJECT -- KIND, APPROVAL, TAGS, EXPIRY.
+//
+// These are not this fleet's choices; they are the knobs Tailscale's admin console exposes when a key is
+// created, and each one changes what a join does. The product module that pins THE fleet's key
+// (gunbc.tailscale_fleet_auth_key) states which setting this fleet picked, citing these rows.
+//
+// 1. KIND. Upstream, in its own words:
+//      ONE-OFF: "One-off, for temporary devices. ... The auth key and corresponding node are removed from
+//        your network when the device logs out of Tailscale."
+//      REUSABLE: "Reusable, for installing Tailscale on many devices. ... Be very careful with reusable
+//        keys! They are more dangerous than other kinds of auth keys. ... They are best kept in a key
+//        vault product specially designed for the purpose." THE FLEET'S KEY IS THIS KIND, so that one
+//        operator action in the admin console enrolls a whole fleet through a converge; the danger the
+//        page names is the reason the key lives in Secret Manager behind a pinned version and a rostered
+//        accessor rather than in a variable or a file on a laptop.
+//      EPHEMERAL: "Enable Ephemeral to automatically remove the auth key after the device goes offline."
+//        A fleet host that must be REACHED -- an upstream the router routes to -- cannot be ephemeral: it
+//        is removed when it goes offline, which is the state an outage puts it in.
+// 2. TAGS. Upstream: "Tagged, for servers. You can automatically apply a tag to a device by including the
+//      tag in the auth key. ... after a device logs in as the user who generated the auth key, the device
+//      assumes the identity of the auth key's tags." So a tagged key decides the node's identity and the
+//      ACL is written against that identity, which makes the tag a security-relevant fact, not a label. A
+//      tagless key enrolls a node under the generating user's identity -- a person, not a role -- so a
+//      policy with no tag is refused below.
+// 3. PRE-APPROVAL. Upstream: "Enable Pre-approved to automatically authorize a device if you have device
+//      approval enabled on your network. Pre-approved auth keys let you add a device to your tailnet
+//      without further authorization." With device approval on and a key not pre-approved, the node joins
+//      and stays unauthenticated: the converge would read a member that never answers.
+// 4. EXPIRY. Upstream: "Key expiry. Set a custom expiry date for your auth key. The maximum key expiration
+//      is 90 days. ... The key will not work after that date, but the nodes it authorized continue to
+//      work." And: "Key expiry for tagged devices is disabled by default." Two consequences this fleet
+//      acts on. An expired key STOPS ENROLLMENTS AND NOTHING ELSE, so an expiry is never an outage and the
+//      join can refuse on it at no cost to a member. And a converge that ran `up` with an expired key
+//      would fail in a way that reads like a network fault, so the join refuses on expiry BEFORE touching
+//      the host, from the product's own record of the date.
+//
+// WHAT IS DELIBERATELY NOT CLAIMED: that the CLI's `--advertise-tags` and the key's own tags must be
+// equal. Upstream says a tagged key's node "assumes the identity of the auth key's tags", and separately
+// that `--advertise-tags` requests tags at join; it documents no rule that the two sets agree. The
+// converge therefore compares them as a plan-time consistency check and refuses only on the case that has
+// a documented consequence -- a node landing in a tag the fleet's ACL has no row for.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE SMART CONSTRUCTOR, exported instead of the record: a sole_constructor type is buildable only here,
+// so product reaches a key's description through a function that can be read, cited, and witnessed.
+fn tailscale_auth_key_policy_of(
+  kind: TailscaleAuthKeyKind,
+  approval: TailscaleAuthKeyApproval,
+  key_tags: List<NonEmptyStr>,
+  expires_after: Second,
+) -> TailscaleAuthKeyPolicy {
+  TailscaleAuthKeyPolicy {
+    kind: kind,
+    approval: approval,
+    key_tags: key_tags,
+    expires_after: expires_after,
+  }
+}
+
+type TailscaleAuthKeyKind = AuthKeyOneOff | AuthKeyReusable | AuthKeyEphemeral
+
+fn tailscale_auth_key_kind_wire(kind: TailscaleAuthKeyKind) -> String {
+  match kind {
+    AuthKeyOneOff => "one-off"
+    AuthKeyReusable => "reusable"
+    AuthKeyEphemeral => "ephemeral"
+  }
+}
+
+// There is deliberately NO separate "can this kind hold membership forever" classifier here, even though
+// upstream's facts are what one would state (one-off removes the node when the device logs out; ephemeral
+// removes it "after the device goes offline", so neither is a kind the router can route to permanently):
+// the whole-policy gate tailscale_auth_key_policy_admit is the only surface a caller can act on, and a
+// classifier outside it would be a second, consumer-less answer to the same question
+// (gunbc.design_argument::minimize_redundancy).
+
+type TailscaleAuthKeyApproval = AuthKeyPreApproved | AuthKeyApprovalRequired
+
+fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> String {
+  match approval {
+    AuthKeyPreApproved => "pre-approved"
+    AuthKeyApprovalRequired => "approval-required"
+  }
+}
+
+// THE DATE AN EXPIRY IS, REUSED RATHER THAN RE-MINTED: extdeps.units.iso8601_calendar::Iso8601CivilDate
+// is already the corpus authority for a proleptic-Gregorian civil date -- built by checked parsers and
+// ordered through that module's own day-count algorithm -- and an auth key's expiry IS such a date: the
+// day the operator read off the admin console. DESIGN §2: minting a fresh authority for a concept that
+// already exists is a failed decomposition -- this module keeps no date type of its own.
+//
+// THE RUNG, STATED EXACTLY (review 95863; gunbc.design_argument::guarantee_ladder -- "a type name,
+// diagnostic variant, inert lens or plan establishes nothing"; gunbc.design_argument::epistemic_humility
+// -- "do not assert as deduced what is only inferred"): Iso8601CivilDate is NOT sole_constructor -- dag
+// has no visibility modifier, so the calendar module's own checked-constructor documentation already
+// concedes that "making it unwritable" is a claim about CALL SITES, not reachability, and raw record
+// literals of it exist in other modules today. So this module does not claim the date is unwritable; it
+// CHECKS. tailscale_auth_key_expiry_verdict range-checks every date handed to it through the calendar
+// module's OWN parts predicate (month 1..12, day 1..that month's length, leap rule included) and answers
+// AuthKeyExpiryUnverifiable -- never AuthKeyStillValid -- for a date no checked constructor would have
+// produced (@ref(gunbc.design_argument::fail_closed): the wrong date fails the join instead of ordering
+// forever as a plausible number).
+
+// The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90
+// DAYS. The duration is carried as std.measure::Second -- the corpus authority for elapsed time
+// (gunbc.design_argument::single_authority: the unit lives in std.measure, not in a bare Int whose scale
+// is a comment), the same carrier gunbc.serving.srv1_serving_replica_layout uses for its TLS validity --
+// and reduced to the console's day scale at this one comparison, the way that module renders days only at
+// its flag boundary.
+fn tailscale_auth_key_expiry_window_is_upstream(expires_after: Second) -> Bool {
+  let days = second_count(expires_after)
+  seconds_per_day() <= days && days <= 90 * seconds_per_day()
+}
+
+// THE RECORD OF WHAT THE KEY UPSTREAM IS. Product supplies the values; the shape, the ranges, and the
+// meaning of each field are upstream's. `key_tags` is what the key itself carries ("the device assumes
+// the identity of the auth key's tags").
+type TailscaleAuthKeyPolicy sole_constructor {
+  kind: TailscaleAuthKeyKind,
+  approval: TailscaleAuthKeyApproval,
+  key_tags: List<NonEmptyStr>,
+  expires_after: Second,
+}
+
+type TailscaleAuthKeyPolicyVerdict = AuthKeyPolicyAccepted | AuthKeyPolicyRefused { cause: String }
+
+fn tailscale_auth_key_policy_admit(policy: TailscaleAuthKeyPolicy) -> TailscaleAuthKeyPolicyVerdict {
+  if !(tailscale_auth_key_expiry_window_is_upstream(expires_after: policy.expires_after)) {
+    AuthKeyPolicyRefused {
+      cause: "an auth key's expiry must be between 1 and 90 days (upstream: \"The maximum key expiration is 90 days\")",
+    }
+  } else if policy.key_tags.count() == 0 {
+    AuthKeyPolicyRefused {
+      cause: "the key carries no tag: a tagged key is the only kind that enrolls a node as a role rather than as the generating user",
+    }
+  } else {
+    AuthKeyPolicyAccepted
+  }
+}
+
+// THE VERDICT THE JOIN STEP ASKS FOR BEFORE IT TOUCHES A HOST: can this key still enroll anything?
+// Upstream: an expired key "will not work after that date, but the nodes it authorized continue to work".
+// So expiry is an ENROLLMENT failure and never an outage -- which is why the join can refuse on it with no
+// cost to a host that is already a member, and why it must refuse on it rather than run `up` and read a
+// failure whose cause would then be ambiguous between an expired key and a broken network. THE EXPIRY DATE
+// ITSELF IS THE DAY THE KEY STILL WORKS: a key expiring today has not expired yet, and the refusal starts
+// the day after, which is what the console's "expires on" reading means.
+type TailscaleAuthKeyExpiryVerdict =
+    AuthKeyExpiredOn { on: Iso8601CivilDate }
+  | AuthKeyStillValid
+  // A date NO checked constructor would produce (month 13, February 30, day 0). Not an expiry, not a
+  // validity: the comparison's inputs are garbage, and answering "still valid" to garbage is exactly the
+  // plausible output fail_closed refuses. Consumers treat it as not-usable, and say so out loud.
+  | AuthKeyExpiryUnverifiable { detail: String }
+
+fn tailscale_auth_key_expiry_verdict(
+  expires_on: Iso8601CivilDate,
+  today: Iso8601CivilDate,
+) -> TailscaleAuthKeyExpiryVerdict {
+  let parts_ok = iso8601_utc_instant_parts_are_valid(
+    year: expires_on.year,
+    month: expires_on.month,
+    day: expires_on.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  ) && iso8601_utc_instant_parts_are_valid(
+    year: today.year,
+    month: today.month,
+    day: today.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  )
+  let expires_days = iso8601_days_from_civil(y: expires_on.year, m: expires_on.month, d: expires_on.day)
+  let today_days = iso8601_days_from_civil(y: today.year, m: today.month, d: today.day)
+  if parts_ok == false {
+    AuthKeyExpiryUnverifiable {
+      detail: join(
+        [
+          "expires_on=",
+          to_string(expires_on.year),
+          "/",
+          to_string(expires_on.month),
+          "/",
+          to_string(expires_on.day),
+          " today=",
+          to_string(today.year),
+          "/",
+          to_string(today.month),
+          "/",
+          to_string(today.day),
+          " is outside the calendar; no checked constructor would have produced it",
+        ],
+        "",
+      )
+    }
+  } else if today_days > expires_days {
+    AuthKeyExpiredOn { on: expires_on }
+  } else {
+    AuthKeyStillValid
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE KEY AS A FILE ON THE JOINING HOST -- THE ONLY FORM THIS MODULE WILL PUT INTO argv.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// WHERE THE KEY FILE LIVES IS NOT THIS MODULE'S CLAIM (the path is a custody fact,
+// gunbc.fleet.host_credential_custody_converge::host_credential_custody_row); what this module claims is
+// the SHAPE the upstream flag requires: an absolute path, in `file:` form. `Secret` and `SecretValue`
+// (std.types) are deliberately NOT imported here -- no function in this module could take key material,
+// which is what makes "never in argv" a structural fact rather than a habit.
+type TailscaleAuthKeyFile sole_constructor {
+  path: NonEmptyStr,
+}
+
+// A RELATIVE path is resolved by the daemon, not by the caller, so a relative spelling is a claim about a
+// location nobody chose. The check is the first character only: this is a shape guard, not a path
+// canonicaliser, and canonicalisation belongs to custody with the ownership and mode.
+fn tailscale_auth_key_file_at(path: NonEmptyStr) -> Optional<TailscaleAuthKeyFile> {
+  if 1 < (path as String).length() && starts_with(s: path as String, prefix: "/") {
+    Present { value: TailscaleAuthKeyFile { path: path } }
+  } else {
+    Absent
+  }
+}
+
+// The `--auth-key` value, in the form upstream reads as a file reference. The prefix is upstream's own
+// spelling (up.go, the `--auth-key` registration).
+fn tailscale_auth_key_file_argument(file: TailscaleAuthKeyFile) -> String {
+  concat("file:", file.path as String)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// `tailscale up` -- THE JOIN ITSELF.
+//
+// Upstream, from the implementation the documentation describes (cmd/tailscale/cli/up.go):
+//   --auth-key=<key>|file:<path>  "node authorization key; if it begins with \"file:\", then it's a path to
+//                                 a file containing the authkey"
+//   --hostname=<name>             "hostname to use instead of the one provided by the OS"
+//   --advertise-tags=<t1,t2,...>  "comma-separated ACL tags to request; each must start with \"tag:\" ..."
+//                                 (the flag's own help adds that the prefix "is optional and added
+//                                 automatically when omitted")
+//   --timeout=<duration>          how long to wait for the login; the flag's default is 0, which BLOCKS.
+// THE DEFAULT TIMEOUT IS THE ONE THAT MATTERS TO A CONVERGE: with no timeout, an `up` whose control plane
+// never answers -- an expired key, a tag the ACL refuses, a tailnet that cannot be reached -- blocks
+// FOREVER, and a converge that blocks forever is not a refused run, it is a run that never says anything.
+// So every emitted join carries a timeout. The value is the product's; the requirement is upstream's
+// consequence, and it lives in the argv row so no caller can forget it.
+//
+// WHAT IS NOT PASSED, LOUDLY:
+//   --force-reauth  upstream: "force reauthentication; ... this may bring down the Tailscale connection
+//                   and thus should not be done remotely over SSH or other remote execution mechanism".
+//                   Every leg here IS remote execution over SSH, so the flag is not offered by this module
+//                   at all. A host that needs it is a host whose state this converge does not understand.
+//   --json          upstream: "output in JSON format (WARNING: format subject to change)". The join's
+//                   read-back is `tailscale status --json`, whose members the upstream implementation
+//                   carries as a stable type (ipnstate.Status); `up --json` is a different, explicitly
+//                   unstable format, so nothing here parses it.
+//   --auth-key with a literal key  see the module header: the only auth-key argument this module can
+//                   build is the `file:` form, because no function here accepts key material.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+type TailscaleUpJoinSpec sole_constructor {
+  key_file: Optional<TailscaleAuthKeyFile>,
+  hostname: DnsLabel,
+  advertise_tags: List<NonEmptyStr>,
+  timeout: Second,
+}
+
+// THE SMART CONSTRUCTOR for a join spec: the record itself is buildable only in this module, so the four
+// inputs a join is made of -- the key FILE (checked, so an unconstructible path arrives as Absent and the
+// command refuses), the hostname, the tags, and the bounded wait as a std.measure::Second -- have to
+// arrive through a function a witness can read and a reviewer can cite.
+fn tailscale_up_join_spec_of(
+  key_file: Optional<TailscaleAuthKeyFile>,
+  hostname: DnsLabel,
+  advertise_tags: List<NonEmptyStr>,
+  timeout: Second,
+) -> TailscaleUpJoinSpec {
+  TailscaleUpJoinSpec {
+    key_file: key_file,
+    hostname: hostname,
+    advertise_tags: advertise_tags,
+    timeout: timeout,
+  }
+}
+
+type TailscaleUpJoinArgv
+  = TailscaleUpJoinArgvBuilt { argv: List<String> }
+  | TailscaleUpJoinArgvRefused { cause: String }
+
+fn tailscale_up_join_argv(spec: TailscaleUpJoinSpec) -> TailscaleUpJoinArgv {
+  match spec.key_file {
+    // The checked constructor refused this path (it was not absolute, or was empty): there is no file
+    // reference to hand `up`, and a join without it is not a join -- refuse, never drop the flag.
+    Absent =>
+      TailscaleUpJoinArgvRefused {
+        cause: "the auth key file reference could not be constructed (the path must be absolute)",
+      }
+    Present { value: file } =>
+      if spec.advertise_tags.count() == 0 {
+        TailscaleUpJoinArgvRefused {
+          cause: "a join with no advertised tag enrolls the node as the generating user, not as a role the ACL can address",
+        }
+      } else if !string_non_empty(value: spec.hostname as String) {
+        TailscaleUpJoinArgvRefused { cause: "the hostname the node should claim is empty" }
+      } else if second_count(spec.timeout) <= 0 {
+        // Upstream's own default is 0 == wait forever; a converge must never do that. The seconds number
+        // is read from the measure here, at the argv boundary, and nowhere else
+        // (gunbc.design_argument::single_authority: std.measure owns the unit).
+        TailscaleUpJoinArgvRefused { cause: "a join with no timeout blocks forever when the control plane never answers" }
+      } else {
+        TailscaleUpJoinArgvBuilt {
+          argv: [
+            "up",
+            concat("--auth-key=", tailscale_auth_key_file_argument(file: file)),
+            concat("--hostname=", spec.hostname as String),
+            concat("--advertise-tags=", tailscale_tag_list_wire(tags: spec.advertise_tags)),
+            concat("--timeout=", to_string(second_count(spec.timeout)), "s"),
+          ]
+        }
+      }
+  }
+}
+
+// THE COMMAND, OR THE CAUSE IT WAS REFUSED. NO PARTIAL COMMAND IS EMITTED: a refused spec never becomes a
+// `tailscale up` with a missing flag, which upstream would answer by joining with the DEFAULT hostname and
+// no tags -- the exact two facts the converge exists to get right (@ref(gunbc.design_argument::fail_closed)).
+type TailscaleUpJoinCommand
+  = TailscaleUpJoinCommandBuilt { command: ArgvCommand }
+  | TailscaleUpJoinCommandRefused { cause: String }
+
+fn tailscale_up_join_command(spec: TailscaleUpJoinSpec) -> TailscaleUpJoinCommand {
+  match tailscale_up_join_argv(spec: spec) {
+    TailscaleUpJoinArgvBuilt { argv: argv } =>
+      TailscaleUpJoinCommandBuilt { command: argv_command(program: tailscale_program(), arguments: argv) }
+    TailscaleUpJoinArgvRefused { cause: cause } => TailscaleUpJoinCommandRefused { cause: cause }
+  }
+}
+
+// THE WORDS A JOIN MAY NOT CONTAIN. A witness reads the emitted argv against this, so "the key is never in
+// argv" is a checked claim rather than a comment. Upstream's key prefix is its own spelling; any word that
+// carries it is key material that has leaked into the argument vector by whatever route.
+data tailscale_auth_key_material_prefix: String = "tskey-"
+
+fn tailscale_up_join_argv_carries_no_key_material(argv: List<String>) -> Bool {
+  match argv {
+    Empty => true
+    Cons { head: head, tail: tail } =>
+      !string_contains(s: head, pattern: tailscale_auth_key_material_prefix) &&
+        tailscale_up_join_argv_carries_no_key_material(argv: tail)
+  }
+}
+
+// The tag list as one comma-separated word. Upstream takes a comma-separated list and adds a missing
+// `tag:` prefix itself; this fleet spells the prefix explicitly in product, so the string compared against
+// the ACL is the string the ACL is written in.
+fn tailscale_tag_list_wire(tags: List<NonEmptyStr>) -> String {
+  match tags {
+    Empty => ""
+    Cons { head: head, tail: Empty } => head as String
+    Cons { head: head, tail: tail } =>
+      concat(concat(head as String, ","), tailscale_tag_list_wire(tags: tail))
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// WHETHER A HOST IS JOINED -- THE OBSERVATION, AND THE ONLY STATE THAT COUNTS AS JOINED.
+//
+// `tailscale status --json` carries `BackendState`, whose values the upstream implementation enumerates
+// (ipn/ipnstate/ipnstate.go, Status.BackendState): "One of NoState, NeedsLogin, NeedsMachineAuth,
+// Stopped, Starting, Running." Only RUNNING is a member the router can reach:
+//   NEEDSLOGIN        the node has no netmap identity -- it has never joined, or its key was removed. THE
+//                     JOIN HAS NOT HAPPENED.
+//   NEEDSMACHINEAUTH  enrolled and waiting on the tailnet's approval -- what a key that is not
+//                     pre-approved produces on a tailnet with device approval on. Reported NOT JOINED,
+//                     because from srv1 the node is unreachable: an unapproved node answers nothing.
+//   STOPPED / STARTING / NOSTATE  not a member that answers. STARTING is transient, and a read-back that
+//                     accepted it would report convergence on a state that may not survive.
+// Everything else -- unparseable JSON, a missing member, a value from a future upstream -- is Unreadable,
+// and the converge refuses on it (@ref(gunbc.design_argument::fail_closed): a failure arm refuses, it does
+// not widen to whatever the desired answer is). THE COMMAND ROW IS NOT FORKED: the same
+// `tailscale status --json` extdeps.tailscale.machine_name carries is what the converge runs; this module
+// reads a different member of the same document.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_backend_state_running: String = "Running"
+
+type TailscaleJoinState
+  = JoinStateJoined
+  | JoinStateNotJoined { state: String }
+  | JoinStateUnreadable { cause: String }
+
+fn tailscale_up_join_state_of(status_json: String) -> TailscaleJoinState {
+  match parse_json_document(s: status_json) {
+    JsonDocumentUnreadable { gap: JsonDocumentMalformedAt { at: at } } =>
+      JoinStateUnreadable { cause: concat("status JSON malformed at offset ", to_string(at)) }
+    JsonDocumentUnreadable { gap: JsonDocumentTrailingContentAt { at: at } } =>
+      JoinStateUnreadable { cause: concat("status JSON has trailing content at offset ", to_string(at)) }
+    JsonDocumentParsed { value: document } =>
+      match json_field_string(obj: document, key: "BackendState") {
+        FieldRead { value: value } =>
+          if value == tailscale_backend_state_running {
+            JoinStateJoined
+          } else {
+            JoinStateNotJoined { state: value }
+          }
+        FieldAbsent => JoinStateUnreadable { cause: "status JSON carries no BackendState member" }
+        FieldMalformed { cause: cause } => JoinStateUnreadable { cause: cause }
+      }
+  }
+}
+
+// Whether a host is already a member, which is the question the converge asks BEFORE it places a key file
+// on a device: an already-joined host is a Noop and must not be handed a fresh copy of the fleet's
+// credential. Deliberately the strict arm: true only of Running, so Unreadable never reads as joined.
+fn tailscale_up_join_state_is_joined(state: TailscaleJoinState) -> Bool {
+  match state {
+    JoinStateJoined => true
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// `tailscale ping` -- DOES THE MEMBER ANSWER, AND IS IT THE MEMBER WE MEANT.
+//
+// The router reaches its upstreams by TAILNET NAME, so what the fleet owes is not "the node exists in the
+// admin console" but "a peer on this tailnet, addressed by that name, answers". Upstream's ping is the
+// verb that asks exactly that, and it is the honest instrument for two reasons:
+//   IT RUNS ONLY OVER TAILSCALE. The CLI reference: "Attempt to ping another device exclusively over
+//   Tailscale, even if it's currently connected over the local network. This ensures that the two machines
+//   can communicate using only their Tailscale addresses and keys." A pong is evidence about the tailnet
+//   path, not about the LAN the host may also be on.
+//   IT NAMES WHAT ANSWERED. The implementation prints `pong from <NodeName> (<NodeIP>) via <path> in
+//   <latency>` (cmd/tailscale/cli/ping.go) and exits non-zero with "no reply" when nothing answered. The
+//   name in the pong is the tailnet's own answer to "who is this", which is the fact a read-back needs: an
+//   address that answers from a stale peer record is not the host that was just joined.
+// WHAT THIS IS NOT EVIDENCE OF: ping resolves a machine name "first from the network peer list" (ping.go),
+// which is Tailscale's own view of the tailnet, NOT the host's resolver. So a pong does not prove that
+// `getent ahostsv4 <name>` answers, and the converge that needs the resolver path asks that separately
+// (extdeps.posix.getent::getent_hosts_command). The two read-backs are separate legs because they fail
+// separately, and a router whose upstream does not RESOLVE fails differently from one whose upstream does
+// not ANSWER.
+//
+// THE FLAGS, from upstream's flag registration: `-c` "max number of pings to send. 0 for infinity."
+// (default 10) and `--timeout` "timeout before giving up on a ping" (default 5s). A read-back asks once
+// and waits a bounded time; "0 for infinity" is why the count is not left at the caller's discretion.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_ping_pong_prefix: String = "pong from "
+
+// Upstream's own default for `-c`; the read-back sends one ping, so the bound that matters is the ceiling.
+data tailscale_ping_count_max: Int = 10
+
+type TailscalePingSpec sole_constructor {
+  destination: NonEmptyStr,
+  count: Int,
+  timeout: Second,
+}
+
+fn tailscale_ping_spec_of(
+  destination: NonEmptyStr,
+  count: Int,
+  timeout: Second,
+) -> TailscalePingSpec {
+  TailscalePingSpec {
+    destination: destination,
+    count: count,
+    timeout: timeout,
+  }
+}
+
+type TailscalePingArgv
+  = TailscalePingArgvBuilt { argv: List<String> }
+  | TailscalePingArgvRefused { cause: String }
+
+fn tailscale_ping_argv(spec: TailscalePingSpec) -> TailscalePingArgv {
+  if !string_non_empty(value: spec.destination as String) {
+    TailscalePingArgvRefused { cause: "ping needs a destination" }
+  } else if spec.count < 1 || tailscale_ping_count_max < spec.count {
+    TailscalePingArgvRefused { cause: "ping count must be 1..10 (upstream: \"-c, max number of pings to send\")" }
+  } else if second_count(spec.timeout) <= 0 {
+    TailscalePingArgvRefused { cause: "a ping with no timeout waits on a peer that may never answer" }
+  } else {
+    TailscalePingArgvBuilt {
+      argv: [
+        "ping",
+        concat("-c=", to_string(spec.count)),
+        concat("--timeout=", to_string(second_count(spec.timeout)), "s"),
+        spec.destination as String,
+      ]
+    }
+  }
+}
+
+type TailscalePingCommand
+  = TailscalePingCommandBuilt { command: ArgvCommand }
+  | TailscalePingCommandRefused { cause: String }
+
+fn tailscale_ping_command(spec: TailscalePingSpec) -> TailscalePingCommand {
+  match tailscale_ping_argv(spec: spec) {
+    TailscalePingArgvBuilt { argv: argv } =>
+      TailscalePingCommandBuilt { command: argv_command(program: tailscale_program(), arguments: argv) }
+    TailscalePingArgvRefused { cause: cause } => TailscalePingCommandRefused { cause: cause }
+  }
+}
+
+// The verdict on one ping leg, from the exit code upstream gives and the line upstream prints. NO PONG IS
+// NOT A FAILURE WITH A CAUSE WE INVENT -- upstream's own text ("no reply", a peer's own error, "ping %q
+// timed out") is carried through verbatim so the operator reads what the peer said.
+type TailscalePingVerdict
+  = PingAnswered { node_name: String, line: String }
+  | PingNoAnswer { detail: String }
+  | PingUnreadable { cause: String }
+
+fn tailscale_ping_verdict(exit_code: Int, stdout: String, stderr: String) -> TailscalePingVerdict {
+  if exit_code == 0 && string_contains(s: stdout, pattern: tailscale_ping_pong_prefix) {
+    match tailscale_ping_answer_name(stdout: stdout) {
+      Present { value: pair } => PingAnswered { node_name: pair, line: tailscale_first_line(text: stdout) }
+      Absent =>
+        // A pong line whose shape this parser does not recognise is unreadable, not a name guessed at:
+        // the NAME is the read-back's content, and a converge that reports the wrong node as reachable
+        // is worse than one that refuses.
+        PingUnreadable { cause: concat("pong line carries no node name: ", tailscale_first_line(text: stdout)) }
+    }
+  } else if exit_code == 0 {
+    // A zero exit with no pong is not a state upstream produces for a REMOTE peer: runPing returns nil
+    // only after printing a pong (or for an ip that is the local node's own). Reading it as "answered"
+    // would credit reachability to a host that never answered, so it refuses, with the stdout that
+    // contradicts the exit code attached.
+    PingUnreadable { cause: concat("ping exited 0 without a pong line; stdout: ", stdout) }
+  } else {
+    PingNoAnswer { detail: tailscale_detail_of(exit_code: exit_code, stdout: stdout, stderr: stderr) }
+  }
+}
+
+// The node name out of `pong from <name> (<ip>) via ...`, from the corpus's own text primitives so a
+// format change upstream shows up as Absent -- and then as Unreadable -- rather than as a wrong name.
+fn tailscale_ping_answer_name(stdout: String) -> Optional<String> {
+  let line = tailscale_first_line(text: stdout)
+  let prefix = tailscale_ping_pong_prefix
+  let line_length = string_length(s: line)
+  let prefix_length = string_length(s: prefix)
+  if line_length <= prefix_length || !starts_with(s: line, prefix: prefix) {
+    Absent
+  } else {
+    let rest = substring(s: line, start: prefix_length, end: line_length)
+    let space = tailscale_index_of(s: rest, marker: " ")
+    match space {
+      Present { value: index } =>
+        if index == 0 {
+          Absent
+        } else {
+          Present { value: substring(s: rest, start: 0, end: index) }
+        }
+      // `pong from <name>` with nothing after the name is not what upstream prints (the address always
+      // follows in parentheses), so a name running to the end of the line is a truncation, not a name.
+      Absent => Absent
+    }
+  }
+}
+
+fn tailscale_first_line(text: String) -> String {
+  match tailscale_index_of(s: text, marker: "\n") {
+    Present { value: index } => substring(s: text, start: 0, end: index)
+    Absent => text
+  }
+}
+
+// The peer's own words, with the exit code attached. Which stream carries them is upstream's choice, not
+// ours, so both are kept rather than picked between.
+fn tailscale_detail_of(exit_code: Int, stdout: String, stderr: String) -> String {
+  let head = concat("exit ", to_string(exit_code))
+  if 0 < string_length(s: stderr) {
+    concat(concat(head, ": "), stderr)
+  } else if 0 < string_length(s: stdout) {
+    concat(concat(head, ": "), stdout)
+  } else {
+    head
+  }
+}
+
+// The index of a marker in a string, built from the primitives the corpus gives (string_length,
+// substring, starts_with) so this module has no host-string dependency beyond them and is total.
+fn tailscale_index_of(s: String, marker: String) -> Optional<Int> {
+  let marker_length = string_length(s: marker)
+  if marker_length == 0 {
+    Present { value: 0 }
+  } else {
+    tailscale_index_of_from(s: s, marker: marker, marker_length: marker_length, index: 0)
+  }
+}
+
+fn tailscale_index_of_from(s: String, marker: String, marker_length: Int, index: Int) -> Optional<Int> {
+  let length = string_length(s: s)
+  if length - index < marker_length {
+    Absent
+  } else if starts_with(s: substring(s: s, start: index, end: length), prefix: marker) {
+    Present { value: index }
+  } else {
+    tailscale_index_of_from(s: s, marker: marker, marker_length: marker_length, index: index + 1)
+  }
+}

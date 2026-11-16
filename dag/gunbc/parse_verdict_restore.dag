@@ -145,7 +145,20 @@ fn parse_verdict_locate_statements(ordinal: Int) -> List<Node> {
           parse_verdict_lit(t: "--first-parent"),
           parse_verdict_lit(t: join(["--skip=", int_to_decimal_string(value: ordinal)], "")),
           parse_verdict_lit(t: "--max-count=1"),
-          parse_verdict_var(n: "BASE_SHA")
+          // THE ANCHOR IS THIS RUN'S OWN BASE PARENT, NOT A FETCHED REF OR THE EVENT. A pull_request
+          // run judges the merge ref refs/pull/N/merge, whose FIRST parent is the base-branch tip
+          // this run was built against (verified on the real merge commit 4654a7ad: parent1 =
+          // a613c70 = main, parent2 = 7640109 = the PR head). HEAD^1 is by construction an ancestor
+          // of HEAD, so every first-parent candidate the walk yields is an ancestor of HEAD and the
+          // staleness check (ancestor..HEAD) stays complete.
+          // github.event.pull_request.base.sha (the old anchor) is the base tip from when the PR
+          // OPENED: as main advanced, units newer than that sha could never be located, which is
+          // exactly the fast-lane material a long-open plan-only PR needs (roadmap-only PR 16574
+          // missed units this way). A fetched origin/main could be NEWER than the merge commit
+          // under test, offering candidates that are not ancestors of HEAD; HEAD^1 cannot.
+          // No parents beyond the first (a non-merge HEAD) -> rev-list answers nothing -> no
+          // candidates -> the run takes the full path: fail closed, unchanged.
+          parse_verdict_lit(t: "HEAD^1")
         ]))
       ),
       right: bash_build_command_from_lits(lits: ["true"])
@@ -159,9 +172,32 @@ fn parse_verdict_locate_statements(ordinal: Int) -> List<Node> {
 
 data parse_verdict_locate_unemittable_marker: String = "__GUNBC_PARSE_VERDICT_LOCATE_UNEMITTABLE__"
 
+// THE PROBE LINE the receipts read: prints, as a typed fast-lane line, the anchor this run's walk
+// really starts from. The merge ref's first parent is the base tip (verified on 4654a7ad: parent1 =
+// main, parent2 = the PR head); `none` means HEAD has no first-parent to walk from here, and every
+// restore then misses and the run is full -- fail closed, visible.
+fn parse_verdict_anchor_probe_statements() -> List<Node> {
+  [
+    bash_build_assign(
+      name: "PARSE_VERDICT_ANCHOR",
+      value: bash_build_word_cmdsubst(body: bash_build_or_else(
+        left: bash_build_command_with_words(words: [
+          parse_verdict_lit(t: "git"), parse_verdict_lit(t: "rev-parse"),
+          parse_verdict_lit(t: "--verify"), parse_verdict_lit(t: "--quiet"), parse_verdict_lit(t: "HEAD^1")
+        ]),
+        right: bash_build_command_with_words(words: [parse_verdict_lit(t: "echo"), parse_verdict_lit(t: "none")])
+      ))
+    ),
+    bash_build_command_with_words(words: [
+      parse_verdict_lit(t: "echo"),
+      parse_verdict_words(ws: [parse_verdict_lit(t: "fast lane: anchor="), parse_verdict_var(n: "PARSE_VERDICT_ANCHOR")])
+    ]),
+  ]
+}
+
 fn parse_verdict_locate_script() -> String {
   match bash_emit_stmts(
-    statements: fold_list(xs: parse_verdict_restore_ancestor_ordinals, empty: [], cons: fn(acc, ordinal) { concat(acc, parse_verdict_locate_statements(ordinal: ordinal)) }),
+    statements: fold_list(xs: parse_verdict_restore_ancestor_ordinals, empty: parse_verdict_anchor_probe_statements(), cons: fn(acc, ordinal) { concat(acc, parse_verdict_locate_statements(ordinal: ordinal)) }),
     set_e: true
   ) {
     Accepted { value: v, diagnostics: _ } => v
@@ -175,7 +211,7 @@ fn parse_verdict_locate_step() -> Step {
     id: Present { value: parse_verdict_locate_step_id },
     run: parse_verdict_locate_script(),
     shell: none,
-    env: Present { value: [kv(key: "BASE_SHA", value: yaml_string(s: pull_request_base_sha_expr()))] },
+    env: none,
     working_directory: none,
     if_condition: Present { value: parse_verdict_restore_if() },
     continue_on_error: none,

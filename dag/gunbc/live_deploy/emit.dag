@@ -1935,8 +1935,9 @@ fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t
 // restart-looped: the same symptom as the missing tree, from the other half of the pair.
 //
 // THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
-// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci.ci_spec
-// ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
+// 2026-09-20). The dark-install job carries its OWN download and verify steps -- the release-bins
+// steps ci_release_bins_download_step and ci_release_bins_unpack_verify_step (gunbc.fleet.fleet_release_bins_key),
+// listed by
 // gunbc.fleet.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
 // the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
 // put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier

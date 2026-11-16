@@ -1,0 +1,595 @@
+module test.claim.tailscale_fleet_auth_key_witness
+
+// THE WITNESSES FOR THE FLEET TAILNET JOIN (node adhoc-977efa46-965, 2026-11-15). What they hold the model
+// to: the secret is ONE pinned version of one named secret; the key is the operator's decided shape
+// (reusable, pre-approved, exactly one tag, a 90-day window ending 2027-02-13); the key material NEVER
+// appears in an argument vector; the custody row is root-only on disk; and each member this work ADDED to
+// a shared ledger is present EXACTLY ONCE. The ledgers are deliberately NOT asserted by number (smart-
+// crane-730, 2026-11-16): a count copied from the current tree is a change detector that goes red on any
+// sibling's add (tidy-swift-586's #16547 adds RunnerCiAppPemKey to the same custody ledger), and
+// gunbc.design_argument::fail_closed rejects counts-as-truth. Identity plus the existing roster-covers-
+// every-arm witness (host_credential_custody_converge_witness::w_roster_covers_every_credential, which
+// fails the compile the moment an arm lacks a row) is the load-bearing pair.
+
+import std.logic { Bool }
+import std.algebra { string_contains }
+import std.measure { second, second_count, seconds_per_day }
+import std.types { NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.tailscale.acl { tag_ci }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_civil_date,
+  iso8601_days_from_civil,
+}
+import extdeps.tailscale.join {
+  AuthKeyReusable,
+  AuthKeyPreApproved,
+  AuthKeyPolicyAccepted,
+  tailscale_auth_key_expiry_window_is_upstream,
+  tailscale_auth_key_expiry_verdict,
+  AuthKeyExpiredOn,
+  AuthKeyStillValid,
+  AuthKeyExpiryUnverifiable,
+  tailscale_auth_key_file_argument,
+  tailscale_up_join_argv_carries_no_key_material,
+  tailscale_auth_key_kind_wire,
+  tailscale_auth_key_approval_wire,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
+  tailscale_ping_spec_of,
+  tailscale_ping_command,
+  TailscalePingCommandBuilt,
+  TailscalePingCommandRefused,
+}
+import extdeps.posix.getent { getent_hosts_command }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
+import gunbc.tailscale_fleet_auth_key {
+  tailscale_fleet_auth_key_secret_id,
+  tailscale_fleet_auth_key_secret_ref,
+  tailscale_fleet_auth_key_expected_project,
+  tailscale_fleet_node_tag,
+  tailscale_fleet_auth_key_policy,
+  tailscale_fleet_auth_key_admitted,
+  tailscale_fleet_auth_key_console_observed_expiry,
+  tailscale_fleet_auth_key_expiry_days,
+  tailscale_fleet_auth_key_expires_on,
+  tailscale_fleet_auth_key_generated_on,
+  tailscale_fleet_auth_key_usable_on,
+  tailscale_fleet_auth_key_host_directory,
+  tailscale_fleet_auth_key_host_path,
+  tailscale_fleet_auth_key_file,
+}
+import gunbc.fleet.host_credential_custody_converge {
+  host_custody_credential_wire,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  host_custody_credential_roster,
+  host_credential_custody_row,
+  TailscaleFleetAuthKey,
+  CustodyFileOwnerRead,
+  DirectoryOwnerOnly,
+  CustodyAnyRunnerHost,
+  CustodyDiskBacked,
+}
+import gunbc.auth.fleet_secret_accessor_roster {
+  fleet_accessor_grant_roster,
+  tailscale_fleet_auth_key_accessor_row,
+}
+import gunbc.tailscale_join_converge {
+  JoinConverged,
+  JoinConvergedNoop,
+  JoinHostSelected,
+  JoinHostUnrostered,
+  JoinRefused,
+  tailscale_join_expiry_refusal_wire,
+  tailscale_join_host_selection,
+  tailscale_join_outcome_receipt,
+  tailscale_join_population,
+  tailscale_join_run_settled,
+  tailscale_join_tag_consistency,
+  tailscale_join_today_from_clock,
+  tailscale_join_up_command,
+  tailscale_join_up_timeout,
+}
+import gunbc.fleet.tailscale_join_step { gunbc_ci_tailscale_join_invoke, gunbc_ci_tailscale_join_target }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.decl_ref_resolution_host {
+  DeclarationRefAmbiguous,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefResolved,
+  resolve_declaration_ref_live,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+
+// ── THE SECRET: one named secret, one PINNED version, the fleet's own project ────────────────────────
+
+test fn w_secret_is_the_named_pinned_version() -> Bool {
+  (tailscale_fleet_auth_key_secret_ref.secret as String)
+    == (tailscale_fleet_auth_key_secret_id as String)
+    && (tailscale_fleet_auth_key_secret_id as String) == "tailscale-fleet-auth-key"
+    && (tailscale_fleet_auth_key_secret_ref.version as String) == "1"
+    && (tailscale_fleet_auth_key_secret_ref.project as String)
+      == (tailscale_fleet_auth_key_expected_project as String)
+}
+
+// The pin is not "latest": a rotating ref would let the fleet's enrollment credential change underneath a
+// converge run, which is what the APNs precedent (approval_apns_auth_key_secret_ref) refuses for the same
+// reason.
+test fn w_pin_is_not_latest() -> Bool {
+  (tailscale_fleet_auth_key_secret_ref.version as String) != "latest"
+}
+
+// ── THE KEY: the operator's decided shape, exactly ───────────────────────────────────────────────────
+
+test fn w_key_is_reusable_preapproved_single_tag_90_days() -> Bool {
+  match tailscale_fleet_auth_key_policy {
+    policy =>
+      match policy.kind {
+        AuthKeyReusable =>
+          match policy.approval {
+            AuthKeyPreApproved =>
+              policy.key_tags.count() == 1
+                && second_count(policy.expires_after) == 90 * seconds_per_day()
+                && tailscale_auth_key_expiry_window_is_upstream(
+                  expires_after: policy.expires_after,
+                )
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn w_key_carries_exactly_the_ci_tag() -> Bool {
+  match tailscale_fleet_auth_key_policy.key_tags {
+    Cons { head: head, tail: Empty } => head == tailscale_fleet_node_tag
+    _ => false
+  } && (tailscale_fleet_node_tag as String) == (tag_ci as String)
+}
+
+test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
+  match tailscale_fleet_auth_key_admitted() {
+    AuthKeyPolicyAccepted => true
+    _ => false
+  }
+}
+
+test fn w_key_wires_are_the_upstream_words() -> Bool {
+  tailscale_auth_key_kind_wire(kind: AuthKeyReusable) == "reusable"
+    && tailscale_auth_key_approval_wire(approval: AuthKeyPreApproved) == "pre-approved"
+}
+
+// ── THE EXPIRY: ONE DERIVED FACT, PINNED TO THE POLICY AND TO THE CONSOLE OBSERVATION ────────────────
+// Review 95888: the lifetime was three independent literals checked only against a hard-coded 90 -- a
+// fork under gunbc.design_argument::single_authority, and a literal oracle under fail_closed ("compare
+// a live population to a numeric literal only when the literal is grounded"). The model now records the
+// mint day and the policy window and DERIVES the expiry; this witness is where the three statements are
+// tied together, with the POLICY -- the authority available to ground it -- as the oracle, never 90.
+
+test fn w_expiry_window_is_derived_and_agrees_with_console() -> Bool {
+  let policy_seconds = second_count(tailscale_fleet_auth_key_policy.expires_after)
+  let policy_days = tailscale_fleet_auth_key_expiry_days()
+  // The whole-days division is exact against the policy's own Second count -- grounded on the policy,
+  // and this is what keeps tailscale_fleet_auth_key_expiry_days' integer division faithful.
+  policy_days * seconds_per_day() == policy_seconds
+    && match tailscale_fleet_auth_key_generated_on {
+      // The checked constructor: an Absent mint day would be an unreadable record, and the join refuses
+      // on it -- this witness pins that the recorded mint day IS the console's reading.
+      Absent => false
+      Present { value: generated } =>
+        generated.year == 2026
+          && generated.month == 11
+          && generated.day == 15
+          && match tailscale_fleet_auth_key_expires_on() {
+            Absent => false
+            Present { value: expires } =>
+              // DERIVATION IDENTITY on the calendar authority's own day-count round-trip: the expiry is
+              // mint day + policy window, nothing else. Red if it ever becomes an independent literal.
+              iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day) -
+                iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day) ==
+                policy_days
+                // CROSS-CHECK against the operator's console observation: a key re-minted with a
+                // different lifetime makes derived and observed disagree, and THAT is what turns this
+                // red -- not a number copied from the tree.
+                && match tailscale_fleet_auth_key_console_observed_expiry {
+                  Absent => false
+                  Present { value: observed } =>
+                    observed.year == expires.year
+                      && observed.month == expires.month
+                      && observed.day == expires.day
+                }
+          }
+    }
+}
+
+// The day itself still joins (the expiry day is the LAST valid day); the day after refuses. This is the
+// arm the join consults before it puts a key in front of `up`, so a stale pin fails as a refusal naming
+// the date rather than as a hang.
+test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
+  tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on())
+    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
+      year: 2027,
+      month: 2,
+      day: 14,
+    ))
+    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
+      year: 2025,
+      month: 1,
+      day: 1,
+    ))
+}
+
+// THE RUNG THE JOIN ACTUALLY STANDS ON (review 95863): Iso8601CivilDate is not sole_constructor -- the
+// corpus has raw record literals of it today (dag/test/claim/gpu_market_listing_witness.dag writes one
+// -- so a month-13 date CAN reach the expiry comparison. The guarantee is therefore a CHECK, not
+// unwritability, and this test exercises exactly the path a checked constructor cannot guard: a raw
+// literal handed to the verdict. It must answer Unverifiable, never the plausible AuthKeyStillValid, and
+// the fleet module's usable_on must refuse it. Real dates still answer the ordinary way.
+test fn w_raw_literal_date_verifies_unverifiable_never_valid() -> Bool {
+  let bogus_expires = Iso8601CivilDate { year: 2026, month: 13, day: 40 }
+  let bogus_today = Iso8601CivilDate { year: 2026, month: 2, day: 30 }
+  let good_expires = match tailscale_fleet_auth_key_expires_on() {
+    Present { value: d } => d
+    Absent => Iso8601CivilDate { year: 2027, month: 2, day: 13 }
+  }
+  let good_today = iso8601_civil_date(year: 2026, month: 11, day: 16)
+  let bad_matches = match good_today {
+    // Bogus expiry, real today -> Unverifiable.
+    Present { value: t } =>
+      match tailscale_auth_key_expiry_verdict(expires_on: bogus_expires, today: t) {
+        AuthKeyExpiryUnverifiable { detail: _ } => true
+        AuthKeyStillValid => false
+        AuthKeyExpiredOn { on: _ } => false
+      }
+      // Real expiry, bogus today -> Unverifiable.
+      && match tailscale_auth_key_expiry_verdict(expires_on: good_expires, today: bogus_today) {
+        AuthKeyExpiryUnverifiable { detail: _ } => true
+        AuthKeyStillValid => false
+        AuthKeyExpiredOn { on: _ } => false
+      }
+    Absent => false
+  }
+  let good_matches = match good_today {
+    // The checked constructor's own dates still take the ordinary path.
+    Present { value: t } =>
+      match tailscale_auth_key_expiry_verdict(expires_on: good_expires, today: t) {
+        AuthKeyStillValid => true
+        AuthKeyExpiredOn { on: _ } => false
+        AuthKeyExpiryUnverifiable { detail: _ } => false
+      }
+    Absent => false
+  }
+  bad_matches && good_matches
+    // usable_on fails closed on a raw-literal today, not just a missing one.
+    && !tailscale_fleet_auth_key_usable_on(today: Present { value: bogus_today })
+}
+
+// ── THE KEY NEVER TRAVELS IN ARGV ────────────────────────────────────────────────────────────────────
+
+// The file argument is the `file:` form and nothing else -- and its path is the custody row's own path,
+// so there is one spelling of where the key sits on a host.
+test fn w_key_reaches_up_only_as_a_file_reference() -> Bool {
+  match tailscale_fleet_auth_key_file {
+    // Absent would mean the checked constructor refused the custody row's own path -- and then the join
+    // command must refuse rather than emit an uncredentialed argv (the population claim below pins that
+    // every rostered host's command is Built, which is only possible while this is Present).
+    Absent => false
+    Present { value: file } =>
+      tailscale_auth_key_file_argument(file: file)
+        == concat("file:", tailscale_fleet_auth_key_host_path)
+  }
+    && (tailscale_fleet_auth_key_host_path as String)
+      == concat(tailscale_fleet_auth_key_host_directory, "/fleet-auth.key")
+}
+
+// EVERY emitted join argv, for EVERY enrolled host that has a hostname, carries no word with the
+// upstream key prefix, is the five-word `up` form, and is never REFUSED for a rostered host. This is the
+// universal form: a host added to the enrolment roster tomorrow is covered by this claim without
+// touching this file.
+test fn w_no_join_argv_carries_key_material() -> Bool {
+  fold(
+    tailscale_join_population(),
+    init: true,
+    f: fn(acc, host) {
+      acc && match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+        Absent => true
+        Present { value: hostname } =>
+          match tailscale_join_up_command(hostname: hostname) {
+            TailscaleUpJoinCommandBuilt { command: command } =>
+              command.arguments.count() == 5
+                && match command.arguments {
+                  Cons { head: head, tail: _ } => head == "up"
+                  Empty => false
+                }
+                && tailscale_up_join_argv_carries_no_key_material(argv: command.arguments)
+            TailscaleUpJoinCommandRefused { cause: _ } => false
+          }
+      }
+    }
+  )
+}
+
+// ── THE CUSTODY ROW: root-only bytes, the pinned secret, the host's own path ─────────────────────────
+
+test fn w_custody_row_is_root_only_and_names_the_pinned_secret() -> Bool {
+  match host_credential_custody_row(c: TailscaleFleetAuthKey) {
+    row =>
+      row.secret == tailscale_fleet_auth_key_secret_ref
+        && row.path == tailscale_fleet_auth_key_host_path
+        && match row.file_mode {
+          CustodyFileOwnerRead => true
+          _ => false
+        }
+        && match row.dir_mode {
+          DirectoryOwnerOnly => true
+          _ => false
+        }
+        && match row.host_scope {
+          CustodyAnyRunnerHost => true
+          _ => false
+        }
+        && match row.medium {
+          CustodyDiskBacked => true
+          _ => false
+        }
+        && host_custody_credential_wire(c: TailscaleFleetAuthKey) == "tailscale_fleet_auth_key"
+  }
+}
+
+// ── THE SHARED LEDGERS: every member this work added is present EXACTLY ONCE ─────────────────────────
+// (smart-crane-730, 2026-11-16: identity, not numbers. The numbers 16/22/313 would go red on tidy-
+// swift-586's #16547 adding RunnerCiAppPemKey to the same custody ledger, and a change detector is not
+// a witness. The coverage half is already load-bearing: host_credential_custody_converge_witness::
+// w_roster_covers_every_credential ties the roster to the sum's arms and the EXISTING
+// admit_callers_roster_integrity_witness ties authored entries to admitted ones.)
+
+// The custody credential is rostered exactly once -- no silent duplicate row, no lost arm.
+test fn w_new_custody_credential_is_rostered_exactly_once() -> Bool {
+  fold(
+    host_custody_credential_roster,
+    init: 0,
+    f: fn(acc, c) {
+      acc + match c {
+        TailscaleFleetAuthKey => 1
+        _ => 0
+      }
+    }
+  ) == 1
+}
+
+// The accessor grant is rostered exactly once: exactly one row reads this secret, it IS this module's
+// row (value equality, so a sibling restating the same grant collides here rather than widening
+// silently), and its target carries the PINNED version -- least privilege as modeled is one secret,
+// one version, read only.
+test fn w_new_accessor_row_is_rostered_exactly_once() -> Bool {
+  fold(
+    fleet_accessor_grant_roster,
+    init: 0,
+    f: fn(acc, r) {
+      acc + if (r.target.secret as String) == (tailscale_fleet_auth_key_secret_id as String) {
+        1
+      } else {
+        0
+      }
+    }
+  ) == 1
+    // The one row reading this secret IS this module's row, field by field (value equality is taken
+    // field-wise, so a sibling restating the same grant collides in the count above rather than
+    // widening silently).
+    && fold(
+      fleet_accessor_grant_roster,
+      init: 0,
+      f: fn(acc, r) {
+        acc + if r.lane == tailscale_fleet_auth_key_accessor_row.lane
+          && r.target.project == tailscale_fleet_auth_key_accessor_row.target.project
+          && r.target.secret == tailscale_fleet_auth_key_accessor_row.target.secret
+          && r.target.version == tailscale_fleet_auth_key_accessor_row.target.version {
+          1
+        } else {
+          0
+        }
+      }
+    ) == 1
+    && (tailscale_fleet_auth_key_accessor_row.target.secret as String)
+      == (tailscale_fleet_auth_key_secret_ref.secret as String)
+    && (tailscale_fleet_auth_key_accessor_row.target.version as String) == "1"
+}
+
+// The three argv admissions this work asked for are ALIVE: the sealed argv_command refuses any program
+// whose census does not admit it, so each Built command below is proof its decl_ref sits in
+// extdeps/exec/command.dag's roster -- an identity claim the compiler enforces, not a number copied
+// from the tree. The ping and getent forms additionally carry no key material.
+test fn w_new_argv_admissions_are_alive() -> Bool {
+  match tailscale_ping_command(spec: tailscale_ping_spec_of(
+    destination: "host.example" as NonEmptyStr,
+    count: 1,
+    timeout: second(count: 5),
+  )) {
+    TailscalePingCommandBuilt { command: command } =>
+      command.arguments.count() == 4
+        && match command.arguments {
+          Cons { head: head, tail: _ } => head == "ping"
+          Empty => false
+        }
+        && !fold(
+          command.arguments,
+          init: false,
+          f: fn(acc, word) {
+            acc || string_contains(s: word, pattern: "tskey-")
+          }
+        )
+    TailscalePingCommandRefused { cause: _ } => false
+  } && match getent_hosts_command(name: "host.example" as NonEmptyStr) {
+    command =>
+      command.arguments.count() == 2
+        && match command.arguments {
+          Cons { head: head, tail: _ } => head == "ahostsv4"
+          Empty => false
+        }
+  }
+}
+
+// ── THE CONVERGE'S OWN INVARIANTS ────────────────────────────────────────────────────────────────────
+
+// THE PLACED COPY'S LIFE IS THE JOIN'S LIFE -- enforced, not asserted (review 95817): the removal argv is
+// coreutils' idempotent force removal (absent is success), three words, and it names exactly ONE path:
+// the custody row's own. No wildcard, no directory, nothing the converge did not place.
+test fn w_removal_leg_targets_only_the_copied_key() -> Bool {
+  let words = coreutils_rm_force_argv(paths: [tailscale_fleet_auth_key_host_path as String])
+  words.count() == 3
+    && match words {
+      Cons { head: prog, tail: rest } =>
+        prog == "rm"
+          && match rest {
+            Cons { head: flag, tail: tail2 } =>
+              flag == "-f"
+                && match tail2 {
+                  Cons { head: path, tail: Empty } =>
+                    path == (tailscale_fleet_auth_key_host_path as String)
+                  _ => false
+                }
+            _ => false
+          }
+      Empty => false
+    }
+}
+
+// Every host the join converge claims as its population is a member of the enrolment roster, every host
+// with a hostname advertises exactly the fleet tag (the tag the ACL will address), and every emitted join
+// waits with a bounded timeout -- upstream's own default blocks FOREVER, which a converge must never do.
+// ── THE WET ENTRY: admissions and refusals on SUPPLIED inputs (review 95837's fix, executed by
+// tailscale_join_converge_ci_wet -- the consumer review demanded; these are its decisions with the
+// environment handed in). ──────────────────────────────────────────────────────────────────────
+
+// SELECTION admits exactly the enrolled population and nothing else: every rostered host selects itself
+// (identity, not count), a stranger is refused with its own name echoed, and the population is the sole
+// source of admission.
+test fn w_wet_entry_selection_admits_only_the_population() -> Bool {
+  fold(
+    tailscale_join_population(),
+    init: true,
+    f: fn(acc, h) {
+      acc && match tailscale_join_host_selection(supplied: h as String) {
+        JoinHostSelected { host: selected } => host_identity_eq(a: selected, b: h)
+        JoinHostUnrostered { supplied: _ } => false
+      }
+    },
+  )
+    && match tailscale_join_host_selection(supplied: "not-a-fleet-host") {
+      JoinHostUnrostered { supplied: s } => s == "not-a-fleet-host"
+      JoinHostSelected { host: _ } => false
+    }
+}
+
+// THE CLOCK decides the expiry gate, and a malformed stamp is Absent, not a guessed date: the one shape
+// gunbc.clock_read prints parses; anything else refuses; an unreadable clock refuses.
+test fn w_wet_entry_clock_today_parses_or_refuses() -> Bool {
+  match tailscale_join_today_from_clock(reading: Present { value: "2026-11-16T06:37:28Z" as NonEmptyStr }) {
+    Present { value: d } => d.year == 2026 && d.month == 11 && d.day == 16
+    Absent => false
+  }
+    && match tailscale_join_today_from_clock(reading: Present { value: "16/11/2026 06:37" as NonEmptyStr }) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match tailscale_join_today_from_clock(reading: Absent) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match tailscale_join_today_from_clock(reading: Present { value: "2027-02-13T00:00:00Z" as NonEmptyStr }) {
+      Present { value: d } => d.year == 2027 && d.month == 2 && d.day == 13
+      Absent => false
+    }
+}
+
+// THE REFUSAL IS LOUD: it names REFUSED, carries the key's expiry date in the line, states the recovery,
+// and never carries key material; the unreadable-clock variant blames the clock, not the key.
+test fn w_wet_entry_expiry_refusal_is_loud_and_key_free() -> Bool {
+  match first(tailscale_join_population()) {
+    Absent => false
+    Present { value: host } => {
+      let expired_line = tailscale_join_expiry_refusal_wire(
+        host: host,
+        today: iso8601_civil_date(year: 2027, month: 2, day: 13),
+      )
+      let clock_line = tailscale_join_expiry_refusal_wire(host: host, today: Absent)
+      string_contains(s: expired_line, pattern: "REFUSED")
+        && string_contains(s: expired_line, pattern: "expired on")
+        && string_contains(s: expired_line, pattern: "year=2027")
+        && string_contains(s: expired_line, pattern: "regenerate")
+        && !string_contains(s: expired_line, pattern: "tskey-")
+        && string_contains(s: clock_line, pattern: "clock")
+        && !string_contains(s: clock_line, pattern: "expired on")
+    }
+  }
+}
+
+// THE OUTCOME RECEIPT tells the truth per arm: a converged host whose key copy survived removal failure
+// shows key_removed=false WITH its cause (never a silent success), the noop says the key was never read,
+// the refusal carries its cause, run_settled separates done from not-done, and no arm can print the key.
+test fn w_wet_entry_outcome_receipts_tell_the_truth() -> Bool {
+  match first(tailscale_join_population()) {
+    Absent => false
+    Present { value: host } => {
+      let residue_outcome = JoinConverged {
+        host: host,
+        tailnet_name: "srv3.tailnet.example" as NonEmptyStr,
+        installed: true,
+        placement_action: "placed",
+        key_removed: false,
+        removal_cause: Present { value: "rm exit 1" },
+      }
+      let noop_outcome = JoinConvergedNoop {
+        host: host,
+        tailnet_name: "srv3.tailnet.example" as NonEmptyStr,
+      }
+      let refused_outcome = JoinRefused { host: host, cause: "key expired" }
+      let residue = tailscale_join_outcome_receipt(outcome: residue_outcome)
+      let noop = tailscale_join_outcome_receipt(outcome: noop_outcome)
+      let refused = tailscale_join_outcome_receipt(outcome: refused_outcome)
+      string_contains(s: residue, pattern: "key_removed=false")
+        && string_contains(s: residue, pattern: "rm exit 1")
+        && tailscale_join_run_settled(outcome: residue_outcome)
+        && string_contains(s: noop, pattern: "outcome=noop")
+        && string_contains(s: noop, pattern: "key=never_read")
+        && tailscale_join_run_settled(outcome: noop_outcome)
+        && string_contains(s: refused, pattern: "outcome=refused")
+        && string_contains(s: refused, pattern: "key expired")
+        && !string_contains(s: refused, pattern: "tskey-")
+        && !tailscale_join_run_settled(outcome: refused_outcome)
+    }
+  }
+}
+
+// ONE INHABITANCE CLAIM ON THE REAL ROUTE: the step's target -- the exact identity the
+// fleet-converge workflow dispatches -- RESOLVES LIVE against the source pool to the wet entry that
+// exists in gunbc.tailscale_join_converge, and the invoke script carries it. Not "a string exists":
+// the resolver answers about a real declaration (the same machinery that fail-closes unresolved
+// decl_refs in the exec-command ledger).
+test fn w_wet_entry_target_resolves_to_the_real_wet_function() -> Bool {
+  let target_resolution = resolve_declaration_ref_live(
+    ref: gunbc_ci_tailscale_join_target.declaration,
+    pool_roots: witness_layer_roots,
+  )
+  match target_resolution {
+      DeclarationRefResolved { declaration_identity: id } =>
+        id.qualified_name == "gunbc.tailscale_join_converge.tailscale_join_converge_ci_wet"
+      DeclarationRefModuleAbsent { reference: _ } => false
+      DeclarationRefDeclarationAbsent { reference: _ } => false
+      DeclarationRefFieldAbsent { reference: _ } => false
+      DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    }
+    && string_contains(s: gunbc_ci_tailscale_join_invoke(), pattern: "tailscale_join_converge_ci_wet")
+}
+
+test fn w_population_and_tags_are_consistent() -> Bool {
+  tailscale_join_tag_consistency()
+    && tailscale_join_population().count() > 0
+    && second_count(tailscale_join_up_timeout) > 0
+}

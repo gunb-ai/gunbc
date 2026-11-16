@@ -1,0 +1,37 @@
+module test.claim.compute.host_capacity_home_walk_witness
+
+import std.types { Bool, NonEmptyStr }
+import gunbc.compute.host_capacity { host_capacity_home_for, HostCapacityHomeFound, HostCapacityHomeUnknown }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown }
+
+// THE RED CONTROL (remote-build PR 4), executed RED once to prove it DISCRIMINATES. srv2 has a real dashboard
+// instance whose root lives under /home/briansrls/.local/share -- a path the gunbc-build account cannot even
+// traverse. Asked for srv2 with rostered=true, the one decision host_capacity_home_for MUST return the
+// host-scoped home at /opt/gunbc, NOT that instance's root. If the decision ever falls back to the host's
+// dashboard instance, it returns the /home root and this cell goes red -- the exact regression the host-scoped
+// ledger home exists to prevent. Executed RED by temporarily making the rostered arm of
+// gunbc.compute.host_capacity.host_capacity_home_for resolve through the passed instance instead of the host home.
+test fn rostered_host_resolves_its_ledger_by_host_not_its_instance() -> Bool {
+  let srv2_instance = match dashboard_instance_for_host(host: "srv2") {
+    DashboardInstanceForHost { instance: i } => Present { value: i }
+    DashboardInstanceHostUnknown { host: _ } => Absent
+  }
+  match host_capacity_home_for(host: "srv2" as NonEmptyStr, rostered: true, resolved_instance: srv2_instance) {
+    HostCapacityHomeUnknown { host: _ } => false
+    HostCapacityHomeFound { home: h } => (h.instance_root as String) == "/opt/gunbc"
+  }
+}
+
+// THE MATCHING RULE: an off-roster host keeps its instance's own root (the macbook-local rule) -- it is NOT
+// pulled into /opt/gunbc. Together with the cell above this pins that the rostered flag, and only it, decides
+// host-home-versus-instance; a rostered host gets the host home, an off-roster host keeps its instance tree.
+test fn off_roster_host_keeps_its_instance_root() -> Bool {
+  let srv2_instance = match dashboard_instance_for_host(host: "srv2") {
+    DashboardInstanceForHost { instance: i } => Present { value: i }
+    DashboardInstanceHostUnknown { host: _ } => Absent
+  }
+  match host_capacity_home_for(host: "srv2" as NonEmptyStr, rostered: false, resolved_instance: srv2_instance) {
+    HostCapacityHomeUnknown { host: _ } => false
+    HostCapacityHomeFound { home: h } => (h.instance_root as String) != "/opt/gunbc"
+  }
+}
