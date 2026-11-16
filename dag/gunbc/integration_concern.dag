@@ -3306,7 +3306,7 @@ data deploy_readers_must_order_after_tree_converger: IntegrationConcern = Integr
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers"),
     requirement: "each reader unit that opens the deployed source tree at the instance repo_root -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read -- is ordered After= and Requires= the tree-remote converger unit, so the tree content is present when the reader starts",
-    standing: RequirementUnestablished { decided_by: "the coverage matcher has no ordering axis: deploy_artifact_closure_gate covers a TreeContent by unit kind (converger_brought_up), proving only that a converger runs this deploy, and never records an After=/Requires= edge from a reader unit to the tree-remote converger, so nothing in the model can be checked for the ordering" },
+    standing: RequirementUnestablished { decided_by: "the coverage matcher has no ordering axis: deploy_artifact_closure_gate covers a TreeContent by unit kind (converger_brought_up), proving only that a converger runs this deploy, and never records an After=/Requires= edge from a reader unit to the tree-sync converger, so nothing in the model can be checked for the ordering" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "deployment_artifact_read_set"),

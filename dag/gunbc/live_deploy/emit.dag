@@ -81,6 +81,7 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
+  tree_sync_convergence_oneshot,
 }
 import extdeps.git.inspect {
   git_config_get_exit_unset,
@@ -1391,6 +1392,22 @@ fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
 // tree-remote read is derived from the same unit the deploy emits — not a hand-kept path beside it.
 fn live_deploy_tree_remote_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
   convergence_oneshot_service_unit_file_if_admitted(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
+}
+
+// THE TREE-SYNC UNIT FILE FOR CLOSURE: the tree-sync converger's unit, from the same placement authority that
+// renders its host text. TreeContent coverage comes from tree-sync (the tree PUBLICATION — it fetches and
+// checks out the source tree), NOT from tree-remote (whose ensure_deployed_tree_remote only sets the origin URL).
+// The gate classifies THIS unit file to decide whether a tree-sync restart covers the TreeContent read.
+fn live_deploy_tree_sync_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
+  convergence_oneshot_service_unit_file_if_admitted(
+    spec: spec,
+    oneshot: tree_sync_convergence_oneshot(
+      spec: spec,
+      candidate: "gate-converger-kind-probe",
+      receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+      working_directory: spec.service.repo_root as String,
+    )
+  )
 }
 
 // apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile

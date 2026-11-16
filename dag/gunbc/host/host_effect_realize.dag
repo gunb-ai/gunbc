@@ -6288,11 +6288,11 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
       if owned_directory_outcome_converged(o: outcome) { Absent } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
     }
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
-    ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g, systemctl_action: _, systemctl_unit: _ } =>
       match deploy_retract_command_failure(outcome: command(c)) {
         Absent => Absent
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
@@ -6321,7 +6321,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegReport { step: _, line: l } => [l]
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
-    ApplyLegCommand { step: _, command: _ } => []
+    ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
@@ -6332,7 +6332,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => []
   }
 }
 

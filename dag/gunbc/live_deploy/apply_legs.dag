@@ -174,7 +174,7 @@ import gunbc.host.host_layout {
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
 import extdeps.systemd.unit_file { SystemdUnitFile, SystemdServiceMode, OneshotMode }
 import gunbc.live_deploy.unit_standing { service_type_of_unit_file, service_has_exec_start }
-import gunbc.live_deploy.emit { live_deploy_tree_remote_unit_file_for_closure }
+import gunbc.live_deploy.emit { live_deploy_tree_remote_unit_file_for_closure, live_deploy_tree_sync_unit_file_for_closure }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file, LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
@@ -203,10 +203,14 @@ type FileSource
   = Payload { bytes: String }
   | Staged { source: String }
 
+// THE SYSTEMCTL ACTION: the typed unit operation the leg performs. The gate matches on (action, unit),
+// never on step strings — a leg builder sets these fields; the gate reads them.
+type SystemctlAction = Restart | Enable | Reload
+
 type DeployApplyLeg
   = ApplyLegEnsureDirectory { target: OwnedDirectoryTarget }
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
-  | ApplyLegCommand { step: String, command: ArgvCommand }
+  | ApplyLegCommand { step: String, command: ArgvCommand, systemctl_action: SystemctlAction?, systemctl_unit: String? }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, dest: String, source: FileSource }
   // A directory install whose created directory is TYPED on the leg (not hidden in argv). The gate owns its
   // EXISTENCE (DirectoryExists) — what a .path unit's watched spool/queue directory needs from the deploy.
@@ -216,7 +220,7 @@ type DeployApplyLeg
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
-  | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
+  | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand, systemctl_action: SystemctlAction?, systemctl_unit: String? }
   | ApplyLegBrokerStateDirectories { revision: ReleaseRevisionBinding }
   | ApplyLegRootHelperSnapshot { locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction }
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
@@ -245,13 +249,13 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegEnsureDirectory { target: _ } => "ensure-owned-directory"
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
-    ApplyLegCommand { step: st, command: _ } => st
+    ApplyLegCommand { step: st, command: _, systemctl_action: _, systemctl_unit: _ } => st
     ApplyLegInstallFile { step: st, command: _, dest: _, source: _ } => st
     ApplyLegInstallDirectory { step: st, command: _, dest: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
-    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
+    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => st
     ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } => match a {
       HelperSnapshotInstall => join([l.step_stem as String, "-helper-snapshot"], "")
@@ -280,13 +284,13 @@ fn leg_installed_paths(leg: DeployApplyLeg, broker_base_root: String) -> List<Ow
   match leg {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
-    ApplyLegCommand { step: _, command: _ } => []
+    ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => []
     ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
     ApplyLegInstallDirectory { step: _, command: _, dest: dest } => [OwnedArtifact { path: dest, kind: DirectoryExists }]
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: locus, spine: _, revision: revision, action: a } =>
       // The install arm lays a snapshot at helper_locus_dir(locus, revision); the retire/verify arms write
@@ -436,7 +440,7 @@ fn git_worker_subtree_sweep_legs(plan: ReleaseEffectPlan, instance: HostDashboar
             left: legs,
             right: map(
               dashboard_git_worker_subtree_child_migration(instance: instance, child: child, group: fleet_posix_worker_shared_group_name),
-              argv => ApplyLegCommand { step: join(["git-worker-subtree-regroup-", child as String], ""), command: argv },
+              argv => ApplyLegCommand { step: join(["git-worker-subtree-regroup-", child as String], ""), command: argv, systemctl_action: Absent, systemctl_unit: Absent },
             ),
           ),
         )
@@ -450,7 +454,7 @@ fn git_worker_subtree_posture_legs(remaining: List<ArgvCommand>, n: Int, legs: L
   match remaining {
     Empty => legs
     Cons { head: argv, tail: rest } =>
-      git_worker_subtree_posture_legs(remaining: rest, n: n + 1, legs: list_append(left: legs, right: [ApplyLegCommand { step: join(["repository-shared-posture-", to_string(n)], ""), command: argv }]))
+      git_worker_subtree_posture_legs(remaining: rest, n: n + 1, legs: list_append(left: legs, right: [ApplyLegCommand { step: join(["repository-shared-posture-", to_string(n)], ""), command: argv, systemctl_action: Absent, systemctl_unit: Absent }]))
   }
 }
 
@@ -517,6 +521,8 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
     // The diagnosis reads the path the premise refused: owner, group and mode of <repo>/.git as they
     // stand, which is exactly the fact a refused premise needs on the record.
     diagnosis: stat_default_report_command(path: join([repo as String, "/.git"], "")),
+    systemctl_action: Absent,
+    systemctl_unit: Absent,
   }
   let install_plan = deploy_apply_directories_plan_from(
     targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t => git_worker_subtree_demand_claimed(spec: spec, plan: plan, t: t)),
@@ -530,7 +536,7 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
           apply_belt_unit_leg(step: "git-maintenance-service-unit", dest: dashboard_git_maintenance_service_unit_path(instance: instance), file: dashboard_git_maintenance_service_unit_file(instance: instance)),
           apply_belt_unit_leg(step: "git-maintenance-timer-unit", dest: dashboard_git_maintenance_timer_unit_path(instance: instance), file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
           apply_root_leg(step: "git-maintenance-daemon-reload", argv: systemctl_daemon_reload_argv()),
-          apply_root_leg(step: "git-maintenance-timer-enable", argv: systemctl_enable_argv(unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr)),
+          apply_systemctl_leg(step: "git-maintenance-timer-enable", action: Enable, unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as String, argv: systemctl_enable_argv(unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr)),
         ],
       )
     } else {
@@ -591,7 +597,14 @@ fn deploy_apply_object_source_plan() -> DeployApplyPlan {
 // path on the host, so a leg carries the bytes it writes. The checkout's own paths are absolute under
 // the apply's source root (the root the object-source leg observes), where the script read `$PWD`.
 fn apply_root_leg(step: String, argv: List<String>) -> DeployApplyLeg {
-  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv) }
+  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv), systemctl_action: Absent, systemctl_unit: Absent }
+}
+
+// THE SYSTEMCTL LEG BUILDER: a root command that acts ON A SYSTEMD UNIT. The gate matches on its typed
+// action and unit fields, never on step strings. The argv is the rendered command the wet path executes;
+// action and unit are what the deploy-artifact gate inspects for coverage.
+fn apply_systemctl_leg(step: String, action: SystemctlAction, unit: String, argv: List<String>) -> DeployApplyLeg {
+  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv), systemctl_action: Present { value: action }, systemctl_unit: Present { value: unit } }
 }
 
 // A root directory install carried as a TYPED leg: the created directory is `dest` (gate-owned as
@@ -682,8 +695,10 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
                 step: "tree-sync-restart",
                 command: sudo_elevate_command(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name)),
                 diagnosis: sudo_elevate_command(command: systemctl_status_argv(unit: spec.names.tree_sync_unit_name)),
+                systemctl_action: Present { value: Restart },
+                systemctl_unit: Present { value: spec.names.tree_sync_unit_name as String },
               },
-              ApplyLegCommand { step: "convergence-readback", command: readback },
+              ApplyLegCommand { step: "convergence-readback", command: readback, systemctl_action: Absent, systemctl_unit: Absent },
             ] }
         }
     }
@@ -858,7 +873,7 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
             concat(deploy_apply_attempt_spool_legs(spec: spec), credstore_copy_legs(instance: instance)),
             [
               ApplyLegRetract { step: "attempt-unit-sudo-route-retire", leg: retract_remove_files(head: h as NonEmptyStr, rest: map(rest, p => p as NonEmptyStr)) },
-              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers") },
+              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers"), systemctl_action: Absent, systemctl_unit: Absent },
               ApplyLegRootHelperSnapshot {
                 locus: attempt_system_unit_launcher_locus(instance: instance),
                 spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
@@ -1022,12 +1037,12 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
     left: if plan_reloads_manager(plan: plan) { [apply_root_leg(step: "unit-daemon-reload", argv: systemctl_daemon_reload_argv())] } else { [] },
     right: if !plan_restarts_process(plan: plan) { [] } else { list_append(
       left: [
-        apply_root_leg(step: "serve-enable", argv: systemctl_enable_argv(unit: plan.target.unit)),
-        apply_root_leg(step: "serve-restart", argv: systemctl_restart_argv(unit: plan.target.unit)),
+        apply_systemctl_leg(step: "serve-enable", action: Enable, unit: plan.target.unit as String, argv: systemctl_enable_argv(unit: plan.target.unit)),
+        apply_systemctl_leg(step: "serve-restart", action: Restart, unit: plan.target.unit as String, argv: systemctl_restart_argv(unit: plan.target.unit)),
       ],
       right: if deployment_owns_the_host_approval_broker(spec: spec) { [
-        apply_root_leg(step: "approval-broker-enable", argv: systemctl_enable_argv(unit: gunbc_approval_broker_unit_name)),
-        apply_root_leg(step: "approval-broker-restart", argv: systemctl_restart_argv(unit: gunbc_approval_broker_unit_name)),
+        apply_systemctl_leg(step: "approval-broker-enable", action: Enable, unit: gunbc_approval_broker_unit_name as String, argv: systemctl_enable_argv(unit: gunbc_approval_broker_unit_name)),
+        apply_systemctl_leg(step: "approval-broker-restart", action: Restart, unit: gunbc_approval_broker_unit_name as String, argv: systemctl_restart_argv(unit: gunbc_approval_broker_unit_name)),
       ] } else { [] },
     ) },
   )
@@ -1088,8 +1103,8 @@ fn board_function_converge_install_plan(host: HostIdentity, revision: ReleaseRev
       ]
       let run = [
         apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
-        apply_root_leg(step: "board-function-converge-enable", argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
-        apply_root_leg(step: "board-function-converge-run", argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
+        apply_systemctl_leg(step: "board-function-converge-enable", action: Enable, unit: board_function_converge_unit_name as String, argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
+        apply_systemctl_leg(step: "board-function-converge-run", action: Reload, unit: board_function_converge_unit_name as String, argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
       ]
       let retire_superseded = [ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded }]
       match stage {
@@ -1138,7 +1153,7 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
           ApplyPlanReady { legs: concat(gpu_cap_report_legs(admissions: admissions), [
             apply_staged_leg(step: "gpu-power-cap-unit", dest: srv1_gpu_power_cap_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
             apply_root_leg(step: "gpu-power-cap-reload", argv: systemctl_daemon_reload_argv()),
-            apply_root_leg(step: "gpu-power-cap-enable", argv: systemctl_enable_argv(unit: srv1_gpu_power_cap_unit_name)),
+            apply_systemctl_leg(step: "gpu-power-cap-enable", action: Enable, unit: srv1_gpu_power_cap_unit_name as String, argv: systemctl_enable_argv(unit: srv1_gpu_power_cap_unit_name)),
           ]) }
       }
     }
@@ -1179,7 +1194,7 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
       })
       // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
       // the next boot, never starts the running engine.
-      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_root_leg(step: join(["serving-replica-enable-", name as String], "") as String, argv: systemctl_enable_argv(unit: name)))
+      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_systemctl_leg(step: join(["serving-replica-enable-", name as String], "") as String, action: Enable, unit: name as String, argv: systemctl_enable_argv(unit: name)))
       ApplyPlanReady { legs: concat(concat(retire, [
         apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
       ]), enable_replicas) }
@@ -1293,8 +1308,8 @@ fn apply_leftover_timer_legs(step: String, unit: NonEmptyStr, path: NonEmptyStr)
 
 fn apply_enable_restart_legs(step: String, unit: NonEmptyStr) -> List<DeployApplyLeg> {
   [
-    apply_root_leg(step: join([step, "-enable"], ""), argv: systemctl_enable_argv(unit: unit)),
-    apply_root_leg(step: join([step, "-restart"], ""), argv: systemctl_restart_argv(unit: unit)),
+    apply_systemctl_leg(step: join([step, "-enable"], ""), action: Enable, unit: unit as String, argv: systemctl_enable_argv(unit: unit)),
+    apply_systemctl_leg(step: join([step, "-restart"], ""), action: Restart, unit: unit as String, argv: systemctl_restart_argv(unit: unit)),
   ]
 }
 
@@ -1347,7 +1362,7 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
-      apply_root_leg(step: "belt-exit-drain-enable", argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
+      apply_systemctl_leg(step: "belt-exit-drain-enable", action: Enable, unit: deployment_belt_exit_drain_service_unit_name(names: n) as String, argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
       ],
     ),
     concat(
@@ -1368,7 +1383,7 @@ fn deploy_apply_tree_remote_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
   [
     apply_staged_leg(step: "tree-remote-unit", dest: path as String, payload: render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol)),
     apply_root_leg(step: "tree-remote-reload", argv: systemctl_daemon_reload_argv()),
-    apply_root_leg(step: "tree-remote-restart", argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
+    apply_systemctl_leg(step: "tree-remote-restart", action: Restart, unit: deployment_tree_remote_unit_name(names: spec.names) as String, argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
   ]
 }
 
@@ -1600,13 +1615,32 @@ fn leg_step_present(legs: List<DeployApplyLeg>, step: String) -> Bool {
   }
 }
 
+// THE TYPED SYSTEMCTL MATCHER: checks whether any leg carries the given (action, unit) pair as its typed
+// fields. The gate uses this instead of step-string matching — a leg is identified by what it DOES (Restart
+// on unit X) not by what it is CALLED (step string).
+fn leg_systemctl_action_present(legs: List<DeployApplyLeg>, action: SystemctlAction, unit: String) -> Bool {
+  match first_where(xs: legs, keep: fn(l) {
+    match l {
+      ApplyLegCommand { step: _, command: _, systemctl_action: a, systemctl_unit: u } =>
+        match a { Present { value: av } => av == action && u == Present { value: unit } Absent => false }
+      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: a, systemctl_unit: u } =>
+        match a { Present { value: av } => av == action && u == Present { value: unit } Absent => false }
+      _ => false
+    }
+  }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 // "The plan RUNS this converger during the deploy", keyed on the converger's unit kind (total match):
-// a oneshot converger is covered by a start/restart leg (it runs its work in this deploy); a long-running
-// converger is covered by an enable leg. A new unit kind is a compile error here until someone decides.
-fn converger_brought_up(legs: List<DeployApplyLeg>, unit_step: String, kind: ConvergerUnitKind) -> Bool {
+// a oneshot converger is covered by a Restart leg (it runs its work in this deploy); a long-running
+// converger is covered by an Enable leg. The gate matches on the typed (action, unit) fields set by the
+// leg builder, never on step strings. The dead "-start" arm is gone: no unit is started without being restarted.
+fn converger_brought_up(legs: List<DeployApplyLeg>, unit: String, kind: ConvergerUnitKind) -> Bool {
   match kind {
-    Oneshot => leg_step_present(legs: legs, step: join([unit_step, "-restart"], "")) || leg_step_present(legs: legs, step: join([unit_step, "-start"], ""))
-    LongRunning => leg_step_present(legs: legs, step: join([unit_step, "-enable"], ""))
+    Oneshot => leg_systemctl_action_present(legs: legs, action: Restart, unit: unit)
+    LongRunning => leg_systemctl_action_present(legs: legs, action: Enable, unit: unit)
   }
 }
 
@@ -1654,26 +1688,26 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
           // The tree-content ownership the converger confers is decided FAIL-CLOSED from the converger's own
           // [Service] Type= (converger_kind_of): the absent-unit-file case is an unknown the gate REFUSES, never
           // a guessed kind the gate Proceeds on. Only a KNOWN kind contributes the instance's repo_root tree.
-          match converger_kind_of(unit_label: "tree-remote", unit: live_deploy_tree_remote_unit_file_for_closure(spec: spec)) {
+          match converger_kind_of(unit_label: "tree-sync", unit: live_deploy_tree_sync_unit_file_for_closure(spec: spec)) {
             ConvergerKindMissingUnitFile { unit: unit } =>
               ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: ", render_deploy_halt_cause(cause: ConvergerKindUnknown { unit: unit }), "; the plan is refused before any enable leg runs"], "") }
             ConvergerKindKnown { kind: kind } =>
               let owned: List<OwnedArtifact> = list_append(
                 left: deploy_gate_installed_paths(legs: legs, broker_base_root: spec.approval_broker.repo_root as String),
-                // The deployed source tree is owned by a CONVERGER, not an installer: the plan RUNS the tree-remote
+                // The deployed source tree is owned by a CONVERGER, not an installer: the plan RUNS the tree-sync
                 // converger this deploy. Which leg counts is decided by the converger's OWN [Service] Type= via a
-                // total match (converger_brought_up): a oneshot converger -- tree-remote is a typed oneshot (#16544,
-                // [Service] Type=oneshot) -- is covered by a start/restart leg that runs it during the deploy; a
-                // long-running converger would instead be covered by an enable leg. There is NO tree-remote-enable
+                // total match (converger_brought_up): a oneshot converger -- tree-sync is a typed oneshot (#16544,
+                // [Service] Type=oneshot) -- is covered by a restart leg that runs it during the deploy; a
+                // long-running converger would instead be covered by an enable leg. There is NO tree-sync-enable
                 // leg (the unit is restarted, never systemctl-enable'd) -- which is exactly why the unit kind decides,
                 // not "either leg". It lays content at the instance's declared repo_root (HostDashboardInstance.
                 // repo_root -- the one tree authority, never re-spelled). This proves a converger RUNS this deploy,
                 // NOT that the content is present when a reader starts; reader ordering (each reader unit After=/
                 // Requires= its converger) is a SEPARATE obligation this gate does not establish. Rung: converger
-                // runs this deploy, not ordering. OBSERVED (not a guarantee): in this plan shape the tree-remote-
+                // runs this deploy, not ordering. OBSERVED (not a guarantee): in this plan shape the tree-sync-
                 // restart leg precedes the reader units' start/restart legs -- a property of the plan, not something
                 // the gate enforces.
-                right: if converger_brought_up(legs: legs, unit_step: "tree-remote", kind: kind) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
+                right: if converger_brought_up(legs: legs, unit: spec.names.tree_sync_unit_name as String, kind: kind) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
               )
               match deploy_gate(rows: rows, installed: owned) {
                 Proceed => ApplyPlanReady { legs: legs }

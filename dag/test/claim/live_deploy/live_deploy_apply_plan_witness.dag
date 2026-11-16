@@ -24,11 +24,12 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
   deploy_artifact_closure_gate,
+  SystemctlAction, Restart, Enable, Reload,
   gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names, deployment_tree_remote_unit_name }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
@@ -94,6 +95,31 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 fn has_step(legs: List<DeployApplyLeg>, step: String) -> Bool {
   step_index(legs: legs, step: step) >= 0
+}
+
+// HELPER: replaces the tree-sync-restart leg's step string while preserving its typed systemctl fields.
+// Used by the "renamed step" control to prove the gate matches on (action, unit), not step strings.
+fn replace_tree_sync_restart_step(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> List<DeployApplyLeg> {
+  match find_tree_sync_restart_leg(legs: legs, tree_sync_unit: tree_sync_unit) {
+    Absent => legs
+    Present { value: orig } =>
+      match orig {
+        ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } =>
+          let without = filter(xs: legs, predicate: fn(l) { deploy_apply_leg_step(leg: l) != "tree-sync-restart" })
+          let substitute = ApplyLegDiagnosedCommand { step: "totally-renamed-step", command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } }
+          list_append(left: without, right: [substitute])
+        _ => legs
+      }
+  }
+}
+
+fn find_tree_sync_restart_leg(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> DeployApplyLeg? {
+  first_where(xs: legs, keep: fn(l) {
+    match l {
+      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == tree_sync_unit
+      _ => false
+    }
+  })
 }
 
 fn the_intent() -> HostEffectIntent {
@@ -168,15 +194,56 @@ test fn the_deploy_refuses_when_a_read_binary_is_not_installed() -> Bool {
   }
 }
 
-// RED CONTROL 2, tree-content class: dropping the tree-remote-restart leg removes the only CONVERGER the
-// plan brings up for the deployed source tree, so the TreeContent read on repo_root (ServeBinary working
-// dir, roadmap-daemon, door units) is uncovered -- the route refuses. Proves a DirectoryExists/dir-install
-// leg does not silently cover a TreeContent read (the kind split is real, not decorative).
-test fn the_deploy_refuses_when_the_tree_converger_is_not_brought_up() -> Bool {
+// RED CONTROL 2, tree-content class: dropping the tree-sync-restart leg (the tree PUBLICATION) removes the
+// only CONVERGER the plan brings up for the deployed source tree, so the TreeContent read on repo_root (ServeBinary
+// working dir, roadmap-daemon, door units) is uncovered -- the route refuses. Tree-remote's ensure_deployed_tree_remote
+// only sets the origin URL; it does not publish the tree. Proves a DirectoryExists/dir-install leg does not silently
+// cover a TreeContent read (the kind split is real, not decorative).
+test fn the_deploy_refuses_when_the_tree_sync_publication_is_not_brought_up() -> Bool {
   let spec = deployment_spec_srv1()
-  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) { deploy_apply_leg_step(leg: l) != "tree-remote-restart" })
+  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) {
+    match l {
+      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u != (spec.names.tree_sync_unit_name as String)
+      _ => true
+    }
+  })
   match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without }) {
     ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// GREEN CONTROL: the gate matches on the typed (action, unit) fields, NOT on step strings. Replacing the
+// publication leg's step from "tree-sync-restart" to anything else, while keeping its Restart action and
+// tree_sync_unit_name unit identity, leaves TreeContent coverage intact.
+test fn the_tree_sync_publication_is_covered_despite_a_renamed_step() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  let renamed = replace_tree_sync_restart_step(legs: legs, tree_sync_unit: spec.names.tree_sync_unit_name as String)
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: renamed }) {
+    ApplyPlanReady { legs: _ } => true
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// RED CONTROL (the Codex scenario): a plan that has tree-remote-restart but NO tree-sync publication leg
+// halts on the TreeContent read. tree-remote only sets the git origin URL; it does not publish the tree.
+test fn the_deploy_refuses_when_tree_remote_restarts_without_tree_sync_publication() -> Bool {
+  let spec = deployment_spec_srv1()
+  let without_tree_sync = filter(xs: full_legs(spec: spec), predicate: fn(l) {
+    match l {
+      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u != (spec.names.tree_sync_unit_name as String)
+      _ => true
+    }
+  })
+  let has_tree_remote = any(xs: without_tree_sync, predicate: fn(l) {
+    match l {
+      ApplyLegCommand { step: _, command: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == (deployment_tree_remote_unit_name(names: spec.names) as String)
+      _ => false
+    }
+  })
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without_tree_sync }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs") && has_tree_remote
     ApplyPlanReady { legs: _ } => false
   }
 }
@@ -255,9 +322,9 @@ fn command_within_grants(c: ArgvCommand) -> Bool {
 
 fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
-    ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
+    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => command_within_grants(c: c)
     ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => command_within_grants(c: c)
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g, systemctl_action: _, systemctl_unit: _ } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
     ApplyLegEnsureDirectory { target: _ } => true
@@ -444,9 +511,9 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
       match h {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
-        ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
+        ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => env_binary(legs: rest)
         ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => env_binary(legs: rest)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => env_binary(legs: rest)
@@ -605,9 +672,9 @@ test fn the_git_worker_subtree_premise_leg_follows_the_convergence_readback_imme
 test fn the_git_worker_subtree_ensures_the_children_as_owned_directory_legs() -> Bool {
   let legs = subtree_legs_for(spec: lab_spec())
   let n_ensure = count_ensure_legs(legs: legs)
-  let premise_is_diagnosed = any(legs, leg => match leg { ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st == "git-worker-subtree-premise"  _ => false })
+  let premise_is_diagnosed = any(legs, leg => match leg { ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => st == "git-worker-subtree-premise"  _ => false })
   let regroup_names_shared_group = any(legs, leg => match leg {
-    ApplyLegCommand { step: st, command: c } => string_contains(s: join(concat([st], c.arguments), " "), pattern: "gunbc-attempt")
+    ApplyLegCommand { step: st, command: c, systemctl_action: _, systemctl_unit: _ } => string_contains(s: join(concat([st], c.arguments), " "), pattern: "gunbc-attempt")
     _ => false
   })
   premise_is_diagnosed
@@ -723,9 +790,9 @@ fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> 
 
 fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
-    ApplyLegCommand { step: _, command: c } => argv_words(command: c)
+    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
     ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegEnsureDirectory { target: _ } => []
@@ -744,8 +811,8 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: _, command: _, dest: _, source: src } => match src { Payload { bytes: p } => p, Staged { source: _ } => "" }
-    ApplyLegCommand { step: _, command: _ } => ""
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
+    ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => ""
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
     ApplyLegReport { step: _, line: _ } => ""
     ApplyLegEnsureDirectory { target: _ } => ""
@@ -1015,9 +1082,9 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
             HelperSnapshotRetireSuperseded => launcher_snapshot_owner(legs: rest)
             HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
-        ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => launcher_snapshot_owner(legs: rest)

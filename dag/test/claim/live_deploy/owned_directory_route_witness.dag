@@ -277,8 +277,8 @@ test fn the_existing_lab_subtree_is_planned_by_the_provider_and_nothing_outside_
 fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
   join(
     flat_map(legs, leg => match leg {
-      ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
-      ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
+      ApplyLegCommand { step: st, command: c, systemctl_action: _, systemctl_unit: _ } => concat([st], c.arguments)
+      ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => concat([st], c.arguments)
       ApplyLegInstallFile { step: st, command: c, payload: p } => concat([st, p], c.arguments)
       ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
       _ => []
