@@ -9,6 +9,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secret
 import gunbc.auth.gcp_iam_converge {
   IamConvergeRole, ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole,
   iam_converge_role_id, iam_converge_role_permissions, iam_observe_role_permissions, iam_converge_denied_permissions,
+  iam_observe_secret_role_id,
   iam_observe_service_account, iam_converge_service_account, iam_converge_service_account_id,
   gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_reach_excludes_its_own_trust, same_key_set, cell_preimage,
   secret_custody_cells_for,
@@ -44,7 +45,7 @@ fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
     BootstrapApplyRole { role: r } => iam_converge_role_id(r: r) as NonEmptyStr
     BootstrapObservePool => iam_bootstrap_project_role_name(role_id: "gunbcIamObservePool")
     BootstrapObserveAccount => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveAccount")
-    BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveSecret")
+    BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: iam_observe_secret_role_id as String)
     BootstrapProbeToken => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapProbeToken")
     BootstrapDeltaRole => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapDelta")
     BootstrapJournalRole => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapJournal")

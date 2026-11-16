@@ -156,6 +156,12 @@ data iam_converge_secret_policy_role_permissions: List<String> = [
   "secretmanager.secrets.setIamPolicy",
 ]
 
+// THE OBSERVE-SECRET ROLE IDENTITY, declared once here (the owner of the grant machinery and of
+// iam_observe_role_permissions, whose secretmanager. subset this role carries). The bootstrap names
+// the custom role it creates and permissions from this same data (review 95945: a second spelling of
+// the role name is a fork -- gunbc.design_argument::single_authority).
+data iam_observe_secret_role_id: NonEmptyStr = "gunbcIamObserveSecret"
+
 data iam_observe_role_permissions: List<String> = [
   "iam.workloadIdentityPools.get",
   "iam.workloadIdentityPools.getIamPolicy",
@@ -421,7 +427,7 @@ data secret_custody_observer_label: NonEmptyStr = "secret custody observer cells
 
 data secret_custody_policy_setter_role: String = iam_converge_role_id(r: ConvergeSecretPolicyRole)
 
-data secret_custody_observer_role: String = concat(project_resource(), "/roles/gunbcIamObserveSecret")
+data secret_custody_observer_role: String = concat(project_resource(), "/roles/", iam_observe_secret_role_id as String)
 
 data secret_custody_policy_setter_member: String = federated_service_account_member(email: iam_converge_service_account)
 

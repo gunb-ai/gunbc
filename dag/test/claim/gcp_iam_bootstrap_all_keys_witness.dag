@@ -19,7 +19,7 @@ import gunbc.auth.gcp_secret_access { GrantMemberResolved, GrantMemberUnresolved
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCell, fleet_member_root_cells, TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
 import gunbc.auth.approval_mac_key_provision { approval_mac_key_ceremony_rows }
 import gunbc.fleet.org_actions_converge { org_admin_app_key_ceremony_grant }
-import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_delta_bindings, iam_bootstrap_capability_bindings_over, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret }
+import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_delta_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_role_name, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, BootstrapObserveSecret }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_set_secrets }
@@ -284,4 +284,12 @@ test fn the_production_image_is_the_owner_declaration_over_the_base_roster() -> 
     count(bound_custody_cells(secret: id)) == 2
       && all(wanted_custody_cells(secret: id), w => gcp_cell_in(c: w, xs: bound_custody_cells(secret: id)))
       && all(bound_custody_cells(secret: id), b => gcp_cell_in(c: b, xs: wanted_custody_cells(secret: id))))
+}
+
+// THE ROLE THE BOOTSTRAP CREATES IS THE ROLE THE CUSTODY CELL GRANTS (review 95945): the observe
+// role name has exactly one spelling -- gunbc.auth.gcp_iam_converge iam_observe_secret_role_id -- so
+// the custom role's name and the cell's role can never name different roles. Re-spelling either side
+// turns this red.
+test fn the_observe_secret_role_has_one_spelling_across_both_models() -> Bool {
+  (iam_bootstrap_role_name(role: BootstrapObserveSecret) as String) == secret_custody_observer_role
 }
