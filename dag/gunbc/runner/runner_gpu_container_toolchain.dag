@@ -60,7 +60,7 @@ import extdeps.systemd.systemctl {
   systemctl_is_enabled_verb,
   systemctl_user_status_for_uid_argv,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, rm_force_command, ls_one_per_line_command, ls_long_directory_numeric_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, readlink_command, readlink_links_command, rm_force_command, ls_one_per_line_command, ls_long_directory_numeric_command }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.linux.user_namespaces {
   unshare_map_root_user_as_uid_argv,
