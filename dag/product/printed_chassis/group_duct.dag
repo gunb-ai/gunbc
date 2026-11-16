@@ -2,7 +2,7 @@ module product.printed_chassis.group_duct
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import std.measure { Micrometer, micrometer, micrometer_count }
+import std.measure { Micrometer, micrometer, micrometer_count, measure_add }
 import std.euclidean_geometry { Axis3X, Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
@@ -282,7 +282,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>, toward: Int) -> List<Asse
     block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: toward * sd / 2),
   ]
   let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness, toward: toward))
-  let header_cuts = fold(faces, init: [], f: (acc, mf) => match group_connector_keepout(mf: mf) { Present { value: k } => concat(acc, [block(w: k.length + c, h: um(m: mf.face.face_thickness) + 2 * c, d: t + 2000, x: (um(m: mf.face.face_length) - k.length + c) / 2, y: um(m: mf.offset) + um(m: mf.face.face_thickness) / 2, z: 0 - toward * t / 2)]) Absent => acc })
+  let header_cuts = fold(faces, init: [], f: (acc, mf) => match group_connector_keepout(mf: mf) { Present { value: k } => concat(acc, [block(w: um(m: k.length) + c, h: um(m: mf.face.face_thickness) + 2 * c, d: t + 2000, x: (um(m: mf.face.face_length) - um(m: k.length) + c) / 2, y: um(m: mf.offset) + um(m: mf.face.face_thickness) / 2, z: 0 - toward * t / 2)]) Absent => acc })
   let strip_slots = fold(faces, init: [], f: (acc, mf) => concat(acc, overhang_slots(mf: mf, x_in: x_in, wall: wall, clearance: c, depth: sd, toward: toward)))
   let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces and an outer sleeve"], ""), kind: Printed, scope: FixedFrame,
     adds: concat([plate], lip),
@@ -292,7 +292,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>, toward: Int) -> List<Asse
   let cards = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: concat(acc.parts, [card_part(mf: mf, index: acc.index, toward: toward)]) })
   let keepouts = fold(faces, init: IndexedFaces { index: 0, parts: [] }, f: (acc, mf) => IndexedFaces { index: acc.index + 1, parts: match group_connector_keepout(mf: mf) {
     Present { value: k } => concat(acc.parts, [part(id: join(["POWER-KEEPOUT-", to_string(value: acc.index + 1)], ""), name: join(["8-pin power plug and cable keep-out, ", mf.member.instance.id as String], ""), kind: Clearance, scope: FixedFrame,
-      adds: [block(w: k.length, h: um(m: mf.face.face_thickness), d: k.depth, x: um(m: mf.face.face_length) / 2 - k.length / 2, y: um(m: mf.offset) + um(m: mf.face.face_thickness) / 2, z: 0 - toward * k.depth / 2)],
+      adds: [block(w: um(m: k.length), h: um(m: mf.face.face_thickness), d: um(m: k.depth), x: um(m: mf.face.face_length) / 2 - um(m: k.length) / 2, y: um(m: mf.offset) + um(m: mf.face.face_thickness) / 2, z: 0 - toward * um(m: k.depth) / 2)],
       cuts: [], x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
       notes: "Keep printed material out of this envelope in front of the 8-pin header: from the top end past the header's read near edge by the print policy's allowance, across the face's whole thickness, as deep as the policy's allowance.")])
     Absent => acc.parts
@@ -306,12 +306,12 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>, toward: Int) -> List<Asse
 // back band: the plate covers the whole face, and the T10's plugged head (12 mm across, 4 mm in from the
 // backplate) reaches past its opening's edge, so no narrower band holds it. The head's protrusion is not read
 // and is not needed: the keep-out runs the policy's whole depth.
-type GroupConnectorKeepout { length: Int, depth: Int }
+type GroupConnectorKeepout { length: Micrometer, depth: Micrometer }
 
 fn group_connector_keepout(mf: GroupMemberFace) -> GroupConnectorKeepout? {
   let policy = plug_and_flange_print_policy
   match mf.face.connector {
-    FeaturePresent { value: c } => Present { value: GroupConnectorKeepout { length: um(m: c.from_top) + um(m: policy.ring_exercised.connector_keepout_past_outer_pin), depth: um(m: policy.ring_exercised.connector_keepout_depth) } }
+    FeaturePresent { value: c } => Present { value: GroupConnectorKeepout { length: measure_add(a: c.from_top, b: policy.ring_exercised.connector_keepout_past_outer_pin), depth: policy.ring_exercised.connector_keepout_depth } }
     FeatureAbsentObserved => Absent
     FeatureNotObserved { read_obligation: _ } => Absent
   }
