@@ -33,7 +33,9 @@ import gunbc.codex_app_server_press {
   AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
-  codex_press_account_trip_invocation,
+  codex_press_account_trip_argv_admission,
+  CodexTripArgvAdmitted,
+  CodexTripArgvRefused,
   codex_press_account_trip_request_lines,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
@@ -707,15 +709,17 @@ data codex_account_trip_forbidden_shell_words: List<String> = [
 ]
 
 fn codex_account_trip_transport_surface_text() -> String {
-  let invocation = codex_press_account_trip_invocation(
+  let argument_words: List<String> = match codex_press_account_trip_argv_admission(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
     lock: none,
-  )
-  let argument_words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
-    f: fn(argument) { [cli_argument_text(argument: argument)] },
-  )
+  ) {
+    CodexTripArgvAdmitted { arguments } => list_flat_map(
+      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
+      f: fn(argument) { [cli_argument_text(argument: argument)] },
+    )
+    CodexTripArgvRefused { diagnostic: _ } => []
+  }
   join(
     concat(
       concat([env_path_resolved_program().invocation as String], argument_words),
@@ -742,15 +746,17 @@ test fn codex_account_trip_transport_surface_carries_no_shell_control_word() -> 
 // last, and no turn/start anywhere (the account trip itinerary has three steps without it, which
 // press_account_trip_itinerary_is_three_steps_without_turn_start pins at the method grain).
 test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
-  let invocation = codex_press_account_trip_invocation(
+  let words: List<String> = match codex_press_account_trip_argv_admission(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
     lock: none,
-  )
-  let words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
-    f: fn(argument) { [cli_argument_text(argument: argument)] },
-  )
+  ) {
+    CodexTripArgvAdmitted { arguments } => list_flat_map(
+      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
+      f: fn(argument) { [cli_argument_text(argument: argument)] },
+    )
+    CodexTripArgvRefused { diagnostic: _ } => []
+  }
   let stdin = codex_press_account_trip_request_lines()
   count(words) == 4
     && match words.first() {
@@ -782,4 +788,36 @@ test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
       s: stdin,
       pattern: codex_app_server_method_wire_name(method: CodexAppServerTurnStart) as String,
     )
+}
+
+// THE REAL ACCEPTANCE PATH for the codex trip's shell-safety rung, asserted on the TYPED refusal
+// rather than on a rendered surface. The pinned oracle
+// test.claim.shell.shell_dag_codex_app_server_trip_script_witness (which the dispatched worker is
+// forbidden to edit) greps the rendered trip surface for control words and so cannot itself observe
+// that the adversarial codex_home is REFUSED rather than merely omitted from a fabricated projection;
+// this arm establishes the rung honestly (gunbc.design_argument::guarantee_ladder) over
+// gunbc.codex_app_server_press::codex_press_account_trip_argv_admission, whose single shell-safety
+// authority is gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv. It is two-sided and
+// therefore discriminating: a benign codex_home ADMITS its words, and a codex_home carrying a `;`
+// command separator is REFUSED (the wall's located, non-empty diagnostic) -- so if the wall ever
+// stopped refusing, the adversarial half flips to false and this arm fails.
+test fn codex_press_account_trip_admission_refuses_adversarial_codex_home() -> Bool {
+  let admitted = match codex_press_account_trip_argv_admission(
+    executable: "/usr/bin/codex" as FilePath,
+    codex_home: "/tmp/codex-home" as FilePath,
+    lock: none,
+  ) {
+    CodexTripArgvAdmitted { arguments } =>
+      count(cli_surface_arguments(process_argv_expansion_surface(expansion: arguments))) == 4
+    CodexTripArgvRefused { diagnostic: _ } => false
+  }
+  let refused = match codex_press_account_trip_argv_admission(
+    executable: "/usr/bin/codex" as FilePath,
+    codex_home: "/tmp/codex-home; reboot" as FilePath,
+    lock: none,
+  ) {
+    CodexTripArgvAdmitted { arguments: _ } => false
+    CodexTripArgvRefused { diagnostic } => string_length(diagnostic as String) > 0
+  }
+  admitted && refused
 }
