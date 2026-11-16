@@ -1,14 +1,16 @@
 module gunbc.vscode_dag_syntax_emit
 
-import std.types { String }
-import std.types { Char }
-import std.algebra { fold_list }
+import std.types { String, Char, Bool, List }
+import std.algebra { fold_list, list_snoc_item }
 import std.coercion { unicode_scalar_fold }
 
 import v2.std.compilers.lexing {
+    DelimitedPattern,
+    RepeatPattern,
+    ChoicePattern,
     LexPattern,
     LexPatternFold,
-    fold_lex_pattern
+    fold_lex_pattern,
     LexCharClass,
     WhitespaceChar,
     DigitChar,
@@ -18,45 +20,185 @@ import v2.std.compilers.lexing {
     StringTextChar,
     SingleQuotedStringTextChar,
     LineCommentTextChar,
-    BlockCommentTextChar
+    BlockCommentTextChar,
+    TokenRule,
+    KeywordPattern,
+    AnnotationRule,
+    lex_rule_set_matching_rules
 }
 
-import extdeps.languages.dag.syntax {
-    dag_keyword_literals,
-    dag_keyword_set 
-    }
+import v2.extdeps.languages.dag {
+    dag_lex_rules,
+}
 
 import extdeps.languages.json.emit {
     serialize_json,
     json_array,
     json_kv,
     json_object,
-    json_string
+    json_string,
+    JsonValue
+}
+
+fn dag_keyword_rule_regexes(literals: Bool) -> String {
+    let patterns = fold_list(
+        xs: lex_rule_set_matching_rules(rules: dag_lex_rules()),
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                TokenRule {
+                    token_class,
+                    pattern: KeywordPattern { text }
+                } =>
+                    let is_literal =
+                        token_class == ^dag_token_kw_true
+                        || token_class == ^dag_token_kw_false
+                    if is_literal == literals {
+                        list_snoc_item(
+                            xs: acc,
+                            item: lex_pattern_textmate_regex(
+                                pattern: KeywordPattern { text: text }
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+    concat("(?:", concat(join(patterns, "|"), ")"))
 }
 
 fn dag_keyword_textmate_pattern() -> String {
-    concat(
-        "\\b(",
-        concat(
-            join(
-                map(sorted_map_keys(dag_keyword_set), keyword => keyword),
-                "|"
-            ),
-            ")\\b"
-        )
-    )
+    dag_keyword_rule_regexes(literals: false)
 }
 
 fn dag_literal_textmate_pattern() -> String {
-    concat(
-        "\\b(",
-        concat(
-            join(
-                map(sorted_map_keys(dag_keyword_literals), literal => literal),
-                "|"
-            ),
-            ")\\b"
+    dag_keyword_rule_regexes(literals: true)
+}
+
+fn textmate_match_rule(scope: String, pattern: LexPattern) -> JsonValue {
+    json_object(members: [
+        json_kv(key: "name", value: json_string(s: scope)),
+        json_kv(
+            key: "match",
+            value: json_string(s: lex_pattern_textmate_regex(pattern: pattern))
         )
+    ])
+}
+
+fn dag_comment_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                AnnotationRule { annotation_class, pattern } =>
+                    if annotation_class == ^line_comment {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_match_rule(
+                                scope: "comment.line.double-slash.dag",
+                                pattern: pattern
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
+fn dag_number_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                TokenRule { token_class, pattern } =>
+                    if token_class == ^dag_token_float_literal
+                        || token_class == ^dag_token_int_literal {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_match_rule(
+                                scope: "constant.numeric.dag",
+                                pattern: pattern
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
+fn dag_string_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                TokenRule {
+                    token_class,
+                    pattern: DelimitedPattern {
+                        open,
+                        body: RepeatPattern {
+                            element: ChoicePattern {
+                                left: escapes,
+                                right: _
+                            }
+                        },
+                        close
+                    }
+                } =>
+                    if token_class == ^dag_token_string_literal {
+                        list_snoc_item(
+                            xs: acc,
+                            item: json_object(members: [
+                                json_kv(
+                                    key: "name",
+                                    value: json_string(
+                                        s: "string.quoted.double.dag"
+                                    )
+                                ),
+                                json_kv(
+                                    key: "begin",
+                                    value: json_string(
+                                        s: lex_pattern_textmate_regex(
+                                            pattern: open
+                                        )
+                                    )
+                                ),
+                                json_kv(
+                                    key: "end",
+                                    value: json_string(
+                                        s: lex_pattern_textmate_regex(
+                                            pattern: close
+                                        )
+                                    )
+                                ),
+                                json_kv(
+                                    key: "patterns",
+                                    value: json_array(elements: [
+                                        textmate_match_rule(
+                                            scope: "constant.character.escape.dag",
+                                            pattern: escapes
+                                        )
+                                    ])
+                                )
+                            ])
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
     )
 }
 
@@ -65,16 +207,43 @@ fn expected_vscode_dag_tm_language_json() -> String {
         serialize_json(v: json_object(members: [
             json_kv(key: "name", value: json_string(s: "Dag")),
             json_kv(key: "scopeName", value: json_string(s: "source.dag")),
-            json_kv(key: "patterns", value: json_array(elements: [
+                        json_kv(key: "patterns", value: json_array(elements: [
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#comments"))
+                ]),
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#strings"))
+                ]),
                 json_object(members: [
                     json_kv(key: "include", value: json_string(s: "#keywords"))
                 ]),
                 json_object(members: [
                     json_kv(key: "include", value: json_string(s: "#constants"))
+                ]),
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#numbers"))
                 ])
             ])),
             json_kv(key: "repository", value: json_object(members: [
-                                json_kv(key: "keywords", value: json_object(members: [
+                json_kv(key: "strings", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(elements: dag_string_textmate_rules())
+                    )
+                ])),
+                json_kv(key: "comments", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(elements: dag_comment_textmate_rules())
+                    )
+                ])),
+                json_kv(key: "numbers", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(elements: dag_number_textmate_rules())
+                    )
+                ])),
+                json_kv(key: "keywords", value: json_object(members: [
                     json_kv(key: "patterns", value: json_array(elements: [
                         json_object(members: [
                             json_kv(
