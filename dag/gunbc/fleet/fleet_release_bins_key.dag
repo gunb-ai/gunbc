@@ -1047,6 +1047,7 @@ data fleet_converge_release_bins_retention_excluded_prefixes: List<String> = [
 ]
 data release_bins_retention_answer_basename: String = "release-bins-retention-answer.json"
 data release_bins_retention_ids_basename: String = "release-bins-retention.ids"
+data release_bins_retention_ids_dedup_basename: String = "release-bins-retention.ids.dedup"
 data release_bins_retention_union_basename: String = "release-bins-retention.union"
 data release_bins_retention_flag_basename: String = "release-bins-retention.seen-answer"
 data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
@@ -1411,9 +1412,10 @@ fn release_bins_retention_decide_statements() -> List<Node> {
   // id; deletions run over the deduplicated set and the reported count counts
   // THAT set, not the raw lines.
   let delete_block = bash_build_subshell_from_stmts(stmts: [
-    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "sort"), lit(t: "-n"), lit(t: "-u"), ids_file]))),
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "sort"), lit(t: "-n"), lit(t: "-u"), ids_file]), path: temp(file: release_bins_retention_ids_dedup_basename)),
+    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), temp(file: release_bins_retention_ids_dedup_basename)]))),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: due="), var(n: "IDS")])]),
-    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: bash_build_pipe(left: cmd(ws: [lit(t: "printf"), lit(t: "%s\n"), var(n: "IDS")]), right: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: ".")]))),
+    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), temp(file: release_bins_retention_ids_dedup_basename)]))),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
     release_bins_retention_delete(header: temp(file: release_bins_retention_delete_header_basename)),
     release_bins_retention_echo(word: "done"),
@@ -1421,6 +1423,11 @@ fn release_bins_retention_decide_statements() -> List<Node> {
   let flag_operand = temp(file: release_bins_retention_flag_basename)
   let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), flag_operand])
   [
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_answer_basename)]),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_ids_basename)]),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_ids_dedup_basename)]),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_union_basename)]),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_flag_basename)]),
     // TOTAL comes first: it gates the over-cap declaration and every later
     // page. An absent or non-numeric total leaves the variable empty, every
     // numeric test below false, and the shape verdict to the plan.
