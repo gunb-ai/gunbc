@@ -12743,16 +12743,19 @@ pub fn regen_module_edges(
                 .into_owned()
         })
         .collect();
-    // ONE CORPUS INDEX PER PROCESS. This call used to build its OWN whole-corpus index on top of
-    // the process-shared one the same scope child had already built to admit its worktree, so the
-    // corpus was parsed and typechecked twice in one process and both copies stayed resident. Same
-    // construction, same canonical roots key, so the shared index is a cache hit and not a behavior
-    // change (gunbc.design_argument::single_authority -- the point of the shared index is that
-    // distinct consumers of one pool resolve it once). A refused shared build takes the cold build
-    // rather than answering from anything weaker, and SAYS so: the cold build is the double
-    // parse+typecheck this change exists to remove, so a round that degraded to it must not read as
-    // the repaired route (gunbc.design_argument::fail_closed -- every degradation is typed, located
-    // and countable). The cause the shared build gave is carried into the line.
+    // ONE CORPUS INDEX PER PROCESS, WHERE THE POOLS AGREE. This call used to build its OWN
+    // whole-corpus index on top of the process-shared one, so the corpus was parsed and typechecked
+    // twice in one process and both copies stayed resident. Same construction, same canonical roots
+    // key, so the shared index is a cache hit and not a behavior change
+    // (gunbc.design_argument::single_authority -- distinct consumers of one pool resolve it once).
+    // SCOPED, BECAUSE IT IS NOT UNIVERSAL: the hit needs the demanding route's pool to be the pool
+    // the process already resolved. On the heal route it is not -- this round's pool is `src/v1` plus
+    // `dag` while the same child resolved `dag` plus `src/v2` for the model -- so the shared build is
+    // refused with `SharedIndexSecondResidentPool` and the cold build still runs there (measured, run
+    // 43784443590). A refused shared build takes the cold build rather than answering from anything
+    // weaker, and SAYS so, because a round that degraded must not read as the repaired route
+    // (gunbc.design_argument::fail_closed -- every degradation is typed, located and countable). The
+    // cause the shared build gave is carried into the line.
     let index: Rc<super::MultiEntryIndex> = match super::try_process_shared_index(&abs_roots) {
         Ok(index) => index,
         Err(cause) => {
@@ -12760,7 +12763,14 @@ pub fn regen_module_edges(
             Rc::new(super::build_multi_entry_index(&abs_roots))
         }
     };
-    let edge_index = super::whole_pool_closure_edge_index(&index)?;
+    // UNCOMPOSED ROWS FOR A REVERSE WALK. The affected set is the reachability this route's own
+    // reverse walk takes, so the rows it is handed are the DIRECT dependencies the route reads --
+    // a reference target, or a resolved bare-name provider for a source that declares no `import`
+    // line -- not each endpoint that target's import closure reaches. Spelling the closure cost
+    // 34x the rows on a drain-shaped pool (2,065,084 against 61,052, run 43808654519) and the round
+    // died evaluating them in the model, while the walked member sets were identical on nine edited
+    // sets. Same admission, same fail-closed refusals, same eligibility roster.
+    let edge_index = super::whole_pool_generator_edge_index(&index)?;
     let mut module_of_path: HashMap<String, String> = HashMap::new();
     let mut modules: BTreeSet<String> = BTreeSet::new();
     for (module, source) in index.source_files.iter() {
