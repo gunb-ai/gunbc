@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr, FilePath, GitRef }
 import gunbc.dispatch_credential_acquisition {
   credential_acquisition_slots, credential_acquisition_store, CredentialAcquisitionStoreReady, CredentialAcquisitionStoreUnready,
   credential_recover_root,
@@ -78,6 +78,24 @@ import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
+import gunbc.live_deploy.release_binding {
+  LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObservation, DeployedTreeObserved, DeployedTreeUnobservable,
+  DeployedTreeContentState, DeployedScopeMatchesCommit, TreeCommandFailed,
+}
+import gunbc.running_release_identity {
+  RunningReleaseIdentity, RunningReleaseUnidentified, RunningReleaseUnidentifiedCause,
+  ReleaseIdentityBodyUnparseable,
+}
+import std.content_hash { Fnv1a64Structural }
+import gunbc.roadmap.roadmap_launch_deployment_observe {
+  HealthzObservation, HealthzServed, HealthzRefused, observe_healthz,
+}
+import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
@@ -201,6 +219,57 @@ fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSn
   }
 }
 
+// LAB PAIRING GATE: asks whether the running binary and the deployed source tree form a
+// bound pair before the refresh is allowed to serve. Refusal keeps the last good pair
+// serving; the refusal reason names the binding arm (ReleaseMixed or ReleaseBindingUnobserved)
+// that rejected, making the refusal visible through the existing authority.
+fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
+  let observation = local_deployed_tree_observation(repo_root: instance.repo_root)
+  let identity = match observe_healthz(port: instance.listen_port as Int) {
+    HealthzServed { body: _, identity: id } => id
+    HealthzRefused { detail: _ } =>
+      RunningReleaseUnidentified { cause: ReleaseIdentityBodyUnparseable }
+  }
+  let expected_surface = materialize_live_roadmap_site_surface_bundle().bundle_identity
+  lab_pair_serve_verdict(
+    observation: observation,
+    identity: identity,
+    expected_surface: expected_surface,
+  )
+}
+
+fn local_deployed_tree_observation(repo_root: FilePath) -> DeployedTreeObservation {
+  let head = git.Core.RevParseInRepo(repo: repo_root, target: "HEAD" as GitRef)
+  let root_tree = git.Core.RevParseInRepo(repo: repo_root, target: "HEAD:" as GitRef)
+  match git_object_id_from_untagged_hex(hex: head.revision) {
+    Present { value: revision_oid } =>
+      match git_object_id_from_untagged_hex(hex: root_tree.revision) {
+        Present { value: tree_oid } =>
+          DeployedTreeObserved {
+            revision: revision_oid,
+            tree: tree_oid,
+            content: DeployedScopeMatchesCommit,
+          }
+        Absent =>
+          DeployedTreeUnobservable {
+            cause: TreeCommandFailed {
+              leg: "rev-parse HEAD:",
+              exit_code: root_tree.exit_code,
+              stderr: root_tree.stderr,
+            },
+          }
+      }
+    Absent =>
+      DeployedTreeUnobservable {
+        cause: TreeCommandFailed {
+          leg: "rev-parse HEAD",
+          exit_code: head.exit_code,
+          stderr: head.stderr,
+        },
+      }
+  }
+}
+
 fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
   match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at) {
     BeltPassRecorded => ExitSuccess
@@ -234,7 +303,15 @@ fn belt_observe_once_cli() -> ProcessExit {
               w,
             ], ""))
           DashboardInstanceResolved { instance } =>
-            belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+            match belt_pair_serve_gate(instance: instance) {
+              PairBoundToServe { binding: _ } =>
+                belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+              PairServeRefused { binding: _, reason: r } =>
+                exit_failure(reason: join([
+                  "belt_observe_once_cli: pair unbound, serve refused — last good pair continues: ",
+                  r,
+                ], ""))
+            }
         }
       }
   }
