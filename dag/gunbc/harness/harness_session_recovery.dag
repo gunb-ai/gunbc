@@ -473,6 +473,7 @@ type SessionResumability
   | ResumabilityRequestPendingNotResumable
   | ResumabilityRequestPendingInterrupted { interrupted_calls: List<String> }
   | ResumabilityMalformed { mismatch: String }
+  | ResumabilityUnreadable { detail: String }
   | ResumabilityNotRequestPending
 
 // THE CANONICAL 'THIS RECOVERY IS A REQUEST-PENDING LINEAGE THAT CAN BE RESUMED', projected from the ONE
@@ -496,7 +497,7 @@ fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumabili
         ResumabilityResumable
       }
     SessionRecoveryMalformed { mismatch: mismatch } => ResumabilityMalformed { mismatch: mismatch }
-    SessionRecoveryUnreadable { detail } => ResumabilityMalformed { mismatch: detail }
+    SessionRecoveryUnreadable { detail } => ResumabilityUnreadable { detail: detail }
     SessionRecoveryNone => ResumabilityNotRequestPending
     SessionRecoveryPending { causes: _, resumes_made: _, wakes_made: _, interrupted_calls: _, resume_round: _ } => ResumabilityNotRequestPending
   }

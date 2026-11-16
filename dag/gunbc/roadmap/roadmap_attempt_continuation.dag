@@ -285,6 +285,9 @@ type RefuseCause
   // in nothing. Distinct from an unreadable SUBMISSION STORE (CaptureStoreUnreadable): this is the recovery
   // carrier, read alongside the capture on the present-worktree path.
   | RecoveryRecordMalformed { mismatch: String }
+  // RecoveryRecordUnreadable -- the prior attempt's recovery record could not be READ (an I/O error on the
+  // file itself), distinct from RecoveryRecordMalformed which means the bytes arrived but do not line up.
+  | RecoveryRecordUnreadable { detail: String }
   // WorkerSlotsUnobservable -- the slot set, the authority for which worker ordinals this attempt has already
   // SPENT, could not be read, so the next fresh resume ordinal cannot be named without risking a collision with
   // a slot that may already stand. Fail-closed: the resume is refused and the belt re-decides on a sweep that
@@ -495,7 +498,7 @@ fn continuation_from_absent_capture(prior: PriorExecutionObservation, recovery: 
       }
     SessionRecoveryUnreadable { detail } =>
       Refuse {
-        cause: RecoveryRecordMalformed { mismatch: detail },
+        cause: RecoveryRecordUnreadable { detail },
         reason: join(["the prior attempt ", prior.attempt_key, "'s attempt event log could not be read, so neither a resume nor a next attempt is established: ", detail], ""),
       }
     SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>

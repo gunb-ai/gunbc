@@ -599,7 +599,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   OperatorWorkerGone, OperatorNotConfirmed,
 }
 import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
-import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryMalformed, SessionRecoveryUnreadable, session_recovery_of_events }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryUnreadable, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
 import std.content_hash {

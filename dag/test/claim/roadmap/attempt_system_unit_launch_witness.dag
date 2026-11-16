@@ -9,8 +9,8 @@ import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.filesystem.filesystem_io {
-  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
-  filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
+  filesystem_exact_read,
+  filesystem_read_outcome,
 }
 import extdeps.systemd {
   systemd_service_unit_name, systemd_unit_name_wire,
