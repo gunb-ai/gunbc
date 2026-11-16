@@ -535,6 +535,22 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
   live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
+// THE CLOSURE VIEW OF THE OIDC UNIT ENV. A deployment step's closure view must equal the file the
+// deploy EMITS (deploy intent owns every artifact its units read), so the door closure accessors
+// below install exactly the directives the admitted emission installs — the one Environment
+// directive the reader's PLACEMENT AUTHORITY projects (tracker_web_oidc_serve_placement's Ready
+// config, the same cfg tracker_web_oidc_serve_standing answers ServeConfigured with). An
+// unassigned or unbound placement receives no OIDC Environment and the closure view carries none;
+// a missing-realization placement is refused before any file exists, so no comparison arises.
+fn live_deploy_oidc_unit_env_from_placement(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
 // The belt-B unit: ExecStart is `gunbc run` on the roadmap's ingress binding (gunbc.roadmap.roadmap_ingress;
 // the seed binary answering every request through the ONE .dag handler gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
@@ -647,15 +663,16 @@ fn live_deploy_tailnet_door_serve_unit_file(
   )
 }
 
-// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, with the
-// OIDC readback factored out (oidc_env: []). argv[0] and WorkingDirectory come from `svc` inside
-// over_listener, never from the OIDC directives, so the read-set is the unit's own declaration; a
-// control asserts it equals the Emitted file's on an admitted fixture. Absent when the spec carries no
+// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, carrying
+// the SAME OIDC Environment the admitted emission installs (live_deploy_oidc_unit_env_from_placement
+// — the closure view equals what is emitted; it no longer strips the env). argv[0] and
+// WorkingDirectory come from `svc` inside over_listener, never from the OIDC directives; a control
+// asserts the view equals the Emitted file's on an admitted fixture. Absent when the spec carries no
 // tailnet-door demand (not an enabled unit), the same condition as the producer's NotDeployed.
 fn live_deploy_tailnet_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
   match deployment_tailnet_door_socket(names: spec.names) {
     Absent => none
-    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
   }
 }
 
@@ -694,7 +711,7 @@ fn live_deploy_agent_door_serve_unit_file(
 fn live_deploy_agent_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
   match deployment_agent_door_socket_of(spec: spec) {
     Absent => none
-    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
   }
 }
 

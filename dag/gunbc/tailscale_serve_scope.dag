@@ -33,19 +33,10 @@ fn tailscale_serve_service() -> TailscaleServeService {
   ServeCli
 }
 
-// Does the tailscale serve mapping read an installed artifact? Derived from the serve's OWN typed service
-// (a total match, so adding a serve type is a compile error here, not a silent wrong answer). The tailscale
-// CLI reads nothing installed, so it is false — which is exactly what makes the consumer arm in
-// gunbc.live_deploy.deploy_artifact_read_sets derive NoReadOfRecord from the typed surface instead of a
-// hardcoded constant or a free-form reason String. A future typed serve that loads an installed artifact
-// returns true and that arm degrades to NotYetModeled; the claim "the mapping reads no installed artifact"
-// cannot drift from the typed surface, and the test pins the whole match (tailscale_serve_scope.dag
-// the_tailscale_serve_mapping_no_read_is_derived_from_the_serve_type).
-fn tailscale_serve_mapping_reads_installed_artifact(service: TailscaleServeService) -> Bool {
-  match service {
-    ServeCli => false
-  }
-}
+// The read question the deploy gate asks about a serve MAPPING is NOT decided here: ServeCli is the
+// CLI SURFACE that applies `tailscale serve --bg <backend>`, never the target the mapping serves.
+// What a mapping reads is decided from the ENDPOINT's BACKEND — extdeps.tailscale.serve
+// tailscale_serve_backend_target, consumed by gunbc.live_deploy.deploy_artifact_read_sets.
 
 fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
   TailscaleServeScope { node: node, service: tailscale_serve_service() }

@@ -3,7 +3,7 @@ module extdeps.tailscale.serve
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, Port, List, Bool, Unit }
-import std.algebra { Less, Equal, Greater }
+import std.algebra { Less, Equal, Greater, string_contains }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label, semver_version_parse }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -164,6 +164,79 @@ fn tailscale_serve_backend_is_unix_target(endpoint: TailscaleServeEndpoint) -> B
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
   if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
   else { concat(tailscale_serve_port_proxy_prefix, endpoint.backend as String) }
+}
+
+// WHAT THE BACKEND WORD ADDRESSES -- THE QUESTION THE DEPLOY GATE ASKS. The endpoint's
+// backend: NonEmptyStr is forwarded VERBATIM to `tailscale serve --bg <backend>`
+// (tailscale_serve_configure_command above), and tailscale's target grammar (ipn/serve.go
+// ExpandProxyTargetValue, tailscale.com/kb/1242) has two families and a remainder: a PROXY target
+// tailscale DIALS -- a bare port, a host:port, a URL, or a unix socket (the "unix:" prefix above)
+// -- whose bytes never come from the host's installed artifacts; and a FILESYSTEM target, an
+// absolute path to a file or a directory whose contents tailscale serves, which tailscaled READS
+// at serve time. Anything else (a relative path, a scheme-less word) is not a target this module
+// can decide the reads of. The consumer in gunbc.live_deploy.deploy_artifact_read_sets maps the
+// families onto the artifact contract: proxy and unix-socket backends read nothing of the
+// deployment's, a filesystem backend declares its path, and an unclassifiable word is left NOT
+// YET MODELED rather than guessed (gunbc.design_argument::fail_closed: "failing to compute the
+// answer is a different outcome from computing a conservative one" -- answering NoReadOfRecord for
+// a word that might be a directory would let a deploy admit a mapping whose target the host has
+// never installed).
+type TailscaleServeBackendTarget
+  = ServeBackendProxyTarget
+  | ServeBackendFilesystemTarget { path: NonEmptyStr }
+  | ServeBackendUnclassifiable
+
+// The port-label test tailscale_serve_backend_of_proxy_target applies to the port half of a
+// loopback proxy URL, over the whole word.
+fn tailscale_serve_backend_is_port_label(backend: String) -> Bool {
+  match parse_int(s: backend) {
+    Present { value: n } => n > 0 && to_string(n) == backend
+    Absent => false
+  }
+}
+
+// host:port, the form `tailscale serve --bg localhost:3000` accepts: exactly one ':', a non-empty
+// host before it, and a valid port after it. A word carrying a '/' is a path-shaped word and
+// answers false here so the classifier falls through to Unclassifiable rather than reading a
+// colon inside a path as a port separator.
+fn tailscale_serve_backend_is_host_port(backend: String) -> Bool {
+  if string_contains(s: backend, pattern: "/") {
+    false
+  } else {
+    let parts = split(s: backend, delimiter: ":")
+    if length(parts) == 2 {
+      match parts.first() {
+        Absent => false
+        Present { value: head } => if head == "" {
+          false
+        } else {
+          match parts.skip(n: 1).first() {
+            Absent => false
+            Present { value: tail } => tailscale_serve_backend_is_port_label(backend: tail)
+          }
+        }
+      }
+    } else {
+      false
+    }
+  }
+}
+
+fn tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint) -> TailscaleServeBackendTarget {
+  let backend = endpoint.backend as String
+  if tailscale_serve_backend_is_unix_target(endpoint: endpoint) {
+    ServeBackendProxyTarget
+  } else if string_contains(s: backend, pattern: "://") {
+    ServeBackendProxyTarget
+  } else if starts_with(s: backend, prefix: "/") {
+    ServeBackendFilesystemTarget { path: endpoint.backend }
+  } else if tailscale_serve_backend_is_port_label(backend: backend) {
+    ServeBackendProxyTarget
+  } else if tailscale_serve_backend_is_host_port(backend: backend) {
+    ServeBackendProxyTarget
+  } else {
+    ServeBackendUnclassifiable
+  }
 }
 
 fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {

@@ -1178,7 +1178,10 @@ test fn the_tree_remote_oneshot_joins_the_convergence_slice_with_its_start_bound
 }
 
 // THE REFUSAL ARM IS THE SAME ONE: the tree-remote oneshot placed in the serving slice refuses at the
-// placement module, naming itself and the slice, rather than rendering a unit. The positive control is
+// placement module, naming itself and the slice, rather than rendering a unit. The renderer it asks is
+// the typed face of the ONE admission convergence_oneshot_admission (review 95838): the production text
+// (convergence_oneshot_unit_text) and the deploy-artifact closure consume that same admission, so this
+// oracle sits on the production path, never a parallel match. The positive control is
 // the claim above, where the same oneshot over the declared convergence slice renders.
 test fn the_tree_remote_oneshot_in_a_serving_slice_refuses() -> Bool {
   let serving = deployment_slice_unit_name(names: live_spec().names)

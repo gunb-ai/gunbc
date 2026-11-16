@@ -28,20 +28,29 @@ import gunbc.live_deploy.spec {
   TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor,
-  deployment_oidc_config_steps
+  deployment_declared_serve_mapping_endpoint
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_placement,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned,
+  TrackerWebOidcPlacementUnbound, TrackerWebOidcPlacementMissingRealization,
+}
+import extdeps.tailscale.serve {
+  tailscale_serve_backend_target,
+  ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable,
+}
 import gunbc.live_deploy.unit_standing { service_directive_required_reads_of_unit_file, RequiredDirectiveRead, CommandRead, WorkingDirectoryRead, RequiredFileRead, UnparsableCommand }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_tree_remote_unit_file_for_closure,
   live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
+  live_deploy_oidc_unit_env_from_placement,
 }
-import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
 import extdeps.systemd.unit_file { SystemdUnitFile }
 
 // THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
@@ -119,17 +128,48 @@ fn required_read_paths(xs: List<RequiredDirectiveRead>) -> List<String> {
   })
 }
 
-// The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one the deploy
-// emits), PLUS the OIDC config document it reads at startup when this instance has OIDC placed. The config path
-// is taken from deployment_oidc_config_steps — the SAME authority that installs the OidcConfigArtifact (its path
-// is tracker_web placement cfg.config_path) — so serve's read and the installed artifact are ONE string, never a
-// second spelling that could drift (single_authority). When OIDC is unassigned/unbound the list is empty and
-// serve simply reads no config, exactly as the emitted unit carries no OIDC Environment.
+// THE OIDC READER'S REQUIRED PATHS, from its PLACEMENT AUTHORITY. tracker_web_oidc_serve_placement
+// is who says this instance's OIDC reader is real, and its Ready config carries BOTH files the
+// reader opens at runtime: config_path (the document) and secret_file (the OIDC client secret, read
+// by gunbc.auth.oidc_deployment_config's secret-file reader on every login — with the secret
+// missing, login answers 503). Every unit that receives the OIDC Environment — serve and each OIDC
+// door — declares these two paths through here. Nothing here INSTALLS them: the config document is
+// the OidcConfigArtifact step's installed artifact and secret custody belongs to fleet
+// host_credential_custody_converge; a read is only DECLARED, and the gate refuses a deploy whose
+// host lacks one (a serve whose login is dead on arrival must not be admitted). An unassigned,
+// unbound, or realization-missing placement receives no OIDC Environment and declares nothing.
+fn oidc_reader_required_reads(instance: HostDashboardInstance) -> List<String> {
+  match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [cfg.config_path as String, cfg.secret_file as String]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
+// The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one
+// the deploy emits — the OIDC Environment included, so the closure view equals what is emitted),
+// PLUS the OIDC reader's required paths from the placement authority (above) when this instance has
+// OIDC placed. The emitted Environment directive and these reads are both projections of the SAME
+// placement config (single_authority), so serve's read and the placement can never drift.
 fn serve_unit_read_set(spec: DeploymentSpec, revision: ReleaseRevisionBinding, instance: HostDashboardInstance) -> ArtifactReadSet {
-  let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) })
-  let oidc_paths = list_map(deployment_oidc_config_steps(instance: instance), fn(s) { s.path as String })
+  let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec)) })
+  let oidc_paths = oidc_reader_required_reads(instance: instance)
   match base {
     Declared { paths: ps } => Declared { paths: list_append(left: ps, right: oidc_paths) }
+    other => other
+  }
+}
+
+// A DOOR unit's read set: argv[0] + WorkingDirectory + EnvironmentFile from its OWN typed unit file
+// through the ONE classifier (the closure accessor's view, which equals what the deploy emits —
+// OIDC Environment included), PLUS the OIDC reader's required paths when the door receives the OIDC
+// Environment — the same placement authority serve reads from, so a door is never admitted to serve
+// logins while the host lacks the secret it opens per login. No door file (no socket demand) leaves
+// the arm NotYetModeled exactly as before.
+fn door_unit_read_set(unit_file: SystemdUnitFile?, instance: HostDashboardInstance) -> ArtifactReadSet {
+  match unit_file_read_set(unit_file) {
+    Declared { paths: ps } => Declared { paths: list_append(left: ps, right: oidc_reader_required_reads(instance: instance)) }
     other => other
   }
 }
@@ -138,17 +178,17 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
   match step.kind {
     ComposeOwned { kind: ck } => match ck {
       // THE SERVED UNIT reads {its ExecStart binary, its WorkingDirectory tree} from its OWN typed unit file
-      // (live_deploy_serve_unit_file_over, OIDC Environment factored to [] for the argv[0]/WorkingDirectory read),
-      // PLUS the OIDC config document it reads at startup (from deployment_oidc_config_steps — the same authority
-      // that installs the OidcConfigArtifact). When OIDC is unassigned/unbound the config list is empty.
+      // (live_deploy_serve_unit_file_over — the closure view equals what is emitted, OIDC Environment included),
+      // PLUS the OIDC reader's required paths (its config document AND its client secret) from the placement
+      // authority — oidc_reader_required_reads below. When OIDC is unassigned/unbound the list is empty.
       SystemdUnit => serve_unit_read_set(spec: spec, revision: revision, instance: instance)
       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
       FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
       FabricStorageServeMapping => NotYetModeled { reason: "a tailscale serve mapping for fabric has no ExecStart and is excluded with fabric storage (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10). DISSOLUTION: if it becomes a unit with a declared read, or the ruling is lifted" }
       // THE TAILNET DOOR's read = {argv[0] (serve binary), WorkingDirectory (svc.repo_root)} from its OWN
       // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
-      TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision))
-      AgentDoorServeUnit => unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision))
+      TailnetDoorServeUnit => door_unit_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision), instance: instance)
+      AgentDoorServeUnit => door_unit_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision), instance: instance)
       // The OIDC config is NOT a unit and performs no read of record; it is a non-executable artifact the deploy
       // installs, read by the serve unit at startup (the serve row above declares that read). Recorded here as an
       // installed artifact so it is located and countable — never the false NotYetModeled ("unit whose reads aren't
@@ -177,15 +217,25 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // THE BELT .path unit's read of record is the directory it watches for non-empty: their watched dirs are rows in the emit's read-of-record
       // (live_deploy_belt_event_path_read_paths), so the gate requires them installed before the drain it triggers runs.
       BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec: spec) }
-      // The tailscale serve mapping has no ExecStart: `tailscale serve configure` runs from the tailscale CLI, so it is
-      // a no-read-of-record kind. Its arm derives from the SERVE's OWN typed TailscaleServeService (total match; no
-      // free-form reason String), not a hardcoded constant here — a serve type that DOES read an artifact yields
-      // NotYetModeled instead. This arm still enumerates the kind explicitly: no catch-all, so a new kind stays a compile error.
-      TailscaleServeMapping => if tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service()) {
-        NotYetModeled { reason: "the tailscale serve CLI surface is a serve type that reads an installed artifact; declare its read here" }
-      } else {
-        NoReadOfRecord
-      }
+      // THE TAILSCALE SERVE MAPPING's read is decided by what its endpoint's BACKEND addresses — not by the CLI
+      // surface that configures it (`ServeCli` is HOW the mapping is applied, never WHAT is served). The endpoint's
+      // backend word is forwarded VERBATIM to `tailscale serve --bg <backend>`: a proxy (URL, host:port, bare port)
+      // or a unix-socket backend is dialed and reads nothing of the deployment's — NoReadOfRecord; a file or
+      // directory backend (an absolute path) IS read by tailscaled at serve time — Declared, so the gate refuses
+      // the mapping while the host lacks the target. The step carries only {kind, path}, so the endpoint is found
+      // through its OWNING AUTHORITY — gunbc.live_deploy.spec deployment_declared_serve_mapping_endpoint, keyed by
+      // the step's route key — never re-spelled here (single_authority: no second endpoint inventory). A backend
+      // word the classifier cannot place, or a step no declared endpoint keys, is NOT YET MODELED: guessing either
+      // way fabricates (fail_closed). No catch-all: a new kind stays a compile error.
+      TailscaleServeMapping =>
+        match deployment_declared_serve_mapping_endpoint(names: spec.names, step: step) {
+          Absent => NotYetModeled { reason: "the mapping step's route key belongs to no serve endpoint this spec declares, so no backend authority can decide what it reads" }
+          Present { value: endpoint } => match tailscale_serve_backend_target(endpoint: endpoint) {
+            ServeBackendProxyTarget => NoReadOfRecord
+            ServeBackendFilesystemTarget { path: p } => Declared { paths: [p as String] }
+            ServeBackendUnclassifiable => NotYetModeled { reason: "the declared endpoint's backend word is neither a proxy target tailscale dials nor an absolute filesystem path it serves; its reads are unclassifiable" }
+          }
+        }
       // The tree-remote unit reads {its sync-script argv[0], its WorkingDirectory tree}, read from its OWN typed oneshot unit file (via the placement
       // authority's convergence_oneshot_service_unit_file) through the unit_standing classifier — the same unit file the deploy emits.
       DeployedTreeRemoteUnit => unit_file_read_set(live_deploy_tree_remote_unit_file_for_closure(spec: spec))
