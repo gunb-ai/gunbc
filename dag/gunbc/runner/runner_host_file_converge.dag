@@ -303,7 +303,7 @@ fn runner_slot_cpu_desired(host: HostIdentity) -> RunnerSlotCpuDesired {
             file: FleetHostFileDesired {
               subject: "runner-cpu-dropin" as NonEmptyStr,
               path: gunbc_runner_per_slot_cpu_dropin_path as FilePath,
-scope: fleet_host_file_scope,
+              scope: fleet_host_file_scope,
               content: cap_dropin_content(
                 property: systemd_cpu_quota_property,
                 bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
@@ -321,7 +321,7 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
     FleetHostFileDesired {
       subject: "runner-teardown-dropin" as NonEmptyStr,
       path: runner_unit_teardown_dropin_path() as FilePath,
-scope: fleet_host_file_scope,
+      scope: fleet_host_file_scope,
       content: gunbc_runner_unit_teardown_dropin_text(),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
       validation: NoValidation,
@@ -329,7 +329,7 @@ scope: fleet_host_file_scope,
     FleetHostFileDesired {
       subject: "needrestart-runner-deferral" as NonEmptyStr,
       path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-scope: fleet_host_file_scope,
+      scope: fleet_host_file_scope,
       content: needrestart_conf_d_text(overrides: [
         NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
       ]),
@@ -343,7 +343,7 @@ fn runner_host_fragment_file(fragment: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "runner-unit-fragment" as NonEmptyStr,
     path: runner_unit_system_path as FilePath,
-scope: fleet_host_file_scope,
+    scope: fleet_host_file_scope,
     content: fragment,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
@@ -354,7 +354,7 @@ fn runner_host_depriv_file(depriv: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "runner-depriv-dropin" as NonEmptyStr,
     path: runner_unit_depriv_dropin_path() as FilePath,
-scope: fleet_host_file_scope,
+    scope: fleet_host_file_scope,
     content: depriv,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
@@ -374,7 +374,7 @@ fn runner_host_slot_role_file(spec: RunnerHostSpec, slot: RunnerSlotIdentity) ->
       Present { value: FleetHostFileDesired {
         subject: "runner-slot-role-dropin" as NonEmptyStr,
         path: runner_unit_slot_role_dropin_path(slot: slot) as FilePath,
-scope: fleet_host_file_scope,
+        scope: fleet_host_file_scope,
         content: text,
         mode: RemoteFileModeOwnerReadWriteWorldRead,
         validation: NoValidation,
@@ -588,7 +588,7 @@ fn runner_host_sudoers_desired(host: HostIdentity) -> RunnerHostSudoersDesired {
         file: FleetHostFileDesired {
           subject: "runner-host-sudoers" as NonEmptyStr,
           path: runner_host_sudoers_install_path as FilePath,
-scope: fleet_host_file_scope,
+          scope: fleet_host_file_scope,
           content: c,
           mode: RemoteFileModeOwnerGroupRead,
           validation: VisudoCheck,
@@ -650,7 +650,7 @@ fn runner_host_jit_wrapper_file(script: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "runner-jit-wrapper" as NonEmptyStr,
     path: runner_lifecycle_jit_wrapper_path as FilePath,
-scope: runner_lifecycle_jit_wrapper_scope,
+    scope: runner_lifecycle_jit_wrapper_scope,
     content: script,
     mode: RemoteFileModeOwnerReadWriteExecuteWorldRead,
     validation: NoValidation,
@@ -4085,7 +4085,7 @@ fn runner_host_cap_member_file(m: CapMember) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: concat("runner-cap-dropin ", m.dropin_path as String) as NonEmptyStr,
     path: m.dropin_path as FilePath,
-scope: fleet_host_file_scope,
+    scope: fleet_host_file_scope,
     content: m.content,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
