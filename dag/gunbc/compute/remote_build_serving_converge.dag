@@ -291,8 +291,14 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
         SshTargetResolved { target: target } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: remote_build_serving_observe_attempt_raw) {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-            FleetSshContextReady { context: context, receipt: context_receipt } => {
-              let view = observe_host_reads(target: target, context: context, d: remote_build_serving_desired(host: hi))
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              // Review 95884: a host with no capacity home has no ledger service user. The desired
+              // builder refuses rather than fabricate "", so this arm refuses the run too — it never
+              // assesses against an empty member (fail_closed).
+              match remote_build_serving_desired(host: hi) {
+                Absent => exit_failure(reason: concat("remote_build_serving_observe: ", raw_host, " has no capacity home directory, so its ledger service user is unfabricatable; refusing to assess (fail_closed)"))
+                Present { value: hi_desired } => {
+                  let view = observe_host_reads(target: target, context: context, d: hi_desired)
               // The single comparator's expected values are the executor plan-time pin, read ONCE
               // here and handed to serve_assess (and, in PR 5(b), to the apply). An unbuildable pin
               // means the run cannot name what the host should match, so it refuses rather than
@@ -318,6 +324,7 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
                 }
               }
             }
+              }
           }
       }
     }

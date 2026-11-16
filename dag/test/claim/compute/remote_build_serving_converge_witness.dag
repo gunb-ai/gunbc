@@ -68,7 +68,9 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
 
 // The header names the host and the probed_at context; the body names the terminal state.
 test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
@@ -77,13 +79,17 @@ test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
       string_contains(s: body, pattern: "srv1.example") && string_contains(s: body, pattern: "remote-build-serving-plan: drift")
     }
   }
+    }
+  }
 }
 
 // LEAK CONTROL: the receipt must carry the unmet item by NAME but never the value of the
 // secret forced-command line (the candidate public key / command). A naive renderer that
 // printed deviations' observed/desired strings would leak the key into a CI artifact.
 test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
@@ -92,12 +98,16 @@ test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
       string_contains(s: body, pattern: "store.root") && string_contains(s: body, pattern: line) == false
     }
   }
+    }
+  }
 }
 
 // An already-converged host's receipt is the settled/adopt wording — the observe reports the
 // host as a no-op rather than planning to rebuild it.
 test fn a_converged_host_receipt_reports_settled() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
@@ -112,6 +122,8 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
       ), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
       string_contains(s: body, pattern: "remote-build-serving-plan: settled")
+    }
+  }
     }
   }
 }

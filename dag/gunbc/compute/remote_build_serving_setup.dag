@@ -222,10 +222,10 @@ type RemoteBuildServingDesired {
 // The service user that must share the ledger group is read off the ledger's own area
 // ownership (the first shared 03770 area is service-user : gunbc-compute owned), so the
 // group membership and the ledger owner can never drift apart in the model.
-fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String {
+fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
   match first_where(dirs, _ => true) {
-    Present { value: d } => owned_directory_owner(t: d).user as String
-    Absent => ""
+    Present { value: d } => Present { value: owned_directory_owner(t: d).user as String }
+    Absent => Absent
   }
 }
 
@@ -255,12 +255,18 @@ fn serving_forced_command_line(host: HostIdentity) -> String? {
   }
 }
 
-fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired {
+fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired? {
   let instance = remote_build_serving_instance(host: host)
   let home = fleet_posix_remote_build_home() as String
   let ledger = host_capacity_home_directories(host: host)
-  let service_user = serving_ledger_service_user(dirs: ledger)
-  {
+  let service_user_opt = serving_ledger_service_user(dirs: ledger)
+  // A host with NO capacity home directory has no ledger service user to name. The "" it would
+  // otherwise fall back to is a fabricated member (fail_closed, review 95884): it would flow into
+  // group_members and ledger_service_user and let the plan assess/mutate against a made-up member.
+  // So the desired state is absent and the plan refuses the host, never assesses the empty member.
+  match service_user_opt {
+    Absent => Absent
+    Present { value: service_user } => Present { value: {
     host: host,
     account_name: fleet_posix_remote_build_user.name as String,
     account_uid: fleet_posix_remote_build_user.uid,
@@ -280,6 +286,7 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     store_staging: concat(instance.instance_root as String, "/materialization-store-staging"),
     authorized_keys_path: concat(home, "/.ssh/authorized_keys"),
     forced_command_line: serving_forced_command_line(host: host),
+    } }
   }
 }
 
