@@ -229,7 +229,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'mtcollins1_boot' && github.event.inputs.mode != 'mtcollins1_pxe_mac_discovery' && github.event.inputs.mode != 'fleet_keypair_mint' && github.event.inputs.mode != 'review_sheet_converge' && github.event.inputs.mode != 'qualification_floor'
     permissions:
       contents: read
-      actions: read
+      actions: write
     outputs:
       release_bins_key: ${{ steps.release_bins_key.outputs.key }}
       revision: ${{ needs['plan-revision'].outputs.revision || github.sha }}
@@ -483,7 +483,7 @@ jobs:
             .release-bins-staging/release-bins.manifest
           key: ${{ steps.release_bins_key.outputs.key }}
         timeout-minutes: 10
-      - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
+      - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs; enforce release-bins cache retention
         id: release_bins_outcome
         run: |
           if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
@@ -530,6 +530,14 @@ jobs:
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
           'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          'echo' 'release-bins retention: keep=16'
+          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-retention-auth-header'; 'curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-retention-auth-header' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key=''release-bins-' '-o' "$ROOT"'/release-bins-retention-answer.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-auth-header' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-auth-header'; 'true')) || 'echo' 'release-bins retention: lookup-failed'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && ('jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.created_at | type) == "string" and (.id | type) == "number") then [.actions_caches[] | select((.key | startswith("release-bins-")) and .key != $ENV.RELEASE_BINS_KEY and (.key | startswith("fast-lane") | not) and (.key | startswith("parse-verdict") | not) and (.key | startswith("cargo-ci") | not) and (.key | startswith("gunbc-materialization") | not))] | sort_by(.created_at) | .[0: (if length > 16 then length - 16 else 0 end)] | .[] | .id | tostring else error("cache-API answer is not the admitted shape") end end' 'release-bins-retention-answer.json' > "$RUNNER_TEMP"'/release-bins-retention.ids' || 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention.ids') || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && 'true' || 'echo' 'release-bins retention: no-answer'
+          '[' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && (IDS=$('cat' "$RUNNER_TEMP"'/release-bins-retention.ids'); 'echo' 'release-bins retention: due='"$IDS"; COUNT=$('grep' '-c' '.' "$RUNNER_TEMP"'/release-bins-retention.ids'); 'echo' 'release-bins retention: deleting='"$COUNT"' keep=''16'; ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header'; 'printf' '%s\n' "$IDS" | 'xargs' '-r' '-n' '1' '-I' 'RETENTION_ID' 'curl' '-sSf' '-o' '/dev/null' '-X' 'DELETE' '-H' '@'"$RUNNER_TEMP"'/release-bins-retention-delete-auth-header' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches/RETENTION_ID' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header'; 'echo' 'release-bins retention: delete-failed')) || 'echo' 'release-bins retention: delete-failed'; 'echo' 'release-bins retention: done') || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && '[' '!' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && '[' '!' '-e' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && 'echo' 'release-bins retention: plan-failed' || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && '[' '!' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && '[' '-e' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && 'echo' 'release-bins retention: nothing-due' || 'true'
 
           else
           set -e
@@ -600,6 +608,14 @@ jobs:
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
           'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          'echo' 'release-bins retention: keep=16'
+          ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-retention-auth-header'; 'curl' '-sSf' '-H' '@'"$RUNNER_TEMP"'/release-bins-retention-auth-header' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key=''release-bins-' '-o' "$ROOT"'/release-bins-retention-answer.json' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-auth-header' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-auth-header'; 'true')) || 'echo' 'release-bins retention: lookup-failed'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && ('jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.created_at | type) == "string" and (.id | type) == "number") then [.actions_caches[] | select((.key | startswith("release-bins-")) and .key != $ENV.RELEASE_BINS_KEY and (.key | startswith("fast-lane") | not) and (.key | startswith("parse-verdict") | not) and (.key | startswith("cargo-ci") | not) and (.key | startswith("gunbc-materialization") | not))] | sort_by(.created_at) | .[0: (if length > 16 then length - 16 else 0 end)] | .[] | .id | tostring else error("cache-API answer is not the admitted shape") end end' 'release-bins-retention-answer.json' > "$RUNNER_TEMP"'/release-bins-retention.ids' || 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention.ids') || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && 'true' || 'echo' 'release-bins retention: no-answer'
+          '[' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && (IDS=$('cat' "$RUNNER_TEMP"'/release-bins-retention.ids'); 'echo' 'release-bins retention: due='"$IDS"; COUNT=$('grep' '-c' '.' "$RUNNER_TEMP"'/release-bins-retention.ids'); 'echo' 'release-bins retention: deleting='"$COUNT"' keep=''16'; ('printf' 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header'; 'printf' '%s\n' "$IDS" | 'xargs' '-r' '-n' '1' '-I' 'RETENTION_ID' 'curl' '-sSf' '-o' '/dev/null' '-X' 'DELETE' '-H' '@'"$RUNNER_TEMP"'/release-bins-retention-delete-auth-header' '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches/RETENTION_ID' && 'rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header' || ('rm' '-f' "$RUNNER_TEMP"'/release-bins-retention-delete-auth-header'; 'echo' 'release-bins retention: delete-failed')) || 'echo' 'release-bins retention: delete-failed'; 'echo' 'release-bins retention: done') || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && '[' '!' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && '[' '!' '-e' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && 'echo' 'release-bins retention: plan-failed' || 'true'
+          '[' '-s' 'release-bins-retention-answer.json' ']' && '[' '!' '-s' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && '[' '-e' "$RUNNER_TEMP"'/release-bins-retention.ids' ']' && 'echo' 'release-bins retention: nothing-due' || 'true'
 
           fi
         env:
@@ -607,6 +623,7 @@ jobs:
           LOOKUP_STANDING: ${{ steps.release_bins_lookup.outputs.standing }}
           LOOKUP_ENTRY: ${{ steps.release_bins_lookup.outputs.entry }}
           CACHE_HIT: ${{ steps.release_bins_cache.outputs.cache-hit }}
+          GH_TOKEN: ${{ github.token }}
           FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
       - name: Cache Cargo
