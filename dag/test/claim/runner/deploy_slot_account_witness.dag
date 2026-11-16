@@ -14,7 +14,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerSlotTreeStep, RunnerSlotTreeSettled, RunnerSlotTreeDrainThenRebuild, runner_slot_tree_step, runner_slot_tree_rebuild_commands, classify_runner_slot_tree_owned, runner_slot_tree_owned_find_argv,
   RunnerSlotTreeTarget, runner_slot_tree_targets_of, runner_slot_tree_release_argv, classify_runner_slot_tree_release,
   runner_slot_stage_dir, deploy_slot_runner_stage_fetch_commands,
-  FleetHostFileDesired, RunnerHostFileWithheld,
+  FleetHostFileDesired, RunnerHostFileWithheld, fleet_host_file_scope,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
   RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv, runner_slot_tree_presence_entry,
@@ -92,6 +92,7 @@ fn fixture_file(subject: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: subject as NonEmptyStr,
     path: "/etc/fixture" as FilePath,
+    scope: fleet_host_file_scope,
     content: "x",
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
