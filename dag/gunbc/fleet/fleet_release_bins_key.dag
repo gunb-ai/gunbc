@@ -1037,8 +1037,18 @@ fn release_bins_retention_keep_text() -> String {
   int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
 }
 
+// THE ANSWER FILE LIVES IN THE WORKSPACE, at the step's working directory, exactly like the lookup's
+// answer (release_bins_lookup_file / lookup_fetch_statement): curl writes it with -o at $ROOT/<name>
+// and the jq operand is the same path spelled relative, because the lowered jq argv carries the path
+// as a literal word and the step runs with the checkout root as its working directory. A review
+// (95940) caught the first draft writing curl -o under $RUNNER_TEMP while jq read the bare name --
+// two directories that never meet, which made jq always fail on a missing file.
 fn release_bins_retention_answer_file() -> String {
   release_bins_retention_answer_basename
+}
+
+fn release_bins_retention_answer_rooted() -> Node {
+  rooted(file: release_bins_retention_answer_basename)
 }
 
 // The admitted answer shape mirrors the lookup's (one JSON document, total_count == page length,
@@ -1145,31 +1155,53 @@ fn release_bins_retention_delete(header: Node) -> Node {
   )
 }
 
+// The decision block, split from the fetch so a witness can run it over a fixture answer without
+// touching the network (the lookup's decode_answer claims follow the same shape). Every outcome is a
+// typed line -- no-answer (fetch produced nothing readable), plan-failed (jq refused the answer),
+// nothing-due (plan ran, nothing older than KEEP), due=<ids> + delete-failed (deletion failed), done
+// -- and every arm exits zero: retention runs folded into the outcome step and must never fail the
+// job's real work (gunbc.design_argument::fail_closed: typed, located, countable).
+fn release_bins_retention_decide() -> Node {
+  let ids_file = temp(file: release_bins_retention_ids_basename)
+  let answer_operand = lit(t: release_bins_retention_answer_file())
+  let jq_out = bash_build_with_redir_to_file(
+    inner: cmd(ws: release_bins_jq_words(plan: release_bins_retention_plan())),
+    path: ids_file,
+  )
+  let delete_block = [
+    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), ids_file]))),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: due="), var(n: "IDS")])]),
+    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), ids_file]))),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
+    release_bins_retention_delete(header: temp(file: release_bins_retention_delete_header_basename)),
+    release_bins_retention_echo(word: "done"),
+  ]
+  let plan_block = bash_build_if_else(
+    cond: jq_out,
+    then_body: bash_build_if_else(
+      cond: test_words(ws: [lit(t: "-s"), ids_file]),
+      then_body: bash_build_subshell_from_stmts(stmts: delete_block),
+      else_body: release_bins_retention_echo(word: "nothing-due"),
+    ),
+    else_body: bash_build_subshell_from_stmts(stmts: [
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), ids_file]),
+      release_bins_retention_echo(word: "plan-failed"),
+    ]),
+  )
+  bash_build_if_else(
+    cond: test_words(ws: [lit(t: "-s"), answer_operand]),
+    then_body: plan_block,
+    else_body: release_bins_retention_echo(word: "no-answer"),
+  )
+}
+
 fn release_bins_retention_statements() -> List<Node> {
   let header = temp(file: release_bins_retention_header_basename)
-  let del_header = temp(file: release_bins_retention_delete_header_basename)
-  let answer = temp(file: release_bins_retention_answer_basename)
-  let ids_file = temp(file: release_bins_retention_ids_basename)
   [
     root_statement(),
     release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
-    release_bins_retention_fetch(header: header, answer: answer),
-    bash_build_or_else(
-      left: bash_build_with_redir_to_file(
-        inner: cmd(ws: release_bins_jq_words(plan: release_bins_retention_plan())),
-        path: ids_file,
-      ),
-      right: cmdl([":"]),
-    ),
-    bash_build_or_else(
-      left: cmd(ws: [lit(t: "test"), lit(t: "-s"), ids_file]),
-      right: release_bins_retention_echo(word: "nothing-due"),
-    ),
-    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), ids_file]))),
-    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), ids_file]))),
-    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
-    release_bins_retention_delete(header: del_header),
-    release_bins_retention_echo(word: "done"),
+    release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
+    release_bins_retention_decide(),
   ]
 }
 

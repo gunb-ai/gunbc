@@ -17,7 +17,9 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
   release_bins_credential_pattern,
+  release_bins_retention_decide, release_bins_retention_answer_file,
 }
+import std.integer { int_to_decimal_string }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
   bash_build_assign, bash_build_with_redir_to_file, bash_build_and_then, bash_build_word_cmdsubst,
@@ -492,3 +494,103 @@ test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() 
   r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
 }
 
+
+// ── THE CACHE BUDGET GUARDIAN (review 95940 fixture) ─────────────────────────────────────────
+// The retention decision block runs over a FIXTURED caches-list answer -- the same inject-the-answer
+// shape the lookup decode claims use (decode_answer / answer_body) -- so no claim touches the network.
+// Deletion is exercised against GITHUB_API_URL pointed at 127.0.0.1:1 (connection refused locally),
+// which is how the claims observe the typed `delete-failed` line. The fixture answer holds:
+//   * 17 release-bins-family entries, ids 1010..1026, created_at ascending (so id 1010 is the oldest
+//     family member and the single entry a KEEP of 16 owes),
+//   * the CURRENT run's key (env RELEASE_BINS_KEY) as the second-oldest member, id 999 -- if the plan
+//     ever stops excluding it, `999` appears in stdout and every claim below goes red, and
+//   * a foreign-family member (cargo-ci prefix), id 500, the oldest of all -- it must never be due.
+// Positive claim: `due=1010` and `deleting=1 keep=16` together pin exactly one due id, the oldest
+// family member; `!contains("999")` pins the current-key exclusion; the same script must print the
+// typed `delete-failed` line because the delete cannot reach its (refused) endpoint.
+data retention_current_key: String = "release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn retention_entry(id: Int, created: String, key: String) -> String {
+  join(["{\"id\":", int_to_decimal_string(value: id), ",\"key\":\"", key, "\",\"created_at\":\"", created, "\"}"], "")
+}
+
+fn retention_family_entry(i: Int) -> String {
+  retention_entry(
+    id: 1000 + i,
+    created: join(["2026-11-01T", int_to_decimal_string(value: i), ":00:00Z"], ""),
+    key: join(["release-bins-", int_to_decimal_string(value: i), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"], ""),
+  )
+}
+
+fn retention_answer(entries: List<String>) -> String {
+  join(
+    ["{\"total_count\":", int_to_decimal_string(value: entries.length()), ",\"actions_caches\":[",
+     join(entries, ","), "]}"],
+    "",
+  )
+}
+
+data retention_over_cap_body: String = retention_answer(concat(
+  concat(
+    [retention_entry(id: 500, created: "2019-01-01T00:00:00Z", key: "cargo-ci-x86_64-mainsha"),
+     retention_entry(id: 999, created: "2020-01-01T00:00:00Z", key: retention_current_key)],
+    map([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], i => retention_family_entry(i)),
+  ),
+  [],
+))
+
+data retention_at_cap_body: String = retention_answer(concat(
+  [retention_entry(id: 500, created: "2019-01-01T00:00:00Z", key: "cargo-ci-x86_64-mainsha"),
+   retention_entry(id: 999, created: "2020-01-01T00:00:00Z", key: retention_current_key)],
+  map([11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], i => retention_family_entry(i)),
+))
+
+fn retention_answer_part(body: String) -> Outcome<String> {
+  e(statements: [bash_build_with_redir_to_file(
+    inner: cmdl(ls: ["printf", "%s", body]),
+    path: fx(t: release_bins_retention_answer_file()),
+  )])
+}
+
+data part_retention_exports: Outcome<String> = exports([
+  "GH_TOKEN=fixture-token",
+  "GITHUB_API_URL=http://127.0.0.1:1",
+  "GITHUB_REPOSITORY_OWNER=gunb-ai",
+  "GITHUB_REPOSITORY_NAME=gunbc",
+  join(["RELEASE_BINS_KEY=", retention_current_key], ""),
+])
+
+data part_retention_decide: Outcome<String> = e(statements: [release_bins_retention_decide()])
+
+fn retention_claim(answer: Outcome<String>) -> List<Outcome<String>> {
+  [part_fixture_env, part_retention_exports, answer, part_retention_decide]
+}
+
+data script_retention_over_cap: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_over_cap_body)))
+data script_retention_at_cap: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_at_cap_body)))
+data script_retention_malformed_answer: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: "{oops")))
+data script_retention_missing_answer: TransportScript? = release_bins_transport(parts: retention_claim(answer: part_no_mutation))
+
+test fn release_bins_retention_over_cap_deletes_only_the_oldest_family_member() -> Bool {
+  let r = run_script(script: script_retention_over_cap)
+  r.ran && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1010")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && !string_contains(s: r.stdout, pattern: "999")
+}
+
+test fn release_bins_retention_delete_failure_is_typed_not_silent() -> Bool {
+  succeeded_with(script: script_retention_over_cap, marker: "release-bins retention: delete-failed")
+}
+
+test fn release_bins_retention_at_cap_has_nothing_due() -> Bool {
+  succeeded_with(script: script_retention_at_cap, marker: "release-bins retention: nothing-due")
+}
+
+test fn release_bins_retention_malformed_answer_is_plan_failed() -> Bool {
+  succeeded_with(script: script_retention_malformed_answer, marker: "release-bins retention: plan-failed")
+}
+
+test fn release_bins_retention_missing_answer_is_no_answer() -> Bool {
+  succeeded_with(script: script_retention_missing_answer, marker: "release-bins retention: no-answer")
+}
