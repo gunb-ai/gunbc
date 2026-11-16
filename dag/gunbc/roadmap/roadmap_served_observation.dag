@@ -1059,13 +1059,12 @@ fn served_observation_freshness_standing_members(freshness: ServedObservationFre
     ObservationCurrent => []
     ObservationStale { observed_at: _, newest_event_at } =>
       [json_kv(key: "newest_event_at", value: json_string(s: newest_event_at))]
-    ObservationStaleByAge { observed_at: observed_at, horizon: horizon } =>
-      [
-        json_kv(key: "observed_at", value: json_string(s: observed_at)),
-        json_kv(key: "stale_by_age_horizon_secs", value: json_string(s: to_string(second_count(s: horizon)))),
-      ]
-    ObservationUnparseable { observed_at: observed_at } =>
-      [json_kv(key: "observed_at", value: json_string(s: observed_at))]
+    ObservationStaleByAge { observed_at: _, horizon: horizon } =>
+      // observed_at is already an outer standing member; only the horizon is new here.
+      [json_kv(key: "stale_by_age_horizon_secs", value: json_string(s: to_string(second_count(s: horizon))))]
+    ObservationUnparseable { observed_at: _ } =>
+      // observed_at is already an outer standing member; the standing word carries the verdict.
+      []
     ObservationFreshnessUnread { reason } =>
       [json_kv(key: "reason", value: json_string(s: reason))]
   }
