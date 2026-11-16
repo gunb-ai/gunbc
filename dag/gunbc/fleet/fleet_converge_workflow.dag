@@ -7270,7 +7270,34 @@ data fleet_converge_gcp_iam_observe_reauth_step_id: NonEmptyStr = "wif_auth_iam_
 // comes out of the request step's effective allowance, not a new allowance. The upload inherits the
 // read's outcome: an unaccepted receipt means no artifact AND a failed step, never a silent skip.
 data fleet_converge_srv15_versions_read_step_id: NonEmptyStr = "srv15_bmc_secret_versions_read" as NonEmptyStr
+data fleet_converge_srv15_versions_read_wif_step_id: NonEmptyStr = "wif_auth_srv15_read" as NonEmptyStr
 data fleet_converge_srv15_versions_receipt_artifact: NonEmptyStr = "srv15-bmc-secret-versions-receipt" as NonEmptyStr
+
+// THE READ STEP'S OWN OBSERVE MINT, its sole consumer the versions read below. Run 43923411255 (the
+// first NO-OP converge, 2026-11-16) proved why the read may not bind any other mint's output: the
+// post-wait re-mint (wif_auth_iam_observe) runs only under approved == 'true', so on a no-op converge
+// it is SKIPPED, its output resolves to the empty string, and the read entry refuses typed
+// (Srv15SecretReadCredentialRefused -- fail-closed held: no fabricated instant, no fallback). A
+// binding whose source step a condition can skip is the class
+// gunbc.recurring_failure_mode.a_step_binds_env_from_a_step_output_its_condition_can_skip. The fix is
+// not a fallback expression ("whichever token happens to exist" is history-chosen, the manager's
+// ruling) but the read's credential as its OWN declared dependency: minted under the read's own
+// condition -- it runs exactly when the read runs -- by the SAME service account the read has always
+// needed, iam-observe (the persistent roles/secretmanager.viewer applied to bmc-srv15-admin by the
+// 2026-11-16 gcp_iam_converge dispatch), through the dedicated converge pool. Both existing mints of
+// this job impersonate iam-observe too (the first, wif_auth, at job start; the reauth after
+// approval); the iam-converge identity exists only inside the apply entry's process, so no path here
+// can hand the read an apply-side credential -- and now none is needed: this mint is fresh at read
+// time whether or not the job waited on the broker.
+fn fleet_converge_srv15_read_wif_auth_step() -> Step {
+  ci_wif_auth_step_with_condition(
+    name: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA; the srv15 versions read alone)",
+    id: fleet_converge_srv15_versions_read_wif_step_id as String,
+    provider_resource: gcp_iam_observe_wif_provider_resource(),
+    service_account: iam_observe_service_account as String,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+  )
+}
 
 fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
   RunStep {
@@ -7278,19 +7305,22 @@ fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
     id: Present { value: fleet_converge_srv15_versions_read_step_id as String },
     run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
     shell: none,
-    // THE SAME BINDING ITS SIBLINGS CARRY (review artifact 95625): the WorkloadIdentityToken arm of
-    // gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable. It binds the POST-WAIT
-    // mint (wif_auth_iam_observe, review 95688): gcp_iam_request can hold the job in operator
-    // approval for up to 259 minutes, the first token predates that wait and would be expired by
-    // the time this step runs -- a gate that reads with a dead credential is a refusal with extra
-    // steps. The reauth step runs before apply, and job step outputs live for the whole job.
+    // THE SAME BINDING SHAPE ITS SIBLINGS CARRY (review artifact 95625): the WorkloadIdentityToken
+    // arm of gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable. It binds THIS STEP'S
+    // OWN mint (fleet_converge_srv15_read_wif_auth_step, id wif_auth_srv15_read) -- NOT the post-wait
+    // re-mint it used to name: that step's condition (approved == 'true') is false on a no-op converge,
+    // so the binding resolved to an empty string and the read refused typed (run 43923411255;
+    // gunbc.recurring_failure_mode.a_step_binds_env_from_a_step_output_its_condition_can_skip). The
+    // mint shares this step's condition and re-signs at read time, so the token is fresh on both the
+    // waited and the no-op path -- a gate that reads with a dead credential is a refusal with extra
+    // steps, and a gate that binds a skippable step's output is the same refusal wearing a disguise.
     // unbound, the step would refuse with credential-refused on every run -- the exact class recorded
     // at gunbc.recurring_failure_mode::a_step_carries_a_script_that_reads_env_the_step_never_binds.
     // What this step does NOT get is the submission-key opening: no header file, no key material,
     // and the bearer is read IN-PROCESS and carried only as a Secret argument -- never argv
     // (gunbc.credential_argv_exposure is the hazard that rule was written against).
     env: Present { value: [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth_iam_observe.outputs.access_token }}")),
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth_srv15_read.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
@@ -7480,6 +7510,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
       // (403 stops the run that would grant the read). Fail-closed stays: a 403 still reddens the job and
       // no receipt uploads; what changes is only that an evidence gap no longer blocks unrelated IAM
       // convergence that does not depend on it.
+      fleet_converge_srv15_read_wif_auth_step(),
       fleet_converge_srv15_bmc_secret_versions_read_step(),
       fleet_converge_srv15_bmc_secret_versions_receipt_upload_step(),
     ],
