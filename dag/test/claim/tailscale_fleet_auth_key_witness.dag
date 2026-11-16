@@ -66,6 +66,7 @@ import gunbc.auth.fleet_secret_accessor_roster {
 }
 import gunbc.tailscale_join_converge {
   tailscale_join_population,
+  tailscale_join_wet_entry_follow_up,
   tailscale_join_tag_consistency,
   tailscale_join_up_command,
   tailscale_join_up_timeout,
@@ -367,6 +368,44 @@ test fn w_removal_leg_targets_only_the_copied_key() -> Bool {
 // Every host the join converge claims as its population is a member of the enrolment roster, every host
 // with a hostname advertises exactly the fleet tag (the tag the ACL will address), and every emitted join
 // waits with a bounded timeout -- upstream's own default blocks FOREVER, which a converge must never do.
+// THE WET ENTRY IS A NAMED LATER CHANGE, NOT A COMMENT PROMISE (review 95837,
+// gunbc.design_argument::consumption: "Every declaration a change adds ... is consumed by a named
+// consumer over an executing route, or it is dangling, however well modeled"). The converge's executing
+// consumer is declared as data with its trigger and obligations; this test is its consumer, so deleting
+// or emptying the declaration breaks the witness, and the declaration must NAME the route pieces: the
+// metadata-only read-back of the pinned version as the trigger, and the resolve / call / report
+// obligations the wet entry owes -- including that it calls tailscale_join_host, the one function that
+// runs the removal leg bounding the key's on-disk exposure.
+test fn w_wet_entry_follow_up_is_declared_with_trigger_and_obligations() -> Bool {
+  (tailscale_join_wet_entry_follow_up.change_name as String) == "gunbc.tailscale_join_fleet_wet_entry"
+    && string_contains(s: tailscale_join_wet_entry_follow_up.trigger, pattern: "metadata-only")
+    && string_contains(
+      s: tailscale_join_wet_entry_follow_up.trigger,
+      pattern: "tailscale-fleet-auth-key/versions/1",
+    )
+    && fold(
+      tailscale_join_wet_entry_follow_up.obligations,
+      init: false,
+      f: fn(acc, o) {
+        acc || string_contains(s: o, pattern: "tailscale_join_host")
+      },
+    )
+    && fold(
+      tailscale_join_wet_entry_follow_up.obligations,
+      init: false,
+      f: fn(acc, o) {
+        acc || string_contains(s: o, pattern: "secret_provision")
+      },
+    )
+    && fold(
+      tailscale_join_wet_entry_follow_up.obligations,
+      init: false,
+      f: fn(acc, o) {
+        acc || string_contains(s: o, pattern: "TailscaleJoinOutcome")
+      },
+    )
+}
+
 test fn w_population_and_tags_are_consistent() -> Bool {
   tailscale_join_tag_consistency()
     && tailscale_join_population().count() > 0

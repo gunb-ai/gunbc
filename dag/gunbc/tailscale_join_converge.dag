@@ -587,12 +587,51 @@ fn tailscale_join_readback(
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE PER-HOST CONVERGE.
 //
-// The credential is an INPUT rather than something this module fetches: the wet entry resolves the pinned
-// Secret Manager version (gunbc.secret_provision's read route) and hands its payload and its resolved-version
-// identity down. The payload's only destination in this module is the custody write -- it is never printed,
-// never placed in an argv, and never part of a receipt -- and the resolved-version identity is what makes the
-// pinned version's existence an OBSERVED fact on the run rather than an assumption carried from the source
+// The credential is an INPUT rather than something this module fetches. The payload's only destination in
+// this module is the custody write -- it is never printed, never placed in an argv, and never part of a
+// receipt -- and the resolved-version identity is what makes the pinned version's existence an OBSERVED
+// fact on the run rather than an assumption carried from the source
 // (gunbc.tailscale_fleet_auth_key records the pin this was read against).
+//
+// THE WET ENTRY IS A NAMED LATER CHANGE, NOT A PROMISE IN A COMMENT
+// (review 95837; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is
+// consumed by a named consumer over an executing route, or it is dangling, however well modeled").
+// The consumer that resolves the pinned Secret Manager version, calls tailscale_join_host for every
+// enrolled host, and reports the outcomes -- the route item 5 of the fleet plan runs srv3, srv4, butch
+// and h11 through -- is declared below as data, with its trigger and its obligations, and a witness
+// asserts the declaration names them. This diff models and typechecks the converge; the named change
+// makes it green BY EXECUTION, and it lands after this PR and before any live converge.
+type TailscaleJoinWetEntryFollowUp {
+  change_name: NonEmptyStr,
+  trigger: String,
+  // What the named change must do for this converge to count as consumed, not dangling.
+  obligations: List<String>,
+}
+
+data tailscale_join_wet_entry_follow_up: TailscaleJoinWetEntryFollowUp = TailscaleJoinWetEntryFollowUp {
+  change_name: "gunbc.tailscale_join_fleet_wet_entry",
+  trigger: concat(
+    "after this PR lands and the first metadata-only read of ",
+    concat(
+      "projects/582015116396/secrets/tailscale-fleet-auth-key/versions/1 confirms the pinned version ",
+      "exists -- before the live converges of srv3, srv4, butch (srv14) and h11-a16 (item 5)",
+    ),
+  ),
+  obligations: [
+    concat(
+      "resolve the pinned version through gunbc.secret_provision's read route under the accessor ",
+      "identity the fleet_secret_accessor_roster row names, observing the version, never the payload",
+    ),
+    concat(
+      "call tailscale_join_host for every host in tailscale_join_population, one process at a time, ",
+      "with today from a live clock read, refusing loudly when the key is expired",
+    ),
+    concat(
+      "report each host's TailscaleJoinOutcome, including key_removed=false with its cause, ",
+      "to the operator",
+    ),
+  ],
+}
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type TailscaleJoinOutcome
