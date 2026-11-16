@@ -18,7 +18,10 @@ fn getent_program() -> ProgramIdentity = uncataloged_program(invocation: "getent
 // getent passwd <key> answers the passwd database entry for key, one line:
 // name:passwd:uid:gid:gecos:home:shell. The fleet probe modules used to reach the same entry
 // through a shell pipeline (`getent passwd "$(whoami)" | cut -d: -f6`); the pipeline's field
-// selection now happens in the corpus (see gunbc.passwd_home split at field six), so this
+// selection now happens in the corpus (extdeps.linux.etc_passwd parses the seven passwd(5) fields;
+// its etc_passwd_home_of answers the home, consumed by
+// gunbc.fleet.fleet_probe_identity_observe::passwd_home_observation and
+// gunbc.runner.runner_gpu_container_toolchain::job_user_home_from_passwd), so this
 // module owns only the invocation: the database, the key, and nothing else.
 fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
   argv_command(program: getent_program(), arguments: ["passwd", key as String])
