@@ -12,6 +12,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.list { first_duplicate_by_key }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
@@ -19,7 +20,7 @@ import gunbc.compute.remote_build_serving_setup {
   ServingLegFailure, serving_forced_command_line,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
 }
-import gunbc.compute.remote_build_serving_converge { serving_receipt_body }
+import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, converge_kind_rank, converge_action_key }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -29,9 +30,15 @@ fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: true }
 }
 
-// Elevation precondition for hermetic cells (review 95915): the sudo grant works.
+// The elevation precondition (review 95915). est_elevation() = the sudo grant works;
+// refused_elevation() = 'sudo -n' refused, so every sudo-dependent leg must become unread
+// (Indeterminate) rather than "confirmed absent".
 fn est_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: true }
+}
+
+fn refused_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
 }
 
 fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
@@ -63,13 +70,21 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
   serving_observed_from_reads(
     elevation: est_elevation(),
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
-    group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
+    group: est_s(converged_groups()),
     authorized_keys: est_s(dline),
     store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
     serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
+}
+
+// A converged /etc/group carries BOTH required groups at their declared gids: the ledger group
+// (gunbc-compute @ 1006, with the members) and the account's own PRIMARY group (gunbc-build @ 1005).
+// Fixtures that mean "everything but <the one tested drift> is correct" must include both, or the
+// observe reports a spurious GroupAbsent and the plan picks up an extra groupadd the cell didn't mean.
+fn converged_groups() -> String {
+  "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
 }
 
 // The header names the host and the probed_at context; the body names the terminal state.
@@ -120,7 +135,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
       let a = serving_assess(d: d, o: serving_observed_from_reads(
         elevation: est_elevation(),
         passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
-        group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
+        group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
@@ -131,6 +146,227 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
       string_contains(s: body, pattern: "remote-build-serving-plan: settled")
     }
   }
+    }
+  }
+}
+
+fn refused_b() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: "store.root", cause: "ssh refused" } }
+}
+
+// converge_plan: a host that is correct except a confirmed-absent store dir plans exactly ONE write
+// (that directory), records nothing unhandled, and is not refused. The single-drift fixture means the
+// count is a real assertion, not a "some writes appeared" — a spurious deviation would inflate it.
+test fn diverged_store_plans_a_matching_write() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      plan.refused == false && length(plan.writes) == 1 && length(plan.unhandled) == 0
+    }
+  }
+    }
+  }
+}
+
+// THE red control: an unread leg makes the assessment indeterminate, and the plan then writes
+// NOTHING and refuses. An apply must never write an item it never observed — a host nobody fully
+// read is not a host to mutate (std.goal_assessment paragraph ONE; gunbc.design_argument::fail_closed).
+test fn unread_leg_plans_nothing_and_refuses() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: refused_b(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      plan.refused == true && length(plan.writes) == 0
+    }
+  }
+    }
+  }
+}
+
+// The no-arch-arm guarantee: an arch mismatch is a divergence with NO remediation arm, so the plan
+// records host.arch as unhandled (the wet apply then refuses rather than installing an off-arch
+// binary) and plans no writes. host.arch must never be silently "fixed".
+test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"))
+      plan.refused == false && length(plan.writes) == 0 && length(plan.unhandled) == 1
+    }
+  }
+    }
+  }
+}
+
+// ── review 5b: write ordering + dedupe, and uid/gid-mismatch refusal ───────────────────────────────
+
+// A write list is ordered iff no element has a rank lower than the max seen so far. converge_plan
+// re-derives order by action KIND (groups, account, membership, dirs+ledger, ak, checkout, binary), so on
+// a fresh host useradd always precedes the checkout / authorized_keys / store writes that depend on it —
+// instead of the reverse-deviation-order the fold's prepend produced.
+type WRankState { prev: Int, bad: Int }
+
+fn writes_sorted_by_kind(ws: List<ConvergeAction>) -> Bool {
+  let st = fold(ws, init: WRankState { prev: -1, bad: 0 }, f: (s, a) => {
+    let r = converge_kind_rank(a)
+    if r < s.prev { WRankState { prev: s.prev, bad: s.bad + 1 } } else { WRankState { prev: r, bad: s.bad } }
+  })
+  st.bad == 0
+}
+
+// Count EnsureGroup writes by name+gid / by name / at all, and whether the account's EnsureAccount names
+// the account's OWN primary group. These drive the fresh-host red control (review 95905 follow-up): the
+// two groups are created at their OWN gids and never cross-paired.
+fn all_group_writes(ws: List<ConvergeAction>) -> Int {
+  length(filter(ws, a => match a { EnsureGroup { name: _, gid: _ } => true  _ => false }))
+}
+
+fn group_writes_at(ws: List<ConvergeAction>, name: String, gid: Int) -> Int {
+  length(filter(ws, a => match a { EnsureGroup { name: n, gid: g } => n == name && g == gid  _ => false }))
+}
+
+fn has_account_primary(ws: List<ConvergeAction>, pg: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureAccount { name: _, uid: _, gid: _, primary_group: p, home: _, supplementary: _ } => p == pg
+    _ => false
+  })) > 0
+}
+
+// A fresh host: the account is absent (empty /etc/passwd), NEITHER required group exists, and the store
+// dirs + checkout + serve binary are confirmed-absent — so the plan must create, in dependency order, both
+// groups (at their own gids), the account (primary group = its own), the ledger-group membership, the dirs,
+// the checkout and the binary. This is the fixture the ORDER + CROSS-PAIRING controls below act on.
+fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(dline),
+    store_root: est_absent(), store_staging: est_absent(), serve_binary: est_absent(),
+    checkout: est_absent(), toolchain: est_ok(),
+    serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// ORDER + DEDUPE red control: a fresh host's writes are dirs(rank3) x2, checkout(rank5), binary(rank6) in
+// NON-DECREASING rank order (a reverse-fold order would set bad>0), and carry no duplicate identity.
+test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      match first_duplicate_by_key(xs: plan.writes, key: converge_action_key) {
+        // A fresh host must get groupadd for the account's OWN group at account_gid AND for the ledger
+        // group at group_gid (both proven absent), with NO write pairing a group name with the OTHER
+        // group's gid (the merge bug review 95905 flagged: creating gunbc-compute at 1005). Exactly two
+        // group writes; the account's primary group is its own; all writes in kind order; no duplicates.
+        none => plan.refused == false
+          && writes_sorted_by_kind(plan.writes)
+          && all_group_writes(plan.writes) == 2
+          && group_writes_at(plan.writes, d.account_group_name, d.account_gid) == 1
+          && group_writes_at(plan.writes, d.group_name, d.group_gid) == 1
+          && group_writes_at(plan.writes, d.account_group_name, d.group_gid) == 0
+          && group_writes_at(plan.writes, d.group_name, d.account_gid) == 0
+          && has_account_primary(plan.writes, d.account_group_name)
+        Present { value: _ } => false
+      }
+    }
+  }
+    }
+  }
+}
+
+// UID-MISMATCH red control (review 5b #3 / review 95905 #2): an EXISTING account with the wrong uid is not
+// a useradd away from fixed — useradd refuses an existing name, usermod -u would orphan its files. So the
+// plan records it UNHANDLED and writes NOTHING; the wet apply's unhandled gate then refuses the host and
+// mutates nothing (a human reconciles), rather than applying every other write and failing only at
+// re-observe. A genuinely ABSENT account (PresentAbsent) IS handled by the account arm; a MISMATCH is not.
+test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      plan.refused == false && length(plan.writes) == 0 && length(plan.unhandled) == 1
+    }
+  }
+    }
+  }
+}
+
+// ── elevation precondition red control (review 95915, carried into 5(b)) ──────────
+// If 'sudo -n' refused, observe reports every sudo-dependent item unread (Indeterminate); the apply
+// must therefore plan NOTHING and refuse, so it can never write over files it never read. Paired with
+// fresh_host (established elevation plans the writes): the elevation field is load-bearing on the
+// apply side too, not just the observe.
+test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: refused_elevation(),
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(forced_line(d)),
+        store_root: est_absent(), store_staging: est_absent(), serve_binary: est_absent(),
+        checkout: est_absent(), toolchain: est_ok(),
+        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      plan.refused == true && length(plan.writes) == 0
     }
   }
 }
