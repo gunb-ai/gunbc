@@ -65,12 +65,34 @@ import gunbc.auth.fleet_secret_accessor_roster {
   tailscale_fleet_auth_key_accessor_row,
 }
 import gunbc.tailscale_join_converge {
+  JoinConverged,
+  JoinConvergedNoop,
+  JoinHostSelected,
+  JoinHostUnrostered,
+  JoinRefused,
+  tailscale_join_expiry_refusal_wire,
+  tailscale_join_host_selection,
+  tailscale_join_outcome_receipt,
   tailscale_join_population,
-  tailscale_join_wet_entry_follow_up,
+  tailscale_join_run_settled,
   tailscale_join_tag_consistency,
+  tailscale_join_today_from_clock,
+  tailscale_join_today_from_text,
   tailscale_join_up_command,
   tailscale_join_up_timeout,
 }
+import gunbc.fleet.tailscale_join_step { gunbc_ci_tailscale_join_invoke, gunbc_ci_tailscale_join_target }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.decl_ref_resolution_host {
+  DeclarationRefAmbiguous,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefResolved,
+  resolve_declaration_ref_live,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 // ── THE SECRET: one named secret, one PINNED version, the fleet's own project ────────────────────────
@@ -368,42 +390,129 @@ test fn w_removal_leg_targets_only_the_copied_key() -> Bool {
 // Every host the join converge claims as its population is a member of the enrolment roster, every host
 // with a hostname advertises exactly the fleet tag (the tag the ACL will address), and every emitted join
 // waits with a bounded timeout -- upstream's own default blocks FOREVER, which a converge must never do.
-// THE WET ENTRY IS A NAMED LATER CHANGE, NOT A COMMENT PROMISE (review 95837,
-// gunbc.design_argument::consumption: "Every declaration a change adds ... is consumed by a named
-// consumer over an executing route, or it is dangling, however well modeled"). The converge's executing
-// consumer is declared as data with its trigger and obligations; this test is its consumer, so deleting
-// or emptying the declaration breaks the witness, and the declaration must NAME the route pieces: the
-// metadata-only read-back of the pinned version as the trigger, and the resolve / call / report
-// obligations the wet entry owes -- including that it calls tailscale_join_host, the one function that
-// runs the removal leg bounding the key's on-disk exposure.
-test fn w_wet_entry_follow_up_is_declared_with_trigger_and_obligations() -> Bool {
-  (tailscale_join_wet_entry_follow_up.change_name as String) == "gunbc.tailscale_join_fleet_wet_entry"
-    && string_contains(s: tailscale_join_wet_entry_follow_up.trigger, pattern: "metadata-only")
-    && string_contains(
-      s: tailscale_join_wet_entry_follow_up.trigger,
-      pattern: "tailscale-fleet-auth-key/versions/1",
-    )
-    && fold(
-      tailscale_join_wet_entry_follow_up.obligations,
-      init: false,
-      f: fn(acc, o) {
-        acc || string_contains(s: o, pattern: "tailscale_join_host")
-      },
-    )
-    && fold(
-      tailscale_join_wet_entry_follow_up.obligations,
-      init: false,
-      f: fn(acc, o) {
-        acc || string_contains(s: o, pattern: "secret_provision")
-      },
-    )
-    && fold(
-      tailscale_join_wet_entry_follow_up.obligations,
-      init: false,
-      f: fn(acc, o) {
-        acc || string_contains(s: o, pattern: "TailscaleJoinOutcome")
-      },
-    )
+// ── THE WET ENTRY: admissions and refusals on SUPPLIED inputs (review 95837's fix, executed by
+// tailscale_join_converge_ci_wet -- the consumer review demanded; these are its decisions with the
+// environment handed in). ──────────────────────────────────────────────────────────────────────
+
+// SELECTION admits exactly the enrolled population and nothing else: every rostered host selects itself
+// (identity, not count), a stranger is refused with its own name echoed, and the population is the sole
+// source of admission.
+test fn w_wet_entry_selection_admits_only_the_population() -> Bool {
+  fold(
+    tailscale_join_population(),
+    init: true,
+    f: fn(acc, h) {
+      acc && match tailscale_join_host_selection(supplied: h as String) {
+        JoinHostSelected { host: selected } => host_identity_eq(a: selected, b: h)
+        JoinHostUnrostered { supplied: _ } => false
+      }
+    },
+  )
+    && match tailscale_join_host_selection(supplied: "not-a-fleet-host") {
+      JoinHostUnrostered { supplied: s } => s == "not-a-fleet-host"
+      JoinHostSelected { host: _ } => false
+    }
+}
+
+// THE CLOCK decides the expiry gate, and a malformed stamp is Absent, not a guessed date: the one shape
+// gunbc.clock_read prints parses; anything else refuses; an unreadable clock refuses.
+test fn w_wet_entry_clock_today_parses_or_refuses() -> Bool {
+  match tailscale_join_today_from_text(text: "2026-11-16T06:37:28Z") {
+    Present { value: d } => d.year == 2026 && d.month == 11 && d.day == 16
+    Absent => false
+  }
+    && match tailscale_join_today_from_text(text: "16/11/2026 06:37") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match tailscale_join_today_from_clock(reading: Absent) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match tailscale_join_today_from_clock(reading: Present { value: "2027-02-13T00:00:00Z" as NonEmptyStr }) {
+      Present { value: d } => d.year == 2027 && d.month == 2 && d.day == 13
+      Absent => false
+    }
+}
+
+// THE REFUSAL IS LOUD: it names REFUSED, carries the key's expiry date in the line, states the recovery,
+// and never carries key material; the unreadable-clock variant blames the clock, not the key.
+test fn w_wet_entry_expiry_refusal_is_loud_and_key_free() -> Bool {
+  match first(tailscale_join_population()) {
+    Absent => false
+    Present { value: host } => {
+      let expired_line = tailscale_join_expiry_refusal_wire(
+        host: host,
+        today: iso8601_civil_date(year: 2027, month: 2, day: 13),
+      )
+      let clock_line = tailscale_join_expiry_refusal_wire(host: host, today: Absent)
+      string_contains(s: expired_line, pattern: "REFUSED")
+        && string_contains(s: expired_line, pattern: "expired on")
+        && string_contains(s: expired_line, pattern: "year=2027")
+        && string_contains(s: expired_line, pattern: "regenerate")
+        && !string_contains(s: expired_line, pattern: "tskey-")
+        && string_contains(s: clock_line, pattern: "clock")
+        && !string_contains(s: clock_line, pattern: "expired on")
+    }
+  }
+}
+
+// THE OUTCOME RECEIPT tells the truth per arm: a converged host whose key copy survived removal failure
+// shows key_removed=false WITH its cause (never a silent success), the noop says the key was never read,
+// the refusal carries its cause, run_settled separates done from not-done, and no arm can print the key.
+test fn w_wet_entry_outcome_receipts_tell_the_truth() -> Bool {
+  match first(tailscale_join_population()) {
+    Absent => false
+    Present { value: host } => {
+      let residue_outcome = JoinConverged {
+        host: host,
+        tailnet_name: "srv3.tailnet.example" as NonEmptyStr,
+        installed: true,
+        placement_action: "placed",
+        key_removed: false,
+        removal_cause: Present { value: "rm exit 1" },
+      }
+      let noop_outcome = JoinConvergedNoop {
+        host: host,
+        tailnet_name: "srv3.tailnet.example" as NonEmptyStr,
+      }
+      let refused_outcome = JoinRefused { host: host, cause: "key expired" }
+      let residue = tailscale_join_outcome_receipt(outcome: residue_outcome)
+      let noop = tailscale_join_outcome_receipt(outcome: noop_outcome)
+      let refused = tailscale_join_outcome_receipt(outcome: refused_outcome)
+      string_contains(s: residue, pattern: "key_removed=false")
+        && string_contains(s: residue, pattern: "rm exit 1")
+        && tailscale_join_run_settled(outcome: residue_outcome)
+        && string_contains(s: noop, pattern: "outcome=noop")
+        && string_contains(s: noop, pattern: "key=never_read")
+        && tailscale_join_run_settled(outcome: noop_outcome)
+        && string_contains(s: refused, pattern: "outcome=refused")
+        && string_contains(s: refused, pattern: "key expired")
+        && !string_contains(s: refused, pattern: "tskey-")
+        && !tailscale_join_run_settled(outcome: refused_outcome)
+    }
+  }
+}
+
+// ONE INHABITANCE CLAIM ON THE REAL ROUTE: the step's target -- the exact identity the
+// fleet-converge workflow dispatches -- RESOLVES LIVE against the source pool to the wet entry that
+// exists in gunbc.tailscale_join_converge, and the invoke script carries it. Not "a string exists":
+// the resolver answers about a real declaration (the same machinery that fail-closes unresolved
+// decl_refs in the exec-command ledger).
+test fn w_wet_entry_target_resolves_to_the_real_wet_function() -> Bool {
+  let target_resolution = resolve_declaration_ref_live(
+    ref: gunbc_ci_tailscale_join_target.declaration,
+    pool_roots: witness_layer_roots,
+  )
+  match target_resolution {
+      DeclarationRefResolved { declaration_identity: id } =>
+        id.qualified_name == "gunbc.tailscale_join_converge.tailscale_join_converge_ci_wet"
+      DeclarationRefModuleAbsent { reference: _ } => false
+      DeclarationRefDeclarationAbsent { reference: _ } => false
+      DeclarationRefFieldAbsent { reference: _ } => false
+      DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    }
+    && string_contains(s: gunbc_ci_tailscale_join_invoke(), pattern: "tailscale_join_converge_ci_wet")
 }
 
 test fn w_population_and_tags_are_consistent() -> Bool {

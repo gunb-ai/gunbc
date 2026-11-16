@@ -100,7 +100,22 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
 }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_date }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
+import gunbc.auth.access_token_source { WorkloadIdentityToken }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialFetchRefused,
+  SecretCredentialReady,
+  SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused,
+  fetch_secret_ref_credential,
+}
+import gunbc.fleet.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
+import product.host_identity { host_identity_eq }
 import extdeps.tailscale.machine_name { tailscale_status_json_argv }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.file_access { FileTreeScope }
@@ -142,6 +157,7 @@ import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.secret_provision { Secret }
 import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_file,
+  tailscale_fleet_auth_key_secret_ref,
   tailscale_fleet_auth_key_host_path,
   tailscale_fleet_auth_key_policy,
   tailscale_fleet_auth_key_usable_on,
@@ -593,45 +609,15 @@ fn tailscale_join_readback(
 // fact on the run rather than an assumption carried from the source
 // (gunbc.tailscale_fleet_auth_key records the pin this was read against).
 //
-// THE WET ENTRY IS A NAMED LATER CHANGE, NOT A PROMISE IN A COMMENT
-// (review 95837; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is
-// consumed by a named consumer over an executing route, or it is dangling, however well modeled").
-// The consumer that resolves the pinned Secret Manager version, calls tailscale_join_host for every
-// enrolled host, and reports the outcomes -- the route item 5 of the fleet plan runs srv3, srv4, butch
-// and h11 through -- is declared below as data, with its trigger and its obligations, and a witness
-// asserts the declaration names them. This diff models and typechecks the converge; the named change
-// makes it green BY EXECUTION, and it lands after this PR and before any live converge.
-type TailscaleJoinWetEntryFollowUp {
-  change_name: NonEmptyStr,
-  trigger: String,
-  // What the named change must do for this converge to count as consumed, not dangling.
-  obligations: List<String>,
-}
-
-data tailscale_join_wet_entry_follow_up: TailscaleJoinWetEntryFollowUp = TailscaleJoinWetEntryFollowUp {
-  change_name: "gunbc.tailscale_join_fleet_wet_entry",
-  trigger: concat(
-    "after this PR lands and the first metadata-only read of ",
-    concat(
-      "projects/582015116396/secrets/tailscale-fleet-auth-key/versions/1 confirms the pinned version ",
-      "exists -- before the live converges of srv3, srv4, butch (srv14) and h11-a16 (item 5)",
-    ),
-  ),
-  obligations: [
-    concat(
-      "resolve the pinned version through gunbc.secret_provision's read route under the accessor ",
-      "identity the fleet_secret_accessor_roster row names, observing the version, never the payload",
-    ),
-    concat(
-      "call tailscale_join_host for every host in tailscale_join_population, one process at a time, ",
-      "with today from a live clock read, refusing loudly when the key is expired",
-    ),
-    concat(
-      "report each host's TailscaleJoinOutcome, including key_removed=false with its cause, ",
-      "to the operator",
-    ),
-  ],
-}
+// THE WET ENTRY AT THE FOOT OF THIS MODULE IS ITS EXECUTING CONSUMER (review 95837 asked for exactly
+// this; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is consumed by a
+// named consumer over an executing route, or it is dangling, however well modeled"). One dispatch runs
+// one host: tailscale_join_converge_ci_wet reads the named host from the environment, gates on the
+// live-clock expiry check BEFORE fetching anything, fetches the pinned version through
+// gunbc.auth.secret_ref_credential under the accessor identity the accessor roster row names, calls
+// tailscale_join_host, and writes the outcome receipt the workflow artifact step uploads. It is wired
+// the way every other fleet-converge entry is: gunbc.fleet.tailscale_join_step names it as a
+// gunbc-run-step target and gunbc.fleet.fleet_converge_workflow dispatches mode tailscale_join_converge.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type TailscaleJoinOutcome
@@ -906,6 +892,371 @@ fn tailscale_join_place_key(
             Present { value: PlacementRefused { cause: "the custody converge did not settle the credential file" } }
           }
         }
+      }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE WET ENTRY -- the executing consumer of everything above this line.
+//
+// THE SHAPE IS THE FLEET'S, NOT AN INVENTION: one dispatch runs one host, the way
+// gunbc.fleet.host_credential_custody_converge::host_credential_custody_converge_ci_wet runs one
+// credential. gunbc.fleet.tailscale_join_step names tailscale_join_converge_ci_wet as its gunbc-run-step
+// target and gunbc.fleet.fleet_converge_workflow dispatches mode "tailscale_join_converge"; the item-5
+// live phase (srv3, srv4, butch, h11-a16, one at a time) is that dispatch, one job per host.
+//
+// ORDER IS A SAFETY PROPERTY, NOT STYLE: the expiry gate reads the clock and refuses BEFORE the secret
+// is fetched -- an expired key never causes a Secret Manager read, and its refusal receipt is loud
+// (what to do is in the line itself). Every decision below is a pure function of inputs the witness
+// supplies; this function only threads environment reads through them and writes the receipts they say.
+// The fetched credential is handed to tailscale_join_host and appears nowhere else -- not in the stamp,
+// not in the receipt, never in an argv (the key crosses the wire only as a file= reference).
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_join_host_env_name: String = "TAILSCALE_JOIN_HOST"
+
+data tailscale_join_attempt_raw: String = "tailscale-join-converge-ci"
+
+data tailscale_join_receipt_path: String = "target/tailscale-join-converge-receipt.txt"
+
+// THE HOST THE DISPATCH NAMED, checked against the enrolled population -- the same fold the converge
+// itself runs, so a dispatch cannot smuggle a host the fleet never enrolled into a join.
+type TailscaleJoinHostSelection = JoinHostSelected { host: HostIdentity } | JoinHostUnrostered { supplied: String }
+
+fn tailscale_join_host_selection(supplied: String) -> TailscaleJoinHostSelection {
+  match tailscale_join_first_matching(supplied: supplied, candidates: tailscale_join_population()) {
+    Present { value: host } => JoinHostSelected { host: host }
+    Absent => JoinHostUnrostered { supplied: supplied }
+  }
+}
+
+fn tailscale_join_first_matching(
+  supplied: String,
+  candidates: List<HostIdentity>,
+) -> Optional<HostIdentity> {
+  match candidates {
+    Empty => Absent
+    Cons { head: head, tail: tail } =>
+      if host_identity_eq(a: head, b: supplied as HostIdentity) {
+        Present { value: head }
+      } else {
+        tailscale_join_first_matching(supplied: supplied, candidates: tail)
+      }
+  }
+}
+
+// TODAY, READ FROM THE LIVE CLOCK, in the one shape the clock prints (gunbc.clock_read: an ISO-8601
+// instant "YYYY-MM-DDThh:mm:ssZ"). Components are parsed and then handed to the calendar module's
+// checked constructor, so a misprinted stamp yields Absent -- which tailscale_fleet_auth_key_usable_on
+// fails closed on. An unreadable clock is not an unexpired key.
+fn tailscale_join_today_from_clock(reading: NonEmptyStr?) -> Optional<Iso8601CivilDate> {
+  match reading {
+    Absent => Absent
+    Present { value: text } => tailscale_join_today_from_text(text: text as String)
+  }
+}
+
+fn tailscale_join_today_from_text(text: String) -> Optional<Iso8601CivilDate> {
+  if substring(s: text, start: 4, end: 5) != "-" || substring(s: text, start: 7, end: 8) != "-" {
+    Absent
+  } else {
+    match tailscale_join_digits(text: text, start: 0, width: 4) {
+      Absent => Absent
+      Present { value: year } =>
+        match tailscale_join_digits(text: text, start: 5, width: 2) {
+          Absent => Absent
+          Present { value: month } =>
+            match tailscale_join_digits(text: text, start: 8, width: 2) {
+              Absent => Absent
+              Present { value: day } => iso8601_civil_date(year: year, month: month, day: day)
+            }
+        }
+    }
+  }
+}
+
+fn tailscale_join_digits(text: String, start: Int, width: Int) -> Optional<Int> {
+  tailscale_join_digits_loop(text: text, index: start, end: start + width, value: 0)
+}
+
+fn tailscale_join_digits_loop(text: String, index: Int, end: Int, value: Int) -> Optional<Int> {
+  if index >= end {
+    Present { value: value }
+  } else {
+    match tailscale_join_digit(ch: substring(s: text, start: index, end: index + 1)) {
+      Present { value: digit } =>
+        tailscale_join_digits_loop(text: text, index: index + 1, end: end, value: value * 10 + digit)
+      Absent => Absent
+    }
+  }
+}
+
+fn tailscale_join_digit(ch: String) -> Optional<Int> {
+  match ch {
+    "0" => Present { value: 0 }
+    "1" => Present { value: 1 }
+    "2" => Present { value: 2 }
+    "3" => Present { value: 3 }
+    "4" => Present { value: 4 }
+    "5" => Present { value: 5 }
+    "6" => Present { value: 6 }
+    "7" => Present { value: 7 }
+    "8" => Present { value: 8 }
+    "9" => Present { value: 9 }
+    other => Absent
+  }
+}
+
+// THE LOUD REFUSAL (operator instruction of 2026-11-15: "model the expiry and make the join step refuse
+// loudly on an expired key"). The line names the host, says REFUSED, carries the key's expiry date, and
+// states the recovery -- regenerate in the Tailscale admin console, add a new pinned secret version --
+// so the CI log is actionable by itself. An unreadable clock gets its own line: it is not an expiry, and
+// conflating the two would blame the key for the runner's broken clock.
+fn tailscale_join_expiry_refusal_wire(host: HostIdentity, today: Optional<Iso8601CivilDate>) -> String {
+  match today {
+    Absent =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " REFUSED: the clock is unreadable, so the fleet auth key's expiry cannot be checked; an ",
+          "uncheckable key is not a usable key. Repair the runner clock (tailscale_join_today_from_clock ",
+          "refuses a malformed stamp) and re-dispatch.\n",
+        ],
+        "",
+      )
+    Present { value: day } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " REFUSED: the fleet tailscale auth key expired on year=",
+          to_string(day.year),
+          " month=",
+          to_string(day.month),
+          " day=",
+          to_string(day.day),
+          " (a key that expired stops new joins upstream; nodes it already enrolled keep working). ",
+          "Recovery: regenerate the key in the Tailscale admin console with the same policy and add a ",
+          "new version of the pinned secret; the version pin and the accessor identity do not change.\n",
+        ],
+        "",
+      )
+  }
+}
+
+// THE OUTCOME, IN THE RECEIPT'S WORDS. Pure, so the witness checks every arm -- including that the
+// removal residue shows up as key_removed=false WITH its cause rather than as a silent success, and
+// that no arm can print key material.
+fn tailscale_join_outcome_receipt(outcome: TailscaleJoinOutcome) -> String {
+  match outcome {
+    JoinConvergedNoop { host: host, tailnet_name: tailnet_name } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=noop tailnet_name=",
+          tailnet_name as String,
+          " key=never_read\n",
+        ],
+        "",
+      )
+    JoinConverged {
+      host: host,
+      tailnet_name: tailnet_name,
+      installed: installed,
+      placement_action: placement_action,
+      key_removed: key_removed,
+      removal_cause: removal_cause,
+    } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=converged tailnet_name=",
+          tailnet_name as String,
+          " installed=",
+          tailscale_join_bool_word(b: installed),
+          " placement=",
+          placement_action,
+          " key_removed=",
+          tailscale_join_bool_word(b: key_removed),
+          " removal_cause=",
+          tailscale_join_cause_word(cause: removal_cause),
+          "\n",
+        ],
+        "",
+      )
+    JoinRefused { host: host, cause: cause } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=refused cause=",
+          cause,
+          "\n",
+        ],
+        "",
+      )
+  }
+}
+
+fn tailscale_join_bool_word(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn tailscale_join_cause_word(cause: String?) -> String {
+  match cause {
+    Absent => "none"
+    Present { value: c } => c
+  }
+}
+
+// Whether the dispatch as a whole succeeded: a converged or noop host is done; a refusal -- any refusal,
+// including a refusal to place a file -- fails the job, because a fleet host left off the tailnet is the
+// failure this converge exists to prevent.
+fn tailscale_join_run_settled(outcome: TailscaleJoinOutcome) -> Bool {
+  match outcome {
+    JoinConvergedNoop { host: _, tailnet_name: _ } => true
+    JoinConverged { host: _, tailnet_name: _, installed: _, placement_action: _, key_removed: _, removal_cause: _ } => true
+    JoinRefused { host: _, cause: _ } => false
+  }
+}
+
+fn write_tailscale_join_receipt_then_exit(body: String, ok: Bool) -> ProcessExit {
+  let w = Filesystem.Write(path: tailscale_join_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(
+      reason: join(["tailscale_join_converge: receipt write failed: ", w.error, "\n", body], ""),
+    )
+  } else if ok {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+// ONE DISPATCH, ONE HOST. Reads: TAILSCALE_JOIN_HOST, the host this run joins (the workflow binds it to
+// the dispatch's `host` input, the same input that pinned the job's runner). The clock gates the fetch;
+// the fetch gates the converge. No arm prints the credential: the refused arms name CAUSES, and only
+// tailscale_join_host ever sees the Secret itself.
+fn tailscale_join_converge_ci_wet() -> ProcessExit {
+  let stamp = concat("probed_at=", probed_at_word(reading: clock_now_probed_at()) as String)
+  let today = tailscale_join_today_from_clock(reading: clock_now_probed_at())
+  match actions_variable_read(name: tailscale_join_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      write_tailscale_join_receipt_then_exit(
+        body: join([stamp, " ", v, " ", d, "; the dispatch must name the join host\n"], ""),
+        ok: false,
+      )
+    ActionsVariablePresent { value: raw } =>
+      match tailscale_join_host_selection(supplied: raw) {
+        JoinHostUnrostered { supplied: s } =>
+          write_tailscale_join_receipt_then_exit(
+            body: join(
+              [
+                stamp,
+                " tailscale_join REFUSED: host '",
+                s,
+                "' is not a rostered fleet join host (gunbc.fleet.fleet_enrollments via ",
+                "tailscale_join_population); refusing to touch an unenrolled machine\n",
+              ],
+              "",
+            ),
+            ok: false,
+          )
+        JoinHostSelected { host: host } =>
+          if tailscale_fleet_auth_key_usable_on(today: today) {
+            match prepare_fleet_ssh_agent_context(attempt_raw: tailscale_join_attempt_raw) {
+              FleetSshContextRefused { cause: cause } =>
+                write_tailscale_join_receipt_then_exit(
+                  body: join([stamp, " tailscale_join host=", host as String, " ssh-context-refused: ", cause, "\n"], ""),
+                  ok: false,
+                )
+              FleetSshContextReady { context: context, receipt: context_receipt } =>
+                match fetch_secret_ref_credential(
+                  secret_ref: tailscale_fleet_auth_key_secret_ref,
+                  token_source: WorkloadIdentityToken,
+                ) {
+                  SecretCredentialAccessUpsertRequired { plan: _ } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: needs an accessor grant (gunbc.auth.fleet_secret_accessor_roster), ",
+                          "which a CI run cannot apply\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialFetchRefused { reason: r } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join([stamp, " tailscale_join host=", host as String, " fetch-refused: token refused: ", r as String, "\n"], ""),
+                      ok: false,
+                    )
+                  SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: the AccessVersion response did not decode\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialResolvedVersionMismatch { requested: rq, resolved: rs } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: requested ",
+                          rq,
+                          " but Secret Manager answered about ",
+                          rs,
+                          "\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
+                    let run = tailscale_join_host(
+                      host: host,
+                      context: context,
+                      key_material: credential,
+                      resolved_version: resolved_version,
+                      today: today,
+                    )
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          "\nssh_context=",
+                          context_receipt,
+                          "\n",
+                          tailscale_join_outcome_receipt(outcome: run),
+                        ],
+                        "",
+                      ),
+                      ok: tailscale_join_run_settled(outcome: run),
+                    )
+                  }
+                }
+            }
+          } else {
+            write_tailscale_join_receipt_then_exit(
+              body: join([stamp, "\n", tailscale_join_expiry_refusal_wire(host: host, today: today)], ""),
+              ok: false,
+            )
+          }
       }
   }
 }
