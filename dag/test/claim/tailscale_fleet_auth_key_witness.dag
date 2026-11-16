@@ -75,9 +75,10 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 // ── THE SECRET: one named secret, one PINNED version, the fleet's own project ────────────────────────
 
 test fn w_secret_is_the_named_pinned_version() -> Bool {
-  tailscale_fleet_auth_key_secret_ref.secret == tailscale_fleet_auth_key_secret_id
-    && tailscale_fleet_auth_key_secret_id == "tailscale-fleet-auth-key"
-    && tailscale_fleet_auth_key_secret_ref.version == "1"
+  (tailscale_fleet_auth_key_secret_ref.secret as String)
+    == (tailscale_fleet_auth_key_secret_id as String)
+    && (tailscale_fleet_auth_key_secret_id as String) == "tailscale-fleet-auth-key"
+    && (tailscale_fleet_auth_key_secret_ref.version as String) == "1"
     && (tailscale_fleet_auth_key_secret_ref.project as String)
       == (tailscale_fleet_auth_key_expected_project as String)
 }
@@ -86,7 +87,7 @@ test fn w_secret_is_the_named_pinned_version() -> Bool {
 // converge run, which is what the APNs precedent (approval_apns_auth_key_secret_ref) refuses for the same
 // reason.
 test fn w_pin_is_not_latest() -> Bool {
-  tailscale_fleet_auth_key_secret_ref.version != "latest"
+  (tailscale_fleet_auth_key_secret_ref.version as String) != "latest"
 }
 
 // ── THE KEY: the operator's decided shape, exactly ───────────────────────────────────────────────────
@@ -114,7 +115,7 @@ test fn w_key_carries_exactly_the_ci_tag() -> Bool {
   match tailscale_fleet_auth_key_policy.key_tags {
     Cons { head: head, tail: Empty } => head == tailscale_fleet_node_tag
     _ => false
-  } && tailscale_fleet_node_tag == "tag:ci"
+  } && (tailscale_fleet_node_tag as String) == "tag:ci"
 }
 
 test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
@@ -171,7 +172,7 @@ test fn w_key_reaches_up_only_as_a_file_reference() -> Bool {
   tailscale_auth_key_file_is_absolute(file: tailscale_fleet_auth_key_file)
     && tailscale_auth_key_file_argument(file: tailscale_fleet_auth_key_file)
       == concat("file:", tailscale_fleet_auth_key_host_path)
-    && tailscale_fleet_auth_key_host_path
+    && (tailscale_fleet_auth_key_host_path as String)
       == concat(tailscale_fleet_auth_key_host_directory, "/fleet-auth.key")
 }
 
@@ -259,26 +260,33 @@ test fn w_new_accessor_row_is_rostered_exactly_once() -> Bool {
     fleet_accessor_grant_roster,
     init: 0,
     f: fn(acc, r) {
-      acc + if r.target.secret == tailscale_fleet_auth_key_secret_id {
+      acc + if (r.target.secret as String) == (tailscale_fleet_auth_key_secret_id as String) {
         1
       } else {
         0
       }
     }
   ) == 1
+    // The one row reading this secret IS this module's row, field by field (value equality is taken
+    // field-wise, so a sibling restating the same grant collides in the count above rather than
+    // widening silently).
     && fold(
       fleet_accessor_grant_roster,
       init: 0,
       f: fn(acc, r) {
-        acc + if r == tailscale_fleet_auth_key_accessor_row {
+        acc + if r.lane == tailscale_fleet_auth_key_accessor_row.lane
+          && r.target.project == tailscale_fleet_auth_key_accessor_row.target.project
+          && r.target.secret == tailscale_fleet_auth_key_accessor_row.target.secret
+          && r.target.version == tailscale_fleet_auth_key_accessor_row.target.version {
           1
         } else {
           0
         }
       }
     ) == 1
-    && tailscale_fleet_auth_key_accessor_row.target == tailscale_fleet_auth_key_secret_ref
-    && tailscale_fleet_auth_key_accessor_row.target.version == "1"
+    && (tailscale_fleet_auth_key_accessor_row.target.secret as String)
+      == (tailscale_fleet_auth_key_secret_ref.secret as String)
+    && (tailscale_fleet_auth_key_accessor_row.target.version as String) == "1"
 }
 
 // The three argv admissions this work asked for are ALIVE: the sealed argv_command refuses any program
