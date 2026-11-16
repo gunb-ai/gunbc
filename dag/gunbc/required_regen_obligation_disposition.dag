@@ -268,7 +268,7 @@ type ClosureMembershipObservation {
 data required_regen_closure_membership_controls: List<ClosureMembershipObservation> = [
   ClosureMembershipObservation { module_path: "extdeps.rust.cargo", seed_reachable: true, emitted: true },
   ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_reachable: true, emitted: true },
-  ClosureMembershipObservation { module_path: "gunbc.ci.ci_spec", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.instruments.ci_run_step_roster", seed_reachable: false, emitted: false },
   ClosureMembershipObservation { module_path: "gunbc.commit_workflow", seed_reachable: false, emitted: false },
   ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_reachable: false, emitted: false }
 ]

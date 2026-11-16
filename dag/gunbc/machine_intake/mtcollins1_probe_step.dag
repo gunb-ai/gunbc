@@ -132,6 +132,7 @@ fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
 }
 
+
 // THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
 // CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
 // quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the

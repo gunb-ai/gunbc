@@ -6959,7 +6959,7 @@ fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
 // (entry, function, receipt path are fields of the subject), so a log line naming one key cannot have
 // executed the other's entry -- the same evidence property a lane input was meant to buy, held by the row
 // instead of by a free-text input. That is also why entry and function are fields of the subject and not a
-// lookup table in gunbc.ci.ci_spec.
+// lookup table in a central spec module (gunbc.ci.ci_spec, dissolved at closure_consolidation P5).
 //
 // ONE JOB, NOT ONE JOB PER KEY, AND WHY THAT IS SAFE. The mint holds no fleet SSH key and touches no host; it
 // federates as the fleet identity and its only API reach is AddVersion on its own row, granted by its own

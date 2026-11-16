@@ -3,7 +3,7 @@
 // gunbc.fabric because their only domain knowledge is the fabric workspace (the source bundle, the
 // checkpoint instrument, the transcript rate) and the receipt paths they stamp are the fabric
 // workspace domain's own. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P2)
-// verbatim; the roster gunbc.ci.ci_spec.gunbc_run_step_targets still lists their targets.
+// verbatim; the roster gunbc.instruments.ci_run_step_roster.gunbc_run_step_targets still lists their targets.
 module gunbc.fabric.workspace_ci_step
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
