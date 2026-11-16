@@ -27,13 +27,20 @@ What this is evidence of:
   ("dnsmasq saw these DHCP senders, not a host attribution") and an unmet obligation: the dnsmasq
   version installed on srv4 is UNVERIFIED, so the log layout being parsed is dnsmasq v2.90's, not
   proven to be srv4's.
-- The run refused before writing anything, and TWO refusals are visible in the block. (a) The entry's own
-  verdict line reads terminal=REFUSED, with chain Aarch64 withheld because member-unobservable:
-  sha256sum of /srv/gunbc-site-pxe-edge/tftp/snponly.efi reports "No such file or directory", so the pinned
-  Aarch64 chainloader cannot be digested and the chain is withheld. (b) The CI step's shell exited 1 on
-  `cmp -s - /etc/gunbc-site-pxe-edge.dnsmasq.conf`, the step that compares srv4's live dnsmasq config
-  against what the model renders; exit 1 means the two differ. Nothing in the block attributes (b) to (a)
-  or the reverse.
+- The entry's own verdict line reads terminal=REFUSED. Reading the code that prints it (this lane, 2026-11-16,
+  main revision 22649d22d2fd15332770e4c344fecc8c388b89f6): the line comes from site_pxe_edge_overall_succeeded
+  -> site_pxe_edge_run_succeeded, and in the SitePxeEdgeObserveOnly arm a run fails if any WITHHELD chain has a
+  cause that site_pxe_edge_chain_cause_is_unobserved calls unobserved -- MemberUnobservable is true there, while
+  ChainUnpinned and MemberDigestMismatch are false. This run's Aarch64 chain is withheld with
+  member-unobservable (the digest leg could not run: the file is absent), so the OBSERVE run refuses. The same
+  fn's SitePxeEdgeApply arm never consults run.chains at all, so this is a fact about observe mode, not about
+  an apply being blocked.
+- The `cmp -s - /etc/gunbc-site-pxe-edge.dnsmasq.conf (exit=1)` leg is NOT a failure of the run. It is
+  observe_site_pxe_edge_file's own far-side comparison (typed_remote_file_compare_argv: the model pipes its
+  rendered bytes on stdin and asks the far side to cmp), and exit 1 is that leg ANSWERING: the live file
+  differs. The standing it decodes to is EdgeFileDiffers, and the ObserveOnly arm of site_pxe_edge_run_succeeded
+  fails only on EdgeFileUnobservable, not on EdgeFileDiffers. So a differing live config is normal observe
+  output; the nonzero exit of the CI step is the entry's ProcessExit from the verdict above, not from this leg.
 
 What this is NOT evidence of:
 - Not that anything on srv4 was changed. Nothing was written; the rollback commands in the block are

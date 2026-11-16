@@ -281,7 +281,7 @@ test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool 
 // obstacle and hide that it is the same gap deepened.
 test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
   matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
-    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 2)
+    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 3)
 }
 
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
@@ -338,20 +338,25 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
   }
 }
 
-// THE BLOCKED EDGE APPLY IS ITS OWN GAP, BESIDE THE HAND-STAGED ONE. srv4 cannot digest a member its edge
-// pin names, which stops every mode that has to read the pinned set -- including the apply that would retire
-// hand-staged state -- and it does that for EVERY host on this edge, whether or not a person ever staged
-// anything by hand. Two rows, deliberately: this claim refuses the shape where the two collapse into one and
-// the blocked-apply fact disappears inside one unit's install story.
-test fn witness_the_blocked_edge_apply_is_a_gap_of_its_own() -> Bool {
-  match site_pxe_edge_pinned_chainloader_member_absent_from_srv4.kind {
-    SuspectedCapabilityGap { model: model, requirement: owed, standing: _ } =>
-      matches_open(site_pxe_edge_pinned_chainloader_member_absent_from_srv4.disposition)
-        && (text(model.module_path) == "gunbc.fleet.site_pxe_edge_converge")
-        && (text(model.decl_name) == "site_pxe_edge_chainloader_pin")
-        && string_contains(s: text(owed), pattern: "does not claim which")
-    SuspectedFork { authorities: _ } => false
+// A CONCERN FILED OPEN ON A WIRE LINE, THEN CLOSED AS DISTINCT BY READING THE CODE THAT PRINTED IT. The
+// row's first sighting said the absent pinned chainloader "blocks every apply on this edge"; site_pxe_edge_run_succeeded
+// splits the modes and the apply arm never consults run.chains, so that half was mine to correct. Two claims,
+// deliberately not one conjunction: the register must show the correction (Distinct, naming the fns that
+// settled it) AND must not let the correction quietly delete the sighting it refutes.
+test fn witness_the_chainloader_concern_was_closed_as_distinct_by_a_code_read() -> Bool {
+  match site_pxe_edge_pinned_chainloader_member_absent_from_srv4.disposition {
+    Distinct { reason: why, scope_examined: scope } =>
+      string_contains(s: text(why), pattern: "an apply is not blocked")
+        && string_contains(s: text(scope), pattern: "site_pxe_edge_run_succeeded")
+    Open => false
+    Triaged { home: _, preserve: _, next: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
   }
+}
+
+test fn witness_the_chainloader_concern_keeps_the_sighting_it_refuted() -> Bool {
+  length(site_pxe_edge_pinned_chainloader_member_absent_from_srv4.sightings.tail) == 1
 }
 
 // THE EDGE SIGHTING BINDS THE INSTALL PORT, NOT THE BMC PORT, AND KEEPS THE RUN'S OWN LIMITS IN THE ROW.
