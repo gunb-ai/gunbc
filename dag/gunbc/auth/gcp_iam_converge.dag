@@ -324,11 +324,20 @@ type GrantSet {
 // delta, with no decision here. The per-credential custody selection that stood here (each credential
 // AccessorCellConvergeOwned or NotRequested) is gone with it: the operator's ruling made every row owned,
 // and a selection whose every arm is "owned" is the roster again under a second name.
-data gcp_iam_converge_grant_sets: List<GrantSet> = [
+data gcp_iam_converge_grant_sets: List<GrantSet> = gcp_iam_converge_grant_sets_base() + secret_custody_grant_sets()
+
+// THE BASE SETS are every grant set except custody. The custody sets are DECLARED ONCE, HERE (single
+// authority: gunbc.design_argument::single_authority), and the bootstrap's custody arm DERIVES its
+// bindings from them (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_capability_bindings_over) --
+// it never authores a second copy. The base is kept apart so custody can name its population without
+// a cycle; the two halves cover the same secret population the roster always did.
+fn gcp_iam_converge_grant_sets_base() -> List<GrantSet> {
+  [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants(), member: grant_member_resolution() },
   GrantSet { label: "fleet roster cells", grants: fleet_roster_grants(), member: grant_member_resolution() },
 ] + bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: bmc_wif_signed_grants()))
  + srv15_bmc_metadata_observe_grant_sets()
+}
 
 // THE SRV15 BMC METADATA OBSERVE GRANT (operator ruling msg_e277353d, approved on escalation
 // msg_4587747b, relayed by smart-crane-730 msg_594bad54). The one-shot network-install CI
@@ -394,6 +403,79 @@ fn srv15_bmc_metadata_observe_grant_shape_ok(set: GrantSet) -> Bool {
     && length(filter(set.grants, g =>
       (g.target.project as String) == (srv15_bmc_gunbc_secret_ref.project as String)
         && g.target.secret == srv15_bmc_gunbc_secret_ref.secret)) == 1
+}
+
+// THE SECRET CUSTODY CELLS -- who may SET each grant-set secret's policy, and who may READ its
+// metadata -- ARE DECLARED ONCE, HERE (single authority: gunbc.design_argument::single_authority).
+// The bootstrap's custody arm (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_capability_bindings_over)
+// DERIVES its bindings from secret_custody_cells() and never authors a second copy; the witness
+// (test.claim.gcp_iam_bootstrap_all_keys_witness) turns red where a second authoring site reappears
+// with a different expected set, and it pins the two role strings and the two members below to the
+// forms this model itself declares, so widening either side's data is caught, not laundered. The
+// policy-setter cell names the same project custom role iam-converge is given elsewhere
+// (iam_converge_role_id); the observer cell names the metadata-only observe role whose permissions
+// this model declares (iam_observe_role_permissions) -- neither is ever an accessor grant.
+data secret_custody_policy_setter_label: NonEmptyStr = "secret custody policy-setter cells"
+
+data secret_custody_observer_label: NonEmptyStr = "secret custody observer cells"
+
+data secret_custody_policy_setter_role: String = iam_converge_role_id(r: ConvergeSecretPolicyRole)
+
+data secret_custody_observer_role: String = concat(project_resource(), "/roles/gunbcIamObserveSecret")
+
+data secret_custody_policy_setter_member: String = federated_service_account_member(email: iam_converge_service_account)
+
+data secret_custody_observer_member: String = federated_service_account_member(email: iam_observe_service_account)
+
+// THE POPULATION: every secret any base grant set touches. Custody adds no new secrets to the roster.
+fn secret_custody_targets() -> List<SecretRef> {
+  map(
+    distinct_by_key(
+      xs: flat_map(gcp_iam_converge_grant_sets_base(), g => g.grants),
+      key: g => g.target.secret as String,
+    ),
+    g => g.target,
+  )
+}
+
+type SecretCustodyCell { secret: NonEmptyStr, cell: GcpIamBindingCell }
+
+// THE ONE DERIVATION both binders read: each custody row as the live cell it owes.
+fn secret_custody_cells() -> List<SecretCustodyCell> {
+  flat_map(secret_custody_targets(), t => [
+    SecretCustodyCell {
+      secret: t.secret,
+      cell: GcpIamBindingCell {
+        role: secret_custody_policy_setter_role,
+        member: secret_custody_policy_setter_member,
+        condition: none,
+      },
+    },
+    SecretCustodyCell {
+      secret: t.secret,
+      cell: GcpIamBindingCell {
+        role: secret_custody_observer_role,
+        member: secret_custody_observer_member,
+        condition: none,
+      },
+    },
+  ])
+}
+
+fn secret_custody_grant_sets() -> List<GrantSet> {
+  let targets = secret_custody_targets()
+  [
+    GrantSet {
+      label: secret_custody_policy_setter_label,
+      grants: map(targets, t => SecretAccessGrant { target: t, role: secret_custody_policy_setter_role, condition: none }),
+      member: GrantMemberResolved { member: secret_custody_policy_setter_member },
+    },
+    GrantSet {
+      label: secret_custody_observer_label,
+      grants: map(targets, t => SecretAccessGrant { target: t, role: secret_custody_observer_role, condition: none }),
+      member: GrantMemberResolved { member: secret_custody_observer_member },
+    },
+  ]
 }
 
 fn fleet_roster_grants() -> List<SecretAccessGrant> {

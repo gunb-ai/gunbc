@@ -7,7 +7,7 @@ import std.list { distinct_by_key }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, fleet_version_adder_grant_roster }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_roster, host_credential_custody_row }
-import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_sets, gcp_iam_converge_targets, bmc_assimilator_grant_sets_over }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_sets, gcp_iam_converge_targets, bmc_assimilator_grant_sets_over, secret_custody_cells, secret_custody_policy_setter_role, secret_custody_observer_role }
 import gunbc.auth.bmc_assimilator_cells { bmc_assimilator_cells_over }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
 import gunbc.spark.secret_access_ensure { spark_secret_access_grant }
@@ -19,7 +19,7 @@ import gunbc.auth.gcp_secret_access { GrantMemberResolved, GrantMemberUnresolved
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCell, fleet_member_root_cells, TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_secrets }
 import gunbc.auth.approval_mac_key_provision { approval_mac_key_ceremony_rows }
 import gunbc.fleet.org_actions_converge { org_admin_app_key_ceremony_grant }
-import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret }
+import gunbc.auth.gcp_iam_bootstrap_model { SecretIamOwner, BootstrapRostered, CeremonyTrustRoot, secret_iam_owner, secret_iam_root_cells, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_delta_bindings, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, gcp_cell_in }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_set_secrets }
@@ -182,4 +182,63 @@ test fn the_live_trial_secret_classifies_bootstrap_rostered() -> Bool {
       Present { value: o } => match o { BootstrapRostered => true  CeremonyTrustRoot { reason: _ } => false }
       Absent => false
     }
+}
+
+// ── CUSTODY CELLS HAVE EXACTLY ONE DECLARER (manager ruling msg_44ed9a75) ────────────────────
+// The 2026-11-16T14:34Z gcp_iam_converge apply (run 43880588775) issued setIamPolicy on six secrets
+// whose live policy did not match its model -- printer-01-lan-access-code, printer-02-lan-access-code,
+// tracker-web-stage-oauth-client-secret, mtcollins1-ssh-host-key, boot-medium-reader-ssh-key and
+// bmc-srv15-admin -- fourteen minutes after the bootstrap apply (14:20Z) had itself written
+// bmc-srv15-admin's custody cells. Two models each decided these secrets' policy: the ping-pong class
+// (gunbc.recurring_failure_mode.a_secret_iam_policy_is_decided_by_two_models). The fix: the cells are
+// declared once, in the converge model (owner of the grant machinery and of this witness), and the
+// bootstrap's custody arm binds exactly that derived image. These claims hold the derivation: a real
+// second authoring with a different expected set fails a claim (verified by mutating the bootstrap
+// side: bootstrap_carries_every_custody_cell_the_owner_declares and
+// no_secret_is_custody_authored_twice_with_different_cells go red, restore returns green).
+
+fn custody_binding_cells(secret: String) -> List<GcpIamBindingCell> {
+  flat_map(iam_bootstrap_delta_bindings(), b => match b.resource {
+    BootstrapSecret { secret: s } => if (s as String) == secret { [b.cell] } else { [] }
+    BootstrapBucket { bucket: _ } => []
+    BootstrapProject => []
+    BootstrapPool { pool: _ } => []
+    BootstrapAccount { account: _ } => []
+  })
+}
+
+test fn custody_population_is_two_cells_for_every_roster_secret() -> Bool {
+  let roster = gcp_iam_converge_grant_set_secrets()
+  count(secret_custody_cells()) == 2 * count(roster)
+    && count(roster) >= 6
+    && all(roster, id => count(filter(secret_custody_cells(), c => (c.secret as String) == (id as String))) == 2)
+}
+
+test fn custody_wire_shape_is_pinned_to_the_declared_forms() -> Bool {
+  all(secret_custody_cells(), c =>
+    (c.cell.role == secret_custody_policy_setter_role || c.cell.role == secret_custody_observer_role)
+    && (c.cell.member == "serviceAccount:iam-converge@gunbai-secrets.iam.gserviceaccount.com"
+      || c.cell.member == "serviceAccount:iam-observe@gunbai-secrets.iam.gserviceaccount.com"))
+    && any(secret_custody_cells(), c => c.cell.role == secret_custody_policy_setter_role)
+    && any(secret_custody_cells(), c => c.cell.role == secret_custody_observer_role)
+}
+
+test fn bootstrap_carries_every_custody_cell_the_owner_declares() -> Bool {
+  all(secret_custody_cells(), c => gcp_cell_in(c: c.cell, xs: custody_binding_cells(secret: c.secret as String)))
+}
+
+test fn no_secret_is_custody_authored_twice_with_different_cells() -> Bool {
+  let roster = gcp_iam_converge_grant_set_secrets()
+  all(roster, id =>
+    count(filter(secret_custody_cells(), c => (c.secret as String) == (id as String))) == 2
+      && all(filter(secret_custody_cells(), c => (c.secret as String) == (id as String)), c =>
+        any(iam_bootstrap_delta_bindings(), b => match b.resource {
+          BootstrapSecret { secret: s } => (s as String) == (id as String) && gcp_cell_in(c: c.cell, xs: [b.cell])
+          BootstrapBucket { bucket: _ } => false
+          BootstrapProject => false
+          BootstrapPool { pool: _ } => false
+          BootstrapAccount { account: _ } => false
+        }))
+      && count(filter(custody_binding_cells(secret: id as String), b =>
+        b.role == secret_custody_policy_setter_role || b.role == secret_custody_observer_role)) == 2)
 }

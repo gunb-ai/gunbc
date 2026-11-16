@@ -11,6 +11,7 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_role_id, iam_converge_role_permissions, iam_observe_role_permissions, iam_converge_denied_permissions,
   iam_observe_service_account, iam_converge_service_account, iam_converge_service_account_id,
   gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_reach_excludes_its_own_trust, same_key_set, cell_preimage,
+  secret_custody_cells, SecretCustodyCell,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_cells, StandingPoolImpersonation, standing_impersonation_cell }
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
@@ -165,10 +166,12 @@ fn iam_bootstrap_capability_bindings_over(targets: List<DedicatedFederation>, gr
     iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapObservePool, account: iam_observe_service_account),
     iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapObserveAccount, account: iam_observe_service_account),
   ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
-  let custody = flat_map(grant_set_secrets, id => [
-    iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account),
-    iam_bootstrap_binding(resource: BootstrapSecret { secret: id }, role: BootstrapObserveSecret, account: iam_observe_service_account),
-  ])
+  // THE CUSTODY CELLS ARE NOT DECLARED HERE. They are declared once in the converge model
+  // (gunbc.auth.gcp_iam_converge secret_custody_cells) and DERIVED below -- this arm carries those
+  // cells byte-identically, it authors none of them (single authority:
+  // gunbc.design_argument::single_authority; the witness
+  // test.claim.gcp_iam_bootstrap_all_keys_witness turns red where the two voices diverge).
+  let custody = map(secret_custody_cells(), c => IamBootstrapBinding { resource: BootstrapSecret { secret: c.secret }, cell: c.cell })
   let submission = flat_map(gcp_iam_observe_dedicated_federation().secret_grants, g => map(
     secret_access_desired_cells(member: federated_service_account_member(email: iam_observe_service_account), grant: g), c =>
     IamBootstrapBinding { resource: BootstrapSecret { secret: g.target.secret }, cell: c }))
