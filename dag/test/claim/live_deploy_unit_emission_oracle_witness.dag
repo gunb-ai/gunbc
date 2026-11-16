@@ -736,8 +736,8 @@ test fn the_recovery_backstop_timer_starts_the_recovery_unit() -> Bool {
     && any(timer, l => l == "WantedBy=timers.target")
 }
 
-// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54; design_ruling
-// ::refreshes_regularly_every_10_minutes_2026_11_16). The witness asserts the four things the design
+// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54; the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). The witness asserts the four things the design
 // rules out: (a) the timer starts the standings-refresh oneshot by its exact name at the operator's
 // 600s cadence and joins timers.target (so it survives without any belt tick); (b) the oneshot runs
 // `belt_observe_once_cli` — the observation fold ONLY, NOT the launch/frontier walk of the retired

@@ -920,8 +920,8 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
   }
 }
 
-// THE STALE-BY-AGE 409 GATE (condition 2 of node://adhoc-5752c35f-e54; design_ruling
-// ::refreshes_regularly_every_10_minutes_2026_11_16). The freshness law above compares observed_at
+// THE STALE-BY-AGE 409 GATE (condition 2 of node://adhoc-5752c35f-e54; the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). The freshness law above compares observed_at
 // against the newest EVENT, so a stopped refresh whose carrier also cannot advance its log reads as
 // CURRENT and is served 200 — the silent-stale hole the periodic timer closes on the write side and
 // this closes on the read side. For /standings.json ONLY (the document ctrl admits roadmap work

@@ -880,8 +880,8 @@ fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -
   join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
 }
 
-// THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; design_ruling
-// ::refreshes_regularly_every_10_minutes_2026_11_16). Same stem discipline as the credential-recovery
+// THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). Same stem discipline as the credential-recovery
 // backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
 // belt_standings_refresh_backstop seconds.
 fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
