@@ -19,7 +19,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
 
 import std.types { CommitSha, NonEmptyStr }
-import std.algebra { fold_list, list_map, non_empty, string_contains }
+import std.algebra { fold_list, list_map, list_append, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.deploy_artifact_closure {
@@ -31,7 +31,7 @@ import gunbc.live_deploy.deploy_artifact_closure {
   first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow, InstalledArtifactRow, NoReadRow, NoReadOfRecord
 }
 import gunbc.live_deploy.spec {
-  DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+  DeploymentSpec, DeploymentArtifactStep, DeploymentNames, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
   ComposeOwned, OidcConfigArtifact, PublicationHelperPathUnit, BeltEventPathUnit, DeployedTreeRemoteUnit, TailscaleServeMapping,
   deployment_owned_steps
@@ -52,13 +52,21 @@ import gunbc.live_deploy.emit {
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
-import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
+import extdeps.tailscale.serve {
+  TailscaleServeEndpoint, tailscale_serve_backend_target,
+  ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable,
+  tailscale_serve_backend_is_port_label, tailscale_serve_backend_of_proxy_target,
+  tailscale_serve_port_proxy_prefix,
+}
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_placement, TrackerWebOidcServeReady,
+}
 import gunbc.live_deploy.unit_standing {
   service_directive_exec_start, service_directive_working_directory, argv0_of_command, watched_paths_of_unit_file
 }
-import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile }
+import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1, DesiredDeployment, selected_deployment_spec, srv1_production_desired_deployment }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding, release_locus_dir }
 import gunbc.live_deploy.serve_binary { serve_binary_path }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
@@ -410,6 +418,15 @@ fn unit_wd(f: SystemdUnitFile) -> String {
   }
 }
 
+// The whole SERVICE directive list, for the whole-view equality in unit_files_agree_on_reads: the exact
+// list the ONE classifier consumes, OIDC Environment included.
+fn unit_service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
+  match f {
+    ServiceUnitFile { unit: _, service: ds, install: _ } => ds
+    _ => []
+  }
+}
+
 // The broker's expected reads, spelled from the EMITTER'S OWN producing authorities -- the exact functions
 // live_deploy_approval_broker_serve_unit_file uses to WRITE those directives -- NOT parsed from the unit
 // file and NOT via the classifier. This makes the broker controls independent of the classifier's argv[0]
@@ -427,8 +444,19 @@ fn broker_expected_env() -> String {
   device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
 }
 
+// The two files agree on their READS: same argv[0], same WorkingDirectory — what the ONE classifier
+// derives from the directives the closure needs. Used by the broker accessor, whose closure view
+// deliberately omits the base-url Environment directive (a directive that reads nothing).
 fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
   unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
+}
+
+// The two files agree WHOLLY: same reads AND the same SERVICE DIRECTIVE LIST, OIDC Environment
+// included. The door closure views must equal what is emitted (deploy intent owns every artifact its
+// units read) — comparing the directive list the ONE classifier consumes is what makes "the accessor
+// silently dropped the OIDC env" RED rather than invisible beneath an argv[0]/wd-only check.
+fn unit_files_agree_wholly(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
+  unit_files_agree_on_reads(a: a, b: b) && unit_service_directives(a) == unit_service_directives(b)
 }
 
 // THE SERVE UNIT reads the installed serve binary (its own argv[0]). RED if its ExecStart names a
@@ -535,7 +563,7 @@ test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   let accessor = live_deploy_tailnet_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
     LiveDeployTailnetDoorUnitEmitted { file: e } => match accessor {
-      Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
+      Present { value: a } => unit_files_agree_wholly(a: e, b: a)
       Absent => false
     }
     LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }
@@ -550,11 +578,127 @@ test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   let accessor = live_deploy_agent_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
     LiveDeployTailnetDoorUnitEmitted { file: e } => match accessor {
-      Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
+      Present { value: a } => unit_files_agree_wholly(a: e, b: a)
       Absent => false
     }
     LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }
     LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => false
+  }
+}
+
+// ── the OIDC reader's secret is a declared read (F1, review 95814) ──
+
+// Every unit that receives the OIDC Environment — the serve unit and each OIDC door the roster owns —
+// reads cfg.secret_file at runtime through gunbc.auth.oidc_deployment_config's secret-file reader (a
+// missing secret makes login answer 503). The paths come from the reader's PLACEMENT AUTHORITY, so a
+// roster that drops a reader, or a read set that drops the secret while the placement still carries it,
+// goes RED. If srv1 ever loses its placement the control goes RED too: the roster below depends on it.
+// The OIDC readers the srv1 roster owns: the serve unit and each door unit. (ServeBinary is the
+// INSTALLED artifact, not a reader — the serve UNIT is the SystemdUnit step whose unit file carries
+// the OIDC Environment.)
+fn oidc_reader_steps() -> List<DeploymentArtifactStep> {
+  filter(xs: srv1_steps(), predicate: fn(s) { kind_is_systemd_unit(s) || kind_is_tailnet_door(s) || kind_is_agent_door(s) })
+}
+
+// A reader whose read set is NotYetModeled is honest ONLY where no unit file exists at all (a door the
+// spec never demanded installs nothing and receives no OIDC Environment); a Declared reader must name
+// both placement paths. Any other arm is red.
+fn oidc_reader_honest(s: DeploymentArtifactStep, want_config: String, want_secret: String) -> Bool {
+  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+    Declared { paths: ps } => list_member(xs: ps, x: want_config, eq: eq_str) && list_member(xs: ps, x: want_secret, eq: eq_str)
+    NotYetModeled { reason: _ } => match s.kind {
+      ComposeOwned { kind: TailnetDoorServeUnit } =>
+        match live_deploy_tailnet_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev()) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      ComposeOwned { kind: AgentDoorServeUnit } =>
+        match live_deploy_agent_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev()) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn the_oidc_readers_declare_their_placements_config_and_secret() -> Bool {
+  match tracker_web_oidc_serve_placement(instance_id: srv1_inst().instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => {
+      let want_config = cfg.config_path as String
+      let want_secret = cfg.secret_file as String
+      let readers = oidc_reader_steps()
+      let serve_declares = any(xs: readers, predicate: fn(s) {
+        kind_is_systemd_unit(s) && list_member(xs: declared_paths_of(s), x: want_secret, eq: eq_str) && list_member(xs: declared_paths_of(s), x: want_config, eq: eq_str)
+      })
+      all(xs: readers, predicate: fn(s) { oidc_reader_honest(s: s, want_config: want_config, want_secret: want_secret) }) && serve_declares
+    }
+    _ => false
+  }
+}
+
+fn declared_paths_of(s: DeploymentArtifactStep) -> List<String> {
+  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+    Declared { paths: ps } => ps
+    NotYetModeled { reason: _ } => []
+    InstalledArtifact => []
+    NoReadOfRecord => []
+  }
+}
+
+// THROUGH THE REAL ADAPTER (deployment_artifact_read_set -> deploy_closure_verdict / deploy_gate): with
+// every OTHER declared read of the OIDC readers installed — config document included — a host missing
+// only the OIDC client secret must be REFUSED, naming exactly that secret; installing it must ALLOW.
+// Secret custody itself is not moved here (fleet host_credential_custody_converge installs it); this is
+// the deploy gate refusing to enable units whose login would be dead on arrival.
+test fn the_missing_oidc_secret_refuses_naming_it_and_the_complete_set_allows() -> Bool {
+  match tracker_web_oidc_serve_placement(instance_id: srv1_inst().instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => {
+      let secret = cfg.secret_file as String
+      // Rows through the REAL adapter, restricted to the readers that exist as unit files (a door the
+      // spec never demanded is NotYetModeled here and belongs to no gate decision).
+      let rows = list_map(xs: filter(xs: oidc_reader_steps(), predicate: fn(s) { kind_is_declared_reader(s) }), f: fn(s) {
+        ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }
+      })
+      let complete = fold_list(xs: rows, empty: [], cons: fn(acc, row) {
+        match row {
+          ReadRow { located: _, reads: Declared { paths: ps } } => list_append(left: acc, right: ps)
+          ReadRow { located: _, reads: NotYetModeled { reason: _ } } => acc
+          ReadRow { located: _, reads: InstalledArtifact } => acc
+          ReadRow { located: _, reads: NoReadOfRecord } => acc
+        }
+      })
+      let missing_secret = filter(xs: complete, predicate: fn(p) { p != secret })
+      let refuses = non_empty(xs: rows) && list_member(xs: complete, x: secret, eq: eq_str)
+      let refused_names_secret = match deploy_closure_verdict(rows: rows, installed: missing_secret) {
+        Refused { located: _, artifact: a } => a == secret
+        _ => false
+      }
+      let halts_names_secret = match deploy_gate(rows: rows, installed: missing_secret) {
+        Halt { cause: MissingArtifact { located: _, artifact: a } } => a == secret
+        _ => false
+      }
+      let allowed = match deploy_closure_verdict(rows: rows, installed: complete) {
+        Allowed => true
+        _ => false
+      }
+      let proceeds = match deploy_gate(rows: rows, installed: complete) {
+        Proceed => true
+        _ => false
+      }
+      refuses && refused_names_secret && halts_names_secret && allowed && proceeds
+    }
+    _ => false
+  }
+}
+
+fn kind_is_declared_reader(s: DeploymentArtifactStep) -> Bool {
+  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+    Declared { paths: _ } => true
+    NotYetModeled { reason: _ } => false
+    InstalledArtifact => false
+    NoReadOfRecord => false
   }
 }
 
@@ -610,22 +754,151 @@ test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
   unmodeled_is_not_noread && noread_is_not_unclosed
 }
 
-// The serve mapping has no unit module to classify, so its adapter arm must state no-read DIRECTLY rather than fall
-// through to a catch-all — and it derives it from the serve's OWN typed TailscaleServeService (not a hardcoded
-// true), so the claim cannot drift from the typed surface. The serve type is a total match, so a future serve that
-// DOES read an artifact yields false -> NotYetModeled, not a silent NoReadOfRecord.
-test fn the_tailscale_no_read_is_derived_from_the_serve_service() -> Bool {
-  let srv = tailscale_serve_service()
-  let derived_allows_no_read = tailscale_serve_mapping_reads_installed_artifact(service: srv) == false
-  let srv_steps = srv1_steps()
-  let mapping = first_where(xs: srv_steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
+// A srv1 roster + spec whose declared serve endpoint serves a different BACKEND WORD. Only the
+// endpoint's backend differs — the route key (https_port, mount) is the declared one, so the roster's
+// TailscaleServeMapping member keeps the very path the adapter keys its lookup on. The row is rebuilt
+// through the SAME projection the fixtures use (desired.selected_deployment_spec) — no hand-built spec.
+type ServeBackendVariant {
+  spec: DeploymentSpec
+  steps: List<DeploymentArtifactStep>
+}
+
+fn srv1_over_backend(backend: NonEmptyStr) -> ServeBackendVariant {
+  let base = srv1_production_desired_deployment()
+  let declared = base.names.tailscale_serve_endpoint
+  let names = DeploymentNames {
+    unit_name: base.names.unit_name,
+    tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: declared.https_port, mount: declared.mount, backend: backend },
+    tree_sync_unit_name: base.names.tree_sync_unit_name,
+    tree_sync_env_path: base.names.tree_sync_env_path,
+    publication_principal: base.names.publication_principal,
+  }
+  let row = DesiredDeployment {
+    instance: base.instance,
+    target: base.target,
+    names: names,
+    selected_identity: base.selected_identity,
+    admitted_branch: base.admitted_branch,
+  }
+  let spec = selected_deployment_spec(row: row)
+  ServeBackendVariant {
+    spec: spec,
+    steps: deployment_owned_steps(instance: base.instance, names: names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan),
+  }
+}
+
+fn mapping_step_of(steps: List<DeploymentArtifactStep>) -> DeploymentArtifactStep? {
+  first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
+}
+
+// THE SERVE MAPPING'S NO-READ IS DERIVED FROM THE BACKEND ITS ENDPOINT DECLARES. The mapping has no unit
+// module to classify, so its arm must state no-read DIRECTLY rather than fall through to a catch-all — and
+// it derives it from the declared endpoint's BACKEND (extdeps.tailscale.serve tailscale_serve_backend_target),
+// never from the CLI surface that APPLIES the mapping: ServeCli is how the mapping is configured, not what
+// is served (a file or directory backend would be a Declared read whatever CLI ran). srv1's declared
+// endpoint serves a target tailscale DIALS, so the roster's mapping is NoReadOfRecord — but only because
+// the backend says so: a non-proxy backend on this step must go RED. Absent roster step is RED: the mapping
+// member is emitted by deployment_owned_steps, and its absence means the roster drifted — an `Absent =>
+// true` here once hid exactly that (review 95814).
+test fn the_tailscale_no_read_is_derived_from_the_declared_backend() -> Bool {
+  let proxy_declared = match tailscale_serve_backend_target(endpoint: srv1_spec().names.tailscale_serve_endpoint) {
+    ServeBackendProxyTarget => true
+    _ => false
+  }
+  let mapping = mapping_step_of(steps: srv1_steps())
   match mapping {
     Present { value: s } =>
       match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-        NoReadOfRecord => derived_allows_no_read
+        NoReadOfRecord => proxy_declared
         _ => false
       }
-    Absent => derived_allows_no_read
+    Absent => false
+  }
+}
+
+// One absolute backend word, through the REAL adapter: the mapping row must read Declared with EXACTLY
+// that path, the closure must refuse naming it while the host lacks it, the gate must halt naming it, and
+// the closure must allow once it is installed. A proxy answer (NoReadOfRecord) would let a deploy admit a
+// mapping over a directory the host never installed.
+fn file_backend_is_declared_read(backend: NonEmptyStr) -> Bool {
+  let variant = srv1_over_backend(backend: backend)
+  match mapping_step_of(steps: variant.steps) {
+    Absent => false
+    Present { value: s } =>
+      match deployment_artifact_read_set(step: s, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+        Declared { paths: ps } =>
+          let only_backend = list_cover(held: ps, expected: [backend as String], eq: eq_str) && list_cover(held: [backend as String], expected: ps, eq: eq_str)
+          let row = ReadRow { located: s.path as String, reads: Declared { paths: ps } }
+          let refused_names_target = match deploy_closure_verdict(rows: [row], installed: []) {
+            Refused { located: _, artifact: a } => a == (backend as String)
+            _ => false
+          }
+          let halts_names_target = match deploy_gate(rows: [row], installed: []) {
+            Halt { cause: MissingArtifact { located: _, artifact: a } } => a == (backend as String)
+            _ => false
+          }
+          let allowed = match deploy_closure_verdict(rows: [row], installed: [backend as String]) {
+            Allowed => true
+            _ => false
+          }
+          only_backend && refused_names_target && halts_names_target && allowed
+        _ => false
+      }
+  }
+}
+
+// THE FILE BACKEND IS A DECLARED READ THAT REFUSES WHEN THE TARGET IS ABSENT — the negative beside the
+// proxy positive above. Same fixture, same route key, backend word an absolute path: tailscaled SERVES
+// (reads) that path at serve time. TWO WORDS, because the shape of the word is what the classifier gets
+// right: the plain absolute path, AND an absolute path that CONTAINS a URL marker ("/srv/gunbc/a://b").
+// tailscale's applyWebServe asks filepath.IsAbs FIRST (cmd/tailscale/cli/serve_v2.go ~1263-1297 at
+// 9ad2a962) and serves such a path, so the second word must be a Declared read too — if the "://" test
+// ran first it answered ServeBackendProxyTarget and the gate admitted the mapping as NoReadOfRecord with
+// the target absent.
+test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> Bool {
+  let plain = file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
+  let marker_in_path = file_backend_is_declared_read(backend: "/srv/gunbc/a://b" as NonEmptyStr)
+  let classifier_agrees = match tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint {
+    https_port: srv1_spec().names.tailscale_serve_endpoint.https_port,
+    mount: srv1_spec().names.tailscale_serve_endpoint.mount,
+    backend: "/srv/gunbc/a://b" as NonEmptyStr,
+  }) {
+    ServeBackendFilesystemTarget { path } => (path as String) == "/srv/gunbc/a://b"
+    _ => false
+  }
+  plain && marker_in_path && classifier_agrees
+}
+
+// ONE PORT-LABEL RULE FOR BOTH CALLERS (review 95857, root_generalization). The word is judged a port
+// label by tailscale_serve_backend_is_port_label and is accepted as the port half of a loopback proxy
+// URL by tailscale_serve_backend_of_proxy_target -- which now CALLS that predicate rather than restating
+// it. Same verdict for every word of a spanning sample (a positive port, boundaries, leading-zero and
+// trailing-garbage words, the uncapped 70000, the empty word); if either caller grew a private copy of
+// the rule, some word here would split them. The UPPER bound is a gap named at the predicate, not a
+// disagreement between the two callers -- 70000 answers true on both sides until the admission fold lands.
+test fn the_port_label_rule_is_one_rule_for_both_callers() -> Bool {
+  let words = ["1", "80", "3000", "65535", "70000", "0", "-3", "03000", "3000x", "x", " 3000", ""]
+  all(xs: words, predicate: fn(w) {
+    let via_word = tailscale_serve_backend_is_port_label(backend: w)
+    let via_proxy_target = match tailscale_serve_backend_of_proxy_target(target: concat(tailscale_serve_port_proxy_prefix, w)) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    via_word == via_proxy_target
+  })
+}
+
+// AN UNCLASSIFIABLE BACKEND WORD IS NOT YET MODELED, never a silent NoReadOfRecord: a word that is neither
+// a target tailscale dials nor an absolute path it serves could read anything, and answering no-read for it
+// would fabricate the absence of a read (fail_closed). The reason is carried, not empty.
+test fn the_tailscale_unclassifiable_backend_is_not_yet_modeled() -> Bool {
+  let variant = srv1_over_backend(backend: "static" as NonEmptyStr)
+  match mapping_step_of(steps: variant.steps) {
+    Absent => false
+    Present { value: s } => match deployment_artifact_read_set(step: s, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+      NotYetModeled { reason: r } => r != ""
+      _ => false
+    }
   }
 }
 
