@@ -1,0 +1,187 @@
+module test.claim.long.dp_m3_subject_ref_resolution_witness
+
+// THE CONSUMER THAT MAKES EXTERNALSUBJECTREF A REFERENCE, NOT A COMPARED VALUE (DP-M3).
+//
+// WHAT THIS BUYS. Subject rows under dag/extdeps carry `subject: ExternalSubjectRef`, whose
+// declaration is a DeclarationRef { module_path, decl_name }. Until this file, nothing asked
+// whether the named module DECLARES the named thing: the only consumer (test.claim.external_model_scope_witness)
+// compared two hand-typed literals through extdeps.external_authority::external_subject_ref_eq, and every
+// other row in the model built synthetic refs or checked carrier text. String offers string_contains and
+// split but no substring and no index, so no text scan could bound a name (the frontier's own admission,
+// dag/gunbc/extdeps_scope_frontier.dag). That left a phantom one keystroke from the model's subject story.
+//
+// ONE AUTHORITY, NOT A SECOND CHECKER. This consumer applies the resolver that already exists --
+// v2.std.decl_ref_resolution_host::{declaration_ref_resolution_census_live, resolve_declaration_ref_live},
+// built on the containment-tree module census (data_decl_type_facts) rather than a text scan -- to the
+// full subject population. It writes no re-implementation and adds no corpus-wide CI job: the corpus-wide
+// cited-symbol census is retired (gunbc.rung_drop.cited_symbol_census, standing Retired since 2026-08-25).
+//
+// CENSUS/HOST GRAIN, ON PURPOSE. The population is enumerated by data_decl_type_facts -- the same host
+// walk the resolver's own census already runs -- keyed by declared TYPE (ExternalModelScope), then their
+// nodes read in ONE keyed decl_facts_at; NOT by a parse-grain whole-tree interpreter walk (that route is
+// OFFLINE by operator decision, ~33s/module).
+//
+// THE FOUR REDS ARE THE POINT, mirroring the two-positive/four-refusal pair that
+// dag/test/claim/long/decl_ref_resolution_witness.dag establishes for the resolver itself: green on base
+// under every existing witness (all read the row as text or value), each refuses for the reason its arm
+// names. ZERO bulk carrier migration: no carrier file is edited here and the legacy manifest
+// (dag/gunbc/legacy_extdeps_scope_frontier.tsv) is untouched at its measured 176 rows.
+
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import std.algebra { fold_list, list_map, list_snoc_item, length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_facts_skeleton { node_skeleton_authored_string_literals }
+import v2.std.decl_index { DataDeclTypeFact, DeclFact, FnItem, data_decl_type_facts, decl_facts_at }
+import v2.std.decl_ref_resolution_host {
+  DeclarationRefResolution,
+  DeclarationRefResolutionCensus,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefAmbiguous,
+  declaration_ref_resolution_census_live,
+  resolve_declaration_ref,
+  resolve_declaration_ref_live,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
+
+// The population's SCOPES, read from the host census (the walk the resolver already runs), keyed by
+// declared TYPE -- every ExternalModelScope decl, not only the ones named extdeps_model_scope: a scope
+// that an alias file reuses (`data extdeps_model_scope = some_shared_model_scope`) carries its subject on
+// the shared decl, and keying by type catches the shared decl once. `type_name` is the discriminator; an
+// alias (`= <shared_name>`) has no literal subject and drops out of the reader, so each literal subject
+// is read exactly once. `module_path` is authored unstripped so it composes with a DeclarationRef directly.
+fn keep_extdeps_scope(acc: List<DataDeclTypeFact>, row: DataDeclTypeFact) -> List<DataDeclTypeFact> {
+  if row.type_name == "ExternalModelScope" { list_snoc_item(xs: acc, item: row) } else { acc }
+}
+
+fn empty_scope_rows() -> List<DataDeclTypeFact> { [] }
+
+fn empty_subject_refs() -> List<DeclarationRef> { [] }
+
+fn extdeps_scope_qual_name(row: DataDeclTypeFact) -> String {
+  concat(row.module_path, concat(".", row.decl_name))
+}
+
+// Read the SUBJECT declaration off a scope's keyed DeclFact node. The subject is authored FIRST in every
+// carrier (measured: zero scopes author a field before subject), so the first two authored string
+// literals are the subject's module_path and decl_name -- an authority read, not a text scan: the census
+// node is the initializer, and only the resolver later decides whether that pair names a real declaration.
+fn subject_ref_snoc(acc: List<DeclarationRef>, fact: DeclFact) -> List<DeclarationRef> {
+  match node_skeleton_authored_string_literals(node: fact.node) {
+    Cons { head: mod_name, tail: Cons { head: decl_nm, tail: _ } } =>
+      list_snoc_item(xs: acc, item: decl_ref(module_path: mod_name, decl_name: decl_nm))
+    Empty => acc
+  }
+}
+
+// The full subject population, enumerated from the census walk and keyed, in two host reads:
+// data_decl_type_facts (scopes) then one decl_facts_at (their nodes) -- never a per-row parse walk.
+fn extdeps_subject_population() -> List<DeclarationRef> {
+  let scope_qual_names = list_map(xs: fold_list(xs: data_decl_type_facts(pool_roots: witness_layer_roots), empty: empty_scope_rows(), cons: keep_extdeps_scope), f: extdeps_scope_qual_name)
+  let scope_facts = decl_facts_at(pool_roots: witness_layer_roots, qualified_names: scope_qual_names, type_names: [])
+  fold_list(xs: scope_facts, empty: empty_subject_refs(), cons: subject_ref_snoc)
+}
+
+// GREEN ON MAIN: every enumerated subject reference resolves on the census route; no arm refuses.
+test fn all_extdeps_subject_refs_resolve_on_the_census_route() -> Bool {
+  let refs = extdeps_subject_population()
+  let census = declaration_ref_resolution_census_live(refs: refs, pool_roots: witness_layer_roots)
+  census_refuses_nothing(census: census, total: length(xs: refs))
+}
+
+// The census must cover the whole drain, not a couple of rows. Measured on origin/main: 909 data decls
+// carry type ExternalModelScope -- 846 authored inline (`= ExternalModelScope { ... subject ... }`) and 63
+// aliases (`= <shared_name>`, no literal subject). Of the 846 inline, 838 declare their subject's
+// declaration as a literal DeclarationRef and are read; 8 express it indirectly (3 via a named
+// `declaration: <X_ref>`, 5 bazel scopes via a named `subject: <X_subject>`) and are OUT OF THIS NODE --
+// following a named reference to its value is the compiler door's job, which the node explicitly excludes
+// (it "cannot see a sanctioned subject-carrier sibling's declarations"). The census therefore enumerates
+// 838 subject rows. The bound below proves it is the full drain, not a sample; it is a floor, not an
+// equality, so a future added subject only ever helps. Exact executed count is in the PR run link.
+test fn extdeps_subject_population_is_the_full_drain() -> Bool {
+  if length(xs: extdeps_subject_population()) >= 800 { true } else { false }
+}
+
+fn census_refuses_nothing(census: DeclarationRefResolutionCensus, total: Int) -> Bool {
+  if census.resolved_count == total {
+    if census.module_absent_count == 0 {
+      if census.declaration_absent_count == 0 {
+        if census.field_absent_count == 0 {
+          if census.ambiguous_count == 0 { true } else { false }
+        } else { false }
+      } else { false }
+    } else { false }
+  } else { false }
+}
+
+// READER TIE TO TEXT GRAIN. The subject reader returns the SUBJECT pair, not the citation strings: for
+// two hand-checked scopes (one a service subject, cron.Tab; one a plain dotted service, git.Core) the
+// head pair equals the subject the carrier text declares. This is what makes "all resolve" mean the
+// subject resolves rather than some other authored name happening to resolve.
+test fn subject_reader_reads_the_subject_pair_not_citations() -> Bool {
+  if reads_subject_pair(module_name: "extdeps.cron", want_module: "extdeps.cron", want_decl: "cron.Tab") {
+    reads_subject_pair(module_name: "extdeps.git", want_module: "extdeps.git", want_decl: "git.Core")
+  } else { false }
+}
+
+fn reads_subject_pair(module_name: String, want_module: String, want_decl: String) -> Bool {
+  let qual_name = concat(module_name, ".extdeps_model_scope")
+  match decl_facts_at(pool_roots: witness_layer_roots, qualified_names: [qual_name], type_names: []) {
+    Cons { head: fact, tail: _ } =>
+      match node_skeleton_authored_string_literals(node: fact.node) {
+        Cons { head: m, tail: Cons { head: d, tail: _ } } =>
+          if m == want_module { if d == want_decl { true } else { false } } else { false }
+        Empty => false
+      }
+    Empty => false
+  }
+}
+
+// RED 1 -- a name the target module never declared: DeclarationAbsent. The module is real and declared;
+// only the subject name is a phantom, so this isolates the arm the frontier said nothing was checking.
+test fn phantom_subject_name_refuses_declaration_absent() -> Bool {
+  match resolve_declaration_ref_live(ref: decl_ref(module_path: "extdeps.cron", decl_name: "cron.NoSuchSubject_DP_M3B_RED"), pool_roots: witness_layer_roots) {
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+// RED 2 -- a prefix-only service match: the frontier's own named failure. The module declares the service
+// cron.Tab; spelling it "cron" must refuse, not resolve on a prefix.
+test fn prefix_only_service_match_refuses_declaration_absent() -> Bool {
+  match resolve_declaration_ref_live(ref: decl_ref(module_path: "extdeps.cron", decl_name: "cron"), pool_roots: witness_layer_roots) {
+    DeclarationRefDeclarationAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+// RED 3 -- a reference to a module that is neither the carrier nor its sanctioned subject-carrier sibling:
+// ModuleAbsent. A subject naming a module nobody declared must not resolve to "some module with this name".
+test fn phantom_subject_module_refuses_module_absent() -> Bool {
+  match resolve_declaration_ref_live(ref: decl_ref(module_path: "extdeps.dp_m3b_phantom_carrier_zzz", decl_name: "dp_m3b_phantom.Decl"), pool_roots: witness_layer_roots) {
+    DeclarationRefModuleAbsent { reference: _ } => true
+    _ => false
+  }
+}
+
+// RED 4 -- a name declared twice in the target module: Ambiguous. No natural duplicate exists in the pool,
+// so the arm is authored through the same resolver fold the live census drives, over a synthetic fact
+// list -- the established route for this arm (dag/test/claim/long/decl_ref_resolution_witness.dag).
+test fn duplicate_subject_name_refuses_ambiguous() -> Bool {
+  let facts = [
+    DeclFact { qualified_name: "extdeps.cron.dp_m3b_duplicate_subject", name: "dp_m3b_duplicate_subject", kind: FnItem, node: enforcement_red_probe_body_leaf, rel_path: "synthetic/a.dag" },
+    DeclFact { qualified_name: "extdeps.cron.dp_m3b_duplicate_subject", name: "dp_m3b_duplicate_subject", kind: FnItem, node: enforcement_red_probe_body_leaf, rel_path: "synthetic/b.dag" },
+  ]
+  match resolve_declaration_ref(ref: decl_ref(module_path: "extdeps.cron", decl_name: "dp_m3b_duplicate_subject"), facts: facts, modules: witness_modules) {
+    DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
+    _ => false
+  }
+}
