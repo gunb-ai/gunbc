@@ -49,9 +49,9 @@ import gunbc.live_deploy.emit {
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.unit_standing {
-  exec_start_binary_of_unit_file, working_directory_of_unit_file
+  service_directive_exec_start, service_directive_working_directory, argv0_of_command
 }
-import extdeps.systemd.unit_file { SystemdUnitFile }
+import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding, release_locus_dir }
@@ -369,12 +369,27 @@ fn installed_serve_binary() -> String {
   }
 }
 
+// TEST ORACLES: independently parse a unit file's ExecStart argv[0] and WorkingDirectory straight from the
+// typed service directives, NOT through the classifier. unit_files_agree_on_reads uses these to check the
+// emitted file and the closure-accessor file parse identically (a file-vs-file agreement check); keeping
+// this a separate route from the classifier means a classifier bug is not mirrored on the expectation side.
 fn unit_argv0(f: SystemdUnitFile) -> String {
-  match exec_start_binary_of_unit_file(f) { Present { value: b } => b, Absent => "" }
+  match f {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match service_directive_exec_start(directives: ds) {
+        Present { value: cmd } => match argv0_of_command(cmd) { Present { value: b } => b, Absent => "" }
+        Absent => ""
+      }
+    _ => ""
+  }
 }
 
 fn unit_wd(f: SystemdUnitFile) -> String {
-  match working_directory_of_unit_file(f) { Present { value: w } => w, Absent => "" }
+  match f {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match service_directive_working_directory(directives: ds) { Present { value: w } => w, Absent => "" }
+    _ => ""
+  }
 }
 
 // The broker's expected reads, spelled from the EMITTER'S OWN producing authorities -- the exact functions

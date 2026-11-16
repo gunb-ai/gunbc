@@ -612,23 +612,7 @@ fn observe_belt_oneshot_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> Be
   }
 }
 
-// #16535 (exec-extractor): the file-level readers that pull a unit's ExecStart argv[0] and
-// WorkingDirectory out of the typed SystemdUnitFile, built on the directive readers above.
-// These are what deployment_artifact_read_sets uses to derive a service unit's reads.
-fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
-  match file {
-    ServiceUnitFile { unit: _, service: ds, install: _ } =>
-      match service_directive_exec_start(directives: ds) {
-        Present { value: cmd } => argv0_of_command(cmd)
-        Absent => none
-      }
-    _ => none
-  }
-}
-
-fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
-  match file {
-    ServiceUnitFile { unit: _, service: ds, install: _ } => service_directive_working_directory(directives: ds)
-    _ => none
-  }
-}
+// NOTE: the file-level argv[0]/WorkingDirectory parse that the closure's file-agreement control needs lives
+// in the witness module as a labeled TEST ORACLE, not here. Production derives a service unit's reads only
+// through the exhaustive classifier service_directive_required_reads_of_unit_file above (single authority);
+// a second production route to argv[0]/WorkingDirectory would be a meaning fork with no consumer.
