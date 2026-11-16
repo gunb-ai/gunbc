@@ -124,22 +124,25 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
 
 // THE PLANT'S POSITIVE CONTROL — AT THE SAME INTERFACE the negative control above tests: the source
 // observe step. It calls observe_tree_hashes (the exact function tree_install_in_realm runs for the
-// source observation) through the same real LocalShell route, with a source root that is PRESENT (its
-// `dag` and `src/v2` subdirs each hold one regular file). There the real find|sha256sum succeeds, so
-// the observe step answers TreeObserved — observed, no refusal. This is the discriminating partner of
-// the refusing control ONE INTERFACE OVER: same route, same observe step, the only difference is
-// whether the source root exists — missing refuses (TreeObservationFailed), present observes
-// (TreeObserved). It runs the OBSERVE leg only (no elevated install, no sudo), so it executes in this
-// sandbox next to the refusing control. It is a wet control on a run-time-created root (the pattern of
-// test.claim.fleet.fleet_revision_relation_wet_matrix): create /var/tmp/gunbc-broker-present-source/
-// {dag,src/v2} with one file in each before the wet run.
+// source observation) through the same real LocalShell route, with a source root that is PRESENT. The
+// root is the RELATIVE ".", i.e. the repository checkout the claim run itself executes from, whose
+// `dag` and `src/v2` are the run's own --source-root inputs — so it observes a tree the run already
+// requires, with no hand-prepared directory and no dependence on host state (it assumes the claim run's
+// working directory is the repository checkout root, the dir from which `dag` and `src/v2` resolve).
+// There the real find|sha256sum succeeds over a populated tree, so the observe step answers TreeObserved
+// with a NONEMPTY entry list — observed, no refusal (an empty observation would not satisfy the
+// installer's next step either). This is the discriminating partner of the refusing control ONE
+// INTERFACE OVER: same route, same observe step, the only difference is whether the source root resolves
+// to a tree — missing refuses (TreeObservationFailed), present observes (TreeObserved). It runs the
+// OBSERVE leg only (no elevated install, no sudo), so it executes in this sandbox next to the refusing
+// control, and the wet run dispatches only the local find.
 test fn the_real_route_observes_the_present_source_root_at_the_source_observe_interface() -> Bool {
   match observe_tree_hashes(
-    root: "/var/tmp/gunbc-broker-present-source",
+    root: ".",
     subs: release_locus_tree_subdirs,
     transport: one_transport_route(transport: LocalShell),
   ) {
-    TreeObserved { entries: _ } => true
+    TreeObserved { entries: es } => count(es) > 0
     TreeObservationFailed { reason: _ } => false
   }
 }
