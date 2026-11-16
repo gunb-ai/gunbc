@@ -100,7 +100,12 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
 }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_date }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_civil_date,
+  iso8601_civil_from_days,
+  iso8601_utc_epoch_seconds,
+}
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -172,7 +177,7 @@ import gunbc.typed_remote_file_write {
 }
 import product.host_identity { HostIdentity }
 import std.list { list_member }
-import std.measure { Second, second }
+import std.measure { Second, second, second_count, seconds_per_day }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
 import std.algebra { string_contains, trim }
@@ -946,64 +951,22 @@ fn tailscale_join_first_matching(
 }
 
 // TODAY, READ FROM THE LIVE CLOCK, in the one shape the clock prints (gunbc.clock_read: an ISO-8601
-// instant "YYYY-MM-DDThh:mm:ssZ"). Components are parsed and then handed to the calendar module's
-// checked constructor, so a misprinted stamp yields Absent -- which tailscale_fleet_auth_key_usable_on
-// fails closed on. An unreadable clock is not an unexpired key.
+// instant "YYYY-MM-DDThh:mm:ssZ") -- PARSED BY THE CALENDAR AUTHORITY ITSELF, not by a second parser:
+// extdeps.units.iso8601_calendar's own instant reader (which refuses any text that is not exactly that
+// shape, time and Z included) and its exact civil-from-days inverse, divided by the measure module's
+// seconds-per-day. A misprinted stamp yields Absent -- which tailscale_fleet_auth_key_usable_on fails
+// closed on. An unreadable clock is not an unexpired key
+// (DESIGN §2, gunbc.design_argument::minimize_redundancy; review 95852 deleted the first draft's
+// hand-written digit parser, a second authority for the same wire form).
 fn tailscale_join_today_from_clock(reading: NonEmptyStr?) -> Optional<Iso8601CivilDate> {
   match reading {
     Absent => Absent
-    Present { value: text } => tailscale_join_today_from_text(text: text as String)
-  }
-}
-
-fn tailscale_join_today_from_text(text: String) -> Optional<Iso8601CivilDate> {
-  if substring(s: text, start: 4, end: 5) != "-" || substring(s: text, start: 7, end: 8) != "-" {
-    Absent
-  } else {
-    match tailscale_join_digits(text: text, start: 0, width: 4) {
-      Absent => Absent
-      Present { value: year } =>
-        match tailscale_join_digits(text: text, start: 5, width: 2) {
-          Absent => Absent
-          Present { value: month } =>
-            match tailscale_join_digits(text: text, start: 8, width: 2) {
-              Absent => Absent
-              Present { value: day } => iso8601_civil_date(year: year, month: month, day: day)
-            }
-        }
-    }
-  }
-}
-
-fn tailscale_join_digits(text: String, start: Int, width: Int) -> Optional<Int> {
-  tailscale_join_digits_loop(text: text, index: start, end: start + width, value: 0)
-}
-
-fn tailscale_join_digits_loop(text: String, index: Int, end: Int, value: Int) -> Optional<Int> {
-  if index >= end {
-    Present { value: value }
-  } else {
-    match tailscale_join_digit(ch: substring(s: text, start: index, end: index + 1)) {
-      Present { value: digit } =>
-        tailscale_join_digits_loop(text: text, index: index + 1, end: end, value: value * 10 + digit)
-      Absent => Absent
-    }
-  }
-}
-
-fn tailscale_join_digit(ch: String) -> Optional<Int> {
-  match ch {
-    "0" => Present { value: 0 }
-    "1" => Present { value: 1 }
-    "2" => Present { value: 2 }
-    "3" => Present { value: 3 }
-    "4" => Present { value: 4 }
-    "5" => Present { value: 5 }
-    "6" => Present { value: 6 }
-    "7" => Present { value: 7 }
-    "8" => Present { value: 8 }
-    "9" => Present { value: 9 }
-    other => Absent
+    Present { value: text } =>
+      match iso8601_utc_epoch_seconds(text: text as String) {
+        Absent => Absent
+        Present { value: at } =>
+          Present { value: iso8601_civil_from_days(days: second_count(at) / seconds_per_day()) }
+      }
   }
 }
 

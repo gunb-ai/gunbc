@@ -77,7 +77,6 @@ import gunbc.tailscale_join_converge {
   tailscale_join_run_settled,
   tailscale_join_tag_consistency,
   tailscale_join_today_from_clock,
-  tailscale_join_today_from_text,
   tailscale_join_up_command,
   tailscale_join_up_timeout,
 }
@@ -417,11 +416,11 @@ test fn w_wet_entry_selection_admits_only_the_population() -> Bool {
 // THE CLOCK decides the expiry gate, and a malformed stamp is Absent, not a guessed date: the one shape
 // gunbc.clock_read prints parses; anything else refuses; an unreadable clock refuses.
 test fn w_wet_entry_clock_today_parses_or_refuses() -> Bool {
-  match tailscale_join_today_from_text(text: "2026-11-16T06:37:28Z") {
+  match tailscale_join_today_from_clock(reading: Present { value: "2026-11-16T06:37:28Z" as NonEmptyStr }) {
     Present { value: d } => d.year == 2026 && d.month == 11 && d.day == 16
     Absent => false
   }
-    && match tailscale_join_today_from_text(text: "16/11/2026 06:37") {
+    && match tailscale_join_today_from_clock(reading: Present { value: "16/11/2026 06:37" as NonEmptyStr }) {
       Present { value: _ } => false
       Absent => true
     }
