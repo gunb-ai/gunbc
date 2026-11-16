@@ -23,7 +23,7 @@ import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
-  serving_assessment_receipt_text, ServingLegFailure, ServingObserved,
+  serving_assessment_receipt_text, ServingLegFailure, ServingObserved, serving_deviation_item,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
@@ -196,7 +196,7 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
 
 fn has_deviation(a: ServingAssessment, item: String) -> Bool {
   match a {
-    GoalDiverged { deviations: ds } => any(non_empty_to_list(ds), x => x.item == item)
+    GoalDiverged { deviations: ds } => any(non_empty_to_list(ds), x => serving_deviation_item(dev: x) == item)
     _ => false
   }
 }

@@ -26,6 +26,7 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
+import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {
@@ -65,9 +66,64 @@ import std.goal_assessment {
 // a parse the module cannot trust. This is a DIFFERENT fact from the item being absent.
 type ServingLegFailure { item: String, cause: String }
 
-// A PROVED mismatch: the leg was read successfully and the host differs from the
-// declaration (absent, or present-but-wrong). Only these may be written by the apply.
-type ServingDeviation { item: String, desired: String, observed: String }
+// A PROVED mismatch: the leg was read successfully and the host differs from the declaration
+// (absent, or present-but-wrong). Only these may be written by the apply. It is a COPRODUCT over
+// the item kinds so each arm carries its OWN typed reading — a uid is an Int, an owner name is a
+// String, a mode is a FileMode — and no arm flattens a value to display text. Text is minted only
+// where the receipt is rendered (serving_deviation_text) and for the apply's item-matching label
+// (serving_deviation_item); the deviation itself never stores a stringified value. This is
+// gunbc.design_argument::root_generalization applied to the verdict: one typed carrier per fact,
+// not one {item,desired,observed} tuple coerced to text (review 95870 finding 2).
+type ServingDeviation
+  = PresentAbsent { item: String }
+  | AccountUidMismatch { desired: Int, observed: Int? }
+  | AccountGidMismatch { desired: Int, observed: Int? }
+  | GroupMembersMismatch { desired: List<String>, observed: List<String>? }
+  | ForcedCommandMismatch { desired: String, observed: String? }
+  | ExpectedMismatch { item: String, desired: String, observed: String }
+  | LedgerNameMismatch { path: FilePath, field: String, declared: String, observed: String }
+  | LedgerModeMismatch { path: FilePath, declared: FileMode, observed: FileMode }
+  | LedgerAbsent { path: FilePath }
+
+// The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
+// matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
+// single source of truth and the label can never disagree with the typed values.
+fn serving_deviation_item(dev: ServingDeviation) -> String {
+  match dev {
+    PresentAbsent { item } => item
+    AccountUidMismatch { desired: _, observed: _ } => "account.uid"
+    AccountGidMismatch { desired: _, observed: _ } => "account.gid"
+    GroupMembersMismatch { desired: _, observed: _ } => "group.members"
+    ForcedCommandMismatch { desired: _, observed: _ } => "authorized_keys.forced_command"
+    ExpectedMismatch { item: item, desired: _, observed: _ } => item
+    LedgerNameMismatch { path: _, field: _, declared: _, observed: _ } => "ledger"
+    LedgerModeMismatch { path: _, declared: _, observed: _ } => "ledger"
+    LedgerAbsent { path: _ } => "ledger"
+  }
+}
+
+// Render one deviation to receipt text — the ONE place a typed reading becomes text. Secret values
+// (the forced-command line / key material) are withheld here exactly as they were before: the
+// receipt names the drift but never reproduces the secret. An unread side renders as 'absent'.
+fn serving_opt_int_text(v: Int?) -> String {
+  match v { Absent => "absent", Present { value: i } => to_string(i) }
+}
+fn serving_opt_names_text(v: List<String>?) -> String {
+  match v { Absent => "absent", Present { value: ms } => join(ms, ",") }
+}
+fn serving_deviation_text(dev: ServingDeviation) -> String {
+  match dev {
+    PresentAbsent { item } => item
+    AccountUidMismatch { desired, observed } => concat("account.uid (want ", to_string(desired), ", have ", serving_opt_int_text(observed), ")")
+    AccountGidMismatch { desired, observed } => concat("account.gid (want ", to_string(desired), ", have ", serving_opt_int_text(observed), ")")
+    GroupMembersMismatch { desired, observed } => concat("group.members (want ", join(desired, ","), ", have ", serving_opt_names_text(observed), ")")
+    ForcedCommandMismatch { desired: _, observed: _ } => "authorized_keys.forced_command (value withheld from the receipt)"
+    ExpectedMismatch { item, desired, observed } => concat(item, " (want ", desired, ", have ", observed, ")")
+    LedgerNameMismatch { path, field, declared, observed } => concat((path as String), " ", field, " (want ", declared, ", have ", observed, ")")
+    LedgerModeMismatch { path, declared, observed } => concat((path as String), " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    LedgerAbsent { path } => concat((path as String), " (confirmed absent)")
+  }
+}
 
 // A declared fact that could NOT be established because its leg failed. It makes the whole
 // host indeterminate; it is never written as though it were a proven absence.
@@ -273,7 +329,7 @@ type ServingObserved {
 fn serving_present_deviations(item: String, present: ObservationAttempt<Bool, ServingLegFailure>) -> List<ServingDeviation> {
   match present {
     ObservationEstablished { observed: true } => []
-    ObservationEstablished { observed: false } => [ServingDeviation { item: item, desired: "present", observed: "absent" }]
+    ObservationEstablished { observed: false } => [PresentAbsent { item: item }]
     ObservationRefused { cause: _ } => []
   }
 }
@@ -289,17 +345,17 @@ fn serving_account_deviations(d: RemoteBuildServingDesired, passwd: ObservationA
       let gid = serving_passwd_gid(text: Present { value: t }, name: d.account_name)
       concat(
         match uid {
-          Absent => [ServingDeviation { item: "account.uid", desired: to_string(d.account_uid), observed: "absent" }]
+          Absent => [AccountUidMismatch { desired: d.account_uid, observed: none }]
           Present { value: v } => match v == d.account_uid {
             true => []
-            false => [ServingDeviation { item: "account.uid", desired: to_string(d.account_uid), observed: to_string(v) }]
+            false => [AccountUidMismatch { desired: d.account_uid, observed: Present { value: v } }]
           }
         },
         match gid {
-          Absent => [ServingDeviation { item: "account.gid", desired: to_string(d.account_gid), observed: "absent" }]
+          Absent => [AccountGidMismatch { desired: d.account_gid, observed: none }]
           Present { value: v } => match v == d.account_gid {
             true => []
-            false => [ServingDeviation { item: "account.gid", desired: to_string(d.account_gid), observed: to_string(v) }]
+            false => [AccountGidMismatch { desired: d.account_gid, observed: Present { value: v } }]
           }
         },
       )
@@ -315,10 +371,10 @@ fn serving_group_deviations(d: RemoteBuildServingDesired, group: ObservationAtte
     ObservationRefused { cause: _ } => []
     ObservationEstablished { observed: t } =>
       match serving_group_members(text: Present { value: t }, name: d.group_name) {
-        Absent => [ServingDeviation { item: "group.members", desired: join(d.group_members, ","), observed: "absent" }]
+        Absent => [GroupMembersMismatch { desired: d.group_members, observed: none }]
         Present { value: ms } => match all(d.group_members, m => any(ms, o => o == m)) && count(ms) == count(d.group_members) {
           true => []
-          false => [ServingDeviation { item: "group.members", desired: join(d.group_members, ","), observed: join(ms, ",") }]
+          false => [GroupMembersMismatch { desired: d.group_members, observed: Present { value: ms } }]
         }
       }
   }
@@ -331,10 +387,10 @@ fn serving_ak_deviations(dline: String, ak: ObservationAttempt<String, ServingLe
     ObservationRefused { cause: _ } => []
     ObservationEstablished { observed: t } =>
       match serving_authorized_keys_line(text: Present { value: t }) {
-        Absent => [ServingDeviation { item: "authorized_keys.forced_command", desired: dline, observed: "absent" }]
+        Absent => [ForcedCommandMismatch { desired: dline, observed: none }]
         Present { value: obs } => match obs == dline {
           true => []
-          false => [ServingDeviation { item: "authorized_keys.forced_command", desired: dline, observed: obs }]
+          false => [ForcedCommandMismatch { desired: dline, observed: Present { value: obs } }]
         }
       }
   }
@@ -360,11 +416,11 @@ fn serving_ledger_row_found(rows: List<ServingLedgerRowObserved>, path: FilePath
 // comparison is a NAME equality: a service principal is declared across hosts by NAME only
 // (extdeps.posix.identity PosixOwnerNames — ids are per-host), so this is not the mode's
 // "never string-compare" case; names are compared as the strings they are.
-fn serving_ledger_name_outcome(leg: ObservationAttempt<String, ServingLegFailure>, expected: String) -> ServingLedgerOutcome {
+fn serving_ledger_name_outcome(leg: ObservationAttempt<String, ServingLegFailure>, expected: String, path: FilePath, field: String) -> ServingLedgerOutcome {
   match leg {
     ObservationEstablished { observed: v } => match v == expected {
       true => ServingLedgerOutcome { deviations: [], unknowns: [] }
-      false => ServingLedgerOutcome { deviations: [ServingDeviation { item: serving_ledger_item(), desired: expected, observed: v }], unknowns: [] }
+      false => ServingLedgerOutcome { deviations: [LedgerNameMismatch { path: path, field: field, declared: expected, observed: v }], unknowns: [] }
     }
     ObservationRefused { cause: c } => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: c.cause }] }
   }
@@ -380,9 +436,12 @@ fn serving_ledger_mode_outcome(t: OwnedDirectoryTarget, leg: ObservationAttempt<
   match leg {
     ObservationEstablished { observed: m } => match file_mode_of_octal_text(text: m) {
       Absent => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: concat("unreadable ledger mode ", m) }] }
-      Present { value: fm } => match owned_directory_mode_matches(t: t, got: fm) {
-        true => ServingLedgerOutcome { deviations: [], unknowns: [] }
-        false => ServingLedgerOutcome { deviations: [ServingDeviation { item: serving_ledger_item(), desired: "declared mode", observed: m }], unknowns: [] }
+      Present { value: fm } => match owned_directory_mode(t: t) {
+        OwnedDirectoryModeRefused { reason } => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: concat("declared ledger mode unreadable: ", reason) }] }
+        OwnedDirectoryModeResolved { mode: declared } => match owned_directory_mode_matches(t: t, got: fm) {
+          true => ServingLedgerOutcome { deviations: [], unknowns: [] }
+          false => ServingLedgerOutcome { deviations: [LedgerModeMismatch { path: owned_directory_path(t: t), declared: declared, observed: fm }], unknowns: [] }
+        }
       }
     }
     ObservationRefused { cause: c } => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: c.cause }] }
@@ -401,13 +460,14 @@ fn serving_ledger_row_judge(t: OwnedDirectoryTarget, rows: List<ServingLedgerRow
     }
     Present { value: r } => match r.user {
       ObservationEstablished { observed: "" } => ServingLedgerOutcome {
-        deviations: [ServingDeviation { item: serving_ledger_item(), desired: "present", observed: "absent" }],
+        deviations: [LedgerAbsent { path: owned_directory_path(t: t) }],
         unknowns: [],
       }
       _ => {
         let owner = owned_directory_owner(t: t)
-        let uo = serving_ledger_name_outcome(leg: r.user, expected: owner.user as String)
-        let go = serving_ledger_name_outcome(leg: r.group, expected: owner.group as String)
+        let lpath = owned_directory_path(t: t)
+        let uo = serving_ledger_name_outcome(leg: r.user, expected: owner.user as String, path: lpath, field: "owner")
+        let go = serving_ledger_name_outcome(leg: r.group, expected: owner.group as String, path: lpath, field: "group")
         let mo = serving_ledger_mode_outcome(t: t, leg: r.mode)
         ServingLedgerOutcome {
           deviations: concat(concat(uo.deviations, go.deviations), mo.deviations),
@@ -586,12 +646,12 @@ fn serving_assessment_receipt_text(a: ServingAssessment) -> String {
   match a {
     GoalSatisfied { evidence: _ } => concat(head, "all items met — host adopted unchanged (no-op)\n")
     GoalDiverged { deviations: ds } =>
-      concat(head, "drift (the apply's work):\n", join(map(non_empty_to_list(ds), x => concat("  - ", x.item, "\n")), ""))
+      concat(head, "drift (the apply's work):\n", join(map(non_empty_to_list(ds), x => concat("  - ", serving_deviation_text(x), "\n")), ""))
     GoalIndeterminate { known_deviations: ks, unknowns: us } =>
       concat(
         head,
         "indeterminate — a declared fact could not be read; the observe REFUSES to report drift\n",
-        join(map(ks, x => concat("  (known deviation) ", x.item, "\n")), ""),
+        join(map(ks, x => concat("  (known deviation) ", serving_deviation_item(x), "\n")), ""),
         join(map(non_empty_to_list(us), u => concat("  (unread) ", u.item, ": ", u.cause, "\n")), ""),
       )
     GoalAssessmentRefused { cause: c } => concat(head, "assessment refused: ", c.reason, "\n")
@@ -610,41 +670,28 @@ fn serving_assessment_receipt_text(a: ServingAssessment) -> String {
 // uid, or whose ledger group omits a member, cannot read Met here (a presence-only
 // reading would; the serve entry would then refuse it at runtime, which is exactly the
 // receipt-that-lies the design forbids). Parsers are the ones the serve path already
-// trusts: etc_group for /etc/group, ':'-split + parse_int for /etc/passwd.
+// trusts: etc_group for /etc/group and extdeps.linux.etc_passwd for /etc/passwd — neither
+// is re-split on ':' here, so the field positions live in one model each, not a third copy.
 
-// The first ':'-separated field of a passwd row is the login name.
-fn serving_passwd_row_is(login: String, name: String) -> Bool {
-  match first(split(s: login, delimiter: ":")) {
-    Present { value: f0 } => f0 == name
-    Absent => false
-  }
-}
-
-// The ':'-separated field at `index` of a passwd row, parsed to Int (uid is field 2,
-// gid is field 3). Absent when the row or field is missing or is not a number.
-fn serving_passwd_int_at(line: String, index: Int) -> Int? {
-  match first(split(s: line, delimiter: ":") |> skip(n: index)) {
-    Absent => Absent
-    Present { value: raw } => parse_int(s: trim(s: raw))
-  }
-}
-
-fn serving_passwd_uid(text: String?, name: String) -> Int? {
+// The named account's uid (passwd(5) field 3) via the ONE passwd model; none when no entry
+// names the account (present-but-nameless and a missing account both resolve to none, so the
+// caller cannot claim Met for an account the file cannot name).
+fn serving_passwd_uid(text: String?, name: NonEmptyStr) -> Int? {
   match text {
     Absent => Absent
-    Present { value: t } => match first(filter(split(s: t, delimiter: "\n"), l => serving_passwd_row_is(login: l, name: name))) {
+    Present { value: t } => match etc_passwd_entry_named(entries: etc_passwd_entries(text: t), name: name) {
       Absent => Absent
-      Present { value: l } => serving_passwd_int_at(line: l, index: 2)
+      Present { value: e } => Present { value: e.uid }
     }
   }
 }
 
-fn serving_passwd_gid(text: String?, name: String) -> Int? {
+fn serving_passwd_gid(text: String?, name: NonEmptyStr) -> Int? {
   match text {
     Absent => Absent
-    Present { value: t } => match first(filter(split(s: t, delimiter: "\n"), l => serving_passwd_row_is(login: l, name: name))) {
+    Present { value: t } => match etc_passwd_entry_named(entries: etc_passwd_entries(text: t), name: name) {
       Absent => Absent
-      Present { value: l } => serving_passwd_int_at(line: l, index: 3)
+      Present { value: e } => Present { value: e.gid }
     }
   }
 }
@@ -740,7 +787,7 @@ fn serving_expected_deviation(item: String, expected: String, leg: ObservationAt
   match leg {
     ObservationEstablished { observed: v } => match v == expected {
       true => []
-      false => [ServingDeviation { item: item, desired: expected, observed: v }]
+      false => [ExpectedMismatch { item: item, desired: expected, observed: v }]
     }
     ObservationRefused { cause: _ } => []
   }
