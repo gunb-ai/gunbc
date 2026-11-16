@@ -444,3 +444,4 @@ fn group_completion_of_int(i: Int) -> GroupCompletion<Nat> {
     Negative { pred: p } => GroupCompletion { pos: 0, neg: p + 1 }
   }
 }
+// Fast-lane control probe (session cool-lynx-59, 2026-11-16): TODO 3b of node adhoc-66aa884a-406.
