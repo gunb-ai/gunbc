@@ -104,7 +104,7 @@ import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMembe
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
-import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused, belt_prior_attempt_recovery_from_exact, belt_commit_git_trust_gitfile_check, BeltCommitGitUntrusted }
 import gunbc.roadmap.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
@@ -3512,18 +3512,21 @@ test fn belt_review_round_unreadable_store_never_reads_as_round_zero_and_never_f
 // --- DP-M5b: could-not-look claims for the attempt-spool read family ---
 
 test fn an_unreadable_attempt_log_is_not_none() -> Bool {
-  match filesystem_exact_read(path: "/log/worker-events.jsonl", content: "", success: false, error: "EIO", error_kind: "permission_denied") {
-    FilesystemExactPathAbsent { path: _ } => false
-    FilesystemExactPathUnreadable { path: _, kind: _, error } =>
-      string_contains(s: join(["attempt event log unreadable: ", error], ""), pattern: "EIO")
-    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => false
-    FilesystemExactPathRead { path: _, content: _ } => false
+  let recovery = belt_prior_attempt_recovery_from_exact(
+    exact: filesystem_exact_read(path: "/log/worker-events.jsonl", content: "", success: false, error: "EIO", error_kind: "permission_denied"),
+  )
+  match recovery {
+    SessionRecoveryMalformed { mismatch } => string_contains(s: mismatch, pattern: "EIO")
+    _ => false
   }
 }
 
 test fn a_git_pointer_read_failure_names_the_error() -> Bool {
-  match filesystem_read_outcome(content: "", success: false, error: "EACCES: permission denied") {
-    FilesystemReadSucceeded { content: _ } => false
-    FilesystemReadRefused { error } => string_contains(s: join(["worktree gitfile could not be read: ", error], ""), pattern: "EACCES")
+  match belt_commit_git_trust_gitfile_check(
+    outcome: filesystem_read_outcome(content: "", success: false, error: "EACCES: permission denied"),
+    expected_git_dir: "/wt/.git",
+  ) {
+    Present { value: BeltCommitGitUntrusted { cause } } => string_contains(s: cause, pattern: "EACCES")
+    _ => false
   }
 }

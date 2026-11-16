@@ -2994,10 +2994,8 @@ fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId
 // writes and a resume appends to), so the decision and the harness read one record. An unreadable
 // stream reads as no recovery: it can lose a resume, never manufacture one, and the lineage then ends
 // exactly as it did before this slice.
-fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
-  let path = attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
-  let read = Filesystem.Read(path: path)
-  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+fn belt_prior_attempt_recovery_from_exact(exact: FilesystemExactRead) -> SessionRecovery {
+  match exact {
     FilesystemExactPathAbsent { path: _ } => SessionRecoveryNone
     FilesystemExactPathUnreadable { path: _, kind: _, error } =>
       SessionRecoveryMalformed { mismatch: join(["attempt event log unreadable: ", error], "") }
@@ -3006,6 +3004,14 @@ fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: Roadmap
     FilesystemExactPathRead { path: _, content } =>
       session_recovery_of_events(lines: split(s: content, delimiter: "\n") |> filter(l => trim(l) != ""))
   }
+}
+
+fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
+  let path = attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
+  let read = Filesystem.Read(path: path)
+  belt_prior_attempt_recovery_from_exact(
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+  )
 }
 
 // THE PRIOR ATTEMPT'S CAPTURE, AT ITS OWN HEAD. The spawn decision binds the same fact the
@@ -6629,30 +6635,51 @@ fn belt_commit_commondir_points_at(contents: String, expected_common: String) ->
   line == git_worktree_commondir_relative || line == expected_common
 }
 
+fn belt_commit_git_trust_gitfile_check(outcome: FilesystemReadOutcome, expected_git_dir: String) -> BeltCommitGitTrust? {
+  match outcome {
+    FilesystemReadRefused { error } =>
+      Present { value: BeltCommitGitUntrusted { cause: join(["worktree gitfile could not be read: ", error], "") } }
+    FilesystemReadSucceeded { content } =>
+      if !belt_commit_gitfile_points_at(contents: content, expected_git_dir: expected_git_dir) {
+        Present { value: BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" } }
+      } else {
+        none
+      }
+  }
+}
+
+fn belt_commit_git_trust_commondir_check(outcome: FilesystemReadOutcome, expected_common: String, git_dir: String, work_tree: String) -> BeltCommitGitTrust {
+  match outcome {
+    FilesystemReadRefused { error } =>
+      BeltCommitGitUntrusted { cause: join(["worktree commondir could not be read: ", error], "") }
+    FilesystemReadSucceeded { content } =>
+      if !belt_commit_commondir_points_at(contents: content, expected_common: expected_common) {
+        BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
+      } else {
+        BeltCommitGitTrusted { git_dir: git_dir, work_tree: work_tree }
+      }
+  }
+}
+
 fn belt_commit_git_trust(instance: HostDashboardInstance, worktree: String) -> BeltCommitGitTrust {
   let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: worktree)
   let expected_git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
   let expected_common = join([instance.repo_root as String, "/.git"], "")
   let gitfile = Filesystem.Read(path: pointers.gitfile)
-  match filesystem_read_outcome(content: gitfile.content, success: gitfile.success, error: gitfile.error) {
-    FilesystemReadRefused { error } =>
-      BeltCommitGitUntrusted { cause: join(["worktree gitfile could not be read: ", error], "") }
-    FilesystemReadSucceeded { content } =>
-      if !belt_commit_gitfile_points_at(contents: content, expected_git_dir: expected_git_dir) {
-        BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" }
-      } else {
-        let commondir = Filesystem.Read(path: pointers.commondir)
-        match filesystem_read_outcome(content: commondir.content, success: commondir.success, error: commondir.error) {
-          FilesystemReadRefused { error } =>
-            BeltCommitGitUntrusted { cause: join(["worktree commondir could not be read: ", error], "") }
-          FilesystemReadSucceeded { content: commondir_content } =>
-            if !belt_commit_commondir_points_at(contents: commondir_content, expected_common: expected_common) {
-              BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
-            } else {
-              BeltCommitGitTrusted { git_dir: expected_git_dir, work_tree: worktree }
-            }
-        }
-      }
+  match belt_commit_git_trust_gitfile_check(
+    outcome: filesystem_read_outcome(content: gitfile.content, success: gitfile.success, error: gitfile.error),
+    expected_git_dir: expected_git_dir,
+  ) {
+    Present { value: untrusted } => untrusted
+    Absent => {
+      let commondir = Filesystem.Read(path: pointers.commondir)
+      belt_commit_git_trust_commondir_check(
+        outcome: filesystem_read_outcome(content: commondir.content, success: commondir.success, error: commondir.error),
+        expected_common: expected_common,
+        git_dir: expected_git_dir,
+        work_tree: worktree,
+      )
+    }
   }
 }
 

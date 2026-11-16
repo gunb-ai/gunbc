@@ -826,16 +826,20 @@ fn attempt_system_unit_admit_body_path(path: String) -> AttemptSystemUnitBodyAdm
   }
 }
 
+fn attempt_system_unit_claimed_body_from_outcome(outcome: FilesystemReadOutcome) -> AttemptSystemUnitClaimedBody {
+  match outcome {
+    FilesystemReadSucceeded { content } => AttemptSystemUnitClaimedBodyRead { content: content }
+    FilesystemReadRefused { error } =>
+      AttemptSystemUnitClaimedBodyRefused { reason: join(["claimed request body unreadable: ", error], "") }
+  }
+}
+
 fn attempt_system_unit_read_claimed_body(path: String) -> AttemptSystemUnitClaimedBody {
   match attempt_system_unit_admit_body_path(path: path) {
     AttemptSystemUnitBodyRefused { reason } => AttemptSystemUnitClaimedBodyRefused { reason: reason }
     AttemptSystemUnitBodyRegular => {
       let read = Filesystem.Read(path: path)
-      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-        FilesystemReadSucceeded { content } => AttemptSystemUnitClaimedBodyRead { content: content }
-        FilesystemReadRefused { error } =>
-          AttemptSystemUnitClaimedBodyRefused { reason: join(["claimed request body unreadable: ", error], "") }
-      }
+      attempt_system_unit_claimed_body_from_outcome(outcome: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
     }
   }
 }
@@ -955,16 +959,23 @@ fn attempt_system_unit_decode_verdict(content: String) -> AttemptSystemUnitAnswe
   }
 }
 
-fn attempt_system_unit_read_answer(instance_root: String, entry: String, request_body: String) -> AttemptSystemUnitAnswerRead {
-  let path = attempt_system_unit_answer_path(instance_root: instance_root, entry: entry)
-  let read = Filesystem.Read(path: path)
-  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+fn attempt_system_unit_answer_from_exact(exact: FilesystemExactRead, request_body: String) -> AttemptSystemUnitAnswerRead {
+  match exact {
     FilesystemExactPathAbsent { path: _ } => AttemptSystemUnitAnswerMissing
     FilesystemExactPathUnreadable { path: _, kind: _, error } => AttemptSystemUnitAnswerUnreadable { detail: error }
     FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => AttemptSystemUnitAnswerUnreadable { detail: error }
     FilesystemExactPathRead { path: _, content } =>
       attempt_system_unit_decode_answer(content: content, request_body: request_body)
   }
+}
+
+fn attempt_system_unit_read_answer(instance_root: String, entry: String, request_body: String) -> AttemptSystemUnitAnswerRead {
+  let path = attempt_system_unit_answer_path(instance_root: instance_root, entry: entry)
+  let read = Filesystem.Read(path: path)
+  attempt_system_unit_answer_from_exact(
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+    request_body: request_body,
+  )
 }
 
 // ONE READ OF answers/<entry>, no wait: the root side answers when the spool's path unit starts it,
