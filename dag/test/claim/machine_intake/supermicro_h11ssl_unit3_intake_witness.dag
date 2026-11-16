@@ -295,3 +295,24 @@ test fn witness_the_gpu_figure_owes_the_bus_to_slot_pairing() -> Bool {
     ObservedByReceipt { observed: _ } => false
   }
 }
+
+// THE ROTATION IS PLANNED THROUGH THE MODELED CI ROUTE, AND ITS SECRET ID IS NOT MINTABLE YET. The
+// credential name carries the fleet name, so writing a concrete secret id here before
+// gunbc.hostname_allocation names this slot would be minting an identity through a side door. The claim
+// is that the standing states the route (operator places the factory credential in Secret Manager under
+// the srv15 convention, then the modeled BmcSecure route runs gated by a deployment environment) and
+// still refuses the id.
+test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Bool {
+  match supermicro_h11ssl_unit3_bmc_credential_standing {
+    FactoryCredentialInForce {
+      attested_by: _,
+      attested_at: _,
+      rotation_route_standing: route,
+      read_obligation: _,
+    } =>
+      string_contains(s: text(route), pattern: "Secret Manager")
+        && string_contains(s: text(route), pattern: "deployment environment")
+        && string_contains(s: text(route), pattern: "until gunbc.hostname_allocation")
+    RotatedCredentialObserved { observed_at: _ } => false
+  }
+}
