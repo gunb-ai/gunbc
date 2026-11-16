@@ -4,7 +4,8 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for }
 import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
@@ -1084,7 +1085,6 @@ fn router_dev_h11_naming(name: String, port: Nat, bus: String, retiring: List<St
     group: router_dev_h11_group(bus: bus),
     name: name,
     scheme: UpstreamHttp,
-    host: "192.168.1.202",
     port: port,
     tls_name: Absent,
     anchor: AnchorStrataProfile { profile: h11_strata_profile(bus: bus) },
@@ -1142,7 +1142,10 @@ type RouterDevReplicaContribution
 // will not admit) becomes `ReplicaRefused`, because those are faults, not an absent reading. Matching the typed
 // failure mode ShapeThroughputUnread -- never a reason string -- is what keeps router and anchor from drifting as
 // the anchor grows new reasons.
-fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLayoutResult) -> RouterDevReplicaContribution {
+// The upstream host is NOT a naming fact — it is DERIVED from the machine the row serves from (the roster's
+// HostIdentity, resolved once by the projection via `tailnet_host_from`) and passed in as `engine_host`. A naming
+// carries no address; there is no LAN-address fallback (gunbc.design_argument::fail_closed).
+fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLayoutResult, engine_host: String) -> RouterDevReplicaContribution {
   let shape = router_dev_replica_shape(n: n, layout: layout)
   match shape {
     ServingShapeRefused { deployment: _, reason: ShapeThroughputUnread } => ReplicaUnread {
@@ -1150,7 +1153,7 @@ fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLay
       cause: "the anchor's aggregate throughput is unread: this host has never produced a throughput reading, so it is named and kept out of service until it serves" as NonEmptyStr,
     }
     _ => match router_dev_shaped(shape: shape, row: (cap, retention, rests) => RouterDevUpstream {
-      name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
+      name: n.name, scheme: n.scheme, host: engine_host, port: n.port, tls_name: n.tls_name,
       model: router_dev_iq3_s_model(), capacity: cap, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
       retiring_names: n.retiring, in_service: true,
       retention: retention,
@@ -1170,9 +1173,9 @@ fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLay
 // this engine is listed but out of service because its throughput has never been read (gunbc.design_argument::
 // fail_closed: "a wrong answer is a loud, typed, located error"). The zero cap is not a fabrication: it is the
 // honest capacity of an engine that serves nothing (RouterDevCapacity -- "0 included (no turns)").
-fn router_dev_out_of_service_row(n: RouterDevReplicaNaming, cause: NonEmptyStr) -> RouterDevUpstream {
+fn router_dev_out_of_service_row(n: RouterDevReplicaNaming, cause: NonEmptyStr, engine_host: String) -> RouterDevUpstream {
   RouterDevUpstream {
-    name: n.name, scheme: n.scheme, host: n.host, port: n.port, tls_name: n.tls_name,
+    name: n.name, scheme: n.scheme, host: engine_host, port: n.port, tls_name: n.tls_name,
     model: router_dev_iq3_s_model(), capacity: OwnedCap { turns: 0 }, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
     retiring_names: n.retiring, in_service: false,
     retention: NoRetention,
@@ -1188,16 +1191,22 @@ fn router_dev_out_of_service_row(n: RouterDevReplicaNaming, cause: NonEmptyStr) 
 // names is omitted — that is the A-prime case (c5/c7 left the grant). The table of h11 engine rows this replaced
 // (RouterDevH11Engine / router_dev_h11_engines) is deleted: every field it carried lives in a naming row now.
 
-// ONE GRANTED REPLICA'S ROUTER NAMING: the row's NAME, address, port, TLS and retired names — the facts only the
+// ONE GRANTED REPLICA'S ROUTER NAMING: the row's NAME, port, TLS and retired names — the facts only the
 // naming can give — plus the LAYOUT GROUP it is this router's face for, and the anchor its capacity rests on.
 // h11 names one row per card, because its layout grants one replica per card and the bus is what distinguishes
 // them; srv3 and srv4 name ONE row each, because their layout grants one replica that spans both cards. The
 // naming row is not a claim that the replica exists: only its layout's grant is that.
+//
+// THERE IS NO HOST HERE, ON PURPOSE. A router upstream's ADDRESS is not a naming fact — it is a fact of the
+// MACHINE the row serves from, the roster's `host: HostIdentity`, and it is DERIVED at one site (the projection)
+// via `gunbc.fleet.fleet_tailnet.tailnet_host_from`, the one tailnet-name authority (gunbc.design_argument::
+// single_authority). An engine may be served from anywhere on the tailnet, so a LAN address that a DHCP lease or
+// a port swap can move (srv3 .221 -> .253, 2026-11-15) must never be a code value; a machine with no tailnet name
+// REFUSES (typed, located) and NEVER falls back to a LAN address (gunbc.design_argument::fail_closed).
 type RouterDevReplicaNaming {
   group: String
   name: String
   scheme: RouterUpstreamScheme
-  host: String
   port: Port
   tls_name: String?
   anchor: RouterDevReplicaAnchor
@@ -1221,7 +1230,7 @@ fn router_dev_h11_namings() -> List<RouterDevReplicaNaming> {
 // that anchor's grant is srv3_layout's admitted retention — the hand-typed "OwnedCap turns 4" that stood here is
 // gone, and the reason it was wrong is in the frontier below.
 fn router_dev_srv3_namings() -> List<RouterDevReplicaNaming> {
-  [RouterDevReplicaNaming { group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: ["h11-c1"] }]
+  [RouterDevReplicaNaming { group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttp, port: 18080, tls_name: Absent, anchor: AnchorStrataProfile { profile: srv3_strata_profile }, retiring: ["h11-c1"] }]
 }
 
 // srv4's naming, and THE ANSWER TO "TWO ENGINES, WHICH ENDPOINT?" (the operator-route question the original brief
@@ -1232,7 +1241,7 @@ fn router_dev_srv3_namings() -> List<RouterDevReplicaNaming> {
 // projection makes a silent answer impossible because the row set is then no longer one. Its engine serves TLS
 // with CN=srv4 on 18443.
 fn router_dev_srv4_namings() -> List<RouterDevReplicaNaming> {
-  [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "srv4-strata", scheme: UpstreamHttps, host: "192.168.1.196", port: 18443, tls_name: Present { value: "srv4" }, anchor: AnchorStrataProfile { profile: srv4_strata_profile }, retiring: [] }]
+  [RouterDevReplicaNaming { group: "gunbc-srv4-daily-engine", name: "srv4-strata", scheme: UpstreamHttps, port: 18443, tls_name: Present { value: "srv4" }, anchor: AnchorStrataProfile { profile: srv4_strata_profile }, retiring: [] }]
 }
 
 // THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each granted replica to its router naming by group,
@@ -1248,8 +1257,17 @@ type RouterDevReplicaProjection
   = RouterDevReplicaProjected { rows: List<RouterDevUpstream> }
   | RouterDevReplicaRefused { reason: String }
 
+// THE PROJECTION DERIVES THE UPSTREAM ADDRESS FROM THE MACHINE before anything else: it resolves the roster's
+// HostIdentity to its tailnet name ONCE via the one tailnet-name authority (`tailnet_host_from`), and hands that
+// derived address to every row the fold builds. A machine with NO tailnet name (unregistered, or registered with no
+// canonical hostname) REFUSES the projection — typed and located by machine and zone — and NEVER falls back to a LAN
+// address (gunbc.design_argument::fail_closed: a machine that cannot be named on the tailnet is not reachable from
+// anywhere on the tailnet, so it cannot be a router upstream). The address is thus never a code value: a DHCP lease
+// or a port swap needs no code change (operator decision 2026-11-15).
 fn router_dev_replica_projection(host: HostIdentity, layout: ServingLayoutResult, namings: List<RouterDevReplicaNaming>) -> RouterDevReplicaProjection {
-  match layout {
+  match tailnet_host_from(machine: host) {
+    Absent => RouterDevReplicaRefused { reason: concat("router upstream refused: the machine ", concat(host as String, " has no tailnet name (it is not in the fleet machine registry, or it carries no canonical hostname), so its engine's address cannot be derived on the fleet tailnet; a router upstream NEVER falls back to a LAN address — register the machine's hostname (gunbc.hostname_allocation) or take it off the router route")) }
+    Present { value: engine_host } => match layout {
     ServingLayoutRefused { refusal: _ } => RouterDevReplicaRefused { reason: concat("the serving layout of ", concat(host as String, " is refused, so no row set can be derived for it")) }
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
       fold(rs, init: RouterDevReplicaProjected { rows: [] }, f: (acc, c) =>
@@ -1265,10 +1283,10 @@ fn router_dev_replica_projection(host: HostIdentity, layout: ServingLayoutResult
                 match inner {
                   RouterDevReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
                   RouterDevReplicaProjected { rows: rows } =>
-                    match router_dev_replica_contribution(n: n, layout: layout) {
+                    match router_dev_replica_contribution(n: n, layout: layout, engine_host: engine_host as String) {
                       // A replica with no throughput reading is a host that has never served. Its OWN arm: name it,
                       // keep it out of service, and carry on -- excluded, never a cause to refuse its siblings.
-                      ReplicaUnread { naming: nn, cause: cause } => RouterDevReplicaProjected { rows: concat(rows, [router_dev_out_of_service_row(n: nn, cause: cause)]) }
+                      ReplicaUnread { naming: nn, cause: cause } => RouterDevReplicaProjected { rows: concat(rows, [router_dev_out_of_service_row(n: nn, cause: cause, engine_host: engine_host as String)]) }
                       ReplicaRefused { reason: r } => RouterDevReplicaRefused { reason: r }
                       ReplicaRow { row: u } => RouterDevReplicaProjected { rows: concat(rows, [u]) }
                     }
@@ -1276,6 +1294,7 @@ fn router_dev_replica_projection(host: HostIdentity, layout: ServingLayoutResult
             }
           }
         })
+    }
   }
 }
 
@@ -1360,11 +1379,18 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 
 // srv1 serves as two TP=1 replicas, one container per RTX PRO 6000 (operator, 2026-11-08): lil-flash-next on 18000 and
 // lil-flash-next-1 on 18001, each with its own LMCache and TLS (CN=pool-card). The router splits traffic between them.
+// The head's address is DERIVED from srv1's tailnet name like any other upstream — even the router's OWN host is
+// addressed by machine, not by a loopback/LAN literal (operator decision 2026-11-15: no IP literal is a router
+// upstream host; the engine listens 0.0.0.0, so it is reachable on the tailnet address, and the upstream SNI is
+// pinned to "pool-card", not the host, so this does not change TLS). srv1 with no tailnet name REFUSES the head.
 fn router_dev_head_shaped() -> List<RouterDevShaped> {
-  [
-    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
-    router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: "127.0.0.1", port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
-  ]
+  match tailnet_host_from(machine: operator_host_srv1) {
+    Absent => [RouterDevShapeRefused { reason: concat("router head refused: srv1 (the machine ", concat(operator_host_srv1 as String, " that runs the router and its local vLLM head) has no tailnet name, so its engine's address cannot be derived on the fleet tailnet; a router upstream NEVER falls back to a loopback or LAN address — register srv1's hostname (gunbc.hostname_allocation) or take the head off the router route")) }]
+    Present { value: engine_host } => [
+      router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: engine_host as String, port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+      router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: engine_host as String, port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+    ]
+  }
 }
 
 fn router_dev_first_party_head() -> RouterDevFirstParty {

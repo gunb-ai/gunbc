@@ -27,8 +27,12 @@ import gunbc.fabric.fabric_event_log {
 }
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_generation }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
-import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, SameUserRegroupToDeclaredGroup, owned_directory_path }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgidSticky }
+import extdeps.posix.identity { PosixOwnerNames }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_compute_ledger_group_name }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
@@ -155,13 +159,52 @@ fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDi
   ]
 }
 
+// A LEDGER AREA IS SHARED WHEN ITS HOST SERVES REMOTE BUILDS, and only the ledger the host resolves to:
+// the remote-build account reserves in this host's one ledger (host_capacity_subject), so the two areas
+// it creates entries in are grouped to the ledger group, group-writable and setgid so an entry either
+// principal creates stays in that group. The store only ever creates new names in them (O_EXCL objects
+// and generation-suffixed heads, gunbc.fabric.fabric_storage_file_store), so directory write is the whole
+// grant: no entry is rewritten in place, and entries post readable at the umask. The areas also carry
+// the sticky bit (03770), because each holds the OTHER principal's entries: in a group-writable
+// directory without it, rename(2) and unlink(2) of an entry take permission from the directory, so the
+// remote-build account could remove or replace the service user's reservations (the reason
+// gunbc.managed_directory DirectoryOwnerGroupWritableSetgidSticky states). The store deletes nothing --
+// its heads keep every generation -- so the bit refuses nothing the ledger does. The root above them
+// stays traverse-only. A directory the service user already made is re-grouped, never re-owned, which is
+// the worker precedent's posture (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_worker_writable_group_adoption).
+type ComputeLedgerSharing
+  = ComputeLedgerServiceOnly
+  | ComputeLedgerSharedWithRemoteBuild
+
+fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerSharing {
+  if !remote_build_host_is_serving(host: (instance.host_identity as HostIdentity)) {
+    ComputeLedgerServiceOnly
+  } else {
+    match dashboard_instance_for_host(host: instance.host_identity as String) {
+      DashboardInstanceHostUnknown { host: _ } => ComputeLedgerServiceOnly
+      DashboardInstanceForHost { instance: resolved } =>
+        if (resolved.instance_id as String) == (instance.instance_id as String) { ComputeLedgerSharedWithRemoteBuild } else { ComputeLedgerServiceOnly }
+    }
+  }
+}
+
 fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
-  OwnedDirectoryDeclared {
-    member: member,
-    path: path,
-    owner: instance.directory_owner,
-    mode: DirectoryOwnerAllEveryoneTraverse,
-    group_adoption: ForeignOwnershipRefuses,
+  match compute_ledger_sharing(instance: instance) {
+    ComputeLedgerServiceOnly => OwnedDirectoryDeclared {
+      member: member,
+      path: path,
+      owner: instance.directory_owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
+      group_adoption: ForeignOwnershipRefuses,
+    }
+    ComputeLedgerSharedWithRemoteBuild => OwnedDirectoryDeclared {
+      member: member,
+      path: path,
+      owner: PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
+      mode: DirectoryOwnerGroupWritableSetgidSticky,
+      group_adoption: SameUserRegroupToDeclaredGroup,
+    }
   }
 }
 

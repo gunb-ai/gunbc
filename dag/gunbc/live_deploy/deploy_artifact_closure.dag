@@ -13,6 +13,7 @@ module gunbc.live_deploy.deploy_artifact_closure
 import std.types { List }
 import std.algebra { fold_list, list_map }
 import std.list { list_member }
+import std.optional { Optional, Present, Absent }
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // SCOPE — what this module is, and what it is NOT yet
@@ -64,25 +65,27 @@ import std.list { list_member }
 //   concrete artifact paths; NotYetModeled is a typed, located, countable "unknown" — it
 //   is NOT silently treated as allowed (fail_closed: "Failing to compute the answer is a
 //   different outcome from computing a conservative one", and "every degradation is typed,
-//   located and countable"). NoReadOfRecord is a nullary, POSITIVE assertion — it carries NO
-//   free-form reason, because a String whose only purpose is commentary must not be what lets a
-//   deploy proceed (source_annotations; fail_closed). The allow rests on the CONSTRUCTION PATH:
-//   it is produced only by a kind's OWN module from a DERIVED, total match over that kind's
-//   modeled facts (e.g. gunbc.tailscale_serve_scope matching TailscaleServeService), so the
-//   assertion cannot survive the realization lying. It is NOT a default or fallback and is NEVER
-//   produced for a merely-unmodeled kind: the adapter enumerates every kind explicitly, so a kind
-//   with no explicit arm is a compile error, never an implicit NoReadOfRecord.
+//   located and countable").
 // ─────────────────────────────────────────────────────────────────────────────────
 
 type ArtifactReadSet
   = Declared { paths: List<String> }
-  | NoReadOfRecord
-  // A NON-EXECUTABLE artifact the deploy INSTALLS (e.g. an OIDC config document). It is not a unit and performs
-  // no read of record — it is the thing OTHER units declare reading. The gate's population is the enable legs
-  // (executable units), so this arm is NEVER consulted by the gate; it is truthful bookkeeping, not the false
-  // "unit whose reads aren't modeled yet" that NotYetModeled means. (manager: never leave a non-unit NotYetModeled.)
-  | InstalledArtifact
   | NotYetModeled { reason: String }
+  // InstalledArtifact: this row is a deploy-installed artifact rather than a unit with
+  // reads — its OWN install is the fact (a source-tree step, a config document), and the
+  // units that consume it (serve's --entry, the tree converger) declare that read on their
+  // own rows. NotYetModeled would be false for it (there is no read left to model), and a
+  // self-read would restate its own install fact.
+  | InstalledArtifact
+  // NoReadOfRecord is a POSITIVE assertion, made by the kind's OWN module, that the unit reads
+  // no installed artifact of record (e.g. the tailscale serve CLI mapping). It is NOT a default
+  // or fallback and is NEVER produced for a merely-unmodeled kind: only a module that owns the
+  // concept asserts it, and the adapter enumerates every kind explicitly, so a kind with no
+  // explicit arm is a compile error, not an implicit NoReadOfRecord. It carries no reason: the
+  // construction path is the justification, and a commentary String must not be what proceeds a
+  // deploy (fail_closed: "it can be satisfied by editing the declaration while the realization
+  // still lies").
+  | NoReadOfRecord
 
 // A resolved enable row: `located` is where the unit lives (its owned path / identity),
 // `reads` is what that unit's own declaration says it reads. Rows are produced by an
@@ -138,18 +141,20 @@ fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGate
   deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
 }
 
-// first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
-// as a singleton list, or Empty when every artifact is installed. The recursion keeps the
-// installed set fixed (it does NOT prune it), so an artifact appearing later in the read list
-// is still checked against the full install set.
-fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
+// first_missing_artifact returns Present(the first artifact in `artifacts` that is not in
+// `installed`), or Absent when every artifact is installed. It is Optional (not a list) so a
+// result carrying more than one missing artifact cannot be written at all — the cardinality of
+// "maybe one" is the Optional, not a hand-made singleton list (std.optional is the canonical
+// presence/absence carrier). The recursion keeps the installed set fixed (it does NOT prune it),
+// so an artifact appearing later in the read list is still checked against the full install set.
+fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> Optional<String> {
   match artifacts {
-    Empty => Empty {  }
+    Empty => Absent
     Cons { head: artifact, tail: rest } =>
       if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
         first_missing_artifact(artifacts: rest, installed: installed)
       } else {
-        Cons { head: artifact, tail: Empty {  } }
+        Present { value: artifact }
       }
   }
 }
@@ -162,18 +167,17 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
   match row {
     ReadRow { located: loc, reads: Declared { paths: paths } } =>
       match first_missing_artifact(artifacts: paths, installed: installed) {
-        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
-        Empty => Allowed
+        Present { value: missing } => Refused { located: loc, artifact: missing }
+        Absent => Allowed
       }
     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
-    // A NoReadOfRecord row is a POSITIVE assertion by the kind's own module that it reads no installed
-    // artifact; the closure allows it. It is reached only where a module explicitly asserts it (the adapter
-    // has no catch-all), so it is never a fallback for an unmodeled kind — those stay NotYetModeled → Unclosed.
-    ReadRow { located: _, reads: NoReadOfRecord } => Allowed
-    // A non-executable installed artifact imposes NO read obligation on itself (it is read by the units that
-    // declare it). It must not appear in the gate population at all — the gate population is the enable legs —
-    // so this arm is defensive bookkeeping; Allowed means "nothing to check for this row," never a unit's read.
+    // An installed artifact's own closure is its install, which the plan owns and the deploy
+    // verifies; as a gate row it is allowed. Its consumers declare the read on their own rows.
     ReadRow { located: _, reads: InstalledArtifact } => Allowed
+    // A NoReadOfRecord row is a POSITIVE assertion by the kind's own module that it reads no
+    // installed artifact; the closure allows it. It is reached only where a module explicitly
+    // asserts it (the adapter has no catch-all), so it is never a fallback for an unmodeled kind.
+    ReadRow { located: _, reads: NoReadOfRecord } => Allowed
   }
 }
 
@@ -227,25 +231,22 @@ fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) ->
 // ─────────────────────────────────────────────────────────────────────────────────
 
 // The closure states, mirrored from ArtifactReadSet:
-//   DerivedRow     — the unit's read set is declared, so the closure can check it.
-//   NoReadRow      — the unit's own module DERIVED (total match, not prose) that it reads no installed
-//                    artifact; located and countable, carrying no free-form reason (the allow is not
-//                    justified by a String).
-//   UnclosedRow    — the unit's read set is not yet declared (a typed, located degradation).
-//   InstalledArtifactRow — a non-executable artifact the deploy installs; never in the gate population (enable
-//                    legs only), recorded here only so it is countable and located, not a silent extra.
+//   DerivedRow   — the unit's read set is declared, so the closure can check it.
+//   UnclosedRow  — the unit's read set is not yet declared (a typed, located degradation).
+//   InstalledArtifactRow — the row is an installed artifact, not a unit with reads.
+//   NoReadRow    — the unit's OWN module positively asserts it reads no installed artifact.
 type ArtifactInventoryRow
   = DerivedRow { located: String, artifacts: List<String> }
-  | NoReadRow { located: String }
-  | InstalledArtifactRow { located: String }
   | UnclosedRow { located: String, reason: String }
+  | InstalledArtifactRow { located: String }
+  | NoReadRow { located: String }
 
 fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
   match row {
     ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
-    ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
-    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
     ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
+    ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
   }
 }
 

@@ -18,11 +18,10 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 // imports it, so no cycle. The generic closure (gunbc.live_deploy.deploy_artifact_closure) stays
 // model-agnostic and stays consumable by the fleet-converge actuation path over its own enable rows.
 
-import std.types { List, String }
+import std.types { List, String, Bool }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_map, list_append }
-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled }
-import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
+import std.algebra { list_map, list_push, list_append }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
@@ -35,13 +34,14 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths 
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working_directory_of_unit_file }
+import gunbc.live_deploy.unit_standing { service_directive_required_reads_of_unit_file, RequiredDirectiveRead, CommandRead, WorkingDirectoryRead, RequiredFileRead, UnparsableCommand }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_tree_remote_unit_file_for_closure,
   live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
 }
+import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
 import extdeps.systemd.unit_file { SystemdUnitFile }
 
 // THE READ-SET OF AN ENABLED ARTIFACT, per kind and total (the same total-over-kinds guarantee as
@@ -70,14 +70,53 @@ import extdeps.systemd.unit_file { SystemdUnitFile }
 fn unit_file_read_set(file: SystemdUnitFile?) -> ArtifactReadSet {
   match file {
     Absent => NotYetModeled { reason: "this spec does not enable the unit (its unit file is not emitted); no read of record to own" }
-    Present { value: f } => match exec_start_binary_of_unit_file(file: f) {
-      Absent => NotYetModeled { reason: "the emitted unit file carries no service ExecStart; its read is not modeled here (DISSOLUTION: model the unit's argv)" }
-      Present { value: binary } => match working_directory_of_unit_file(file: f) {
-        Present { value: wd } => Declared { paths: [binary, wd] }
-        Absent => Declared { paths: [binary] }
+    // The reads are the ONE exhaustive classification over the unit's service directives (in
+    // gunbc.live_deploy.unit_standing), mapped to this layer's path representation. NOT just argv[0] +
+    // WorkingDirectory: a unit that carries a REQUIRED EnvironmentFile the deploy does not install is a
+    // false admission -- the gate must halt on it (side-chat F1). Fail-closed on unparsable/absent start
+    // commands rather than fabricating an empty path (fail_closed: "no plausible output is fabricated").
+    Present { value: f } =>
+      let required = service_directive_required_reads_of_unit_file(f)
+      if has_unparsable_read(xs: required) {
+        NotYetModeled { reason: "an Exec command's argv[0] could not be extracted; the unit's reads are not modeled (DISSOLUTION: model the command's binary)" }
+      } else if has_command_read(xs: required) {
+        Declared { paths: required_read_paths(xs: required) }
+      } else {
+        NotYetModeled { reason: "the emitted unit file carries no service ExecStart; its read is not modeled here (DISSOLUTION: model the unit's argv)" }
       }
-    }
   }
+}
+
+// Presence tests over the classifier's coproduct; no hand-written variant-equality predicate is needed
+// because each arm matches the variant directly (review 95795 F2).
+fn has_unparsable_read(xs: List<RequiredDirectiveRead>) -> Bool {
+  fold(xs, init: false, f: (b, r) => match r {
+    CommandRead { path: _ } => b
+    WorkingDirectoryRead { path: _ } => b
+    RequiredFileRead { path: _ } => b
+    UnparsableCommand { command: _ } => true
+  })
+}
+
+fn has_command_read(xs: List<RequiredDirectiveRead>) -> Bool {
+  fold(xs, init: false, f: (b, r) => match r {
+    CommandRead { path: _ } => true
+    WorkingDirectoryRead { path: _ } => b
+    RequiredFileRead { path: _ } => b
+    UnparsableCommand { command: _ } => b
+  })
+}
+
+// The paths of the path-carrying variants. UnparsableCommand carries no path and is skipped; the caller
+// has already refused when one is present, so the skip is defensive, not a fabrication. All four variants
+// are named (no wildcard), so a new variant forces this consumer to handle it.
+fn required_read_paths(xs: List<RequiredDirectiveRead>) -> List<String> {
+  fold(xs, init: [], f: (acc, r) => match r {
+    CommandRead { path: p } => list_push(xs: acc, item: p)
+    WorkingDirectoryRead { path: p } => list_push(xs: acc, item: p)
+    RequiredFileRead { path: p } => list_push(xs: acc, item: p)
+    UnparsableCommand { command: _ } => acc
+  })
 }
 
 // The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one the deploy
@@ -99,10 +138,9 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
   match step.kind {
     ComposeOwned { kind: ck } => match ck {
       // THE SERVED UNIT reads {its ExecStart binary, its WorkingDirectory tree} from its OWN typed unit file
-      // (live_deploy_serve_unit_file_over, OIDC Environment factored to [] for the argv[0]/WorkingDirectory
-      // readers) PLUS the OIDC config document it reads at startup when OIDC is placed for this instance. The
-      // config path comes from deployment_oidc_config_steps — the SAME authority that installs the
-      // OidcConfigArtifact — so serve's read and the installed artifact are one string, never re-spelled.
+      // (live_deploy_serve_unit_file_over, OIDC Environment factored to [] for the argv[0]/WorkingDirectory read),
+      // PLUS the OIDC config document it reads at startup (from deployment_oidc_config_steps — the same authority
+      // that installs the OidcConfigArtifact). When OIDC is unassigned/unbound the config list is empty.
       SystemdUnit => serve_unit_read_set(spec: spec, revision: revision, instance: instance)
       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
       FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
@@ -111,12 +149,10 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
       TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision))
       AgentDoorServeUnit => unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision))
-      // The OIDC config is a written DOCUMENT the deploy installs, NOT an executable unit: it has no ExecStart
-      // and reads nothing of record. Its reader is the SERVE unit (SystemdUnit row below), whose read-set
-      // gains exactly this config path from the SAME owner authority (deployment_oidc_config_steps ->
-      // tracker_web placement cfg.config_path). So this step is a truthful InstalledArtifact, never the false
-      // "not yet modeled" TODO label (manager: a non-unit must not be NotYetModeled). The gate population is
-      // the enable legs, so this row is never consulted by the gate; it is countable bookkeeping.
+      // The OIDC config is NOT a unit and performs no read of record; it is a non-executable artifact the deploy
+      // installs, read by the serve unit at startup (the serve row above declares that read). Recorded here as an
+      // installed artifact so it is located and countable — never the false NotYetModeled ("unit whose reads aren't
+      // modeled yet") for a config document.
       OidcConfigArtifact => InstalledArtifact
     }
     UpsertOwned { kind: uk } => match uk {
@@ -127,40 +163,34 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // re-transcribed here: [step.path] the binary, [instance.repo_root] the tree (the SAME authority as
       // the GunbcSourceTree step path, so the gate requires the installed tree to be where serve reads it).
       ServeBinary => Declared { paths: [step.path as String, instance.repo_root as String] }
-      // The source-tree step's artifact IS the tree it provides: its read of record is its own owned path
-      // (repo_root), so the intent installs the tree it must own (red_control 2). Its downstream CONSUMER —
-      // the serve binary loading `--entry` from repo_root — is declared on the ServeBinary row above (the
-      // same instance.repo_root), so the serve→tree dependency stays counted, never silently dropped
-      // (fail_closed: "every degradation is typed, located and countable"). When the gate is wired, both
-      // reads match the tree-install leg's target from the apply-leg authority.
-      GunbcSourceTree => Declared { paths: [step.path as String] }
-      // The belt is a systemd .path unit (BeltEventPathUnit). Its read of record is the set of watched
-      // directories it puts DirectoryNotEmpty= on: each must EXIST for the level trigger to fire, so a
-      // missing watched dir is a real outage (the exit drain never starts). The dirs derive from the same
-      // single authority the renderer uses — live_deploy_belt_event_path_read_paths -> spool_watched_roles
-      // + spool_role_dirs — not a list re-spelled here. The drain service it triggers is the
-      // AttemptUnitDrainPathUnit row's obligation.
-      BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec) }
-      // A tailscale serve mapping is a no-read ONLY as DERIVED by gunbc.tailscale_serve_scope over the modeled
-      // TailscaleServeService (a total match) — not a prose assertion here. If a unit-backed service is ever
-      // added, that match breaks and this arm must then emit NotYetModeled (halt), never a silent no-read
-      // (fail_closed: the allow cannot survive the realization lying). NoReadOfRecord carries no reason: the
-      // construction path is the justification, and a commentary String must not be what proceeds a deploy.
-      TailscaleServeMapping =>
-        if tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service()) {
-          NotYetModeled { reason: "tailscale serve mapping is unit-backed and reads an installed artifact that its module has not yet declared; unmodeled halts, it is never silently a no-read" }
-        } else {
-          NoReadOfRecord
-        }
-      // The tree-remote oneshot reads its ExecStart binary + WorkingDirectory, read off the SAME typed unit
-      // file the deploy serializes to the host (emit.live_deploy_tree_remote_unit_file_for_closure -> the
-      // placement module's convergence_oneshot_service_unit_file), via the shared unit_file_read_set readers —
-      // never a second spelling (single_authority). Absent only when the convergence slice is refused.
+      // The source-tree step is an ARTIFACT, not a reader: its content is read by the units that
+      // declare it — the ServeBinary row above (repo_root, the tree `gunbc serve --entry` loads)
+      // and, once the gate is wired, the tree-remote/roadmap/door WorkingDirectory reads. A read of
+      // its own step.path would restate the install fact ("read ⊆ owned" re-derives itself and never
+      // goes red) — rung inflation (guarantee_ladder). NotYetModeled would be false: there is no read
+      // left to model, it is a located installed artifact. So it is InstalledArtifact (its install is
+      // owned and verified by the plan; its consumers carry the TreeContent read).
+      GunbcSourceTree => InstalledArtifact
+      // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
+      // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
+      // service it triggers is carried by the AttemptUnitDrainPathUnit row.
+      // THE BELT .path unit's read of record is the directory it watches for non-empty: their watched dirs are rows in the emit's read-of-record
+      // (live_deploy_belt_event_path_read_paths), so the gate requires them installed before the drain it triggers runs.
+      BeltEventPathUnit => Declared { paths: live_deploy_belt_event_path_read_paths(spec: spec) }
+      // The tailscale serve mapping has no ExecStart: `tailscale serve configure` runs from the tailscale CLI, so it is
+      // a no-read-of-record kind. Its arm derives from the SERVE's OWN typed TailscaleServeService (total match; no
+      // free-form reason String), not a hardcoded constant here — a serve type that DOES read an artifact yields
+      // NotYetModeled instead. This arm still enumerates the kind explicitly: no catch-all, so a new kind stays a compile error.
+      TailscaleServeMapping => if tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service()) {
+        NotYetModeled { reason: "the tailscale serve CLI surface is a serve type that reads an installed artifact; declare its read here" }
+      } else {
+        NoReadOfRecord
+      }
+      // The tree-remote unit reads {its sync-script argv[0], its WorkingDirectory tree}, read from its OWN typed oneshot unit file (via the placement
+      // authority's convergence_oneshot_service_unit_file) through the unit_standing classifier — the same unit file the deploy emits.
       DeployedTreeRemoteUnit => unit_file_read_set(live_deploy_tree_remote_unit_file_for_closure(spec: spec))
-      // The publication helper .path unit watches the request spool becoming non-empty; those watched
-      // directories must EXIST for the helper to fire, so they are its read of record. Same authority as the
-      // belt unit — live_deploy_publication_path_read_paths -> spool_watched_roles + spool_role_dirs.
-      PublicationHelperPathUnit => Declared { paths: live_deploy_publication_path_read_paths(spec) }
+      // THE PUBLICATION .path unit's read of record is the directory it watches for non-empty: their watched dirs are rows in the emit's read-of-record.
+      PublicationHelperPathUnit => Declared { paths: live_deploy_publication_path_read_paths(spec: spec) }
       // The drain service ExecStarts a helper from its revision-bound launcher snapshot. Its read and
       // the snapshot that installs it are BOTH derived from gunbc.roadmap.attempt_system_unit_launch
       // attempt_unit_drain_read_paths (attempt_system_unit_launcher_dir) — one authority, not a list

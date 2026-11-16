@@ -53,6 +53,7 @@ import extdeps.languages.json.parse {
   parse_json_document,
 }
 import extdeps.systemd.unit_file {
+  SystemdUnitFile,
   ServiceUnitFile,
   Description,
   ServiceType, OneshotMode,
@@ -744,10 +745,9 @@ fn convergence_slice_refusal_text(oneshot: ConvergenceOneshot, slice: NonEmptySt
 // systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
 // the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
 fn convergence_oneshot_unit_text(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> String {
-  match convergence_oneshot_rendering(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
-    ConvergenceUnitRendered { text: t } => t
-    ConvergenceUnitPlacementRefused { reason: r } =>
-      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
+  match convergence_oneshot_service_unit_file_if_admitted(spec: spec, oneshot: oneshot) {
+    Present { value: unit } => serialize_systemd_unit_file(file: unit)
+    Absent => "__GUNBC_DEPLOY_UNREACHABLE__ convergence slice not admitted"
   }
 }
 
@@ -760,11 +760,11 @@ fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, onesh
   }
 }
 
-// THE TYPED UNIT FILE FOR A CONVERGENCE ONESHOT, at an admitted slice. This is THE authority for what a
-// convergence oneshot runs: it carries ExecStart (argv[0] first) and WorkingDirectory. The host text is one
-// serialization of THIS file (convergence_oneshot_text_in), and the deploy-artifact closure reads the same
-// file (via unit_standing's ExecStart/WorkingDirectory readers) -- so the byte the host receives and the read
-// the closure records are one representation, never a second spelling (single_authority).
+// THE ONE typed oneshot unit file, given an ADMITTED slice. This is the single place the oneshot's
+// ServiceUnitFile is built: the deploy-emitted text (convergence_oneshot_text_in) serializes it, and the
+// deploy-artifact closure (emit live_deploy_tree_remote_unit_file_for_closure) reads it through the
+// unit_standing classifier. Keeping the build here (in the placement authority) is what the fold review
+// required — no second copy, and the emit closure view reuses it rather than re-matching slice admission.
 fn convergence_oneshot_service_unit_file(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [Description { text: oneshot.description }],
@@ -787,6 +787,18 @@ fn convergence_oneshot_service_unit_file(slice: NonEmptyStr, oneshot: Convergenc
       ],
     ),
     install: NotInstallable,
+  }
+}
+
+// The declared-row view of the oneshot file under the deployment's CONVERGENCE slice: Present when that slice
+// is admitted, Absent when it is refused (a refused convergence slice brings up no convergence unit — the
+// read row is then not applicable, exactly as convergence_oneshot_unit_text renders an unreachable marker).
+// The slice-admission match lives ONCE, here; the emit closure view calls this rather than matching
+// convergence_slice_admission itself.
+fn convergence_oneshot_service_unit_file_if_admitted(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> SystemdUnitFile? {
+  match convergence_slice_admission(spec: spec, slice: gunbc_repository_convergence_slice_unit_name) {
+    ConvergenceSliceAdmitted { name: admitted } => Present { value: convergence_oneshot_service_unit_file(slice: admitted, oneshot: oneshot) }
+    ConvergenceSliceInsideServingSlice { name: _, serving: _ } => Absent
   }
 }
 

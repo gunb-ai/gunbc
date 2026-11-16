@@ -9,10 +9,13 @@ module gunbc.live_deploy.live_deploy_ci_step
 
 import std.types { String }
 import v2.workflow.gunbc_invoke_step_emit {
-  gunbc_run_step_script,
-  gunbc_run_step_script_with_prelude
+  gunbc_run_step_script_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
 }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
@@ -23,44 +26,44 @@ import gunbc.auth.github_app_credential_step {
 // THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION (gunbc.live_deploy.apply_receipt): the rule -- exactly one
 // decodable document, apply XOR refusal, zero never (named), the receipt/conclusion pairing -- lives in
 // the receipt module with the documents it counts, not in shell in the workflow (gunbc.design_argument::how_to_work).
-data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply_receipt.dag",
+data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply_receipt",
   function: "assert_dashboard_deploy_receipts",
-}
+)
 
 // THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission): the plan job compiles the
 // prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
 // beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
 // resolve again (prod gap 1, failure b).
-data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/pre_swap_admission.dag",
+data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.pre_swap_admission",
   function: "record_plan_serve_entry_compile_verdict",
-}
+)
 
-data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
+data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
   function: "live_deploy_apply_prod_role_wet",
-}
+)
 
 // THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_prod_role_wet, bound to
 // the expected revision and the fleet transaction, minting gunbc.live_deploy.apply_receipt.
-data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
+data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
   function: "live_deploy_apply_prod_role_transaction_wet",
-}
+)
 
 // THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
 // apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
 // over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
-data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
+data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
   function: "microvm_controller_install_wet",
-}
+)
 
-data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/live_deploy/apply.dag",
+data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
   function: "microvm_controller_install_admission_wet",
-}
+)
 
 // The dashboard deploy, invoked as a fleet-converge mode rather than from a workflow of its own.
 // The operation is unchanged and already correct: live_deploy_apply_prod_role_wet observes the candidate
@@ -68,30 +71,27 @@ data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = 
 // deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
 // — gunbc#8676 deleted the invocation, never the operation.
 fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
-    function: gunbc_ci_live_deploy_apply_srv1_target.function,
+    target: gunbc_ci_live_deploy_apply_srv1_target,
     claim_run: false,
     receipt_rel: none
   )
 }
 
 fn gunbc_ci_live_deploy_transaction_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_live_deploy_transaction_target.entry,
-    function: gunbc_ci_live_deploy_transaction_target.function,
+    target: gunbc_ci_live_deploy_transaction_target,
     claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
   )
 }
 
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_controller_install_target.entry,
-    function: gunbc_ci_microvm_controller_install_target.function,
+    target: gunbc_ci_microvm_controller_install_target,
     claim_run: false,
     receipt_rel: none
   )
@@ -103,31 +103,28 @@ fn gunbc_ci_microvm_controller_install_invoke() -> String {
 // change none of them. The mint reads the app key with the job's workload-identity token, which the
 // step's environment carries. The step holds no fleet key: it runs before the step that loads one.
 fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_microvm_controller_install_admission_target.entry,
-    function: gunbc_ci_microvm_controller_install_admission_target.function,
+    target: gunbc_ci_microvm_controller_install_admission_target,
     claim_run: false,
     receipt_rel: none
   )
 }
 
 fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
-    function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
+    target: gunbc_ci_assert_dashboard_deploy_receipts_target,
     claim_run: false,
     receipt_rel: none
   )
 }
 
 fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_record_plan_serve_entry_verdict_target.entry,
-    function: gunbc_ci_record_plan_serve_entry_verdict_target.function,
+    target: gunbc_ci_record_plan_serve_entry_verdict_target,
     claim_run: false,
     receipt_rel: none
   )

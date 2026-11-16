@@ -1425,14 +1425,26 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
-    _ =>
-      match declaration_reference_path_optional(node: node) {
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Conj } => eval_callee_reference_probe(node: node)
+    TypeNode { connective: Disj } => eval_callee_reference_probe(node: node)
+    TypeNode { connective: Instantiation } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Value } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Transform } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Branch } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Loop } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Bind } => eval_callee_reference_probe(node: node)
+    ComputationNode { behavior: Match } => eval_callee_reference_probe(node: node)
+  }
+}
+
+fn eval_callee_reference_probe(node: Node) -> Bool {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: _ } => true
+    Absent =>
+      match lexical_reference_label_optional(node: node) {
         Present { value: _ } => true
-        Absent =>
-          match lexical_reference_label_optional(node: node) {
-            Present { value: _ } => true
-            Absent => false
-          }
+        Absent => false
       }
   }
 }
@@ -2851,7 +2863,17 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
 fn eval_node_is_transform(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } => true
-    _ => false
+    // total over Connective and Behavior: every variant is named here, so adding a variant must be handled at this site.
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: Value } => false
+    ComputationNode { behavior: Branch } => false
+    ComputationNode { behavior: Loop } => false
+    ComputationNode { behavior: Bind } => false
+    ComputationNode { behavior: Match } => false
   }
 }
 
@@ -3857,8 +3879,6 @@ data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projecti
 data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow {
       subject: PathSubject { path: "eval_field_projection_of_receiver" },
       reason: nfr_reason_eval_projection_receiver_not_aggregate,

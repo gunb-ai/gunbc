@@ -1,0 +1,104 @@
+module test.claim.native_serve_roadmap_probe_witness
+
+import std.types { Bool, String, List, Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.instruments.native_serve_roadmap_probe { native_serve_probe_standing }
+
+// CONTROLS for the roadmap native serve probe's verdict (gunbc.instruments.native_serve_roadmap_probe
+// native_serve_probe_standing), run by `gunbc test //gunbc/instruments:native-serve-roadmap` and, as the
+// fold-level controls, by the claim batch. These are the controls review 95743 asked for: the standing
+// must read RED on a 500, not green -- the previous range (>= 200 && < 600) accepted a handler error as a
+// served response, so a control that feeds a 500 and must go red is what keeps that bug out.
+//
+// The reader declares no phases, so every phase-shaped argument the standing receives (refused/deadline/
+// unix arms) is empty here; only the announcement, the response count, and the per-response status decide
+// the verdict. A well-formed status line is "HTTP/1.1 " then three digits (the reader parses substring
+// 9..12), so a canned "HTTP/1.1 500 ..." is a parseable server error, and a non-status string is the
+// unparseable case.
+
+fn listening() -> String { "native-serve listening on 127.0.0.1:8080" }
+
+fn standing_with(responses: List<String>) -> ProcessExit {
+  native_serve_probe_standing(
+    announcement: listening(),
+    peer_announcement: "",
+    peer_port: 8080,
+    responses: responses,
+    refused_statuses: [],
+    refused_stderrs: [],
+    deadline_announcements: [],
+    deadline_responses: [],
+    deadline_exit_statuses: [],
+    unix_peer_account: "",
+    unix_contended_statuses: [],
+    unix_contended_stderrs: [],
+    unix_contended_kept: [],
+  )
+}
+
+fn response(status: Int, status_text: String, body: String) -> String {
+  concat(concat(concat(concat("HTTP/1.1 ", to_string(value: status)), " "), status_text),
+    concat(concat("\r\nContent-Length: ", to_string(value: string_length(s: body))), concat("\r\n\r\n", body)))
+}
+
+// GREEN: the door answers both fixed requests with 2xx -- that is serving, and reads green.
+test fn the_standing_is_green_when_every_response_is_2xx() -> Bool {
+  match standing_with(responses: [response(status: 200, status_text: "OK", body: "ok"),
+    response(status: 204, status_text: "No Content", body: "")]) {
+    ExitSuccess {} => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// THE CONTROL (review 95743): a 500 on the fixed request set is RED. With the accepted-range bug present
+// (< 600) this standing returned ExitSuccess on this input, so this control was red -- that is what pins
+// the fix. A 5xx handler error means the door did not serve.
+test fn the_standing_is_red_when_a_response_is_a_server_error() -> Bool {
+  match standing_with(responses: [response(status: 200, status_text: "OK", body: "ok"),
+    response(status: 500, status_text: "Internal Server Error", body: "error")]) {
+    ExitSuccess {} => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+// A 4xx is likewise not a served 2xx answer and is red (the claim is 2xx, not "any parsed response").
+test fn the_standing_is_red_when_a_response_is_a_client_error() -> Bool {
+  match standing_with(responses: [response(status: 200, status_text: "OK", body: "ok"),
+    response(status: 404, status_text: "Not Found", body: "nope")]) {
+    ExitSuccess {} => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+// The unparseable path is a distinct red (a closed connection is not a served response), so tightening to
+// 2xx did not swallow the parse failure behind the status check.
+test fn the_standing_is_red_on_an_unparseable_response() -> Bool {
+  match standing_with(responses: [response(status: 200, status_text: "OK", body: "ok"),
+    "connection closed by peer before a status line"]) {
+    ExitSuccess {} => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+// The start check is unchanged and still red: no listening announcement is red whatever the responses are.
+test fn the_standing_is_red_when_the_door_never_listened() -> Bool {
+  match native_serve_probe_standing(
+    announcement: "refused: emit/build/start",
+    peer_announcement: "",
+    peer_port: 8080,
+    responses: [response(status: 200, status_text: "OK", body: "ok"),
+      response(status: 200, status_text: "OK", body: "ok")],
+    refused_statuses: [],
+    refused_stderrs: [],
+    deadline_announcements: [],
+    deadline_responses: [],
+    deadline_exit_statuses: [],
+    unix_peer_account: "",
+    unix_contended_statuses: [],
+    unix_contended_stderrs: [],
+    unix_contended_kept: [],
+  ) {
+    ExitSuccess {} => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}

@@ -33,6 +33,20 @@ fn tailscale_serve_service() -> TailscaleServeService {
   ServeCli
 }
 
+// Does the tailscale serve mapping read an installed artifact? Derived from the serve's OWN typed service
+// (a total match, so adding a serve type is a compile error here, not a silent wrong answer). The tailscale
+// CLI reads nothing installed, so it is false — which is exactly what makes the consumer arm in
+// gunbc.live_deploy.deploy_artifact_read_sets derive NoReadOfRecord from the typed surface instead of a
+// hardcoded constant or a free-form reason String. A future typed serve that loads an installed artifact
+// returns true and that arm degrades to NotYetModeled; the claim "the mapping reads no installed artifact"
+// cannot drift from the typed surface, and the test pins the whole match (tailscale_serve_scope.dag
+// the_tailscale_serve_mapping_no_read_is_derived_from_the_serve_type).
+fn tailscale_serve_mapping_reads_installed_artifact(service: TailscaleServeService) -> Bool {
+  match service {
+    ServeCli => false
+  }
+}
+
 fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
   TailscaleServeScope { node: node, service: tailscale_serve_service() }
 }
@@ -92,21 +106,4 @@ data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRout
     state_of: tailscale_serve_route_endpoint_state_of,
     state_eq: tailscale_endpoint_state_eq,
   },
-}
-
-// THE READ-OF-RECORD DECISION for a tailscale serve mapping, DERIVED — not asserted in prose.
-//
-// A serve mapping is applied through the Tailscale `serve` CLI surface on the fleet tailnet device: it is not
-// an enabled systemd unit with an ExecStart, and it reads no artifact the deploy installs. That is the whole
-// justification for calling it a no-read, so it is CARRIED BY A TOTAL MATCH over the modeled
-// TailscaleServeService, not by an English sentence. The tell this removes (DESIGN fail_closed: "it can be
-// satisfied by editing the declaration while the realization still lies"): if a unit-backed variant is ever
-// added to TailscaleServeService, this match is no longer exhaustive and the BUILD FAILS until the owner
-// decides whether that service reads an installed artifact — the adapter then emits NotYetModeled (halt), not
-// a no-read. The consumer is gunbc.live_deploy.deploy_artifact_read_sets; there is no silent default.
-fn tailscale_serve_mapping_reads_installed_artifact(service: TailscaleServeService) -> Bool {
-  match service {
-    // The serve CLI applies the mapping out-of-band; it installs no file and reads none of record.
-    ServeCli => false
-  }
 }
