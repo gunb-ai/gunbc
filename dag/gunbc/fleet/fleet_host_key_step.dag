@@ -1,9 +1,9 @@
 module gunbc.fleet.fleet_host_key_step
 
 // THE FLEET HOST-KEY RUN STEPS live here, beside the fleet host-key enrollment domain they operate,
-// not in the central ci_spec: the ssh host-key scan/enroll, the authorized-key enroll, and the
+// not in a central spec module: the ssh host-key scan/enroll, the authorized-key enroll, and the
 // keypair mint whose wet entry comes from the FleetKeypairMintSubject. The machinery they borrow is
-// shared and imported, never reached through ci_spec: gunbc_run_step_script_for_target from
+// shared and imported, never reached through the roster: gunbc_run_step_script_for_target from
 // v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
@@ -72,11 +72,3 @@ fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
   )
 }
 
-fn gunbc_ci_authorized_key_enroll_invoke() -> String {
-  gunbc_run_step_script_for_target(
-    source_roots: witness_layer_roots,
-    target: gunbc_ci_authorized_key_enroll_target,
-    claim_run: false,
-    receipt_rel: "target/fleet-authorized-key-enroll-receipt.txt"
-  )
-}

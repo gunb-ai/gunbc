@@ -58,8 +58,10 @@ import gunbc.heal_publication { heal_publication_candidate_directory_env, heal_p
 // id-token: WRITE the seed's in-process exchange needs, which it grants without naming a provider.
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude, gunbc_invoke_step_emit_pipeline }
 import v2.std.orchestration { Pipeline, PipelineStep, FailFast }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.ci.ci_retry { ci_retry_step }
+import gunbc.auth.github_app_credential_step {github_app_installation_token_prelude, heal_publisher_token_mint}
+import gunbc.auth.github_apps {gunbai_bot_declared, gunbai_bot_declared_installation_id}
+import gunbc.auth.heal_publisher_federation {HealPublisherFederation}
 
 
 // THE PROTECTED PUBLISHER (gunbc#10958 Phase B), AND EVERY STRUCTURAL REASON IT IS SAFE TO GIVE IT A
@@ -799,8 +801,6 @@ fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
 // afterwards inherits a memory.max that gunbc.host.host_budget_source reads as an ordinary observation.
 // MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
 // named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
-data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings carried by the heal publisher prelude (the rust_unit_tests step stopped binding it when it moved to the fleet on 2026-09-30) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; the caller then consumes that op and this function is deleted")
-
 fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
   [
     concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
@@ -833,6 +833,25 @@ fn heal_publisher_cgroup_prelude_script() -> String {
   concat(
     gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: heal_publisher_cgroup_prelude(),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
+}
+
+// THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
+// publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
+// the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
+// repository by its own federation record, as one rendered fragment ahead of its own invocation.
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: concat(
+        heal_publisher_cgroup_prelude(),
+        github_app_installation_token_prelude(
+          spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: f)
+        )
+      ),
       on_failure: FailFast
     }),
     "\n"
