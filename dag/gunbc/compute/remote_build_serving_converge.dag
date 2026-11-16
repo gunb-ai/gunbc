@@ -34,7 +34,7 @@ import gunbc.compute.remote_build_serving_setup {
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item, serving_ledger_declared_mode_octal,
 }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
-import std.algebra { trim, string_contains, non_empty_to_list }
+import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
 import std.list { first_where }
 import extdeps.github.github { github_https_clone_url }
@@ -81,11 +81,12 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // This single leg is what the 'test'-based legs take as their precondition, so a drifted sudo grant can never
 // be misread as "the file is absent" (see serving_observed_from_reads; review 95915).
 fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
-  let r = typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"])
-  if r.success == false {
-    ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
-  } else {
-    ObservationEstablished { observed: true }
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"]) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => ObservationEstablished { observed: true }
+      false => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("sudo -n true exit ", to_string(r.exit_code)) } }
+    }
   }
 }
 
@@ -398,19 +399,38 @@ type ConvergeAction =
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: String }
 
-type ConvergeDecision = {
+// The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
+// review 95928; gunbc.design_argument::fail_closed — "stronger than catching a wrong state is making it
+// unwritable"). A refusal carries a reason and no writes; a settled host carries nothing; an UNHANDLED
+// divergence names the items nobody can remediate and so is unreachable by the executor, which takes a
+// FreeSemigroup — and a plan with zero writes has no constructor either: converge_classify below is the
+// only route into ConvergePlan, and it splits the head off the write list to build the FreeSemigroup.
+type ConvergeDecision =
+    ConvergeRefused { reason: String }
+  | ConvergeSettled
+  | ConvergeUnhandled { items: List<String> }
+  | ConvergePlan { writes: FreeSemigroup<ConvergeAction> }
+
+// What converge_step accumulates. It is NOT a decision: the fold runs BEFORE the decision is classified,
+// so a partial plan may hold writes and unhandled items side by side, and converge_classify is what
+// refuses to let both survive into a plan. Its empty form is converge_plan's fold init.
+type ConvergeDraft {
   writes: List<ConvergeAction>,
   unhandled: List<String>,
-  refused: Bool,
-  reason: String?,
 }
 
-fn converge_empty() -> ConvergeDecision {
-  ConvergeDecision { writes: [], unhandled: [], refused: false, reason: none }
+fn converge_draft() -> ConvergeDraft {
+  ConvergeDraft { writes: [], unhandled: [] }
 }
 
 fn converge_refuse(reason: String) -> ConvergeDecision {
-  ConvergeDecision { writes: [], unhandled: [], refused: true, reason: Present { value: reason } }
+  ConvergeRefused { reason: reason }
+}
+
+// The one route an item takes to 'nobody can fix this': it stays in the draft, and converge_classify
+// turns a draft with any item in it into ConvergeUnhandled rather than a plan.
+fn converge_draft_unhandled(acc: ConvergeDraft, item: String) -> ConvergeDraft {
+  ConvergeDraft { writes: acc.writes, unhandled: concat([item], acc.unhandled) }
 }
 
 fn converge_account(d: RemoteBuildServingDesired) -> ConvergeAction {
@@ -422,45 +442,45 @@ fn converge_account(d: RemoteBuildServingDesired) -> ConvergeAction {
 // no longer creates any group itself — group creation is driven purely by observation, so a group that
 // already exists is never re-issued (and groupadd never runs with -f, which silently drops -g on a taken
 // gid). converge_step routes GroupAbsent here by name; a wrong-gid/taken gid goes to unhandled.
-fn converge_ensure_group(acc: ConvergeDecision, d: RemoteBuildServingDesired, name: String) -> ConvergeDecision {
+fn converge_ensure_group(acc: ConvergeDraft, d: RemoteBuildServingDesired, name: String) -> ConvergeDraft {
   if name == d.account_group_name {
-    ConvergeDecision { writes: concat([EnsureGroup { name: name, gid: d.account_gid }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+    ConvergeDraft { writes: concat([EnsureGroup { name: name, gid: d.account_gid }], acc.writes), unhandled: acc.unhandled }
   } else if name == d.group_name {
-    ConvergeDecision { writes: concat([EnsureGroup { name: name, gid: d.group_gid }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+    ConvergeDraft { writes: concat([EnsureGroup { name: name, gid: d.group_gid }], acc.writes), unhandled: acc.unhandled }
   } else {
-    ConvergeDecision { writes: acc.writes, unhandled: concat([concat("group.", name)], acc.unhandled), refused: false, reason: none }
+    converge_draft_unhandled(acc, concat("group.", name))
   }
 }
 
 // The account is created WITHOUT creating a group (the primary group is guaranteed present by the
 // GroupAbsent-driven EnsureGroup, ranked ahead of it). useradd -g <account_group_name> resolves the
 // named primary group the observe proved exists (or that EnsureGroup just created at its declared gid).
-fn converge_add_account(acc: ConvergeDecision, d: RemoteBuildServingDesired) -> ConvergeDecision {
-  ConvergeDecision { writes: concat([converge_account(d)], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+fn converge_add_account(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([converge_account(d)], acc.writes), unhandled: acc.unhandled }
 }
 
 // gpasswd -a <member> <group> needs the LEDGER group to exist; it is guaranteed by the GroupAbsent-driven
 // EnsureGroup at d.group_gid, ranked ahead of membership. No group is created here.
-fn converge_group_membership(acc: ConvergeDecision, d: RemoteBuildServingDesired) -> ConvergeDecision {
+fn converge_group_membership(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   let rows = fold(d.group_members, init: acc.writes, f: (w, member) => concat([EnsureGroupMembership { group_name: d.group_name, group_gid: d.group_gid, member: member }], w))
-  ConvergeDecision { writes: rows, unhandled: acc.unhandled, refused: false, reason: none }
+  ConvergeDraft { writes: rows, unhandled: acc.unhandled }
 }
 
-fn converge_store_directories(acc: ConvergeDecision, path: String, d: RemoteBuildServingDesired) -> ConvergeDecision {
+fn converge_store_directories(acc: ConvergeDraft, path: String, d: RemoteBuildServingDesired) -> ConvergeDraft {
   // owner_group is the account's OWN primary group (d.account_group_name, e.g. gunbc-build @ account_gid),
   // which is what srv1 carries on the serving account's directories — NOT the ledger group (a supplementary
   // group) and NOT the account name (useradd ran with -g <gid>, so it created no private group named after
   // the account). d.account_group_name exists (GroupAbsent→EnsureGroup, or already present per the observe).
-  ConvergeDecision { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: "0755" }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+  ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: "0755" }], acc.writes), unhandled: acc.unhandled }
 }
 
 // The authorized_keys write carries the single forced-command line. It is only ever a
 // divergence when the line is renderable (serving_ak_deviations yields none otherwise),
 // but the field is Optional, so an absent line is treated as unhandled, never a blank write.
-fn converge_authorized_keys(acc: ConvergeDecision, d: RemoteBuildServingDesired) -> ConvergeDecision {
+fn converge_authorized_keys(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   match d.forced_command_line {
-    Present { value: line } => ConvergeDecision { writes: concat([EnsureAuthorizedKeys { path: d.authorized_keys_path, owner_user: d.account_name, content: line }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
-    Absent => ConvergeDecision { writes: acc.writes, unhandled: concat(["authorized_keys"], acc.unhandled), refused: false, reason: none }
+    Present { value: line } => ConvergeDraft { writes: concat([EnsureAuthorizedKeys { path: d.authorized_keys_path, owner_user: d.account_name, content: line }], acc.writes), unhandled: acc.unhandled }
+    Absent => converge_draft_unhandled(acc, "authorized_keys")
   }
 }
 
@@ -468,17 +488,10 @@ fn converge_authorized_keys(acc: ConvergeDecision, d: RemoteBuildServingDesired)
 // authority), used by the checkout arm so the host clones from one canonical source, not a literal.
 fn checkout_url() -> String { github_https_clone_url(repo: gunbc_repository) as String }
 
-fn is_ledger_path(d: RemoteBuildServingDesired, path: String) -> Bool {
-  match first_where(d.ledger_dirs, keep: t => (owned_directory_path(t: t) as String) == path) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // checkout.revision => clone from the canonical URL and DETACH at the dispatched revision (the pin),
 // as the serving account. A host whose checkout is at the wrong commit is re-detached, never merged.
-fn converge_checkout(acc: ConvergeDecision, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ConvergeDecision {
-  ConvergeDecision { writes: concat([EnsureCheckout { dir: d.checkout_dir, clone_url: checkout_url(), revision: pin.dispatched_revision, as_user: d.account_name }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+fn converge_checkout(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([EnsureCheckout { dir: d.checkout_dir, clone_url: checkout_url(), revision: pin.dispatched_revision, as_user: d.account_name }], acc.writes), unhandled: acc.unhandled }
 }
 
 // serve_binary.sha256 => install the fleet-converge job's OWN executor binary (upload_path is the
@@ -488,26 +501,26 @@ fn converge_checkout(acc: ConvergeDecision, d: RemoteBuildServingDesired, pin: S
 // unread is already indeterminate (the whole plan refuses); an arch mismatch ALSO raises the unhandled
 // host.arch deviation, so the wet apply refuses regardless — this is the belt-and-braces guarantee
 // the install never crosses architectures.
-fn converge_install_binary(acc: ConvergeDecision, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDecision {
+fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
   match target_arch {
     ObservationEstablished { observed: a } => match a == pin.executor_arch {
-      true => ConvergeDecision { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
-      false => ConvergeDecision { writes: acc.writes, unhandled: concat(["serve_binary.sha256"], acc.unhandled), refused: false, reason: none }
+      true => ConvergeDraft { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled }
+      false => converge_draft_unhandled(acc, "serve_binary.sha256")
     }
-    ObservationRefused { cause: _ } => ConvergeDecision { writes: acc.writes, unhandled: concat(["serve_binary.sha256"], acc.unhandled), refused: false, reason: none }
+    ObservationRefused { cause: _ } => converge_draft_unhandled(acc, "serve_binary.sha256")
   }
 }
 
 // A ledger row whose owner/group/mode drifted => re-establish it with install -d -o -g at the declared
 // mode. The mode is the row's declared_directory_mode_octal (value-canonical), never re-spelled from
 // the observed string; if the drifted path is not a desired row it is unhandled, never written blind.
-fn converge_ledger_directory(acc: ConvergeDecision, d: RemoteBuildServingDesired, path: String) -> ConvergeDecision {
+fn converge_ledger_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired, path: String) -> ConvergeDraft {
   match first_where(d.ledger_dirs, keep: t => (owned_directory_path(t: t) as String) == path) {
     Present { value: t } => {
       let o = owned_directory_owner(t: t)
-      ConvergeDecision { writes: concat([EnsureLedgerDirectory { path: path, owner_user: o.user as String, owner_group: o.group as String, mode: serving_ledger_declared_mode_octal(t: t) }], acc.writes), unhandled: acc.unhandled, refused: false, reason: none }
+      ConvergeDraft { writes: concat([EnsureLedgerDirectory { path: path, owner_user: o.user as String, owner_group: o.group as String, mode: serving_ledger_declared_mode_octal(t: t) }], acc.writes), unhandled: acc.unhandled }
     }
-    Absent => ConvergeDecision { writes: acc.writes, unhandled: concat([path], acc.unhandled), refused: false, reason: none }
+    Absent => converge_draft_unhandled(acc, path)
   }
 }
 
@@ -561,7 +574,7 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
   concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, r6))))))
 }
 
-fn converge_step(acc: ConvergeDecision, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDecision {
+fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDraft {
   match dev {
     // A present-absent item routes by its declared item name (the only place the item string is
     // consulted, and only for the presence arms that genuinely share a shape).
@@ -573,47 +586,64 @@ fn converge_step(acc: ConvergeDecision, d: RemoteBuildServingDesired, pin: Servi
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
       "seed.serve_binary" => converge_install_binary(acc, d, pin, target_arch)
-      _ => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
+      _ => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
     // A uid/gid MISMATCH means the account EXISTS with the wrong identity. useradd refuses an existing
     // name, and silently re-numbering a live account (usermod -u) would orphan every file it owns — neither
     // is automatable here. So these are UNHANDLED: the plan counts them, the wet apply's unhandled gate
     // fires, and NOTHING is mutated on that host — a human reconciles the identity. (A genuinely ABSENT
     // account surfaces as PresentAbsent "account", which the account arm does create.)
-    AccountUidMismatch { desired: _, observed: _ } => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
-    AccountGidMismatch { desired: _, observed: _ } => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
+    AccountUidMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    AccountGidMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     GroupMembersMismatch { desired: _, observed: _ } => converge_group_membership(acc, d)
     // A required group the observe PROVED absent is created at its own declared gid (converge_ensure_group
     // picks account_gid vs group_gid by name). A group present at the wrong gid, or a declared gid already
     // held by a different name, is NOT auto-renumbered or stolen — it goes unhandled and the apply refuses.
     GroupAbsent { name } => converge_ensure_group(acc, d, name)
-    GroupGidMismatch { name: _, desired: _, observed: _ } => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
-    GroupGidTaken { gid: _, holder: _ } => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
+    GroupGidMismatch { name: _, desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    GroupGidTaken { gid: _, holder: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     ForcedCommandMismatch { desired: _, observed: _ } => converge_authorized_keys(acc, d)
     // A string-valued expected mismatch routes by item. host.arch has NO arm (the converger never
     // relocates a host's architecture) so it falls to unhandled and the wet apply REFUSES.
     ExpectedMismatch { item, desired: _, observed: _ } => match item {
       "checkout.revision" => converge_checkout(acc, d, pin)
       "serve_binary.sha256" => converge_install_binary(acc, d, pin, target_arch)
-      _ => ConvergeDecision { writes: acc.writes, unhandled: concat([serving_deviation_item(dev: dev)], acc.unhandled), refused: false, reason: none }
+      _ => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
-    // Every ledger arm carries its OWN path (the coproduct replaced the old constant-"ledger" item
-    // that never matched is_ledger_path — the ledger write was dead); all three re-establish the row.
+    // Every ledger arm carries its OWN path (the coproduct replaced the old constant-"ledger" item, which
+    // never matched the declared ledger paths and so left the ledger write dead); all three re-establish
+    // the row.
     LedgerNameMismatch { path, field: _, declared: _, observed: _ } => converge_ledger_directory(acc, d: d, path: (path as String))
     LedgerModeMismatch { path, declared: _, observed: _ } => converge_ledger_directory(acc, d: d, path: (path as String))
     LedgerAbsent { path } => converge_ledger_directory(acc, d: d, path: (path as String))
   }
 }
 
+// The single route from the folded plan shape to a decision, and the only constructor site of
+// ConvergePlan. The order of the tests IS the guarantee: an unhandled item outranks a plan (the
+// executor cannot be handed this draft at all — it takes a FreeSemigroup, which ConvergeUnhandled does
+// not carry), and a divergence that produced neither a write nor an unhandled item is a planning hole
+// reported as a refusal, NOT a silent ConvergeSettled (fail_closed: "a missing file ... is a wrong
+// verdict"). ConvergeSettled therefore has exactly one producer: the GoalSatisfied arm below.
+fn converge_classify(draft: ConvergeDraft) -> ConvergeDecision {
+  if length(draft.unhandled) != 0 {
+    ConvergeUnhandled { items: draft.unhandled }
+  } else {
+    match converge_order(converge_dedupe(draft.writes)) {
+      Cons { head: first, tail: rest } => ConvergePlan { writes: FreeSemigroup { head: first, tail: rest } }
+      Empty {} => converge_refuse("the assessment reported drift that yielded neither a write nor an unhandled item")
+    }
+  }
+}
+
+// Refused short-circuits BEFORE the fold: an unread leg or a refused assessment never reaches
+// converge_step, so there is no fold over a half-read host that could produce writes at all.
 fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDecision {
   match a {
-    GoalSatisfied { evidence: _ } => converge_empty()
+    GoalSatisfied { evidence: _ } => ConvergeSettled
     GoalIndeterminate { known_deviations: _, unknowns: _ } => converge_refuse("assessment is indeterminate; an observation leg was unobservable")
     GoalAssessmentRefused { cause: _ } => converge_refuse("assessment was refused")
-    GoalDiverged { deviations: devs } => {
-      let raw = fold(non_empty_to_list(devs), init: converge_empty(), f: (acc, dev) => converge_step(acc, d, pin, target_arch, dev))
-      ConvergeDecision { writes: converge_order(converge_dedupe(raw.writes)), unhandled: raw.unhandled, refused: false, reason: none }
-    }
+    GoalDiverged { deviations: devs } => converge_classify(fold(non_empty_to_list(devs), init: converge_draft(), f: (acc, dev) => converge_step(acc, d, pin, target_arch, dev)))
   }
 }
 
@@ -723,9 +753,6 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
 
 fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, action: ConvergeAction) -> Bool {
   match action {
-    // groupadd -f is idempotent: no-op if the group already exists (even at another gid), create at the
-    // declared gid if absent. Ordered FIRST by converge_order so the account / membership / installs below
-    // always find their group present.
     // groupadd WITHOUT -f: this arm runs only for a group the observe PROVED absent (GroupAbsent), so the
     // name must be free at apply time; a spurious -f would silently drop -g on a taken gid and fabricate a
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly, the write fails to settle,
@@ -756,11 +783,69 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
   converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "checkout", "--detach", rev])
 }
 
-fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, decision: ConvergeDecision) -> List<String> {
+// The execute path, and the only consumer of a plan's writes. Its parameter is the PLAN arm's
+// non-empty write list, not a decision (review 95928): a ConvergeRefused or a ConvergeUnhandled has no
+// value of this type, so neither can be routed here even by mistake — 'refused/unhandled executes
+// nothing' is a typing fact, not a gate the caller has to remember.
+fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, writes: FreeSemigroup<ConvergeAction>) -> List<String> {
   // Review 95922 #1: the body filtered ConvergeActions, not Strings. Name each
   // failed write by its key so the declared List<String> is true and the receipt
   // can say which writes refused (guarantee_ladder: values inhabit declared types).
-  map(filter(decision.writes, a => converge_run_write(target: target, context: context, d: d, action: a) == false), a => converge_action_key(a))
+  map(filter(non_empty_to_list(writes), a => converge_run_write(target: target, context: context, d: d, action: a) == false), a => converge_action_key(a))
+}
+
+// The three exits, each spelled ONCE, so the SHAPE of the decision is the only thing that routes
+// between them (review 95928: the gate is no longer re-combined by hand from record fields). All three
+// write the plan receipt before exiting: the fleet-converge step cats the file straight after, so a
+// missing receipt (fresh runner) or a stale one (reused workspace) is itself a wrong verdict
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated").
+
+// REFUSE PATH: an unread leg, a refused assessment, or any unhandled deviation (incl. host.arch —
+// there is no arch arm). Write the plan receipt and fail; mutate NOTHING.
+fn converge_wet_refusal(host_name: String, context_receipt: String, assessment: ServingAssessment) -> ProcessExit {
+  let refuse_body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
+  let rw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: refuse_body)
+  if rw.success == false {
+    exit_failure(reason: join(["remote_build_serving_converge: plan receipt write failed: ", rw.error, "\n", refuse_body], ""))
+  } else {
+    exit_failure(reason: refuse_body)
+  }
+}
+
+// The host is already settled: nothing to mutate, but the settled receipt is still owed.
+fn converge_wet_settled(host_name: String, context_receipt: String, assessment: ServingAssessment) -> ProcessExit {
+  let settled_body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
+  let sw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: settled_body)
+  if sw.success == false {
+    exit_failure(reason: join(["remote_build_serving_converge: settled receipt write failed: ", sw.error, "\n", settled_body], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+// APPLY: attempt every write of the plan (an individual exit is NOT the verdict), then RE-OBSERVE and
+// require the re-observed decision to have settled. Not settled -> exit failure (fail_closed).
+fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput, host_name: String, context_receipt: String, writes: FreeSemigroup<ConvergeAction>) -> ProcessExit {
+  let failed = converge_execute_plan(target: target, context: context, d: d, writes: writes)
+  let after = observe_host_reads(target: target, context: context, d: d)
+  let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
+  let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch)
+  let body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
+  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body], ""))
+  } else {
+    match after_plan {
+      ConvergeSettled => if length(failed) != 0 || serving_assessment_settled(a: after_assessment) == false {
+        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused\n", body], ""))
+      } else {
+        ExitSuccess
+      }
+      ConvergeRefused { reason: r } => exit_failure(reason: join(["remote_build_serving_converge: the re-observe refused after apply: ", r, "\n", body], ""))
+      ConvergeUnhandled { items: u } => exit_failure(reason: join(["remote_build_serving_converge: ", to_string(length(u)), " deviations remain unhandled after apply\n", body], ""))
+      ConvergePlan { writes: ws } => exit_failure(reason: join(["remote_build_serving_converge: the host still needs ", to_string(length(non_empty_to_list(ws))), " writes after apply\n", body], ""))
+    }
+  }
 }
 
 fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
@@ -787,46 +872,17 @@ fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
                 Present { value: pin } => {
                   let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
                   let decision = converge_plan(d: view.desired, a: assessment, pin: pin, target_arch: view.observed.target_arch)
-                  // REFUSE PATH (also the pre-GO receipt): indeterminate, refused, any unhandled
-                  // deviation (incl. host.arch — there is no arch arm), or an unrenderable command
-                  // line. Write the plan receipt and fail; mutate NOTHING.
-                  if decision.refused || length(decision.unhandled) != 0 || serving_assessment_runnable(a: assessment) == false {
-                    let refuse_body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
-                    let rw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: refuse_body)
-                    if rw.success == false {
-                      exit_failure(reason: join(["remote_build_serving_converge: plan receipt write failed: ", rw.error, "\n", refuse_body], ""))
-                    } else {
-                      exit_failure(reason: refuse_body)
-                    }
-                  } else if length(decision.writes) == 0 {
-                    // Nothing to write and runnable: the host is already settled; nothing to mutate. But
-                    // the fleet-converge step cats the receipt straight after, so the MOST common case (a
-                    // settled host) must still leave a fresh receipt — a missing file (fresh runner) or a
-                    // stale one (reused workspace) is a wrong verdict (gunbc.design_argument::fail_closed:
-                    // "no plausible output is fabricated"). Write it, then succeed.
-                    let settled_body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
-                    let sw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: settled_body)
-                    if sw.success == false {
-                      exit_failure(reason: join(["remote_build_serving_converge: settled receipt write failed: ", sw.error, "\n", settled_body], ""))
-                    } else {
-                      ExitSuccess
-                    }
-                  } else {
-                    // APPLY: attempt every write (the re-observe is the verdict), then RE-OBSERVE and
-                    // require the SAME assessment to settle. Not settled -> exit failure.
-                    let failed = converge_execute_plan(target: target, context: context, d: view.desired, decision: decision)
-                    let after = observe_host_reads(target: target, context: context, d: d)
-                    let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
-                    let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch)
-                    let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
-                    let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: body)
-                    if w.success == false {
-                      exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body], ""))
-                    } else if length(failed) != 0 || serving_assessment_settled(a: after_assessment) == false || length(after_plan.writes) != 0 {
-                      exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused\n", body], ""))
-                    } else {
-                      ExitSuccess
-                    }
+                  // ONE match on the decision routes the whole entry (review 95928). The old hand-combined
+                  // gate 'decision.refused || length(decision.unhandled) != 0 || !runnable' needs no
+                  // re-spelling here: serving_assessment_runnable is false exactly on GoalIndeterminate
+                  // and GoalAssessmentRefused, which are exactly converge_plan's two ConvergeRefused arms,
+                  // so 'unrunnable' IS this match's ConvergeRefused arm. The predicate stays in the setup
+                  // module, where its witness asserts the arm-by-arm meaning.
+                  match decision {
+                    ConvergeRefused { reason: _ } => converge_wet_refusal(host_name: raw_host, context_receipt: context_receipt, assessment: assessment)
+                    ConvergeUnhandled { items: _ } => converge_wet_refusal(host_name: raw_host, context_receipt: context_receipt, assessment: assessment)
+                    ConvergeSettled => converge_wet_settled(host_name: raw_host, context_receipt: context_receipt, assessment: assessment)
+                    ConvergePlan { writes: ws } => converge_wet_apply(target: target, context: context, d: d, pin: pin, host_name: raw_host, context_receipt: context_receipt, writes: ws)
                   }
                 }
               }

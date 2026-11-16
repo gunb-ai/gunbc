@@ -10,7 +10,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 //     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
 
 import std.optional { Present, Absent }
-import std.algebra { string_contains }
+import std.algebra { string_contains, non_empty_to_list }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -20,7 +20,7 @@ import gunbc.compute.remote_build_serving_setup {
   ServingLegFailure, serving_forced_command_line,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
 }
-import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, converge_kind_rank, converge_action_key }
+import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -85,6 +85,47 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
 // observe reports a spurious GroupAbsent and the plan picks up an extra groupadd the cell didn't mean.
 fn converged_groups() -> String {
   "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
+}
+
+// The authorized_keys content AS THE DESIRED STATE DECLARES IT, so a fixture that breaks some other leg
+// keeps this leg matched and tests only the leg it means to break (the refused-elevation cell below is
+// about elevation, not about keys). An absent desired line renders as the empty string — never as a
+// fabricated command line (gunbc.design_argument::fail_closed: "no plausible output is fabricated").
+fn forced_line(d: RemoteBuildServingDesired) -> String {
+  match d.forced_command_line {
+    Present { value: line } => line
+    Absent => ""
+  }
+}
+
+// How a cell reads a decision: by WHICH ARM it is, never by a Bool tag. A ConvergePlan carries the only
+// non-empty write list there is; the other three arms have nothing to execute — the empty list below is
+// not a field that was left empty, it is the absence of the arm that could carry one.
+fn plan_writes(plan: ConvergeDecision) -> List<ConvergeAction> {
+  match plan {
+    ConvergePlan { writes: ws } => non_empty_to_list(ws)
+    ConvergeSettled => []
+    ConvergeUnhandled { items: _ } => []
+    ConvergeRefused { reason: _ } => []
+  }
+}
+
+fn plan_is_refused(plan: ConvergeDecision) -> Bool {
+  match plan {
+    ConvergeRefused { reason: _ } => true
+    ConvergeSettled => false
+    ConvergeUnhandled { items: _ } => false
+    ConvergePlan { writes: _ } => false
+  }
+}
+
+fn plan_is_unhandled(plan: ConvergeDecision) -> Bool {
+  match plan {
+    ConvergeUnhandled { items: _ } => true
+    ConvergeSettled => false
+    ConvergePlan { writes: _ } => false
+    ConvergeRefused { reason: _ } => false
+  }
 }
 
 // The header names the host and the probed_at context; the body names the terminal state.
@@ -166,7 +207,7 @@ test fn diverged_store_plans_a_matching_write() -> Bool {
     Present { value: line } => {
       let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
-      plan.refused == false && length(plan.writes) == 1 && length(plan.unhandled) == 0
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 1
     }
   }
     }
@@ -195,7 +236,7 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
-      plan.refused == true && length(plan.writes) == 0
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
     }
   }
     }
@@ -224,7 +265,7 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"))
-      plan.refused == false && length(plan.writes) == 0 && length(plan.unhandled) == 1
+      plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
     }
   }
     }
@@ -293,19 +334,20 @@ test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
     Present { value: line } => {
       let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
-      match first_duplicate_by_key(xs: plan.writes, key: converge_action_key) {
+      let ws = plan_writes(plan)
+      match first_duplicate_by_key(xs: ws, key: converge_action_key) {
         // A fresh host must get groupadd for the account's OWN group at account_gid AND for the ledger
         // group at group_gid (both proven absent), with NO write pairing a group name with the OTHER
         // group's gid (the merge bug review 95905 flagged: creating gunbc-compute at 1005). Exactly two
         // group writes; the account's primary group is its own; all writes in kind order; no duplicates.
-        none => plan.refused == false
-          && writes_sorted_by_kind(plan.writes)
-          && all_group_writes(plan.writes) == 2
-          && group_writes_at(plan.writes, d.account_group_name, d.account_gid) == 1
-          && group_writes_at(plan.writes, d.group_name, d.group_gid) == 1
-          && group_writes_at(plan.writes, d.account_group_name, d.group_gid) == 0
-          && group_writes_at(plan.writes, d.group_name, d.account_gid) == 0
-          && has_account_primary(plan.writes, d.account_group_name)
+        none => plan_is_refused(plan) == false
+          && writes_sorted_by_kind(ws)
+          && all_group_writes(ws) == 2
+          && group_writes_at(ws, d.account_group_name, d.account_gid) == 1
+          && group_writes_at(ws, d.group_name, d.group_gid) == 1
+          && group_writes_at(ws, d.account_group_name, d.group_gid) == 0
+          && group_writes_at(ws, d.group_name, d.account_gid) == 0
+          && has_account_primary(ws, d.account_group_name)
         Present { value: _ } => false
       }
     }
@@ -338,7 +380,7 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
-      plan.refused == false && length(plan.writes) == 0 && length(plan.unhandled) == 1
+      plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
     }
   }
     }
@@ -366,7 +408,68 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
-      plan.refused == true && length(plan.writes) == 0
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// ── the execute path is typed to the plan arm (review 95922 #2 / review 95928) ───────
+// 'A refusal or an unhandled divergence executes nothing' is not a gate the caller remembers: the
+// executor takes the ConvergePlan arm's non-empty FreeSemigroup, and the other arms carry no such
+// value. This cell is the discriminating half of that claim — the SAME desired state, with ONE
+// deviation changed, flips between 'carries write work' (a confirmed-absent store dir) and 'carries
+// none' (an unhandled host.arch, a refused elevation leg). A refactor that let an unhandled item ride
+// into a plan, or a refusal carry writes, reddens THIS cell while diverged_store_plans_a_matching_write
+// stays green: that gap is exactly the defect this control exists to catch.
+test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let unhandled = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: est_elevation(),
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(),
+          serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+          target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s("x86_64"))
+      let refused = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: refused_elevation(),
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(),
+          serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+          target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let planned = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: est_elevation(),
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(),
+          serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+          target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s(pin_arch()))
+      // The two non-plan arms must offer the executor nothing, and the plan arm must offer it
+      // something — otherwise the two assertions above are vacuous.
+      plan_is_unhandled(unhandled) && length(plan_writes(unhandled)) == 0
+        && plan_is_refused(refused) && length(plan_writes(refused)) == 0
+        && length(plan_writes(planned)) == 1
     }
   }
 }
