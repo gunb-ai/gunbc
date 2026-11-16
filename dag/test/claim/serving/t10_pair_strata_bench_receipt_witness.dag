@@ -1,0 +1,116 @@
+module test.claim.serving.t10_pair_strata_bench_receipt_witness
+
+import std.types { Bool }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { watt_count, celsius_count, hertz_count }
+import std.interval { interval_high }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import gunbc.serving.t10_pair_strata_bench_receipt {
+  PairBenchRow, PairCard, RtxTwoThousandAdaPair, NvidiaA2Pair, TeslaT10Pair,
+  BenchReading, Read, NotMeasured, ReadingRefused, AsReported, Approximate,
+  FleetHost, HostWithoutIdentity,
+  T10ThermalRow, ChassisFansOnly, DeltaBlowerHeldByHand, ThrottledTo, NoThrottleReported,
+  t10_pair_bench_rows, t10_pair_thermal_rows, t10_relayed_power_min_limit_per_card,
+  reported_rate_point, row_for, reading_refused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// a < t < b over three exactly-stated points; any absent point fails the claim rather than passing it.
+fn strictly_between(a: Nat?, t: Nat?, b: Nat?) -> Bool {
+  match a {
+    Absent => false
+    Present { value: lo } => match t {
+      Absent => false
+      Present { value: mid } => match b {
+        Absent => false
+        Present { value: hi } => lo < mid && mid < hi
+      }
+    }
+  }
+}
+
+fn point_nat(r: BenchReading<Nat>) -> Nat? {
+  match r {
+    Read { span: s, precision: _ } => Present { value: interval_high(interval: s) }
+    NotMeasured => Absent
+    ReadingRefused { reason: _ } => Absent
+  }
+}
+
+fn field_of(cards: PairCard, pick: fn(PairBenchRow) -> Nat?) -> Nat? {
+  match row_for(cards: cards) { Present { value: r } => pick(r) Absent => Absent }
+}
+
+fn c1_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c1_aggregate) }
+fn d1_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c1_decode) }
+fn c4_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c4_aggregate) }
+fn c8_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c8_aggregate) }
+fn j4_of(r: PairBenchRow) -> Nat? { point_nat(r: r.c4_milli_tokens_per_gpu_joule) }
+
+// THE T10 PAIR SITS BETWEEN THE A2 AND ADA PAIRS ON EVERY AGGREGATE THE SESSION STATED EXACTLY FOR ALL THREE
+// (c1 aggregate, c1 decode, c4 aggregate). c8 has no A2 figure, so it is checked only against the Ada.
+test fn t10_pair_aggregate_between_a2_and_ada() -> Bool {
+  strictly_between(a: field_of(cards: NvidiaA2Pair, pick: c1_of), t: field_of(cards: TeslaT10Pair, pick: c1_of), b: field_of(cards: RtxTwoThousandAdaPair, pick: c1_of))
+    && strictly_between(a: field_of(cards: NvidiaA2Pair, pick: d1_of), t: field_of(cards: TeslaT10Pair, pick: d1_of), b: field_of(cards: RtxTwoThousandAdaPair, pick: d1_of))
+    && strictly_between(a: field_of(cards: NvidiaA2Pair, pick: c4_of), t: field_of(cards: TeslaT10Pair, pick: c4_of), b: field_of(cards: RtxTwoThousandAdaPair, pick: c4_of))
+    && match field_of(cards: NvidiaA2Pair, pick: c8_of) { Absent => true Present { value: _ } => false }
+    && strictly_between(a: Present { value: 0 }, t: field_of(cards: TeslaT10Pair, pick: c8_of), b: field_of(cards: RtxTwoThousandAdaPair, pick: c8_of))
+}
+
+// TOKENS PER GPU JOULE AT c4: the A2's approximate figure, below the T10's, below the Ada's. The T10's is closer
+// to the A2's than to the Ada's, which is the relayed "weak spot".
+test fn t10_pair_energy_efficiency_is_nearer_the_a2() -> Bool {
+  match field_of(cards: NvidiaA2Pair, pick: j4_of) {
+    Absent => false
+    Present { value: a2 } => match field_of(cards: TeslaT10Pair, pick: j4_of) {
+      Absent => false
+      Present { value: t10 } => match field_of(cards: RtxTwoThousandAdaPair, pick: j4_of) {
+        Absent => false
+        Present { value: ada } => a2 < t10 && t10 < ada && t10 + t10 < a2 + ada
+      }
+    }
+  }
+}
+
+// THE CAP THE T10s RAN AT IS THEIR RELAYED FLOOR: two cards at the 100 W minimum make the pair's 200 W cap.
+test fn t10_pair_ran_at_its_power_floor() -> Bool {
+  match row_for(cards: TeslaT10Pair) {
+    Absent => false
+    Present { value: r } => match r.pair_power_cap {
+      Absent => false
+      Present { value: cap } => watt_count(w: cap) == 2 * watt_count(w: t10_relayed_power_min_limit_per_card)
+    }
+  }
+}
+
+// EVERY ROW IS RELAYED, NOT PINNED, AND NO RANGE WAS WRITTEN REVERSED. h11-new carries no fleet identity.
+test fn every_row_is_transcribed_uncited_and_well_formed() -> Bool {
+  t10_pair_bench_rows.length() == 3
+    && t10_pair_bench_rows.all(r =>
+      match r.standing { TranscribedUncited { read_obligation: _ } => true CitedToAuthority { authority: _ } => false ObservedByReceipt { observed: _ } => false }
+        && !reading_refused(r: r.c1_aggregate) && !reading_refused(r: r.long_context_warm_decode)
+        && !reading_refused(r: r.long_context_warm_time_to_first_token) && !reading_refused(r: r.pair_power_under_load))
+    && match row_for(cards: TeslaT10Pair) {
+      Absent => false
+      Present { value: r } => match r.host { HostWithoutIdentity { name: _, obligation: _ } => true FleetHost { host: _ } => false }
+    }
+}
+
+// CHASSIS FANS ALONE THROTTLE THE PAIR; THE HAND-HELD BLOWER AVOIDED THROTTLE BUT PEAKED AT 87 C.
+test fn t10_cooling_rows_keep_the_throttle_and_the_peak() -> Bool {
+  t10_pair_thermal_rows.length() == 2
+    && t10_pair_thermal_rows.all(t => match t.cooling {
+      ChassisFansOnly => match t.throttle {
+        ThrottledTo { clock: c, within: _ } => hertz_count(h: c) == 300000000
+        NoThrottleReported => false
+      }
+      DeltaBlowerHeldByHand => match t.gpu_temperature_peak {
+        Read { span: s, precision: _ } => celsius_count(c: interval_high(interval: s)) == 87
+        NotMeasured => false
+        ReadingRefused { reason: _ } => false
+      }
+    })
+}
