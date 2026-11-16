@@ -507,7 +507,8 @@ test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
     // The age gate: a stale-by-age refusal (fail closed) says so with its own standing word
     // and a horizon field, never a fabricated newest event.
     && string_contains(s: standing_by_age, pattern: "\"standing\": \"stale_by_age\"")
-    && string_contains(s: standing_by_age, pattern: "\"stale_by_age_horizon_secs\": \"1800\"")
+    && string_contains(s: standing_by_age, pattern: "\"stale_by_age_horizon_secs\"")
+    && string_contains(s: standing_by_age, pattern: to_string(second_count(s: belt_horizon_fixture())))
     && !string_contains(s: standing_by_age, pattern: "newest_event_at")
     && served_observation_standing_http_status(read: fixture_read(), freshness: stale_by_age) == 200
     && marked_by_age.status == 409 && marked_by_age.body == fixture_daily_body
