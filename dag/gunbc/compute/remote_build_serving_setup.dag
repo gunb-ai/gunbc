@@ -485,6 +485,17 @@ fn serving_store_dir_mode_octal(d: RemoteBuildServingDesired) -> String {
   file_mode_octal(mode: d.store_dir_mode)
 }
 
+// The two A3 file-mode declarations as chmod octals, spelled from the same FileMode authority the
+// assess compares against — the witnesses derive "correct" mode fixtures from these, never a bare
+// literal (single_authority, side-chat review of 2026-11-16).
+fn serving_authorized_keys_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.authorized_keys_mode)
+}
+
+fn serving_serve_binary_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.serve_binary_mode)
+}
+
 // The account's login shell as an observation of its passwd row's 7th field (the field's authority
 // is extdeps.linux.etc_passwd::EtcPasswdEntry.shell). Mirror of serving_passwd_uid/gid: none means
 // the read was refused OR the account row is absent — the caller only consults it once the account
@@ -1004,7 +1015,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
             match staging_mode_check { StoreModeCheckDrifted { observed: g } => [StoreStagingModeMismatch { path: d.store_staging, declared: d.store_dir_mode, observed: g }]  _ => [] },
             concat(
               match ak_mode_check { StoreModeCheckDrifted { observed: g } => [AuthorizedKeysModeMismatch { path: d.authorized_keys_path, declared: d.authorized_keys_mode, observed: g }]  _ => [] },
-              match binary_mode_check { StoreModeCheckDrifted { observed: g } => [ServeBinaryModeMismatch { path: d.serve_binary_path, declared: d.serve_binary_mode, observed: g }]  _ => [] },
+              match binary_mode_check { StoreModeCheckDrifted { observed: g } => [ServeBinaryModeMismatch { path: d.serve_binary, declared: d.serve_binary_mode, observed: g }]  _ => [] },
             ),
           ),
         ),

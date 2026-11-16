@@ -26,6 +26,7 @@ import gunbc.compute.remote_build_serving_setup {
   serving_assessment_receipt_text, ServingLegFailure, ServingObserved, serving_deviation_item,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
+  serving_authorized_keys_mode_octal, serving_serve_binary_mode_octal,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
@@ -186,11 +187,11 @@ fn store_mode_refused(item: String) -> ObservationAttempt<String, ServingLegFail
 // The A3 file-mode legs, derived from the SAME declared modes the desired state carries (never a bare
 // octal reauthored per cell): a "correct" fixture proves the mode and only the mode drifts.
 fn ak_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
-  est_s(text: file_mode_octal(mode: d.authorized_keys_mode))
+  est_s(text: serving_authorized_keys_mode_octal(d: d))
 }
 
 fn binary_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
-  est_s(text: file_mode_octal(mode: d.serve_binary_mode))
+  est_s(text: serving_serve_binary_mode_octal(d: d))
 }
 
 // ── the plan-time pin + the matched ledger, for the converged fixtures ───────────
