@@ -3586,7 +3586,14 @@ data two_pickers_beside_the_join: IntegrationConcern = IntegrationConcern {
       },
       account: "Measured for gunbc#16278 (chainY probe census at a178b3c8b3e, the tree the heal CI judged, hard=0): main's fold site reads prefer_specific_type unconditionally, so both picks are main behaviour, not a regression. The SECOND picker answered the fold: join_live_branch_types' Absent arm fired [JLB-PICK] 2523 times population-wide (the size of the residue this row records), of which 25 carried fname=List fchd=T -- the generic side returned to folds including the crate-partition accumulator whose emitted closure lost its annotation (gunbc_crate_partition.rs |acc: _,). join_or_prefer's own picker arm fired 0 times there. After the join fix (root verdict on unwrapped children at the PREF branch, type-variable-leaf gate on the BIND arms, symmetric substitution returning the derived instance): [JLB-PICK] total 2523 -> [FILL-AFTER], List<T> subset 25 -> 0 (each disappearing fold named in the PR). Neither picker is fixed here (Falsifier: a refusing Absent arm must keep hard=0 on the population); they remain beside a join that now answers correctly, and a real mismatch could still be picked instead of refused.",
     },
-    tail: [],
+    tail: [ConcernSighting {
+      revision: "b4172f92126",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types") },
+        tail: [],
+      },
+      account: "Gated re-measure at this head (fresh per-tree target directories, probe-tag string-gated binaries, same population tree both legs): the pre-repair probed engine reports [JLB-PICK] 2555 (25 with fname=List fchd=T) and [JTR-N8] 1357; the repaired probed engine reports [JLB-PICK] 2555 (25 List<T>), [JTR-N8] 1358, [J4V] 609 to 619. The deep-equality repair moves neither picker's residue: it is not a picker fix; its effect is the join verdict at the crate-partition fold (candidate line :699 '_' before, derived Rc<Vec<NonEmptyStr>> after). The 2555 total and the 25 List<T> picks stand as this row's residue. Jitter note: an earlier ungated run of the same pre-repair binary reported 2556.",
+    }],
   },
   disposition: Open,
 }
