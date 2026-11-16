@@ -169,3 +169,98 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     forced_command_line: serving_forced_command_line(host: host),
   }
 }
+
+// ---------------------------------------------------------------------------
+// observation -> plan (the observe-only mode's core; consumed by the
+// RemoteBuildServingObserve wet entrypoint, whose consumer is the plan receipt)
+// ---------------------------------------------------------------------------
+
+// What an observe pass READS off the host over fleet SSH. Every field is optional so
+// an unobserved fact is distinguishable from an observed-but-wrong one (Missing vs
+// Drifted) — the plan must never read "I did not look" as "it is correct".
+type ServingObserved {
+  account_uid: Int?
+  account_gid: Int?
+  // the members the host lists for the ledger group (from `getent group gunbc-compute`).
+  group_members: List<String>?
+  // the single forced-command line currently in authorized_keys.
+  authorized_keys_line: String?
+  store_root_present: Bool?
+  store_staging_present: Bool?
+  serve_binary_present: Bool?
+  checkout_present: Bool?
+  toolchain_present: Bool?
+}
+
+type ServingPlanItem { item: String, verdict: ServingItemVerdict }
+
+fn serving_compare_int(desired: Int, observed: Int?) -> ServingItemVerdict {
+  match observed {
+    Absent => Missing { desired: "int" }
+    Present { value: v } => match v == desired {
+      true => Met
+      false => Drifted { desired: "int", observed: "int" }
+    }
+  }
+}
+
+// A present-desired item (store dirs, seed binary, checkout, toolchain): unobserved ->
+// Missing, observed-absent -> Drifted, observed-present -> Met.
+fn serving_compare_present(observed: Bool?) -> ServingItemVerdict {
+  match observed {
+    Absent => Missing { desired: "present" }
+    Present { value: p } => match p {
+      true => Met
+      false => Drifted { desired: "present", observed: "absent" }
+    }
+  }
+}
+
+// The ledger group must list EXACTLY the required members (service user + account):
+// same membership and same count, so neither an extra nor a missing member reads Met.
+fn serving_membership_verdict(members: List<String>, observed: List<String>?) -> ServingItemVerdict {
+  match observed {
+    Absent => Missing { desired: join(members, ",") }
+    Present { value: ms } =>
+      match all(members, m => any(ms, o => o == m)) && count(ms) == count(members) {
+        true => Met
+        false => Drifted { desired: join(members, ","), observed: join(ms, ",") }
+      }
+  }
+}
+
+// The forced-command line: a host whose line is unrenderable is REFUSED outright (a
+// host that cannot serve must not be half-written); otherwise exact string equality.
+fn serving_authorized_keys_verdict(desired: String?, observed: String?) -> ServingItemVerdict {
+  match desired {
+    Absent => Refused { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" }
+    Present { value: d } => serving_compare_string(desired: d, observed: observed)
+  }
+}
+
+// The plan: each serving component judged against the observation. A host srv1 already
+// matches yields all-Met (the ADOPT case the converger must not rebuild); drift is the
+// work the converge mode (PR5 b) will write.
+fn serving_plan(d: RemoteBuildServingDesired, o: ServingObserved) -> List<ServingPlanItem> {
+  [
+    ServingPlanItem { item: "account.uid", verdict: serving_compare_int(desired: d.account_uid, observed: o.account_uid) },
+    ServingPlanItem { item: "account.gid", verdict: serving_compare_int(desired: d.account_gid, observed: o.account_gid) },
+    ServingPlanItem { item: "group.members", verdict: serving_membership_verdict(members: d.group_members, observed: o.group_members) },
+    ServingPlanItem { item: "authorized_keys.forced_command", verdict: serving_authorized_keys_verdict(desired: d.forced_command_line, observed: o.authorized_keys_line) },
+    ServingPlanItem { item: "store.root", verdict: serving_compare_present(o.store_root_present) },
+    ServingPlanItem { item: "store.staging", verdict: serving_compare_present(o.store_staging_present) },
+    ServingPlanItem { item: "seed.serve_binary", verdict: serving_compare_present(o.serve_binary_present) },
+    ServingPlanItem { item: "checkout", verdict: serving_compare_present(o.checkout_present) },
+    ServingPlanItem { item: "toolchain", verdict: serving_compare_present(o.toolchain_present) },
+  ]
+}
+
+// Settled (all Met) is the no-op plan — an already-correct host is ADOPTED unchanged.
+fn serving_plan_settled(plan: List<ServingPlanItem>) -> Bool {
+  all(plan, i => serving_verdict_settled(i.verdict))
+}
+
+// Any refused item makes the whole host a refuse — never a partial write.
+fn serving_plan_refused(plan: List<ServingPlanItem>) -> Bool {
+  any(plan, i => match i.verdict { Refused { reason } => true, _ => false })
+}

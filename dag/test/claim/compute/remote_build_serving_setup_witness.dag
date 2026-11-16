@@ -10,10 +10,12 @@ module test.claim.compute.remote_build_serving_setup_witness
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired,
   serving_compare_string, Met, Drifted, Missing,
+  ServingObserved, serving_plan, serving_plan_settled, serving_plan_refused,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { owned_directory_owner }
@@ -117,4 +119,81 @@ test fn comparator_missing_on_unobserved() -> Bool {
     Missing { desired } => desired == "gunbc-build"
     _ => false
   }
+}
+
+// ── the observe plan: ADOPT an already-correct host, and the red controls ───────
+// serving_plan turns (desired, observed) into per-item verdicts. The observe-only mode
+// consumes it to emit the plan receipt. These claims exercise that real path: an exactly
+// matching observation is SETTLED (srv1 is adopted, not rebuilt); a wrong value drifts;
+// an unobserved fact is NOT silently settled; a non-roster host REFUSES the whole plan.
+
+// The observation that matches srv1's desired state on every component.
+fn srv1_matching_observation(d: RemoteBuildServingDesired) -> ServingObserved {
+  let line = match d.forced_command_line { Present { value: l } => l, Absent => "" }
+  ServingObserved {
+    account_uid: Present { value: d.account_uid },
+    account_gid: Present { value: d.account_gid },
+    group_members: Present { value: d.group_members },
+    authorized_keys_line: Present { value: line },
+    store_root_present: Present { value: true },
+    store_staging_present: Present { value: true },
+    serve_binary_present: Present { value: true },
+    checkout_present: Present { value: true },
+    toolchain_present: Present { value: true },
+  }
+}
+
+fn srv1_blank_observation() -> ServingObserved {
+  ServingObserved {
+    account_uid: Absent, account_gid: Absent, group_members: Absent, authorized_keys_line: Absent,
+    store_root_present: Absent, store_staging_present: Absent, serve_binary_present: Absent,
+    checkout_present: Absent, toolchain_present: Absent,
+  }
+}
+
+// ADOPT: srv1 already carries the whole setup; a matching observation yields a settled
+// (all-Met, no-op) plan — the converger must NOT rebuild it.
+test fn a_matching_host_is_adopted_as_a_settled_plan() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  serving_plan_settled(plan: serving_plan(d: d, o: srv1_matching_observation(d)))
+}
+
+// RED CONTROL: one wrong observed value must make the plan non-settled and drift that item.
+test fn a_wrong_uid_observation_drifts_the_account_item() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let base = srv1_matching_observation(d)
+  let o = ServingObserved {
+    account_uid: Present { value: 9999 },
+    account_gid: base.account_gid,
+    group_members: base.group_members,
+    authorized_keys_line: base.authorized_keys_line,
+    store_root_present: base.store_root_present,
+    store_staging_present: base.store_staging_present,
+    serve_binary_present: base.serve_binary_present,
+    checkout_present: base.checkout_present,
+    toolchain_present: base.toolchain_present,
+  }
+  let plan = serving_plan(d: d, o: o)
+  match first_where(plan, i => i.item == "account.uid") {
+    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+    Absent => false
+  }
+}
+
+// RED CONTROL: an unobserved fact is Missing, never quietly settled.
+test fn an_unobserved_host_is_not_reported_settled() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let plan = serving_plan(d: d, o: srv1_blank_observation())
+  match first_where(plan, i => i.item == "store.root") {
+    Present { value: i } => match i.verdict { Missing { desired } => true, _ => false }
+    Absent => false
+  }
+}
+
+// RED CONTROL: a non-roster host (its forced-command line is unrenderable) REFUSES the
+// plan outright — the converger must not half-write a host that cannot serve.
+test fn a_non_roster_host_refuses_the_plan() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv9)
+  let o = srv1_blank_observation()
+  serving_plan_refused(plan: serving_plan(d: d, o: o))
 }
