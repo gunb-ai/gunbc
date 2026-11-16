@@ -706,8 +706,10 @@ fn live_deploy_agent_door_serve_unit_file(
   )
 }
 
-// THE CLOSURE VIEW of the agent door's unit file: same core, OIDC readback factored out (oidc_env:
-// []). A control asserts its argv[0]/WorkingDirectory equal the Emitted file's on an admitted fixture.
+// THE CLOSURE VIEW of the agent door's unit file: same core, and the SAME OIDC Environment the admitted
+// emission installs (live_deploy_oidc_unit_env_from_placement) — the closure view equals what is
+// emitted; it no longer strips the env. A control asserts WHOLE equality with the Emitted file's
+// directives on an admitted fixture.
 fn live_deploy_agent_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
   match deployment_agent_door_socket_of(spec: spec) {
     Absent => none
@@ -836,8 +838,9 @@ fn live_deploy_approval_broker_unit_file_on(
 
 // THE SHARED BROKER UNIT PRODUCER. The Environment directive list is a PARAMETER, so the closure view
 // (which reads only argv[0]/WorkingDirectory) can build the SAME unit with no environment rather than
-// being handed a fabricated base URL — the tailnet/agent doors take the same shape (a core with the
-// OIDC env factored out). Every non-environment directive — ExecStart argv[0], WorkingDirectory, slice,
+// being handed a fabricated base URL — the tailnet/agent doors take the same core shape, with the
+// OIDC Environment they are emitted WITH (live_deploy_oidc_unit_env_from_placement), so their closure
+// view equals what is emitted. Every non-environment directive — ExecStart argv[0], WorkingDirectory, slice,
 // user, EnvironmentFile, sidecar deps — is identical across the deploy and the closure view.
 fn live_deploy_approval_broker_serve_unit_file(
   spec: DeploymentSpec,
