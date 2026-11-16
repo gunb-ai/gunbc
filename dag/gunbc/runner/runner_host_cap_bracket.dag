@@ -652,7 +652,7 @@ fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, un
 // runner the cap write simply never lands; it lands only when every owned slot reads idle or stopped. That lost
 // busy-host drain is a declared LIVENESS COST of this change, not a temporary pending state, and draining a busy
 // slot without masking a running unit is owned by roadmap node fleet-no-route-masks-a-running-unit (its candidate
-// mechanism is recorded on that record, not here). A failed mask is not reported here: the next reading shows the
+// mechanism belongs on that node's first_slice, not here). A failed mask is not reported here: the next reading shows the
 // slot unmasked, and an unmasked slot is never drained.
 fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
 {
