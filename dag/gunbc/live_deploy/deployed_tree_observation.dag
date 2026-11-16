@@ -17,7 +17,6 @@ import gunbc.host.host_effect_realize {
   TypedArgvExecRefused,
   HostEffectTransport,
   FleetSsh,
-  SshShell,
 }
 
 // ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
@@ -236,11 +235,7 @@ type DeployedTreeLegOutcome
   | DeployedTreeLegNotAttempted { reason: String }
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
-  deployed_tree_leg_over_transport(transport: deployed_tree_locus_transport(locus: locus), argv: argv)
-}
-
-fn deployed_tree_leg_over_transport(transport: HostEffectTransport, argv: List<String>) -> DeployedTreeLegOutcome {
-  match run_typed_argv_transport(argv: argv, transport: transport) {
+  match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
     TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
     TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
   }
@@ -364,32 +359,7 @@ fn observe_deployed_tree_at(context: FleetSshExecutionContext, target: SshTarget
 }
 
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
-  observe_deployed_tree_on_transport(
-    transport: deployed_tree_locus_transport(locus: locus),
-    repo: locus.repo,
-    index_path: deployed_tree_temp_index_path(locus: locus),
-  )
-}
-
-// Observe the deployed tree by SSH-ing to the same host the caller is already on (the belt tick
-// runs ON srv1 and observes the lab checkout by SSH-ing to srv1 via SshShell). Uses the same
-// canonical instrument as observe_deployed_tree -- this is not a re-derivation.
-fn observe_deployed_tree_over_self_ssh(ssh_host: NonEmptyStr, repo: NonEmptyStr) -> DeployedTreeObservation {
-  observe_deployed_tree_on_transport(
-    transport: SshShell { ssh_host: ssh_host },
-    repo: repo,
-    index_path: join(["/tmp/gunbc-deployed-tree-index-self-", repo as String], ""),
-  )
-}
-
-// THE CANONICAL INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
-// See the comments on observe_deployed_tree for why each leg is separate.
-fn observe_deployed_tree_on_transport(
-  transport: HostEffectTransport,
-  repo: NonEmptyStr,
-  index_path: String,
-) -> DeployedTreeObservation {
-  match deployed_tree_leg_over_transport(transport: transport, argv: deployed_tree_revision_argv(repo: repo)) {
+  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
     DeployedTreeLegRan { result: rev } =>
@@ -402,7 +372,7 @@ fn observe_deployed_tree_on_transport(
           Absent =>
             DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
           Present { value: oid } =>
-            match deployed_tree_leg_over_transport(transport: transport, argv: deployed_tree_root_tree_argv(repo: repo)) {
+            match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: locus.repo)) {
               DeployedTreeLegNotAttempted { reason: why } =>
                 DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
               DeployedTreeLegRan { result: tr } =>
@@ -415,13 +385,11 @@ fn observe_deployed_tree_on_transport(
                     Absent =>
                       DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: tr.stdout) } }
                     Present { value: tree_oid } =>
-                      observe_deployed_tree_against_revision_on_transport(
-                        transport: transport,
-                        repo: repo,
+                      observe_deployed_tree_against_revision(
+                        locus: locus,
                         revision: oid,
                         tree: tree_oid,
                         revision_hex: trim(s: rev.stdout),
-                        index_path: index_path,
                       )
                   }
                 }
@@ -431,17 +399,21 @@ fn observe_deployed_tree_on_transport(
   }
 }
 
-fn observe_deployed_tree_against_revision_on_transport(
-  transport: HostEffectTransport,
-  repo: NonEmptyStr,
+// THE TEMP INDEX IS BUILT FROM THE REVISION THE HOST IS ACTUALLY ON, not from the admitted one. That
+// keeps this observation answering ONE question -- does the deployed scope realize the commit HEAD names --
+// and leaves "is that the right commit" to the standing. Building it from the desired revision would
+// fuse the two, and a host on the wrong commit would then report modifications for every path that
+// differs between the two revisions, which is drift wearing a modification's label.
+fn observe_deployed_tree_against_revision(
+  locus: DeployedTreeLocus,
   revision: GitObjectId,
   tree: GitObjectId,
   revision_hex: String,
-  index_path: String,
 ) -> DeployedTreeObservation {
-  match deployed_tree_leg_over_transport(
-    transport: transport,
-    argv: deployed_tree_read_tree_argv(repo: repo, revision_hex: revision_hex, index_path: index_path),
+  let index_path = deployed_tree_temp_index_path(locus: locus)
+  match deployed_tree_leg(
+    locus: locus,
+    argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
@@ -451,9 +423,9 @@ fn observe_deployed_tree_against_revision_on_transport(
           cause: TreeCommandFailed { leg: "index materialization", exit_code: rt.exit_code, stderr: rt.stderr },
         }
       } else {
-        match deployed_tree_leg_over_transport(
-          transport: transport,
-          argv: deployed_tree_status_argv(repo: repo, index_path: index_path),
+        match deployed_tree_leg(
+          locus: locus,
+          argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
         ) {
           DeployedTreeLegNotAttempted { reason: why2 } =>
             DeployedTreeUnobservable {
@@ -465,9 +437,9 @@ fn observe_deployed_tree_against_revision_on_transport(
                 cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
               }
             } else {
-              match deployed_tree_leg_over_transport(
-                transport: transport,
-                argv: deployed_tree_ignored_argv(repo: repo, index_path: index_path),
+              match deployed_tree_leg(
+                locus: locus,
+                argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
               ) {
                 DeployedTreeLegNotAttempted { reason: why3 } =>
                   DeployedTreeUnobservable {
@@ -495,25 +467,6 @@ fn observe_deployed_tree_against_revision_on_transport(
         }
       }
   }
-}
-// keeps this observation answering ONE question -- does the deployed scope realize the commit HEAD names --
-// and leaves "is that the right commit" to the standing. Building it from the desired revision would
-// fuse the two, and a host on the wrong commit would then report modifications for every path that
-// differs between the two revisions, which is drift wearing a modification's label.
-fn observe_deployed_tree_against_revision(
-  locus: DeployedTreeLocus,
-  revision: GitObjectId,
-  tree: GitObjectId,
-  revision_hex: String,
-) -> DeployedTreeObservation {
-  observe_deployed_tree_against_revision_on_transport(
-    transport: deployed_tree_locus_transport(locus: locus),
-    repo: locus.repo,
-    revision: revision,
-    tree: tree,
-    revision_hex: revision_hex,
-    index_path: deployed_tree_temp_index_path(locus: locus),
-  )
 }
 
 // FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet.origin_main_revision_observe` `fleet_revision_standing`

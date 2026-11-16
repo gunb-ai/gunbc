@@ -83,7 +83,14 @@ import gunbc.live_deploy.release_binding {
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
   ReleaseBindingUnobserved, release_binding_line,
 }
-import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_over_self_ssh }
+import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_ssh_target,
+}
+import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
   HealthzServed, HealthzRefused, observe_healthz,
 }
@@ -211,15 +218,41 @@ fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSn
   }
 }
 
+// The SSH attempt label the pairing gate's deployed-tree leg runs under. A named attempt keeps
+// the realized fleet-ssh effect auditable; the label carries no credential.
+data belt_pair_serve_gate_attempt_raw: String = "belt-standings-pair-serve"
+
 // LAB PAIRING GATE: asks whether the running binary and the deployed source tree form a
 // bound pair before the refresh is allowed to serve. Refusal keeps the last good pair
 // serving; the refusal reason names the binding arm (ReleaseMixed or ReleaseBindingUnobserved)
 // that rejected, making the refusal visible through the existing authority.
+//
+// BOTH READINGS ARE READ AT THE HOST THE LOCUS SEALS, NOT AT LOOSE TEXT. The tree leg goes
+// through the canonical observer `observe_deployed_tree_at`, which builds the sealed
+// `DeployedTreeLocus` (host + credential + repo together) -- the same instrument every other
+// consumer uses, never a re-derivation. The release identity is read at that same
+// instance's own serve port. Both readings therefore key off one `instance`, the single
+// admitted host record, so the tree and the running release cannot be joined across hosts.
 fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
-  let observation = observe_deployed_tree_over_self_ssh(
-    ssh_host: instance.host_identity,
-    repo: instance.repo_root as NonEmptyStr,
-  )
+  match prepare_fleet_ssh_agent_context(attempt_raw: belt_pair_serve_gate_attempt_raw) {
+    FleetSshContextRefused { cause: c } => {
+      let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+        cause: join(["fleet ssh context refused, deployed tree undecidable: ", c], ""),
+      }
+      PairServeRefused { binding: binding, reason: release_binding_line(binding: binding) }
+    }
+    FleetSshContextReady { context: context, receipt: _ } => belt_pair_serve_gate_at(
+      instance: instance,
+      observation: observe_deployed_tree_at(
+        context: context,
+        target: fleet_locus_ssh_target(host: instance.host_identity as HostIdentity),
+        repo: instance.repo_root as NonEmptyStr,
+      ),
+    )
+  }
+}
+
+fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: DeployedTreeObservation) -> LabServePairVerdict {
   match observe_healthz(port: instance.listen_port as Int) {
     HealthzServed { body: _, identity: id } =>
       lab_pair_serve_verdict(
