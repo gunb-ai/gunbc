@@ -13,8 +13,10 @@ import gunbc.compute.remote_build {
 }
 import gunbc.compute.remote_build_client {
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
-  remote_build_client_target, remote_build_step_served, remote_build_run_served,
+  remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
+  RemoteSelectionSent, RemoteSelectionDeclined, RemoteSelectionFailed,
+  remote_selection_operation, remote_selection_declined, remote_selection_failed, remote_not_sent_json,
 }
 
 // HERMETIC CONTROLS for the requesting side of gunbc.compute.remote_build. The wet control -- the
@@ -86,4 +88,25 @@ test fn a_run_is_served_only_when_every_request_was_served() -> Bool {
     && !remote_build_run_served(r: w_run(results: [full]))
     && !remote_build_run_served(r: w_run(results: []))
     && !remote_build_run_served(r: RemoteBuildNotSent { step: "push", detail: "refused" })
+}
+
+// A selected module that could not be sent counts against the run, as the local route counts an
+// unreadable module (gunbc.compute.test_run::module_run_succeeded => false): a pattern selecting one
+// module that ran served and one the snapshot could not read is NOT clean, while a module the floor
+// wholly declined or that is not a witness is reported and does not fail the run. The red half is
+// the mixed case that used to exit 0 with the unreadable module only in a note.
+test fn a_selected_module_that_could_not_be_sent_fails_the_run() -> Bool {
+  let op = RemoteCompileEntry { entry: "dag/x.dag" as FilePath }
+  let served = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostServed { receipt: "{}" } } }
+  let unreadable = RemoteSelectionFailed { note: remote_not_sent_json(label: "//dag/y", reason: "git show could not read the file from the snapshot") }
+  let declined = RemoteSelectionDeclined { note: remote_not_sent_json(label: "//dag/z", reason: "not a witness") }
+  let sent = RemoteSelectionSent { operation: op }
+  let selections = [sent, unreadable, declined]
+  let failed = flat_map(selections, remote_selection_failed)
+  count(flat_map(selections, remote_selection_operation)) == 1
+    && count(flat_map(selections, remote_selection_declined)) == 1
+    && count(failed) == 1
+    && remote_build_run_served(r: w_run(results: [served]))
+    && !remote_build_run_clean(run: w_run(results: [served]), failed: failed)
+    && remote_build_run_clean(run: w_run(results: [served]), failed: flat_map([sent, declined], remote_selection_failed))
 }

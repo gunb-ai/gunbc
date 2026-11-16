@@ -276,6 +276,11 @@ fn remote_build_run_served(r: RemoteBuildRun) -> Bool {
   }
 }
 
+// The run is clean only when every sent request was served AND nothing selected failed to be sent.
+fn remote_build_run_clean(run: RemoteBuildRun, failed: List<JsonValue>) -> Bool {
+  remote_build_run_served(r: run) && count(failed) == 0
+}
+
 // ── THE RECEIPT ──────────────────────────────────────────────────────────────────────────────────────
 
 fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
@@ -330,27 +335,29 @@ fn remote_build_step_json(s: RemoteBuildStep) -> JsonValue {
   }
 }
 
-fn remote_build_run_json(r: RemoteBuildRun, declined: List<JsonValue>) -> JsonValue {
+fn remote_build_run_json(r: RemoteBuildRun, declined: List<JsonValue>, failed: List<JsonValue>) -> JsonValue {
   match r {
     RemoteBuildNotSent { step, detail } =>
-      json_object(members: [json_kv(key: "served", value: json_bool(b: false)), json_kv(key: "refused_at", value: json_string(s: step)), json_kv(key: "detail", value: json_string(s: detail)), json_kv(key: "not_sent", value: json_array(elements: declined))])
+      json_object(members: [json_kv(key: "served", value: json_bool(b: false)), json_kv(key: "refused_at", value: json_string(s: step)), json_kv(key: "detail", value: json_string(s: detail)), json_kv(key: "not_sent", value: json_array(elements: declined)), json_kv(key: "selection_failed", value: json_array(elements: failed))])
     RemoteBuildRan { commit, source_ref, results, cleanup } =>
       json_object(members: [
-        json_kv(key: "served", value: json_bool(b: remote_build_run_served(r: r))),
+        json_kv(key: "served", value: json_bool(b: remote_build_run_served(r: r) && count(failed) == 0)),
         json_kv(key: "snapshot_commit", value: json_string(s: commit)),
         json_kv(key: "source_ref", value: json_string(s: source_ref)),
         json_kv(key: "source_ref_deleted", value: json_bool(b: match cleanup { RemoteBuildRefDeleted => true  RemoteBuildRefLeft { detail: _ } => false })),
         json_kv(key: "source_ref_cleanup", value: json_string(s: match cleanup { RemoteBuildRefDeleted => ""  RemoteBuildRefLeft { detail } => detail })),
         json_kv(key: "requests", value: json_array(elements: map(results, x => json_object(members: [json_kv(key: "operation", value: remote_build_operation_json(op: x.operation)), json_kv(key: "result", value: remote_build_step_json(s: x.step))])))),
         json_kv(key: "not_sent", value: json_array(elements: declined)),
+        json_kv(key: "selection_failed", value: json_array(elements: failed)),
       ])
   }
 }
 
 // A run that served every request but could not delete its ref is not clean: the ref is left on the
-// public origin, and the exit says so rather than leaving it to be found.
-fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, declined: List<JsonValue>) -> ProcessExit {
-  let document = serialize_json(v: remote_build_run_json(r: run, declined: declined))
+// public origin, and the exit says so rather than leaving it to be found. A run with any selection
+// failure is not clean either, however its sent requests were answered (remote_build_run_clean).
+fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, declined: List<JsonValue>, failed: List<JsonValue>) -> ProcessExit {
+  let document = serialize_json(v: remote_build_run_json(r: run, declined: declined, failed: failed))
   let receipt = Filesystem.Write(path: receipt_path, content: document)
   if !receipt.success {
     ExitFailure { code: 2, reason: join([verb, ": receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
@@ -360,7 +367,7 @@ fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, de
       RemoteBuildRan { commit: _, source_ref: _, results: _, cleanup: RemoteBuildRefLeft { detail } } =>
         ExitFailure { code: 1, reason: join([verb, ": the hidden ref was left on origin (", detail, "): ", document], "") }
       RemoteBuildRan { commit: _, source_ref: _, results: _, cleanup: RemoteBuildRefDeleted } =>
-        if remote_build_run_served(r: run) { ExitSuccess } else { ExitFailure { code: 1, reason: join([verb, ": ", document], "") } }
+        if remote_build_run_clean(run: run, failed: failed) { ExitSuccess } else { ExitFailure { code: 1, reason: join([verb, ": ", document], "") } }
     }
   }
 }
@@ -380,34 +387,51 @@ fn remote_compile_cli(worktree: String, entry: String, receipt_path: String) -> 
     match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
       SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote compile: snapshot refused at ", step, ": ", detail], "") }
       SnapshotResolved { commit } =>
-        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }]), declined: [])
+        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }]), declined: [], failed: [])
     }
   }
 }
 
-// A module the selection could not send -- unreadable, not a witness, every claim declined by the
-// floor's home policy -- is reported beside the requests, as the local route reports it; only the
-// planned claims cross.
+// The three outcomes of selecting one module, with the same verdicts the local route gives them
+// (gunbc.compute.test_run::module_run_succeeded): a module that is not a witness, or whose every
+// claim the floor's home policy declines, is NOT A FAILURE (local: ModuleNotAWitness /
+// ModuleAllDeclined => true) and is reported beside the requests; a module that was selected but
+// cannot be sent -- unreadable from the snapshot (local: ModuleUnreadable => false), or an entry
+// the serving side does not admit -- IS a failure of the run, counted in the exit, never dropped
+// into a note while the rest exits 0. Only the planned claims cross.
 type RemoteSelection
   = RemoteSelectionSent { operation: RemoteBuildOperation }
-  | RemoteSelectionNotSent { note: JsonValue }
+  | RemoteSelectionDeclined { note: JsonValue }
+  | RemoteSelectionFailed { note: JsonValue }
 
 fn remote_select_module(worktree: String, commit: String, file: SelectedFile) -> RemoteSelection {
   match show_file(git: remote_build_client_git_program, worktree: worktree, commit: commit, path: file.path) {
-    Absent => RemoteSelectionNotSent { note: remote_not_sent_json(label: render_label(l: file.label), reason: "git show could not read the file from the snapshot") }
+    Absent => RemoteSelectionFailed { note: remote_not_sent_json(label: render_label(l: file.label), reason: "git show could not read the file from the snapshot") }
     Present { value: content } =>
       match classify_witness_module(file: file, content: content) {
-        WitnessModuleNotAWitness { path: _, label, reason } => RemoteSelectionNotSent { note: remote_not_sent_json(label: render_label(l: label), reason: concat("not a witness: ", reason)) }
+        WitnessModuleNotAWitness { path: _, label, reason } => RemoteSelectionDeclined { note: remote_not_sent_json(label: render_label(l: label), reason: concat("not a witness: ", reason)) }
         WitnessModuleSelected { path: _, label, module_path: _, planned, declined: _ } =>
           if count(planned) == 0 {
-            RemoteSelectionNotSent { note: remote_not_sent_json(label: render_label(l: label), reason: "every claim is declined by the floor's home policy") }
+            RemoteSelectionDeclined { note: remote_not_sent_json(label: render_label(l: label), reason: "every claim is declined by the floor's home policy") }
           } else if !remote_build_entry_admitted(entry: file.path) {
-            RemoteSelectionNotSent { note: remote_not_sent_json(label: render_label(l: label), reason: concat("the serving side admits entries under dag/ only: ", file.path)) }
+            RemoteSelectionFailed { note: remote_not_sent_json(label: render_label(l: label), reason: concat("the serving side admits entries under dag/ only: ", file.path)) }
           } else {
             RemoteSelectionSent { operation: RemoteRunClaims { entry: file.path as FilePath, functions: map(planned, f => f as NonEmptyStr) } }
           }
       }
   }
+}
+
+fn remote_selection_operation(s: RemoteSelection) -> List<RemoteBuildOperation> {
+  match s { RemoteSelectionSent { operation } => [operation]  RemoteSelectionDeclined { note: _ } => []  RemoteSelectionFailed { note: _ } => [] }
+}
+
+fn remote_selection_declined(s: RemoteSelection) -> List<JsonValue> {
+  match s { RemoteSelectionSent { operation: _ } => []  RemoteSelectionDeclined { note } => [note]  RemoteSelectionFailed { note: _ } => [] }
+}
+
+fn remote_selection_failed(s: RemoteSelection) -> List<JsonValue> {
+  match s { RemoteSelectionSent { operation: _ } => []  RemoteSelectionDeclined { note: _ } => []  RemoteSelectionFailed { note } => [note] }
 }
 
 fn remote_not_sent_json(label: String, reason: String) -> JsonValue {
@@ -427,12 +451,13 @@ fn remote_test_cli(worktree: String, pattern: String, receipt_path: String) -> P
             TreeListingRefused { detail } => ExitFailure { code: 2, reason: concat("gunbc remote test: ", detail) }
             TreeListed { paths } => {
               let selections = select_witness_files(pattern: parsed, paths: paths) |> map(f => remote_select_module(worktree: worktree, commit: commit, file: f))
-              let operations = selections |> flat_map(s => match s { RemoteSelectionSent { operation } => [operation]  RemoteSelectionNotSent { note: _ } => [] })
-              let declined = selections |> flat_map(s => match s { RemoteSelectionSent { operation: _ } => []  RemoteSelectionNotSent { note } => [note] })
+              let operations = selections |> flat_map(remote_selection_operation)
+              let declined = selections |> flat_map(remote_selection_declined)
+              let failed = selections |> flat_map(remote_selection_failed)
               if count(operations) == 0 {
-                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: RemoteBuildNotSent { step: "selection", detail: concat("the pattern selected no module with a planned claim: ", render_target_pattern(pattern: parsed)) }, declined: declined)
+                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: RemoteBuildNotSent { step: "selection", detail: concat("the pattern selected no module with a planned claim: ", render_target_pattern(pattern: parsed)) }, declined: declined, failed: failed)
               } else {
-                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations), declined: declined)
+                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations), declined: declined, failed: failed)
               }
             }
           }
