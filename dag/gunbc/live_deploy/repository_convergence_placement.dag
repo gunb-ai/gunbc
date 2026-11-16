@@ -745,10 +745,9 @@ fn convergence_slice_refusal_text(oneshot: ConvergenceOneshot, slice: NonEmptySt
 // systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
 // the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
 fn convergence_oneshot_unit_text(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> String {
-  match convergence_oneshot_rendering(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
-    ConvergenceUnitRendered { text: t } => t
-    ConvergenceUnitPlacementRefused { reason: r } =>
-      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
+  match convergence_oneshot_service_unit_file_if_admitted(spec: spec, oneshot: oneshot) {
+    Present { value: unit } => serialize_systemd_unit_file(file: unit)
+    Absent => "__GUNBC_DEPLOY_UNREACHABLE__ convergence slice not admitted"
   }
 }
 
