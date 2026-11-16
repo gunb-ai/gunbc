@@ -145,7 +145,8 @@ data fleet_observation_deferral_2026_11_12: DesignRuling = DesignRuling {
 // (scripts/session-dashboard/lib/roadmap_work_items.mjs parseStandingsResponse/admitWorkspaceWorkItem)
 // — sees silently-old data. This ruling is the authority that REOPENS a wall-clock trigger for that
 // one fold after dogfood intervention #4 retired the belt timer: the ruling that retired the timer
-// (spec.dag:849-872, "event-driven, not timer-driven") removed the timer that re-WALKED THE FRONTIER
+// (the event-units comment heading gunbc.live_deploy.spec::deployment_belt_exit_path_unit_name,
+// "event-driven, not timer-driven") removed the timer that re-WALKED THE FRONTIER
 // (spawning/launching/tearing down sessions on a cadence). This ruling does not reverse that. What it
 // authorizes is strictly narrower and read-only: a systemd timer that starts a oneshot running ONLY
 // `belt_observe_once_cli` — the observation fold, no spawn/launch/teardown — every

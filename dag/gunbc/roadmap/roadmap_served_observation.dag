@@ -779,6 +779,8 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
 type ServedObservationFreshness
   = ObservationCurrent
   | ObservationStale { observed_at: String, newest_event_at: String }
+  | ObservationStaleByAge { observed_at: String, horizon: Second }
+  | ObservationUnparseable { observed_at: String }
   | ObservationFreshnessUnread { reason: String }
 
 type ServedObservationNewestInstant
@@ -899,6 +901,20 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
         body: response.body,
         headers: response.headers,
       }
+    ObservationStaleByAge { observed_at: _, horizon: _ } =>
+      ServeHttpResponse {
+        status: 409,
+        content_type: response.content_type,
+        body: response.body,
+        headers: response.headers,
+      }
+    ObservationUnparseable { observed_at: _ } =>
+      ServeHttpResponse {
+        status: 409,
+        content_type: response.content_type,
+        body: response.body,
+        headers: response.headers,
+      }
     ObservationFreshnessUnread { reason } =>
       served_observation_refusal_response(refusal: "ServedObservationFreshnessUnread", detail: reason)
   }
@@ -928,10 +944,10 @@ fn served_observation_age_staleness(observed_at: String) -> ServedObservationFre
       ObservationFreshnessUnread { reason: join(["the refresh-age clock could not be read: ", detail], "") }
     ClockUnixMillisObserved { millis } =>
       match rfc3339_parse_instant(text: observed_at) {
-        // An unparseable observed_at is not proof of freshness. It is proof the document is not the
-        // one the belt wrote, so it cannot be trusted as current.
+        // An unparseable observed_at is its own verdict: the document is not the one the belt wrote,
+        // so it is refused as unparseable — NOT reported as stale-by-age with a fabricated field.
         Rfc3339InstantRefused { cause: _ } =>
-          ObservationStale { observed_at: observed_at, newest_event_at: "" }
+          ObservationUnparseable { observed_at: observed_at }
         Rfc3339InstantParsed { instant: i, spelling: _ } => {
           let age_secs = (epoch_secs_of_millis(millis: millis) as Int) - rfc3339_instant_unix_seconds(i: i)
           if age_secs < 0 {
@@ -943,7 +959,7 @@ fn served_observation_age_staleness(observed_at: String) -> ServedObservationFre
               Absent => ObservationFreshnessUnread { reason: "the observation age could not be measured" }
               Present { value } =>
                 if value > second_count(s: belt_standings_refresh_staleness_horizon) {
-                  ObservationStale { observed_at: observed_at, newest_event_at: "" }
+                  ObservationStaleByAge { observed_at: observed_at, horizon: belt_standings_refresh_staleness_horizon }
                 } else {
                   ObservationCurrent
                 }
@@ -1019,6 +1035,8 @@ fn served_observation_freshness_standing_word(freshness: ServedObservationFreshn
   match freshness {
     ObservationCurrent => "present"
     ObservationStale { observed_at: _, newest_event_at: _ } => "stale"
+    ObservationStaleByAge { observed_at: _, horizon: _ } => "stale_by_age"
+    ObservationUnparseable { observed_at: _ } => "unparseable"
     ObservationFreshnessUnread { reason: _ } => "freshness_unreadable"
   }
 }
@@ -1028,6 +1046,13 @@ fn served_observation_freshness_standing_members(freshness: ServedObservationFre
     ObservationCurrent => []
     ObservationStale { observed_at: _, newest_event_at } =>
       [json_kv(key: "newest_event_at", value: json_string(s: newest_event_at))]
+    ObservationStaleByAge { observed_at: observed_at, horizon: horizon } =>
+      [
+        json_kv(key: "observed_at", value: json_string(s: observed_at)),
+        json_kv(key: "stale_by_age_horizon_secs", value: json_string(s: to_string(second_count(s: horizon)))),
+      ]
+    ObservationUnparseable { observed_at: observed_at } =>
+      [json_kv(key: "observed_at", value: json_string(s: observed_at))]
     ObservationFreshnessUnread { reason } =>
       [json_kv(key: "reason", value: json_string(s: reason))]
   }
@@ -1041,6 +1066,8 @@ fn served_observation_standing_http_status(read: ServedObservationRead, freshnes
       match freshness {
         ObservationCurrent => 200
         ObservationStale { observed_at: _, newest_event_at: _ } => 200
+        ObservationStaleByAge { observed_at: _, horizon: _ } => 200
+        ObservationUnparseable { observed_at: _ } => 200
         ObservationFreshnessUnread { reason: _ } => 503
       }
   }
