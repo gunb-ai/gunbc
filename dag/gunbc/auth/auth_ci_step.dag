@@ -41,6 +41,14 @@ data gunbc_ci_gcp_iam_converge_apply_target: GunbcRunStepTarget = gunbc_run_step
   function: "gcp_iam_converge_apply_wet",
 )
 
+// THE SRV15 BMC SECRET-VERSIONS READ (operator ruling msg_0b62002f): a metadata-only
+// versions.list of bmc-srv15-admin, ON THIS JOB'S IDENTITY, grounding the arrival accessor pin.
+// Same stem as the converge steps: it reads with the job's own WIF identity.
+data gunbc_ci_srv15_bmc_secret_versions_read_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.auth.srv15_bmc_secret_versions_receipt",
+  function: "srv15_bmc_secret_versions_read_wet",
+)
+
 data gunbc_ci_gcp_iam_bootstrap_delta_request_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.auth.gcp_iam_bootstrap_delta_run",
   function: "gcp_iam_bootstrap_delta_request_wet",
@@ -89,6 +97,21 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
 
 fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
+}
+
+// THE READ STEP STANDS ON THE JOB'S OWN WIF IDENTITY AND NOTHING ELSE (review artifacts 95619 and
+// 95625): no submission-key materialization, no bearer written to a file. Its wet reads the token
+// through the WorkloadIdentityToken arm of gunbc.auth.access_token_source -- the in-process read of
+// the WIF_ACCESS_TOKEN variable the job's wif_auth step exports (bound on the step, like its
+// siblings), carried only as a Secret argument to the one readonly ListVersions call, never argv.
+// The shared opening belongs to steps that sign submissions; this step signs nothing.
+fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_srv15_bmc_secret_versions_read_target,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
