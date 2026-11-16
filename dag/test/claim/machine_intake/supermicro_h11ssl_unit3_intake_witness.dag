@@ -9,14 +9,14 @@ module test.claim.machine_intake.supermicro_h11ssl_unit3_intake_witness
 // hold that any figure is true about the board: none of these figures is a read of the board, and the
 // module says so row by row.
 import std.types { Bool, List, NonEmptyStr }
-import std.algebra { length, string_contains }
+import std.algebra { FreeSemigroup, fold_list, length, string_contains }
 import std.decl_ref { DeclarationRef }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
-import gunbc.design_ruling { srv4_edge_apply_held_until_srv15_install_binding_admitted }
 import gunbc.integration_concern {
-  ConcernDisposition, ConcernKind, Distinct, Integrated, IntegrationConcern, Open, RequirementEstablished,
+  ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
+  RequirementEstablished,
   RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
   h11ssl_unit3_edge_gate_refusal_revision,
   h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
@@ -65,6 +65,16 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
 
 // Claims below assert WHICH declaration a row points at, so renaming that row reds here instead of
 // leaving a name inside a paragraph that nothing checks.
+// The register keeps a sighting's account as prose, so the check available is whether some sighting in a
+// concern records the account being looked for. Used only for facts whose carrier is prose.
+fn any_sighting_account_mentions(sightings: FreeSemigroup<ConcernSighting>, wants: String) -> Bool {
+  fold_list(
+    xs: sightings.tail,
+    empty: string_contains(s: text(sightings.head.account), pattern: wants),
+    cons: (acc, sighting) => acc || string_contains(s: text(sighting.account), pattern: wants),
+  )
+}
+
 fn decl_ref_names(ref: DeclarationRef, module_path: String, decl_name: String) -> Bool {
   (text(ref.module_path) == module_path) && (text(ref.decl_name) == decl_name)
 }
@@ -431,19 +441,30 @@ test fn witness_the_baseboard_row_is_held_in_the_right_home() -> Bool {
   string_contains(s: text(supermicro_h11ssl_unit3_baseboard_row_standing.home), pattern: "gunbc.fleet.fleet_intent")
 }
 
-// THE OPERATOR-LANE HOLD ON THIS EDGE HAS A CARRIER OF ITS OWN, and the concern CITES it instead of swallowing
-// it. A concern's `requirement` states what must hold about the model; a ruling states what a lane may do to a
-// host today. Folding the second into the first is how a temporary hold outlives its end condition, because the
-// end condition lives in the ruling's provenance and nobody reads a concern's prose for a date.
-test fn witness_the_edge_hold_lives_in_a_ruling_the_concern_cites() -> Bool {
-  (text(srv4_edge_apply_held_until_srv15_install_binding_admitted.decided) == "2026-11-16")
-    && (text(srv4_edge_apply_held_until_srv15_install_binding_admitted.governs.decl_name) == "site_pxe_edge_remove_stale")
-}
-
-test fn witness_the_concern_points_at_the_ruling_without_restating_it() -> Bool {
+// THE HOLD ON THIS EDGE IS ATTRIBUTED, DATED IN THE RECORD, AND CLAIMS NO AUTHORITY IT DOES NOT HAVE. The hold
+// is a lane instruction from the owner of the site PXE edge lane, not a ruling of the operator: gunbc.design_ruling
+// carries dated rulings OF THE OPERATOR, and this hold has none -- a row there would lend it an authority nobody
+// gave it. So the concern has to say who held it, in which lane, and which repository-side record the hold rests
+// on (the srv15 install NIC row), and it must NOT cite a design_ruling row for it.
+test fn witness_the_edge_hold_is_attributed_without_ruling_authority() -> Bool {
   match h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.kind {
     SuspectedCapabilityGap { model: _, requirement: owed, standing: _ } =>
-      string_contains(s: text(owed), pattern: "srv4_edge_apply_held_until_srv15_install_binding_admitted")
+      string_contains(s: text(owed), pattern: "lane instruction")
+        && string_contains(s: text(owed), pattern: "smart-crane-730")
+        && string_contains(s: text(owed), pattern: "srv15_host_nic_observation")
+        && string_contains(s: text(owed), pattern: "bring-up plan")
+        && !(string_contains(s: text(owed), pattern: "design_ruling::srv4_edge_apply_held"))
     SuspectedFork { authorities: _ } => false
   }
+}
+
+// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Four sightings stand on this
+// concern (the original, the branch-ref refusal, the self-correction of the second, and the hold), and at least
+// one of them states that the hold sits out of gunbc.design_ruling. That is the record's shape for an
+// instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
+test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
+  let concern = h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model
+  length(concern.sightings.tail) == 3
+    && any_sighting_account_mentions(sightings: concern.sightings, wants: "NOT entered in gunbc.design_ruling")
+    && any_sighting_account_mentions(sightings: concern.sightings, wants: "smart-crane-730")
 }
