@@ -19,6 +19,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_credential_pattern,
   release_bins_retention_decide_statements, release_bins_retention_answer_file,
   release_bins_retention_statements, release_bins_outcome_with_retention_script,
+  release_bins_outcome_with_retention_statements, release_bins_retention_answer_page_basename,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -627,4 +628,228 @@ test fn release_bins_retention_full_chore_deletes_from_its_own_answer() -> Bool 
     && r.success
     && string_contains(s: r.stdout, pattern: "release-bins retention: due=1010")
     && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+}
+
+
+// ---------------------------------------------------------------------------
+// F4 (side chat, 2026-11-16, msg_495d8e8e): pagination. One page of 100 with a
+// strict total_count == length admission silently disabled the guardian the
+// moment the release-bins family exceeded 100 entries. These claims pin the
+// replacement: page 1's total gates pages 2..5, each page is admitted on its
+// own and appends only its own ids, a total past the bound types `over-cap`
+// and deletes nothing, and the five whole-step paths run the EMITTED step.
+// Bodies are generated, not hand-counted: one family entry per id, created_at
+// ascending with the id, listing order created_at-descending as the API sends.
+// ---------------------------------------------------------------------------
+
+fn retention_int_range(from: Int, to: Int) -> List<Int> {
+  if from > to {
+    []
+  } else {
+    concat([from], retention_int_range(from + 1, to))
+  }
+}
+
+fn retention_family_entry_text(i: Int) -> String {
+  join([
+    "{\"id\": ", int_to_decimal_string(i),
+    ", \"key\": \"release-bins-r", int_to_decimal_string(i),
+    ", \"created_at\": \"2026-11-", int_to_decimal_string(i), "\"}",
+  ], "")
+}
+
+fn retention_page_body(start: Int, end: Int, total: Int) -> String {
+  join(["{\"total_count\": ", int_to_decimal_string(total), ", \"actions_caches\": ["], "")
+    + join(map(retention_int_range(start, end), i => retention_family_entry_text(i)), ", ")
+    + "]}"
+}
+
+fn fake_curl_static(body: String) -> Outcome<String> {
+  e(statements: fake_tool(
+    name: "curl",
+    lines: [
+      "o=0",
+      "for a in \"$\"@\"; do if [ \"$\"o\" = 1 ]; then printf %s \"" + body + "\" > \"$\"a\"; o=0; fi; if [ \"$\"a\" = -o ]; then o=1; fi; done",
+      "exit 0",
+    ]
+  ))
+}
+
+// One fake curl for the whole paged listing: it serves page 2 and page 3 by
+// their &page= parameter and page 1 (any other URL) as the base body. A DELETE
+// carries no -o, so it writes nothing and succeeds -- the deletion itself is
+// asserted through the typed lines, not through fake state.
+fn fake_curl_pages(body1: String, body2: String, body3: String) -> Outcome<String> {
+  e(statements: fake_tool(
+    name: "curl",
+    lines: [
+      "o=0",
+      "u=\"\"",
+      "for a in \"$\"@\"; do case \"$\"a\" in -o) o=1;; *) if [ \"$\"o\" = 1 ]; then o=\"$\"a\"; fi;; esac; case \"$\"a\" in http*) u=\"$\"a\";; esac; done",
+      "case \"$\"u\" in *page=2*) printf %s \"" + body2 + "\" > \"$\"o\";; *page=3*) printf %s \"" + body3 + "\" > \"$\"o\";; *) printf %s \"" + body1 + "\" > \"$\"o\";; esac",
+      "exit 0",
+    ]
+  ))
+}
+
+data retention_pages_body1: String = retention_page_body(start: 150, end: 249, total: 250)
+data retention_pages_body2: String = retention_page_body(start: 50, end: 149, total: 250)
+data retention_pages_body3: String = retention_page_body(start: 1, end: 49, total: 250)
+data retention_over_bound_body: String = retention_page_body(start: 3000, end: 3099, total: 501)
+data retention_at_cap_family_body: String = retention_page_body(start: 7000, end: 7015, total: 16)
+
+// Past the bound: the typed over-cap line, no plan, no deletions, and NOT the
+// misleading no-answer line (the answer was seen; the guardian chose to stop).
+data script_retention_over_bound: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    retention_answer_part(body: retention_over_bound_body),
+    fake_curl_static(body: retention_over_bound_body),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_over_bound_types_total_and_deletes_nothing() -> Bool {
+  let r = run_script(script: script_retention_over_bound)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: over-cap total=501")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "due=")
+    && !string_contains(s: r.stdout, pattern: "no-answer")
+    && !string_contains(s: r.stdout, pattern: "plan-failed")
+}
+
+// The paged delete: page 1 carries the newest 100 (ids 150..249), so its own
+// plan covers the oldest 84 of it; pages 2 and 3 are entirely older than page
+// 1, so every family id on them is due. Together: exactly ids 1..233 -- the
+// 16 newest (234..249) survive. Pre-pagination this claim's ancestor could not
+// exist: the answer refused admission at 250 total.
+data script_retention_paged_delete: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    retention_answer_part(body: retention_pages_body1),
+    fake_curl_pages(body1: retention_pages_body1, body2: retention_pages_body2, body3: retention_pages_body3),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
+  let r = run_script(script: script_retention_paged_delete)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=233 keep=16")
+    && string_contains(s: r.stdout, pattern: "due=1 ")
+    && string_contains(s: r.stdout, pattern: " 233 ")
+    && !string_contains(s: r.stdout, pattern: " 249 ")
+    && !string_contains(s: r.stdout, pattern: "page-failed")
+}
+
+// THE FIVE WHOLE-STEP PATHS (manager, msg_495d8e8e): every claim below runs
+// release_bins_outcome_with_retention_statements -- the emitted step, outcome
+// and chore together -- against the fixture store and a fake curl.
+
+fn full_step_parts(prepare: List<Outcome<String>>, chore: Outcome<String>) -> List<Outcome<String>> {
+  concat(prepare, [part_retention_exports, chore, e(statements: release_bins_outcome_with_retention_statements(product: fleet_release_bins_product()))])
+}
+
+// cache hit: the verified store promotes, and the chore finds an empty family.
+data script_full_step_hit: TransportScript? = release_bins_transport(
+  parts: full_step_parts(
+    prepare: [part_produced_store, part_no_mutation, part_restore_prep],
+    chore: fake_curl_static(body: "{\"total_count\":0,\"actions_caches\":[]}"),
+  )
+)
+
+test fn release_bins_full_step_hit_reports_restore_and_nothing_due() -> Bool {
+  let r = run_script(script: script_full_step_hit)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins: stored pack verified and promoted")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: nothing-due")
+    && !string_contains(s: r.stdout, pattern: "ReleaseBinsBuildReceipt")
+}
+
+// zero due: family at exactly the keep count deletes nothing and says so.
+data script_full_step_zero_due: TransportScript? = release_bins_transport(
+  parts: full_step_parts(
+    prepare: [part_produced_store, part_no_mutation, part_restore_prep],
+    chore: fake_curl_static(body: retention_at_cap_family_body),
+  )
+)
+
+test fn release_bins_full_step_zero_due_keeps_the_keep_window() -> Bool {
+  let r = run_script(script: script_full_step_zero_due)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins: stored pack verified and promoted")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: nothing-due")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+}
+
+// failed GET with a valid stale answer already present: the step invalidates
+// the answer before fetching, so the stale listing can neither plan nor delete;
+// the failure is typed and the run still reports its outcome honestly.
+data script_full_step_get_fail: TransportScript? = release_bins_transport(
+  parts: full_step_parts(
+    prepare: [part_produced_store, part_no_mutation, part_restore_prep],
+    chore: e(statements: concat(
+      [bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", retention_at_cap_family_body]), path: fx(t: release_bins_retention_answer_file()))],
+      fake_tool(name: "curl", lines: ["for a in \"$\"@\"; do case \"$\"a\" in http*) exit 22;; esac; done", "exit 0"]),
+    )),
+  )
+)
+
+test fn release_bins_full_step_get_fail_types_and_ignores_the_stale_answer() -> Bool {
+  let r = run_script(script: script_full_step_get_fail)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins: stored pack verified and promoted")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: lookup-failed")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: no-answer")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+}
+
+// over-page, whole step: over-cap stops the chore; the outcome is untouched.
+data script_full_step_over_page: TransportScript? = release_bins_transport(
+  parts: full_step_parts(
+    prepare: [part_produced_store, part_no_mutation, part_restore_prep],
+    chore: fake_curl_static(body: retention_over_bound_body),
+  )
+)
+
+test fn release_bins_full_step_over_page_types_over_cap_and_promotes_anyway() -> Bool {
+  let r = run_script(script: script_full_step_over_page)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins: stored pack verified and promoted")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: over-cap total=501")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "no-answer")
+}
+
+// cache miss: the established-absence branch builds (fake cargo runs) and the
+// chore still executes afterwards -- the behavioural half of F1, the static
+// half being ..._falls_through_build_to_the_chore above.
+data script_full_step_miss: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture,
+    part_supplied_key,
+    body_valid_empty,
+    e(statements: [cmdl(ls: ["export", "LOOKUP_STANDING=absent", "LOOKUP_ENTRY=none", "CACHE_HIT=false", "GH_TOKEN=fake-token", "GITHUB_API_URL=http://127.0.0.1:1"])]),
+    fake_curl_static(body: "{\"total_count\":0,\"actions_caches\":[]}"),
+    e(statements: release_bins_outcome_with_retention_statements(product: fleet_release_bins_product())),
+  ]
+)
+
+test fn release_bins_full_step_miss_builds_then_runs_the_chore() -> Bool {
+  let r = run_script(script: script_full_step_miss)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "cargo 1.93.0 (fixture)")
+    && string_contains(s: r.stdout, pattern: "ReleaseBinsBuildReceipt")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: nothing-due")
+    && !string_contains(s: r.stdout, pattern: "stored pack verified and promoted")
 }
