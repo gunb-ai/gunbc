@@ -181,9 +181,14 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
   // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18 this witness carried: srv3's
   // 112 GiB costs 4 (18->14), srv4's 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a
   // silent widen; the committed-width witness below re-baselines to the same charged numbers.
+  // REMOTE-BUILD PR 4 CARVES ONE CI RUNNER SLOT PER HOST for their build pool (gunbc.runner
+  // host_build_pool_reservation, subtracted as an envelope term and given to the capacity ledger by
+  // gunbc.compute.host_capacity host_capacity_build_seat). So each admits one slot FEWER: srv3 14->13, srv4
+  // 16->15. This is the "srv3/srv4 runner width reduced by one, with the pool appropriation derived from it"
+  // claim pinned at its source -- srv1 is untouched (7), because the carve is host-scoped to srv3/srv4.
   host_memory_admitted_width(host: operator_host_srv1) == 7
-    && host_memory_admitted_width(host: operator_host_srv3) == 14
-    && host_memory_admitted_width(host: operator_host_srv4) == 16
+    && host_memory_admitted_width(host: operator_host_srv3) == 13
+    && host_memory_admitted_width(host: operator_host_srv4) == 15
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true

@@ -584,7 +584,7 @@ fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: B
 // host RAM stays gunbc.ci.ci_runner_placement's to certify, which it still does, now over one slot that
 // has simply moved from the CI side to the ledger side of the same machine.
 fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
-  if host == operator_host_srv3 || host == operator_host_srv4 {
+  if (host as String) == (operator_host_srv3 as String) || (host as String) == (operator_host_srv4 as String) {
     gunbc_runner_slot_memory_max
   } else {
     byte_size(0)

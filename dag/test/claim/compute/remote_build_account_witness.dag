@@ -21,10 +21,9 @@ import std.measure { ByteSize, kibibyte, kibibyte_count, kibibyte_from_byte_size
 import gunbc.compute.host_capacity {
   compute_capacity_directories, ComputeLedgerSharing, ComputeLedgerSharedWithRemoteBuild, ComputeLedgerServiceOnly, compute_ledger_sharing,
   host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
-  compute_capacity_root, compute_capacity_home_root,
+  compute_capacity_root,
 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
 import gunbc.compute.remote_build_serve {
@@ -134,10 +133,14 @@ fn w_shared(s: ComputeLedgerSharing) -> Bool {
   }
 }
 
+// THE SHARED LEDGER IS THE HOST HOME, so the sharing test asks the subject (resolved BY HOST), not the
+// host's dashboard instance. The subject on a roster host carries the host home at /opt/gunbc, which
+// compute_ledger_sharing groups to the ledger group; a host that resolved through the old
+// dashboard_instance_for_host path -- srv2 to /home, srv3/srv4 to nothing -- would report unshared here.
 fn w_host_ledger_is_shared(host: HostIdentity) -> Bool {
-  match dashboard_instance_for_host(host: host as String) {
-    DashboardInstanceHostUnknown { host: _ } => false
-    DashboardInstanceForHost { instance } => w_shared(s: compute_ledger_sharing(instance: instance))
+  match host_capacity_subject(instance: remote_build_serving_instance(host: host), pool: ComputeBuildPool) {
+    ComputeSubjectHostUnresolved { host: _ } => false
+    ComputeSubjectResolved { subject: s, appropriation: _ } => w_shared(s: compute_ledger_sharing(instance: s.instance))
   }
 }
 
@@ -207,8 +210,8 @@ test fn every_roster_hosts_ledger_is_the_host_home_not_an_instance_tree() -> Boo
   remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (s.instance.instance_root as String) == (compute_capacity_home_root as String)
-        && (compute_capacity_root(host_instance: s.instance) as String) == concat([compute_capacity_home_root as String, "/compute/capacity"], "")
+      (s.instance.instance_root as String) == "/opt/gunbc"
+        && (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
         && !starts_with(s: compute_capacity_root(host_instance: s.instance) as String, prefix: "/home/")
   })
 }
@@ -240,20 +243,4 @@ test fn srv3_and_srv4_build_pool_appropriation_is_one_carved_runner_slot() -> Bo
       ComputeSubjectHostUnresolved { host: _ } => false
       ComputeSubjectResolved { subject: _, appropriation: a } => kibibyte_count(k: a) == one_slot_kib
     })
-}
-
-// THE CI WIDTH PAID FOR THAT SLOT. The carve is real on the runner side: srv3/srv4 committed width sits at
-// 16 -- one slot below the 17 they carried before the build pool existed (the fleet runner-slot note names
-// "srv3/srv4 17 at the 26 GiB slot" as PRIOR to this PR) -- and the two hosts stay symmetric. srv1 is NOT
-// pinned here because host_build_pool_reservation carves nothing for it (byte_size(0)): its width is the
-// runner witnesses' to pin, and the carve is host-scoped by construction. A second slot accidentally
-// subtracted would land srv3/srv4 at 15 and fail this.
-test fn srv3_and_srv4_runner_width_is_one_slot_below_the_unreserved_seventeen() -> Bool {
-  let width_of = r => match r {
-    RunnerWidthDerived { slots: n } => n
-    RunnerWidthUnresolved { cause: _ } => 0 - 1
-  }
-  let srv3_w = width_of(gunbc_runner_committed_width(host: "srv3" as HostIdentity))
-  let srv4_w = width_of(gunbc_runner_committed_width(host: "srv4" as HostIdentity))
-  srv3_w == 16 && srv4_w == 16 && srv3_w == srv4_w
 }

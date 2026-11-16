@@ -94,7 +94,7 @@ test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() ->
   remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (compute_capacity_root(host_instance: s.instance) as String) == concat([compute_capacity_home_root as String, "/compute/capacity"], "")
+      (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
   })
 }
 
