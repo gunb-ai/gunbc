@@ -6,7 +6,9 @@ import std.optional { Present, Absent }
 import std.list { distinct_by_key }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster, fleet_version_adder_grant_roster }
-import gunbc.fleet.host_credential_custody_converge { host_custody_credential_roster, host_credential_custody_row }
+import gunbc.fleet.host_credential_custody_roster {
+  host_custody_credential_roster, host_credential_custody_row
+}
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_grant_sets, gcp_iam_converge_targets, bmc_assimilator_grant_sets_over, secret_custody_cells, secret_custody_cells_for, secret_custody_policy_setter_role, secret_custody_observer_role }
 import gunbc.auth.bmc_assimilator_cells { bmc_assimilator_cells_over }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
