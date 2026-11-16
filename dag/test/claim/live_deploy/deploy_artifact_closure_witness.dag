@@ -60,10 +60,14 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.live_deploy.apply_legs {
   converger_kind_of, ConvergerUnitKind, ConvergerKindKnown, ConvergerKindMissingUnitFile, Oneshot, LongRunning,
+  deploy_artifact_closure_gate, deploy_apply_plan_legs, custody_roster_owned_reads,
+  ApplyPlanReady, ApplyPlanRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.host_credential_custody_converge { custody_owned_for_read }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_oauth_client_secret_host_path }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
+import gunbc.fleet.host_credential_custody_roster { custody_roster_declares, host_credential_custody_row, TailscaleFleetAuthKey }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_oauth_client_secret_host_path, tracker_web_stage_oauth_client_secret_host_path }
+import gunbc.live_deploy.deploy_artifact_closure { render_deploy_halt_causes }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
@@ -728,45 +732,78 @@ test fn the_converger_kind_is_refused_when_the_unit_file_is_absent() -> Bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// CUSTODY-OWNED SECRET (review 95811 item 5): a read covered by the custody ROSTER,
-// not by an install leg. The OIDC secret_file a serve/door unit opens is installed by FLEET
-// CUSTODY (host_credential_custody_converge), never by the deploy. A required FileContent read
-// whose path the host custody roster DECLARES is covered -- and this coverage PROVES CUSTODY IS
-// DECLARED on the roster, NOT that the file is present on the host (the same rung honesty as a
-// covered TreeContent proving a converger RUNS, not that its content is present at read time).
+// CUSTODY-OWNED SECRET (review 95811 item 5 + E/#16591): a read covered by the fleet's ONE
+// custody roster leaf, not by an install leg. The OIDC secret_file a serve/door unit opens is
+// installed by FLEET CUSTODY (gunbc.fleet.host_credential_custody_roster), never by the deploy,
+// so the gate counts a required FileContent read whose path the host's custody roster DECLARES
+// -- through the leaf's OWN predicate (custody_roster_declares), the same one converge's custody
+// preflight uses, with no gate-local roster copy. The coverage PROVES CUSTODY IS DECLARED on the
+// roster, NOT that the file is present (same rung honesty as a covered TreeContent proving a
+// converger RUNS). Both controls run through the ROUTE: the PROCEEDS control is the real srv1
+// deploy gate (the secret arrives as a declared read of the real serve row and the gate proceeds
+// on the roster's strength); the HALTS control asks the gate's own custody fold with a route row
+// and refuses what no row declares -- a declaration check, never a presence check.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-// When the roster DECLARES the secret path for srv1, custody covers it: with the binary installed by the
-// deploy and the secret covered by custody, the gate PROCEEDS. (Proves custody DECLARED, not file present.)
-test fn the_gate_covers_a_custody_declared_secret_and_proceeds() -> Bool {
-  let binary = "/usr/local/bin/gunbc-serve"
-  let secret = tracker_web_test_oauth_client_secret_host_path as String
-  let secret_read = DeclaredRead { path: secret, kind: FileContent }
-  let row = ReadRow { located: "tracker-web-serve", reads: Declared { reads: [
-    DeclaredRead { path: binary, kind: FileContent },
-    secret_read
-  ] } }
-  // The model ownership kind: the roster DECLARING the secret is what covers it -- the deploy installs no
-  // install leg for it. custody_owned_for_read yields the owned artifact only because the roster declares it.
-  let secret_owned = custody_owned_for_read(host: operator_host_srv1, want: secret_read)
-  let roster_covers_secret = any(xs: secret_owned, fn(o) { o.path == secret })
-  // With the binary installed by the deploy and the secret covered by custody, the gate PROCEEDS. (Proves
-  // custody DECLARED, not file present.)
-  let installed = ownb([binary, secret])
-  is_allowed(deploy_closure_halts(rows: [row], installed: installed)) && roster_covers_secret
+fn row_declares_path(r: DeployReadRow, path: String) -> Bool {
+  match r {
+    ReadRow { located: _, reads: rs } => match rs {
+      Declared { reads: ds } => any(ds, fn(d) { d.path == path })
+      _ => false
+    }
+  }
 }
 
-// When the roster does NOT declare the secret path, custody confers nothing: the gate HALTS and NAMES the
-// secret. Proves custody is a DECLARATION check, not a presence check -- an undeclared secret is refused.
+// THE REAL srv1 ROUTE CARRIES THE SECRET AND THE GATE PROCEEDS: with the full install plan, the
+// serve row's declared reads include the OIDC client secret (the placement authority puts it
+// there -- asserted, not assumed), NO install leg ever writes it (custody owns the byte), and the
+// gate still proceeds because srv1's custody roster declares the path. Before E this read was
+// absent from the route (Codex P2): a serve whose login is dead on arrival could be admitted.
+// srv1-LIVE's placement authority is the STAGE environment, so the route's secret is the STAGE
+// client secret path -- the control asserts exactly that path, the one the custody roster carries
+// for srv1; the lab/test secret belongs to the srv1-lab instance and is not this route's read.
+test fn the_gate_covers_a_custody_declared_secret_and_proceeds() -> Bool {
+  let spec = srv1_spec()
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let result = deploy_apply_plan_legs(spec: spec, plan: plan, source_root: "/src", oidc_now: claim_oidc_now_for(spec: spec))
+  let rows = deployment_artifact_read_rows(steps: srv1_steps(), spec: spec, instance: srv1_inst(), revision: srv1_rev())
+  let secret = tracker_web_stage_oauth_client_secret_host_path as String
+  let route_carries_secret = any(rows, fn(r) { row_declares_path(r: r, path: secret) })
+  match deploy_artifact_closure_gate(spec: spec, plan: plan, result: result) {
+    ApplyPlanReady { legs: _ } => route_carries_secret
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// WHEN THE ROSTER DOES NOT DECLARE THE PATH, THE GATE'S CUSTODY FOLD CONFERS NOTHING: asked with a
+// route row carrying the rostered secret AND an unrostered one, the fold covers only the rostered
+// path, and the closure halts naming the unrostered secret. Proves custody is a DECLARATION check
+// through the leaf -- not a presence check, and not a blanket covering of FileContent reads (had the
+// fold covered everything, this control would Proceed and fail).
 test fn the_gate_halts_a_secret_read_the_custody_roster_does_not_declare() -> Bool {
-  let binary = "/usr/local/bin/gunbc-serve"
-  let secret = "/etc/gunbc-oidc/not-rostered-secret"
+  let rostered = tracker_web_test_oauth_client_secret_host_path as String
+  let unrostered = "/etc/gunbc-oidc/not-rostered-secret"
   let row = ReadRow { located: "tracker-web-serve", reads: Declared { reads: [
-    DeclaredRead { path: binary, kind: FileContent },
-    DeclaredRead { path: secret, kind: FileContent }
+    DeclaredRead { path: rostered, kind: FileContent },
+    DeclaredRead { path: unrostered, kind: FileContent }
   ] } }
-  let halts = deploy_closure_halts(rows: [row], installed: ownb([binary]))
-  is_refused(halts) && refused_names(halts, "tracker-web-serve", secret)
+  let owned = custody_roster_owned_reads(rows: [row], host: operator_host_srv1)
+  let fold_covers_rostered = any(xs: owned, fn(o) { o.path == rostered })
+  let fold_refuses_unrostered = !any(xs: owned, fn(o) { o.path == unrostered })
+  match deploy_gate(rows: [row], installed: owned) {
+    Halt { causes: cs } => fold_covers_rostered && fold_refuses_unrostered && string_contains(s: render_deploy_halt_causes(causes: cs), pattern: unrostered)
+    Proceed => false
+  }
+}
+
+// THE ANY-RUNNER-HOST ROW DECLARES ITS PATH WHEREVER THE DEPLOY RUNS (side-chat's non-blocking note
+// on #16591): the leaf folds CustodyAnyRunnerHost through custody_target_host to the EXECUTING host,
+// so one row covers the path on every host -- checked on two distinct hosts through the leaf's own
+// predicate, the exact one the gate's custody fold asks.
+test fn a_custody_any_runner_host_row_declares_its_path_on_any_host() -> Bool {
+  let row = host_credential_custody_row(c: TailscaleFleetAuthKey)
+  custody_roster_declares(host: operator_host_srv1, path: row.path as String)
+    && custody_roster_declares(host: operator_host_srv14, path: row.path as String)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────

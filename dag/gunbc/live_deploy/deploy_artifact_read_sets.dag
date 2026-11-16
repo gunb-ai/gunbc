@@ -33,6 +33,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_serve_placement, TrackerWebOidcServeReady }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 import gunbc.live_deploy.spec { DeploymentSpec }
 import gunbc.live_deploy.unit_standing { service_directive_required_reads_of_unit_file, RequiredDirectiveRead, CommandRead, WorkingDirectoryRead, RequiredFileRead, UnparsableCommand }
@@ -139,14 +140,45 @@ fn directory_exists_reads(paths: List<String>) -> List<DeclaredRead> {
 }
 
 // The served unit's read set: argv[0] + WorkingDirectory from its OWN typed unit file (the same one the deploy
-// emits), PLUS the OIDC config document it reads at startup when this instance has OIDC placed. The config path
-// is taken from deployment_oidc_config_steps — the SAME authority that installs the OidcConfigArtifact (its path
-// is tracker_web placement cfg.config_path) — so serve's read and the installed artifact are ONE string, never a
-// second spelling that could drift (single_authority). When OIDC is unassigned/unbound the list is empty and
-// serve simply reads no config, exactly as the emitted unit carries no OIDC Environment.
+// emits), PLUS the OIDC reader's required reads (config document AND client secret, oidc_reader_required_reads)
+// when this instance has OIDC placed. The config path is taken from deployment_oidc_config_steps — the SAME
+// authority that installs the OidcConfigArtifact (its path is tracker_web placement cfg.config_path) — so serve's
+// read and the installed artifact are ONE string, never a second spelling that could drift (single_authority).
+// When OIDC is unassigned/unbound the list is empty and serve simply reads no config, exactly as the emitted
+// unit carries no OIDC Environment.
+// THE OIDC READER'S REQUIRED READS, FROM ITS OWN PLACEMENT AUTHORITY (Codex P2 on #16587; authority
+// commit 7abc5bc636b, main's oidc_reader_required_reads, which this mirrors). The serve process at
+// login opens BOTH the config document AND the client secret bytes; before E the route declared only
+// the config, so a serve whose login was dead on arrival (no host custody of the secret) could be
+// admitted. The config path stays the deployment_oidc_config_steps string -- the SAME authority that
+// installs the OidcConfigArtifact member (its path is the placement cfg.config_path) -- so read and
+// artifact are one string, never a second spelling. The secret is the placement's secret_file.
+// FAIL-CLOSED: an unassigned/unbound/unrealized placement contributes NO reads, exactly as it installs
+// no OidcConfigArtifact member -- nothing is invented for an unplaced instance. srv1-LIVE's placement
+// is the STAGE environment, so its route carries the STAGE client secret; the lab/test secret belongs
+// to the srv1-lab instance and is not this route's read.
+fn oidc_reader_required_reads(instance: HostDashboardInstance) -> List<DeclaredRead> {
+  let config_reads = list_map(xs: deployment_oidc_config_steps(instance: instance), f: fn(s) { DeclaredRead { path: s.path as String, kind: FileContent } })
+  match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => list_append(left: config_reads, right: [DeclaredRead { path: cfg.secret_file as String, kind: FileContent }])
+    _ => config_reads
+  }
+}
+
+// A DOOR (tailnet or agent) reads the same OIDC pair the serve does when its own instance has OIDC
+// placed: both door arms wrap their typed unit-file reads through this, so no door unit admits without
+// its login's bytes being covered (route or custody roster).
+fn door_reads(base: ArtifactReadSet, instance: HostDashboardInstance) -> ArtifactReadSet {
+  let oidc_reads = oidc_reader_required_reads(instance: instance)
+  match base {
+    Declared { reads: rs } => Declared { reads: list_append(left: rs, right: oidc_reads) }
+    other => other
+  }
+}
+
 fn serve_unit_read_set(spec: DeploymentSpec, revision: ReleaseRevisionBinding, instance: HostDashboardInstance) -> ArtifactReadSet {
   let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) }, repo_root: instance.repo_root as String)
-  let oidc_reads = list_map(xs: deployment_oidc_config_steps(instance: instance), f: fn(s) { DeclaredRead { path: s.path as String, kind: FileContent } })
+  let oidc_reads = oidc_reader_required_reads(instance: instance)
   match base {
     Declared { reads: rs } => Declared { reads: list_append(left: rs, right: oidc_reads) }
     other => other
@@ -173,8 +205,8 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       FabricStorageServeMapping => EndpointDependency { endpoint: step.path as String }
       // THE TAILNET DOOR's read = {argv[0] (serve binary), WorkingDirectory (svc.repo_root)} from its OWN
       // typed file (the OIDC-factored closure accessor builds it via the same over_listener the deploy uses).
-      TailnetDoorServeUnit => unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision), repo_root: instance.repo_root as String)
-      AgentDoorServeUnit => unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision), repo_root: instance.repo_root as String)
+      TailnetDoorServeUnit => door_reads(base: unit_file_read_set(live_deploy_tailnet_door_unit_file_for_closure(spec: spec, revision: revision), repo_root: instance.repo_root as String), instance: instance)
+      AgentDoorServeUnit => door_reads(base: unit_file_read_set(live_deploy_agent_door_unit_file_for_closure(spec: spec, revision: revision), repo_root: instance.repo_root as String), instance: instance)
       // The OIDC config is a written DOCUMENT the deploy installs, NOT an executable unit: it has no ExecStart
       // and reads nothing of record. Its reader is the SERVE unit (SystemdUnit row below), whose read-set
       // gains exactly this config path from the SAME owner authority (deployment_oidc_config_steps ->

@@ -3,7 +3,9 @@ module gunbc.live_deploy.apply_legs
 import std.types { String }
 import std.algebra { Cons, Empty, list_append, list_map, non_empty }
 import std.list { first_where }
-import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, render_deploy_halt_cause, DeployGateDecision, DeployReadRow, OwnedArtifact, TreeContent, Proceed, Halt, ConvergerKindUnknown }
+import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, render_deploy_halt_cause, DeployGateDecision, DeployReadRow, OwnedArtifact, ArtifactReadSet, Declared, DeclaredRead, ReadKind, FileContent, TreeContent, Proceed, Halt, ConvergerKindUnknown }
+import gunbc.fleet.host_credential_custody_roster { custody_roster_declares }
+import gunbc.fleet.fleet_host_identity { HostIdentity }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows }
 import gunbc.live_deploy.spec { deployment_owned_steps, DeploymentArtifactStep }
 import extdeps.exec.command { ArgvCommand }
@@ -127,7 +129,7 @@ import extdeps.systemd.systemctl { systemctl_enable_argv }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
-import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_https_port }
+import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_https_port, deployment_plan_host_identity }
 import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
@@ -1669,6 +1671,46 @@ fn kept_member_owned(member: ConvergedMember, spec: DeploymentSpec, instance: Ho
   }
 }
 
+// CUSTODY DECLARATIONS COUNT AS COVERED, through the fleet's ONE custody roster leaf: the gate asks
+// gunbc.fleet.host_credential_custody_roster's custody_roster_declares -- the SAME predicate converge's
+// custody preflight uses, so a path can never be custody-declared to one gate and undeclared to the
+// other. A required FileContent read that the deploy host's custody roster declares (an owned, mode-0400
+// credential the unit reads -- the OIDC client secret is the live case) is covered WITHOUT an install leg:
+// the custody root, not the deploy, owns the byte and the deploy must never write it. A path no row
+// declares earns nothing here, so the closure halt stands. No gate-local roster copy -- this fold only
+// asks the leaf, per read.
+fn custody_roster_owned_reads(rows: List<DeployReadRow>, host: HostIdentity) -> List<OwnedArtifact> {
+  match rows {
+    Empty => []
+    Cons { head: r, tail: rest } =>
+      let own = custody_reads_owned(reads: r.reads, host: host)
+      list_append(left: own, right: custody_roster_owned_reads(rows: rest, host: host))
+  }
+}
+
+fn custody_reads_owned(reads: ArtifactReadSet, host: HostIdentity) -> List<OwnedArtifact> {
+  match reads {
+    Declared { reads: rs } => custody_declared_owned(rs: rs, host: host)
+    _ => []
+  }
+}
+
+fn custody_declared_owned(rs: List<DeclaredRead>, host: HostIdentity) -> List<OwnedArtifact> {
+  match rs {
+    Empty => []
+    Cons { head: r, tail: rest } => match r.kind {
+      FileContent =>
+        if (custody_roster_declares(host: host, path: r.path)) {
+          let more = custody_declared_owned(rs: rest, host: host)
+          list_append(left: [OwnedArtifact { path: r.path, kind: FileContent }], right: more)
+        } else {
+          custody_declared_owned(rs: rest, host: host)
+        }
+      _ => custody_declared_owned(rs: rest, host: host)
+    }
+  }
+}
+
 // THE DEPLOY-ARTIFACT-CLOSURE GATE, wired ONCE over the realized apply plan (refuse-only): the
 // sanctioned follow-up named in gunbc.live_deploy.deploy_artifact_read_sets. If an artifact a deployed
 // unit READS is not WRITTEN by some install leg, the whole plan is refused BEFORE any enable leg runs
@@ -1782,7 +1824,15 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
                   // alongside this run's writes -- the plan has no write leg for it, and refusing on a
                   // member it PROVED present is wrong. The paths come from the same folds the write legs
                   // use (plan_kept_owned_artifacts), never a gate-local second map.
-                  right: plan_kept_owned_artifacts(rows: plan.rows, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
+                  right: list_append(
+                    left: plan_kept_owned_artifacts(rows: plan.rows, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision }),
+                    // CUSTODY DECLARATIONS COUNT AS COVERED through the fleet's ONE custody roster leaf
+                    // (custody_roster_declares): a required FileContent read the deploy host's roster
+                    // declares -- the OIDC client secret the serve unit opens per login -- is covered with
+                    // no install leg, because the custody root owns the byte and the deploy must never
+                    // write it. Undeclared paths earn nothing here; the halt stands.
+                    right: custody_roster_owned_reads(rows: rows, host: deployment_plan_host_identity(spec: spec) as HostIdentity)
+                  )
                 )
               )
               match deploy_gate(rows: rows, installed: owned) {
