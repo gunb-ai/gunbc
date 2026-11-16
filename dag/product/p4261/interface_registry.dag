@@ -48,6 +48,12 @@ fn unread(name: NonEmptyStr) -> BoardInterface {
   BoardInterface { designator: designator_of(verbatim: name), part: Absent, kind: KindUnknown, form: Absent, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent }
 }
 
+// A connector whose form the atlas's inventory describes and whose function nothing has read. The forms
+// are the atlas pass's descriptions of its photographs (the 2026-11-07 inventory), not measurements.
+fn form_only(name: NonEmptyStr, form: NonEmptyStr) -> BoardInterface {
+  BoardInterface { designator: designator_of(verbatim: name), part: Absent, kind: KindUnknown, form: Present { value: form }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent }
+}
+
 data s1_seen_on_e1b: NonEmptyStr = "E1-b, 2026-10-20, no 48 V stage on: pole 2 toward ON started the sequence from 38 mA to about 94 mA with the lamps settling; before S2 was set, neither S1 pole did anything"
 
 data s1_seen_on_218: NonEmptyStr = "S/N 1583323120218, 2026-11-16, override held, module with heatsink and fan fitted: each S1 pole lowers the draw from 0.33 A (one combination about 0.25 A, toward the 0.09 A standby figure) and lamps go out; which pole gives which figure was not recorded, and no position raised the draw"
@@ -71,26 +77,26 @@ data p4261_e1_interfaces: List<BoardInterface> = [
   BoardInterface { designator: designator_of(verbatim: "J68"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 pin header" }, function: FunctionEstablished { function: "JTAG to U4, the carrier's FPGA", basis: "U4 identified and sampled read-only over a USB Blaster on S/N 1583323120148, 2026-11-13; it was running a design" }, observed: Absent, next_discriminator: Present { value: "only a controlled comparison with one change between captures (one S1 pole, or the module fitted) asks it anything new" }, not_to_infer: Present { value: "that one board's scan is another board's, or that a changed FPGA pin names the board net it reaches" } },
   BoardInterface { designator: designator_of(verbatim: "J24"), part: Absent, kind: ServiceOrDebug, form: Present { value: "keyed two-row five-position shrouded female receptacle beside U53" }, function: FunctionCandidate { candidates: "an I2C or SMBus port, or another debug port", basis: "PCA9617A bus repeaters are identified beside it (U53 among them); its ten positions were read in ohms on 2026-10-21 (product.p4261.e1_b e1_j24_positions)" }, observed: Absent, next_discriminator: Present { value: "trace it to the repeaters from the photographs, then capture passively through power-on, the override and one S1 change; no active master before its voltage and pin roles are known" }, not_to_infer: Present { value: "that it is a management controller's bus or a console" } },
   BoardInterface { designator: designator_of(verbatim: "J30"), part: Absent, kind: LocalControl, form: Present { value: "three-position header" }, function: FunctionCandidate { candidates: "a reset or restart control", basis: "bridging two of its positions restarted the board's phases on the E1-b (product.p4261.e1_b j30_bridge)" }, observed: Present { value: "E1-b, 2026-10-20, standby: a bridge across two positions restarted the sequence" }, next_discriminator: Present { value: "trace its circuit or watch it passively; it is not bridged with a module fitted" }, not_to_infer: Present { value: "that it is a power button, a reset or a presence input by name" } },
-  BoardInterface { designator: designator_of(verbatim: "J31"), part: Absent, kind: KindUnknown, form: Present { value: "header beside Q530" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
-  BoardInterface { designator: designator_of(verbatim: "J620"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 pin header, pin 1 marked" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
-  BoardInterface { designator: designator_of(verbatim: "J190"), part: Absent, kind: UsbCandidate, form: Absent, function: FunctionCandidate { candidates: "a USB port, possibly the Amphenol 1502 edge receptacle that takes a Micro-USB plug", basis: "the review of 2026-11-16 ties the designator to that receptacle, which the management-I/O survey records with no designator; a TI TUSB8042A hub is read at U816" }, observed: Absent, next_discriminator: Present { value: "from the photographs, whether J190 is that receptacle, whether it reaches U816 and which end is the host, before anything is plugged in" }, not_to_infer: Present { value: "that J190 is the hub's upstream port, or that the two are connected at all" } },
-  BoardInterface { designator: designator_of(verbatim: "J5"), part: Absent, kind: HighSpeedData, form: Absent, function: FunctionCandidate { candidates: "an MCIO-class high-speed connector, as used with the riser", basis: "the review of 2026-11-16; no reading in this model" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
+  BoardInterface { designator: designator_of(verbatim: "J31"), part: Absent, kind: KindUnknown, form: Present { value: "small five-pad footprint beside Q530; its pad pattern resembles a SOT-23-5 and no part type is read" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
+  BoardInterface { designator: designator_of(verbatim: "J620"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 receptacle housing, one top-row position plugged as a key; pin 1 marked" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
+  BoardInterface { designator: designator_of(verbatim: "J190"), part: Absent, kind: UsbCandidate, form: Present { value: "metal-shell receptacle at the board edge, stamped Amphenol 1502, that takes a Micro-USB plug" }, function: FunctionCandidate { candidates: "a USB SuperSpeed Micro-B port", basis: "the atlas reads the Amphenol 1502 shell at J190, the plug fit was read on 2026-10-16 (product.p4261.e1_b management_io), and a TI TUSB8042A hub is read at U816" }, observed: Present { value: "2026-11-16, the operator: 'i already plugged in a usb cable to j190, it provides no interface here'; which board, its power state and the host were not said" }, next_discriminator: Present { value: "nothing more at the bench for now: no enumeration fits a hub that is unpowered or held in reset in the state tried, as well as a port that is not the hub's upstream" }, not_to_infer: Present { value: "that J190 is the hub's upstream port, or from one silent try that the port is dead" } },
+  BoardInterface { designator: designator_of(verbatim: "J5"), part: Absent, kind: HighSpeedData, form: Present { value: "long fine-pitch vertical connector" }, function: FunctionCandidate { candidates: "an MCIO-class high-speed connector, as used with the riser", basis: "the review of 2026-11-16; no reading in this model" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
   BoardInterface { designator: designator_of(verbatim: "J6"), part: Absent, kind: HighSpeedData, form: Absent, function: FunctionCandidate { candidates: "an MCIO-class high-speed connector, as used with the riser", basis: "the review of 2026-11-16; no reading in this model" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
-  BoardInterface { designator: designator_of(verbatim: "J22"), part: Absent, kind: KindUnknown, form: Present { value: "two pins by the HF mark" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
-  unread(name: "J1"),
-  unread(name: "J2"),
-  unread(name: "J7"),
-  unread(name: "J8"),
-  unread(name: "J9"),
-  unread(name: "J10"),
-  unread(name: "J11"),
-  unread(name: "J12"),
-  unread(name: "J13"),
-  unread(name: "J14"),
-  unread(name: "J16"),
-  unread(name: "J540"),
-  unread(name: "J740"),
-  unread(name: "J741"),
+  BoardInterface { designator: designator_of(verbatim: "J22"), part: Absent, kind: KindUnknown, form: Present { value: "1x3 pin header" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
+  form_only(name: "J1", form: "dark grey housing with rectangular contact openings"),
+  form_only(name: "J2", form: "connector with a moulded logo resembling TE"),
+  form_only(name: "J7", form: "fine-pitch connector with hold-down pegs, the same type as J8"),
+  form_only(name: "J8", form: "fine-pitch connector with hold-down pegs"),
+  form_only(name: "J9", form: "large fine-pitch two-row board-to-board receptacle"),
+  form_only(name: "J10", form: "fine-pitch connector beside J9"),
+  form_only(name: "J11", form: "high-density two-row fine-pitch connector, the same type as J12"),
+  form_only(name: "J12", form: "high-density two-row fine-pitch connector"),
+  form_only(name: "J13", form: "tall fine-pitch two-row vertical receptacle, the same type as J14"),
+  form_only(name: "J14", form: "tall fine-pitch two-row vertical receptacle"),
+  form_only(name: "J16", form: "1x4 single-row header"),
+  form_only(name: "J540", form: "2x5 shrouded box header, one top-row position without a pin"),
+  form_only(name: "J740", form: "FPC/FFC connector with a flip actuator, at the board edge"),
+  form_only(name: "J741", form: "FPC/FFC connector"),
   switch_pole(package: "S1", pole: "pole 1", seen: join([s1_seen_on_e1b as String, ". ", s1_seen_on_218 as String], "") as NonEmptyStr),
   switch_pole(package: "S1", pole: "pole 2", seen: join([s1_seen_on_e1b as String, ". ", s1_seen_on_218 as String], "") as NonEmptyStr),
   switch_pole(package: "S2", pole: "pole 1", seen: s2_seen),
