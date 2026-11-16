@@ -21,7 +21,7 @@ module gunbc.live_deploy.deploy_artifact_read_sets
 import std.types { List, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map, list_append }
-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, EndpointDependency, NotYetModeled, DeclaredRead, ReadKind, Binary, DirectoryExists, TreeContent, declared_path, declared_paths }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, EndpointDependency, NotYetModeled, DeclaredRead, ReadKind, FileContent, DirectoryExists, TreeContent, declared_path, declared_paths }
 import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep, ComposeOwned, UpsertOwned,
@@ -73,8 +73,8 @@ fn unit_file_read_set(file: SystemdUnitFile?, repo_root: String) -> ArtifactRead
     Present { value: f } => match exec_start_binary_of_unit_file(file: f) {
       Absent => NotYetModeled { reason: "the emitted unit file carries no service ExecStart; its read is not modeled here (DISSOLUTION: model the unit's argv)" }
       Present { value: binary } => match working_directory_of_unit_file(file: f) {
-        Present { value: wd } => Declared { reads: [DeclaredRead { path: binary, kind: Binary }, working_directory_read(path: wd, repo_root: repo_root)] }
-        Absent => Declared { reads: [DeclaredRead { path: binary, kind: Binary }] }
+        Present { value: wd } => Declared { reads: [DeclaredRead { path: binary, kind: FileContent }, working_directory_read(path: wd, repo_root: repo_root)] }
+        Absent => Declared { reads: [DeclaredRead { path: binary, kind: FileContent }] }
       }
     }
   }
@@ -101,7 +101,7 @@ fn directory_exists_reads(paths: List<String>) -> List<DeclaredRead> {
 // serve simply reads no config, exactly as the emitted unit carries no OIDC Environment.
 fn serve_unit_read_set(spec: DeploymentSpec, revision: ReleaseRevisionBinding, instance: HostDashboardInstance) -> ArtifactReadSet {
   let base = unit_file_read_set(Present { value: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: []) }, repo_root: instance.repo_root as String)
-  let oidc_reads = list_map(xs: deployment_oidc_config_steps(instance: instance), f: fn(s) { DeclaredRead { path: s.path as String, kind: Binary } })
+  let oidc_reads = list_map(xs: deployment_oidc_config_steps(instance: instance), f: fn(s) { DeclaredRead { path: s.path as String, kind: FileContent } })
   match base {
     Declared { reads: rs } => Declared { reads: list_append(left: rs, right: oidc_reads) }
     other => other
@@ -145,7 +145,7 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // own binary AND the source tree it loads modules from. Both come from that unit's declaration, not
       // re-transcribed here: [step.path] the binary, [instance.repo_root] the tree (the SAME authority as
       // the GunbcSourceTree step path, so the gate requires the installed tree to be where serve reads it).
-      ServeBinary => Declared { reads: [DeclaredRead { path: step.path as String, kind: Binary }, DeclaredRead { path: instance.repo_root as String, kind: TreeContent }] }
+      ServeBinary => Declared { reads: [DeclaredRead { path: step.path as String, kind: FileContent }, DeclaredRead { path: instance.repo_root as String, kind: TreeContent }] }
       // The source-tree step's artifact IS the tree it provides: its read of record is its own owned path
       // (repo_root), so the intent installs the tree it must own (red_control 2). Its downstream CONSUMER —
       // the serve binary loading `--entry` from repo_root — is declared on the ServeBinary row above (the

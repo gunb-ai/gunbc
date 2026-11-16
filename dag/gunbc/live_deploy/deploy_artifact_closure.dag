@@ -75,13 +75,13 @@ import std.list { list_member }
 // ─────────────────────────────────────────────────────────────────────────────────
 
 // HOW A READ IS SATISFIED -- matched on (kind, path), never on the path string alone (manager ruling):
-//   Binary          an executable/file CONTENT; covered by an install-file leg's typed dest.
+//   FileContent          an executable/file CONTENT; covered by an install-file leg's typed dest.
 //   DirectoryExists a directory's EXISTENCE; covered by an install-directory leg's typed dest.
 //   TreeContent     the CONTENTS of a converged tree at a root; covered ONLY by a ConvergedBy owner
 //                   (an enabled converger unit whose declared output is that root) -- an install-directory
 //                   mkdir does NOT satisfy it (mkdir proves existence, not content: a silent widen).
 type ReadKind
-  = Binary
+  = FileContent
   | DirectoryExists
   | TreeContent
 
@@ -101,9 +101,9 @@ type OwnedArtifact
 
 fn read_kind_eq(a: ReadKind, b: ReadKind) -> Bool {
   match a {
-    Binary => match b { Binary => true, DirectoryExists => false, TreeContent => false }
-    DirectoryExists => match b { Binary => false, DirectoryExists => true, TreeContent => false }
-    TreeContent => match b { Binary => false, DirectoryExists => false, TreeContent => true }
+    FileContent => match b { FileContent => true, DirectoryExists => false, TreeContent => false }
+    DirectoryExists => match b { FileContent => false, DirectoryExists => true, TreeContent => false }
+    TreeContent => match b { FileContent => false, DirectoryExists => false, TreeContent => true }
   }
 }
 
@@ -184,7 +184,7 @@ fn deploy_gate_decision(verdict: ClosureVerdict) -> DeployGateDecision {
 
 fn render_read_kind(kind: ReadKind) -> String {
   match kind {
-    Binary => "executable/file content"
+    FileContent => "executable/file content"
     DirectoryExists => "directory existence"
     TreeContent => "converged tree content"
   }
@@ -199,7 +199,7 @@ fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
   match cause {
     MissingArtifact { located: loc, artifact: art, kind: k } =>
       match k {
-        Binary => join(["missing artifact [", art, "] read by [", loc, "]: no install-file leg writes it"], "")
+        FileContent => join(["missing artifact [", art, "] read by [", loc, "]: no install-file leg writes it"], "")
         DirectoryExists => join(["missing directory [", art, "] read by [", loc, "]: no install-directory leg creates it"], "")
         TreeContent => join(["tree content at [", art, "] read by [", loc, "]: no enabled converger unit declares producing this tree (a covered TreeContent proves a converger is ENABLED for the tree, NOT that its content is present when a reader starts)"], "")
       }
@@ -237,8 +237,8 @@ fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> L
   }
 }
 
-// Does the owned set cover a declared read? Matched on (kind, path): a Binary read is satisfied only
-// by an owned Binary at the same path, DirectoryExists only by an owned DirectoryExists, TreeContent
+// Does the owned set cover a declared read? Matched on (kind, path): a FileContent read is satisfied only
+// by an owned FileContent at the same path, DirectoryExists only by an owned DirectoryExists, TreeContent
 // only by an owned TreeContent (a ConvergedBy converger). A path present under the WRONG kind does NOT
 // cover the read -- this is what stops an install-directory mkdir from silently satisfying a TreeContent read.
 fn owned_covers(owned: List<OwnedArtifact>, want: DeclaredRead) -> Bool {

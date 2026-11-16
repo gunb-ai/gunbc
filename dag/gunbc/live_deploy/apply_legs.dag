@@ -318,7 +318,7 @@ fn leg_installed_paths(leg: DeployApplyLeg) -> List<OwnedArtifact> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [OwnedArtifact { path: dest, kind: Binary }]
+    ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
     ApplyLegInstallDirectory { step: _, command: _, dest: dest } => [OwnedArtifact { path: dest, kind: DirectoryExists }]
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegObjectSource => []
@@ -338,12 +338,12 @@ fn leg_installed_paths(leg: DeployApplyLeg) -> List<OwnedArtifact> {
       // the leg CARRIES (release_locus_record minted it; tree_install_in_realm writes exactly these).
       list_append(
         left: [OwnedArtifact { path: locus.locus, kind: DirectoryExists }],
-        right: list_map(xs: executables, f: ex => OwnedArtifact { path: join([locus.locus, "/", ex], ""), kind: Binary })
+        right: list_map(xs: executables, f: ex => OwnedArtifact { path: join([locus.locus, "/", ex], ""), kind: FileContent })
       )
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
-    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [OwnedArtifact { path: dest, kind: Binary }]
-    ApplyLegCredstoreCopy { step: _, source: _, dest: dest, file_name: _ } => [OwnedArtifact { path: dest, kind: Binary }]
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
+    ApplyLegCredstoreCopy { step: _, source: _, dest: dest, file_name: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
   }
 }
 

@@ -23,7 +23,7 @@ import std.algebra { fold_list, list_map, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled,
-  DeclaredRead, ReadKind, OwnedArtifact, Binary, DirectoryExists, TreeContent, EndpointDependency,
+  DeclaredRead, ReadKind, OwnedArtifact, FileContent, DirectoryExists, TreeContent, EndpointDependency,
   ClosureVerdict, Allowed, Refused, Unclosed,
   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
   deploy_gate_decision, deploy_gate,
@@ -120,11 +120,11 @@ fn kind_is_drain(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: AttemptUnitDrainPathUnit } => true, _ => false }
 }
 
-// Fixtures for the typed read/owned model (kind, path). Binary is the installed-file kind; a spool/queue
+// Fixtures for the typed read/owned model (kind, path). FileContent is the installed-file kind; a spool/queue
 // directory (a .path unit's watched dir) is DirectoryExists. Declared/Owned carry the kind the gate matches on.
-fn ownb(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: Binary } }) }
+fn ownb(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: FileContent } }) }
 fn ownd(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: DirectoryExists } }) }
-fn declb(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: Binary } }) }
+fn declb(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: FileContent } }) }
 fn decld(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: DirectoryExists } }) }
 fn paths_of(reads: List<DeclaredRead>) -> List<String> { list_map(xs: reads, f: fn(r) { r.path }) }
 
