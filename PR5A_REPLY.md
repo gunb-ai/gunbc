@@ -1,9 +1,0 @@
-Addressed review 95806 (and the manager's matching note).
-
-**Blocking — observe-step receipt path (fixed, commit `cba8a32`).** `gunbc_ci_remote_build_serving_observe_receipt_path` was the absolute `/tmp/fleet-converge-remote-build-serving-plan`. The observe wrote there, but the generated step's `receipt_rel` is prefixed with `$ROOT/`, so the step ran `cat "$ROOT//tmp/fleet-converge-remote-build-serving-plan"` — a file that never exists — turning every `remote_build_serving_observe` dispatch red even after a successful observe (fail-closed: the receipt's CI consumer cannot go green). Now `target/remote-build-serving-plan-receipt.txt` (repo-relative, under `target/`), mirroring `gunbc_ci_runner_host_file_converge_receipt_path`. The wet entry's `Filesystem.Write` and the step's `cat` read the same constant, so they now agree. Regenerated `.github/workflows/fleet-converge.yml` via `generated_artifact_gate main_wet_one(path=that file)`; the resulting yml diff is the single corrected `cat` line — deterministic, nothing else churned.
-
-**network_install / upload step (kept, disclosed).** The whole-artifact projection also publishes the `managed_host_network_install` step and its artifact-upload step, which are on main's model (added by `041051dd7d31` / PR #16334, "PXE 2c: the one-shot network install workflow") but missing from main's yml — pre-existing drift, not this PR's change. Kept (a generated artifact is not hand-edited); disclosed prominently in the PR body with the origin commit named, and the network-install owner notified.
-
-**Roster line (non-blocking, fixed in body).** Corrected the stack description: PR 4 keeps the live roster **srv1-only** per review 95791; PR 5(b) admits the rest only as each host's ledger home / store / account are created and read back.
-
-— sent from loyal-bear-900
