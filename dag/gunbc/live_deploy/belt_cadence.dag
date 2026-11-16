@@ -224,3 +224,37 @@ fn belt_attempt_obligation_unit_run_bound() -> Second {
 }
 
 data belt_credential_recovery_backstop: Second = second(count: 900)
+
+// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). The served-observation fold (the pass that
+// syncs the roadmap event carrier and republishes /standings.json, /sessions.json and the
+// per-attempt surfaces) is otherwise produced ONLY by a belt tick, and a tick starts ONLY on a
+// worker exit or an operator action. On an IDLE host — no worker finishes, no operator acts — no
+// tick runs, so the fold never re-runs, and /standings.json freezes at the last tick's bytes while
+// still answering HTTP 200: ctrl reads silently-stale standings as current and refuses to admit new
+// plan nodes. This is the SAME class of gap the credential-recovery backstop above closes (a law
+// with no event to trigger it needs a wall-clock backstop), and it copies that mechanism exactly:
+// a systemd timer that starts a oneshot running ONLY `belt_observe_once_cli` — the observation fold,
+// no spawn/launch/teardown — every belt_standings_refresh_backstop seconds. It does NOT revive the
+// belt timer (dogfood #4): the retired timer re-walked the whole frontier; this fires one read-only
+// fold, the obligation whose freshness must not depend on other sessions being alive.
+// The value is the operator's ("every 10 minutes or something for now is fine"); AccuracySec gives
+// the scheduler slack, so a few minutes of jitter is expected and needs no exactness.
+data belt_standings_refresh_backstop: Second = second(count: 600)
+
+// The freshness law's STALE-BY-AGE horizon for /standings.json, in seconds: about three refresh
+// periods. The existing 409 (`ObservationStale`) compares observed_at against the newest EVENT, so
+// a stopped timer whose carrier also cannot advance its log reads as CURRENT and is served 200 —
+// the exact silent-stale hole this closes. A second, orthogonal gate compares the stored
+// observed_at against the wall clock at read time: if the last refresh is older than this horizon,
+// the route answers 409 (stale) itself, so ctrl's parseStandingsResponse refuses admission rather
+// than trusting bytes whose refresher died. Fail CLOSED: an unreadable clock, an unparseable
+// observed_at, OR a future-dated observed_at is refused, never served as current. Three periods,
+// DERIVED from the backstop (gunbc.design_argument::minimize_redundancy: the "three periods" is
+// modeled once, on the backstop, and every use derived — a future edit to the 600 s cadence moves the
+// horizon with it, it cannot silently stop being three periods), so a timer that misses a beat or two
+// (a transient fetch failure, a slow reload) does not flap the route to stale. Typed as Second, not a
+// bare Int: it is a duration, and a duration carried as a raw scalar is the unit-modeling fork the
+// std.measure carrier exists to prevent.
+data belt_standings_refresh_staleness_horizon: Second =
+  second(count: second_count(s: belt_standings_refresh_backstop) * 3)

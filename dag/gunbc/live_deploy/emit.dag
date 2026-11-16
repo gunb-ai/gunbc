@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
+import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, SeedBuiltAtRevision, SourceUndeclared }
@@ -239,6 +239,7 @@ import gunbc.live_deploy.spec {
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
   deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
   deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
+  deployment_belt_standings_refresh_unit_name,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -1150,6 +1151,42 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
       TimerUnit { target: deployment_belt_credential_recovery_unit_name(names: spec.names) },
       OnBootSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
       OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
+// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). It reuses `belt_observe_once_cli` — the SAME
+// zero-arg entry the operator runs by hand to force one observation pass — which runs exactly
+// `served_observation_observe_and_write_for_instance` (the fold) and nothing else: no spawn, no
+// launch, no teardown. This is deliberately NOT the retired belt timer (the event-units ruling heads
+// gunbc.live_deploy.spec::deployment_belt_exit_path_unit_name, "event-driven, not timer-driven"): that one
+// re-walked the frontier; this one fires a single read-only fold and stops. It is the credential-
+// recovery backstop's shape for a different law-with-no-trigger: the fold that republishes
+// /standings.json is otherwise produced ONLY by a belt tick, and a tick fires ONLY on a worker exit
+// or an operator action, so an idle host freezes the standings while still answering 200. Both the
+// timer and an event-driven tick can run the fold: the fold reads the carrier through a PRIVATE
+// snapshot worktree (roadmap_event_carrier::roadmap_event_private_snapshot — every operation owns
+// its worktree) and every body read is digest-verified, so the two are idempotent by construction and
+// cannot corrupt one another; whichever runs last leaves the same-or-newer document.
+fn live_deploy_belt_standings_refresh_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt standings refresh (runs the served-observation fold from its own unit; does not depend on the belt continuing to tick)",
+    function: "belt_observe_once_cli",
+    gates: [],
+    install: NotInstallable)
+}
+
+fn live_deploy_belt_standings_refresh_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap standings refresh backstop (republishes the served observation every ~10 minutes; does not depend on the belt continuing to tick)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_standings_refresh_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_standings_refresh_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_standings_refresh_backstop) },
       AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
