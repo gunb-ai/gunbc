@@ -692,9 +692,13 @@ fn fake_curl_pages(body1: String, body2: String, body3: String) -> Outcome<Strin
   ))
 }
 
-data retention_pages_body1: String = retention_page_body(start: 150, end: 249, total: 250)
-data retention_pages_body2: String = retention_page_body(start: 50, end: 149, total: 250)
-data retention_pages_body3: String = retention_page_body(start: 1, end: 49, total: 250)
+// A family of exactly 250 entries (ids 1..250, created_at increasing with the
+// id), listed created_at-descending: page 1 = ids 151..250, page 2 = 51..150,
+// page 3 = the 50-entry remainder. Every page is exactly as full as its own
+// total_count demands (the page admission refuses a short page).
+data retention_pages_body1: String = retention_page_body(start: 151, end: 250, total: 250)
+data retention_pages_body2: String = retention_page_body(start: 51, end: 150, total: 250)
+data retention_pages_body3: String = retention_page_body(start: 1, end: 50, total: 250)
 data retention_over_bound_body: String = retention_page_body(start: 3000, end: 3099, total: 501)
 data retention_at_cap_family_body: String = retention_page_body(start: 7000, end: 7015, total: 16)
 
@@ -721,10 +725,10 @@ test fn release_bins_retention_over_bound_types_total_and_deletes_nothing() -> B
     && !string_contains(s: r.stdout, pattern: "plan-failed")
 }
 
-// The paged delete: page 1 carries the newest 100 (ids 150..249), so its own
-// plan covers the oldest 84 of it; pages 2 and 3 are entirely older than page
-// 1, so every family id on them is due. Together: exactly ids 1..233 -- the
-// 16 newest (234..249) survive. Pre-pagination this claim's ancestor could not
+// The paged delete over a real 250-entry family: the union plan sorts all 250
+// by created_at once and keeps the 16 newest (ids 235..250); due is exactly
+// ids 1..234 -- 250 - 16 = 234 of them, counted from the emitted due= line and
+// the deleting= line agreeing. Pre-pagination this claim's ancestor could not
 // exist: the answer refused admission at 250 total.
 data script_retention_paged_delete: TransportScript? = release_bins_transport(
   parts: [
@@ -740,10 +744,10 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
   let r = run_script(script: script_retention_paged_delete)
   r.ran
     && r.success
-    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=233 keep=16")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=234 keep=16")
     && string_contains(s: r.stdout, pattern: "due=1 ")
-    && string_contains(s: r.stdout, pattern: " 233 ")
-    && !string_contains(s: r.stdout, pattern: " 249 ")
+    && string_contains(s: r.stdout, pattern: " 234")
+    && !string_contains(s: r.stdout, pattern: " 235")
     && !string_contains(s: r.stdout, pattern: "page-failed")
 }
 
