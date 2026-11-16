@@ -8,7 +8,7 @@ module test.claim.live_deploy.live_deploy_apply_plan_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, list_append, list_map }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
@@ -30,7 +30,10 @@ import gunbc.live_deploy.apply_legs {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names, deployment_tree_remote_unit_name }
-import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan, ConvergedMember, PublishTree, WriteUnit, DaemonReload, CreateRoot, WriteOidcConfig, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, UnitFile, OidcConfigFile, DirectoryRoot, TreePublication, UnitManager, GitWorkerSubtree, RepositorySharedPosture }
+import gunbc.live_deploy.spec { deployment_attempt_unit_drain_path_unit_path, tailscale_default_https_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
+import extdeps.tailscale.serve { tailscale_serve_route_member_path }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
@@ -95,31 +98,6 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 fn has_step(legs: List<DeployApplyLeg>, step: String) -> Bool {
   step_index(legs: legs, step: step) >= 0
-}
-
-// HELPER: replaces the tree-sync-restart leg's step string while preserving its typed systemctl fields.
-// Used by the "renamed step" control to prove the gate matches on (action, unit), not step strings.
-fn replace_tree_sync_restart_step(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> List<DeployApplyLeg> {
-  match find_tree_sync_restart_leg(legs: legs, tree_sync_unit: tree_sync_unit) {
-    Absent => legs
-    Present { value: orig } =>
-      match orig {
-        ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } =>
-          let without = filter(xs: legs, predicate: fn(l) { deploy_apply_leg_step(leg: l) != "tree-sync-restart" })
-          let substitute = ApplyLegDiagnosedCommand { step: "totally-renamed-step", command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } }
-          list_append(left: without, right: [substitute])
-        _ => legs
-      }
-  }
-}
-
-fn find_tree_sync_restart_leg(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> DeployApplyLeg? {
-  first_where(xs: legs, keep: fn(l) {
-    match l {
-      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == tree_sync_unit
-      _ => false
-    }
-  })
 }
 
 fn the_intent() -> HostEffectIntent {
@@ -213,17 +191,53 @@ test fn the_deploy_refuses_when_the_tree_sync_publication_is_not_brought_up() ->
   }
 }
 
-// GREEN CONTROL: the gate matches on the typed (action, unit) fields, NOT on step strings. Replacing the
-// publication leg's step from "tree-sync-restart" to anything else, while keeping its Restart action and
-// tree_sync_unit_name unit identity, leaves TreeContent coverage intact.
+// THE PUBLICATION RENAMED: a plan whose tree-sync publication leg carries a DIFFERENT step string but the
+// SAME typed systemctl fields (action=Restart, unit=tree_sync_unit_name) is still COVERED -- the gate
+// matches on the typed fields the leg builder sets, never on step strings (review 95930). The fold renames
+// the publication leg in one pass (preserving command/diagnosis/typed fields); the control proves the rename
+// actually happened (old step gone, new step present) AND the gate still proceeds.
+fn rename_tree_sync_publication_leg(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> List<DeployApplyLeg> {
+  fold_list(
+    xs: legs,
+    empty: [],
+    cons: fn(acc, l) {
+      match l {
+        ApplyLegDiagnosedCommand { step: s, command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } =>
+          if (s == "tree-sync-restart" && u == tree_sync_unit) {
+            list_append(left: acc, right: [ApplyLegDiagnosedCommand { step: "totally-renamed-publication", command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } }])
+          } else {
+            list_append(left: acc, right: [l])
+          }
+        _ => list_append(left: acc, right: [l])
+      }
+    }
+  )
+}
+
 test fn the_tree_sync_publication_is_covered_despite_a_renamed_step() -> Bool {
   let spec = deployment_spec_srv1()
-  let legs = full_legs(spec: spec)
-  let renamed = replace_tree_sync_restart_step(legs: legs, tree_sync_unit: spec.names.tree_sync_unit_name as String)
+  let renamed = rename_tree_sync_publication_leg(legs: full_legs(spec: spec), tree_sync_unit: spec.names.tree_sync_unit_name as String)
+  let actually_renamed = !has_step(legs: renamed, step: "tree-sync-restart")
+    && has_step(legs: renamed, step: "totally-renamed-publication")
   match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: renamed }) {
-    ApplyPlanReady { legs: _ } => true
+    ApplyPlanReady { legs: _ } => actually_renamed
     ApplyPlanRefused { step: _, reason: _ } => false
   }
+}
+
+// GREEN CONTROL: the leg builder sets typed systemctl fields (action=Restart, unit=tree_sync_unit_name)
+// on the tree-sync publication leg. The gate's converger_brought_up matches on those typed fields, not
+// step strings. This proves the tree-sync restart leg carries its typed identity for the gate.
+test fn the_tree_sync_publication_leg_carries_its_typed_systemctl_fields() -> Bool {
+  let spec = deployment_spec_srv1()
+  let tree_sync_unit = spec.names.tree_sync_unit_name as String
+  let legs = full_legs(spec: spec)
+  any(xs: legs, predicate: fn(l) {
+    match l {
+      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == tree_sync_unit
+      _ => false
+    }
+  })
 }
 
 // RED CONTROL (the Codex scenario): a plan that has tree-remote-restart but NO tree-sync publication leg
@@ -271,13 +285,90 @@ test fn the_board_function_converge_unit_is_installed_by_the_host_singleton_depl
 // THE CONVERGE IS RECONCILED ON ITS OWN STATE, NOT THE SERVE UNIT'S: an apply whose release plan keeps every
 // member -- the serve unit current, nothing rewritten -- still carries the converge's install, gates and run,
 // so a missing, drifted or failed converge is repaired whatever the serve unit's standing.
+// THE ALL-KEPT ROSTER: every member the release plan verifies as already present, INCLUDING the two
+// artifact-step members the release roster does not carry today (the attempt-unit drain path unit and the
+// broker front door -- their per-member-kind migration is the named roadmap leaf in
+// gunbc.roadmap.deploy_artifact_observed_identity). The verifier that admits a KEEP walks the owned steps,
+// so a faithful all-kept plan carries their rows, spelled through the SAME identity authority
+// identity_member_of_step uses (it binds DirectoryRoot { path: <step path> } for both).
+fn all_kept_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
+  let drain_member = DirectoryRoot { path: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String as NonEmptyStr }
+  let front_door_member = DirectoryRoot { path: tailscale_serve_route_member_path(endpoint: approval_broker_approve_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)) }
+  list_append(left: list_append(left: deployment_member_roster(spec: spec), right: [drain_member]), right: [front_door_member])
+}
+
 test fn the_converge_is_applied_when_the_serve_unit_is_unchanged() -> Bool {
   let spec = deployment_spec_srv1()
-  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: all_kept_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
   has_step(legs: kept, step: "board-function-converge-unit")
     && has_step(legs: kept, step: "board-function-converge-gate")
     && has_step(legs: kept, step: "board-function-converge-run")
     && !has_step(legs: kept, step: "serve-unit")
+}
+
+// GREEN (Codex P1 "retained artifacts"): the ALL-KEPT plan -- every member observed equal to its desired
+// identity, so the release plan writes nothing -- must CLEAR the artifact-closure gate. Today it refused:
+// the serve executable, the OIDC config, the attempt helpers dir, the broker releases dir + env file, and
+// the tree publication had no install leg, and refusing on members the plan PROVED present is wrong. The
+// gate counts them via plan_kept_owned_artifacts (apply_legs), whose paths come from the same folds the
+// write legs use -- no gate-local second map. The drain path unit and the broker front door do not ride
+// the release roster today (their per-member-kind migration is the named roadmap leaf), so the plan's
+// verifier carries them as rows spelled from the SAME identity authority (identity_member_of_step binds
+// DirectoryRoot { path: <step path> } -- the identical fold spec.dag's deployment_owned_steps builds).
+test fn the_all_kept_plan_clears_the_deploy_artifact_gate() -> Bool {
+  let spec = deployment_spec_srv1()
+  let plan = converged_effect_plan(roster: all_kept_roster(spec: spec), target: deploy_witness_release_target(spec: spec))
+  match deploy_artifact_closure_gate(spec: spec, plan: plan, result: plan_for(spec: spec, plan: plan)) {
+    ApplyPlanReady { legs: _ } => true
+    ApplyPlanRefused { step: step, reason: reason } => exit_failure(reason: join(["all-kept plan must clear the deploy artifact gate but was refused at [", step, "]: ", reason], ""))
+  }
+}
+
+// GREEN (Codex P1 "retained artifacts"): a RETAINED BINARY is covered alongside this run's writes. The
+// mixed plan keeps the serve executable (observed equal) and writes everything else; the executable-install
+// leg is therefore absent, and the binary's FileContent read is covered by the KEPT row alone. Proving the
+// leg is actually absent makes the coverage non-degenerate: the pass cannot come from a write.
+test fn a_retained_binary_is_covered_by_the_release_plan() -> Bool {
+  let spec = deployment_spec_srv1()
+  let mixed = uniform_release_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+    mutation_for: m => match m {
+      Executable => KeepMember
+      _ => match m {
+        Executable => InstallExecutable
+        TreePublication => PublishTree
+        UnitFile => WriteUnit
+        UnitManager => DaemonReload
+        ServiceProcess => RestartService
+        DirectoryRoot { path: _ } => CreateRoot
+        OidcConfigFile => WriteOidcConfig
+        GitWorkerSubtree { path: _, child: _ } => RegroupGitWorkerSubtree
+        RepositorySharedPosture { path: _ } => AssertRepositorySharedPosture
+      }
+    }
+  )
+  let legs = legs_of(p: plan_for(spec: spec, plan: mixed))
+  match deploy_artifact_closure_gate(spec: spec, plan: mixed, result: ApplyPlanReady { legs: legs }) {
+    ApplyPlanReady { legs: _ } => !has_step(legs: legs, step: "executable-install") && has_step(legs: legs, step: "serve-unit")
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// RED (Codex P1 "retained artifacts"): an artifact that is NEITHER retained NOR written HALTS. The roster
+// drops the serve executable member, so no row keeps it and no leg writes it, while the deployed serve
+// unit still reads it as ExecStart -- the gate refuses, naming the binary path (a KeepMember row the host
+// cannot actually show is not a hole a member-roster edit should paper over either: the read-of-record
+// stands on its own, and only a write or a genuine keep covers it).
+test fn an_artifact_neither_retained_nor_written_halts_the_deploy() -> Bool {
+  let spec = deployment_spec_srv1()
+  let roster_without_binary = filter(xs: deployment_member_roster(spec: spec), predicate: fn(m) { match m { Executable => false _ => true } })
+  let plan = converged_effect_plan(roster: roster_without_binary, target: deploy_witness_release_target(spec: spec))
+  let legs = legs_of(p: plan_for(spec: spec, plan: plan))
+  match deploy_artifact_closure_gate(spec: spec, plan: plan, result: ApplyPlanReady { legs: legs }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: fixed_serve_binary_path(binary: spec.service.serve_binary))
+    ApplyPlanReady { legs: _ } => false
+  }
 }
 
 // THE DEPLOYMENT'S ORDER: the binary is installed (and verified) before the tree converges, and the

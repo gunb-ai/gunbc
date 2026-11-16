@@ -1456,8 +1456,8 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
-        AttemptUnitDrainPathUnit => none
-        ApprovalBrokerFrontDoor => none
+        AttemptUnitDrainPathUnit => Present { value: DirectoryRoot { path: art.path } }
+        ApprovalBrokerFrontDoor => Present { value: DirectoryRoot { path: art.path } }
       }
       ComposeOwned { kind: ck } => match ck {
         SystemdUnit => Present { value: UnitFile }

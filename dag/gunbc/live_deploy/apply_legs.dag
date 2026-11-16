@@ -20,7 +20,7 @@ import gunbc.managed_directory {
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused, membership_effects }
 import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason, SystemManagerLauncherSelected }
 import extdeps.access.posix { FileMode }
-import gunbc.live_deploy.member_identity { ReleaseEffectPlan, plan_writes_unit }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, plan_writes_unit, MemberEffectRow, ConvergedMember, Executable, UnitFile, OidcConfigFile, DirectoryRoot, KeepMember, mutation_is_keep, TreePublication }
 // THE GIT-WORKER SUBTREE GROUP (WORKER-ROOT-EQUIVALENT-3, typed legs). The member vocabulary, the one
 // decision accessor and the instance's own builders are imported, never re-derived here (gunbc.design_argument::closed_grounded_substrate).
 import gunbc.live_deploy.member_identity {
@@ -127,6 +127,8 @@ import extdeps.systemd.systemctl { systemctl_enable_argv }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
+import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_https_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
 import gunbc.live_deploy.emit { install_file_owner_only_mode }
@@ -171,7 +173,7 @@ import gunbc.host.host_layout {
   publication_spool_root, publication_answer_dir, publication_bare_mirror_path,
   attempt_exit_spool_root,
 }
-import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv, tailscale_serve_route_member_path }
 import extdeps.systemd.unit_file { SystemdUnitFile, SystemdServiceMode, OneshotMode }
 import gunbc.live_deploy.unit_standing { service_type_of_unit_file, service_has_exec_start }
 import gunbc.live_deploy.emit { live_deploy_tree_remote_unit_file_for_closure, live_deploy_tree_sync_unit_file_for_closure }
@@ -304,12 +306,10 @@ fn leg_installed_paths(leg: DeployApplyLeg, broker_base_root: String) -> List<Ow
       // The broker's release tree is owned content: the install lays the tree into the locus dir minted
       // from (broker_base_root, revision) with the release executables under it. The SAME fold the
       // realization installs through (release_locus_record + approval_broker_release_locus_executables),
-      // so the gate compares the declared broker reads against what the install actually writes.
-      let locus = release_locus_record(base_root: broker_base_root, revision: revision)
-      list_append(
-        left: [OwnedArtifact { path: locus.locus, kind: DirectoryExists }],
-        right: list_map(xs: approval_broker_release_locus_executables, f: ex => OwnedArtifact { path: join([locus.locus, "/", ex], ""), kind: FileContent })
-      )
+      // so the gate compares the declared broker reads against what the install actually writes. The fold
+      // is one function (approval_broker_tree_owned_artifacts), shared with the kept-member coverage of
+      // the ApprovalBrokerFrontDoor member below -- no gate-local second map.
+      approval_broker_tree_owned_artifacts(broker_base_root: broker_base_root, revision: revision)
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
@@ -1594,6 +1594,81 @@ fn deploy_gate_installed_paths(legs: List<DeployApplyLeg>, broker_base_root: Str
   }
 }
 
+// THE BROKER RELEASE-TREE OWNED FOLD: the locus directory the install lays plus its release
+// executables. ONE function, used by the ApplyLegBrokerTree installed-paths arm above AND by the kept
+// ApprovalBrokerFrontDoor coverage below -- so the two never drift (no gate-local second map).
+fn approval_broker_tree_owned_artifacts(broker_base_root: String, revision: ReleaseRevisionBinding) -> List<OwnedArtifact> {
+  let locus = release_locus_record(base_root: broker_base_root, revision: revision)
+  list_append(
+    left: [OwnedArtifact { path: locus.locus, kind: DirectoryExists }],
+    right: list_map(xs: approval_broker_release_locus_executables, f: ex => OwnedArtifact { path: join([locus.locus, "/", ex], ""), kind: FileContent })
+  )
+}
+
+// THE KEPT-MEMBER OWNED ARTIFACTS: artifacts the release plan verified as already present (observed
+// equal to the desired identity, mutation = KeepMember) count as covered, alongside this run's writes
+// (Codex P1 "retained artifacts"). No gate-local second map: every path comes from the SAME fold the
+// write legs use -- fixed_serve_binary_path (the executable-install leg's dest), deployment_systemd_unit_path
+// (the unit-file leg's dest), deployment_oidc_config_steps (the read-of-record's own authority, the same
+// function the OIDC install leg's path is derived from), helper_locus_dir over attempt_system_unit_launcher_locus
+// (the helper-snapshot leg's fold), and approval_broker_tree_owned_artifacts plus the digest-env-file path
+// (the broker tree leg and digest-env-file legs' folds).
+fn plan_kept_owned_artifacts(rows: List<MemberEffectRow>, spec: DeploymentSpec, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<OwnedArtifact> {
+  match rows {
+    Empty => []
+    Cons { head: r, tail: rest } =>
+      if (mutation_is_keep(e: r.mutation)) {
+        let kept = kept_member_owned(member: r.member, spec: spec, instance: instance, revision: revision)
+        list_append(left: kept, right: plan_kept_owned_artifacts(rows: rest, spec: spec, instance: instance, revision: revision))
+      } else {
+        plan_kept_owned_artifacts(rows: rest, spec: spec, instance: instance, revision: revision)
+      }
+  }
+}
+
+fn kept_member_owned(member: ConvergedMember, spec: DeploymentSpec, instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<OwnedArtifact> {
+  match member {
+    // The serve binary the executable-install leg writes to fixed_serve_binary_path -- the same fold.
+    Executable => [OwnedArtifact { path: fixed_serve_binary_path(binary: spec.service.serve_binary), kind: FileContent }]
+    // The serve unit file the unit-file install leg writes to deployment_systemd_unit_path.
+    UnitFile => [OwnedArtifact { path: deployment_systemd_unit_path(names: spec.names) as String, kind: FileContent }]
+    // The OIDC config the OIDC install leg writes, at the path deployment_oidc_config_steps renders
+    // (the SAME authority the read-of-record uses; no leg here means no config -- [] fails the closure).
+    OidcConfigFile => list_map(xs: deployment_oidc_config_steps(instance: instance), f: s => OwnedArtifact { path: s.path as String, kind: FileContent })
+    // The published tree the tree-sync converger lays at the instance's declared repo_root.
+    TreePublication => [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }]
+    // The drain path unit's read-of-record (deploy_artifact_read_sets AttemptUnitDrainPathUnit) is the
+    // launcher snapshot directory the helper-snapshot install leg lays: the same fold,
+    // helper_locus_dir over attempt_system_unit_launcher_locus -- never the unit-file path re-spelled.
+    // Its identity_member_of_step binding (DirectoryRoot) names the member, not the covered content;
+    // what a KEEP proves is that the observer found the member's DESIRED identity in place, which for
+    // this member is the launcher snapshot the fold mints.
+    DirectoryRoot { path } =>
+      if (path as String) == deployment_attempt_unit_drain_path_unit_path(names: spec.names) {
+        let locus = attempt_system_unit_launcher_locus(instance: instance)
+        [OwnedArtifact { path: helper_locus_dir(locus: locus, revision: revision), kind: DirectoryExists }]
+      // The broker front door's read-of-record (deploy_artifact_read_sets ApprovalBrokerFrontDoor) is its
+      // unit file's own directives: WorkingDirectory (the release locus dir) + argv[0] (its release
+      // executables) via the broker-tree fold, and the required EnvironmentFile (the deployed digest env
+      // file) via the digest-env-file leg's fold. Same two authorities the write legs use.
+      } else if (path as String) == tailscale_serve_route_member_path(endpoint: approval_broker_approve_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)) {
+        let broker_root = spec.approval_broker.repo_root as String
+        let env = [OwnedArtifact { path: device_crypto_deployed_digest_env_file_path(root: broker_root, revision: revision), kind: FileContent }]
+        let tree = approval_broker_tree_owned_artifacts(broker_base_root: broker_root, revision: revision)
+        list_append(left: tree, right: env)
+      } else {
+        [OwnedArtifact { path: path as String, kind: DirectoryExists }]
+      }
+    // The drain path unit and the broker front door do NOT ride the release roster today (member_identity's
+    // roster comment; their per-member-kind migration is the named roadmap leaf), so a KEEP row naming them
+    // only exists once the plan's verifier carries them -- the controls below pass them through the roster
+    // the plan mints. When such a row exists, its reads (the launcher snapshot dir; the broker release tree
+    // and its digest env file) are covered by the SAME folds the write legs use, above. Meanwhile this is
+    // fail-closed: without the row the read halts; a KEEP claim can cover only what its verifier carried.
+    _ => []
+  }
+}
+
 // THE DEPLOY-ARTIFACT-CLOSURE GATE, wired ONCE over the realized apply plan (refuse-only): the
 // sanctioned follow-up named in gunbc.live_deploy.deploy_artifact_read_sets. If an artifact a deployed
 // unit READS is not WRITTEN by some install leg, the whole plan is refused BEFORE any enable leg runs
@@ -1707,7 +1782,15 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
                 // runs this deploy, not ordering. OBSERVED (not a guarantee): in this plan shape the tree-sync-
                 // restart leg precedes the reader units' start/restart legs -- a property of the plan, not something
                 // the gate enforces.
-                right: if converger_brought_up(legs: legs, unit: spec.names.tree_sync_unit_name as String, kind: kind) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
+                right: list_append(
+                  left: if converger_brought_up(legs: legs, unit: spec.names.tree_sync_unit_name as String, kind: kind) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] },
+                  // KEPT MEMBERS COUNT AS COVERED (Codex P1 "retained artifacts"): an artifact the release
+                  // plan verified as already present (observed equal to its desired identity) is covered
+                  // alongside this run's writes -- the plan has no write leg for it, and refusing on a
+                  // member it PROVED present is wrong. The paths come from the same folds the write legs
+                  // use (plan_kept_owned_artifacts), never a gate-local second map.
+                  right: plan_kept_owned_artifacts(rows: plan.rows, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
+                )
               )
               match deploy_gate(rows: rows, installed: owned) {
                 Proceed => ApplyPlanReady { legs: legs }
