@@ -3,13 +3,16 @@ module test.claim.tailscale_fleet_auth_key_witness
 // THE WITNESSES FOR THE FLEET TAILNET JOIN (node adhoc-977efa46-965, 2026-11-15). What they hold the model
 // to: the secret is ONE pinned version of one named secret; the key is the operator's decided shape
 // (reusable, pre-approved, exactly one tag, a 90-day window ending 2027-02-13); the key material NEVER
-// appears in an argument vector; the custody row is root-only on disk; and the two shared ledgers the work
-// edited carry their provenance counts: the custody roster (16) and the accessor roster (22) are asserted
-// at their exact length HERE, so a fifth credential or a twenty-third grant is a deliberate edit to this
-// file and not a silent append.
+// appears in an argument vector; the custody row is root-only on disk; and each member this work ADDED to
+// a shared ledger is present EXACTLY ONCE. The ledgers are deliberately NOT asserted by number (smart-
+// crane-730, 2026-11-16): a count copied from the current tree is a change detector that goes red on any
+// sibling's add (tidy-swift-586's #16547 adds RunnerCiAppPemKey to the same custody ledger), and
+// gunbc.design_argument::fail_closed rejects counts-as-truth. Identity plus the existing roster-covers-
+// every-arm witness (host_credential_custody_converge_witness::w_roster_covers_every_credential, which
+// fails the compile the moment an arm lacks a row) is the load-bearing pair.
 
 import std.logic { Bool }
-import std.algebra { length, Cons, Empty }
+import std.algebra { string_contains, Cons, Empty }
 import std.string { NonEmptyStr, concat }
 import std.option { Present, Absent }
 import extdeps.tailscale.join {
@@ -27,7 +30,12 @@ import extdeps.tailscale.join {
   tailscale_auth_key_approval_wire,
   TailscaleUpJoinCommandBuilt,
   TailscaleUpJoinCommandRefused,
+  tailscale_ping_spec_of,
+  tailscale_ping_command,
+  TailscalePingCommandBuilt,
+  TailscalePingCommandRefused,
 }
+import extdeps.posix.getent { getent_hosts_command }
 import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_secret_id,
   tailscale_fleet_auth_key_secret_ref,
@@ -221,34 +229,48 @@ test fn w_custody_row_is_root_only_and_names_the_pinned_secret() -> Bool {
   }
 }
 
-// ── THE SHARED LEDGERS: provenance counts, asserted exactly ──────────────────────────────────────────
+// ── THE SHARED LEDGERS: every member this work added is present EXACTLY ONCE ─────────────────────────
+// (smart-crane-730, 2026-11-16: identity, not numbers. The numbers 16/22/313 would go red on tidy-
+// swift-586's #16547 adding RunnerCiAppPemKey to the same custody ledger, and a change detector is not
+// a witness. The coverage half is already load-bearing: host_credential_custody_converge_witness::
+// w_roster_covers_every_credential ties the roster to the sum's arms and the EXISTING
+// admit_callers_roster_integrity_witness ties authored entries to admitted ones.)
 
-// host_credential_custody_converge::host_custody_credential_roster gained one entry (TailscaleFleetAuthKey)
-// on 2026-11-15: fifteen before, sixteen after. The existing witness already ties roster length to the
-// sum's arm count; this pins the NUMBER so a silent append cannot pass.
-test fn w_custody_roster_count_is_sixteen() -> Bool {
-  length(xs: host_custody_credential_roster) == 16
-    && fold(
-      host_custody_credential_roster,
-      init: 0,
-      f: fn(acc, c) {
-        acc + match c {
-          TailscaleFleetAuthKey => 1
-          _ => 0
-        }
+// The custody credential is rostered exactly once -- no silent duplicate row, no lost arm.
+test fn w_new_custody_credential_is_rostered_exactly_once() -> Bool {
+  fold(
+    host_custody_credential_roster,
+    init: 0,
+    f: fn(acc, c) {
+      acc + match c {
+        TailscaleFleetAuthKey => 1
+        _ => 0
       }
-    ) == 1
+    }
+  ) == 1
 }
 
-// fleet_secret_accessor_roster::fleet_accessor_grant_roster gained one entry
-// (tailscale_fleet_auth_key_accessor_row) on 2026-11-15: twenty-one before, twenty-two after.
-test fn w_accessor_roster_count_is_twenty_two() -> Bool {
-  length(xs: fleet_accessor_grant_roster) == 22
+// The accessor grant is rostered exactly once: exactly one row reads this secret, it IS this module's
+// row (value equality, so a sibling restating the same grant collides here rather than widening
+// silently), and its target carries the PINNED version -- least privilege as modeled is one secret,
+// one version, read only.
+test fn w_new_accessor_row_is_rostered_exactly_once() -> Bool {
+  fold(
+    fleet_accessor_grant_roster,
+    init: 0,
+    f: fn(acc, r) {
+      acc + if r.target.secret == tailscale_fleet_auth_key_secret_id {
+        1
+      } else {
+        0
+      }
+    }
+  ) == 1
     && fold(
       fleet_accessor_grant_roster,
       init: 0,
       f: fn(acc, r) {
-        acc + if r.target.secret == tailscale_fleet_auth_key_secret_id {
+        acc + if r == tailscale_fleet_auth_key_accessor_row {
           1
         } else {
           0
@@ -256,9 +278,41 @@ test fn w_accessor_roster_count_is_twenty_two() -> Bool {
       }
     ) == 1
     && tailscale_fleet_auth_key_accessor_row.target == tailscale_fleet_auth_key_secret_ref
-    // The accessor row's target carries the PINNED version, not latest -- least privilege as modeled is
-    // one secret, one version, read only.
     && tailscale_fleet_auth_key_accessor_row.target.version == "1"
+}
+
+// The three argv admissions this work asked for are ALIVE: the sealed argv_command refuses any program
+// whose census does not admit it, so each Built command below is proof its decl_ref sits in
+// extdeps/exec/command.dag's roster -- an identity claim the compiler enforces, not a number copied
+// from the tree. The ping and getent forms additionally carry no key material.
+test fn w_new_argv_admissions_are_alive() -> Bool {
+  match tailscale_ping_command(spec: tailscale_ping_spec_of(
+    destination: "host.example" as NonEmptyStr,
+    count: 1,
+    timeout_seconds: 5,
+  )) {
+    TailscalePingCommandBuilt { command: command } =>
+      command.arguments.count() == 4
+        && match command.arguments {
+          Cons { head: head, tail: _ } => head == "ping"
+          Empty => false
+        }
+        && !fold(
+          command.arguments,
+          init: false,
+          f: fn(acc, word) {
+            acc || string_contains(s: word, pattern: "tskey-")
+          }
+        )
+    TailscalePingCommandRefused { cause: _ } => false
+  } && match getent_hosts_command(name: "host.example" as NonEmptyStr) {
+    command =>
+      command.arguments.count() == 2
+        && match command.arguments {
+          Cons { head: head, tail: _ } => head == "ahostsv4"
+          Empty => false
+        }
+  }
 }
 
 // ── THE CONVERGE'S OWN INVARIANTS ────────────────────────────────────────────────────────────────────
