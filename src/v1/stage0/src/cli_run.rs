@@ -8417,7 +8417,10 @@ fn reference_pull_paths_for_source(
 ///   TODAY -- the edge list the model is handed, unchanged;
 ///   IMP   -- `module_graph_facts.adjacency` pairs alone: direct imports, no closure;
 ///   REF   -- parsed module-path reference targets alone: the dotted channel without C;
-///   PROV  -- REF plus bare-name provider edges: the provider-deduplicated form.
+///   PROV  -- REF plus bare-name provider edges: the provider-deduplicated form;
+///   ADMIT -- IMP + REF + provider edges ONLY for the files production runs the bare half for
+///            (`build_both_closure_edge_index` skips it when the source declares import lines):
+///            the generator, with no closure composition.
 /// PROV is reported apart from IMP because the bare-name channel is the one whose MEANING is in
 /// question (`gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution`):
 /// a provider edge is what a bare name would mean, and it is not what today spells. Every set,
@@ -8463,10 +8466,18 @@ pub fn relation_variant_probe(
     let mut reference: std::collections::HashSet<(Rc<str>, Rc<str>)> =
         std::collections::HashSet::new();
     let mut bare: std::collections::HashSet<(Rc<str>, Rc<str>)> = std::collections::HashSet::new();
+    // The bare half of the SAME provider relation, restricted to the files production runs it for:
+    // `build_both_closure_edge_index` takes the bare half only when the source declares NO import
+    // lines, so a provider edge for a file that does declare imports is spelled by no route.
+    let mut bare_gated: std::collections::HashSet<(Rc<str>, Rc<str>)> =
+        std::collections::HashSet::new();
     let (mut unjoined, mut unreadable_files, mut bare_refusals, mut bare_unjoined) =
         (0usize, 0usize, 0usize, 0usize);
+    let (mut import_less_files, mut gated_refusals) = (0usize, 0usize);
     for (module, source) in index.source_files.iter() {
         let from = intern_module_path(module);
+        let bare_half_runs = !source_declares_import_lines(&source.content);
+        import_less_files += usize::from(bare_half_runs);
         if let Some(targets) = facts
             .adjacency
             .get(&workspace_relative_repo_path(&source.path))
@@ -8497,7 +8508,11 @@ pub fn relation_variant_probe(
             |_name, _name_at, provider, _role| {
                 match module_of_path.get(provider) {
                     Some(provider) if provider != module => {
-                        bare.insert((Rc::clone(&from), intern_module_path(provider)));
+                        let edge = (Rc::clone(&from), intern_module_path(provider));
+                        bare.insert(edge.clone());
+                        if bare_half_runs {
+                            bare_gated.insert(edge);
+                        }
                     }
                     // An unjoined provider is counted, not skipped: a PROV relation silently
                     // missing its bare half would read as "no difference" for the wrong reason.
@@ -8509,13 +8524,50 @@ pub fn relation_variant_probe(
         ) {
             eprintln!("rel-probe: bare visit refused at '{module}': {cause}");
             bare_refusals += 1;
+            gated_refusals += usize::from(bare_half_runs);
         }
     }
     let imp: Vec<(Rc<str>, Rc<str>)> = imp.into_iter().collect();
     let reference: Vec<(Rc<str>, Rc<str>)> = reference.into_iter().collect();
     let bare: Vec<(Rc<str>, Rc<str>)> = bare.into_iter().collect();
+    let bare_gated: Vec<(Rc<str>, Rc<str>)> = bare_gated.into_iter().collect();
     let mut provider_form = reference.clone();
     provider_form.extend(bare.iter().cloned());
+    // ADMIT -- the GENERATOR production actually uses, with NO composition: the direct import edges,
+    // the dotted channel's reference targets, and the bare-name provider edges only for the files
+    // whose bare half production runs. Every row of TODAY is a PATH through this generator (a closure
+    // row's endpoint is reached by an import chain that starts at a reference or a provider edge), so
+    // the reverse walk over the generator must return exactly the reverse walk over TODAY. If it does,
+    // the closure-expanded relation is cost with no answer behind it, and the generator is what the
+    // model should be handed.
+    let mut admit: Vec<(Rc<str>, Rc<str>)> = Vec::new();
+    for table in [&imp, &reference, &bare_gated] {
+        admit.extend(table.iter().cloned());
+    }
+    admit.sort_unstable_by(|a, b| (a.0.as_ref(), a.1.as_ref()).cmp(&(b.0.as_ref(), b.1.as_ref())));
+    admit.dedup();
+    let mut per_dependent: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for (_, dependent) in bare_gated.iter() {
+        *per_dependent.entry(dependent.to_string()).or_default() += 1;
+    }
+    let mut busiest: Vec<(usize, String)> =
+        per_dependent.into_iter().map(|(k, v)| (v, k)).collect();
+    busiest.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    eprintln!(
+        "rel-probe: admit rows={} import_rows={} ref_rows={} bare_rows_gated={} bare_rows_ungated={}          import_less_files={import_less_files} gated_admission_refusals={gated_refusals}          busiest_bare_dependents={}",
+        admit.len(),
+        imp.len(),
+        reference.len(),
+        bare_gated.len(),
+        bare.len(),
+        busiest
+            .iter()
+            .take(5)
+            .map(|(count, name)| format!("{name}:{count}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     eprintln!(
         "rel-probe: relations pool_files={} today={} imp={} ref={} bare={} prov={}",
         index.source_files.len(),
@@ -8588,14 +8640,20 @@ pub fn relation_variant_probe(
         (0usize, 0usize, 0usize, 0usize);
     let (mut imp_equal, mut ref_equal, mut prov_equal, mut prov_superset) =
         (0usize, 0usize, 0usize, 0usize);
+    let (mut admit_equal, mut admit_lost, mut admit_gained) = (0usize, 0usize, 0usize);
     for (label, roots) in &sets {
         let today = walk(edges, roots);
         let imp_set = walk(&imp, roots);
         let ref_set = walk(&reference, roots);
         let prov_set = walk(&provider_form, roots);
+        let admit_set = walk(&admit, roots);
         let (i_lost, i_gained, i_detail) = diff(&today, &imp_set);
         let (r_lost, r_gained, r_detail) = diff(&today, &ref_set);
         let (p_lost, p_gained, p_detail) = diff(&today, &prov_set);
+        let (a_lost, a_gained, a_detail) = diff(&today, &admit_set);
+        admit_lost += a_lost;
+        admit_gained += a_gained;
+        admit_equal += usize::from(a_lost == 0 && a_gained == 0);
         imp_lost += i_lost;
         imp_gained += i_gained;
         prov_lost += p_lost;
@@ -8606,17 +8664,21 @@ pub fn relation_variant_probe(
         prov_superset += usize::from(p_lost == 0);
         eprintln!(
             "rel-probe: set={label} roots={} today={} imp={} (lost={i_lost} gained={i_gained}) ref={} \
-             (lost={r_lost} gained={r_gained}) prov={} (lost={p_lost} gained={p_gained})",
+             (lost={r_lost} gained={r_gained}) prov={} (lost={p_lost} gained={p_gained}) admit={}          (lost={a_lost} gained={a_gained})",
             roots.len(),
             today.len(),
             imp_set.len(),
             ref_set.len(),
-            prov_set.len()
+            prov_set.len(),
+            admit_set.len()
         );
-        eprintln!("rel-probe-diff: set={label} imp {i_detail} | ref {r_detail} | prov {p_detail}");
+        eprintln!(
+            "rel-probe-diff: set={label} imp {i_detail} | ref {r_detail} | prov {p_detail} | admit {a_detail}"
+        );
     }
     eprintln!(
-        "rel-probe-verdict: sets={} imp-equal={imp_equal} ref-equal={ref_equal} prov-equal={prov_equal} \
+        "rel-probe-verdict: sets={} admit-equal={admit_equal} admit-lost={admit_lost} \
+         admit-gained={admit_gained} imp-equal={imp_equal} ref-equal={ref_equal} prov-equal={prov_equal} \
          prov-never-loses={prov_superset} imp-lost={imp_lost} imp-gained={imp_gained} prov-lost={prov_lost} \
          prov-gained={prov_gained}",
         sets.len()
