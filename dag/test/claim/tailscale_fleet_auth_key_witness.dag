@@ -150,9 +150,9 @@ test fn w_expiry_window_is_the_operators_date() -> Bool {
             // Ordered on the corpus calendar authority's own day count, not a comparison this module
             // invents: the window between the two recorded dates is exactly the 90 days the policy
             // declares.
-            && iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day)
-              - iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day)
-              == 90
+            && iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day) -
+              iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day) ==
+              90
       }
   }
 }
