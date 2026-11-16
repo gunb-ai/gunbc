@@ -444,3 +444,7 @@ fn group_completion_of_int(i: Int) -> GroupCompletion<Nat> {
     Negative { pred: p } => GroupCompletion { pos: 0, neg: p + 1 }
   }
 }
+
+// Fast-lane regression probe (cool-lynx-59, 2026-11-16): a one-line comment in a fixed compiler
+// input. v2-bootstrap must classify `full_own` (this PR's own diff touches an input) and run the
+// whole-tree build; the fast lane must NOT reuse. Delete freely; closed unmerged.
