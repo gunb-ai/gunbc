@@ -1,11 +1,12 @@
 module extdeps.clock
 
 import std.algebra { trim }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.types { EpochMs, EpochSecs, Timestamp, Unit }
 import std.nat { Nat }
 import std.optional { Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -13,6 +14,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.clock",
+      decl_name: "Clock",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // feature:offset-nat-carrier — dissolve-on: when the shell transport supports
