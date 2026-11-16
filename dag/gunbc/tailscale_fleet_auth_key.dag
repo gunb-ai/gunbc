@@ -91,8 +91,11 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // REUSABLE, because one credential has to enroll a fleet: srv3, srv4, butch and h11 today, and the new
 // H11SSL-i and srv15 when they come up. A one-off key binds the credential's life to a node's session and
 // an ephemeral key removes the node when it goes offline -- and these hosts exist to be REACHED, so an
-// outage would delete the very node the router is trying to route to (extdeps.tailscale.join::
-// tailscale_auth_key_kind_supports_permanent_membership).
+// outage would delete the very node the router is trying to route to. The upstream gate that decides
+// which kinds may hold a fleet is
+// @ref(extdeps.tailscale.join::tailscale_auth_key_policy_admit) -- cited so the reference check covers
+// it, and it is the only classifier join.dag keeps (a separate per-kind "permanent membership" helper
+// was deliberately left out rather than kept as a second answer to one question).
 //
 // PRE-APPROVED, because the tailnet has device approval on and the join has to be non-interactive. Without
 // it a host enrolls into NeedsMachineAuth: present in the console, unreachable from srv1, and a converge
@@ -149,7 +152,7 @@ fn tailscale_fleet_auth_key_approval_wire() -> String {
 // The operator generated the key on 2026-11-15 with the 90-day expiry, so its last day of validity is
 // 2027-02-13 (their reading, corrected the same day from an earlier 2026 date; the console is the
 // authority and the read-back below is what checks this record against it). The date is modelled rather
-// than inferred from `expires_after_days` because a lapse and the console's clock are what the operator
+// than inferred from `expires_after` because a lapse and the console's clock are what the operator
 // sees; the day count is what upstream promised at generation.
 //
 // THE REFUSAL HAS TO BE UP FRONT. An expired auth key fails `tailscale up` with an error whose wording is
