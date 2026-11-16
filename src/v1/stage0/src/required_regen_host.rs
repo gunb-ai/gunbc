@@ -13325,6 +13325,14 @@ pub fn affected_set_bound_for(
         }
     }
     let base_delta_modules: Vec<String> = base_delta_modules.into_iter().collect();
+    // MEASUREMENT ONLY (the DP-M3 drain proof, PR #16531): the relation-variant probe, over the
+    // edited set this round actually answers with. Nothing reads it; delete with the experiment.
+    let probe_roots: Vec<String> = edited
+        .iter()
+        .chain(base_delta_modules.iter())
+        .cloned()
+        .collect();
+    crate::cli_run::relation_variant_probe(workspace, &probe_roots, &edges, &modules);
     let bound = render_affected_set_bound(
         source_roots,
         &BaseDelta {

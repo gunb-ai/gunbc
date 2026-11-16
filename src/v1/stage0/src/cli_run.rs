@@ -8403,6 +8403,242 @@ fn reference_pull_paths_for_source(
     Ok(Rc::from(pulled.into_boxed_slice()))
 }
 
+/// MEASUREMENT ONLY (the DP-M3 drain proof, PR #16531). Nothing reads these lines; delete with the
+/// experiment.
+///
+/// THE QUESTION the proof run owes: the affected-set walk runs over a relation the host COMPOSES --
+/// every endpoint a definer's import closure reaches, spelled once per definer. A drain-shaped scope
+/// round measured 2,055,624 such rows and 71.7 MB of path bytes held by 5.56 GB resident
+/// (run 43754559395), and the model then evaluates every row in the interpreter. Does the
+/// composition change the ANSWER, or only its cost? A Python scout over this corpus said the member
+/// set is identical over direct import edges alone; this asks the same question of production's own
+/// extraction and the host's own walk (`required_regen_host::regen_reverse_closure_host`), the
+/// function the answer is made of. Four relations over the same roster:
+///   TODAY -- the edge list the model is handed, unchanged;
+///   IMP   -- `module_graph_facts.adjacency` pairs alone: direct imports, no closure;
+///   REF   -- parsed module-path reference targets alone: the dotted channel without C;
+///   PROV  -- REF plus bare-name provider edges: the provider-deduplicated form.
+/// PROV is reported apart from IMP because the bare-name channel is the one whose MEANING is in
+/// question (`gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution`):
+/// a provider edge is what a bare name would mean, and it is not what today spells. Every set,
+/// synthetic ones included, goes through the production walk -- a mirror of the walk would measure
+/// the mirror, not the answer.
+pub fn relation_variant_probe(
+    workspace: &Path,
+    walk_roots: &[String],
+    edges: &[(Rc<str>, Rc<str>)],
+    modules: &[String],
+) {
+    let resident = || -> (String, String) {
+        let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
+            return ("unreadable".to_string(), "unreadable".to_string());
+        };
+        let pick = |key: &str| {
+            status
+                .lines()
+                .find(|line| line.starts_with(key))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or("unreadable")
+                .to_string()
+        };
+        (pick("VmRSS:"), pick("VmHWM:"))
+    };
+    let (rss, peak) = resident();
+    eprintln!("rel-probe-step: rss={rss} peak={peak} label=relation_probe_start");
+    // The SAME roots the round's own edge list was built from, so this is a cache hit on the pool
+    // the round already holds -- a different roots key is refused rather than a second resident pool.
+    let abs_roots: Vec<String> = regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = match try_process_shared_index(&abs_roots) {
+        Ok(index) => index,
+        Err(cause) => {
+            eprintln!("rel-probe: no reading -- the round's corpus index was not shared: {cause}");
+            return;
+        }
+    };
+    let facts = &index.module_graph_facts;
+    // The edge list the model is handed is keyed by MODULE NAME, so every alternative relation is
+    // spelled in the same key space: a facts path joins back through the pool index.
+    let mut module_of_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(index.source_files.len());
+    for (module, source) in index.source_files.iter() {
+        module_of_path.insert(workspace_relative_repo_path(&source.path), module.clone());
+    }
+    let pool_names = pool_module_names(&index);
+    let mut imp: std::collections::HashSet<(Rc<str>, Rc<str>)> = std::collections::HashSet::new();
+    let mut reference: std::collections::HashSet<(Rc<str>, Rc<str>)> =
+        std::collections::HashSet::new();
+    let mut bare: std::collections::HashSet<(Rc<str>, Rc<str>)> = std::collections::HashSet::new();
+    let (mut unjoined, mut unreadable_files, mut bare_refusals, mut bare_unjoined) =
+        (0usize, 0usize, 0usize, 0usize);
+    for (module, source) in index.source_files.iter() {
+        let from = intern_module_path(module);
+        if let Some(targets) = facts
+            .adjacency
+            .get(&workspace_relative_repo_path(&source.path))
+        {
+            for target in targets {
+                match module_of_path.get(target) {
+                    Some(target) if target != module => {
+                        imp.insert((Rc::clone(&from), intern_module_path(target)));
+                    }
+                    _ => unjoined += 1,
+                }
+            }
+        }
+        match parsed_file_references_of(&index, source) {
+            Ok(refs) => {
+                for dep in module_paths_of_references(&refs, &pool_names) {
+                    if dep != *module && index.source_files.contains_key(&dep) {
+                        reference.insert((Rc::clone(&from), intern_module_path(&dep)));
+                    }
+                }
+            }
+            Err(_) => unreadable_files += 1,
+        }
+        if let Err(cause) = visit_bare_reference_providers(
+            source,
+            &index,
+            |root| closure_name_census(&index, root),
+            |_name, _name_at, provider, _role| {
+                match module_of_path.get(provider) {
+                    Some(provider) if provider != module => {
+                        bare.insert((Rc::clone(&from), intern_module_path(provider)));
+                    }
+                    // An unjoined provider is counted, not skipped: a PROV relation silently
+                    // missing its bare half would read as "no difference" for the wrong reason.
+                    Some(_) => {}
+                    None => bare_unjoined += 1,
+                }
+                Ok(())
+            },
+        ) {
+            eprintln!("rel-probe: bare visit refused at '{module}': {cause}");
+            bare_refusals += 1;
+        }
+    }
+    let imp: Vec<(Rc<str>, Rc<str>)> = imp.into_iter().collect();
+    let reference: Vec<(Rc<str>, Rc<str>)> = reference.into_iter().collect();
+    let bare: Vec<(Rc<str>, Rc<str>)> = bare.into_iter().collect();
+    let mut provider_form = reference.clone();
+    provider_form.extend(bare.iter().cloned());
+    eprintln!(
+        "rel-probe: relations pool_files={} today={} imp={} ref={} bare={} prov={}",
+        index.source_files.len(),
+        edges.len(),
+        imp.len(),
+        reference.len(),
+        bare.len(),
+        provider_form.len()
+    );
+    eprintln!(
+        "rel-probe: coverage unjoined_import_targets={unjoined} files_without_reference_set={unreadable_files}          bare_visit_refusals={bare_refusals} unjoined_bare_providers={bare_unjoined}"
+    );
+    let (rss, peak) = resident();
+    eprintln!("rel-probe-step: rss={rss} peak={peak} label=relations_built");
+
+    let walk = |edge_list: &[(Rc<str>, Rc<str>)], roots: &[String]| -> Vec<String> {
+        required_regen_host::regen_reverse_closure_host(roots, edge_list)
+            .into_iter()
+            .collect()
+    };
+    let diff = |a: &[String], b: &[String]| -> (usize, usize, String) {
+        let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
+        let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
+        let only_a: Vec<&str> = a
+            .iter()
+            .map(String::as_str)
+            .filter(|x| !set_b.contains(x))
+            .collect();
+        let only_b: Vec<&str> = b
+            .iter()
+            .map(String::as_str)
+            .filter(|x| !set_a.contains(x))
+            .collect();
+        let show = |names: &[&str]| {
+            names
+                .iter()
+                .take(3)
+                .map(|name| name.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        (
+            only_a.len(),
+            only_b.len(),
+            format!(
+                "only-today=[{}] only-other=[{}]",
+                show(&only_a),
+                show(&only_b)
+            ),
+        )
+    };
+    // The change's own set first -- that is the one the heal answers with -- then deterministic
+    // slices of the roster, so the claim is not about one edited set.
+    let mut sets: Vec<(String, Vec<String>)> = vec![("change".to_string(), walk_roots.to_vec())];
+    if modules.len() >= 8 {
+        for rank in 0..4 {
+            let at = modules.len() * rank / 4;
+            sets.push((format!("single@{at}"), vec![modules[at].clone()]));
+        }
+        for rank in 0..3 {
+            let at = modules.len() * (rank + 1) / 8;
+            let end = (at + 40).min(modules.len());
+            sets.push((format!("chunk40@{at}"), modules[at..end].to_vec()));
+        }
+        let at = modules.len() / 2;
+        let end = (at + 176).min(modules.len());
+        sets.push((format!("chunk176@{at}"), modules[at..end].to_vec()));
+    }
+    let (mut imp_lost, mut imp_gained, mut prov_lost, mut prov_gained) =
+        (0usize, 0usize, 0usize, 0usize);
+    let (mut imp_equal, mut ref_equal, mut prov_equal, mut prov_superset) =
+        (0usize, 0usize, 0usize, 0usize);
+    for (label, roots) in &sets {
+        let today = walk(edges, roots);
+        let imp_set = walk(&imp, roots);
+        let ref_set = walk(&reference, roots);
+        let prov_set = walk(&provider_form, roots);
+        let (i_lost, i_gained, i_detail) = diff(&today, &imp_set);
+        let (r_lost, r_gained, r_detail) = diff(&today, &ref_set);
+        let (p_lost, p_gained, p_detail) = diff(&today, &prov_set);
+        imp_lost += i_lost;
+        imp_gained += i_gained;
+        prov_lost += p_lost;
+        prov_gained += p_gained;
+        imp_equal += usize::from(i_lost == 0 && i_gained == 0);
+        ref_equal += usize::from(r_lost == 0 && r_gained == 0);
+        prov_equal += usize::from(p_lost == 0 && p_gained == 0);
+        prov_superset += usize::from(p_lost == 0);
+        eprintln!(
+            "rel-probe: set={label} roots={} today={} imp={} (lost={i_lost} gained={i_gained}) ref={} \
+             (lost={r_lost} gained={r_gained}) prov={} (lost={p_lost} gained={p_gained})",
+            roots.len(),
+            today.len(),
+            imp_set.len(),
+            ref_set.len(),
+            prov_set.len()
+        );
+        eprintln!("rel-probe-diff: set={label} imp {i_detail} | ref {r_detail} | prov {p_detail}");
+    }
+    eprintln!(
+        "rel-probe-verdict: sets={} imp-equal={imp_equal} ref-equal={ref_equal} prov-equal={prov_equal} \
+         prov-never-loses={prov_superset} imp-lost={imp_lost} imp-gained={imp_gained} prov-lost={prov_lost} \
+         prov-gained={prov_gained}",
+        sets.len()
+    );
+    let (rss, peak) = resident();
+    eprintln!("rel-probe-step: rss={rss} peak={peak} label=relation_probe_done");
+}
+
 /// Materialize one demanded source row. A successful admission does not imply any row
 /// was produced; complete coverage is requested explicitly by the whole-pool consumers.
 fn build_both_closure_edge_index(
@@ -8558,7 +8794,7 @@ fn whole_pool_closure_edge_index(
                 let mut edge_bytes = 0usize;
                 for values in edges.bare_out.values().chain(edges.ref_out.values()) {
                     edge_strings += values.len();
-                    for value in values {
+                    for value in values.iter() {
                         edge_bytes += value.len();
                     }
                 }
@@ -10002,6 +10238,41 @@ mod closure_edge_demand_tests {
                 "an endpoint was spelled again instead of cloning the roster's one allocation"
             );
         }
+    }
+
+    /// MEASUREMENT ONLY (PR #16531 rig, delete with the experiment). Runs the relation-variant
+    /// probe over a five-file fixture with --nocapture, so the joins it depends on are visible
+    /// BEFORE it is trusted on a corpus: the edge list is keyed by module name, the facts adjacency
+    /// by file path, and a probe that joins them wrong would print a comfortable "equal" for the
+    /// wrong reason. A corpus run of the same probe is run 43754559395's successor.
+    #[test]
+    fn relation_variant_probe_reads_the_fixture() {
+        let fixture = Fixture::new(&[
+            ("dag/entry.dag", "module entry\nfn main() -> Int { 1 }\n"),
+            ("dag/provider.dag", "module chain.provider\nfn value() -> Int { 1 }\n"),
+            (
+                "dag/mid.dag",
+                "module chain.mid\nimport chain.provider { value }\nfn read() -> Int { value() }\n",
+            ),
+            (
+                "dag/first.dag",
+                "module chain.first\nimport chain.mid { read }\nfn use_first() -> Int { read() }\n",
+            ),
+            (
+                "dag/second.dag",
+                "module chain.second\nimport chain.mid { read }\nfn use_second() -> Int { read() }\n",
+            ),
+        ]);
+        for root in regen_source_roots().all() {
+            std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
+        }
+        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
+        relation_variant_probe(
+            &fixture.0,
+            &["chain.provider".to_string()],
+            &edges,
+            &modules,
+        );
     }
 
     /// THE INTERNER AT ITS OWN GRAIN. The sharing the test above pins is the roster's; the interner
