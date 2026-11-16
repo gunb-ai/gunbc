@@ -1,0 +1,269 @@
+module test.claim.machine_intake.supermicro_h11ssl_unit3_intake_witness
+
+// WITNESSES FOR THE UNIT-3 INTAKE RECEIPTS (the hand-installed H11SSL-i, BMC at 192.168.1.249).
+//
+// What these claims hold is the SHAPE of the receipts: that the rows keep the board's two network ports
+// and two network addresses apart, that this unit is not a re-appearance of unit1 or unit2, that the
+// boot-path standing cites the boot-selection authority it claims to cite and names the same port the
+// NIC row names, and that no figure in the module is stated without a read owed against it. They do NOT
+// hold that any figure is true about the board: none of these figures is a read of the board, and the
+// module says so row by row.
+import std.types { Bool, List, NonEmptyStr }
+import std.algebra { string_contains }
+import extdeps.network.mac { Eui48Address, render_mac_address }
+import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import gunbc.integration_concern {
+  ConcernDisposition, ConcernKind, Distinct, Integrated, IntegrationConcern, Open, RequirementEstablished,
+  RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
+  h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
+  h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+  h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
+}
+import extdeps.bmc.ipmi_boot_selection { ipmi_boot_selectable_devices, ipmi_boot_selection_label }
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity {
+  supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac, supermicro_h11ssl_unit3_bmc_mac,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
+import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
+  AddressConfirmed,
+  AddressSeenOnlyInStaleNeighbourEntry,
+  BasisObservedDhcp,
+  BasisObservedStatic,
+  BasisUnobserved,
+  BootPathUnobserved,
+  FactoryCredentialInForce,
+  H11sslUnit3InstallNicAddressStanding,
+  IpxeForcedBootObservedOnOtherPort,
+  RotatedCredentialObserved,
+  supermicro_h11ssl_unit3_bmc_address_basis,
+  supermicro_h11ssl_unit3_bmc_credential_standing,
+  supermicro_h11ssl_unit3_bmc_firmware_version,
+  supermicro_h11ssl_unit3_bmc_lan_address,
+  supermicro_h11ssl_unit3_bios_version,
+  supermicro_h11ssl_unit3_cmos_battery_outstanding,
+  supermicro_h11ssl_unit3_install_nic_address_standing,
+  supermicro_h11ssl_unit3_install_nic_mac,
+  supermicro_h11ssl_unit3_install_nic_port_label,
+  supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing,
+  supermicro_h11ssl_unit3_seen_host_key_fingerprint,
+  unit3_bmc_address_is_not_the_install_nic_address,
+  unit3_boot_path_cites_a_selectable_device,
+  unit3_install_nic_is_not_the_bmc_port,
+}
+
+fn text(value: String) -> String {
+  value
+}
+
+fn mac_text(mac: Eui48Address) -> String {
+  render_mac_address(addr: mac) as String
+}
+
+// UNIT 3 IS NOT UNIT1 AND NOT UNIT2. The unit number is a claim about the corpus of H11SSL boards this
+// repository has receipts for, and it rests on the BMC MAC matching neither known unit. If a future row
+// copies a MAC, this reds instead of quietly making two units one machine.
+test fn witness_unit3_is_a_third_unit_not_a_reappearance() -> Bool {
+  (mac_text(supermicro_h11ssl_unit3_bmc_mac) != mac_text(supermicro_h11ssl_unit1_bmc_mac)) &&
+    (mac_text(supermicro_h11ssl_unit3_bmc_mac) != mac_text(supermicro_h11ssl_unit2_bmc_mac))
+}
+
+// THE BMC'S PORT AND THE INSTALL NIC ARE DIFFERENT PORTS. Same board, two interfaces; a row that
+// conflated them would aim a PXE install at a controller, which is the confusion the boot-path
+// standing exists to record.
+test fn witness_install_nic_is_not_the_bmc_port() -> Bool {
+  unit3_install_nic_is_not_the_bmc_port(
+    nic: supermicro_h11ssl_unit3_install_nic_mac,
+    bmc_mac: supermicro_h11ssl_unit3_bmc_mac,
+  )
+}
+
+// THE BMC'S ADDRESS AND THE INSTALL NIC'S PAIRING ARE DIFFERENT ADDRESSES. The NIC pairing is a stale
+// neighbour entry another host's endpoint row already claims, so no row may let the two addresses stand
+// for one another.
+test fn witness_bmc_address_is_not_the_install_nic_address() -> Bool {
+  unit3_bmc_address_is_not_the_install_nic_address(
+    bmc: supermicro_h11ssl_unit3_bmc_lan_address,
+    nic: supermicro_h11ssl_unit3_install_nic_address_standing,
+  )
+}
+
+// THE INSTALL NIC CLAIMS NO NETWORK ENDPOINT. Its address stands only as a stale neighbour pairing, and
+// the standing must name whom that address is already modelled as belonging to -- otherwise a later
+// reader (or a later row) treats the pairing as a lease.
+test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> Bool {
+  match supermicro_h11ssl_unit3_install_nic_address_standing {
+    AddressSeenOnlyInStaleNeighbourEntry {
+      address: seen,
+      collision_claimed_by: claimed_by,
+      read_obligation: owed,
+    } =>
+      ipv4_address_eq(a: seen, b: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236))
+        && string_contains(s: text(claimed_by), pattern: "srv9")
+        && (text(owed) != "")
+    AddressConfirmed { address: _, confirmed_at: _ } => false
+  }
+}
+
+// THE BOOT-PATH STANDING CITES THE BOOT-SELECTION AUTHORITY, not a private device name: the device the
+// forced boot asked for must be one the authority offers as selectable.
+test fn witness_boot_path_cites_a_device_the_authority_selects() -> Bool {
+  unit3_boot_path_cites_a_selectable_device(devices: ipmi_boot_selectable_devices)
+}
+
+// THE STANDING AND THE AUTHORITY AGREE ON WHAT WAS ASKED FOR. The row stores the authority's own
+// rendering of the selection alongside the sightng; if the authority's rendering of a UEFI one-shot PXE
+// override changes, the row cannot silently keep the old wording. And the port the standing says the
+// install needed must be the SAME row as the module's NIC row, not a second copy of the address.
+test fn witness_boot_path_renders_the_selection_as_the_authority_renders_it() -> Bool {
+  match supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing {
+    IpxeForcedBootObservedOnOtherPort {
+      selection_the_flag_asked_for: selection,
+      selection_as_the_authority_renders_it: rendered,
+      port_the_pxe_attempt_landed_on: _,
+      port_the_install_needed: install_port,
+      route_that_reached_the_install_port: _,
+      confounder_open_at_this_reading: _,
+      read_obligation: _,
+    } =>
+      (text(rendered) == text(ipmi_boot_selection_label(selection: selection)))
+        && (mac_text(install_port) == mac_text(supermicro_h11ssl_unit3_install_nic_mac))
+    BootPathUnobserved { read_obligation: _ } => false
+  }
+}
+
+// THE FORCED BOOT ASKED FOR PXE, AND THE PORT IT LANDED ON IS NOT THE INSTALL PORT. That difference IS
+// the quirk; if a future edit makes them equal, the standing no longer records anything and should be
+// deleted rather than left standing.
+test fn witness_the_port_that_pxe_landed_on_is_not_the_install_port() -> Bool {
+  match supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing {
+    IpxeForcedBootObservedOnOtherPort {
+      selection_the_flag_asked_for: _,
+      selection_as_the_authority_renders_it: _,
+      port_the_pxe_attempt_landed_on: landed,
+      port_the_install_needed: _,
+      route_that_reached_the_install_port: _,
+      confounder_open_at_this_reading: _,
+      read_obligation: _,
+    } => string_contains(s: text(landed.value), pattern: "LAN1")
+    BootPathUnobserved { read_obligation: _ } => false
+  }
+}
+
+// THE BOOT-PATH STANDING LEAVES ITS CONFOUNDER OPEN. The CMOS battery on this unit is reported as
+// needing replacement, and that is an alternative explanation for the same sightng; a standing that
+// dropped the confounder would be asserting a board property this repository has not read.
+test fn witness_boot_path_keeps_the_cmos_confounder_open() -> Bool {
+  match supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing {
+    IpxeForcedBootObservedOnOtherPort {
+      selection_the_flag_asked_for: _,
+      selection_as_the_authority_renders_it: _,
+      port_the_pxe_attempt_landed_on: _,
+      port_the_install_needed: _,
+      route_that_reached_the_install_port: _,
+      confounder_open_at_this_reading: confounder,
+      read_obligation: _,
+    } => string_contains(s: text(confounder), pattern: "CMOS")
+    BootPathUnobserved { read_obligation: _ } => false
+  }
+}
+
+// THE BMC CREDENTIAL STANDS AS FACTORY-IN-FORCE, NOT ROTATED. The rotation route for this controller is
+// not grounded, so a row claiming a rotated credential would be writing an effect that never ran.
+test fn witness_bmc_credential_stands_as_factory_in_force() -> Bool {
+  match supermicro_h11ssl_unit3_bmc_credential_standing {
+    FactoryCredentialInForce {
+      attested_by: attested_by,
+      attested_at: _,
+      rotation_route_standing: route,
+      read_obligation: owed,
+    } =>
+      (text(attested_by) != "")
+        && string_contains(s: text(route), pattern: "No BmcRotationRouteStanding")
+        && (text(owed) != "")
+    RotatedCredentialObserved { observed_at: _ } => false
+  }
+}
+
+// THE BMC ADDRESS BASIS IS UNOBSERVED. Nothing read here says static or DHCP, and the model refuses to
+// guess -- the same refusal mtjade1_factory_network makes for the other units.
+test fn witness_bmc_address_basis_is_unobserved() -> Bool {
+  match supermicro_h11ssl_unit3_bmc_address_basis {
+    BasisUnobserved { read_obligation: owed } => text(owed) != ""
+    BasisObservedStatic => false
+    BasisObservedDhcp => false
+  }
+}
+
+// EVERY REPORTED FIGURE IN THE MODULE OWES ITS READ. The rows carry operator statements, and the only
+// thing that keeps an operator statement from becoming a fabricated fact is the read named against it.
+// If any of these figures is re-standed as cited-to-authority without a receipt behind it, this reds.
+fn figure_owes_a_read(figure: H11sslReportedFigure) -> Bool {
+  match figure.standing {
+    TranscribedUncited { read_obligation: owed } => text(owed) != ""
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn witness_every_reported_figure_owes_its_read() -> Bool {
+  let figures: List<H11sslReportedFigure> = [
+    supermicro_h11ssl_unit3_bios_version,
+    supermicro_h11ssl_unit3_bmc_firmware_version,
+    supermicro_h11ssl_unit3_install_nic_port_label,
+    supermicro_h11ssl_unit3_seen_host_key_fingerprint,
+  ]
+  all(figures, figure_owes_a_read)
+}
+
+// THE PHYSICAL MAINTENANCE ROW NAMES WHAT IT BEARS ON. The CMOS battery is the operator's action, and
+// the row is only worth keeping because it says which standing the missing read depends on.
+test fn witness_cmos_battery_row_names_what_it_bears_on() -> Bool {
+  string_contains(s: text(supermicro_h11ssl_unit3_cmos_battery_outstanding.bears_on), pattern: "boot")
+}
+
+
+// THE REGISTER CARRIES THE HAND WORK'S THREE GAPS, AND CARRIES THEM AS GAPS. The unit was brought up
+// outside every modeled route, and the model's inability to say so is recorded in the integration
+// register. These rows must stay capability gaps -- the model could not express the subject -- and must
+// not quietly be re-standed as forks (one subject, two authorities) or as settled: the hand-staged
+// artifacts are still on srv4, the host still admits no fleet roster, and the pre-install disk capture
+// is still gone.
+fn gap_stands_open(row: IntegrationConcern) -> Bool {
+  match row.kind {
+    SuspectedCapabilityGap { model: _, requirement: owed_requirement, standing: _ } =>
+      (text(owed_requirement) != "") && matches_open(row.disposition)
+    SuspectedFork { authorities: _ } => false
+  }
+}
+
+fn matches_open(disposition: ConcernDisposition) -> Bool {
+  match disposition {
+    Open => true
+    Triaged { home: _, preserve: _, next: _ } => false
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}
+
+test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool {
+  all(
+    [
+      h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+      h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
+      h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
+    ],
+    gap_stands_open,
+  )
+}
+
+// THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
+// demands the capture and not about some unrelated standing.
+test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
+  match h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture.kind {
+    SuspectedCapabilityGap { model: model, requirement: _, standing: _ } =>
+      (text(model.module_path) == "gunbc.host.network_install") && (text(model.decl_name) == "TargetDiskContents")
+    SuspectedFork { authorities: _ } => false
+  }
+}
