@@ -36,7 +36,9 @@ import extdeps.time.rfc3339 {
   rfc3339_parse_instant, rfc3339_instant_unix_seconds,
 }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
-import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon_secs }
+import std.measure { Second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -908,11 +910,18 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
 // CURRENT and is served 200 — the silent-stale hole the periodic timer closes on the write side and
 // this closes on the read side. For /standings.json ONLY (the document ctrl admits roadmap work
 // items against), compare the stored observed_at against the wall clock AT READ TIME: if the last
-// refresh is older than belt_standings_refresh_staleness_horizon_secs, answer 409 (the same stale
-// status ctrl's parseStandingsResponse already refuses admission on), carrying the age. Fail CLOSED:
-// an unreadable clock, an unparseable observed_at, or a future-dated observation is refused, never
-// served as current — a stale reading must never be a silent pass. It is orthogonal to the event
-// comparison: freshness says "newer events exist"; this says "the refresher itself is behind".
+// refresh is older than belt_standings_refresh_staleness_horizon, answer 409 (the same stale status
+// ctrl's parseStandingsResponse already refuses admission on). Fail CLOSED on every degenerate
+// reading, never served as current:
+//   - an unreadable clock → refused (ObservationFreshnessUnread → 503);
+//   - an unparseable observed_at → stale: it is not the document the belt wrote, so it cannot pass;
+//   - a FUTURE-DATED observed_at (age negative — clock skew or a hand-written index) → refused: a
+//     reading from the future is not proof of freshness, it is an unreadable clock. Serving it as
+//     current would keep the gate green until that future instant plus the horizon, exactly the
+//     silent-stale this gate exists to close.
+// The age is compared in the Second carrier (second_count on both sides), never by re-typing the
+// epoch diff as a bare Int against a bare Int — gunbc.design_argument::minimize_redundancy keeps the
+// duration on std.measure, its single authority.
 fn served_observation_age_staleness(observed_at: String) -> ServedObservationFreshness {
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail } =>
@@ -923,13 +932,24 @@ fn served_observation_age_staleness(observed_at: String) -> ServedObservationFre
         // one the belt wrote, so it cannot be trusted as current.
         Rfc3339InstantRefused { cause: _ } =>
           ObservationStale { observed_at: observed_at, newest_event_at: "" }
-        Rfc3339InstantParsed { instant: i, spelling: _ } =>
-          if (epoch_secs_of_millis(millis: millis) as Int) - rfc3339_instant_unix_seconds(i: i)
-              > belt_standings_refresh_staleness_horizon_secs {
-            ObservationStale { observed_at: observed_at, newest_event_at: "" }
+        Rfc3339InstantParsed { instant: i, spelling: _ } => {
+          let age_secs = (epoch_secs_of_millis(millis: millis) as Int) - rfc3339_instant_unix_seconds(i: i)
+          if age_secs < 0 {
+            // Future-dated: the observation claims a time after now. That is an unreadable clock or a
+            // forged index, not freshness — refuse rather than serve 200.
+            ObservationFreshnessUnread { reason: join(["the observation is dated after the present clock: ", observed_at], "") }
           } else {
-            ObservationCurrent
+            match checked_int_to_nat(n: age_secs) {
+              Absent => ObservationFreshnessUnread { reason: "the observation age could not be measured" }
+              Present { value } =>
+                if value > second_count(s: belt_standings_refresh_staleness_horizon) {
+                  ObservationStale { observed_at: observed_at, newest_event_at: "" }
+                } else {
+                  ObservationCurrent
+                }
+            }
           }
+        }
       }
   }
 }

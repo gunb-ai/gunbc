@@ -248,7 +248,13 @@ data belt_standings_refresh_backstop: Second = second(count: 600)
 // the exact silent-stale hole this closes. A second, orthogonal gate compares the stored
 // observed_at against the wall clock at read time: if the last refresh is older than this horizon,
 // the route answers 409 (stale) itself, so ctrl's parseStandingsResponse refuses admission rather
-// than trusting bytes whose refresher died. Fail CLOSED: an unreadable clock or an unparseable
-// observed_at is refused, never served as current. Three periods, not one, so a timer that misses a
-// beat or two (a transient fetch failure, a slow reload) does not flap the route to stale.
-data belt_standings_refresh_staleness_horizon_secs: Int = 1800
+// than trusting bytes whose refresher died. Fail CLOSED: an unreadable clock, an unparseable
+// observed_at, OR a future-dated observed_at is refused, never served as current. Three periods,
+// DERIVED from the backstop (gunbc.design_argument::minimize_redundancy: the "three periods" is
+// modeled once, on the backstop, and every use derived — a future edit to the 600 s cadence moves the
+// horizon with it, it cannot silently stop being three periods), so a timer that misses a beat or two
+// (a transient fetch failure, a slow reload) does not flap the route to stale. Typed as Second, not a
+// bare Int: it is a duration, and a duration carried as a raw scalar is the unit-modeling fork the
+// std.measure carrier exists to prevent.
+data belt_standings_refresh_staleness_horizon: Second =
+  second(count: second_count(s: belt_standings_refresh_backstop) * 3)

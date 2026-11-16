@@ -33,7 +33,7 @@ import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPo
 // only thing that would have caught it is the resolve this import makes possible.
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_standings_refresh_staleness_horizon }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_belt_standings_refresh_unit_file, live_deploy_belt_standings_refresh_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
@@ -760,6 +760,15 @@ test fn the_standings_refresh_oneshot_runs_the_observation_fold_only() -> Bool {
     // The fold, not the frontier walk: it must NOT be the launch enqueue the belt timer ran.
     && !any(refresh, l => string_contains(s: l, pattern: "belt_launch_enqueue_cli"))
     && !any(refresh, l => starts_with(s: l, prefix: "WantedBy="))
+}
+
+// The staleness horizon is DERIVED from the backstop, not a copied literal (condition 1 review): it
+// is exactly three refresh periods, and it lives in the Second carrier, so an edit to the 600 s
+// cadence moves the horizon with it — it cannot silently stop being three periods
+// (gunbc.design_argument::minimize_redundancy: the concept is modeled once, every use derived).
+test fn the_staleness_horizon_is_three_periods_derived_from_the_backstop() -> Bool {
+  second_count(s: belt_standings_refresh_staleness_horizon)
+    == second_count(s: belt_standings_refresh_backstop) * 3
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
