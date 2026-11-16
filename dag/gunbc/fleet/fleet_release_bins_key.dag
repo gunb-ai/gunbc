@@ -1161,17 +1161,30 @@ fn release_bins_retention_delete(header: Node) -> Node {
 // nothing-due (plan ran, nothing older than KEEP), due=<ids> + delete-failed (deletion failed), done
 // -- and every arm exits zero: retention runs folded into the outcome step and must never fail the
 // job's real work (gunbc.design_argument::fail_closed: typed, located, countable).
-fn release_bins_retention_decide() -> Node {
+// The decision, as FIVE top-level statements in the admitted corpus -- and_then, or_else, test
+// words, statement-position redirection, subshell -- with no if/if_else at all: probe runs against
+// v2.workflow.bash_emit showed every one of these shapes admitted on their own while even a trivial
+// if_else(test ...; then ...; else ...; fi) is refused by the fold here, so the branch logic rides
+// on short-circuit operators instead (each statement ends exit-zero, so the step's set -e cannot
+// fire between them). The five lines spell the whole contract, every outcome typed and countable
+// (gunbc.design_argument::fail_closed):
+//   T1  answer present -> run the jq plan into the ids file; on jq failure remove the file the
+//       redirection truncated, so "plan failed" and "nothing due" are read apart by file absence.
+//   T2  answer absent or empty -> the typed line `no-answer` (the fetch already typed its own
+//       failure line; this names the decision that followed from it).
+//   T3  ids present and non-empty -> delete exactly those ids (the delete arm types `delete-failed`
+//       itself and prints `due=<ids>`, `deleting=N keep=16`, `done`).
+//   T4  answer present, ids ABSENT -> the plan itself was refused: the typed line `plan-failed`.
+//   T5  answer present, ids present but empty -> the honest empty: the typed line `nothing-due`.
+fn release_bins_retention_decide_statements() -> List<Node> {
   let ids_file = temp(file: release_bins_retention_ids_basename)
   let answer_operand = lit(t: release_bins_retention_answer_file())
-  // jq failing (malformed or unadmitted answer) leaves the ids file ABSENT -- the right arm removes
-  // whatever the redirection truncated -- while a jq run that admitted the answer leaves it PRESENT,
-  // possibly empty. So the two silent-looking outcomes are read apart without a marker file: absent
-  // is plan-failed, present-empty is nothing-due. Only admitted shapes (or_else, and_then, test
-  // words, statement-position redirection, subshell) are used: a redirection in an if-condition is
-  // not in the fold's admitted cond corpus (v2.workflow.bash_emit refused the first draft that
-  // placed one there).
-  let jq_arm = bash_build_or_else(
+  let answer_present = test_words(ws: [lit(t: "-s"), answer_operand])
+  let ids_present = test_words(ws: [lit(t: "-s"), ids_file])
+  let ids_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), ids_file])
+  let ids_exists = test_words(ws: [lit(t: "-e"), ids_file])
+  let nothing_arm = cmdl(ls: ["true"])
+  let jq_run = bash_build_or_else(
     left: bash_build_with_redir_to_file(
       inner: cmd(ws: release_bins_jq_words(plan: release_bins_retention_plan())),
       path: ids_file,
@@ -1186,34 +1199,31 @@ fn release_bins_retention_decide() -> Node {
     release_bins_retention_delete(header: temp(file: release_bins_retention_delete_header_basename)),
     release_bins_retention_echo(word: "done"),
   ])
-  let due_block = bash_build_or_else(
-    left: bash_build_and_then(
-      left: test_words(ws: [lit(t: "-s"), ids_file]),
-      right: delete_block,
+  [
+    bash_build_or_else(left: bash_build_and_then(left: answer_present, right: jq_run), right: nothing_arm),
+    bash_build_or_else(left: bash_build_and_then(left: answer_present, right: nothing_arm), right: release_bins_retention_echo(word: "no-answer")),
+    bash_build_or_else(left: bash_build_and_then(left: ids_present, right: delete_block), right: nothing_arm),
+    bash_build_or_else(
+      left: bash_build_and_then(left: answer_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed")))),
+      right: nothing_arm,
     ),
-    right: bash_build_or_else(
-      left: bash_build_and_then(
-        left: test_words(ws: [lit(t: "!"), lit(t: "-e"), ids_file]),
-        right: release_bins_retention_echo(word: "plan-failed"),
-      ),
-      right: release_bins_retention_echo(word: "nothing-due"),
+    bash_build_or_else(
+      left: bash_build_and_then(left: answer_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_exists, right: release_bins_retention_echo(word: "nothing-due")))),
+      right: nothing_arm,
     ),
-  )
-  bash_build_if_else(
-    cond: test_words(ws: [lit(t: "-s"), answer_operand]),
-    then_body: bash_build_subshell_from_stmts(stmts: [jq_arm, due_block]),
-    else_body: release_bins_retention_echo(word: "no-answer"),
-  )
+  ]
 }
 
 fn release_bins_retention_statements() -> List<Node> {
   let header = temp(file: release_bins_retention_header_basename)
-  [
-    root_statement(),
-    release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
-    release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
-    release_bins_retention_decide(),
-  ]
+  concat(
+    [
+      root_statement(),
+      release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
+      release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
+    ],
+    release_bins_retention_decide_statements(),
+  )
 }
 
 

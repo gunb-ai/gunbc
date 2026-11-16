@@ -17,7 +17,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
   release_bins_credential_pattern,
-  release_bins_retention_decide, release_bins_retention_answer_file,
+  release_bins_retention_decide_statements, release_bins_retention_answer_file,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -515,7 +515,7 @@ fn retention_answer_part(body: String) -> Outcome<String> {
   e(statements: [bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", body]), path: fx(t: release_bins_retention_answer_file()))])
 }
 
-data part_retention_decide: Outcome<String> = e(statements: [release_bins_retention_decide()])
+data part_retention_decide: Outcome<String> = e(statements: release_bins_retention_decide_statements())
 
 fn retention_claim(answer: Outcome<String>) -> List<Outcome<String>> {
   [part_fixture_env, part_retention_exports, answer, part_retention_decide]
