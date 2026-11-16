@@ -577,9 +577,12 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
 fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDraft {
   match dev {
     // A present-absent item routes by its declared item name (the only place the item string is
-    // consulted, and only for the presence arms that genuinely share a shape).
+    // consulted, and only for the presence arms that genuinely share a shape). The account is NOT among
+    // them: serving_account_deviations in gunbc.compute.remote_build_serving_setup never emits a
+    // present-absent item for it — an absent account arrives as the two uid/gid deviations below with
+    // 'observed: none'. An item name no arm names falls to unhandled, so a new presence item is refused
+    // rather than silently dropped.
     PresentAbsent { item } => match item {
-      "account" => converge_add_account(acc, d)
       "group.members" => converge_group_membership(acc, d)
       "store.root" => converge_store_directories(acc, d.store_root, d)
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
@@ -588,13 +591,22 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "seed.serve_binary" => converge_install_binary(acc, d, pin, target_arch)
       _ => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
-    // A uid/gid MISMATCH means the account EXISTS with the wrong identity. useradd refuses an existing
-    // name, and silently re-numbering a live account (usermod -u) would orphan every file it owns — neither
-    // is automatable here. So these are UNHANDLED: the plan counts them, the wet apply's unhandled gate
-    // fires, and NOTHING is mutated on that host — a human reconciles the identity. (A genuinely ABSENT
-    // account surfaces as PresentAbsent "account", which the account arm does create.)
-    AccountUidMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
-    AccountGidMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    // The observed number IS the route (serving_account_deviations: "established but the row absent is a
+    // proven absence (the account must be created); a wrong number is proven drift"). 'none' is that
+    // confirmed absence, so BOTH arms of it land on converge_add_account — the uid and gid deviations
+    // name the same account, and converge_dedupe collapses the pair to the one EnsureAccount. A PRESENT
+    // observed number means the account exists at the wrong identity: useradd refuses an existing name,
+    // and silently re-numbering a live account (usermod -u) would orphan every file it owns — neither is
+    // automatable here. So those are UNHANDLED: the plan counts them, the apply refuses, and NOTHING is
+    // mutated on that host — a human reconciles the identity.
+    AccountUidMismatch { desired: _, observed: o } => match o {
+      Absent => converge_add_account(acc, d)
+      Present { value: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    }
+    AccountGidMismatch { desired: _, observed: o } => match o {
+      Absent => converge_add_account(acc, d)
+      Present { value: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    }
     GroupMembersMismatch { desired: _, observed: _ } => converge_group_membership(acc, d)
     // A required group the observe PROVED absent is created at its own declared gid (converge_ensure_group
     // picks account_gid vs group_gid by name). A group present at the wrong gid, or a declared gid already
