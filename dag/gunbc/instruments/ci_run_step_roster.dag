@@ -69,13 +69,15 @@ import std.types {List}
 // declaration introspection lands.
 //
 // That dissolution condition is SATISFIED for this roster: `decl_facts` is a registered builtin
-// callable from ordinary `.dag`, so the nineteen can be derived by enumerating every module-scope
+// callable from ordinary `.dag`, so the roster entries can be derived by enumerating every module-scope
 // `data` of type `GunbcRunStepTarget` in this module instead of being retyped here — at no extra
 // cost to any consumer that already walks decl_facts, turning a fold over "the rows someone
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 33 declarations, 33 entries. That equality is the thing nothing checks.
+// Counted at authoring (2026-07, in gunbc.ci.ci_spec): 33 declarations, 33 entries. Counted at
+// closure_consolidation P5 (2026-11-16, here): 119 entries after the five unconsumed step
+// targets died with their invokes. That equality with the declarations is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_converge_plan_target,
