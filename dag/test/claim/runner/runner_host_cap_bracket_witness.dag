@@ -641,7 +641,13 @@ fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
 }
 
 fn show_text(n: String, load: String, file: String, active: String) -> String {
-  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nNeedDaemonReload=no\n")
+  // A real `systemctl show --property=...,Result,MainPID` always answers BOTH words, and the
+  // activation readback decides on them (Result must be clean AND a main process must exist --
+  // see gunbc.runner.runner_slot_actuation.slot_activation_fresh_read_back_holds). A reading that
+  // omits them is refused by slot_actuation_reading_of, so the show fixture must carry them. A
+  // stopped unit has no main process (MainPID=0); only a running one does.
+  let main_pid = if active == "active" { "424242" } else { "0" }
+  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nResult=success\nMainPID=", main_pid, "\nNeedDaemonReload=no\n")
 }
 fn show_leg(n: String, load: String, file: String, active: String) -> Leg { Leg { needle: "systemctl show", answer: shell_ok(stdout: show_text(n: n, load: load, file: file, active: active)) } }
 fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer: shell_ok(stdout: "") } }
@@ -1475,4 +1481,22 @@ test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
 test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
   bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
     && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
+}
+
+// The bracket controls decide by READING the unit through the production slot reader
+// (gunbc.runner.runner_slot_actuation.slot_actuation_reading_of), which refuses a reading that is
+// missing any property it requests -- including Result and MainPID. This guard pins the FIXTURE to
+// that contract: if a future edit to show_text drops a required property, the reading goes Absent
+// and THIS control goes red at the fixture, instead of the bracket controls silently losing their
+// mask step (a SlotReadRefused that makes running==0 pass by accident).
+test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
+  let stopped_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "inactive")) {
+    Present { value: SlotReadingTyped { reading: r } } => systemd_unit_active_state_wire_label(s: r.active) == "inactive"
+    _ => false
+  }
+  let running_ok = match slot_actuation_reading_of(unit: u(n: "02"), show_stdout: show_text(n: "02", load: "loaded", file: "enabled", active: "active")) {
+    Present { value: SlotReadingTyped { reading: r } } => systemd_unit_active_state_wire_label(s: r.active) == "active"
+    _ => false
+  }
+  stopped_ok && running_ok
 }
