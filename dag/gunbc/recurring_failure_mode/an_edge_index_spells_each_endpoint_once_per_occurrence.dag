@@ -1,0 +1,33 @@
+module gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// A COST MODE MEASURED ON THE HEAL ROUND, NOT INFERRED FROM A COMMENT. The surface is a corpus that
+// looks like it outgrew a ceiling; the question this mode answers is what a container costs PER ITEM
+// IT NAMES (gunbc.design_argument::how_to_work: "a proven cost-shape defect -- a copied accumulator,
+// a quadratic fold -- is *always fixed*, regardless of realized n").
+data an_edge_index_spells_each_endpoint_once_per_occurrence: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_edge_index_spells_each_endpoint_once_per_occurrence" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: the heal round's regen scope round refuses at the CI ceiling on a 176-file extdeps frontier drain -- run 43753613457, job 132966002648, head 1672899b219b: MemoryStallRefusedPageThrash, slot 26.85 GB, no answer line -- while the same round answers in about 9 s at 16.05 GB when its scope is empty (runs 43702995862, 43702268835). A phase-level trace cannot act on that, so the round was measured structure by structure (measurement-only head 6d0572746e5c, run 43754559395): the scope child enters at 3 MB and already holds 6.97 GB before it reads the change; its closure edge index then grows the resident set by 5.56 GB while holding rows=8,696 whose 2,057,713 endpoint occurrences spell 71,694,634 bytes.",
+
+    "THE SHAPE, IN ONE NUMBER: 71.7 MB of path bytes held by 5.56 GB of resident set -- the container costs 77x the data it names. Two redundancies carry it. A row is the union of the FULL import closure of every provider the file references, and that closure was walked, spelled and owned once per REQUESTING file rather than once per provider. And every endpoint occurrence was a separate owned `String`, which the interpreter's `Value::Str` then spelled AGAIN on the way to the model. The 6.97 GB before the change is read: the scope child resolves the whole corpus to answer its own worktree admission, and the edge-index route built its own second whole-corpus index with build_multi_entry_index beside the process-shared one the same child had already built, so one process parsed and typechecked the corpus twice.",
+
+    "THE REPAIR, REPRESENTATION ONLY: one interned `Rc<str>` per workspace-relative module path for the process, so rows, the edge list and the model's edge arguments share the same bytes; a provider's import closure expanded once per facts build and shared, the expansion being a pure function of (facts build, provider path) -- the same key the facts memo already uses; and the edge list deduplicated by MODULE RANK, ranks taken from the sorted module roster, which reproduces the emitted (from, to) pairs pair-for-pair and in the same order the set form produced. The edge SET, the closure and the arm are untouched: which modules regen is decided by the same relation as before, and the scoped round's host-versus-model lockstep refuses the line on disagreement every run. The witness is the Rust test that compares the emitted pairs with the spelled ones and asserts one allocation per module name across the whole list.",
+
+    "PART OF THE RUNG STAYS UNREAD: before the repair the mode is MEASURED at the runs named above; after it the shape is unread -- no run has carried a 176-file frontier drain through a repaired scope round -- so the row does not borrow a number from the shape argument. The rung is readable when such a run names its resident set and its member count.",
+
+    "THE OPEN HAND, STATED SO IT IS NOT READ AS CLOSED: this pays for the host's representation only. What this row does NOT establish is the cost of the model's own evaluation over 2,055,624 closure-expanded edges, which is where the round now dies. A hand-built harness carrying the real 76,428-edge import graph and the real 176-module edited set completes the model's scope answer at 2.82 GB peak resident (gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured), so the open question is the RELATION handed to the model -- 27x the import-edge count, because every row is closure-expanded -- not the model's walk over it. Narrowing that relation changes which modules regen, so it is a soundness question and this row refuses to answer it here.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_reverse_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.self_host_regen_affected_set_witness", decl_name: "a_reverse_closure_reaches_transitive_dependents_only", field: WholeDeclaration },
+  ],
+}

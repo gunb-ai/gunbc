@@ -57,7 +57,7 @@ import gunbc.machine_intake.bmc_secure {
   BmcRedfishCensusServed, BmcRedfishCensusUnmodeled, BmcRedfishCensusRefused,
   BmcSecured, BmcSecureRefused, BmcSecureOutcome, RedfishForeignEnabledAccount, RedfishCensusUnestablished,
   ManagedCredentialRejected, inspect_bmc_secure_state, BmcSecureStateInspected, BmcSecureStateUnobserved,
-  conjunction_over_observation, dry_read_bmc_redfish_account_census, dry_apply_bmc_redfish_password_write,
+  conjunction_over_observation, dry_read_bmc_account_state, dry_read_bmc_redfish_account_census, dry_apply_bmc_redfish_password_write,
   bmc_build_forced_change_requirement,
   bmc_redfish_password_write_completed, BmcRedfishPasswordWriteDryStep,
   confirm_forced_first_rotation_build, ForcedFirstRotationBuildConfirmed, ForcedFirstRotationBuildRefused,

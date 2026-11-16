@@ -17,6 +17,7 @@ import extdeps.bmc.capability {
   release_row_has_capability,
 }
 import extdeps.bmc.megarac { megarac_firmware_0_45_3, megarac_firmware_0_32 }
+import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host {
   megarac_operation_evidence, admit_megarac_host_at_current_build,
   MegaRacHostAdmitted, MegaRacHostRefused, MegaRacOperationNotGrounded,

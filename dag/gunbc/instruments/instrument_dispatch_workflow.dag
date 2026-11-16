@@ -42,6 +42,7 @@ import gunbc.instrument_targets {
   self_host_frontier_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
   roster_import_sweep_controls_label, roster_import_sweep_real_route_label, credential_acquisition_systemd_rows_label,
+  native_serve_roadmap_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import gunbc.instruments.serving_benchmark_run { serving_benchmark_run_plan }
@@ -235,6 +236,10 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
     // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
     credential_acquisition_systemd_rows_label(),
+    // The roadmap dashboard served natively (roadmap node demand-serve-program-image, Route B) needs a
+    // fleet runner to emit+build the NativeIngressDriver program and drive it over real TCP, which no
+    // per-change lane does; dispatched on purpose on the change's head. A row, not a job.
+    native_serve_roadmap_label(),
   ]
 }
 
