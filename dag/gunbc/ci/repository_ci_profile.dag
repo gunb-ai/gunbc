@@ -264,7 +264,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
             day_of_week: Wildcard
           }
         },
-        // THE CHECK SUBJECT, read from its authority (gunbc.ci.ci_spec) rather than re-typed: the drift
+        // THE CHECK SUBJECT, read from its authority (gunbc.ci.ci_run_step_target) rather than re-typed: the drift
         // watch and the CI spec must not hold two copies of which claim polices the generated files.
         check: dag_invocation_of_run_step_target(target: gunbc_ci_tier_o_drift_check_target),
         seal: Absent
@@ -279,7 +279,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         runner: github_hosted_publisher_runner_target(),
         timeout: minute(45),
         trigger_workflow: heal_workflow_authority_name,
-        // The two subjects, taken from the targets ci_spec declares for them, which is where the
+        // The two subjects, taken from the targets gunbc.ci.ci_run_step_target declares for them, which is where the
         // declared-target census folds them. The emitter no longer names either one.
         admit_invocation: dag_invocation_of_run_step_target(target: gunbc_ci_heal_publication_admit_target),
         publish_invocation: dag_invocation_of_run_step_target(target: gunbc_ci_heal_publication_publish_target),
