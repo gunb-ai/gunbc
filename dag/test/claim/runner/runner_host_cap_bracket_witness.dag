@@ -13,7 +13,7 @@ import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
 import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
-import extdeps.systemd { Active, Inactive }
+import extdeps.systemd { Active, Inactive, Deactivating, Failed }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
@@ -194,7 +194,7 @@ test fn no_readmit_reading_is_not_admitting() -> Bool {
 // THE REAL PROJECTION, FROM SHOW TEXT AND A PS LISTING, INTO THE BRACKET DECISION. The earlier controls
 // supply a SlotDrainReading and so cannot see a loss in the projection: a deactivating unit with a live
 // Runner.Worker was read as idle there. These start where the wet reader starts.
-fn show_masked_with(active: String) -> String { concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=", active, "\n") }
+fn show_masked_with(active: String) -> String { systemctl_show_fixture(n: "01", load: "masked", file: "masked", active: active) }
 fn listing_worker() -> String { concat(u(n: "01") as String, " Runner.Worker\n") }
 fn listing_listener_only() -> String { concat(u(n: "01") as String, " Runner.Listener\n") }
 
@@ -641,15 +641,23 @@ fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
   }
 }
 
-fn show_text(n: String, load: String, file: String, active: String) -> String {
-  // A real `systemctl show --property=...,Result,MainPID` always answers BOTH words, and the
-  // activation readback decides on them (Result must be clean AND a main process must exist --
-  // see gunbc.runner.runner_slot_actuation.slot_activation_fresh_read_back_holds). A reading that
-  // omits them is refused by slot_actuation_reading_of, so the show fixture must carry them. A
-  // stopped unit has no main process (MainPID=0); only a running one does.
-  let main_pid = if active == "active" { "424242" } else { "0" }
-  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nResult=success\nMainPID=", main_pid, "\nNeedDaemonReload=no\n")
+// THE ONE FAITHFUL `systemctl show` FIXTURE for this witness. A real
+// `systemctl show --properties=Id,LoadState,UnitFileState,ActiveState,Result,MainPID` answers ALL SIX
+// words on any unit, and the production reader gunbc.runner.runner_slot_actuation.slot_actuation_reading_of
+// refuses a block that omits ANY of them (Absent -> SlotReadRefused), so both the bracket readbacks
+// (show_text) and the drain projections (show_masked_with) MUST come from here or their controls read
+// 0 masks / unproven by accident instead of executing the decision. Per-state values mirror what
+// systemd actually reports: a running unit (ActiveState=active) and a stop in progress (deactivating)
+// still have their main process (MainPID nonzero); a stopped unit (inactive) and a failed one have no
+// main process (MainPID 0). Result carries WHY the last run ended -- a cleanly stopped or running unit
+// reports success, while a unit that ended failed reports a non-success word (exit-code); systemd never
+// answers Result=failed, so a failed unit's Result is exit-code, not a word the classifier would reject.
+fn systemctl_show_fixture(n: String, load: String, file: String, active: String) -> String {
+  let main_pid = if active == "active" || active == "deactivating" { "424242" } else { "0" }
+  let result = if active == "failed" { "exit-code" } else { "success" }
+  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nResult=", result, "\nMainPID=", main_pid, "\nNeedDaemonReload=no\n")
 }
+fn show_text(n: String, load: String, file: String, active: String) -> String { systemctl_show_fixture(n: n, load: load, file: file, active: active) }
 fn show_leg(n: String, load: String, file: String, active: String) -> Leg { Leg { needle: "systemctl show", answer: shell_ok(stdout: show_text(n: n, load: load, file: file, active: active)) } }
 fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer: shell_ok(stdout: "") } }
 fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdout: listing) } }
@@ -1491,13 +1499,40 @@ test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
 // and THIS control goes red at the fixture, instead of the bracket controls silently losing their
 // mask step (a SlotReadRefused that makes running==0 pass by accident).
 test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
+  // Every ActiveState word this witness feeds the reader must resolve as a real systemctl show would:
+  // a recognized state parses to a typed reading carrying that state, and an unknown word is refused
+  // -- never silently dropped. Covers BOTH fixtures (show_text for the bracket readbacks, show_masked_with
+  // for the drain projections) over every state the file uses: active, deactivating, failed, inactive,
+  // and the unknown word wedged. If a future edit drops a required property from the shared builder, a
+  // state stops parsing and this control goes red at the fixture instead of the bracket controls losing
+  // their mask step and passing by accident.
+  let typed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "active")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Active
+    _ => false
+  }
+  let deact_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "deactivating")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Deactivating
+    _ => false
+  }
+  let failed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "failed")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Failed
+    _ => false
+  }
   let stopped_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "inactive")) {
     Present { value: SlotReadingTyped { reading: r } } => r.active == Inactive
     _ => false
   }
-  let running_ok = match slot_actuation_reading_of(unit: u(n: "02"), show_stdout: show_text(n: "02", load: "loaded", file: "enabled", active: "active")) {
-    Present { value: SlotReadingTyped { reading: r } } => r.active == Active
+  let masked_deact_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "deactivating")) {
+    SlotRead { reading: r } => r.active == Deactivating
     _ => false
   }
-  stopped_ok && running_ok
+  let masked_stopped_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")) {
+    SlotRead { reading: r } => r.active == Inactive
+    _ => false
+  }
+  let unknown_refused_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")) {
+    SlotReadRefused { reason: _ } => true
+    _ => false
+  }
+  typed_ok && deact_ok && failed_ok && stopped_ok && masked_deact_ok && masked_stopped_ok && unknown_refused_ok
 }
