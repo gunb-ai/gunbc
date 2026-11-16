@@ -116,6 +116,41 @@ data supermicro_h11ssl_unit3_install_nic_address_standing: H11sslUnit3InstallNic
     read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS; until then the address belongs to no row." as NonEmptyStr,
   }
 
+// THE NAME THE LAN CALLS THIS BOX, and what it resolves to from here. The operator refers to the unit
+// by h11-new.mynetworksettings.com; a resolver query from this container (2026-11-16T00:53Z) answers
+// that name with 192.168.1.236 -- the same address the stale neighbour entry paired with the install
+// NIC -- and a TCP connect to port 22 there is answered. The operator described this as the box's IPv6
+// hostname; from this position the name answered with the IPv4 address above and no v6 answer was seen,
+// so the address family of the sighting is itself part of what is unconfirmed. What this is NOT: it is
+// not the fleet name. The fleet name is the allocation authority's to draw (gunbc.hostname_allocation),
+// and unit1 is the precedent for how a LAN spelling and a fleet name relate -- h11-a16 is that unit's
+// LEGACY hostname row, its fleet name drawn separately (eric). A name the installed OS answers to is an
+// observation about the install the operator ran, not a slot in the allocation ledger.
+type H11sslUnit3LanNameSighting {
+  name: NonEmptyStr,
+  answered_with: Ipv4Address,
+  answered_at: Rfc3339Timestamp,
+  account: NonEmptyStr,
+}
+
+data supermicro_h11ssl_unit3_lan_name_sighting: H11sslUnit3LanNameSighting = H11sslUnit3LanNameSighting {
+  name: "h11-new.mynetworksettings.com" as NonEmptyStr,
+  answered_with: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
+  answered_at: "2026-11-16T00:53:00Z",
+  account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which makes the collision with srv9_host_lan_endpoint a live one, not just a stale table entry" as NonEmptyStr,
+}
+
+// THE ACCELERATORS, as the operator reports them: two Tesla T10 in this box. They matter to the serving
+// half of this unit's enrollment, and they matter to the slot topology jolly-otter-830's cooling lane
+// needs -- which is a read of the installed OS (lspci -vv for the bus ids, dmidecode -t slot for the
+// physical slots), and that read is blocked behind OS access this unit does not yet grant.
+data supermicro_h11ssl_unit3_gpu_report: H11sslReportedFigure = H11sslReportedFigure {
+  value: "two Tesla T10 accelerators" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "an in-band read once the fleet can log in: `lspci -nn` for the device ids and bus addresses, `lspci -vv -s <bus>` for the link widths, and `dmidecode -t slot` for the physical slot each bus sits in -- the bus-to-slot pairing jolly-otter-830's lane cites, and nothing short of it identifies a GPU to a slot." as NonEmptyStr,
+  },
+}
+
 // The SSH host key smart-crane-730 met at that address, recorded as an UNCONFIRMED fingerprint and
 // deliberately NOT put in any trust roster. It is here so a later reader can tell an address-reuse
 // from a key change; it is not here to be trusted. srv1's own known_hosts held an OLDER key for the

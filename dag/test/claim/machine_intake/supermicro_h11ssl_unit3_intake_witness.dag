@@ -44,7 +44,9 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
+  supermicro_h11ssl_unit3_gpu_report,
   supermicro_h11ssl_unit3_install_nic_port_label,
+  supermicro_h11ssl_unit3_lan_name_sighting,
   supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing,
   supermicro_h11ssl_unit3_seen_host_key_fingerprint,
   unit3_bmc_address_is_not_the_install_nic_address,
@@ -212,6 +214,7 @@ test fn witness_every_reported_figure_owes_its_read() -> Bool {
     supermicro_h11ssl_unit3_bmc_firmware_version,
     supermicro_h11ssl_unit3_install_nic_port_label,
     supermicro_h11ssl_unit3_seen_host_key_fingerprint,
+    supermicro_h11ssl_unit3_gpu_report,
   ]
   all(figures, figure_owes_a_read)
 }
@@ -265,5 +268,30 @@ test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satis
     SuspectedCapabilityGap { model: model, requirement: _, standing: _ } =>
       (text(model.module_path) == "gunbc.host.network_install") && (text(model.decl_name) == "TargetDiskContents")
     SuspectedFork { authorities: _ } => false
+  }
+}
+
+// THE NAME SIGHTING AND THE ADDRESS STANDING AGREE, and both point at the address srv9's endpoint row
+// already claims. Two rows about one address that disagree would be exactly the fork the register exists
+// to catch, so the agreement is asserted rather than assumed.
+test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address() -> Bool {
+  match supermicro_h11ssl_unit3_install_nic_address_standing {
+    AddressSeenOnlyInStaleNeighbourEntry { address: seen, collision_claimed_by: claimed_by, read_obligation: _ } =>
+      ipv4_address_eq(a: supermicro_h11ssl_unit3_lan_name_sighting.answered_with, b: seen)
+        && string_contains(s: text(supermicro_h11ssl_unit3_lan_name_sighting.account), pattern: "srv9")
+        && string_contains(s: text(claimed_by), pattern: "srv9")
+    AddressConfirmed { address: _, confirmed_at: _ } => false
+  }
+}
+
+// THE GPU FIGURE OWES THE BUS-TO-SLOT PAIRING, not just a device count: the cooling lane cites slots,
+// and a count without a slot pairing cannot be used by it.
+test fn witness_the_gpu_figure_owes_the_bus_to_slot_pairing() -> Bool {
+  match supermicro_h11ssl_unit3_gpu_report.standing {
+    TranscribedUncited { read_obligation: owed } =>
+      string_contains(s: text(owed), pattern: "dmidecode -t slot")
+        && string_contains(s: text(owed), pattern: "lspci")
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
 }
