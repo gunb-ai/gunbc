@@ -25,6 +25,7 @@ import gunbc.compute.remote_build_serving_setup {
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
   serving_assessment_receipt_text, ServingLegFailure, ServingObserved, serving_deviation_item,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
+  serving_store_dir_mode_octal,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
@@ -166,6 +167,20 @@ fn refused_b(item: String) -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationRefused { cause: ServingLegFailure { item: item, cause: "leg failed" } }
 }
 
+// The store-mode legs, derived from the SAME declared mode the desired state carries (never a bare
+// octal reauthored per cell), so a "correct" fixture proves the mode and only the mode drifts.
+fn store_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: serving_store_dir_mode_octal(d: d))
+}
+
+fn store_mode_absent() -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: "")
+}
+
+fn store_mode_refused(item: String) -> ObservationAttempt<String, ServingLegFailure> {
+  refused_s(item: item, cause: "stat failed")
+}
+
 // ── the plan-time pin + the matched ledger, for the converged fixtures ───────────
 //
 // The single comparator compares the host-read sha/revision/arch against a PIN the executor
@@ -225,7 +240,7 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     passwd: est_s(converged_passwd()),
     group: est_s(converged_group()),
     authorized_keys: est_s(dline),
-    store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
     serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
     ledger_rows: converged_ledger(d: d),
@@ -295,7 +310,7 @@ test fn wrong_uid_diverges_the_account() -> Bool {
         passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -320,7 +335,7 @@ test fn group_without_the_account_diverges() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s("gunbc-compute:x:1006:briansrls\n"),
         authorized_keys: est_s(line),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -345,7 +360,7 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(concat(line, " ssh-rsa STRAY stray@host")),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -373,7 +388,7 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(""),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -401,7 +416,7 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
-        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -433,7 +448,7 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
         passwd: refused_s("account", "sudo: no tty"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -461,7 +476,7 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
-        store_root: refused_b("store.root"), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: refused_b("store.root"), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -488,7 +503,7 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
         passwd: refused_s("account", "ssh refused"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -565,7 +580,7 @@ fn reads_over(
   serving_observed_from_reads(
     elevation: est_elevation(),
     passwd: est_s(converged_passwd()), group: est_s(converged_group()), authorized_keys: est_s(forced_line(d)),
-    store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
     serve_binary_sha256: sha, checkout_revision: rev, target_arch: arch,
     ledger_rows: ledger,
@@ -784,7 +799,7 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -806,7 +821,7 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:9999:\n"),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -828,7 +843,7 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s("squatter:x:1006:\ngunbc-build:x:1005:\n"),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -851,7 +866,7 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s("root:x:0:\n"),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -880,7 +895,7 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -908,7 +923,7 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
         passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
@@ -930,7 +945,7 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
-        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
         serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),

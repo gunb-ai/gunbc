@@ -39,7 +39,7 @@ import gunbc.fleet.fleet_posix_accounts {
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
-import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode }
+import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.ssh.keys { authorized_key_entry_line }
@@ -91,6 +91,15 @@ type ServingDeviation
   | LedgerNameMismatch { path: FilePath, field: String, declared: String, observed: String }
   | LedgerModeMismatch { path: FilePath, declared: FileMode, observed: FileMode }
   | LedgerAbsent { path: FilePath }
+  // The account EXISTS (its passwd row came back) but carries a login shell other than the account
+  // model declares. UNHANDLED: the apply must not run usermod to rewrite an existing account, so a
+  // wrong shell makes the run refuse rather than mutate (fail_closed; review 95935).
+  | AccountShellMismatch { desired: String, observed: String }
+  // A store directory that EXISTS but whose stat mode differs from the declared store-dir mode. The
+  // two arms (root / staging) are separate so the item label is derived from the arm (never stored)
+  // and each routes to its own EnsureDirectory at the declared mode (review 95935).
+  | StoreRootModeMismatch { path: String, declared: FileMode, observed: FileMode }
+  | StoreStagingModeMismatch { path: String, declared: FileMode, observed: FileMode }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -109,6 +118,9 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     LedgerNameMismatch { path: _, field: _, declared: _, observed: _ } => "ledger"
     LedgerModeMismatch { path: _, declared: _, observed: _ } => "ledger"
     LedgerAbsent { path: _ } => "ledger"
+    AccountShellMismatch { desired: _, observed: _ } => "account.shell"
+    StoreRootModeMismatch { path: _, declared: _, observed: _ } => "store.root.mode"
+    StoreStagingModeMismatch { path: _, declared: _, observed: _ } => "store.staging.mode"
   }
 }
 
@@ -135,12 +147,33 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     LedgerNameMismatch { path, field, declared, observed } => concat((path as String), " ", field, " (want ", declared, ", have ", observed, ")")
     LedgerModeMismatch { path, declared, observed } => concat((path as String), " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     LedgerAbsent { path } => concat((path as String), " (confirmed absent)")
+    AccountShellMismatch { desired, observed } => concat("account.shell (want ", desired, ", have ", observed, ")")
+    StoreRootModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    StoreStagingModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
   }
 }
 
 // A declared fact that could NOT be established because its leg failed. It makes the whole
 // host indeterminate; it is never written as though it were a proven absence.
 type ServingUnknown { item: String, cause: String }
+
+// The two-directional read of the account's login shell against the model, and of the store
+// directories' mode against the declared store-dir mode. Each is a small decision coproduct so the
+// assess fold (serving_assess) folds one typed verdict per fact rather than re-deriving the octal /
+// shell comparison inline (root_generalization; review 95935). 'Unconcerned' means the fact does not
+// apply here — the account is absent (creation carries the shell) or the directory is absent / its
+// presence read was refused (the presence leg owns that) — and contributes neither deviation nor unknown.
+type AccountShellCheck
+  = AccountShellCheckMet
+  | AccountShellCheckUnconcerned
+  | AccountShellCheckDrifted { observed: String }
+  | AccountShellCheckUnknown { cause: String }
+
+type StoreModeCheck
+  = StoreModeCheckMet
+  | StoreModeCheckUnconcerned
+  | StoreModeCheckDrifted { observed: FileMode }
+  | StoreModeCheckUnknown { cause: String }
 
 // Why the assessment itself is refused: a malformed goal. A host whose forced-command line
 // will not render cannot serve, so it is refused outright, never half-written.
@@ -213,6 +246,13 @@ type RemoteBuildServingDesired {
   group_members: List<String>
   // the account's supplementary groups, from the fleet's declared set.
   supplementary_groups: List<NonEmptyStr>
+  // The login shell the account MUST carry, read off the account model
+  // (gunbc.fleet.fleet_posix_accounts::fleet_posix_remote_build_user.shell). It is the single
+  // authority: the apply's useradd spells it, and the observe checks it against the passwd
+  // entry's 7th field. A wrong shell on an existing account is an UNHANDLED deviation (never a
+  // usermod). Refused at construction when the model's shell is LoginShellUnobserved — the
+  // desired state is then absent and the host is refused, never defaulted (fail_closed; review 95935).
+  account_shell: String
 
   // component 3: the host-scoped compute-capacity ledger (root + 03770 areas).
   ledger_dirs: List<OwnedDirectoryTarget>
@@ -226,15 +266,27 @@ type RemoteBuildServingDesired {
   checkout_dir: String
   // component 6: the seed binary installed for THIS host's architecture.
   serve_binary: String
+  // The seed binary's declared mode, from the serving instance's owning authority. The apply's
+  // install renders it via file_mode_octal; it is no longer a bare literal in the write arm
+  // (single_authority, review 95935).
+  serve_binary_mode: FileMode
   // component 7: the materialization store root + its staging sibling, 0755.
   store_root: String
   store_staging: String
+  // The declared mode BOTH store directories carry (root and staging share it). It is the single
+  // authority the apply's EnsureDirectory reads and the observe's stat leg compares against, so a
+  // mode drift on an existing store directory raises a deviation routing to EnsureDirectory
+  // (single_authority + root_generalization, review 95935).
+  store_dir_mode: FileMode
 
   // component 8: the account's authorized_keys (mode 0600), and the single
   // forced-command line the host must carry. none when the host's line is
   // unrenderable — exactly the serve-time refusal, surfaced at plan time so a host
   // that cannot serve is refused, not half-written at apply.
   authorized_keys_path: String
+  // The declared mode of the account's authorized_keys file. The apply's write renders it via
+  // file_mode_octal rather than restating "0600" in the write arm (single_authority, review 95935).
+  authorized_keys_mode: FileMode
   forced_command_line: String?
 }
 
@@ -274,6 +326,103 @@ fn serving_forced_command_line(host: HostIdentity) -> String? {
   }
 }
 
+// The declared modes for the serving write's directory/file facts. These are the SINGLE
+// AUTHORITY for those facts (review 95935): the apply arms read them off RemoteBuildServingDesired
+// (which sources them from here) and the observe legs compare the stat's octal against them, so
+// neither the apply nor the observe restates a bare octal string. Each is read back through
+// file_mode_of_octal_text (the one octal grammar, closed_grounded_substrate) — a spelling that does
+// not parse is a REFUSAL, surfaced as the desired state being absent (fail_closed), never a zero mode.
+fn serving_store_dir_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0755")
+}
+
+fn serving_authorized_keys_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0600")
+}
+
+fn serving_serve_binary_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0755")
+}
+
+// The declared store-dir mode as the single chmod octal spelling, from the desired state. Used by
+// the apply's EnsureDirectory (its mode arg) and by the observe's mode comparison, so the spelling
+// is derived from the FileMode authority rather than authored at each call site.
+fn serving_store_dir_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.store_dir_mode)
+}
+
+// The account's login shell as an observation of its passwd row's 7th field (the field's authority
+// is extdeps.linux.etc_passwd::EtcPasswdEntry.shell). Mirror of serving_passwd_uid/gid: none means
+// the read was refused OR the account row is absent — the caller only consults it once the account
+// is known present, so a None there is a shell the read could not surface.
+fn serving_passwd_shell(text: String?, name: NonEmptyStr) -> String? {
+  match text {
+    Absent => Absent
+    Present { value: t } => match etc_passwd_entry_named(entries: etc_passwd_entries(text: t), name: name) {
+      Absent => Absent
+      Present { value: e } => Present { value: e.shell }
+    }
+  }
+}
+
+// Whether the account's declared login shell is what the passwd entry carries. The account is only
+// consulted when the passwd read is ESTABLISHED and the account row is PRESENT (its uid leg came
+// back), so a refused read or an absent row is not this fact's business — the account-presence leg
+// and the "account" unknown already carry those. A shell that differs from the model's declared
+// shell is an AccountShellMismatch: UNHANDLED, because fixing an existing account's shell is a
+// usermod the apply must not run (refuse rather than mutate, fail_closed; review 95935).
+fn serving_account_shell_check(d: RemoteBuildServingDesired, passwd: ObservationAttempt<String, ServingLegFailure>) -> AccountShellCheck {
+  match passwd {
+    ObservationRefused { cause: _ } => AccountShellCheckUnconcerned
+    ObservationEstablished { observed: t } =>
+      match serving_passwd_uid(text: Present { value: t }, name: d.account_name) {
+        Absent => AccountShellCheckUnconcerned
+        Present { value: _ } =>
+          match serving_passwd_shell(text: Present { value: t }, name: d.account_name) {
+            Absent => AccountShellCheckUnknown { cause: "the account's passwd row carried no readable login shell" }
+            Present { value: shell } =>
+              if shell == d.account_shell {
+                AccountShellCheckMet
+              } else {
+                AccountShellCheckDrifted { observed: shell }
+              }
+          }
+      }
+  }
+}
+
+// The store directory's declared mode compared with what stat read back. Returns unconcerned when
+// the directory is confirmed absent (its presence leg is the deviation there) or the presence read
+// was refused; a mode drift is StoreModeDrift, and a present directory whose stat octal is missing
+// or unparseable is an unknown (fail_closed — an unreadable mode is never read as the declared one).
+fn serving_store_mode_check(present: ObservationAttempt<Bool, ServingLegFailure>, mode: ObservationAttempt<String, ServingLegFailure>, declared: FileMode) -> StoreModeCheck {
+  match present {
+    ObservationRefused { cause: _ } => StoreModeCheckUnconcerned
+    ObservationEstablished { observed: is_present } =>
+      if is_present == false {
+        StoreModeCheckUnconcerned
+      } else {
+        match mode {
+          ObservationRefused { cause: c } => StoreModeCheckUnknown { cause: c.cause }
+          ObservationEstablished { observed: text } =>
+            if text == "" {
+              StoreModeCheckUnknown { cause: "the store directory reported present but its mode was unreadable" }
+            } else {
+              match file_mode_of_octal_text(text: text) {
+                Absent => StoreModeCheckUnknown { cause: concat("the store directory's mode ", text, " is not an octal mode") }
+                Present { value: got } =>
+                  if file_mode_octal(mode: got) == file_mode_octal(mode: declared) {
+                    StoreModeCheckMet
+                  } else {
+                    StoreModeCheckDrifted { observed: got }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
 fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired? {
   let instance = remote_build_serving_instance(host: host)
   let home = fleet_posix_remote_build_home() as String
@@ -285,13 +434,27 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
   // So the desired state is absent and the plan refuses the host, never assesses the empty member.
   match service_user_opt {
     Absent => Absent
-    Present { value: service_user } => Present { value: {
+    // The login shell is READ OFF the account model (its owning authority), never restated here. An
+    // unobserved shell refuses the whole desired state (fail_closed) rather than defaulting it to
+    // some path the apply would write; the four declared modes are read back through the one octal
+    // grammar and a non-parsing spelling likewise refuses (they cannot happen for these literals,
+    // but a refused read is never silently read as a zero/default mode — review 95935).
+    Present { value: service_user } => match fleet_posix_remote_build_user.shell {
+      LoginShellUnobserved => Absent
+      LoginShellObserved { path: account_shell } => match serving_store_dir_declared_mode() {
+        Absent => Absent
+        Present { value: store_dir_mode } => match serving_authorized_keys_declared_mode() {
+          Absent => Absent
+          Present { value: authorized_keys_mode } => match serving_serve_binary_declared_mode() {
+            Absent => Absent
+            Present { value: serve_binary_mode } => Present { value: {
     host: host,
     account_name: fleet_posix_remote_build_user.name as String,
     account_uid: fleet_posix_remote_build_user.uid,
     account_gid: fleet_posix_remote_build_user.gid,
     account_group_name: fleet_posix_remote_build_user.name as String,
     account_home: home,
+    account_shell: account_shell as String,
     group_name: fleet_posix_compute_ledger_group_name as String,
     group_gid: fleet_posix_compute_ledger_group_gid,
     group_members: [service_user, fleet_posix_remote_build_user.name as String],
@@ -302,11 +465,18 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     rustup_home: concat(home, "/.rustup"),
     checkout_dir: instance.repo_root as String,
     serve_binary: instance.serve_binary as String,
+    serve_binary_mode: serve_binary_mode,
     store_root: concat(instance.instance_root as String, "/materialization-store"),
     store_staging: concat(instance.instance_root as String, "/materialization-store-staging"),
+    store_dir_mode: store_dir_mode,
     authorized_keys_path: concat(home, "/.ssh/authorized_keys"),
+    authorized_keys_mode: authorized_keys_mode,
     forced_command_line: serving_forced_command_line(host: host),
-    } }
+            } }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -338,6 +508,12 @@ type ServingObserved {
   authorized_keys: ObservationAttempt<String, ServingLegFailure>
   store_root: ObservationAttempt<Bool, ServingLegFailure>
   store_staging: ObservationAttempt<Bool, ServingLegFailure>
+  // The stat octal read back for each store directory, so a MODE drift on a present directory is a
+  // proved deviation (routed to EnsureDirectory at the declared mode) rather than a presence check
+  // that only proves the directory exists. "" means stat saw no such file (the presence leg owns
+  // that); a refused read is an unknown, never read as the declared mode (review 95935).
+  store_root_mode: ObservationAttempt<String, ServingLegFailure>
+  store_staging_mode: ObservationAttempt<String, ServingLegFailure>
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>
   checkout: ObservationAttempt<Bool, ServingLegFailure>
   toolchain: ObservationAttempt<Bool, ServingLegFailure>
@@ -656,6 +832,27 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       )
       // the ledger, joined to the observe's per-row reads by path (see serving_ledger_judge).
       let ledger = serving_ledger_judge(d: d, rows: o.ledger_rows)
+      // The two added desired-state facts (review 95935), each folded through its own check coproduct
+      // so assess never re-derives the octal/shell compare. The account shell drifts as an UNHANDLED
+      // deviation (never a usermod); a store directory's mode drifts toward EnsureDirectory at the
+      // declared mode, and an unreadable mode is an unknown rather than a silent match.
+      let root_mode_check = serving_store_mode_check(present: o.store_root, mode: o.store_root_mode, declared: d.store_dir_mode)
+      let staging_mode_check = serving_store_mode_check(present: o.store_staging, mode: o.store_staging_mode, declared: d.store_dir_mode)
+      let shell_check = serving_account_shell_check(d: d, passwd: o.passwd)
+      let mode_shell_deviations = concat(
+        concat(
+          match root_mode_check { StoreModeCheckDrifted { observed: g } => [StoreRootModeMismatch { path: d.store_root, declared: d.store_dir_mode, observed: g }]  _ => [] },
+          match staging_mode_check { StoreModeCheckDrifted { observed: g } => [StoreStagingModeMismatch { path: d.store_staging, declared: d.store_dir_mode, observed: g }]  _ => [] },
+        ),
+        match shell_check { AccountShellCheckDrifted { observed: s } => [AccountShellMismatch { desired: d.account_shell, observed: s }]  _ => [] },
+      )
+      let mode_shell_unknowns = concat(
+        concat(
+          match root_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "store.root.mode", cause: c }]  _ => [] },
+          match staging_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "store.staging.mode", cause: c }]  _ => [] },
+        ),
+        match shell_check { AccountShellCheckUnknown { cause: c } => [ServingUnknown { item: "account.shell", cause: c }]  _ => [] },
+      )
       assess_by_deviations_and_unknowns(
         evidence: ServingEvidence {
           account_uid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_uid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
@@ -673,14 +870,14 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           checkout_revision: match o.checkout_revision { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
           target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
-        deviations: concat(deviations, concat(pin_deviations, ledger.deviations)),
+        deviations: concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations),
         // the elevation precondition, folded in FIRST: 'sudo -n' refused (or an elevation leg nobody
         // read) is itself an unknown, and unknowns dominate deviations in assess_by_deviations_and_unknowns,
         // so a refused elevation forces GoalIndeterminate even if a non-sudo leg also shows drift — the
         // apply can never read "drift" for a host whose sudo-dependent state it could not have written anyway.
         unknowns: concat(
           match o.elevation { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "elevation", cause: c.cause }] },
-          concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)),
+          concat(concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)), mode_shell_unknowns),
         ),
       )
     }
@@ -835,6 +1032,8 @@ fn serving_observed_from_reads(
   authorized_keys: ObservationAttempt<String, ServingLegFailure>,
   store_root: ObservationAttempt<Bool, ServingLegFailure>,
   store_staging: ObservationAttempt<Bool, ServingLegFailure>,
+  store_root_mode: ObservationAttempt<String, ServingLegFailure>,
+  store_staging_mode: ObservationAttempt<String, ServingLegFailure>,
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
@@ -856,6 +1055,8 @@ fn serving_observed_from_reads(
     authorized_keys: serving_elevation_gate_str(elevation, "authorized_keys.forced_command", authorized_keys),
     store_root: serving_elevation_gate_bool(elevation, "store.root", store_root),
     store_staging: serving_elevation_gate_bool(elevation, "store.staging", store_staging),
+    store_root_mode: serving_elevation_gate_str(elevation, "store.root.mode", store_root_mode),
+    store_staging_mode: serving_elevation_gate_str(elevation, "store.staging.mode", store_staging_mode),
     serve_binary: serving_elevation_gate_bool(elevation, "seed.serve_binary", serve_binary),
     checkout: serving_elevation_gate_bool(elevation, "checkout", checkout),
     toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),
