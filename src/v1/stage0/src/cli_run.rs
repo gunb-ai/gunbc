@@ -9947,9 +9947,71 @@ mod closure_edge_demand_tests {
         for endpoint in pulled.iter().skip(1) {
             assert!(
                 Rc::ptr_eq(pulled[0], endpoint),
-                "an endpoint was spelled again instead of sharing the interned path"
+                "an endpoint was spelled again instead of cloning the roster's one allocation"
             );
         }
+    }
+
+    /// THE INTERNER AT ITS OWN GRAIN. The sharing the test above pins is the roster's; the interner
+    /// serves the OTHER half of the index -- a provider's import closure, which the edge index reads
+    /// once for every provider that reaches it. Two providers that both reach one module must get the
+    /// SAME allocation for it, and one provider asked twice must get the memo's row back: one
+    /// spelling per (provider, closure member) is what measured 71.7 MB of path bytes held by
+    /// 5.56 GB resident
+    /// (gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence).
+    #[test]
+    fn interned_import_closures_share_one_allocation_per_module() {
+        let fixture = Fixture::new(&[
+            (
+                "dag/provider.dag",
+                "module chain.provider\nfn value() -> Int { 1 }\n",
+            ),
+            (
+                "dag/mid.dag",
+                "module chain.mid\nimport chain.provider { value }\nfn read() -> Int { value() }\n",
+            ),
+            (
+                "dag/first.dag",
+                "module chain.first\nimport chain.mid { read }\nfn a() -> Int { read() }\n",
+            ),
+            (
+                "dag/second.dag",
+                "module chain.second\nimport chain.mid { read }\nfn b() -> Int { read() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let facts = &index.module_graph_facts;
+        let rel = |module: &str| {
+            let source = index.source_files.get(module).unwrap_or_else(|| {
+                panic!("the pool index must carry '{module}'");
+            });
+            workspace_relative_repo_path(&source.path)
+        };
+        let provider_path = rel("chain.provider");
+        let mid = interned_import_closure(&rel("chain.mid"), facts);
+        let again = interned_import_closure(&rel("chain.mid"), facts);
+        assert!(
+            Rc::ptr_eq(&mid, &again),
+            "one provider asked twice got two closure rows instead of the memo's"
+        );
+        let first = interned_import_closure(&rel("chain.first"), facts);
+        let in_mid = mid
+            .iter()
+            .find(|path| ***path == *provider_path)
+            .expect("chain.mid's closure must name the provider file");
+        let in_first = first
+            .iter()
+            .find(|path| ***path == *provider_path)
+            .unwrap_or_else(|| {
+                panic!(
+                "chain.first's closure must reach the provider file through chain.mid, got {:?}",
+                first.iter().map(|path| path.to_string()).collect::<Vec<_>>()
+            )
+            });
+        assert!(
+            Rc::ptr_eq(in_mid, in_first),
+            "one module was spelled once per provider instead of interned once for the pool"
+        );
     }
 }
 

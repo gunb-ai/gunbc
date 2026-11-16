@@ -13049,17 +13049,20 @@ fn affected_set_model_args(
 ) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
     use crate::v1_interpreter::{str_value, Value};
     let reached = regen_reverse_closure_host(walk_roots, edges);
-    // The two endpoints SHARE the host's interned path instead of spelling it again: an edge handed
-    // to the model is the third copy of the same handful of strings otherwise.
-    let interned = |path: &Rc<str>| Value::Str(crate::v1_rt::RcStr::new(Rc::clone(path)));
+    // Both endpoints are CLONES OF THE ONE ALLOCATION this route already holds for that module --
+    // the roster `regen_module_edges` built -- rather than a fresh spelling per edge; an edge handed
+    // to the model would otherwise be the third copy of the same handful of strings. The closure
+    // half of the index shares through `intern_module_path` instead, and that pairing is pinned by
+    // `interned_import_closures_share_one_allocation_per_module`.
+    let shared_value = |path: &Rc<str>| Value::Str(crate::v1_rt::RcStr::new(Rc::clone(path)));
     let edge_values: Vec<Value> = edges
         .iter()
         .filter(|(_, to)| reached.contains(&**to))
         .map(|(from, to)| Value::Record {
             type_name: ctx.sym("DependencyEdge"),
             fields: Rc::new(vec![
-                (ctx.sym("from"), interned(from)),
-                (ctx.sym("to"), interned(to)),
+                (ctx.sym("from"), shared_value(from)),
+                (ctx.sym("to"), shared_value(to)),
             ]),
         })
         .collect();
