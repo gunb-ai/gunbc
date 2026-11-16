@@ -117,3 +117,7 @@ data read_set_convergence_plan: Plan = Plan {
   body: read_set_convergence_body(),
   retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every live consumer in section 3 (A1 fast lane, A2 parse-verdict reuse, A3 partition guard, heal's products) decides validity through the read-set authority, and the retired mechanisms are deleted: B1, B2, B4, C2, C3, C4, C6, D1-D5, C1's touched-path wrappers and suffix matcher, and C5's three dead functions (C5's `import_closure_live_paths` stays with its consumer, and B3 follows the frozen compiler-closure emitter's own migration); the authority's home is then cited by gunbc.plans.demand_engine_program section 2.3 and this plan deletes.") }
 }
+
+// Plan-only fast-lane probe (session cool-lynx-59, 2026-11-16): regression control for
+// TODO 3a of node adhoc-66aa884a-406. This comment is the whole diff; the runs
+// v2-bootstrap must classify "reuse" with the job under five minutes.
