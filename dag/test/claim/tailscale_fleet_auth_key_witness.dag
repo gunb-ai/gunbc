@@ -51,8 +51,10 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_node_tag,
   tailscale_fleet_auth_key_policy,
   tailscale_fleet_auth_key_admitted,
-  tailscale_fleet_auth_key_generated_on,
+  tailscale_fleet_auth_key_console_observed_expiry,
+  tailscale_fleet_auth_key_expiry_days,
   tailscale_fleet_auth_key_expires_on,
+  tailscale_fleet_auth_key_generated_on,
   tailscale_fleet_auth_key_usable_on,
   tailscale_fleet_auth_key_host_directory,
   tailscale_fleet_auth_key_host_path,
@@ -160,38 +162,54 @@ test fn w_key_wires_are_the_upstream_words() -> Bool {
     && tailscale_auth_key_approval_wire(approval: AuthKeyPreApproved) == "pre-approved"
 }
 
-// ── THE EXPIRY: generated 2026-11-15, valid THROUGH 2027-02-13, refused after ─────────────────────────
+// ── THE EXPIRY: ONE DERIVED FACT, PINNED TO THE POLICY AND TO THE CONSOLE OBSERVATION ────────────────
+// Review 95888: the lifetime was three independent literals checked only against a hard-coded 90 -- a
+// fork under gunbc.design_argument::single_authority, and a literal oracle under fail_closed ("compare
+// a live population to a numeric literal only when the literal is grounded"). The model now records the
+// mint day and the policy window and DERIVES the expiry; this witness is where the three statements are
+// tied together, with the POLICY -- the authority available to ground it -- as the oracle, never 90.
 
-test fn w_expiry_window_is_the_operators_date() -> Bool {
-  match tailscale_fleet_auth_key_generated_on {
-    // The checked constructors: an Absent here would be an impossible recorded date, and the join
-    // refuses on it -- this witness is where "the recorded dates ARE real, and THESE" is pinned.
-    Absent => false
-    Present { value: generated } =>
-      match tailscale_fleet_auth_key_expires_on {
-        Absent => false
-        Present { value: expires } =>
-          generated.year == 2026
-            && generated.month == 11
-            && generated.day == 15
-            && expires.year == 2027
-            && expires.month == 2
-            && expires.day == 13
-            // Ordered on the corpus calendar authority's own day count, not a comparison this module
-            // invents: the window between the two recorded dates is exactly the 90 days the policy
-            // declares.
-            && iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day) -
-              iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day) ==
-              90
-      }
-  }
+test fn w_expiry_window_is_derived_and_agrees_with_console() -> Bool {
+  let policy_seconds = second_count(tailscale_fleet_auth_key_policy.expires_after)
+  let policy_days = tailscale_fleet_auth_key_expiry_days()
+  // The whole-days division is exact against the policy's own Second count -- grounded on the policy,
+  // and this is what keeps tailscale_fleet_auth_key_expiry_days' integer division faithful.
+  policy_days * seconds_per_day() == policy_seconds
+    && match tailscale_fleet_auth_key_generated_on {
+      // The checked constructor: an Absent mint day would be an unreadable record, and the join refuses
+      // on it -- this witness pins that the recorded mint day IS the console's reading.
+      Absent => false
+      Present { value: generated } =>
+        generated.year == 2026
+          && generated.month == 11
+          && generated.day == 15
+          && match tailscale_fleet_auth_key_expires_on() {
+            Absent => false
+            Present { value: expires } =>
+              // DERIVATION IDENTITY on the calendar authority's own day-count round-trip: the expiry is
+              // mint day + policy window, nothing else. Red if it ever becomes an independent literal.
+              iso8601_days_from_civil(y: expires.year, m: expires.month, d: expires.day) -
+                iso8601_days_from_civil(y: generated.year, m: generated.month, d: generated.day) ==
+                policy_days
+                // CROSS-CHECK against the operator's console observation: a key re-minted with a
+                // different lifetime makes derived and observed disagree, and THAT is what turns this
+                // red -- not a number copied from the tree.
+                && match tailscale_fleet_auth_key_console_observed_expiry {
+                  Absent => false
+                  Present { value: observed } =>
+                    observed.year == expires.year
+                      && observed.month == expires.month
+                      && observed.day == expires.day
+                }
+          }
+    }
 }
 
 // The day itself still joins (the expiry day is the LAST valid day); the day after refuses. This is the
 // arm the join consults before it puts a key in front of `up`, so a stale pin fails as a refusal naming
 // the date rather than as a hang.
 test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
-  tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on)
+  tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on())
     && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
       year: 2027,
       month: 2,
@@ -213,7 +231,7 @@ test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
 test fn w_raw_literal_date_verifies_unverifiable_never_valid() -> Bool {
   let bogus_expires = Iso8601CivilDate { year: 2026, month: 13, day: 40 }
   let bogus_today = Iso8601CivilDate { year: 2026, month: 2, day: 30 }
-  let good_expires = match tailscale_fleet_auth_key_expires_on {
+  let good_expires = match tailscale_fleet_auth_key_expires_on() {
     Present { value: d } => d
     Absent => Iso8601CivilDate { year: 2027, month: 2, day: 13 }
   }

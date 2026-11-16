@@ -43,10 +43,15 @@ import extdeps.tailscale.join {
   tailscale_auth_key_expiry_verdict,
   tailscale_auth_key_policy_admit,
 }
-import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_date }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_civil_date,
+  iso8601_civil_from_days,
+  iso8601_days_from_civil,
+}
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import std.measure { Second, second, seconds_per_day }
+import std.measure { Second, second, second_count, seconds_per_day }
 import std.optional { Optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 
@@ -150,11 +155,16 @@ fn tailscale_fleet_auth_key_approval_wire() -> String {
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 // WHEN THE KEY STOPS WORKING -- AND WHY THE JOIN REFUSES ON IT RATHER THAN DISCOVERING IT.
 //
-// The operator generated the key on 2026-11-15 with the 90-day expiry, so its last day of validity is
-// 2027-02-13 (their reading, corrected the same day from an earlier 2026 date; the console is the
-// authority and the read-back below is what checks this record against it). The date is modelled rather
-// than inferred from `expires_after` because a lapse and the console's clock are what the operator
-// sees; the day count is what upstream promised at generation.
+// THE LIFETIME IS ONE FACT WITH ONE AUTHORITY, NOT THREE LITERALS (review 95888;
+// gunbc.design_argument::single_authority: "a second place that independently decides it is a fork").
+// What the fleet RECORDS is two things: the mint day the operator read on the console
+// (tailscale_fleet_auth_key_generated_on) and what the fleet ASKED upstream to enforce -- the policy's
+// expires_after (Tailscale issues a key to expire that many days after generation, cited at
+// extdeps.tailscale.join). The expiry day is then DERIVED, tailscale_fleet_auth_key_expires_on(), never
+// typed by hand. The console's displayed date is kept as a separate OBSERVATION row
+// (tailscale_fleet_auth_key_console_observed_expiry), and the witness requires derived == observed: a
+// re-mint with a different lifetime makes the two disagree and turns the witness red on the real
+// mismatch, not on a hard-coded number.
 //
 // THE REFUSAL HAS TO BE UP FRONT. An expired auth key fails `tailscale up` with an error whose wording is
 // about the login, not about the key's age; a converge that ran `up` and then read a peer list would report
@@ -170,14 +180,42 @@ data tailscale_fleet_auth_key_generated_on: Optional<Iso8601CivilDate> = iso8601
   day: 15,
 )
 
-// The recorded expiry, checked at the constructor: if this record ever reads Absent, the model has been
-// edited into an impossible date and every join using the key REFUSES (tailscale_fleet_auth_key_usable_on
-// fails closed on Absent), rather than comparing a month-13 number forever.
-data tailscale_fleet_auth_key_expires_on: Optional<Iso8601CivilDate> = iso8601_civil_date(
+// The day the console showed the operator (their reading, corrected the same day from an earlier 2026
+// date). This row is EVIDENCE of an observation, not the model's expiry: the witness pins
+// derived-expiry == observed, so the record is checked against what the console said and against what
+// the policy demands, in one place.
+data tailscale_fleet_auth_key_console_observed_expiry: Optional<Iso8601CivilDate> = iso8601_civil_date(
   year: 2027,
   month: 2,
   day: 13,
 )
+
+// The policy's window in whole days. The witness asserts this division is exact
+// (days * seconds_per_day() == second_count(expires_after)); the fleet's own policy row is built as
+// count: N * seconds_per_day(), so it is exact BY CONSTRUCTION and the witness is what keeps it so.
+fn tailscale_fleet_auth_key_expiry_days() -> Int {
+  second_count(tailscale_fleet_auth_key_policy.expires_after) / seconds_per_day()
+}
+
+// THE expiry: mint day plus the policy's window, on the corpus calendar authority's own day-count
+// round-trip -- the same civil_from_days the module's ISO parsers use, so no fork of the proleptic
+// Gregorian rule appears here. Absent only if the mint day itself is unreadable; usable_on fails closed
+// on Absent, so an unreadable record refuses every join rather than comparing a plausible number.
+fn tailscale_fleet_auth_key_expires_on() -> Optional<Iso8601CivilDate> {
+  match tailscale_fleet_auth_key_generated_on {
+    Absent => Absent
+    Present { value: generated } =>
+      Present {
+        value: iso8601_civil_from_days(
+          days: iso8601_days_from_civil(
+            y: generated.year,
+            m: generated.month,
+            d: generated.day,
+          ) + tailscale_fleet_auth_key_expiry_days(),
+        )
+      }
+  }
+}
 
 // THE DAY THE JOIN IS RUNNING, SUPPLIED BY THE CALLER. The model does not read a clock: a converge entry
 // takes its "today" as an input from the environment it runs in (gunbc.tailscale_join_converge reads it the
@@ -185,8 +223,9 @@ data tailscale_fleet_auth_key_expires_on: Optional<Iso8601CivilDate> = iso8601_c
 // re-derived -- and re-refused -- on any date without a hidden dependency on the wall clock of whoever
 // compiled it.
 fn tailscale_fleet_auth_key_usable_on(today: Optional<Iso8601CivilDate>) -> Bool {
-  match tailscale_fleet_auth_key_expires_on {
-    // A key whose recorded expiry is not a real date cannot be vouched for -- refuse.
+  match tailscale_fleet_auth_key_expires_on() {
+    // A key whose mint day cannot be read cannot have its expiry derived, hence cannot be vouched
+    // for -- refuse.
     Absent => false
     Present { value: expires_on } =>
       match today {
