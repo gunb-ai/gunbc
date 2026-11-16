@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
-import std.types { String, List, NonEmptyStr, FilePath, GitRef }
+import std.types { String, List, NonEmptyStr }
 import gunbc.dispatch_credential_acquisition {
   credential_acquisition_slots, credential_acquisition_store, CredentialAcquisitionStoreReady, CredentialAcquisitionStoreUnready,
   credential_recover_root,
@@ -82,18 +82,11 @@ import gunbc.live_deploy.release_binding {
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
   ReleaseBindingUnobserved,
 }
-import gunbc.live_deploy.deployed_tree_observation {
-  DeployedTreeObservation, DeployedTreeObserved, DeployedTreeUnobservable,
-  DeployedTreeContentState, DeployedScopeMatchesCommit, DeployedScopeDiverged,
-  TreeCommandFailed,
-}
-import std.content_hash { Fnv1a64Structural }
+import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_over_self_ssh }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
-  HealthzObservation, HealthzServed, HealthzRefused, observe_healthz,
+  HealthzServed, HealthzRefused, observe_healthz,
 }
 import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.git
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
@@ -222,7 +215,10 @@ fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSn
 // serving; the refusal reason names the binding arm (ReleaseMixed or ReleaseBindingUnobserved)
 // that rejected, making the refusal visible through the existing authority.
 fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
-  let observation = local_deployed_tree_observation(repo_root: instance.repo_root)
+  let observation = observe_deployed_tree_over_self_ssh(
+    ssh_host: instance.host_identity,
+    repo: instance.repo_root as NonEmptyStr,
+  )
   match observe_healthz(port: instance.listen_port as Int) {
     HealthzServed { body: _, identity: id } =>
       lab_pair_serve_verdict(
@@ -240,69 +236,6 @@ fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict 
           d,
         ], ""),
       }
-  }
-}
-
-fn local_deployed_tree_observation(repo_root: FilePath) -> DeployedTreeObservation {
-  let head = git.Core.RevParseInRepo(repo: repo_root, target: "HEAD" as GitRef)
-  let root_tree = git.Core.RevParseInRepo(repo: repo_root, target: "HEAD:" as GitRef)
-  match git_object_id_from_untagged_hex(hex: head.revision) {
-    Present { value: revision_oid } =>
-      match git_object_id_from_untagged_hex(hex: root_tree.revision) {
-        Present { value: tree_oid } =>
-          match scope_check(repo: repo_root, revision: "HEAD") {
-            ScopeClean =>
-              DeployedTreeObserved {
-                revision: revision_oid,
-                tree: tree_oid,
-                content: DeployedScopeMatchesCommit,
-              }
-            ScopeDiverged =>
-              DeployedTreeObserved {
-                revision: revision_oid,
-                tree: tree_oid,
-                content: DeployedScopeDiverged,
-              }
-            ScopeUnreadable { detail: d } =>
-              DeployedTreeUnobservable {
-                cause: TreeCommandFailed {
-                  leg: "scope check (worktree vs HEAD)",
-                  exit_code: 1,
-                  stderr: d,
-                },
-              }
-          }
-        Absent =>
-          DeployedTreeUnobservable {
-            cause: TreeCommandFailed {
-              leg: "rev-parse HEAD:",
-              exit_code: root_tree.exit_code,
-              stderr: root_tree.stderr,
-            },
-          }
-      }
-    Absent =>
-      DeployedTreeUnobservable {
-        cause: TreeCommandFailed {
-          leg: "rev-parse HEAD",
-          exit_code: head.exit_code,
-          stderr: head.stderr,
-        },
-      }
-  }
-}
-
-type LocalScopeOutcome = ScopeClean | ScopeDiverged | ScopeUnreadable { detail: String }
-
-fn scope_check(repo: FilePath, revision: String) -> LocalScopeOutcome {
-  let diff = git.Core.TrackedWorktreeDiffFromInRepo(
-    repository_path: repo as String,
-    treeish: revision as GitRef,
-  )
-  if diff.exit_code != 0 {
-    ScopeUnreadable { detail: diff.stderr }
-  } else {
-    if diff.paths_nul == "" { ScopeClean } else { ScopeDiverged }
   }
 }
 
