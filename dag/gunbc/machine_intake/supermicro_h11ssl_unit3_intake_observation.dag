@@ -1,6 +1,8 @@
 module gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation
 
 import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat, Succ, Zero }
+import std.content_hash { Sha256DigestHex }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -141,6 +143,52 @@ data supermicro_h11ssl_unit3_lan_name_sighting: H11sslUnit3LanNameSighting = H11
   answered_with: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
   answered_at: "2026-11-16T00:53:00Z",
   account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which makes the collision with srv9_host_lan_endpoint a live one, not just a stale table entry" as NonEmptyStr,
+}
+
+// THE INSTALL NIC, SEEN AT THE EDGE IT WAS INSTALLED FROM: a second, INDEPENDENT LAN-side sighting.
+// A read-only observation of srv4's pinned PXE edge -- dispatched by this lane at ref main, workflow run
+// 43789720870, entry gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_observe_ci_wet, completed
+// 2026-11-16T02:17:25Z -- parsed srv4's OWN dnsmasq log and counted two request lines from this MAC inside
+// the 24h window ending at the run, and srv4's served root carries a seed directory named for this MAC
+// (hyphen-separated, the edge's own spelling). So two LAN-side sightings now carry this address -- srv1's
+// neighbour table and srv4's request log -- with nobody having read the board.
+// The run states the limit ON ITS OWN COUNT: "dnsmasq saw these DHCP senders, not a host attribution". The
+// count binds a MAC to the edge; it does not identify the machine behind the MAC, which is why this row sits
+// beside the NIC row rather than promoting it. The run also carries an unmet obligation of its own: the
+// dnsmasq version installed on srv4 is UNVERIFIED, so the log layout being counted is dnsmasq v2.90's
+// log_packet, not proven to be srv4's.
+// The same run REFUSED before writing anything (terminal=REFUSED): the pinned Aarch64 chainloader is not on
+// srv4 (sha256sum of /srv/gunbc-site-pxe-edge/tftp/snponly.efi: No such file or directory), so that member
+// is member-unobservable and the chain is withheld. Nothing on srv4 was changed by it, and the hand-staged
+// seed this row lists is still there. That obstacle is carried in the register as
+// gunbc.integration_concern::site_pxe_edge_pinned_aarch64_chainloader_member_absent_from_srv4.
+type H11sslUnit3EdgeSighting {
+  mac: Eui48Address,
+  request_lines: Nat,
+  window_opens: Rfc3339Timestamp,
+  window_closes: Rfc3339Timestamp,
+  served_paths_named_for_this_mac: List<NonEmptyStr>,
+  receipt_label: NonEmptyStr,
+  receipt_sha256: Sha256DigestHex,
+  live_evidence_digest: Sha256DigestHex,
+  account: NonEmptyStr,
+  read_obligation: NonEmptyStr,
+}
+
+data supermicro_h11ssl_unit3_edge_sighting: H11sslUnit3EdgeSighting = H11sslUnit3EdgeSighting {
+  mac: supermicro_h11ssl_unit3_install_nic_mac,
+  request_lines: Succ { prev: Succ { prev: Zero } },
+  window_opens: "2026-11-15T02:17:20Z",
+  window_closes: "2026-11-16T02:17:20Z",
+  served_paths_named_for_this_mac: [
+    "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb/user-data" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb/meta-data" as NonEmptyStr,
+  ],
+  receipt_label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (the run's own wire block, transcribed by still-fox-404 from the run log; the README beside it states what the block is and is not evidence of)" as NonEmptyStr,
+  receipt_sha256: "7f3956a28b3b07223163d0f868d7fabb5b4c51c1633d5ce8384eda6c2801f415" as Sha256DigestHex,
+  live_evidence_digest: "cb94e7f0faf01647cc17ba88d432f2223403affa892bf26080415140d0b94f89" as Sha256DigestHex,
+  account: "The two request lines are srv4's own log, not this repository's inference. The run states the limit on its own count and this row keeps it: 'dnsmasq saw these DHCP senders, not a host attribution' -- the count binds a MAC to the edge, it does not identify the machine behind the MAC, so this row sits beside the NIC row rather than promoting it: the count, the window and the paths are all printed by the observe entry above. The live_evidence_digest is what that run printed for its live-evidence record -- readings=0 with that digest, because the run refused before taking any; the uploaded artifact carries only a header line. So the digest belongs to a refusal, and this row does not read it as a measurement." as NonEmptyStr,
+  read_obligation: "the in-band read that ties a MAC to a port on THIS board: ip -o link (or /sys/class/net with carrier state) on the installed OS; plus, for the edge side, srv4's dnsmasq package version (dnsmasq --version) so the log layout being counted is srv4's and not v2.90's." as NonEmptyStr,
 }
 
 // THE ACCELERATORS, as the operator reports them: two Tesla T10 in this box. They matter to the serving

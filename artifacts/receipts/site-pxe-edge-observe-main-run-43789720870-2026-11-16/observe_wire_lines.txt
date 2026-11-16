@@ -1,0 +1,37 @@
+credential agent_socket=/tmp/ssh-a9KJnNul7nZ6/agent.1242017 public_selector_file=target/fleet-ssh-attempt-site-pxe-edge-converge-ci-selector-52b885ed2539154b.pub trust=attempt-owned known_hosts anchor materialized and content-verified by THIS entry
+known-hosts-anchor path=target/fleet-ssh-attempt-site-pxe-edge-converge-ci-known-hosts-2d6ff3f8c4823acd attempt=site-pxe-edge-converge-ci identity=2d6ff3f8c4823acd rows=6
+  enrolled host=srv1 endpoint=srv1 provenance=scanned-first-contact
+  enrolled host=srv1 endpoint=srv1.tailecbe08.ts.net provenance=scanned-first-contact
+  enrolled host=srv2 endpoint=srv2 provenance=scanned-first-contact
+  enrolled host=srv3 endpoint=srv3 provenance=scanned-first-contact
+  enrolled host=srv4 endpoint=srv4 provenance=scanned-first-contact
+  enrolled host=srv14 endpoint=192.168.1.205 provenance=scanned-first-contact
+ multiplex directory /opt/actions-runner/srv4-03/_work/_temp/fleet-ssh-mux created mode=700 owner=ghrunnermode=observe
+package=held sha256 observed sha256:893bea94fd8e3c40335edda00d0ead640f62b5391446dbacdbfed50e3bd4cd8b authority=operator escalation msg_af2a60f0, relayed by merry-fox-82: install dnsmasq-base only; the Secure Boot gate stays separate and closed
+rollback-staged disable --now unit: /usr/bin/sudo -n systemctl disable --now gunbc-site-pxe-edge.service
+rollback-staged remove unit and config: /usr/bin/sudo -n rm -f -- /etc/systemd/system/gunbc-site-pxe-edge.service /etc/gunbc-site-pxe-edge.dnsmasq.conf
+rollback-staged remove tftp root: /usr/bin/sudo -n rm -rf -- /srv/gunbc-site-pxe-edge/tftp
+rollback-staged daemon-reload: /usr/bin/sudo -n systemctl daemon-reload
+rollback-staged apt-get remove dnsmasq-base: /usr/bin/sudo -n env LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get --yes remove dnsmasq-base
+placement=not-attempted observe-only
+chain Aarch64 withheld member-unobservable snponly.efi: sha256sum could not digest the input
+chain Aarch64 withheld ipxe-secure-boot-unobserved: self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it
+chain X86_64 servable
+chain Aarch64 install servable
+file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=not-applied observe-only
+file systemd-unit path=/etc/systemd/system/gunbc-site-pxe-edge.service before=identical outcome=not-applied observe-only
+file rendered-member grub/grub.cfg path=/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg before=identical outcome=not-applied observe-only
+file rendered-member grub/grub.cfg path=/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg before=identical outcome=not-applied observe-only
+stale-install-files=found (observe-only): /srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb/user-data /srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb/meta-data /srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-63/user-data /srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-63/meta-data /srv/gunbc-site-pxe-edge/tftp/grub/install/9c:6b:00:e7:ca:63.cfg
+activation=not-attempted observe-only
+unit-active=held
+post-activation-members=not-read observe-only
+live-evidence readings=0 digest=sha256:cb94e7f0faf01647cc17ba88d432f2223403affa892bf26080415140d0b94f89
+http=not-needed
+terminal=REFUSED
+client-requests=read window=since=@1794709040 until=@1794795440 output_cap=none request_lines=2 malformed=0 pxe_vendor_class_lines=3 claim=dnsmasq_saw_these_dhcp_senders_not_a_host_attribution line_shape=CITED dnsmasq v2.90 src/rfc2131.c log_packet; layout `KIND(iface) [ipv4 ]MAC[ one word]`, kinds DHCPDISCOVER/DHCPREQUEST/DHCPINFORM/PXE; any other layout is counted malformed and sampled verbatim, not read installed_version=UNVERIFIED obligation: read the dnsmasq package version installed on srv4 (dnsmasq --version) and compare log_packet in src/rfc2131.c at that tag with v2.90; until then the layout is v2.90's, not srv4's
+client-request-mac ac:1f:6b:e6:75:eb requests=2
+
+failed leg: sha256sum /srv/gunbc-site-pxe-edge/tftp/snponly.efi   (exit=1)
+  stderr: sha256sum: /srv/gunbc-site-pxe-edge/tftp/snponly.efi: No such file or directory
+failed leg: cmp -s - /etc/gunbc-site-pxe-edge.dnsmasq.conf   (exit=1)

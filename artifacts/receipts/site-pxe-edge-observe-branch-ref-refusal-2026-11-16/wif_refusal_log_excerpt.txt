@@ -1,0 +1,14 @@
+Read-only PXE-edge observation of srv4, dispatched from a branch ref, and what the gate said.
+
+Dispatched at my session branch (session/still-fox-404, head 2db279ccba93) with host=srv4,
+mode=site_pxe_edge_observe: workflow run 43786925157 of fleet-converge.yml,
+https://github.com/gunb-ai/gunbc/actions/runs/43786925157 (its own WIF step log is quoted below).
+The workflow names its own gate, verbatim from the failed step:
+
+2026-11-16T01:44:23.5671623Z ##[error]google-github-actions/auth failed with: failed to generate Google Cloud federated token for //iam.googleapis.com/projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc: {"error":"unauthorized_client","error_description":"The given credential is rejected by the attribute condition."}
+
+What that means for this lane: the mode never reached srv4, so NO observation of the edge was
+collected from a branch, and NO artifact was published. The same workflow at main is the only
+ref this mode has ever run at (auth.branch_run_grant: the run-scoped account needs THIS run's
+grant, which no branch dispatch of this mode has). Nothing here is evidence about what is ON
+srv4 -- only about what a branch is allowed to ask for.

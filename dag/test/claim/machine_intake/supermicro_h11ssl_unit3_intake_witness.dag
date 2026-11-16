@@ -9,16 +9,19 @@ module test.claim.machine_intake.supermicro_h11ssl_unit3_intake_witness
 // hold that any figure is true about the board: none of these figures is a read of the board, and the
 // module says so row by row.
 import std.types { Bool, List, NonEmptyStr }
-import std.algebra { string_contains }
+import std.algebra { length, string_contains }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import gunbc.integration_concern {
   ConcernDisposition, ConcernKind, Distinct, Integrated, IntegrationConcern, Open, RequirementEstablished,
   RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
+  h11ssl_unit3_edge_gate_refusal_revision,
   h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
   h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+  h11ssl_unit3_intake_sighting_revision,
   h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
+  site_pxe_edge_pinned_chainloader_member_absent_from_srv4,
 }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_selectable_devices, ipmi_boot_selection_label }
 import gunbc.machine_intake.supermicro_h11ssl_unit_identity {
@@ -42,6 +45,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_bmc_lan_address,
   supermicro_h11ssl_unit3_bios_version,
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
+  supermicro_h11ssl_unit3_edge_sighting,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
   supermicro_h11ssl_unit3_gpu_report,
@@ -240,6 +244,11 @@ fn gap_stands_open(row: IntegrationConcern) -> Bool {
   }
 }
 
+
+fn edge_path_names_the_install_nic(path: String) -> Bool {
+  string_contains(s: text(path), pattern: "ac-1f-6b-e6-75-eb")
+}
+
 fn matches_open(disposition: ConcernDisposition) -> Bool {
   match disposition {
     Open => true
@@ -263,6 +272,18 @@ test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool 
 
 // THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
 // demands the capture and not about some unrelated standing.
+// A LATER SIGHTING IS APPENDED TO ITS ROW, never minted as a second row -- the register says so at
+// ConcernSighting itself. The edge gap grew a SECOND sighting, at a different main revision, for a second
+// and worse half of the same obstacle: the first says the model cannot show a converge what to delete; the
+// second says a session branch cannot even LOOK at the edge it is proposing to clean (the read-only
+// observation mode was refused by the workflow's own workload-identity gate, run 43786925157). This claim
+// refuses the shape where that new half shows up as a fourth open row, which would double-count one
+// obstacle and hide that it is the same gap deepened.
+test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
+  matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
+    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 2)
+}
+
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
   match h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture.kind {
     SuspectedCapabilityGap { model: model, requirement: _, standing: _ } =>
@@ -315,4 +336,38 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
         && string_contains(s: text(route), pattern: "until gunbc.hostname_allocation")
     RotatedCredentialObserved { observed_at: _ } => false
   }
+}
+
+// THE BLOCKED EDGE APPLY IS ITS OWN GAP, BESIDE THE HAND-STAGED ONE. srv4 cannot digest a member its edge
+// pin names, which stops every mode that has to read the pinned set -- including the apply that would retire
+// hand-staged state -- and it does that for EVERY host on this edge, whether or not a person ever staged
+// anything by hand. Two rows, deliberately: this claim refuses the shape where the two collapse into one and
+// the blocked-apply fact disappears inside one unit's install story.
+test fn witness_the_blocked_edge_apply_is_a_gap_of_its_own() -> Bool {
+  match site_pxe_edge_pinned_chainloader_member_absent_from_srv4.kind {
+    SuspectedCapabilityGap { model: model, requirement: owed, standing: _ } =>
+      matches_open(site_pxe_edge_pinned_chainloader_member_absent_from_srv4.disposition)
+        && (text(model.module_path) == "gunbc.fleet.site_pxe_edge_converge")
+        && (text(model.decl_name) == "site_pxe_edge_chainloader_pin")
+        && string_contains(s: text(owed), pattern: "does not claim which")
+    SuspectedFork { authorities: _ } => false
+  }
+}
+
+// THE EDGE SIGHTING BINDS THE INSTALL PORT, NOT THE BMC PORT, AND KEEPS THE RUN'S OWN LIMITS IN THE ROW.
+// srv4's request log counts a MAC at the edge; it does not identify the machine behind the MAC, and the run
+// that read it said so itself. A row that quietly promoted "two requests from this MAC" into "this unit
+// asked twice" would be the exact promotion epistemic humility refuses. The paths are kept because they are
+// where the hand-staged seed actually is; the digest is kept because the run printed it with readings=0, and
+// a refusal digest read as a measurement would be a second, quieter promotion.
+test fn witness_the_edge_sighting_binds_the_install_port_and_keeps_the_caveats() -> Bool {
+  unit3_install_nic_is_not_the_bmc_port(
+    nic: supermicro_h11ssl_unit3_edge_sighting.mac,
+    bmc_mac: supermicro_h11ssl_unit3_bmc_mac,
+  )
+    && (mac_text(supermicro_h11ssl_unit3_edge_sighting.mac) == mac_text(supermicro_h11ssl_unit3_install_nic_mac))
+    && all(supermicro_h11ssl_unit3_edge_sighting.served_paths_named_for_this_mac, edge_path_names_the_install_nic)
+    && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.account), pattern: "host attribution")
+    && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.account), pattern: "readings=0")
+    && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.read_obligation), pattern: "ip -o link")
 }
