@@ -54,8 +54,8 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_entry_names,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
-  filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
-  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemReadOutcome, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
+  FilesystemExactRead, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
 import extdeps.shell
 import gunbc.spool_queue {
