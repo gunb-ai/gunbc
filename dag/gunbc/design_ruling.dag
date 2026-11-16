@@ -138,6 +138,31 @@ data fleet_observation_deferral_2026_11_12: DesignRuling = DesignRuling {
   provenance: "NOT an operator answer: an escalation raised by vivid-koi-387 on 2026-11-12 — 'P3 SMBIOS reads: srv3 and the Sparks (srv9-srv12) are unreachable. Grant read access, or record them as blocked?' with Defer recommended — went unanswered for 15 minutes, and the dashboard closed it with the recommended option approved by DEFAULT. Defer is therefore applied as an unanswered escalation's default, and this row says so rather than promoting the default to an operator ruling. Its content: record srv3 (ssh answers, refuses every held credential), srv9..srv12 and host-6ce85c (no route from any held read principal; the Sparks have no BMC fallback) as BLOCKED-ON-ACCESS with the typed reason; do not fabricate readings; the fleet proceeds on readable machines; a machine returns to the observed set exactly when its own reading declaration appears in gunbc.fleet.fleet_host_smbios_observation. The blockage itself is measured, not assumed: srv3's key rejection was reproduced twice from two principals, the Sparks and 6ce85c were probed from srv1. Restoring true authority is cheap: a read principal or route appearing, or the operator ratifying or overriding this default.",
 }
 
+// THE PERIODIC STANDINGS REFRESH BACKSTOP (2026-11-16). The operator asked for a regular refresh of
+// the daily workspace's roadmap standings; the served-observation fold that produces /standings.json
+// is otherwise event-driven (a belt tick, fired only on a worker exit or operator action), so an idle
+// host freezes the standings and ctrl — which admits roadmap work items against that one document
+// (scripts/session-dashboard/lib/roadmap_work_items.mjs parseStandingsResponse/admitWorkspaceWorkItem)
+// — sees silently-old data. This ruling is the authority that REOPENS a wall-clock trigger for that
+// one fold after dogfood intervention #4 retired the belt timer: the ruling that retired the timer
+// (the event-units comment heading gunbc.live_deploy.spec::deployment_belt_exit_path_unit_name,
+// "event-driven, not timer-driven") removed the timer that re-WALKED THE FRONTIER
+// (spawning/launching/tearing down sessions on a cadence). This ruling does not reverse that. What it
+// authorizes is strictly narrower and read-only: a systemd timer that starts a oneshot running ONLY
+// `belt_observe_once_cli` — the observation fold, no spawn/launch/teardown — every
+// `belt_standings_refresh_backstop` seconds, exactly the mechanism the credential-recovery backstop
+// (this module's `belt_credential_recovery_backstop`) already uses for a law with no event to trigger
+// it. It also authorizes the freshness law's second, orthogonal 409 gate (`served_observation_standing_of_read`
+// age check in gunbc.roadmap.roadmap_served_observation): a stored observation older than
+// `belt_standings_refresh_staleness_horizon` at read time answers 409 rather than being served 200,
+// so a dead timer FAILS CLOSED (ctrl refuses admission) instead of serving bytes whose refresher died.
+data refreshes_regularly_every_10_minutes_2026_11_16: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "refreshes_regularly_every_10_minutes_2026_11_16"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.live_deploy.belt_cadence", decl_name: "belt_standings_refresh_backstop"),
+  provenance: "Operator, relayed by neat-badger-614 to silent-hawk-820 on 2026-11-16, verbatim: \"regarding refreshes - we'd need to build something that refreshes regularly - every 10 minutes or something for now is fine\". Measured at intake: https://srv1.tailecbe08.ts.net:8444/standings.json reported observed_at 2026-11-14T22:51:39Z / log_head fa4a936992b6, ~26h stale, while answering 200 — because no belt tick had run since the last lab worker exited (the lab had no owner since the last lab worker was archived). The operator set the cadence ('every 10 minutes') and its looseness ('or something for now is fine'); the value lives in gunbc.live_deploy.belt_cadence::belt_standings_refresh_backstop (600s), the staleness horizon (derived as three periods from the backstop, in the Second carrier) in belt_standings_refresh_staleness_horizon, and the emitted timer+oneshot pair in gunbc.live_deploy.emit::live_deploy_belt_standings_refresh_\{unit,timer\}_unit_file on the credential-recovery-backstop pattern. The fail-closed 409 age gate is not the operator's request but is required by it: a refresh that silently fails to run would reproduce the exact bug, so the route answers stale itself rather than serving frozen bytes. Approver neat-badger-614 approved the approach with four conditions on 2026-11-16; this row is condition (1) — the ruling recorded in the ledger, not only in a comment.",
+}
+
 data t6_fabric_storage_excluded_from_live_deploy_2026_11_10: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "t6_fabric_storage_excluded_from_live_deploy_2026_11_10"),
   decided: "2026-11-10",
@@ -297,6 +322,25 @@ data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
   decided: "2026-10-11",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
+}
+
+data required_gate_rows_grow_by_operator_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "required_gate_rows_grow_by_operator_ruling"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, on escalation msg_8c7e37f2 (2026-11-15), verbatim: \"Approve enrolment\", relayed to cool-dove-518 by neat-badger-614 in msg_db6d4dc0-b5c2-450d-a9a9-0528961f1ad8. It authorizes exactly one row of `v2.workflow.required_floor` `required_gate_authored_modules` — the module `test.claim.seed_growth_roster_hygiene_witness`, admitted at its own name because its discriminating red was otherwise executed by no lane. A family prefix would have admitted siblings nobody measured, so the growth is one name and not a pattern. Gate rows stay closed to growth without such a ruling.",
+}
+
+// The second decision taken under the same operator authority, kept as its own row so neither decision
+// restates the other: the admission rule itself is stated at `v2.workflow.required_floor`
+// `required_gate_authored_modules`, and this row carries only who authorized which names at which grain.
+// The evidence the enrolment owed -- each module green BY EXECUTION on `claim_batch`, at the head these
+// rows land behind -- is pinned on that change, not transcribed here.
+data absence_class_witnesses_enrolled_by_operator_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "absence_class_witnesses_enrolled_by_operator_ruling"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, on escalation msg_7d9e36b4 (2026-11-15), verbatim: \"Approve enrolment, then accept\", relayed to witty-lark-414 by neat-badger-614 in msg_16d2f3b6-3751-4970-b7c1-550468eca180. It authorizes exactly two rows of `v2.workflow.required_floor` `required_gate_authored_modules` -- the filesystem absence class's two witnesses, `test.claim.filesystem_read_outcome_witness` and `test.claim.filesystem_absence_establishment_witness`, each admitted at its own name because the class's refusal was enrolled and executed by no lane: the required lane parses and typechecks and judges no claim, so a retired class kept its RED with nothing judging it. Two names and not a family prefix, because a prefix admits every sibling in the namespace, measured or not.",
 }
 
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
@@ -950,8 +994,23 @@ data srv15_arrival_reviewer_selected_by_operator: DesignRuling = DesignRuling {
   provenance: "Operator decision on the escalation 'who approves srv15-arrival environment runs (required reviewer principal)?', asked by smart-crane-730 (msg_bda70b7b, recommending the repository owner), answered as relayed verbatim by smart-crane-730 (msg_1d59b8bb): \"Reviewer decided: briansrls (GitHub user id 11205878), operator msg_a6718a1d, approved by default.\" The reviewer is the GitHub user with login briansrls and numeric user id 11205878; the environment read-back must show exactly this principal as the environment's required reviewer. No email address is recorded, per the brief's no-email rule; the principal is cited by user id, which is the immutable GitHub fact.",
 }
 
+data no_ci_claim_execution_until_native_frontier_clears: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "no_ci_claim_execution_until_native_frontier_clears"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-15, relayed verbatim by session neat-badger-614 (msg_e82068ff). Question as put to the operator, answering escalation msg_b70677a1: \"do you approve keeping claim execution out of gunbc CI until the native frontier clears?\". Operator words, verbatim: \"yes, i approved that already\". This is the EXPLICIT operator sign-off the CI contract requires; NOT the default-on-timeout posture -- the earlier msg_b70677a1 record was a recommended-option adopted BY DEFAULT ON TIMEOUT, which gunbc.design_argument::epistemic_humility forbids writing into this ledger (the home of dated OPERATOR rulings), so that pending-escalation stance is superseded here by the operator's explicit yes. WHAT IT GOVERNS: no CI claim-executing step is added -- neither a native instrument row nor a v1-interpreter claim_batch/floor stopgap; the required-witnesses-floor job stays deleted; no CI job runs witness claims today; a green v2-bootstrap is parse + typecheck only (nothing in CI executes claims -- gunbc.design_document::ci_contract_blocks). RESTORATION TRIGGER, named per gunbc.design_argument::guarantee_ladder meta-obligation 3 (the trigger names the CAPABILITY restored): native claim row green on a required job -- gunbc.rung_drop v1_required_lanes_withdrawn's own full restoration trigger (1a), the native binary executing the COMPLETE local_repo_wet_schedule claims on a required job with their host effects bounded, as a row judged by a binary built from the seed's emission, NEVER as a lane handing the corpus to the v1 interpreter (DESIGN, Reference: building and checks). A PARTIAL native row \"judges part of the population ... retires nothing\" (the drop's own words), so a step running only some members does not discharge this ruling.",
+}
+
+data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    no_ci_claim_execution_until_native_frontier_clears,
     planning_is_one_source_for_every_repo,
     plans_are_intentions_and_realization_is_downstream,
     formal_work_opts_into_the_planning_process,
@@ -1004,6 +1063,8 @@ fn design_rulings() -> List<DesignRuling> {
     v1_withdrawn_one_required_job,
     memory_envelope_is_part_of_the_verdict,
     regeneration_jobs_added_to_roster,
+    required_gate_rows_grow_by_operator_ruling,
+    absence_class_witnesses_enrolled_by_operator_ruling,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
     cardinality_one_concept,
@@ -1066,6 +1127,7 @@ fn design_rulings() -> List<DesignRuling> {
     serve_entry_verdict_step_raised_to_45_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
+    codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
   ]
 }
 

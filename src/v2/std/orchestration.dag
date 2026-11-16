@@ -16,6 +16,7 @@ type RedirectSpec
   | DiscardErr
   | DiscardOut
   | ToFile { path: String }
+  | AppendBoth { path: String }
 
 // ToFile { path } is the stdout-to-path carrier ("> path"). It entered through the former
 // ci_merge_admission floor-disposition stamp; that unreachable persistent-marker chain is retired,

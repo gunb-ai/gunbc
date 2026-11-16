@@ -1,6 +1,6 @@
 module gunbc.class_b_import_closure_overlay
 
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -5005,7 +5005,15 @@ fn extend_with_reference_closure(
     // and on the discovery route once per corpus entry -- rebuilding the name set each time.
     extend_sources_via_demanded_edges(sources, &pool_path_lookup(mei), |source| {
         let scan_started = std::time::Instant::now();
-        let pulled = reference_pull_paths_for_source(source, mei);
+        // This consumer walks paths it owns nothing of, so it takes spelled `String`s; the edge
+        // index itself keeps the interned endpoints.
+        let pulled =
+            reference_pull_paths_for_source(source, mei, EdgeRowShape::Composed).map(|paths| {
+                paths
+                    .iter()
+                    .map(|path| path.to_string())
+                    .collect::<Vec<String>>()
+            });
         resolve_stage_slot_add(|s| {
             s.load_reference_scan += scan_started.elapsed().as_nanos();
             s.load_reference_scan_bytes += source.content.len() as u128;
@@ -5020,11 +5028,22 @@ fn extend_with_reference_closure_for_pool(
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     extend_sources_via_demanded_edges(sources, &pool_path_lookup(mei), |source| {
-        let edges = build_both_closure_edge_index(mei, source)?;
+        let edges = build_both_closure_edge_index(mei, source, EdgeRowShape::Composed)?;
         let file = workspace_relative_repo_path(&source.path);
-        edges.ref_out.get(&file).cloned().ok_or_else(|| {
-            format!("closure_edge_demand: reference edges absent after production for '{file}'")
-        })
+        // This consumer owns its path list, so it takes spelled `String`s; the index keeps the
+        // interned endpoints.
+        edges
+            .ref_out
+            .get(&file)
+            .cloned()
+            .map(|row| {
+                row.iter()
+                    .map(|path| path.to_string())
+                    .collect::<Vec<String>>()
+            })
+            .ok_or_else(|| {
+                format!("closure_edge_demand: reference edges absent after production for '{file}'")
+            })
     })
 }
 
@@ -7617,6 +7636,26 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
     }
 }
 
+/// WHAT SHAPE OF DEPENDENCY ROW a consumer demands from the edge index. One admission, two
+/// consumers, two shapes -- and the shapes must never be interchanged.
+///
+/// Entry traversal asks which SOURCE ROWS to pull, so it needs the closure spelled: a row naming a
+/// reference target's whole import closure is what makes the reached source set complete
+/// (`extend_sources_to_both_closure_fixpoint`). The regen affected set asks WHO IS AFFECTED, and it
+/// walks rows IN REVERSE -- a reverse walk over direct rows already takes the closure, so spelling it
+/// first multiplies rows without adding reachability. Measured on a drain-shaped pool: 2,065,084
+/// composed rows against 61,044 direct ones (run 43817027204), the same affected members, and the
+/// round died in the model evaluating the composed form
+/// (@ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence)).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EdgeRowShape {
+    /// Every endpoint the definer's import closure reaches, spelled once per requesting file.
+    Composed,
+    /// The direct dependency the route reads: a reference target, or -- for a source that declares no
+    /// `import` line -- a resolved bare-name provider.
+    Direct,
+}
+
 /// Outgoing rows materialized only for sources visited by a closure demand. The index
 /// owns each row once and shares it across entry loads; whole-pool coverage is an explicit
 /// regen/floor demand, never a prerequisite for compiling one entry.
@@ -7624,9 +7663,18 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
 struct BothClosureEdgeIndex {
     /// workspace-relative file path → files pulled by bare-reference resolution
     /// (each target is the full import-closure of the resolved provider).
-    bare_out: HashMap<String, Vec<String>>,
-    /// workspace-relative file path → files pulled by dotted module-path refs.
-    ref_out: HashMap<String, Vec<String>>,
+    ///
+    /// ENDPOINTS ARE INTERNED, ONE `Rc<str>` PER PATH FOR THE PROCESS. A row spells the WHOLE
+    /// import closure of every provider the file pulls, so endpoint occurrences run two orders of
+    /// magnitude above the module count; an owned `String` per occurrence makes the container cost
+    /// dozens of times the bytes it spells, the mode recorded in
+    /// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
+    /// Interning makes an
+    /// endpoint a refcount bump, and the interpreter's `Value::Str` then shares those same bytes on
+    /// the way to the model instead of spelling each one a third time.
+    bare_out: HashMap<String, Rc<[Rc<str>]>>,
+    /// workspace-relative file path → files pulled by dotted module-path refs. Interned as above.
+    ref_out: HashMap<String, Rc<[Rc<str>]>>,
     /// Import-stripped files that may originate bare-reference edges.
     bare_scan_eligible: HashSet<String>,
 }
@@ -7670,27 +7718,100 @@ fn extend_sources_via_demanded_edges(
     Ok(sources)
 }
 
+// ONE INTERNED `Rc<str>` PER WORKSPACE-RELATIVE MODULE PATH, for the whole process. The edge index
+// and the edge list it feeds both name the same handful of paths over and over; spelling each
+// occurrence is what makes the container cost more than the data it spells, the mode recorded in
+// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
+thread_local! {
+    static MODULE_PATH_INTERNER: RefCell<HashMap<Rc<str>, Rc<str>>> =
+        RefCell::new(HashMap::new());
+}
+
+fn intern_module_path(path: &str) -> Rc<str> {
+    MODULE_PATH_INTERNER.with(|table| {
+        let mut table = table.borrow_mut();
+        if let Some(hit) = table.get(path) {
+            return Rc::clone(hit);
+        }
+        let interned: Rc<str> = Rc::from(path);
+        table.insert(Rc::clone(&interned), Rc::clone(&interned));
+        interned
+    })
+}
+
+// ONE PROVIDER CLOSURE PER FACTS BUILD, shared by every file that pulls it. A row is the union of the
+// full import closure of each provider the file references, so the same provider's closure was walked,
+// spelled and owned once per REQUESTING file. The expansion is a pure function of (facts build,
+// provider path) -- the same key the facts memo itself uses -- so sharing it cannot change which
+// paths any row holds.
+thread_local! {
+    static INTERNED_IMPORT_CLOSURES: RefCell<HashMap<u64, HashMap<Rc<str>, Rc<[Rc<str>]>>>> =
+        RefCell::new(HashMap::new());
+}
+
+fn interned_import_closure(provider_path: &str, facts: &ModuleGraphFactsLive) -> Rc<[Rc<str>]> {
+    INTERNED_IMPORT_CLOSURES.with(|cache| {
+        if let Some(hit) = cache
+            .borrow()
+            .get(&facts.build_id)
+            .and_then(|row| row.get(provider_path))
+        {
+            return Rc::clone(hit);
+        }
+        let row: Rc<[Rc<str>]> = Rc::from(
+            import_closure_live_paths_with_facts(provider_path, facts)
+                .into_iter()
+                .map(|path| intern_module_path(&workspace_relative_repo_path(&path)))
+                .collect::<Vec<Rc<str>>>()
+                .into_boxed_slice(),
+        );
+        let key = Rc::from(provider_path);
+        let mut cache = cache.borrow_mut();
+        match cache.get_mut(&facts.build_id) {
+            Some(by_provider) => {
+                by_provider.insert(key, Rc::clone(&row));
+            }
+            None => {
+                let mut by_provider = HashMap::new();
+                by_provider.insert(key, Rc::clone(&row));
+                cache.insert(facts.build_id, by_provider);
+            }
+        }
+        row
+    })
+}
+
 fn bare_reference_pull_paths_for_source(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
-) -> Result<Vec<String>, String> {
-    let mut pulled = Vec::new();
-    let mut seen = HashSet::new();
+    shape: EdgeRowShape,
+) -> Result<Rc<[Rc<str>]>, String> {
+    let mut pulled: Vec<Rc<str>> = Vec::new();
+    let mut seen: HashSet<Rc<str>> = HashSet::new();
     visit_bare_reference_providers(
         sf,
         index,
         |root| closure_name_census(index, root),
         |_name, _module, provider, _role| {
-            for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
-                let path = workspace_relative_repo_path(&path);
-                if seen.insert(path.clone()) {
+            if shape == EdgeRowShape::Direct {
+                // The provider ITSELF is the dependency. The closure below is the definer-closure
+                // stand-in entry traversal needs for source-set completeness; the affected-set walk
+                // reaches the provider through its own row and takes the closure in the walk.
+                let path = intern_module_path(provider);
+                if seen.insert(Rc::clone(&path)) {
                     pulled.push(path);
+                }
+                return Ok(());
+            }
+            for path in interned_import_closure(provider, &index.module_graph_facts).iter() {
+                if seen.insert(Rc::clone(path)) {
+                    pulled.push(Rc::clone(path));
                 }
             }
             Ok(())
         },
     )?;
-    Ok(pulled)
+    Ok(Rc::from(pulled.into_boxed_slice()))
 }
 
 /// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
@@ -8276,7 +8397,8 @@ fn visit_bare_reference_providers(
 fn reference_pull_paths_for_source(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     entry_index: &MultiEntryIndex,
-) -> Result<Vec<String>, String> {
+    shape: EdgeRowShape,
+) -> Result<Rc<[Rc<str>]>, String> {
     let index = &entry_index.source_files;
     let facts = &entry_index.module_graph_facts;
     let refs = parsed_file_references_of(entry_index, sf).map_err(|cause| {
@@ -8286,8 +8408,8 @@ fn reference_pull_paths_for_source(
             workspace_relative_repo_path(&sf.path)
         )
     })?;
-    let mut pulled: Vec<String> = Vec::new();
-    let mut pulled_set: HashSet<String> = HashSet::new();
+    let mut pulled: Vec<Rc<str>> = Vec::new();
+    let mut pulled_set: HashSet<Rc<str>> = HashSet::new();
     for module_path in module_paths_of_references(&refs, &pool_module_names(entry_index)) {
         let Some(dep) = index.get(&module_path) else {
             continue;
@@ -8299,20 +8421,43 @@ fn reference_pull_paths_for_source(
                  has no provenance in the module-graph facts pool (fail-closed)"
             ));
         }
+        if shape == EdgeRowShape::Direct {
+            let path = intern_module_path(&dep_rel);
+            if pulled_set.insert(Rc::clone(&path)) {
+                pulled.push(path);
+            }
+            continue;
+        }
         let expand_started = std::time::Instant::now();
-        let expanded = import_closure_live_paths_with_facts(&dep_rel, facts);
+        let expanded = interned_import_closure(&dep_rel, facts);
         resolve_stage_slot_add(|st| {
             st.edge_index_closure_expand += expand_started.elapsed().as_nanos();
             st.edge_index_closure_expand_calls += 1;
         });
-        for path in expanded {
-            let rel = workspace_relative_repo_path(&path);
-            if pulled_set.insert(rel.clone()) {
-                pulled.push(rel);
+        for path in expanded.iter() {
+            if pulled_set.insert(Rc::clone(path)) {
+                pulled.push(Rc::clone(path));
             }
         }
     }
-    Ok(pulled)
+    Ok(Rc::from(pulled.into_boxed_slice()))
+}
+
+/// The two shapes are held in two memos, never one: a consumer must not be served rows of the other
+/// shape, and both can be demanded inside one process (entry traversal and the regen scope round).
+/// Neither memo has a runtime invalidation surface today -- `MultiEntryIndex.source_files` is fixed
+/// once the pool is resolved, so the corpus cannot change under either memo while the process lives,
+/// and a proven scratch base is read through `scratch_underlay_if_proven`, which this selector makes
+/// shape-aware. The only clearing path is the test helper `drop_private_term_for_test`, where
+/// `generator_edges` sits beside `both_closure_edges` so a test that drops one can drop both.
+fn edge_index_memo(
+    index: &MultiEntryIndex,
+    shape: EdgeRowShape,
+) -> &RefCell<Option<Rc<BothClosureEdgeIndex>>> {
+    match shape {
+        EdgeRowShape::Composed => &index.both_closure_edges,
+        EdgeRowShape::Direct => &index.generator_edges,
+    }
 }
 
 /// Materialize one demanded source row. A successful admission does not imply any row
@@ -8320,13 +8465,15 @@ fn reference_pull_paths_for_source(
 fn build_both_closure_edge_index(
     index: &MultiEntryIndex,
     source: &Rc<v1_compiler_compile::SourceFile>,
+    shape: EdgeRowShape,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
     // THE DEMANDED FILE IS JUDGED, NOT THE POOL. Every file a closure reaches -- by import, by a
     // reference-derived edge, or by a bare provider -- has its row produced here, so every reached
     // file is admitted before its edges are followed and before the entry is evaluated.
     admit_bare_references_of_file(index, source)?;
     let file = workspace_relative_repo_path(&source.path);
-    if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
+    let memo = edge_index_memo(index, shape);
+    if let Some(hit) = memo.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
             return Ok(hit.clone());
         }
@@ -8337,20 +8484,20 @@ fn build_both_closure_edge_index(
     // it yourself from local data" would answer the wrong question. The build-below path is for
     // an index with no underlay at all.
     if let Some(base) = scratch_underlay_if_proven(index)? {
-        if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
+        if let Some(hit) = edge_index_memo(&base, shape).borrow().as_ref() {
             if hit.ref_out.contains_key(&file) {
                 return Ok(hit.clone());
             }
         }
     }
     let ref_started = std::time::Instant::now();
-    let ref_paths = reference_pull_paths_for_source(source, index)?;
+    let ref_paths = reference_pull_paths_for_source(source, index, shape)?;
     resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
     let bare_paths = if source_declares_import_lines(&source.content) {
         None
     } else {
         let (paths, nanos) =
-            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(source, index));
+            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(source, index, shape));
         resolve_stage_slot_add(|st| {
             st.edge_index_bare_half += nanos;
             st.edge_index_bare_eligible += 1;
@@ -8358,7 +8505,7 @@ fn build_both_closure_edge_index(
         Some(paths?)
     };
     let publish_started = std::time::Instant::now();
-    let mut slot = index.both_closure_edges.borrow_mut();
+    let mut slot = memo.borrow_mut();
     let edges = slot.get_or_insert_with(|| {
         resolve_stage_slot_add(|st| st.edge_index_builds += 1);
         Rc::new(BothClosureEdgeIndex::default())
@@ -8420,11 +8567,11 @@ pub fn bare_reference_channel_readings(
             ));
         };
         let file = workspace_relative_repo_path(&source.path);
-        let edges = build_both_closure_edge_index(&index, source)?;
+        let edges = build_both_closure_edge_index(&index, source, EdgeRowShape::Composed)?;
         let bare_channel_eligible = edges.bare_scan_eligible.contains(&file);
         let mut pulled_modules: Vec<String> = Vec::new();
-        for pulled in edges.bare_out.get(&file).into_iter().flatten() {
-            let Some(module) = module_of_file.get(pulled.as_str()) else {
+        for pulled in edges.bare_out.get(&file).iter().flat_map(|row| row.iter()) {
+            let Some(module) = module_of_file.get(&**pulled) else {
                 return Err(format!(
                     "bare-reference-channel: pulled file '{pulled}' has no module in the index"
                 ));
@@ -8442,17 +8589,34 @@ pub fn bare_reference_channel_readings(
     Ok(readings)
 }
 
-/// Explicit whole-pool demand: regen reads all rows in reverse, and floor preparation
-/// serves every entry. Entry compiles never call this boundary.
+/// Explicit whole-pool demand, in the shape the demanding route needs. Entry compiles never call
+/// either boundary: floor preparation and the regen scope round do.
 fn whole_pool_closure_edge_index(
     index: &MultiEntryIndex,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    whole_pool_edge_index(index, EdgeRowShape::Composed)
+}
+
+/// The regen scope round's whole-pool demand, UNCOMPOSED: it reads rows in reverse, and a reverse
+/// walk over direct rows already takes the closure. The production differential (nine edited sets,
+/// identical affected members, 2,065,084 composed rows against 61,044 direct ones -- run 43817027204)
+/// is cited in the PR that introduced this; `generator_rows_answer_the_same_reverse_closure_as_the_composition`
+/// is the landed gate.
+fn whole_pool_generator_edge_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    whole_pool_edge_index(index, EdgeRowShape::Direct)
+}
+
+fn whole_pool_edge_index(
+    index: &MultiEntryIndex,
+    shape: EdgeRowShape,
+) -> Result<Rc<BothClosureEdgeIndex>, String> {
     admit_pool_bare_references(index)?;
     for source in index.source_files.values() {
-        build_both_closure_edge_index(index, source)?;
+        build_both_closure_edge_index(index, source, shape)?;
     }
-    Ok(index
-        .both_closure_edges
+    Ok(edge_index_memo(index, shape)
         .borrow_mut()
         .get_or_insert_with(|| Rc::new(BothClosureEdgeIndex::default()))
         .clone())
@@ -8570,6 +8734,91 @@ mod closure_edge_demand_tests {
         ]);
         let index = fixture.index();
         admit_pool_bare_references(&index).expect("the response block is not a bare reference");
+    }
+
+    /// THE ROW SHAPE IS COST, NOT ANSWER. One corpus carrying an import chain AND an import-less
+    /// bare-name consumer; both whole-pool demands are built over the same admission, and the regen
+    /// route's own reverse walk runs over each row set. The direct relation reaches exactly the same
+    /// dependents. This is the landed gate for handing the regen scope round
+    /// `whole_pool_generator_edge_index`; the corpus-scale gate is the production differential named
+    /// on that function (nine edited sets, identical members, 2,065,084 composed rows against 61,044
+    /// direct ones (run 43817027204) on a drain-shaped pool).
+    #[test]
+    fn generator_rows_answer_the_same_reverse_closure_as_the_composition() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module frontier_entry\nimport frontier.definer { leaf }\nfn main() -> Int { leaf() }\n",
+            ),
+            (
+                "definer.dag",
+                "module frontier.definer\nimport frontier.helpers { helper }\nfn leaf() -> Int { helper() }\n",
+            ),
+            (
+                "helpers.dag",
+                "module frontier.helpers\nfn helper() -> Int { 1 }\n",
+            ),
+            (
+                "bare.dag",
+                "module frontier.bare\nfn user() -> Int { helper() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let composed = whole_pool_closure_edge_index(&index).expect("composed whole-pool rows");
+        let direct = whole_pool_generator_edge_index(&index).expect("generator whole-pool rows");
+        let module_of = |path: &str| {
+            index.source_files.iter().find_map(|(module, source)| {
+                (workspace_relative_repo_path(&source.path) == path).then(|| module.clone())
+            })
+        };
+        let rows = |edges: &BothClosureEdgeIndex| -> Vec<(Rc<str>, Rc<str>)> {
+            let mut rows = Vec::new();
+            for table in [&edges.ref_out, &edges.bare_out] {
+                for (from, paths) in table {
+                    let Some(from) = module_of(from) else {
+                        continue;
+                    };
+                    for path in paths.iter() {
+                        let Some(to) = module_of(path) else {
+                            continue;
+                        };
+                        rows.push((Rc::from(from.as_str()), Rc::from(to.as_str())));
+                    }
+                }
+            }
+            rows.sort();
+            rows.dedup();
+            rows
+        };
+        let composed_rows = rows(&composed);
+        let direct_rows = rows(&direct);
+        assert!(
+            !composed_rows.is_empty() && !direct_rows.is_empty(),
+            "both demands must spell rows: composed {composed_rows:?} direct {direct_rows:?}"
+        );
+        assert_ne!(
+            composed_rows, direct_rows,
+            "the two demands must genuinely differ in shape"
+        );
+        let edited = ["frontier.helpers".to_string()];
+        let composed_reached =
+            required_regen_host::regen_reverse_closure_host(&edited, &composed_rows);
+        let direct_reached = required_regen_host::regen_reverse_closure_host(&edited, &direct_rows);
+        assert_eq!(
+            composed_reached, direct_reached,
+            "the row shape must not change who regens"
+        );
+        assert_eq!(
+            composed_reached.iter().cloned().collect::<Vec<_>>(),
+            [
+                "frontier.bare".to_string(),
+                "frontier.definer".to_string(),
+                "frontier.helpers".to_string(),
+                "frontier_entry".to_string(),
+            ],
+            "the helper itself plus its dependents: two through import chains, one through a bare name \
+             in a file that declares no imports at all"
+        );
     }
 
     /// NO SCOPED SUCCESS CERTIFIES ANOTHER SUBJECT. On ONE index, in both orders: a clean entry is
@@ -9787,13 +10036,164 @@ mod closure_edge_demand_tests {
         }
         let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
         assert!(modules.contains(&"entry".to_string()));
-        assert!(edges.contains(&("chain.consumer".to_string(), "chain.provider".to_string())));
+        assert!(edges.contains(&(Rc::from("chain.consumer"), Rc::from("chain.provider"))));
         let reached = required_regen_host::regen_reverse_closure_host(
             &["chain.provider".to_string()],
             &edges,
         );
         assert!(reached.contains(&"chain.consumer".to_string()));
         assert!(!reached.contains(&"entry".to_string()));
+    }
+
+    /// THE GATE ON THE ROW REPRESENTATION: the emitted pairs are the DIRECT rows of the relation the
+    /// affected set walks -- pair for pair, in the order the set form produced -- AND one module name
+    /// is one allocation across the whole edge list rather than one spelling per edge. Both halves are
+    /// required: sharing that changes the pairs, or pairs preserved by re-spelling, is the mode
+    /// recorded in gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence.
+    /// The closure-expanded pair this test used to require (`chain.first` to `chain.provider`) is now
+    /// asserted ABSENT: the reverse walk takes that reach, and `generator_rows_answer_the_same_reverse_closure_as_the_composition` is what proves the walk
+    /// still lands on the same modules.
+    #[test]
+    fn regen_edge_endpoints_are_shared_and_pair_for_pair_unchanged() {
+        let fixture = Fixture::new(&[
+            ("dag/entry.dag", "module entry\nfn main() -> Int { 1 }\n"),
+            ("dag/provider.dag", "module chain.provider\nfn value() -> Int { 1 }\n"),
+            (
+                "dag/mid.dag",
+                "module chain.mid\nimport chain.provider { value }\nfn read() -> Int { value() }\n",
+            ),
+            (
+                "dag/first.dag",
+                "module chain.first\nimport chain.mid { read }\nfn use_first() -> Int { read() }\n",
+            ),
+            (
+                "dag/second.dag",
+                "module chain.second\nimport chain.mid { read }\nfn use_second() -> Int { read() }\n",
+            ),
+            (
+                "dag/alpha.dag",
+                "module chain.alpha\nimport chain.provider { value }\nfn use_alpha() -> Int { value() }\n",
+            ),
+            (
+                "dag/beta.dag",
+                "module chain.beta\nimport chain.provider { value }\nfn use_beta() -> Int { value() }\n",
+            ),
+        ]);
+        for root in regen_source_roots().all() {
+            std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
+        }
+        let (edges, _modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
+        let spelled: BTreeSet<(String, String)> = edges
+            .iter()
+            .map(|(from, to)| (from.to_string(), to.to_string()))
+            .collect();
+        for expected in [
+            ("chain.mid".to_string(), "chain.provider".to_string()),
+            ("chain.alpha".to_string(), "chain.provider".to_string()),
+            ("chain.beta".to_string(), "chain.provider".to_string()),
+            ("chain.first".to_string(), "chain.mid".to_string()),
+            ("chain.second".to_string(), "chain.mid".to_string()),
+        ] {
+            assert!(spelled.contains(&expected), "edge {expected:?} is missing");
+        }
+        for composed_only in [
+            ("chain.first".to_string(), "chain.provider".to_string()),
+            ("chain.second".to_string(), "chain.provider".to_string()),
+        ] {
+            assert!(
+                !spelled.contains(&composed_only),
+                "{composed_only:?} is a closure row: the walk reaches it, so spelling it per file \
+                 buys rows and no reach"
+            );
+        }
+        assert_eq!(
+            spelled.len(),
+            edges.len(),
+            "the rank-deduplicated list must carry each pair once"
+        );
+        assert!(
+            edges.windows(2).all(|pair| {
+                (pair[0].0.as_ref(), pair[0].1.as_ref()) <= (pair[1].0.as_ref(), pair[1].1.as_ref())
+            }),
+            "the emitted order must be the lexicographic (from, to) order the set form produced"
+        );
+        let pulled: Vec<&Rc<str>> = edges
+            .iter()
+            .filter(|(_, to)| &**to == "chain.provider")
+            .map(|(_, to)| to)
+            .collect();
+        assert!(
+            pulled.len() >= 3,
+            "the fixture must produce several occurrences of one endpoint"
+        );
+        for endpoint in pulled.iter().skip(1) {
+            assert!(
+                Rc::ptr_eq(pulled[0], endpoint),
+                "an endpoint was spelled again instead of cloning the roster's one allocation"
+            );
+        }
+    }
+
+    /// THE INTERNER AT ITS OWN GRAIN. The sharing the test above pins is the roster's; the interner
+    /// serves the OTHER half of the index -- a provider's import closure, which the edge index reads
+    /// once for every provider that reaches it. Two providers that both reach one module must get the
+    /// SAME allocation for it, and one provider asked twice must get the memo's row back: one
+    /// spelling per (provider, closure member) is what measured 71.7 MB of path bytes held by
+    /// 5.56 GB resident
+    /// (gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence).
+    #[test]
+    fn interned_import_closures_share_one_allocation_per_module() {
+        let fixture = Fixture::new(&[
+            (
+                "dag/provider.dag",
+                "module chain.provider\nfn value() -> Int { 1 }\n",
+            ),
+            (
+                "dag/mid.dag",
+                "module chain.mid\nimport chain.provider { value }\nfn read() -> Int { value() }\n",
+            ),
+            (
+                "dag/first.dag",
+                "module chain.first\nimport chain.mid { read }\nfn a() -> Int { read() }\n",
+            ),
+            (
+                "dag/second.dag",
+                "module chain.second\nimport chain.mid { read }\nfn b() -> Int { read() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let facts = &index.module_graph_facts;
+        let rel = |module: &str| {
+            let source = index.source_files.get(module).unwrap_or_else(|| {
+                panic!("the pool index must carry '{module}'");
+            });
+            workspace_relative_repo_path(&source.path)
+        };
+        let provider_path = rel("chain.provider");
+        let mid = interned_import_closure(&rel("chain.mid"), facts);
+        let again = interned_import_closure(&rel("chain.mid"), facts);
+        assert!(
+            Rc::ptr_eq(&mid, &again),
+            "one provider asked twice got two closure rows instead of the memo's"
+        );
+        let first = interned_import_closure(&rel("chain.first"), facts);
+        let in_mid = mid
+            .iter()
+            .find(|path| ***path == *provider_path)
+            .expect("chain.mid's closure must name the provider file");
+        let in_first = first
+            .iter()
+            .find(|path| ***path == *provider_path)
+            .unwrap_or_else(|| {
+                panic!(
+                "chain.first's closure must reach the provider file through chain.mid, got {:?}",
+                first.iter().map(|path| path.to_string()).collect::<Vec<_>>()
+            )
+            });
+        assert!(
+            Rc::ptr_eq(in_mid, in_first),
+            "one module was spelled once per provider instead of interned once for the pool"
+        );
     }
 }
 
@@ -10010,17 +10410,28 @@ fn extend_with_bare_reference_closure(
     });
     let walk_started = std::time::Instant::now();
     let out = extend_sources_via_demanded_edges(sources, &lookup, |source| {
-        let (edges, nanos) =
-            nanos_net_of_pool_parse(|| build_both_closure_edge_index(index, source));
+        let (edges, nanos) = nanos_net_of_pool_parse(|| {
+            build_both_closure_edge_index(index, source, EdgeRowShape::Composed)
+        });
         resolve_stage_slot_add(|s| s.load_bare_edge_index += nanos);
         let edges = edges?;
         let file = workspace_relative_repo_path(&source.path);
         if !edges.bare_scan_eligible.contains(&file) {
             return Ok(Vec::new());
         }
-        edges.bare_out.get(&file).cloned().ok_or_else(|| {
-            format!("closure_edge_demand: bare edges absent after production for '{file}'")
-        })
+        // Spelled out for the same reason as the reference half above.
+        edges
+            .bare_out
+            .get(&file)
+            .cloned()
+            .map(|row| {
+                row.iter()
+                    .map(|path| path.to_string())
+                    .collect::<Vec<String>>()
+            })
+            .ok_or_else(|| {
+                format!("closure_edge_demand: bare edges absent after production for '{file}'")
+            })
     });
     resolve_stage_slot_add(|s| s.load_bare_edge_walk += walk_started.elapsed().as_nanos());
     out
@@ -11331,6 +11742,9 @@ pub struct MultiEntryIndex {
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
     /// Only produced rows; consumers needing every row call whole_pool_closure_edge_index.
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    // The affected set's demand: the same admission and the same join, rows NOT closure-expanded.
+    // Kept apart from `both_closure_edges` so neither consumer can be served the other's shape.
+    generator_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
     /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
     scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
     /// Memoized verdict of `scratch_underlay_identity_proof` for THIS scratch: `None` = not yet
@@ -11493,6 +11907,19 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
                 .unwrap_or(0),
         ),
         (
+            // Counted separately from the composed demand on purpose: this change moves the regen
+            // route from one relation to the other, and a run that names the resident set has to be
+            // able to show which relation it is holding (gunbc.design_argument::fail_closed --
+            // countable, not merely smaller).
+            "generator_edge_rows",
+            index
+                .generator_edges
+                .borrow()
+                .as_ref()
+                .map(|e| e.bare_out.len() + e.ref_out.len())
+                .unwrap_or(0),
+        ),
+        (
             "resolved_graph_memo",
             index.resolved_graph_memo.borrow().len(),
         ),
@@ -11521,6 +11948,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
+        "generator_edges" => *index.generator_edges.borrow_mut() = None,
         "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
@@ -11543,6 +11971,7 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "pool_parse",
         "reference_pool_names",
         "both_closure_edges",
+        "generator_edges",
         "closure_name_censuses",
         "bare_reference_admission",
         "pool_bare_census",
@@ -24585,8 +25014,17 @@ mod nfr_tests {
     #[test]
     fn nfr_live_union_is_populated_unique_and_tripled() {
         let entries = super::non_fold_residue_roster_entries().expect("live frontier union");
+        // Sanity FLOOR (discovery is wired and populated), NOT a cap on how much
+        // debt may be paid off. The DP-M4 closed-matches-total payoff retires
+        // single-wildcard-over-closed-coproduct rows (each wildcard named out and
+        // its co-located row deleted), so the live union shrinks as debt is paid.
+        // The remaining frontier is still large (order ~90+); a healthy tree sits
+        // well above this bound, while a broken discovery walk (glob misses dag/ or
+        // src/v2/, parser stops early) would collapse toward 0 and trip it. The
+        // per-entry uniqueness and identity-join tripling assertions below are the
+        // real structural guards; this only refuses a near-empty discovery.
         assert!(
-            entries.len() >= 100,
+            entries.len() >= 64,
             "live host union must stay populated (got {})",
             entries.len()
         );
@@ -29897,15 +30335,19 @@ pub fn assemble_prepared_subject_from_corpus(
                     let Some(sf) = full_index.get(&module) else {
                         continue;
                     };
-                    let pulled =
-                        bare_reference_pull_paths_for_source(sf, entry_index).map_err(|e| {
-                            format!(
-                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
+                    let pulled = bare_reference_pull_paths_for_source(
+                        sf,
+                        entry_index,
+                        EdgeRowShape::Composed,
+                    )
+                    .map_err(|e| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
                                  module={module} — bare-reference scan: {e}"
-                            )
-                        })?;
-                    for rel in pulled {
-                        let Some(target) = path_to_module.get(&rel) else {
+                        )
+                    })?;
+                    for rel in pulled.iter() {
+                        let Some(target) = path_to_module.get(rel.as_ref()) else {
                             return Err(format!(
                                 "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
                                  module={module} — bare reference pulled '{rel}', which is not a \

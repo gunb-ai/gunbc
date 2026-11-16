@@ -1,0 +1,96 @@
+module gunbc.integration_concern.h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 20: main 18cabce704f (#16564).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_edge_gate_refusal_revision, h11ssl_unit3_edge_live_read_revision, h11ssl_unit3_intake_sighting_revision }
+
+data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_pinned_members"),
+    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry is not in the stale set, so the model cannot say where it lives or that removing it is the converge's job. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
+    standing: RequirementEstablished {
+      by: CitesArtifact {
+        label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (srv4's own answers: stale-install-files=found naming this unit's seed paths; dnsmasq config before=differs; nothing written)",
+        sha256: Sha256Digest { hex: "7f3956a28b3b07223163d0f868d7fabb5b4c51c1633d5ce8384eda6c2801f415" as Sha256DigestHex },
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_pinned_members"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_config_path"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_tftp_root"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_paths"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_mac"),
+    ],
+  },
+  question: "The stale fold owns files under the edge's install roots. What owns the live state that is not such a file -- a dnsmasq line the model never rendered, an install entry that is not in the roots the fold lists -- and what does a converge run have to read before it removes one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_intake_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesArtifact {
+          label: "artifacts/host-observations/h11ssl-unit3-lan-read-2026-11-15/lan_read_2026-11-15.txt (the unit's network sightings; the hand install route is what put them on the LAN)",
+          sha256: Sha256Digest { hex: "a5500a7c1bfd9528d4284532569e2d15eb48a991eb15a9280ed5df39e97be6cb" as Sha256DigestHex },
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing"),
+          },
+        ],
+      },
+      account: "Sighted by still-fox-404 on 2026-11-15 while modeling this unit's intake. The unit's OS came up from a hand-staged install entry, seed and dnsmasq line on srv4; the edge model renders only the members it pins, so nothing in the model names those three artifacts and a converge run cannot be shown what it is about to remove. Nothing on srv4 was read or changed by this lane, and the retire step is owed through site_pxe_edge_converge, never by hand.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_edge_gate_refusal_revision,
+        evidence: FreeSemigroup {
+          head: CitesArtifact {
+            label: "artifacts/receipts/site-pxe-edge-observe-branch-ref-refusal-2026-11-16/wif_refusal_log_excerpt.txt (fleet-converge workflow run 43786925157: the workload-identity gate refused the READ-ONLY edge observation at a branch ref)",
+            sha256: Sha256Digest { hex: "ecdaa1a1a535c5c8eba5651632dffea469021dc04e5b792df370fe7fe01feac7" as Sha256DigestHex },
+          },
+          tail: [],
+        },
+        account: "Sighted by still-fox-404 on 2026-11-16, second sighting of the SAME concern, and it deepens rather than repeats it: the obstacle is not only that the model cannot show the converge what to delete, but that a session branch cannot even LOOK. Dispatching the read-only observation of srv4's pinned edge (mode site_pxe_edge_observe) from a session branch was refused by the workflow's own workload-identity gate before it reached srv4 -- auth.branch_run_grant grants a run-scoped account only after THAT run's branch-run grant, and this mode has no such grant for a branch dispatch. So the read-only diff that must precede any retirement can only be produced at main (or after brokering a grant for the branch run), which means the evidence a cleanup needs is structurally out of reach of the branch that owes the cleanup. This is not specific to this unit: every host this lifecycle brings up inherits it.",
+      },
+      ConcernSighting {
+        revision: h11ssl_unit3_edge_live_read_revision,
+        evidence: FreeSemigroup {
+          head: CitesArtifact {
+            label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (the observe entry's own wire block from srv4, workflow run 43789720870, dispatched at main; the README beside it bounds what it shows)",
+            sha256: Sha256Digest { hex: "7f3956a28b3b07223163d0f868d7fabb5b4c51c1633d5ce8384eda6c2801f415" as Sha256DigestHex },
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_sighting"),
+            },
+          ],
+        },
+        account: "Sighted by still-fox-404 on 2026-11-16, third sighting, and it CORRECTS the first one -- which is why it is appended rather than edited in. The first sighting said nothing in the model names the hand-staged artifacts. That is wrong for the file half. The live observation (dispatched at main after the refusal below, and it DID reach srv4 with a model-materialized known-hosts anchor) computes a stale set of exactly this kind -- site_pxe_edge_stale_install_paths: every file under the owned install roots that no model-rendered member produces -- and an apply removes that set file by file (site_pxe_edge_remove_stale), refusing at the first path that fails. srv4's own answer put this unit's hand-staged seed in that set: stale-install-files=found listed /srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb/user-data and .../meta-data under a directory named for this unit's install NIC, outcome StaleLeftObserveOnly because the mode is read-only. So the model DOES have a place for a hand-staged file: it is computed from the live listing, not kept as a ledger row. What survives of the concern is narrower and still open: (a) the hand-staged dnsmasq LINE is not a file under an owned root, and the observe can report only before=differs for the config -- never which lines the live file carries extra -- so the non-file half of live-but-unrendered edge state has no representation; (b) this unit's hand-staged install ENTRY is NOT among the five stale paths (the only install cfg listed is 9c:6b:00:e7:ca:63's), so either it lives somewhere the stale fold does not own or it is already gone, and no read yet says which; (c) nothing was removed because the mode is read-only (outcome StaleLeftObserveOnly, placement not-attempted) -- NOT because a refusal stopped it: that verdict comes from site_pxe_edge_run_succeeded's ObserveOnly arm refusing while the Aarch64 chain is withheld for a member whose digest leg could not run, and an apply is not refused for that reason (the withheld-member concern beside this one carries the correction, and the code read that settled it).",
+      },
+      ConcernSighting {
+        revision: h11ssl_unit3_edge_live_read_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.srv15_host_nic_observation", decl_name: "srv15_host_nic_mac"),
+          },
+          tail: [
+            CitesArtifact {
+              label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (stale-install-files=found lists the three 9c-6b-00-e7-ca-63 paths beside this unit's two)",
+              sha256: Sha256Digest { hex: "7f3956a28b3b07223163d0f868d7fabb5b4c51c1633d5ce8384eda6c2801f415" as Sha256DigestHex },
+            },
+          ],
+        },
+        account: "Sighted on 2026-11-16 by still-fox-404 at smart-crane-730's instruction, and it is why this lane holds its own apply even though its read is done. Three of the five stale paths the observe listed are not this unit's: they carry 9c:6b:00:e7:ca:63, which gunbc.machine_intake.srv15_host_nic_observation records as SRV15's install NIC. So one stale set spans two hosts and two lanes -- the files this bring-up wants removed, and the hand-staged install entry and seed that srv15's arrival (the lane of #16357) targets. Deleting them before that lane admits its own binding would be a converge acting on a host whose model is mid-flight, and that is exactly what the stale fold cannot see: it computes staleness per edge, not per host's lifecycle stage. The hold is smart-crane-730's instruction inside his own bring-up-plan lane. It is NOT entered in gunbc.design_ruling: that ledger carries dated rulings of the operator, and nobody gave this one operator authority -- the MAC-to-srv15 fact it rests on is this repository's own record (gunbc.machine_intake.srv15_host_nic_observation), read here by a read-only observe. Held CONDITIONAL, per smart-crane-730, and not to be chased: the stale set is 'install files no admitted binding renders', so those three paths leave the stale set iff the install binding admitted on this edge renders exactly those paths; if the render lands elsewhere, they stay stale and the hand-staged files stay on the box. Whether they land at those three paths is a property of the render, not of any lane's intent -- and proud-badger's arrival renders nothing on this edge, so that is not the question to ask anyone. Nothing here says the render does or does not name them.",
+      },
+    ],
+  },
+  disposition: Open,
+}

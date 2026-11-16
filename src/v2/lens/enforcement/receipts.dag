@@ -1,6 +1,5 @@
 module v2.lens.enforcement.receipts
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, contains, non_empty }
@@ -25,7 +24,6 @@ import v2.lens.enforcement.vocab {
 }
 import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost }
 import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
-import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type SubjectJudgment
@@ -205,7 +203,13 @@ fn consumer_entry_identity_for(binding: ConsumerWitnessBinding, enrolled: Consum
       match enrolled {
         EnrolledInFloorRoster => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
         PrePushHook => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
-        _ => NoReceiptRef
+        MergeAdmission => NoReceiptRef
+        PeriodicActuator => NoReceiptRef
+        RoadmapDriftGate => NoReceiptRef
+        DeployReadback => NoReceiptRef
+        WitnessOnly => NoReceiptRef
+        NoConsumer => NoReceiptRef
+        EnrollmentWitnessUnresolved => NoReceiptRef
       }
   }
 }
@@ -306,10 +310,3 @@ fn derive_receipt(
   }
 }
 
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "consumer_entry_identity_for" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]

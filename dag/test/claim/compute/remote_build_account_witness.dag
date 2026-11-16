@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_is_disjoint_from_public_builtins,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
-import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgidSticky, DirectoryOwnerAllEveryoneTraverse }
 import gunbc.compute.host_capacity {
   compute_capacity_directories, ComputeLedgerSharing, ComputeLedgerSharedWithRemoteBuild, ComputeLedgerServiceOnly, compute_ledger_sharing,
 }
@@ -156,7 +156,7 @@ fn w_area_is_group_shared(t: OwnedDirectoryTarget) -> Bool {
     OwnedDirectoryDeclared { member: _, path: _, owner, mode, group_adoption } =>
       owner.group as String == fleet_posix_compute_ledger_group_name as String
         && owner.user as String == fleet_posix_operator_user.name as String
-        && match mode { DirectoryOwnerGroupWritableSetgid => true  _ => false }
+        && match mode { DirectoryOwnerGroupWritableSetgidSticky => true  _ => false }
         && match group_adoption { SameUserRegroupToDeclaredGroup => true  ForeignOwnershipRefuses => false }
     OwnedDirectoryManaged { directory: _ } => false
   }

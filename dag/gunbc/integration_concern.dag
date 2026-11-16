@@ -491,6 +491,14 @@ data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = C
   declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script_for_target"),
 }
 
+// The main revision the edge gate was found refusing a branch dispatch against: the session branch head
+// the read-only edge observation was dispatched from, and refused at.
+data h11ssl_unit3_edge_gate_refusal_revision: CommitSha = "2db279ccba934a574048371882c9f631c923a2d0"
+// The MAIN revision the read-only edge observation ran against -- the ref the observe was dispatched at,
+// and therefore the model state its readings are a statement about.
+data h11ssl_unit3_edge_live_read_revision: CommitSha = "23523235c601a102e79a753294ea9f7c9c3a36d7"
+data h11ssl_unit3_intake_sighting_revision: CommitSha = "22649d22d2fd15332770e4c344fecc8c388b89f6"
+
 // ---------------------------------------------------------------------------------------------
 // THE READING PATH MOVED TO `gunbc.integration_concern.reading`, which imports the derived roster:
 // the entry point cannot sit here, because the roster imports this module for the row type. What

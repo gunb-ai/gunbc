@@ -388,6 +388,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-roadmap".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/roadmap/roadmap_native_ingress.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "native-serve-startup-refusal".to_string(),
             },
             TargetProducer::NativeServeProgram {
