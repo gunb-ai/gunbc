@@ -8445,8 +8445,11 @@ fn reference_pull_paths_for_source(
 
 /// The two shapes are held in two memos, never one: a consumer must not be served rows of the other
 /// shape, and both can be demanded inside one process (entry traversal and the regen scope round).
-/// The generator memo is on the same invalidation surface as every other memo read-through
-/// (`MEMO_INVALIDATION_NAMES`), so a state change cannot leave a stale un-expanded index behind.
+/// Neither memo has a runtime invalidation surface today -- `MultiEntryIndex.source_files` is fixed
+/// once the pool is resolved, so the corpus cannot change under either memo while the process lives,
+/// and a proven scratch base is read through `scratch_underlay_if_proven`, which this selector makes
+/// shape-aware. The only clearing path is the test helper `drop_private_term_for_test`, where
+/// `generator_edges` sits beside `both_closure_edges` so a test that drops one can drop both.
 fn edge_index_memo(
     index: &MultiEntryIndex,
     shape: EdgeRowShape,
@@ -11898,6 +11901,19 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
             "both_closure_edge_rows",
             index
                 .both_closure_edges
+                .borrow()
+                .as_ref()
+                .map(|e| e.bare_out.len() + e.ref_out.len())
+                .unwrap_or(0),
+        ),
+        (
+            // Counted separately from the composed demand on purpose: this change moves the regen
+            // route from one relation to the other, and a run that names the resident set has to be
+            // able to show which relation it is holding (gunbc.design_argument::fail_closed --
+            // countable, not merely smaller).
+            "generator_edge_rows",
+            index
+                .generator_edges
                 .borrow()
                 .as_ref()
                 .map(|e| e.bare_out.len() + e.ref_out.len())
