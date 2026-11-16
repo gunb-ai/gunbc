@@ -58,7 +58,7 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
-import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir, attempt_system_unit_launcher_helpers_root }
 
 // ── row / verdict helpers ──
 
@@ -632,4 +632,28 @@ test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
       non_empty(xs: watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
     Absent => false
   }
+}
+
+// ─── MIGRATED MAIN CONTROLS (review 95811 item 1) ─────────────────────────────────
+// Migrated from main's #16513 parent-alone control onto the gate route: the old
+// deploy_closure_verdict/Refused assertion is now deploy_gate -> Halt{MissingArtifact} naming it
+// (review 95811: "Refused naming an artifact => Halt{MissingArtifact} naming it").
+
+fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  let read_set = deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev())
+  let reads_concrete_not_parent = match read_set {
+    Declared { reads: reads } => list_member(xs: paths_of(reads), x: snap, eq: eq_str) && !list_member(xs: paths_of(reads), x: attempt_system_unit_launcher_helpers_root, eq: eq_str) && snap != attempt_system_unit_launcher_helpers_root
+    _ => false
+  }
+  let row = ReadRow { located: s.path as String, reads: read_set }
+  let halts = match deploy_gate(rows: [row], installed: ownb([attempt_system_unit_launcher_helpers_root])) {
+    Halt { causes: cs } => any(cs, fn(c) { match c { MissingArtifact { located: _, artifact: a, kind: _ } => a == snap, _ => false } })
+    _ => false
+  }
+  reads_concrete_not_parent && halts
+}
+
+test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
+  any(srv1_steps(), fn(s) { kind_is_drain(s) && drain_not_admitted_by_parent(s) })
 }
