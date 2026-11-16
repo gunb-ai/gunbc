@@ -1389,6 +1389,22 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   }
 }
 
+// THE ENDPOINT THAT OWNS A TAILSCALE SERVE MAPPING STEP. The roster above emits exactly ONE
+// TailscaleServeMapping member, and it spells its path with tailscale_serve_route_member_path of
+// the spec's declared serve endpoint -- the route key, without its scope node (the note above
+// deployment_owned_steps). The step itself carries only {kind, path}, so what its backend addresses
+// is decided by finding THIS endpoint through that route key, never by re-spelling a second
+// endpoint inventory: a mapping step whose path is the declared endpoint's route label is that
+// endpoint's mapping, and one that is not belongs to no endpoint this spec declares.
+fn deployment_declared_serve_mapping_endpoint(names: DeploymentNames, step: DeploymentArtifactStep) -> TailscaleServeEndpoint? {
+  let declared = names.tailscale_serve_endpoint
+  if tailscale_serve_route_member_path(endpoint: declared) == step.path {
+    Present { value: declared }
+  } else {
+    none
+  }
+}
+
 // The fabric DB endpoint's one owned member, after the dashboard's own: the tailscale route to the
 // endpoint's door socket (routes to a live service, the same reason the dashboard's mapping is last). The
 // endpoint's OWN unit is not a member at all since the operator's ruling of 2026-11-10 -- see the note above

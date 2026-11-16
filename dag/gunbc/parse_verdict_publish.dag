@@ -260,6 +260,19 @@ fn parse_verdict_publish_cache_key() -> String {
 }
 
 fn materialization_family_cache_save_step(family: String, path: String, cache_key: String) -> Step {
+  materialization_family_cache_save_step_guarded(
+    family: family,
+    path: path,
+    cache_key: cache_key,
+    if_value: materialization_publish_if()
+  )
+}
+
+// THE SAME SAVE STEP WITH AN EXPLICIT GUARD. gunbc.read_set_publish uses this for the fast-lane unit: the
+// unit's trust claim is stated as a condition (the outcomes of the steps that build its members), not
+// carried implicitly by the step's position in the job. Callers that want only the plain default-branch
+// push guard keep calling materialization_family_cache_save_step.
+fn materialization_family_cache_save_step_guarded(family: String, path: String, cache_key: String, if_value: String) -> Step {
   UsesStep {
     name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },
     id: none,
@@ -271,7 +284,7 @@ fn materialization_family_cache_save_step(family: String, path: String, cache_ke
       ]
     },
     env: none,
-    if_condition: Present { value: materialization_publish_if() },
+    if_condition: Present { value: if_value },
     continue_on_error: none,
     timeout_minutes: none
   }

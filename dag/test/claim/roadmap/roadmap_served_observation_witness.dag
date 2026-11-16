@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_served_observation {
   served_observation_standing_http_status,
 }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon, belt_standings_refresh_backstop }
+import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon, belt_standings_refresh_backstop, belt_tick_run_bound }
 import std.measure { Second, second_count }
 import gunbc.roadmap.roadmap_event_carrier {
   AllEventsRead, AllEventsReadRefused, CarrierClosed, SnapshotCloseFailed,
@@ -435,10 +435,31 @@ test fn the_age_verdict_refuses_future_dated_and_unparseable_observations() -> B
     }
 }
 
-// The horizon is DERIVED, not a copy: three times the refresh backstop, from the same carrier.
-test fn the_staleness_horizon_is_three_periods_derived_from_the_backstop() -> Bool {
-  second_count(s: belt_standings_refresh_staleness_horizon) == second_count(s: belt_standings_refresh_backstop) * 3
+// The horizon is DERIVED from the real cycle, not a copied multiple of the cadence: two refresh
+// periods plus the fold's own bounded runtime (belt_tick_run_bound -- the very TimeoutStartSec the
+// emitted unit carries), so a SUCCESSFUL fold is never 409'd between two healthy refreshes. Pins the
+// operator cadence (600) and the fold budget (2700) so neither number can silently drift.
+test fn the_staleness_horizon_is_the_real_cycle_derived_from_the_fold_budget() -> Bool {
+  second_count(s: belt_standings_refresh_staleness_horizon)
+    == second_count(s: belt_standings_refresh_backstop) * 2 + second_count(s: belt_tick_run_bound)
     && second_count(s: belt_standings_refresh_backstop) == 600
+    && second_count(s: belt_tick_run_bound) == 2700
+    && second_count(s: belt_standings_refresh_staleness_horizon) == 3900
+}
+
+// Discriminating defect (1): a full healthy cycle -- the timer's OnUnitInactiveSec wait (one backstop)
+// plus the fold running to its TimeoutStartSec ceiling (belt_tick_run_bound) -- must read CURRENT,
+// never stale-by-age. Under the old 3 x 600 = 1800 s horizon this input (600 + 2700 = 3300 s) returned
+// ObservationStaleByAge and the route refused fresh, healthy data: the spurious-409 bug this fixes.
+test fn a_full_healthy_cycle_stays_current_never_stale_by_age() -> Bool {
+  let healthy_age = (second_count(s: belt_standings_refresh_backstop) + second_count(s: belt_tick_run_bound)) as Int
+  match served_observation_age_verdict(observed_at: "1970-01-01T00:00:00Z", now_secs: healthy_age) {
+    ObservationCurrent => true
+    ObservationStale { observed_at: _, newest_event_at: _ } => false
+    ObservationStaleByAge { observed_at: _, horizon: _ } => false
+    ObservationUnparseable { observed_at: _ } => false
+    ObservationFreshnessUnread { reason: _ } => false
+  }
 }
 
 test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
@@ -486,7 +507,8 @@ test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
     // The age gate: a stale-by-age refusal (fail closed) says so with its own standing word
     // and a horizon field, never a fabricated newest event.
     && string_contains(s: standing_by_age, pattern: "\"standing\": \"stale_by_age\"")
-    && string_contains(s: standing_by_age, pattern: "\"stale_by_age_horizon_secs\": \"1800\"")
+    && string_contains(s: standing_by_age, pattern: "\"stale_by_age_horizon_secs\"")
+    && string_contains(s: standing_by_age, pattern: to_string(second_count(s: belt_horizon_fixture())))
     && !string_contains(s: standing_by_age, pattern: "newest_event_at")
     && served_observation_standing_http_status(read: fixture_read(), freshness: stale_by_age) == 200
     && marked_by_age.status == 409 && marked_by_age.body == fixture_daily_body

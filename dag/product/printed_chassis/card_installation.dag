@@ -7,9 +7,9 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.boards.types { BoardExpansionSlot, BoardExpansionSlots }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_expansion_slots }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_expansion_slots }
 import extdeps.standards.pcie_cem { cem_slot_width }
-import extdeps.cited_field { row_field_value }
-import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card }
+import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card, t10_duct_card, duct_card_slot_count }
 
 // ═══ WHICH CARDS ARE INSTALLED, WHERE, AND WHICH OF THEM SHARE COOLING ═══
 //
@@ -83,7 +83,7 @@ fn pair_refusals(a: InstalledCard, b: InstalledCard) -> List<InstallationRefusal
     Present { value: p } => match installed_position(c: b) {
       Absent => []
       Present { value: q } => if q == p { [SlotShared { instance: b.instance.id, with: a.instance.id }] } else if q < p { [SlotsOutOfOrder { instance: b.instance.id, after: a.instance.id }] } else {
-        match row_field_value(field: a.instance.card.row.slot_count) {
+        match duct_card_slot_count(card: a.instance.card) {
           Absent => [SlotCountUnread { instance: a.instance.id }]
           Present { value: n } => if q - p < (n as Int) { [SlotCoveredByNeighbour { instance: b.instance.id, covered_by: a.instance.id }] } else { [] }
         }
@@ -229,7 +229,7 @@ fn installation_index(inst: CardInstallation, id: NonEmptyStr) -> Int? {
 
 fn next_member_contiguity(prev: PlacedMember, here: PlacedMember) -> GroupContiguity {
   if here.index != prev.index + 1 { return GroupNotConsecutive { instance: here.card.instance.id } }
-  match row_field_value(field: prev.card.instance.card.row.slot_count) {
+  match duct_card_slot_count(card: prev.card.instance.card) {
     Absent => GroupSlotCountUnread { instance: prev.card.instance.id }
     Present { value: n } => if here.position == prev.position + (n as Int) { GroupContiguous } else { GroupSlotGap { instance: here.card.instance.id, after: prev.card.instance.id } }
   }
@@ -290,5 +290,21 @@ data a16_installation: CardInstallation = CardInstallation {
   name: "A16, alone in its chassis",
   cards: [
     InstalledCard { instance: CardInstance { id: "a16", card: a16_duct_card }, slot: SlotNotRecorded { read_obligation: "the board and slot the A16 is installed in, when a second card is installed beside it" } },
+  ],
+}
+
+fn h11ssl_slot(designator: NonEmptyStr) -> InstalledSlot { InBoardSlot { board: supermicro_h11ssl_expansion_slots, designator: designator } }
+
+// The T10 pair (operator, 2026-11-16): two Tesla T10s on the new Supermicro H11SSL-i, in CPU1 SLOT4 and CPU1
+// SLOT6 with the x8 SLOT5 between them empty; SLOT6 is the x16 nearest the CPU. Each card's front plate (its
+// open half) faces away from the CPU. The host has no fleet identity yet, and none is needed here: the
+// installation is the board's slots and the cards in them. Because SLOT5 is empty the two are NOT side by
+// side, so a group of both is refused by group_contiguity; a duct serving the pair across the 22.46 mm gap is
+// a realization this layer does not have yet.
+data t10_h11ssl_installation: CardInstallation = CardInstallation {
+  name: "T10 pair on the H11SSL-i",
+  cards: [
+    InstalledCard { instance: CardInstance { id: "t10@SLOT4", card: t10_duct_card }, slot: h11ssl_slot(designator: "SLOT4") },
+    InstalledCard { instance: CardInstance { id: "t10@SLOT6", card: t10_duct_card }, slot: h11ssl_slot(designator: "SLOT6") },
   ],
 }
