@@ -4,11 +4,25 @@ module test.claim.extdeps_scope_placement_gate_live_wet_witness
 // dp-m3-extdeps-scope-halved, gunbc#15583). What this module does NOT claim, stated first because
 // the repository's own ledger (gunbc.recurring_failure_mode::consumer_relies_on_incidental_realization_property,
 // and the 2026-10-01 note this change deletes) is a history of exactly this sentence being asserted
-// before it was measured: as of this change NO RUN HAS EXECUTED THE CLAIM BELOW. The fleet is down
-// fleet-wide (a session's ctrl-build remote answers "start remote run: permission denied"), so no
-// session could produce a receipt, and the required PR job does not evaluate witnesses at all
-// (DESIGN.md, Reference: building and checks: "Nothing on the required path evaluates a witness").
-// What follows is therefore a DECLARED FRONTIER WITH A TRIGGER, not a consumed fact:
+// before it was measured. THE CLAIM BELOW HAS NOW EXECUTED, once, in-session, against a tree that
+// carries both this enrolment and the drained 176-row manifest; what is STILL unevidenced is the
+// scheduled fleet route, and both states are written out below rather than merged into one sentence.
+// The runner is the fleet's own CI-built one, not a local build: `claim_batch` from a fleet-converge
+// release-bins artifact, aarch64, sha256 b30f2815c35afc99e3f199eed6a8b81b634d087dc21b9fad26274955ca46c309.
+//   EXECUTED: tree 25ce17af365b2d1de27f3374812048fa5ec1e9b9 (main c7efe927c4f6, which carries the
+//     drained manifest, plus this branch's two commits), invoked as
+//     `claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --wet --entry
+//     dag/test/claim/extdeps_scope_placement_gate_live_wet_witness.dag --function
+//     the_membership_arm_verdict_passes_on_the_prepared_subject`. It prints
+//     `PASS the_membership_arm_verdict_passes_on_the_prepared_subject` and
+//     `[resolve-summary] mode=Wet; 1 resolve(s) in 16768ms wall; 1 witness(es) in 1096ms wall`.
+//   THE CONTROL IS PLANTED, NOT ASSUMED: adding one file `dag/extdeps/dp_m3_witness/unenrolled_probe.dag`
+//     that joins neither roster (tree 5a78b801db64651dcb6a9153d71a54b048a088c5, never pushed) turns the
+//     same claim red -- `FAIL the_membership_arm_verdict_passes_on_the_prepared_subject`, exit 1. So the
+//     membership arm is not vacuous on the drained manifest: it passes because every added `dag/extdeps`
+//     path in the prepared subject is enrolled, and it refuses when one is not.
+// What follows is therefore a DECLARED FRONTIER WITH A TRIGGER FOR THE SCHEDULED ROUTE, and an executed
+// fact for the arm itself:
 //   ENROLLED: two rows, in the two authorities the wet lane's own recipe names
 //     (v2.workflow.floor_route_gap chunk_06 header): the `WetScheduledClaim` row of
 //     `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule`, and the
@@ -16,12 +30,18 @@ module test.claim.extdeps_scope_placement_gate_live_wet_witness
 //     `gunbc.ci.ci_layer_roots::witness_exclusion_frontier` that classifies THIS file out of the
 //     hermetic corpus. The schedule projection is checked to carry the identity
 //     (`local_repo_wet_scheduled_identities` returns it).
-//   NOT YET EVIDENCED: an execution. The trigger that discharges it is the fleet's floor run on a
-//     candidate containing this module — the changed-witness lane plans a changed witness module on
-//     its commit — and the discharge is that run's own pair of lines: `[local-repo-wet] scheduled=N
-//     admitted=N refusals=0` naming this identity, with the standing read
-//     `hermetic-route-gap-held-and-wet-passed`. Until a run link carries both, the gate's executing
-//     route is a frontier, and this node's counting must say so.
+//   NOT YET EVIDENCED: the SCHEDULED route. The trigger is the fleet's floor run on a candidate
+//     containing this module — the changed-witness lane plans a changed witness module on its commit —
+//     and the discharge is that run's own pair of lines: `[local-repo-wet] scheduled=N admitted=N
+//     refusals=0` naming this identity, with the standing read `hermetic-route-gap-held-and-wet-passed`.
+//     No such line exists yet: fleet-converge failed on runs 43816779485 and 43798130311 and its last
+//     success predates this module, and nothing on the required PR path evaluates a witness, so the
+//     in-session execution above is the only run this arm has. The in-session run also carries
+//     `[expectation-frontier] 1 site(s), 1 dispatch(es) undeclared: git.Core.DiffNameStatus=1`; the
+//     expectation for that call is written on the instrument's own builder
+//     (`extdeps_scope_placement_gate::scope_placement_change_added_paths`), so what the receipt says is
+//     that the wet dispatch is not covered by a hermetic expectation site, which the fleet lane's
+//     expectation-frontier read would have to decide.
 //
 // WHY THIS ROUTE AND NOT A HERMETIC ONE: the membership arm reads the PREPARED SUBJECT's git history
 // (`origin/main...HEAD`), a MOVING base, so no published `mock_response` can serve it — which is

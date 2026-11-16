@@ -43,11 +43,15 @@ import gunbc.extdeps_scope_frontier {
 // carries the gate's MEMBERSHIP arm (its own observation builder and verdict fns, no re-implementation)
 // and is enrolled in the two authorities the wet lane's recipe names — a `WetScheduledClaim` row of
 // `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule` and a `LocalRepoWetLane`
-// `WitnessExclusionRow` of `gunbc.ci.ci_layer_roots::witness_exclusion_frontier`. NO RUN HAS EXECUTED
-// IT: the fleet is down fleet-wide and the required PR job does not evaluate witnesses, so this is a
-// declared frontier with a trigger — the fleet's floor run on a candidate containing the module, whose
-// discharge is that run's `[local-repo-wet] scheduled=N admitted=N refusals=0` line naming the
-// identity together with the standing read `hermetic-route-gap-held-and-wet-passed`. The claim is scoped
+// `WitnessExclusionRow` of `gunbc.ci.ci_layer_roots::witness_exclusion_frontier`. THE ARM HAS EXECUTED
+// once, in-session against a tree carrying the drained 176-row manifest, with the fleet's CI-built
+// `claim_batch` (PASS, plus a planted unenrolled `dag/extdeps` file turning it red); the run identity,
+// the exact invocation and the control are in that claim module's own header — cite it, do not restate
+// it here. THE SCHEDULED ROUTE HAS NOT RUN: the fleet's floor run has not printed its
+// `[local-repo-wet] scheduled=N admitted=N refusals=0` line naming this identity (fleet-converge
+// failing), and nothing on the required PR path evaluates a witness, so the scheduled admission stays
+// a declared frontier with a trigger, discharged by that line together with the standing read
+// `hermetic-route-gap-held-and-wet-passed`. The claim is scoped
 // to the membership arm by operator decision on measured cost (0.5s against 61s for a
 // `legacy_manifest_freeze_sha..HEAD` read, under
 // `gunbc.design_ruling::ci_job_budgets_closed_to_growth`); the freeze and remove-only arms stay offline
