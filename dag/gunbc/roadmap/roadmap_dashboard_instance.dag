@@ -1389,23 +1389,6 @@ data host_capacity_home_root: FilePath = "/opt/gunbc"
 // moves to this host home so every instance on srv2 reserves in one reachable ledger. srv3/srv4 resolve
 // no dashboard instance and so had no ledger at all; this is their ONLY ledger.
 //
-// WHY THIS IS AN INSTANCE VALUE AND NOT A PATH: the ledger has no vocabulary of its own for where it
-// sits or who owns it -- it reads both off the HostDashboardInstance handed to the ONE fabric-store
-// mint (fabric_store_open takes an instance and spells <instance_root>/compute/capacity). So the host
-// home is carried as a HostDashboardInstance rooted /opt/gunbc. It MIRRORS
-// fleet_compute_hermetic_dashboard_instance_at -- the fleet's own compute-capacity carrier -- so every
-// serving field (deployment, provider state, toolchain, dispatch scope, actuation posture) is the
-// honest observe-only, host-derived value that carrier already uses, NOT srv1's actuating identity.
-// Nothing here names srv1, srv1's repo, srv1's codex home, or "macbook": the carrier is the host, its
-// owner, and its root. This closes the review finding (review 38602 / artifact 95775) that the home
-// carried srv1_dashboard_live_id and srv1_daily_workspace_deployment -- a value a consumer keying on
-// instance_id could read as srv3's ledger home being srv1's live dashboard. The fields the ledger
-// actually reads are host_identity (the host-keyed partition), directory_owner (the area owner --
-// linux_service_directory_owner, so srv1's on-disk root owner stays byte-identical and the AREAS still
-// take group gunbc-compute via compute_capacity_directories), instance_root (the ledger home
-// /opt/gunbc), and compute_build_memory_ceiling (the per-seat appropriation). The build-pool seat is a
-// PARAMETER because srv3/srv4's seat is derived from one CI runner slot (a gunbc.runner fact) in
-// gunbc.compute.host_capacity, not restated here.
 // THE LEDGER HOME IS NOT A DASHBOARD INSTANCE. The capacity ledger sits at one host-scoped root and is
 // owned by one group; those are the only facts the ledger ever reads about where it lives. Minting a
 // HostDashboardInstance to carry them fabricated a serve_function no function implements, a port nothing

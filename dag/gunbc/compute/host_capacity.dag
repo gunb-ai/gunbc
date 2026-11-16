@@ -211,7 +211,7 @@ type ComputeLedgerSharing
 // INSTANCE ID: that walk is exactly what resolved srv2's ledger into /home/briansrls and left srv3/srv4
 // with no ledger, so it must not return. The red control in the witnesses fails if resolution goes back
 // to it. The home root is NOT re-typed here -- it is gunbc.roadmap.roadmap_dashboard_instance
-// host_capacity_home_root, the SAME data host_capacity_home mints its carrier from, so the sharing test
+// host_capacity_home_root, the SAME data host_capacity_ledger_home mints its carrier from, so the sharing test
 // and the carrier can never disagree about what "the host home" is (single_authority). srv1's host home
 // carries that root, so srv1's shared directories are unchanged.
 data compute_capacity_home_root: FilePath = host_capacity_home_root
