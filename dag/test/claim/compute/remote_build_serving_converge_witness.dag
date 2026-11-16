@@ -1,0 +1,97 @@
+module test.claim.compute.remote_build_serving_converge_witness
+
+// PR 5(a): the OBSERVE arm's pure surface. These cells force gunbc.compute.remote_build_
+// serving_converge to COMPILE (its wet entry defines the fleet-SSH reads the CI observe
+// dispatch will run on main; here only its pure receipt renderers are called, so no
+// effect executes) and prove two things the receipt depends on: the verdict kinds are
+// spelled as the converge and the operator expect, and — the discriminating control — a
+// receipt for an already-converged host reports `terminal=settled` WITHOUT leaking the
+// account's authorized_keys material or its private-home paths. A receipt that exfiltrated
+// secret host material would still be a green run; this cell makes that a red one.
+//
+// Run:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.compute.remote_build_serving_setup {
+  remote_build_serving_desired, serving_observed_from_reads, serving_forced_command_line,
+  serving_plan, serving_plan_settled, ServingPlanItem, Met, Drifted, Missing, Refused,
+}
+import gunbc.compute.remote_build_serving_converge {
+  serving_verdict_kind, serving_plan_terminal, serving_plan_receipt_text,
+}
+
+// ── verdict kinds are spelled the way the converge and operator read them ──────────
+
+test fn verdict_kind_names_each_state() -> Bool {
+  serving_verdict_kind(verdict: Met) == "met"
+    && serving_verdict_kind(verdict: Drifted { desired: "a", observed: "b" }) == "drifted"
+    && serving_verdict_kind(verdict: Missing { desired: "a" }) == "missing"
+    && serving_verdict_kind(verdict: Refused { reason: "r" }) == "refused"
+}
+
+// ── the receipt of an already-converged host ───────────────────────────────────────
+
+// Build the plan of a host whose reads match the desired state exactly, via the SAME
+// readback path the wet observe entry uses.
+fn srv1_settled_plan() -> List<ServingPlanItem> {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let o = serving_observed_from_reads(
+    passwd_text: Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
+    group_text: Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\n" },
+    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
+    store_root_present: Present { value: true },
+    store_staging_present: Present { value: true },
+    serve_binary_present: Present { value: true },
+    checkout_present: Present { value: true },
+    toolchain_present: Present { value: true },
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  serving_plan(d: d, o: o)
+}
+
+// A convenience: count of a delimiter occurrence is parts-1, so contains(hay,needle) is
+// (count(split(hay,needle)) > 1) and "does not contain" is (== 1).
+fn not_contains(hay: String, needle: String) -> Bool { count(split(s: hay, delimiter: needle)) == 1 }
+fn contains(hay: String, needle: String) -> Bool { count(split(s: hay, delimiter: needle)) > 1 }
+
+test fn a_converged_host_reports_settled() -> Bool {
+  serving_plan_terminal(plan: srv1_settled_plan()) == "settled"
+    && serving_plan_settled(plan: srv1_settled_plan())
+}
+
+// RED CONTROL: the receipt names items and verdicts but must carry NO secret host
+// material — not the forced-command line (its `command=` prefix and key blob), and not
+// the account's private-home path. The plan VALUE-compared those, but the receipt must
+// not echo them.
+test fn the_receipt_leaks_no_secret_host_material() -> Bool {
+  let body = serving_plan_receipt_text(host_name: "srv1", probed_at: "2026-11-16T00:00:00Z", context_receipt: "ctx\n", plan: srv1_settled_plan())
+  contains(hay: body, needle: "terminal=settled")
+    && contains(hay: body, needle: "planned[account.uid]=met")
+    && not_contains(hay: body, needle: "command=")
+    && not_contains(hay: body, needle: "/home/gunbc-build")
+    && not_contains(hay: body, needle: "ssh-")
+}
+
+// A host with unobserved facts is `drift`, not silently `settled`: an unmet item keeps the
+// terminal off settled even though the observation succeeded.
+test fn an_unconverged_host_reports_drift_not_settled() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let o = serving_observed_from_reads(
+    passwd_text: Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
+    group_text: Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\n" },
+    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
+    store_root_present: Present { value: false },
+    store_staging_present: Present { value: false },
+    serve_binary_present: Present { value: false },
+    checkout_present: Present { value: false },
+    toolchain_present: Present { value: false },
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  serving_plan_terminal(plan: serving_plan(d: d, o: o)) == "drift"
+}

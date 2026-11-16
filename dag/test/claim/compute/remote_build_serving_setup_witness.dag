@@ -16,6 +16,7 @@ import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired,
   serving_compare_string, Met, Drifted, Missing,
   ServingObserved, serving_plan, serving_plan_settled, serving_plan_refused,
+  serving_forced_command_line, serving_observed_from_reads,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { owned_directory_owner }
@@ -196,4 +197,118 @@ test fn a_non_roster_host_refuses_the_plan() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv9)
   let o = srv1_blank_observation()
   serving_plan_refused(plan: serving_plan(d: d, o: o))
+}
+
+// ── readback: raw host reads feed the SAME comparator, with REAL values ──────────
+//
+// These cells drive the wet observe path (serving_observed_from_reads -> serving_plan)
+// with synthetic /etc/passwd, /etc/group and authorized_keys, exactly as the observe
+// mode feeds them from `cat` over fleet SSH. They are the discriminating controls the
+// receipt depends on: a presence-only reading would call all of these Met, while the
+// serve entry would refuse the host at runtime. The fixtures hardcode the admitted
+// constants and are GUARDED against the model, so the control is never vacuous.
+
+fn srv1_converged_passwd() -> String? {
+  Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\nroot:x:0:0:root:/root:/bin/bash\n" }
+}
+
+fn srv1_converged_group() -> String? {
+  Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n" }
+}
+
+fn all_present() -> Bool? { Present { value: true } }
+
+// The full readback of an already-converged host is the no-op ADOPT: value-compared on
+// uid/gid/members/authorized_keys, not merely presence.
+test fn readback_of_a_converged_host_is_settled() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let guard = d.account_uid == 1005 && d.account_gid == 1005 && d.group_gid == 1006
+    && d.account_name == "gunbc-build" && d.group_name == "gunbc-compute" && d.ledger_service_user == "briansrls"
+  let ak = serving_forced_command_line(host: operator_host_srv1)
+  let ak_present = match ak { Present { value: _ } => true, Absent => false }
+  let o = serving_observed_from_reads(
+    passwd_text: srv1_converged_passwd(),
+    group_text: srv1_converged_group(),
+    authorized_keys_text: ak,
+    store_root_present: all_present(),
+    store_staging_present: all_present(),
+    serve_binary_present: all_present(),
+    checkout_present: all_present(),
+    toolchain_present: all_present(),
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  guard && ak_present && serving_plan_settled(plan: serving_plan(d: d, o: o))
+}
+
+// RED CONTROL: the account exists but at the WRONG uid. A presence-only reading would
+// call the host Met; the value comparison must report Drifted (else the receipt says
+// "ready" while the serve entry refuses the host for the wrong uid).
+test fn readback_wrong_uid_drifts_the_account() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let o = serving_observed_from_reads(
+    passwd_text: Present { value: "gunbc-build:x:1099:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
+    group_text: srv1_converged_group(),
+    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
+    store_root_present: all_present(),
+    store_staging_present: all_present(),
+    serve_binary_present: all_present(),
+    checkout_present: all_present(),
+    toolchain_present: all_present(),
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  match first_where(serving_plan(d: d, o: o), i => i.item == "account.uid") {
+    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+    Absent => false
+  }
+}
+
+// RED CONTROL: the ledger group exists at the right gid but omits the serving account
+// from its members. Presence would read Met; membership comparison must report Drifted.
+test fn readback_group_without_the_account_drifts() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let o = serving_observed_from_reads(
+    passwd_text: srv1_converged_passwd(),
+    group_text: Present { value: "gunbc-compute:x:1006:briansrls\ngunbc-build:x:1005:\n" },
+    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
+    store_root_present: all_present(),
+    store_staging_present: all_present(),
+    serve_binary_present: all_present(),
+    checkout_present: all_present(),
+    toolchain_present: all_present(),
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  match first_where(serving_plan(d: d, o: o), i => i.item == "group.members") {
+    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+    Absent => false
+  }
+}
+
+// RED CONTROL: the account's authorized_keys carries the correct forced-command line
+// PLUS a stray second key. Exact equality on the trimmed file must report Drifted (the
+// host would otherwise accept a second, unforced key).
+test fn readback_authorized_keys_with_a_stray_key_drifts() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let ak = match serving_forced_command_line(host: operator_host_srv1) {
+    Present { value: l } => Present { value: concat(l, "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5 stray-authorised-key") }
+    Absent => Absent
+  }
+  let o = serving_observed_from_reads(
+    passwd_text: srv1_converged_passwd(),
+    group_text: srv1_converged_group(),
+    authorized_keys_text: ak,
+    store_root_present: all_present(),
+    store_staging_present: all_present(),
+    serve_binary_present: all_present(),
+    checkout_present: all_present(),
+    toolchain_present: all_present(),
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  match first_where(serving_plan(d: d, o: o), i => i.item == "authorized_keys.forced_command") {
+    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+    Absent => false
+  }
 }

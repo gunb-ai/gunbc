@@ -1,0 +1,165 @@
+module gunbc.compute.remote_build_serving_converge
+
+// PR 5(a): the OBSERVE arm of the remote-build serving converger. It is read-only: it
+// reads one roster host's serving setup over fleet SSH as the administrator principal
+// (the fleet automation key the CI job holds; sessions do not), value-compares it against
+// the desired state derived by gunbc.compute.remote_build_serving_setup, and writes a
+// plan receipt naming every item Met / drifted / missing. It mutates NOTHING — the
+// converge (apply) arm is PR 5(b) and goes through the fleet-converge plan -> apply
+// spine only after the manager's GO. It is a fleet-converge workflow mode, main-only
+// (a new mode cannot be dispatched at a branch ref without an IAM/WIF change), so the
+// per-host receipt is produced by dispatching this mode on main after PR 5(a) merges.
+//
+// ONE HOST PER RUN, NAMED BY THE DISPATCH, exactly as gunbc.runner.runner_host_file_converge
+// does: the host arrives in FLEET_CONVERGE_EXPECTED_HOST and an unset name refuses rather
+// than fanning a read across the fleet from an empty variable.
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.compute.remote_build_serving_setup {
+  remote_build_serving_desired, RemoteBuildServingDesired,
+  serving_observed_from_reads, serving_plan, serving_plan_settled, serving_plan_refused,
+  ServingPlanItem, ServingItemVerdict, Met, Drifted, Missing, Refused, ServingObserved,
+}
+
+data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
+data gunbc_ci_remote_build_serving_observe_receipt_path: String = "/tmp/fleet-converge-remote-build-serving-plan"
+
+// Only the desired/observation PAIR is needed downstream; carried together so the entry
+// computes the plan once and renders and decides from the same result.
+type ServingObservedView { desired: RemoteBuildServingDesired, observed: ServingObserved }
+
+// ── the far-side reads ─────────────────────────────────────────────────────────────
+//
+// The administrator principal is the declared fleet administrator (`ubuntu`, NOPASSWD
+// sudo, declared for srv1..srv4 by gunbc.fleet.fleet_bootstrap_principal). /etc/passwd
+// and /etc/group are world-readable, but the serving account's authorized_keys is 0600
+// and its instance tree lives under a private home, so every read goes through
+// `sudo -n` for uniformity and to reach the 0600 / private-home facts the plan needs.
+// A read that does not exit 0 is NOT read as "absent" here: for a `cat` leg a non-zero
+// exit yields Absent (the file is missing/unreadable, which the plan reports Missing);
+// for a `test` leg exit 0 is present, exit 1 is a real not-present, and any other exit
+// or a refused leg is unobservable (Absent), so the plan reads Missing rather than a
+// false not-Met or a false Met.
+
+fn serving_leg_read(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> String? {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: _ } => Absent
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => Present { value: r.stdout }
+      false => Absent
+    }
+  }
+}
+
+fn serving_leg_test(target: SshTarget, context: FleetSshExecutionContext, predicate: String, path: String) -> Bool? {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", predicate, path]) {
+    TypedArgvExecRefused { reason: _ } => Absent
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => Present { value: true }
+      false => match r.exit_code == 1 {
+        true => Present { value: false }
+        false => Absent
+      }
+    }
+  }
+}
+
+fn serving_cat_sudo(path: String) -> List<String> { ["sudo", "-n", "cat", path] }
+
+fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingObservedView {
+  let o = serving_observed_from_reads(
+    passwd_text: serving_leg_read(target: target, context: context, argv: serving_cat_sudo("/etc/passwd")),
+    group_text: serving_leg_read(target: target, context: context, argv: serving_cat_sudo("/etc/group")),
+    authorized_keys_text: serving_leg_read(target: target, context: context, argv: serving_cat_sudo(d.authorized_keys_path)),
+    store_root_present: serving_leg_test(target: target, context: context, predicate: "-d", path: d.store_root),
+    store_staging_present: serving_leg_test(target: target, context: context, predicate: "-d", path: d.store_staging),
+    serve_binary_present: serving_leg_test(target: target, context: context, predicate: "-x", path: d.serve_binary),
+    checkout_present: serving_leg_test(target: target, context: context, predicate: "-d", path: d.checkout_dir),
+    toolchain_present: serving_leg_test(target: target, context: context, predicate: "-d", path: d.rustup_home),
+    account_name: d.account_name,
+    group_name: d.group_name,
+  )
+  ServingObservedView { desired: d, observed: o }
+}
+
+// ── the plan receipt ───────────────────────────────────────────────────────────────
+//
+// The receipt lists every managed item and its verdict KIND, plus a terminal state. It
+// deliberately does NOT print host file contents (authorized_keys, /etc/passwd rows):
+// a plan receipt names what changes, it does not exfiltrate the host's secret material.
+// The full desired/observed values live in the witness, which is where they are proved.
+
+fn serving_verdict_kind(verdict: ServingItemVerdict) -> String {
+  match verdict {
+    Met => "met"
+    Drifted { desired, observed } => "drifted"
+    Missing { desired } => "missing"
+    Refused { reason } => "refused"
+  }
+}
+
+fn serving_plan_terminal(plan: List<ServingPlanItem>) -> String {
+  if serving_plan_refused(plan: plan) { "refused" } else if serving_plan_settled(plan: plan) { "settled" } else { "drift" }
+}
+
+fn serving_plan_receipt_text(host_name: String, probed_at: String, context_receipt: String, plan: List<ServingPlanItem>) -> String {
+  join([
+    "remote_build_serving_observe host=", host_name, " probed_at=", probed_at, "\n",
+    context_receipt,
+    "managed_items=", to_string(count(plan)), "\n",
+    join(map(plan, i => join(["planned[", i.item, "]=", serving_verdict_kind(verdict: i.verdict), "\n"], "")), ""),
+    "terminal=", serving_plan_terminal(plan: plan), "\n",
+  ], "")
+}
+
+// ── the CI entry ───────────────────────────────────────────────────────────────────
+
+fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
+  match host {
+    Absent =>
+      exit_failure(reason: "remote_build_serving_observe: the host was not named; one host per run, named by the dispatch in FLEET_CONVERGE_EXPECTED_HOST")
+    Present { value: raw_host } => {
+      let hi = raw_host as HostIdentity
+      match administrator_ssh_target(host: hi) {
+        SshTargetRefused { endpoint: e, refusal: _ } =>
+          exit_failure(reason: join(["remote_build_serving_observe: no anchored ssh target for ", e, "; refusing to read a host the anchor does not name\n"], ""))
+        SshTargetResolved { target: target } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: remote_build_serving_observe_attempt_raw) {
+            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextReady { context: context, receipt: context_receipt } => {
+              let view = observe_host_reads(target: target, context: context, d: remote_build_serving_desired(host: hi))
+              let plan = serving_plan(d: view.desired, o: view.observed)
+              let body = serving_plan_receipt_text(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, plan: plan)
+              let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)
+              if w.success == false {
+                exit_failure(reason: join(["remote_build_serving_observe: receipt write failed: ", w.error, "\n", body], ""))
+              } else if serving_plan_refused(plan: plan) {
+                // An unrenderable host refuses outright (its forced-command line could not
+                // be built); that is a real refusal to report, not a successful observation.
+                exit_failure(reason: body)
+              } else {
+                ExitSuccess
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn remote_build_serving_observe_ci_wet() -> ProcessExit {
+  remote_build_serving_observe_ci_wet_hosted(host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => Present { value: v }
+    ActionsVariableAbsent => none
+  })
+}

@@ -24,6 +24,8 @@ module gunbc.compute.remote_build_serving_setup
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.algebra { trim, skip }
+import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {
@@ -263,4 +265,112 @@ fn serving_plan_settled(plan: List<ServingPlanItem>) -> Bool {
 // Any refused item makes the whole host a refuse — never a partial write.
 fn serving_plan_refused(plan: List<ServingPlanItem>) -> Bool {
   any(plan, i => match i.verdict { Refused { reason } => true, _ => false })
+}
+
+// ---------------------------------------------------------------------------
+// readback: raw host reads -> the value-shaped ServingObserved
+// ---------------------------------------------------------------------------
+//
+// The observe mode reads, over fleet SSH as the administrator principal, four raw
+// facts the plan needs VALUE-compared (not merely present): /etc/passwd, /etc/group,
+// and the account's authorized_keys, plus `test -d/-x` exit codes for the present-
+// style items. It feeds them through THIS pure function so the wet receipt and the
+// witness exercise one parsing code path — a host whose account exists with the wrong
+// uid, or whose ledger group omits a member, cannot read Met here (a presence-only
+// reading would; the serve entry would then refuse it at runtime, which is exactly the
+// receipt-that-lies the design forbids). Parsers are the ones the serve path already
+// trusts: etc_group for /etc/group, ':'-split + parse_int for /etc/passwd.
+
+// The first ':'-separated field of a passwd row is the login name.
+fn serving_passwd_row_is(login: String, name: String) -> Bool {
+  match first(split(s: login, delimiter: ":")) {
+    Present { value: f0 } => f0 == name
+    Absent => false
+  }
+}
+
+// The ':'-separated field at `index` of a passwd row, parsed to Int (uid is field 2,
+// gid is field 3). Absent when the row or field is missing or is not a number.
+fn serving_passwd_int_at(line: String, index: Int) -> Int? {
+  match first(split(s: line, delimiter: ":") |> skip(n: index)) {
+    Absent => Absent
+    Present { value: raw } => parse_int(s: trim(s: raw))
+  }
+}
+
+fn serving_passwd_uid(text: String?, name: String) -> Int? {
+  match text {
+    Absent => Absent
+    Present { value: t } => match first(filter(split(s: t, delimiter: "\n"), l => serving_passwd_row_is(login: l, name: name))) {
+      Absent => Absent
+      Present { value: l } => serving_passwd_int_at(line: l, index: 2)
+    }
+  }
+}
+
+fn serving_passwd_gid(text: String?, name: String) -> Int? {
+  match text {
+    Absent => Absent
+    Present { value: t } => match first(filter(split(s: t, delimiter: "\n"), l => serving_passwd_row_is(login: l, name: name))) {
+      Absent => Absent
+      Present { value: l } => serving_passwd_int_at(line: l, index: 3)
+    }
+  }
+}
+
+// The ledger group's members as observed: its /etc/group user_list. Both required
+// members (the service user and the account) hold gunbc-compute as a SUPPLEMENTARY
+// group, so — unlike a primary-group membership that may be omitted — both MUST appear
+// in this list for the plan to read Met; that is what makes the membership comparison
+// discriminating rather than permissive.
+fn serving_group_members(text: String?, name: String) -> List<String>? {
+  match text {
+    Absent => Absent
+    Present { value: t } => match etc_group_entry_named(entries: etc_group_entries(text: t), name: name as NonEmptyStr) {
+      Absent => Absent
+      Present { value: e } => Present { value: map(e.members, m => m as String) }
+    }
+  }
+}
+
+// The authorized_keys file, normalized to its trimmed content: the account must carry
+// exactly the one forced-command line, so a trailing newline is not drift but a second
+// line (or stray key) is, and both are caught by the exact equality the caller applies.
+fn serving_authorized_keys_line(text: String?) -> String? {
+  match text {
+    Absent => Absent
+    Present { value: t } => match trim(s: t) == "" {
+      true => Absent
+      false => Present { value: trim(s: t) }
+    }
+  }
+}
+
+// Assemble the observation from the raw reads. `passwd_text`/`group_text`/
+// `authorized_keys_text` are the `cat` stdout of those files (Absent when the read
+// itself failed, which must read Missing, never Met); the presence flags are the exit-
+// code booleans of the observe `test` legs. Pure and total: no SSH, no effects.
+fn serving_observed_from_reads(
+  passwd_text: String?,
+  group_text: String?,
+  authorized_keys_text: String?,
+  store_root_present: Bool?,
+  store_staging_present: Bool?,
+  serve_binary_present: Bool?,
+  checkout_present: Bool?,
+  toolchain_present: Bool?,
+  account_name: String,
+  group_name: String,
+) -> ServingObserved {
+  {
+    account_uid: serving_passwd_uid(text: passwd_text, name: account_name),
+    account_gid: serving_passwd_gid(text: passwd_text, name: account_name),
+    group_members: serving_group_members(text: group_text, name: group_name),
+    authorized_keys_line: serving_authorized_keys_line(text: authorized_keys_text),
+    store_root_present: store_root_present,
+    store_staging_present: store_staging_present,
+    serve_binary_present: serve_binary_present,
+    checkout_present: checkout_present,
+    toolchain_present: toolchain_present,
+  }
 }
