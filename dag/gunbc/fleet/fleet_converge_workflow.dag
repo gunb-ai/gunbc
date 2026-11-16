@@ -1481,7 +1481,7 @@ fn fleet_converge_build_job() -> Job {
         contents: Present { value: PermRead },
         pull_requests: none,
         issues: none,
-        actions: Present { value: PermRead },
+        actions: Present { value: PermWrite }, // release-bins retention deletes cache entries (option A, msg_66b5d26e); THIS JOB ONLY
         id_token: none,
       }
     },

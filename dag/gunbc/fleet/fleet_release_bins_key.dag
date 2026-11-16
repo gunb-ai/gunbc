@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int }
+import std.integer { int_to_decimal_string }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -23,6 +24,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
+  bash_build_with_redir_from_file,
   bash_build_exit,
   bash_build_if_else,
 }
@@ -993,6 +995,185 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
   }
 }
 
+// ============================================================================================
+// THE CACHE BUDGET GUARDIAN (operator-ruled option A, escalation msg_66b5d26e, 2026-11-16).
+// The Actions cache has a 10 GiB repo quota; the release-bins family measured 5.23 GiB over 59
+// entries on 2026-11-16 -- the majority of the budget -- while fast-lane units (5 MB each) sit
+// behind it and eviction has not reached them only by luck. This step retains the newest
+// `fleet_converge_release_bins_retention_keep` entries of the release-bins family and deletes
+// strictly older members, and NOTHING ELSE: the jq filter itself requires the `release-bins-`
+// family prefix, excludes the key the current run is using (env.RELEASE_BINS_KEY), and names the
+// foreign families (fast-lane, parse-verdict, cargo-ci, gunbc-materialization) as explicitly
+// excluded, so a construction error cannot reach them. Deletion never fails the job's real work:
+// every failure path prints a typed `release-bins retention: <word>` line and the step continues.
+// The ACTIONS scope is granted on the build job only, for exactly this step.
+//
+// DERIVATION OF KEEP (measured, not guessed -- the manager's constraint), 2026-11-16 census via
+// GET /repos/gunb-ai/gunbc/actions/caches?key=release-bins-:
+//   creation rate   15 entries on the peak day (2026-11-11) -> 15/24 = 0.63 distinct keys/hour;
+//   consumption lag last_accessed_at - created_at, max observed 15.9h (a deploy-only retry reusing
+//                   an older plan's bins -- exactly the T6 pattern the manager named), then 8.3h,
+//                   then 4.4h -- consistent with the 4h approval window
+//                   (gunbc.auth.approval_gate::approval_request_window = 14400s) plus retry slack.
+//   horizon         observed max lag 16h + one full approval window (4h) of margin = 20h;
+//   KEEP            ceil(peak_rate x horizon) + 1 = ceil(0.63 x 20) + 1 = 13; rounded to 16 for a
+//                   ~20% margin over the measured peak. 16 entries ~= 1.4 GiB at the measured
+//                   88 MB mean, leaving the quota dominated by cargo-ci, which is out of scope.
+// Deleting strictly-older-than-KEEP entries frees ~4.4 GiB of accumulated age at first run and
+// holds steady state near ~1.4 GiB. A fast-lane unit older than a day must stay restorable after
+// this ships: it is not in this family and the filter names that exclusion.
+// ============================================================================================
+data fleet_converge_release_bins_retention_keep: Int = 16
+data release_bins_retention_prefix: String = "release-bins-"
+data fleet_converge_release_bins_retention_excluded_prefixes: List<String> = [
+  "fast-lane", "parse-verdict", "cargo-ci", "gunbc-materialization",
+]
+data release_bins_retention_answer_basename: String = "release-bins-retention-answer.json"
+data release_bins_retention_ids_basename: String = "release-bins-retention.ids"
+data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
+data release_bins_retention_delete_header_basename: String = "release-bins-retention-delete-auth-header"
+
+fn release_bins_retention_keep_text() -> String {
+  int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
+}
+
+fn release_bins_retention_answer_file() -> String {
+  release_bins_retention_answer_basename
+}
+
+// The admitted answer shape mirrors the lookup's (one JSON document, total_count == page length,
+// every member an object with string key, string created_at and numeric id). Then: keep only the
+// release-bins family, drop the current key and the named foreign families, sort oldest-first and
+// slice off everything older than the KEEP newest, emitting ids one per line.
+fn release_bins_retention_excluded_fragment(p: String) -> String {
+  join([" and (.key | startswith(\"", p, "\") | not)"], "")
+}
+
+fn release_bins_retention_program() -> String {
+  join([
+    ". as $answer | [inputs] | if length != 0 then error(\"the cache-API answer is not exactly one JSON document\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count == (.actions_caches | length) and .total_count <= ",
+    release_bins_lookup_page_size,
+    " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
+    release_bins_retention_prefix,
+    "\")) and .key != $ENV.RELEASE_BINS_KEY",
+    join(map(fleet_converge_release_bins_retention_excluded_prefixes, p => release_bins_retention_excluded_fragment(p: p)), ""),
+    ")] | sort_by(.created_at) | .[0: (if length > ",
+    release_bins_retention_keep_text(),
+    " then length - ",
+    release_bins_retention_keep_text(),
+    " else 0 end)] | .[] | .id | tostring else error(\"cache-API answer is not the admitted shape\") end end",
+  ], "")
+}
+
+fn release_bins_retention_plan() -> Outcome<JqAdmittedProcessPlan> {
+  jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_program() },
+    bindings: Empty,
+    input: JqInputFile { path: release_bins_retention_answer_file() },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  })
+}
+
+fn release_bins_retention_get_word() -> Node {
+  words(ws: [
+    var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+    lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")),
+    lit(t: release_bins_retention_prefix),
+  ])
+}
+
+fn release_bins_retention_delete_url_word() -> Node {
+  words(ws: [
+    var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+    lit(t: join(["/actions/caches/", "RETENTION_ID"], "")),
+  ])
+}
+
+fn release_bins_retention_echo(word: String) -> Node {
+  cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins retention: ", word], ""))])
+}
+
+// Fetch and delete each own their bearer header file, removed on both outcomes immediately after
+// their own only consumer -- the same rule the lookup fetch follows (credential_argv_exposure).
+fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
+  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
+  let get = cmd(ws: concat(
+    concat([lit(t: "curl"), lit(t: "-sSf")], gunbc_ci_auth_header_file_args(header_path: header)),
+    [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_word(), lit(t: "-o"), answer],
+  ))
+  bash_build_or_else(
+    left: bash_build_subshell_from_stmts(stmts: [
+      gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
+      bash_build_or_else(
+        left: bash_build_and_then(left: get, right: remove_header),
+        right: bash_build_subshell_from_stmts(stmts: [remove_header, cmdl(["true"])]),
+      ),
+    ]),
+    right: release_bins_retention_echo(word: "lookup-failed"),
+  )
+}
+
+fn release_bins_retention_delete(header: Node) -> Node {
+  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
+  // xargs runs curl per id: curl and its arguments are WORDS of the xargs command -- xargs builds the
+  // argv itself, so no Command node can appear here. `RETENTION_ID` is xargs' replace placeholder, read
+  // by the shell only as the literal argument to -I.
+  let xargs_delete = cmd(ws: concat(
+    [lit(t: "xargs"), lit(t: "-r"), lit(t: "-n"), lit(t: "1"), lit(t: "-I"), lit(t: "RETENTION_ID")],
+    concat(
+      [lit(t: "curl"), lit(t: "-sSf"), lit(t: "-o"), lit(t: "/dev/null"), lit(t: "-X"), lit(t: "DELETE")],
+      concat(
+        gunbc_ci_auth_header_file_args(header_path: header),
+        [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_delete_url_word()],
+      ),
+    ),
+  ))
+  let delete_pipe = bash_build_pipe(
+    left: cmd(ws: [lit(t: "printf"), lit(t: "%s\\n"), var(n: "IDS")]),
+    right: xargs_delete,
+  )
+  bash_build_or_else(
+    left: bash_build_subshell_from_stmts(stmts: [
+      gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
+      bash_build_or_else(
+        left: bash_build_and_then(left: delete_pipe, right: remove_header),
+        right: bash_build_subshell_from_stmts(stmts: [remove_header, release_bins_retention_echo(word: "delete-failed")]),
+      ),
+    ]),
+    right: release_bins_retention_echo(word: "delete-failed"),
+  )
+}
+
+fn release_bins_retention_statements() -> List<Node> {
+  let header = temp(file: release_bins_retention_header_basename)
+  let del_header = temp(file: release_bins_retention_delete_header_basename)
+  let answer = temp(file: release_bins_retention_answer_basename)
+  let ids_file = temp(file: release_bins_retention_ids_basename)
+  [
+    root_statement(),
+    release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
+    release_bins_retention_fetch(header: header, answer: answer),
+    bash_build_or_else(
+      left: bash_build_with_redir_to_file(
+        inner: cmd(ws: release_bins_jq_words(plan: release_bins_retention_plan())),
+        path: ids_file,
+      ),
+      right: cmdl([":"]),
+    ),
+    bash_build_or_else(
+      left: cmd(ws: [lit(t: "test"), lit(t: "-s"), ids_file]),
+      right: release_bins_retention_echo(word: "nothing-due"),
+    ),
+    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), ids_file]))),
+    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), ids_file]))),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
+    release_bins_retention_delete(header: del_header),
+    release_bins_retention_echo(word: "done"),
+  ]
+}
+
+
 // The two admitted refs, each with its jq ref expression and its answer file (workspace-relative,
 // because the lowered argv carries the path as a literal word).
 type ReleaseBinsLookupRef {
@@ -1419,8 +1600,25 @@ fn release_bins_key_script_dispatch(pair_modes: List<String>) -> String {
   release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_key_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_key_script())
 }
 
+// THE BUILD JOB'S OUTCOME STEP RUNS ONE SCRIPT WITH TWO JOBS: decide and report the release-bins
+// outcome, then enforce bounded retention of the release-bins cache family. The retention statements
+// are appended HERE, at the workflow's step boundary, not inside release_bins_outcome_statements:
+// the witness and the retained executing controls replay the outcome runner as the workflow emitted
+// it, and deletion is a workflow-cache chore that belongs to CI, not to those controls.
+fn release_bins_outcome_with_retention_statements(product: ReleaseBinsProduct) -> List<Node> {
+  concat(release_bins_outcome_statements(product: product), release_bins_retention_statements())
+}
+
+fn release_bins_outcome_with_retention_script_for(product: ReleaseBinsProduct) -> String {
+  release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_outcome_with_retention_statements(product: product)))
+}
+
+fn release_bins_outcome_with_retention_script() -> String {
+  release_bins_outcome_with_retention_script_for(product: fleet_release_bins_product())
+}
+
 fn release_bins_outcome_script_dispatch(pair_modes: List<String>) -> String {
-  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_script())
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_with_retention_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_with_retention_script())
 }
 
 fn release_bins_pack_script_dispatch(pair_modes: List<String>) -> String {
@@ -1517,6 +1715,7 @@ fn release_bins_scripts_admitted() -> Bool {
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_statements(product: fleet_release_bins_product()))),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_pack_statements(product: fleet_release_bins_product()))),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_consumer_statements(product: fleet_release_bins_product()))),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_with_retention_statements(product: fleet_release_bins_product()))),
     ],
     init: true,
     f: (acc, b) => acc && b,
