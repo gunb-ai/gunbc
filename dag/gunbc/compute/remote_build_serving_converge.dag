@@ -757,7 +757,10 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
 }
 
 fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, decision: ConvergeDecision) -> List<String> {
-  filter(decision.writes, a => converge_run_write(target: target, context: context, d: d, action: a) == false)
+  // Review 95922 #1: the body filtered ConvergeActions, not Strings. Name each
+  // failed write by its key so the declared List<String> is true and the receipt
+  // can say which writes refused (guarantee_ladder: values inhabit declared types).
+  map(filter(decision.writes, a => converge_run_write(target: target, context: context, d: d, action: a) == false), a => converge_action_key(a))
 }
 
 fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
