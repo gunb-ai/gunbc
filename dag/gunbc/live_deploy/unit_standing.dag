@@ -9,7 +9,7 @@ import extdeps.systemd {
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
-  SystemdServiceDirective,
+  SystemdServiceDirective, SystemdServiceMode,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged, MakeDirectory,
 }
 
@@ -631,3 +631,35 @@ fn observe_belt_oneshot_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> Be
 // in the witness module as a labeled TEST ORACLE, not here. Production derives a service unit's reads only
 // through the exhaustive classifier service_directive_required_reads_of_unit_file above (single authority);
 // a second production route to argv[0]/WorkingDirectory would be a meaning fork with no consumer.
+
+// The [Service] Type= of a unit file, from its OWN directives -- the unit's kind (oneshot, simple, ...).
+// Carried here (not re-derived at the gate) so the deploy-artifact gate can match a tree read's
+// converger to the leg that brings it up (oneshot -> start/restart, long-running -> enable).
+fn service_type_of_unit_file(file: SystemdUnitFile) -> SystemdServiceMode? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      fold(ds, init: none, f: (acc, d) => match acc {
+        Present { value: v } => Present { value: v }
+        Absent => match d {
+          ServiceType { mode: m } => Present { value: m }
+          _ => none
+        }
+      })
+    _ => none
+  }
+}
+
+// Two independent accessors the closure WITNESS uses to cross-check the read set against the raw
+// emitted unit text WITHOUT calling the same derivation the gate uses (an oracle must not reuse its
+// subject). The read SET itself derives from service_directive_required_reads, NOT from these.
+fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
+  let command = service_directive_exec_start_of_unit_file(file)
+  match command {
+    Present { value: cmd } => argv0_of_command(cmd)
+    Absent => none
+  }
+}
+
+fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
+  service_directive_working_directory_of_unit_file(file)
+}

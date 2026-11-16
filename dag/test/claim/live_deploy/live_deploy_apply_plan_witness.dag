@@ -7,6 +7,7 @@
 module test.claim.live_deploy.live_deploy_apply_plan_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
@@ -18,10 +19,11 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
+  ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+  deploy_artifact_closure_gate,
   gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
@@ -137,6 +139,48 @@ test fn the_srv1_full_install_plan_is_ready_and_carries_every_family() -> Bool {
     && has_step(legs: legs, step: "serve-restart")
 }
 
+// The PROCEEDS probe for the deploy artifact-closure gate (node deploy-intent-owns-artifact-closure
+// red_control 2, the positive half): the REAL srv1 full-install plan, evaluated through the real gated
+// route (deploy_apply_plan_legs -> deploy_apply_membership_plan -> deploy_artifact_closure_gate), must
+// PROCEED -- every artifact a deployed unit reads is installed by some install leg, so a correct deploy
+// is never falsely refused. It evaluates the plan ONLY (no host effect). ProcessExit carries the refusal
+// reason so a halt NAMES the located unit/artifact rather than collapsing to a bare false (a Bool-only
+// witness could not report WHICH read is uncovered; this probe can, and it is also the merge-gate control).
+test fn the_srv1_full_plan_clears_the_deploy_artifact_gate() -> ProcessExit {
+  match plan_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1())) {
+    ApplyPlanReady { legs: _ } => ExitSuccess
+    ApplyPlanRefused { step: step, reason: reason } => exit_failure(reason: join(["refused at step [", step, "]: ", reason], ""))
+  }
+}
+
+// RED CONTROL 2 (through the deploy route): a DEPLOY whose realized legs OMIT an artifact a deployed unit
+// reads is REFUSED by the route's own artifact-closure gate -- deploy_artifact_closure_gate is exactly the
+// function deploy_apply_membership_plan calls at EffectsReady, so driving it with the real srv1 spec/plan
+// and the real realized legs MINUS one install leg proves the route refuses (returns ApplyPlanRefused, zero
+// legs realized => nothing is enabled) when an owned artifact is missing. Dropping the executable-install
+// leg uncovers the serve unit's ExecStart read (a Binary the serve unit reads at the fixed serve binary path).
+test fn the_deploy_refuses_when_a_read_binary_is_not_installed() -> Bool {
+  let spec = deployment_spec_srv1()
+  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) { deploy_apply_leg_step(leg: l) != "executable-install" })
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// RED CONTROL 2, tree-content class: dropping the tree-remote-restart leg removes the only CONVERGER the
+// plan brings up for the deployed source tree, so the TreeContent read on repo_root (ServeBinary working
+// dir, roadmap-daemon, door units) is uncovered -- the route refuses. Proves a DirectoryExists/dir-install
+// leg does not silently cover a TreeContent read (the kind split is real, not decorative).
+test fn the_deploy_refuses_when_the_tree_converger_is_not_brought_up() -> Bool {
+  let spec = deployment_spec_srv1()
+  let without = filter(xs: full_legs(spec: spec), predicate: fn(l) { deploy_apply_leg_step(leg: l) != "tree-remote-restart" })
+  match deploy_artifact_closure_gate(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), result: ApplyPlanReady { legs: without }) {
+    ApplyPlanRefused { step: step, reason: reason } => step == "deploy-artifact-gate" && string_contains(s: reason, pattern: "before any enable leg runs")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
 // THE BOARD-FUNCTION CONVERGE UNIT is a host singleton: the deployment holding srv1's role singletons
 // installs its root snapshot before the unit that names it, retires the hand-installed removal before it
 // starts the converge, and retires the superseded snapshot only after the converge has run; the lab
@@ -212,7 +256,7 @@ fn command_within_grants(c: ArgvCommand) -> Bool {
 fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
     ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => command_within_grants(c: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => command_within_grants(c: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
@@ -221,7 +265,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => true
-    ApplyLegBrokerTree { revision: _ } => true
+    ApplyLegBrokerTree { locus: _, executables: _ } => true
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
@@ -401,7 +445,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
@@ -410,7 +454,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
         ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => env_binary(legs: rest)
-        ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
+        ApplyLegBrokerTree { locus: _, executables: _ } => env_binary(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
         ApplyLegDependency { dep: _ } => env_binary(legs: rest)
       }
@@ -680,7 +724,7 @@ fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> 
 fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
     ApplyLegCommand { step: _, command: c } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
@@ -689,7 +733,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegBrokerTree { locus: _, executables: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
@@ -699,7 +743,7 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
-    ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: src } => match src { Payload { bytes: p } => p, Staged { source: _ } => "" }
     ApplyLegCommand { step: _, command: _ } => ""
     ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
@@ -709,7 +753,7 @@ fn leg_payload(leg: DeployApplyLeg) -> String {
     ApplyLegObjectSource => ""
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => ""
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ""
-    ApplyLegBrokerTree { revision: _ } => ""
+    ApplyLegBrokerTree { locus: _, executables: _ } => ""
     ApplyLegRetract { step: _, leg: _ } => ""
     ApplyLegDependency { dep: _ } => ""
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
@@ -972,7 +1016,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
             HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
@@ -980,7 +1024,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
         ApplyLegBrokerStateDirectories { revision: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegObjectSource => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegBrokerTree { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerTree { locus: _, executables: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)
