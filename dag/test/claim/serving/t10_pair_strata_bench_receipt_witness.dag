@@ -4,15 +4,16 @@ import std.types { Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { watt_count, celsius_count, hertz_count }
-import std.interval { interval_high }
+import std.measure { watt_count, celsius_count, celsius_delta_count, hertz_count, MilliTokensPerJoule, milli_tokens_per_joule_count }
+import std.interval { interval_high, interval_low }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import gunbc.serving.t10_pair_strata_bench_receipt {
   PairBenchRow, PairCard, RtxTwoThousandAdaPair, NvidiaA2Pair, TeslaT10Pair,
   BenchReading, Read, NotMeasured, ReadingRefused, AsReported, Approximate,
   FleetHost, HostWithoutIdentity,
-  T10ThermalRow, ChassisFansOnly, DeltaBlowerHeldByHand, ThrottledTo, NoThrottleReported,
+  T10ThermalRow, ChassisFansOnly, DeltaBlowerHeldByHand, ThrottledTo, NoThrottleReported, BlowerSlipped,
   t10_pair_bench_rows, t10_pair_thermal_rows, t10_relayed_power_min_limit_per_card,
+  t10_operator_stated_max_operating_temperature,
   reported_rate_point, row_for, reading_refused,
 }
 
@@ -32,9 +33,9 @@ fn strictly_between(a: Nat?, t: Nat?, b: Nat?) -> Bool {
   }
 }
 
-fn point_nat(r: BenchReading<Nat>) -> Nat? {
+fn tokens_per_joule_point(r: BenchReading<MilliTokensPerJoule>) -> Nat? {
   match r {
-    Read { span: s, precision: _ } => Present { value: interval_high(interval: s) }
+    Read { span: s, precision: _ } => Present { value: milli_tokens_per_joule_count(e: interval_high(interval: s)) }
     NotMeasured => Absent
     ReadingRefused { reason: _ } => Absent
   }
@@ -48,7 +49,7 @@ fn c1_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c1_aggregate) }
 fn d1_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c1_decode) }
 fn c4_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c4_aggregate) }
 fn c8_of(r: PairBenchRow) -> Nat? { reported_rate_point(r: r.c8_aggregate) }
-fn j4_of(r: PairBenchRow) -> Nat? { point_nat(r: r.c4_milli_tokens_per_gpu_joule) }
+fn j4_of(r: PairBenchRow) -> Nat? { tokens_per_joule_point(r: r.c4_tokens_per_gpu_joule) }
 
 // THE T10 PAIR SITS BETWEEN THE A2 AND ADA PAIRS ON EVERY AGGREGATE THE SESSION STATED EXACTLY FOR ALL THREE
 // (c1 aggregate, c1 decode, c4 aggregate). c8 has no A2 figure, so it is checked only against the Ada.
@@ -113,4 +114,30 @@ test fn t10_cooling_rows_keep_the_throttle_and_the_peak() -> Bool {
         ReadingRefused { reason: _ } => false
       }
     })
+}
+
+// THE HAND-HELD BLOWER LEFT NO MARGIN: the 87 C peak, which came when the blower slipped, reached the operator-stated
+// maximum operating temperature exactly, the steady band stayed below it, and GPU1 ran hotter than GPU0 (1-5 C).
+test fn t10_blower_slip_peak_reached_the_stated_maximum() -> Bool {
+  t10_pair_thermal_rows.any(t => match t.cooling {
+    ChassisFansOnly => false
+    DeltaBlowerHeldByHand =>
+      t.events.any(e => match e {
+        BlowerSlipped { peak_during: p } => match p {
+          Read { span: s, precision: _ } => celsius_count(c: interval_high(interval: s)) == celsius_count(c: t10_operator_stated_max_operating_temperature)
+          NotMeasured => false
+          ReadingRefused { reason: _ } => false
+        }
+      })
+      && match t.gpu_temperature_band {
+        Read { span: s, precision: _ } => celsius_count(c: interval_high(interval: s)) < celsius_count(c: t10_operator_stated_max_operating_temperature)
+        NotMeasured => false
+        ReadingRefused { reason: _ } => false
+      }
+      && match t.gpu1_over_gpu0 {
+        Read { span: s, precision: _ } => celsius_delta_count(delta: interval_low(interval: s)) > 0
+        NotMeasured => false
+        ReadingRefused { reason: _ } => false
+      }
+  })
 }

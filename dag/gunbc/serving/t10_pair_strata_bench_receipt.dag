@@ -7,6 +7,7 @@ import std.interval { OrderedClosedInterval, closed_interval, degenerate_interva
 import std.measure {
   Watt, watt, watt_count, Celsius, celsius, celsius_count, Millisecond, millisecond, millisecond_count,
   Hertz, hertz, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
+  MilliTokensPerJoule, milli_tokens_per_joule, CelsiusDelta, celsius_delta, celsius_delta_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -89,6 +90,10 @@ fn rate_range(low: Nat, high: Nat, p: ReadingPrecision) -> BenchReading<MilliTok
   bench_span(low: milli_tokens_per_second(count: low), high: milli_tokens_per_second(count: high), le: rate_le, precision: p)
 }
 
+fn tpj(milli: Nat, p: ReadingPrecision) -> BenchReading<MilliTokensPerJoule> {
+  bench_point(value: milli_tokens_per_joule(count: milli), precision: p)
+}
+
 fn ms(count: Nat, p: ReadingPrecision) -> BenchReading<Millisecond> {
   bench_point(value: millisecond(count: count), precision: p)
 }
@@ -117,10 +122,9 @@ type PairBenchRow {
   long_context_cold_first_turn: BenchReading<Millisecond>
   long_context_warm_decode: BenchReading<MilliTokensPerSecond>
   long_context_warm_time_to_first_token: BenchReading<Millisecond>
-  // Generated tokens per joule of GPU energy, in MILLI-tokens per joule (0.54 tok/J is 540): std.measure has no
-  // tokens-per-energy unit, and none is minted here.
-  c4_milli_tokens_per_gpu_joule: BenchReading<Nat>
-  c8_milli_tokens_per_gpu_joule: BenchReading<Nat>
+  // Generated tokens per joule of GPU energy (0.54 tok/J is milli_tokens_per_joule 540).
+  c4_tokens_per_gpu_joule: BenchReading<MilliTokensPerJoule>
+  c8_tokens_per_gpu_joule: BenchReading<MilliTokensPerJoule>
   // Both cards' draw under load, and the pair's cap where the session stated one.
   pair_power_under_load: BenchReading<Watt>
   pair_power_cap: Watt?
@@ -148,8 +152,8 @@ data t10_pair_bench_rows: List<PairBenchRow> = [
     long_context_cold_first_turn: NotMeasured,
     long_context_warm_decode: rate_range(low: 36000, high: 38000, p: Approximate),
     long_context_warm_time_to_first_token: ms_range(low: 1900, high: 2300, p: Approximate),
-    c4_milli_tokens_per_gpu_joule: bench_point(value: 540, precision: AsReported),
-    c8_milli_tokens_per_gpu_joule: bench_point(value: 690, precision: AsReported),
+    c4_tokens_per_gpu_joule: tpj(milli: 540, p: AsReported),
+    c8_tokens_per_gpu_joule: tpj(milli: 690, p: AsReported),
     pair_power_under_load: bench_point(value: watt(count: 110), precision: Approximate),
     pair_power_cap: Absent,
   },
@@ -167,8 +171,8 @@ data t10_pair_bench_rows: List<PairBenchRow> = [
     long_context_cold_first_turn: ms(count: 221000, p: AsReported),
     long_context_warm_decode: rate(milli: 20500, p: Approximate),
     long_context_warm_time_to_first_token: ms_range(low: 2100, high: 2600, p: AsReported),
-    c4_milli_tokens_per_gpu_joule: bench_point(value: 270, precision: Approximate),
-    c8_milli_tokens_per_gpu_joule: NotMeasured,
+    c4_tokens_per_gpu_joule: tpj(milli: 270, p: Approximate),
+    c8_tokens_per_gpu_joule: NotMeasured,
     pair_power_under_load: bench_point(value: watt(count: 70), precision: Approximate),
     pair_power_cap: Present { value: watt(count: 70) },
   },
@@ -185,8 +189,8 @@ data t10_pair_bench_rows: List<PairBenchRow> = [
     long_context_cold_first_turn: ms(count: 240000, p: AsReported),
     long_context_warm_decode: rate_range(low: 28800, high: 35200, p: AsReported),
     long_context_warm_time_to_first_token: ms_range(low: 3000, high: 3400, p: AsReported),
-    c4_milli_tokens_per_gpu_joule: bench_point(value: 300, precision: AsReported),
-    c8_milli_tokens_per_gpu_joule: bench_point(value: 330, precision: AsReported),
+    c4_tokens_per_gpu_joule: tpj(milli: 300, p: AsReported),
+    c8_tokens_per_gpu_joule: tpj(milli: 330, p: AsReported),
     pair_power_under_load: bench_span(low: watt(count: 150), high: watt(count: 175), le: watt_le, precision: AsReported),
     pair_power_cap: Present { value: watt(count: 200) },
   },
@@ -207,13 +211,32 @@ type T10ThrottleReading
   = ThrottledTo { clock: Hertz, within: BenchReading<Millisecond> }
   | NoThrottleReported
 
+// What happened to the cooling during a run, as relayed. The hand-held blower SLIPPED once, and the peak
+// temperature is attributed to that slip, not to the steady arrangement.
+type T10CoolingEvent
+  = BlowerSlipped { peak_during: BenchReading<Celsius> }
+
+fn celsius_delta_le(a: CelsiusDelta, b: CelsiusDelta) -> Bool {
+  celsius_delta_count(delta: a) <= celsius_delta_count(delta: b)
+}
+
 type T10ThermalRow {
   cooling: T10Cooling
   // The steady band both cards held, and the highest reading; NotMeasured where the session gave none.
   gpu_temperature_band: BenchReading<Celsius>
   gpu_temperature_peak: BenchReading<Celsius>
+  // How much hotter GPU1 ran than GPU0 over the run; NotMeasured where the session gave none.
+  gpu1_over_gpu0: BenchReading<CelsiusDelta>
   throttle: T10ThrottleReading
-  note: NonEmptyStr
+  events: List<T10CoolingEvent>
+}
+
+// THE T10's MAXIMUM OPERATING TEMPERATURE, AS THE OPERATOR STATES IT: 87 C. No NVIDIA document for the T10 is
+// reachable (extdeps.gpu.nvidia_t10), so this is an operator-stated figure, not a vendor fact, and it lives here
+// beside the readings it is compared with rather than in the vendor row.
+data t10_operator_stated_max_operating_temperature: Celsius = celsius(count: 87)
+data t10_operator_stated_max_operating_temperature_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Stated by the operator's benching session on 2026-11-16 as the T10's maximum operating temperature. Ground it in an NVIDIA document for the Tesla T10 (none was reachable: extdeps.gpu.nvidia_t10), or in nvidia-smi -q's 'GPU Max Operating Temp' / 'GPU Slowdown Temp' on both cards on h11-new, committed as a capture." as NonEmptyStr,
 }
 
 data t10_pair_thermal_rows: List<T10ThermalRow> = [
@@ -221,15 +244,17 @@ data t10_pair_thermal_rows: List<T10ThermalRow> = [
     cooling: ChassisFansOnly,
     gpu_temperature_band: NotMeasured,
     gpu_temperature_peak: NotMeasured,
+    gpu1_over_gpu0: NotMeasured,
     throttle: ThrottledTo { clock: hertz(count: 300000000), within: ms(count: 90000, p: Approximate) },
-    note: "The chassis fans alone do not hold the T10s at 100 W: the clock fell to 300 MHz within about 90 s." as NonEmptyStr,
+    events: [],
   },
   T10ThermalRow {
     cooling: DeltaBlowerHeldByHand,
     gpu_temperature_band: bench_span(low: celsius(count: 81), high: celsius(count: 85), le: celsius_le, precision: AsReported),
     gpu_temperature_peak: bench_point(value: celsius(count: 87), precision: AsReported),
+    gpu1_over_gpu0: bench_span(low: celsius_delta(count: 1), high: celsius_delta(count: 5), le: celsius_delta_le, precision: AsReported),
     throttle: NoThrottleReported,
-    note: "A Delta blower held directly over the cards for the whole bench. The 87 C peak came when the fan slipped. GPU1 ran 1-5 C hotter than GPU0. 87 C is the T10's maximum operating temperature as the operator states it; this repository has no NVIDIA document for that figure (extdeps.gpu.nvidia_t10)." as NonEmptyStr,
+    events: [BlowerSlipped { peak_during: bench_point(value: celsius(count: 87), precision: AsReported) }],
   },
 ]
 
