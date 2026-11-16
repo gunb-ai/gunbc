@@ -117,3 +117,8 @@ data read_set_convergence_plan: Plan = Plan {
   body: read_set_convergence_body(),
   retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every live consumer in section 3 (A1 fast lane, A2 parse-verdict reuse, A3 partition guard, heal's products) decides validity through the read-set authority, and the retired mechanisms are deleted: B1, B2, B4, C2, C3, C4, C6, D1-D5, C1's touched-path wrappers and suffix matcher, and C5's three dead functions (C5's `import_closure_live_paths` stays with its consumer, and B3 follows the frozen compiler-closure emitter's own migration); the authority's home is then cited by gunbc.plans.demand_engine_program section 2.3 and this plan deletes.") }
 }
+
+// Fast-lane regression probe (cool-lynx-59, 2026-11-16): this comment exists to be a plan-only diff.
+// The v2-bootstrap job must classify it `reuse` and finish under five minutes now that the locator
+// walks HEAD^1's first parents (#16586), the window is 30 ancestors (#16565), and main saves the unit
+// right after the emit steps (#16559). Delete freely; deleting a comment is always a legal edit.
