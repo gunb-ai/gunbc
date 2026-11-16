@@ -21,8 +21,12 @@ import gunbc.host.host_effect_realize {
   TreeInstallStep,
   TreeStepSourceObserve,
   TreeStepRevision,
+  observe_tree_hashes,
+  TreeObservation,
+  TreeObserved,
+  TreeObservationFailed,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables, release_locus_record, release_locus_tree_subdirs }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
@@ -111,20 +115,43 @@ fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool 
 test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepSourceObserve)
 }
 
+// THE PLANT'S POSITIVE CONTROL — AT THE SAME INTERFACE the negative control above tests: the source
+// observe step. It calls observe_tree_hashes (the exact function tree_install_in_realm runs for the
+// source observation) through the same real LocalShell route, with a source root that is PRESENT. The
+// root is the RELATIVE ".", i.e. the repository checkout the claim run itself executes from, whose
+// `dag` and `src/v2` are the run's own --source-root inputs — so it observes a tree the run already
+// requires, with no hand-prepared directory and no dependence on host state (it assumes the claim run's
+// working directory is the repository checkout root, the dir from which `dag` and `src/v2` resolve).
+// There the real find|sha256sum succeeds over a populated tree, so the observe step answers TreeObserved
+// with a NONEMPTY entry list — observed, no refusal (an empty observation would not satisfy the
+// installer's next step either). This is the discriminating partner of the refusing control ONE
+// INTERFACE OVER: same route, same observe step, the only difference is whether the source root resolves
+// to a tree — missing refuses (TreeObservationFailed), present observes (TreeObserved). It runs the
+// OBSERVE leg only (no elevated install, no sudo), so it executes in this sandbox next to the refusing
+// control, and the wet run dispatches only the local find.
+test fn the_real_route_observes_the_present_source_root_at_the_source_observe_interface() -> Bool {
+  match observe_tree_hashes(
+    root: ".",
+    subs: release_locus_tree_subdirs,
+    transport: one_transport_route(transport: LocalShell),
+  ) {
+    TreeObserved { entries: es } => count(es) > 0
+    TreeObservationFailed { reason: _ } => false
+  }
+}
+
 test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionNotInstalled),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionNotInstalled,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepRevision)

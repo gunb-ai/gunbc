@@ -1,17 +1,30 @@
 module extdeps.container.oci.manifest
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.container.oci.descriptor { DescriptorRejectReason, DescriptorRejected, OciDescriptor, accept_descriptor }
 import extdeps.container.oci.types { OciMediaType }
 import extdeps.container.oci.media_types { media_type_oci_image_config_v1, media_type_oci_image_manifest_v1, oci_image_schema_version }
 import std.types { Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.oci.manifest",
+      decl_name: "ImageManifest",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type ImageManifest {

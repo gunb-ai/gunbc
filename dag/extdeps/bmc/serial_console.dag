@@ -1,7 +1,7 @@
 module extdeps.bmc.serial_console
 
 import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
@@ -15,6 +15,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "github.com/openbmc/obmc-console"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.serial_console",
+      decl_name: "SolConsoleTransport",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data redfish_serial_interface_authority: ExternalAuthority = ExternalAuthority {

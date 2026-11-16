@@ -14,16 +14,29 @@ import extdeps.pin {
   admit_subject_projected_pin_integrity,
   subject_projected_pin_value_eq,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.sccache {
   SccacheBinaryArtifact,
   sccache_binary_artifact_content_identity,
   sccache_published_musl_arch_key_of,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/mozilla/sccache/releases" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cache.pin",
+      decl_name: "sccache_binary_artifact_pin_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE INSTANTIATION at dag/extdeps/cache/pin.dag for extdeps.cache.sccache multi-artifact release
