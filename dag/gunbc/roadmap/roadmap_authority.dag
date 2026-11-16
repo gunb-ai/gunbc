@@ -1498,6 +1498,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v2-emitter-production", contribution: "admit_promotion returning promoted for a real candidate is the generator root cut (D9)."),
     ),
     roadmap_node(
+      identity: "rn_YQT00YD4K8DFY8K2S357ZYEN9Y",
+      id: "emitted-contracts-held",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/self_host_behavioral_equivalence_receipt.dag"),
+      line: ticket(t: fields(
+          headline: "Every rostered emitted module holds its own .dag contract on a discriminating corpus",
+          boundary: "The interlock milestone SelfHostEmittedContractsHeld (gunbc.compiler_frontend_program_interlock), read by gunbc.compiler_frontend_program_status from the latest deliberately taken behavioral-equivalence receipt identity-joined to the behavioral transport roster: every module the emitter roster names holds its own .dag contract when the emitted build is driven on a discriminating corpus. The seed is the regression oracle, never the specification (gunbc.design_ruling::v2_better_than_the_seed): a divergence is a v2 regression or a recorded seed correction, and matching bytes is not evidence.",
+          displaced_cost: "The milestone is a prerequisite of SelfHostSeedRetirement and until this change no work item discharged it, so the program could not say what remained between generation two and deleting the seed.",
+          first_slice: "Take one behavioral-equivalence receipt over the current emitter roster at a named head and read the milestone from it, whatever it says; an empty series (BehavioralEquivalenceSeriesEmpty) is the first red.",
+          red_control: "A module named by the roster with no receipt row, or a row whose contract run was not taken deliberately at the receipt's head, keeps the milestone Outstanding; a seed divergence with no disposition keeps it Outstanding; no row is minted from matching bytes.",
+          out_of_scope: "Admitting the successor (v1-emitter-fixed-point) and deleting the seed (v1-emitter-delete); widening the roster.",
+          handback: "SelfHostEmittedContractsHeld reads CLEAR in gunbc.compiler_frontend_program_status, with the receipt it was read from."
+        )),
+      parent: in_project(project: "v2-emitter-production", contribution: "A v2-built compiler is not a successor until every module it emits holds its own contract; this is the interlock prerequisite between generation two and seed retirement that had no work item."),
+    ),
+    roadmap_node(
       identity: "rn_3KTM8Q5VXB2NRJ7HDW9FZ0CPGA",
       id: "v1-rust-source-observation",
       owner: "self-host",
@@ -2909,7 +2925,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_VQ8RGFT438E36PHK9WXJ5TCJMC",
       id: "v2-compiler-live",
       owner: "self-host",
-      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compiler_frontend_program_interlock.dag" },
+        Pointer { label: "plan", path: "dag/gunbc/plans/v2_self_host.dag" },
+      ],
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
           boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
@@ -3241,7 +3260,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "literal-elaboration",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
           boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550 open), maps (#12758 open).",
           displaced_cost: "An unelaborated literal refuses its whole file, and importers then fail as unbound.",
@@ -3249,7 +3268,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A map literal with duplicate keys of an extensional key type refuses (keys domain, std.algebra algebra_profile_equality_extensional).",
           out_of_scope: "Core type merges.",
           handback: "The plans' remaining PRs merged, with the specimens green."
-        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review."), on: "2026-11-16", note: "Re-read against GitHub: #12550 merged 2026-09-30 and #12758 merged 2026-10-01, so the first slice is landed and the boundary's two 'open' marks are stale. Not accepted here: the handback asks for the specimens green, which is a run fact this change did not take. Serves gunbc.plans.v2_self_host as a parent of native-seven.")),
       parent: in_project(project: "v2-frontend", contribution: "Literals and constructs elaborated from their annotation is what lets the std files the native seven import ingest at all."),
     ),
     roadmap_node(
@@ -3257,7 +3276,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shared-check-lets-and-matches",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Lets and match binders are judged by the one relation",
           boundary: "v2.compiler.infer judges let annotations and match binders through the #12566 inhabitance relation.",
           displaced_cost: "Binders typed inline pass wrong values the relation would refuse.",
@@ -3265,7 +3284,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A binder at the wrong type refuses. The same value at the right type is accepted.",
           out_of_scope: "Generic records; cross-module declarations.",
           handback: "The PRs merged, with the per-kind coverage rows moved to \"derived\"."
-        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open."), on: "2026-11-16", note: "Re-read against main e346a2c89daa and GitHub. #12582 merged 2026-09-30; #12637 closed UNMERGED 2026-10-06 and was superseded by #12566 (merged 2026-09-30, declared returns judged by the one relation); #12641 merged 2026-09-30. The first slice is therefore landed. What remains is the executed evidence that both binder kinds reach the inhabitance judgment through one reader: gunbc#15931 (one test file, three claims, closed unmerged 2026-11-08 by the keen-otter wind-down, head preserved at archive/keen-otter-2026-11-08/pr-15931) names the shared reader v2.compiler.infer infer_payload_binder_derived_type as the one-occurrence mutation; its PR body's seam infer_frame_with_binder_type is wrong (it constructs only the let row). Acceptance also states the rung on gunbc.recurring_failure_mode bind_and_match_binders_not_typed_from_their_dependency_sibling, which reads RungUnread after both halves climbed. The handback's per-kind coverage rows name no carrier in the tree; accepting records that as the stated divergence. Serves gunbc.plans.v2_self_host as a parent of native-seven, with slack against the emitter chain.")),
       parent: in_project(project: "v2-shared-type-check", contribution: "Lets and match binders are the next constructs the one relation must judge."),
     ),
     roadmap_node(
@@ -4880,6 +4899,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-emitter-fixed-point", parent: "emitter-produces-main-rs"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-emitter-delete", parent: "native-frontier-required-lane"),
+    edge(child: "emitted-contracts-held", parent: "second-generation"),
+    edge(child: "v1-emitter-delete", parent: "emitted-contracts-held"),
     edge(child: "pderive-source-slot-binding", parent: "declaration-identity-switchover"),
     edge(child: "primitive-identity-join", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-emitter-quarantine", parent: "native-production-admission"),

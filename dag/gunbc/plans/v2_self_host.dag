@@ -1,0 +1,75 @@
+module gunbc.plans.v2_self_host
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.markdown_helpers { h2, p, li, ul, ol, quote, cell, row }
+
+fn v2_self_host_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. How it is realized is downstream: the work items live under `gunbc.roadmap.roadmap_authority` and name this intention; this plan does not list them."),
+      p(text: "**Grounding:** `gunbc.design_argument::self_hosting`, `gunbc.design_argument::replacement_migration` (the seed is semantics-frozen under a purpose test), `gunbc.design_argument::guarantee_ladder`, `gunbc.design_argument::consumption`, `gunbc.design_argument::epistemic_humility`, `gunbc.design_argument::planning_has_one_home`. The milestone order is owned by `gunbc.compiler_frontend_program_interlock` and read by `gunbc.compiler_frontend_program_status`; this plan cites both and restates neither."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** the compiler written in `.dag` is the one that runs. v2 reads, names, types and emits the retained compiler closures, builds itself, rebuilds itself, is the required native route and the admitted production route, and the v1 seed is gone from the tree."),
+    p(text: "**Why:** the seed is a regression oracle that the repository still builds, ships and maintains by hand (`gunbc.v1.v1_maintenance_standing::v1_seed_standing`). Every v2 change today proves a replacement nobody uses (the displaced cost recorded on `native-production-admission`), so its guarantees reach no product. The design's claim that a wall is a row over a medium-agnostic substrate (`gunbc.design_argument::self_hosting`) is a claim about a compiler that runs, not about a seed. The cost removed is the hand-maintained Rust, the second semantic authority, and the gap between what the corpus proves and what the build uses."),
+    p(text: "**Done when** (each assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "`SelfHostSeedRetirement` reads CLEAR in `gunbc.compiler_frontend_program_status`. Today it reads NotDerivable because no instrument observes the seed's absence (`SeedDeletionObservation`); that observation is owed before this condition can be read at all, and an emptied authored roster is not it."),
+      li(text: "Its four interlock prerequisites read CLEAR: `SelfHostNativeRouteRequiredLane`, `SelfHostEmittedContractsHeld`, `SelfHostEmitterProducesEveryRetainedArtifact`, `SelfHostSuccessorPromotionAdmitted`."),
+      li(text: "Every product builds and runs from a tree with the old directory removed, and anything deliberately kept is listed (the red control of `v1-products-v1-free`); hand-written Rust in the repository is at zero (`v1-zero-hand-maintained-rust`)."),
+      li(text: "Operator's judgement: `gunbc.v1.v1_maintenance_standing::v1_seed_standing` is retired, because the standing it describes no longer has a subject."),
+    ]),
+    h2(text: "2. The backward structure, read at e346a2c89daa"),
+    p(text: "This section is reasoning, not a phase list. It is derived from two authorities, the interlock's `milestone_prerequisites` and the declared edges of `gunbc.roadmap.roadmap_authority`, and it is replaceable whenever either changes. Read from the goal downward: each layer states what must already be true for the layer above it."),
+    ol(items: [
+      li(text: "**The goal.** The seed families are absent and every product runs without them (`v1-products-v1-free`, `v1-zero-hand-maintained-rust`)."),
+      li(text: "**Just before it.** The old generator is deleted (`v1-emitter-delete`, needing the required lane and the admitted successor) and the old runner is deleted (`v1-interpreter-delete`, needing `v1-interpreter-quarantine`, which needs `native-production-admission`, which needs the required lane). The interlock's four prerequisites sit here: the required lane (`native-frontier-required-lane`), the admitted successor (`v1-emitter-fixed-point`), every retained artifact produced (`emitter-produces-main-rs`), and every emitted module holding its own contract (`emitted-contracts-held`)."),
+      li(text: "**Before the successor is admitted.** The v2-built compiler rebuilds itself (`v2-emitter-native-bootstrap`), which needs the built v2 CLI to compile and emit `v2.compiler.compile` (`second-generation`)."),
+      li(text: "**Before the second generation.** Two independent lines meet: the emitter chain reaches the crate partition (`v2-emitter-producer-provenance`, `v2-emitter-direct-rust-door`, `v2-emitter-production-compatible-corpus-module`, `v2-emitter-first-behavioral-module`, `v2-emitter-native-crate-partition`: five serial steps), and v2 parses and types its own test target (`native-seven`), which needs its four parents (`literal-elaboration`, `shared-check-lets-and-matches`, `declaration-provider-outcomes`, `native-test-verdict-realization`)."),
+    ]),
+    p(text: "**The cone.** Walking the declared edges back from the goal reaches 31 nodes, of which 13 have no open parent. The longest chain from that frontier to the goal is 11 landings and runs through the emitter chain, which is serial: one worker at a time, starting at `v2-emitter-producer-provenance`, the open producer-authority question that `v2-emitter-direct-rust-door` was reported as carrying. The native-seven line has about three landings of slack against it. Of the 111 nodes under the v2 projects, 83 are on no path to the goal."),
+    h2(text: "3. What is outside the cone, and what that means"),
+    p(text: "The following are not prerequisites of this intention. They are quality, safety and cost work that each belongs to another intention or is admitted ad hoc; selecting them over the cone is a selection the operator makes against the shared CI heal slot, not a dependency this plan asserts: `compiler-guarantee` (35 nodes, the ladder climb), the egress rows under `v2-compiler-live` (numeric, crypto, encoding, effects, content hash), `emission-minimum-cost`, `cardinality-absence`, and `namespace-unique-on-chain` (off the cone since the 2026-11-08 scope reset, `gunbc.design_ruling::n7_requires_only_its_own_closure`, which deleted the edge from `native-seven` to `cross-module-declarations`)."),
+    p(text: "A node outside the cone is not wrong to work on. It is wrong to report it as moving the compiler closer to running, which is the confusion `v2-compiler-live` recorded as its displaced cost."),
+    h2(text: "4. Milestones and their homes"),
+    p(text: "Every interlock milestone, the work item that discharges it, and how the status module reads it today. A milestone with no work item was the gap this plan was written to close."),
+    TableBlock {
+      header: row(cells: [cell(text: "Milestone"), cell(text: "Work item"), cell(text: "Standing read by `gunbc.compiler_frontend_program_status`")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "S2 `SelfHostWholeCorpusPopulationDerived`"), cell(text: "`v2-frontend` (cited in its handback)"), cell(text: "NotDerivable: the whole-corpus census was retired by `gunbc.design_ruling::bad_process_is_worse_than_no_process`; the scope is the two compiler closures.")]),
+        row(cells: [cell(text: "S3 `SelfHostCargoPhaseEnrolled`"), cell(text: "`v2-emitter-production` (cited in its handback)"), cell(text: "NotDerivable: the phase roster does not model whether a phase executes cargo; the v2-bootstrap rows do, but no carrier says so.")]),
+        row(cells: [cell(text: "S4a `SelfHostRatchetObservationEnrolled`"), cell(text: "`native-frontier-required-lane`"), cell(text: "Outstanding.")]),
+        row(cells: [cell(text: "S4b `SelfHostRatchetGateEnrolled`"), cell(text: "`native-frontier-required-lane` (read here as the same step; see open question 3)"), cell(text: "Outstanding, at an authored identity: leaves only by the edit that lands the step.")]),
+        row(cells: [cell(text: "S5 `SelfHostCorpusEmitsCleanly`"), cell(text: "`second-generation` and `v2-emitter-native-bootstrap`; `v2-frontend` cites it"), cell(text: "Outstanding over the two retained closures.")]),
+        row(cells: [cell(text: "`SelfHostEmittedContractsHeld`"), cell(text: "`emitted-contracts-held` (added with this plan under `v2-emitter-production`)"), cell(text: "Read from the latest deliberately taken behavioral-equivalence receipt, identity-joined to the transport roster.")]),
+        row(cells: [cell(text: "`SelfHostEmitterProducesEveryRetainedArtifact`"), cell(text: "`emitter-produces-main-rs`"), cell(text: "Outstanding while any EmitterProducedDivergentRegistration remains.")]),
+        row(cells: [cell(text: "`SelfHostSuccessorPromotionAdmitted`"), cell(text: "`v1-emitter-fixed-point`"), cell(text: "NotDerivable: whether admit_promotion ever returned promoted for a real candidate is a run fact no carrier holds.")]),
+        row(cells: [cell(text: "`SelfHostNativeRouteRequiredLane`"), cell(text: "`native-frontier-required-lane`"), cell(text: "Outstanding while `gunbc.rung_drop` v2_native_route_off_the_merge_path stands.")]),
+        row(cells: [cell(text: "S6 `SelfHostSeedRetirement`"), cell(text: "`v1-emitter-delete`, `v1-interpreter-delete`, `v1-products-v1-free`"), cell(text: "NotDerivable until a seed-deletion observation exists.")]),
+      ],
+    },
+    h2(text: "5. The near-term milestone"),
+    p(text: "`native-seven` is the operator's chosen near-term target (2026-11-16): a visible, end-to-end proof that keeps the program's motivation concrete. It is on the cone, since `second-generation` needs it, and it has slack against the emitter chain, so it is not the critical path. Both facts are stated so that progress on it is reported as what it is: a real prerequisite met early, not the program's bottleneck moving."),
+    h2(text: "6. Open questions"),
+    ul(items: [
+      li(text: "**The namespace cleanup's standing.** `namespace-unique-on-chain` is off the cone after the 2026-11-08 scope reset. Either it is its own intention (one canonical way to decide every name), with this plan consuming only what the native closure's measurement demands, or a measurement of the native-seven closure shows a wall that re-admits one of its nodes as a prerequisite. The operator's call; until it is made, no namespace node is reported as v2 progress."),
+      li(text: "**The required-lane step's time budget.** `native-frontier-required-lane` adds a merge-queue step of about 35 minutes per landing. `gunbc.design_ruling::ci_job_budgets_closed_to_growth` bans a time-budget increase without the operator's explicit sign-off, so that sign-off sits on the goal's path and nothing but the operator can supply it. The roster mint, the node's first slice, needs none."),
+      li(text: "**S4a and S4b against the roster step.** This plan reads the ratchet observation, the ratchet gate and the required lane as one work item discharged by `native-frontier-required-lane`. If the operator reads S4b (a merge-blocking native gate over the two retained compiler closures) as distinct from the frontier ratchet, it is a second work item under `native-route-to-live`."),
+      li(text: "**The seed-deletion observation.** `SelfHostSeedRetirement` cannot be read until an instrument observes the seed families' absence. Which node owns that instrument is undecided; `v1-rust-source-observation` is the nearest existing home."),
+      li(text: "**The other two goals.** The same backward walk is owed for the factory (first external customer, from `factory-dogfood-route` back) and for planning (acceptance sustainable, from `gunbc.plans.planning_consolidation` back). Each is its own intention, not a section of this one."),
+    ]),
+    h2(text: "7. Realization"),
+    p(text: "Not authored here. The work items are the cone's roadmap nodes; their order, staffing and slicing are a selection made when the work is picked up, and may be redrawn without this plan changing. What a landing reports is whether a milestone's standing moved, read from `gunbc.compiler_frontend_program_status`, never a count of nodes closed."),
+  ]
+}
+
+data v2_self_host_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "v2-self-host",
+  title: "v2 self-host: the compiler written in .dag is the one that runs",
+  body: v2_self_host_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: SelfHostSeedRetirement reads CLEAR in gunbc.compiler_frontend_program_status, every product builds and runs without the seed, and the operator has retired the v1 seed standing.") },
+}
