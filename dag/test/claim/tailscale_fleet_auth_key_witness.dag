@@ -12,9 +12,9 @@ module test.claim.tailscale_fleet_auth_key_witness
 // fails the compile the moment an arm lacks a row) is the load-bearing pair.
 
 import std.logic { Bool }
-import std.algebra { string_contains, Cons, Empty }
-import std.string { NonEmptyStr, concat }
-import std.option { Present, Absent }
+import std.algebra { string_contains }
+import std.types { NonEmptyStr }
+import std.optional { Present, Absent }
 import extdeps.tailscale.join {
   AuthKeyReusable,
   AuthKeyPreApproved,

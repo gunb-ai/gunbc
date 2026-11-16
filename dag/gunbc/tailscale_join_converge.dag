@@ -62,7 +62,13 @@ module gunbc.tailscale_join_converge
 
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.package_managers.apt { apt_get_install_command, package_tailscale }
+import extdeps.package_managers.apt {
+  apt_get_install_command,
+  package_tailscale,
+  AptGetInstallCommand,
+  AptGetInstallCommandReady,
+  AptGetInstallCommandRefused,
+}
 import extdeps.package_managers.dpkg {
   DpkgInstalledState,
   DpkgPackageInstalled,
@@ -95,7 +101,7 @@ import extdeps.tailscale.join {
 }
 import extdeps.tailscale.machine_name { tailscale_status_json_argv }
 import extdeps.dns.domain_name { DnsLabel }
-import extdeps.filesystem.path { FileTreeScope }
+import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -130,7 +136,7 @@ import gunbc.fleet.host_credential_custody_converge {
   host_credential_custody_row,
   run_elevated_leg,
 }
-import gunbc.fleet.runner_host_file_converge { administrator_ssh_target }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.secret_provision { Secret }
 import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_file,
@@ -148,7 +154,8 @@ import gunbc.typed_remote_file_write {
 import product.host_identity { HostIdentity }
 import std.list { list_member }
 import std.optional { Absent, Optional, Present }
-import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_contains, string_non_empty, to_string, trim }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
+import std.algebra { string_contains, trim }
 
 // The bounded waits, both this fleet's choice, both load-bearing: upstream blocks FOREVER by default on `up`
 // and gives up after five seconds by default on `ping`, which are the two wrong answers for a converge -- one
@@ -399,7 +406,7 @@ fn tailscale_join_tag_consistency() -> Bool {
 // THE INSTALL COMMAND. The package name is the one row apt.dag carries for it and the command is that
 // module's admitted install route, not a hand-spelled apt-get. It runs elevated because apt is a root
 // mutation, and it runs ONLY on the arm the plan chose.
-fn tailscale_join_install_command() -> ArgvCommand {
+fn tailscale_join_install_command() -> AptGetInstallCommand {
   apt_get_install_command(package: package_tailscale)
 }
 
@@ -563,7 +570,7 @@ fn tailscale_join_readback(
       }
     NameResolved { reply: _ } =>
       match tailscale_join_observe_answer(router: router, context: context, expected_name: expected) {
-        JoinPeerAnswered { node_name: _, line: _ } => JoinReadbackOk()
+        JoinPeerAnswered { node_name: _, line: _ } => JoinReadbackOk
         JoinPeerSilent { detail: detail } =>
           JoinReadbackFailed { cause: concat("the router got no pong from ", expected as String, ": ", detail) }
         JoinPeerAnsweredWrongPeer { expected: expected_peer, got: got } =>
@@ -755,15 +762,20 @@ fn tailscale_join_install_leg(
   match package_action {
     JoinPackageAlreadyInstalled => Absent
     JoinPackageInstall =>
-      tailscale_join_elevated_refusal(
-        leg: run_elevated_leg(
-          subject: subject,
-          context: context,
-          argv: argv_words(command: tailscale_join_install_command()),
-          stdin_payload: "",
-        ),
-        label: "apt-get install",
-      )
+      match tailscale_join_install_command() {
+        AptGetInstallCommandReady { command: command } =>
+          tailscale_join_elevated_refusal(
+            leg: run_elevated_leg(
+              subject: subject,
+              context: context,
+              argv: argv_words(command: command),
+              stdin_payload: "",
+            ),
+            label: "apt-get install",
+          )
+        AptGetInstallCommandRefused { cause: cause } =>
+          Present { value: concat("apt-get install not run: ", cause) }
+      }
   }
 }
 
