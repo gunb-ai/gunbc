@@ -14,7 +14,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 
 import extdeps.tools.jq {
-  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
+  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqProgramExit, JqAdmittedProcessPlan,
   jq_invocation_process_plan, jq_admitted_plan_surface, jq_executable,
 }
 import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
@@ -529,11 +529,17 @@ fn release_bins_transport_test(transport: ReleaseBinsTransportExactness) -> Node
 fn release_bins_outcome_arm(outcome: ReleaseBinsOutcome) -> Node {
   match outcome {
     ReuseAfterVerification => bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: [":", "no-op"])])
+    // No trailing exit 0: in the outcome step this arm is followed by the
+    // release-bins retention chore (release_bins_outcome_with_retention_
+    // statements appends it after the outcome statements), and an exit here
+    // would skip the very runs that ADD cache entries -- the runs retention
+    // exists for. Without the appended chore the script simply ends on this
+    // arm's tee (exit 0), so removing it changes nothing for callers that
+    // stop at the outcome statements.
     BuildAfterEstablishedAbsence => bash_build_stmt_list_from_nodes(stmts: [
       cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "STAGE")]),
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "STAGE")]),
       append_line(file_var: "GITHUB_OUTPUT", line: lit(t: join(["outcome=", release_bins_build_wire], ""))),
-      bash_build_exit(code: "0"),
     ])
     RefuseOutcome { refusal: r } => bash_build_stmt_list_from_nodes(stmts: [refuse(r: r)])
   }
@@ -1075,13 +1081,20 @@ fn release_bins_retention_program() -> String {
   ], "")
 }
 
+// JqProgramExit, not JqLastResultExit: with --exit-status, jq exits 4 when it
+// produced NO output at all -- the at-cap case (nothing due) reads as a
+// failure and would be mistyped as plan-failed. Program correctness is still
+// enforced by the admission checks (error() exits nonzero under either
+// policy; malformed input, a disagreeing count or a stream of documents exit
+// nonzero and land in plan-failed), and the decision block separates the
+// empty-plan case by the ids file, not by jq's exit code.
 fn release_bins_retention_plan() -> Outcome<JqAdmittedProcessPlan> {
   jq_invocation_process_plan(invocation: JqInvocation {
     program: JqProgram { source: release_bins_retention_program() },
     bindings: Empty,
     input: JqInputFile { path: release_bins_retention_answer_file() },
     output_encoding: JqRawOutput,
-    exit_policy: JqLastResultExit,
+    exit_policy: JqProgramExit,
   })
 }
 
@@ -1112,12 +1125,21 @@ fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
     concat([lit(t: "curl"), lit(t: "-sSf")], gunbc_ci_auth_header_file_args(header_path: header)),
     [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_word(), lit(t: "-o"), answer],
   ))
+  // A failed lookup is TYPED, not swallowed: the failure arm removes the
+  // header AND the answer file (so the decision block cannot read a stale or
+  // partial answer) and prints the lookup-failed line. The answer is also
+  // invalidated by the caller BEFORE this fetch runs, so "the plan's
+  // deletions are driven only by this invocation's own successful answer".
   bash_build_or_else(
     left: bash_build_subshell_from_stmts(stmts: [
       gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
       bash_build_or_else(
         left: bash_build_and_then(left: get, right: remove_header),
-        right: bash_build_subshell_from_stmts(stmts: [remove_header, cmdl(["true"])]),
+        right: bash_build_subshell_from_stmts(stmts: [
+          remove_header,
+          cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
+          release_bins_retention_echo(word: "lookup-failed"),
+        ]),
       ),
     ]),
     right: release_bins_retention_echo(word: "lookup-failed"),
@@ -1220,6 +1242,9 @@ fn release_bins_retention_statements() -> List<Node> {
     [
       root_statement(),
       release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
+      // Invalidate before fetching: a leftover answer from anything earlier
+      // must never reach the plan, only this invocation's own curl answer.
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
       release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
     ],
     release_bins_retention_decide_statements(),
