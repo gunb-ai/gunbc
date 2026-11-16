@@ -54,7 +54,8 @@ import gunbc.live_deploy.unit_standing {
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding, release_locus_dir }
+import gunbc.live_deploy.serve_binary { serve_binary_path }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir, attempt_system_unit_launcher_helpers_root }
 
@@ -376,6 +377,23 @@ fn unit_wd(f: SystemdUnitFile) -> String {
   match working_directory_of_unit_file(f) { Present { value: w } => w, Absent => "" }
 }
 
+// The broker's expected reads, spelled from the EMITTER'S OWN producing authorities -- the exact functions
+// live_deploy_approval_broker_serve_unit_file uses to WRITE those directives -- NOT parsed from the unit
+// file and NOT via the classifier. This makes the broker controls independent of the classifier's argv[0]
+// split: if the split is wrong, the classifier's derived set diverges from these authority values and the
+// equality goes RED (whereas a file-parse expectation would be wrong on both sides together).
+fn broker_expected_binary() -> String {
+  serve_binary_path(binary: srv1_spec().approval_broker.serve_binary, release_root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+}
+
+fn broker_expected_wd() -> String {
+  release_locus_dir(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+}
+
+fn broker_expected_env() -> String {
+  device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+}
+
 fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
   unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
 }
@@ -397,9 +415,9 @@ test fn the_serve_unit_reads_the_installed_serve_binary() -> Bool {
 // that binary is the wired gate's concern (item 5): a broker naming a binary no step installs must then
 // be refused, not silently allowed here.
 test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
-  let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
-  let binary = unit_argv0(f)
-  let wd = unit_wd(f)
+  // expected start binary + WorkingDirectory from the EMITTER'S OWN authorities (not parsed from the file)
+  let binary = broker_expected_binary()
+  let wd = broker_expected_wd()
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
     Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
       // the broker's declared reads are derived from its own unit file and CONTAIN the start binary and
@@ -428,10 +446,10 @@ test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
 // through the real broker adapter: with only the binary and directory installed the row is Refused and the
 // gate Halts naming that env file; with the complete installed set it is Allowed and the gate Proceeds.
 test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
-  let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
-  let binary = unit_argv0(f)
-  let wd = unit_wd(f)
-  let env = device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+  // expected values from the EMITTER'S OWN producing authorities -- independent of the classifier's split
+  let binary = broker_expected_binary()
+  let wd = broker_expected_wd()
+  let env = broker_expected_env()
   let expected = [binary, wd, env]
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
     Absent => false
