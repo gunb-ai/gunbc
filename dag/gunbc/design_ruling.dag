@@ -1008,8 +1008,32 @@ data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRulin
   provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
 }
 
+data v2_landing_waits_on_the_namespace_program: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_landing_waits_on_the_namespace_program"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "self_hosting"),
+  provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), answering open question 1 of gunbc.plans.v2_self_host (is the namespace cleanup a prerequisite of v2 or its own program). Operator words, verbatim: \"regarding namespace cleanup - i'm not sure exactly - i always aim to separate concerns, but my concern is that, v2 should not be landing if the namespace cleanup is not finished, meaning, that seems to be a major blocker, because i don't even want v2 to support the import concept - i worry that we're straying quite far from that work.\" RULED, in those words: v2 does not land as the production route while the namespace program is unfinished. INTERPRETATION (not operator words): the roadmap edge native-production-admission <- namespace-unique-on-chain is declared, so the namespace program gates production admission (D10) and nothing in native-seven, which keeps its 2026-11-08 scope (gunbc.design_ruling::n7_requires_only_its_own_closure, whose words separate the whole-repository program from N7 explicitly). NOT RULED HERE, AWAITING THE OPERATOR'S EXPLICIT WORD: the clause \"i don't even want v2 to support the import concept\" conflicts with gunbc.design_ruling::imports_are_the_terminal_name_mechanism (2026-11-08, D2: imports stay as the binding mechanism, import-grammar deletion withdrawn). A later statement does not silently supersede a recorded ruling (gunbc.design_argument::epistemic_humility); until the operator says which stands, D2 stands and namespace-unique-on-chain's handback is unchanged."
+}
+
+data native_frontier_step_budget_may_rise_once_its_checks_are_stated: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_frontier_step_budget_may_rise_once_its_checks_are_stated"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), answering open question 2 of gunbc.plans.v2_self_host (the native-frontier-required-lane step adds about 35 minutes per landing, and gunbc.design_ruling::ci_job_budgets_closed_to_growth bans a time-budget increase without the operator's explicit sign-off). Operator words, verbatim: \"it can go up, i just need to know why/what the checks actually consist of now\". RULED, in those words: the required-job time budget may rise for the native-frontier step, conditional on the operator being told what the step checks. INTERPRETATION (not operator words): the condition is discharged by gunbc.plans.v2_self_host section 7, which states what the required job runs today and what the step adds, read from gunbc.emitted_subject_build_gate, gunbc.instrument_targets and v2.workflow.native_frontier_ratchet; the sign-off covers the step as the node describes it (a merge-queue-only step inside an existing lane, no new job, about 35 minutes, with the node's revisit trigger) and no other budget. gunbc.design_ruling::ci_job_budgets_closed_to_growth otherwise stands."
+}
+
+data seed_deletion_observation_is_the_v1_programs_acceptance_gate: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "seed_deletion_observation_is_the_v1_programs_acceptance_gate"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), answering open question 4 of gunbc.plans.v2_self_host (SelfHostSeedRetirement reads NotDerivable until an instrument observes the seed families' absence; which node owns that instrument). Operator words, verbatim: \"i think this is just an acceptance gate on the project - like towards the end we need a clear project that confirms/winds down the rest of v1\". RULED, in those words: the seed-deletion observation is the acceptance gate of the v1 deletion program, not a separate instrument node. INTERPRETATION (not operator words): the observation is owed by the terminal node of v1-deletion-program, v1-products-v1-free, whose handback already names the builds, the product runs and the list of anything deliberately kept; SelfHostSeedRetirement is read from that node's acceptance evidence, and the program's acceptance confirms and winds down the rest of v1. The same words answer the 2026-11-16 planning question of how the end of v1 is confirmed: by one clear project's acceptance, recorded as an event."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    v2_landing_waits_on_the_namespace_program,
+    native_frontier_step_budget_may_rise_once_its_checks_are_stated,
+    seed_deletion_observation_is_the_v1_programs_acceptance_gate,
     no_ci_claim_execution_until_native_frontier_clears,
     planning_is_one_source_for_every_repo,
     plans_are_intentions_and_realization_is_downstream,

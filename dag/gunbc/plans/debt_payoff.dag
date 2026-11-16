@@ -1,0 +1,43 @@
+module gunbc.plans.debt_payoff
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn debt_payoff_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`). The work items live under the `debt-payoff` project in `gunbc.roadmap.roadmap_authority` and name this intention; this plan does not list them."),
+      p(text: "**Grounding:** `gunbc.design_argument::guarantee_ladder` (no untracked stall, no silent regression, dissolution on climb), `gunbc.design_argument::earliest_unjustified_boundary` (a fix that only moves the cost is not payoff), `gunbc.design_argument::fail_closed`, `gunbc.design_argument::how_to_work` (proportionate evidence)."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** every known gap and recurring failure mode is retired against its rostered trigger, so that the rosters shrink to what is genuinely open and the declared rung drops are restored."),
+    p(text: "**Why:** a roster row nobody retires is a standing cost on every session that reads it and a standing risk that its class recurs unnoticed; a declared drop that is never restored is a lowered guarantee that quietly became permanent. The cost removed is the maintenance of debt that is already payable and the re-learning of the same failure classes."),
+    p(text: "**Done when** (each assessed against the tree):"),
+    ul(items: [
+      li(text: "Every roster row that is dissolvable now is retired, each roster re-joined against the tree with no dead identities (`dp-m1-dissolvable-rows-retired`)."),
+      li(text: "No rendered surface carries a shell control word; the shell-to-dag batches are accepted with their witnesses green by execution (`dp-m2-shell-residue-retired`)."),
+      li(text: "The extdeps-scope gate is enrolled and the legacy manifest is at half its 2026-11 size, with no line deleted while its file declares no scope (`dp-m3-extdeps-scope-halved`)."),
+      li(text: "Closed matches are total: the non-fold residue frontier at 100 rows or fewer, each deleted row's match totaled (`dp-m4-closed-matches-total`)."),
+      li(text: "Absence is established, never inferred: the absence roster at zero, every converted site with a could-not-look control (`dp-m5-absence-established`)."),
+      li(text: "The v2 native-route drops are retired, each by its restoring witness executing (`dp-m6-native-route-walls`)."),
+      li(text: "Every production convergence path consumes a qualified operand minted on the effectful route or carries a named conformance exclusion (`convergence-coverage`)."),
+    ]),
+    h2(text: "2. The backward structure, read at e346a2c89daa"),
+    p(text: "The seven done-when conditions are independent of one another: the project declares no edges among its members, and none of the six DP milestones depends on another. The only order inside this program is the one the factory imposes from outside: the lab must track main before any accepted node is visible (`lab-standings-track-main`, `lab-converges-release-pair`, parented under `convergence-coverage` by gunb-ai/gunbc#16592), so the lab pair goes first and the rest runs in parallel under the active-count rule the batch review set."),
+    p(text: "Each milestone's frontier is its current batch, measured on main in the pull request that admits it; this plan records none of those measurements, because they move with every landing and the batch pull request is their home."),
+    h2(text: "3. What is outside this intention"),
+    p(text: "The v2 program's own walls (`gunbc.plans.v2_self_host`) are not debt; `dp-m6-native-route-walls` restores declared drops, it does not build the native route. A count floor, a widened budget or a cache is never payoff here (`debt-payoff`'s red control)."),
+    h2(text: "4. Realization"),
+    p(text: "Not authored here. Batches are admitted one pull request at a time, each node mapping one authority transition with one discriminating witness and one executing route; what a landing reports is the roster's new size or the class's new rung, named by the witness that measured it."),
+  ]
+}
+
+data debt_payoff_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "debt-payoff",
+  title: "Debt payoff: known gaps and failure modes retired against their rostered triggers",
+  body: debt_payoff_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: all seven done-when conditions hold on the tree and the debt-payoff project is accepted.") },
+}

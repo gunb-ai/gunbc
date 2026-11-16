@@ -1712,7 +1712,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-products-v1-free",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Build and run every product without the old code present",
         boundary: "With the old runner gone and the hand-written queue worked through, the products build and run with the old directory absent. Anything that must stay gets an explicit reason.",
         displaced_cost: "Separates 'the products no longer need the old code' from 'the old runner is gone', so neither claim waits on the other's leftovers.",
@@ -1720,7 +1720,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A product that still reads or links anything from the old directory, without a stated reason, fails the check.",
         out_of_scope: "Not the repository-wide hand-written-Rust goal, and no deleting generated code.",
         handback: "The builds, the product runs, and the list of anything deliberately kept."
-      ), on: "2026-09-30", note: "Not yet centered: terminal.")),
+      ), on: "2026-09-30", note: "Not yet centered: terminal."), on: "2026-11-16", note: "This node's acceptance is the seed-deletion observation that SelfHostSeedRetirement (gunbc.compiler_frontend_program_status) needs before it can be read: the operator ruled the observation is the v1 deletion program's acceptance gate, not a separate instrument (gunbc.design_ruling::seed_deletion_observation_is_the_v1_programs_acceptance_gate). The handback's builds, product runs and kept-list are that evidence; the program's acceptance confirms and winds down the rest of v1. Serves gunbc.plans.v2_self_host.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v1-deletion-program", contribution: "The products build and run with no v1 code in their closure."),
     ),
@@ -4915,6 +4915,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "second-generation", parent: "native-seven"),
     edge(child: "native-production-admission", parent: "native-frontier-required-lane"),
     edge(child: "native-production-admission", parent: "demand-d13-dependency-demand"),
+    edge(child: "native-production-admission", parent: "namespace-unique-on-chain"),
     edge(child: "demand-m1c", parent: "demand-m1b"),
     edge(child: "demand-m2", parent: "demand-m1c"),
     edge(child: "demand-m3b", parent: "demand-m2"),
