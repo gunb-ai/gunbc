@@ -154,6 +154,7 @@ import gunbc.typed_remote_file_write {
 }
 import product.host_identity { HostIdentity }
 import std.list { list_member }
+import std.measure { Second, second }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
 import std.algebra { string_contains, trim }
@@ -161,9 +162,9 @@ import std.algebra { string_contains, trim }
 // The bounded waits, both this fleet's choice, both load-bearing: upstream blocks FOREVER by default on `up`
 // and gives up after five seconds by default on `ping`, which are the two wrong answers for a converge -- one
 // that never reports, and one that reports a fault on a peer that was merely slow.
-data tailscale_join_up_timeout_seconds: Int = 120
+data tailscale_join_up_timeout: Second = second(count: 120)
 data tailscale_join_ping_count: Int = 1
-data tailscale_join_ping_timeout_seconds: Int = 15
+data tailscale_join_ping_timeout: Second = second(count: 15)
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE POPULATION: EVERY ENROLLED HOST, WHICH IS NOT EVERY HOST THAT EXISTS.
@@ -420,7 +421,7 @@ fn tailscale_join_up_command(hostname: DnsLabel) -> TailscaleUpJoinCommand {
       key_file: tailscale_fleet_auth_key_file,
       hostname: hostname,
       advertise_tags: [tailscale_fleet_node_tag],
-      timeout_seconds: tailscale_join_up_timeout_seconds,
+      timeout: tailscale_join_up_timeout,
     )
   )
 }
@@ -528,7 +529,7 @@ fn tailscale_join_observe_answer(
     spec: tailscale_ping_spec_of(
       destination: expected_name,
       count: tailscale_join_ping_count,
-      timeout_seconds: tailscale_join_ping_timeout_seconds,
+      timeout: tailscale_join_ping_timeout,
     )
   ) {
     TailscalePingCommandRefused { cause: cause } => JoinAnswerUnreadable { cause: cause }
@@ -607,7 +608,7 @@ fn tailscale_join_host(
   context: FleetSshExecutionContext,
   key_material: Secret,
   resolved_version: SmResolvedVersionIdentity,
-  today: TailscaleCalendarDate,
+  today: Optional<TailscaleCalendarDate>,
 ) -> TailscaleJoinOutcome {
   match administrator_ssh_target(host: operator_host_srv1) {
     // The read-back is asked FROM the router, so a router this converge cannot reach over its own transport

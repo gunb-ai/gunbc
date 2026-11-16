@@ -43,6 +43,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.tailscale.serve { tailscale_program }
 import extdeps.uri { Https, Uri }
+import std.measure { Second, second_count, seconds_per_day }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
 
@@ -139,13 +140,13 @@ fn tailscale_auth_key_policy_of(
   kind: TailscaleAuthKeyKind,
   approval: TailscaleAuthKeyApproval,
   key_tags: List<NonEmptyStr>,
-  expires_after_days: Int,
+  expires_after: Second,
 ) -> TailscaleAuthKeyPolicy {
   TailscaleAuthKeyPolicy {
     kind: kind,
     approval: approval,
     key_tags: key_tags,
-    expires_after_days: expires_after_days,
+    expires_after: expires_after,
   }
 }
 
@@ -159,16 +160,12 @@ fn tailscale_auth_key_kind_wire(kind: TailscaleAuthKeyKind) -> String {
   }
 }
 
-// Whether a kind is compatible with being a permanent fleet member the router routes to. Upstream:
-// one-off removes the node when the device logs out; ephemeral removes it "after the device goes
-// offline". Either way the router's upstream disappears on an event the router does not control.
-fn tailscale_auth_key_kind_supports_permanent_membership(kind: TailscaleAuthKeyKind) -> Bool {
-  match kind {
-    AuthKeyOneOff => false
-    AuthKeyReusable => true
-    AuthKeyEphemeral => false
-  }
-}
+// There is deliberately NO separate "can this kind hold membership forever" classifier here, even though
+// upstream's facts are what one would state (one-off removes the node when the device logs out; ephemeral
+// removes it "after the device goes offline", so neither is a kind the router can route to permanently):
+// the whole-policy gate tailscale_auth_key_policy_admit is the only surface a caller can act on, and a
+// classifier outside it would be a second, consumer-less answer to the same question
+// (gunbc.design_argument::minimize_redundancy).
 
 type TailscaleAuthKeyApproval = AuthKeyPreApproved | AuthKeyApprovalRequired
 
@@ -188,17 +185,18 @@ type TailscaleCalendarDate sole_constructor {
   day: Int,
 }
 
-// The range a date component may take. Not a calendar library -- a refusal, so that a key recorded as
-// expiring on month 13 is caught at the model rather than compared as a number forever.
-fn tailscale_calendar_date(year: Int, month: Int, day: Int) -> TailscaleCalendarDate {
-  TailscaleCalendarDate { year: year, month: month, day: day }
-}
-
-fn tailscale_calendar_date_is_wellformed(date: TailscaleCalendarDate) -> Bool {
-  let ok_year = 1970 <= date.year && date.year <= 9999
-  let ok_month = 1 <= date.month && date.month <= 12
-  let ok_day = 1 <= date.day && date.day <= 31
-  ok_year && ok_month && ok_day
+// THE CHECKED CONSTRUCTOR, exported instead of the record: a sole_constructor type is buildable only here,
+// and an out-of-range component yields Absent rather than a date that compares as a number forever -- a
+// key recorded as expiring on month 13 is UNWRITABLE, not merely detectable
+// (@ref(gunbc.design_argument::fail_closed): "stronger than catching a wrong state is making it
+// unwritable"). Not a calendar library: day-of-month is bounded to 1..31, which refuses nonsense without
+// pretending to know leap years.
+fn tailscale_calendar_date(year: Int, month: Int, day: Int) -> Optional<TailscaleCalendarDate> {
+  if 1970 <= year && year <= 9999 && 1 <= month && month <= 12 && 1 <= day && day <= 31 {
+    Present { value: TailscaleCalendarDate { year: year, month: month, day: day } }
+  } else {
+    Absent
+  }
 }
 
 // Whether `earlier` strictly precedes `later`. Named for the reading a caller takes: a key's expiry is
@@ -213,9 +211,15 @@ fn tailscale_calendar_date_precedes(earlier: TailscaleCalendarDate, later: Tails
   }
 }
 
-// The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90.
-fn tailscale_auth_key_expiry_days_are_upstream(expires_after_days: Int) -> Bool {
-  1 <= expires_after_days && expires_after_days <= 90
+// The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90
+// DAYS. The duration is carried as std.measure::Second -- the corpus authority for elapsed time
+// (gunbc.design_argument::single_authority: the unit lives in std.measure, not in a bare Int whose scale
+// is a comment), the same carrier gunbc.serving.srv1_serving_replica_layout uses for its TLS validity --
+// and reduced to the console's day scale at this one comparison, the way that module renders days only at
+// its flag boundary.
+fn tailscale_auth_key_expiry_window_is_upstream(expires_after: Second) -> Bool {
+  let days = second_count(expires_after)
+  seconds_per_day() <= days && days <= 90 * seconds_per_day()
 }
 
 // THE RECORD OF WHAT THE KEY UPSTREAM IS. Product supplies the values; the shape, the ranges, and the
@@ -225,13 +229,13 @@ type TailscaleAuthKeyPolicy sole_constructor {
   kind: TailscaleAuthKeyKind,
   approval: TailscaleAuthKeyApproval,
   key_tags: List<NonEmptyStr>,
-  expires_after_days: Int,
+  expires_after: Second,
 }
 
 type TailscaleAuthKeyPolicyVerdict = AuthKeyPolicyAccepted | AuthKeyPolicyRefused { cause: String }
 
 fn tailscale_auth_key_policy_admit(policy: TailscaleAuthKeyPolicy) -> TailscaleAuthKeyPolicyVerdict {
-  if !(tailscale_auth_key_expiry_days_are_upstream(expires_after_days: policy.expires_after_days)) {
+  if !(tailscale_auth_key_expiry_window_is_upstream(expires_after: policy.expires_after)) {
     AuthKeyPolicyRefused {
       cause: "an auth key's expiry must be between 1 and 90 days (upstream: \"The maximum key expiration is 90 days\")",
     }
@@ -280,12 +284,12 @@ type TailscaleAuthKeyFile sole_constructor {
 // A RELATIVE path is resolved by the daemon, not by the caller, so a relative spelling is a claim about a
 // location nobody chose. The check is the first character only: this is a shape guard, not a path
 // canonicaliser, and canonicalisation belongs to custody with the ownership and mode.
-fn tailscale_auth_key_file_at(path: NonEmptyStr) -> TailscaleAuthKeyFile {
-  TailscaleAuthKeyFile { path: path }
-}
-
-fn tailscale_auth_key_file_is_absolute(file: TailscaleAuthKeyFile) -> Bool {
-  starts_with(s: file.path as String, prefix: "/")
+fn tailscale_auth_key_file_at(path: NonEmptyStr) -> Optional<TailscaleAuthKeyFile> {
+  if 1 < (path as String).length() && starts_with(s: path as String, prefix: "/") {
+    Present { value: TailscaleAuthKeyFile { path: path } }
+  } else {
+    Absent
+  }
 }
 
 // The `--auth-key` value, in the form upstream reads as a file reference. The prefix is upstream's own
@@ -325,26 +329,27 @@ fn tailscale_auth_key_file_argument(file: TailscaleAuthKeyFile) -> String {
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type TailscaleUpJoinSpec sole_constructor {
-  key_file: TailscaleAuthKeyFile,
+  key_file: Optional<TailscaleAuthKeyFile>,
   hostname: DnsLabel,
   advertise_tags: List<NonEmptyStr>,
-  timeout_seconds: Int,
+  timeout: Second,
 }
 
 // THE SMART CONSTRUCTOR for a join spec: the record itself is buildable only in this module, so the four
-// inputs a join is made of -- the key FILE, the hostname, the tags, and the bounded wait -- have to arrive
-// through a function a witness can read and a reviewer can cite.
+// inputs a join is made of -- the key FILE (checked, so an unconstructible path arrives as Absent and the
+// command refuses), the hostname, the tags, and the bounded wait as a std.measure::Second -- have to
+// arrive through a function a witness can read and a reviewer can cite.
 fn tailscale_up_join_spec_of(
-  key_file: TailscaleAuthKeyFile,
+  key_file: Optional<TailscaleAuthKeyFile>,
   hostname: DnsLabel,
   advertise_tags: List<NonEmptyStr>,
-  timeout_seconds: Int,
+  timeout: Second,
 ) -> TailscaleUpJoinSpec {
   TailscaleUpJoinSpec {
     key_file: key_file,
     hostname: hostname,
     advertise_tags: advertise_tags,
-    timeout_seconds: timeout_seconds,
+    timeout: timeout,
   }
 }
 
@@ -353,26 +358,36 @@ type TailscaleUpJoinArgv
   | TailscaleUpJoinArgvRefused { cause: String }
 
 fn tailscale_up_join_argv(spec: TailscaleUpJoinSpec) -> TailscaleUpJoinArgv {
-  if spec.advertise_tags.count() == 0 {
-    TailscaleUpJoinArgvRefused {
-      cause: "a join with no advertised tag enrolls the node as the generating user, not as a role the ACL can address",
-    }
-  } else if !tailscale_auth_key_file_is_absolute(file: spec.key_file) {
-    TailscaleUpJoinArgvRefused { cause: "the auth key file path is not absolute" }
-  } else if !string_non_empty(value: spec.hostname as String) {
-    TailscaleUpJoinArgvRefused { cause: "the hostname the node should claim is empty" }
-  } else if spec.timeout_seconds <= 0 {
-    TailscaleUpJoinArgvRefused { cause: "a join with no timeout blocks forever when the control plane never answers" }
-  } else {
-    TailscaleUpJoinArgvBuilt {
-      argv: [
-        "up",
-        concat("--auth-key=", tailscale_auth_key_file_argument(file: spec.key_file)),
-        concat("--hostname=", spec.hostname as String),
-        concat("--advertise-tags=", tailscale_tag_list_wire(tags: spec.advertise_tags)),
-        concat("--timeout=", to_string(spec.timeout_seconds), "s"),
-      ]
-    }
+  match spec.key_file {
+    // The checked constructor refused this path (it was not absolute, or was empty): there is no file
+    // reference to hand `up`, and a join without it is not a join -- refuse, never drop the flag.
+    Absent =>
+      TailscaleUpJoinArgvRefused {
+        cause: "the auth key file reference could not be constructed (the path must be absolute)",
+      }
+    Present { value: file } =>
+      if spec.advertise_tags.count() == 0 {
+        TailscaleUpJoinArgvRefused {
+          cause: "a join with no advertised tag enrolls the node as the generating user, not as a role the ACL can address",
+        }
+      } else if !string_non_empty(value: spec.hostname as String) {
+        TailscaleUpJoinArgvRefused { cause: "the hostname the node should claim is empty" }
+      } else if second_count(spec.timeout) <= 0 {
+        // Upstream's own default is 0 == wait forever; a converge must never do that. The seconds number
+        // is read from the measure here, at the argv boundary, and nowhere else
+        // (gunbc.design_argument::single_authority: std.measure owns the unit).
+        TailscaleUpJoinArgvRefused { cause: "a join with no timeout blocks forever when the control plane never answers" }
+      } else {
+        TailscaleUpJoinArgvBuilt {
+          argv: [
+            "up",
+            concat("--auth-key=", tailscale_auth_key_file_argument(file: file)),
+            concat("--hostname=", spec.hostname as String),
+            concat("--advertise-tags=", tailscale_tag_list_wire(tags: spec.advertise_tags)),
+            concat("--timeout=", to_string(second_count(spec.timeout)), "s"),
+          ]
+        }
+      }
   }
 }
 
@@ -509,18 +524,18 @@ data tailscale_ping_count_max: Int = 10
 type TailscalePingSpec sole_constructor {
   destination: NonEmptyStr,
   count: Int,
-  timeout_seconds: Int,
+  timeout: Second,
 }
 
 fn tailscale_ping_spec_of(
   destination: NonEmptyStr,
   count: Int,
-  timeout_seconds: Int,
+  timeout: Second,
 ) -> TailscalePingSpec {
   TailscalePingSpec {
     destination: destination,
     count: count,
-    timeout_seconds: timeout_seconds,
+    timeout: timeout,
   }
 }
 
@@ -533,14 +548,14 @@ fn tailscale_ping_argv(spec: TailscalePingSpec) -> TailscalePingArgv {
     TailscalePingArgvRefused { cause: "ping needs a destination" }
   } else if spec.count < 1 || tailscale_ping_count_max < spec.count {
     TailscalePingArgvRefused { cause: "ping count must be 1..10 (upstream: \"-c, max number of pings to send\")" }
-  } else if spec.timeout_seconds <= 0 {
+  } else if second_count(spec.timeout) <= 0 {
     TailscalePingArgvRefused { cause: "a ping with no timeout waits on a peer that may never answer" }
   } else {
     TailscalePingArgvBuilt {
       argv: [
         "ping",
         concat("-c=", to_string(spec.count)),
-        concat("--timeout=", to_string(spec.timeout_seconds), "s"),
+        concat("--timeout=", to_string(second_count(spec.timeout)), "s"),
         spec.destination as String,
       ]
     }

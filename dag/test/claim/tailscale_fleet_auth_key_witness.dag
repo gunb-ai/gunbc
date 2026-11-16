@@ -13,6 +13,7 @@ module test.claim.tailscale_fleet_auth_key_witness
 
 import std.logic { Bool }
 import std.algebra { string_contains }
+import std.measure { second, second_count, seconds_per_day }
 import std.types { NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.tailscale.join {
@@ -20,11 +21,9 @@ import extdeps.tailscale.join {
   AuthKeyPreApproved,
   AuthKeyPolicyAccepted,
   tailscale_calendar_date,
-  tailscale_calendar_date_is_wellformed,
   tailscale_calendar_date_precedes,
-  tailscale_auth_key_expiry_days_are_upstream,
+  tailscale_auth_key_expiry_window_is_upstream,
   tailscale_auth_key_file_argument,
-  tailscale_auth_key_file_is_absolute,
   tailscale_up_join_argv_carries_no_key_material,
   tailscale_auth_key_kind_wire,
   tailscale_auth_key_approval_wire,
@@ -68,7 +67,7 @@ import gunbc.tailscale_join_converge {
   tailscale_join_population,
   tailscale_join_tag_consistency,
   tailscale_join_up_command,
-  tailscale_join_up_timeout_seconds,
+  tailscale_join_up_timeout,
 }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
@@ -100,9 +99,9 @@ test fn w_key_is_reusable_preapproved_single_tag_90_days() -> Bool {
           match policy.approval {
             AuthKeyPreApproved =>
               policy.key_tags.count() == 1
-                && policy.expires_after_days == 90
-                && tailscale_auth_key_expiry_days_are_upstream(
-                  expires_after_days: policy.expires_after_days,
+                && second_count(policy.expires_after) == 90 * seconds_per_day()
+                && tailscale_auth_key_expiry_window_is_upstream(
+                  expires_after: policy.expires_after,
                 )
             _ => false
           }
@@ -133,18 +132,23 @@ test fn w_key_wires_are_the_upstream_words() -> Bool {
 // ── THE EXPIRY: generated 2026-11-15, valid THROUGH 2027-02-13, refused after ─────────────────────────
 
 test fn w_expiry_window_is_the_operators_date() -> Bool {
-  tailscale_calendar_date_is_wellformed(date: tailscale_fleet_auth_key_generated_on)
-    && tailscale_calendar_date_is_wellformed(date: tailscale_fleet_auth_key_expires_on)
-    && tailscale_fleet_auth_key_generated_on.year == 2026
-    && tailscale_fleet_auth_key_generated_on.month == 11
-    && tailscale_fleet_auth_key_generated_on.day == 15
-    && tailscale_fleet_auth_key_expires_on.year == 2027
-    && tailscale_fleet_auth_key_expires_on.month == 2
-    && tailscale_fleet_auth_key_expires_on.day == 13
-    && tailscale_calendar_date_precedes(
-      earlier: tailscale_fleet_auth_key_generated_on,
-      later: tailscale_fleet_auth_key_expires_on,
-    )
+  match tailscale_fleet_auth_key_generated_on {
+    // The checked constructors: an Absent here would be an impossible recorded date, and the join
+    // refuses on it -- this witness is where "the recorded dates ARE real, and THESE" is pinned.
+    Absent => false
+    Present { value: generated } =>
+      match tailscale_fleet_auth_key_expires_on {
+        Absent => false
+        Present { value: expires } =>
+          generated.year == 2026
+            && generated.month == 11
+            && generated.day == 15
+            && expires.year == 2027
+            && expires.month == 2
+            && expires.day == 13
+            && tailscale_calendar_date_precedes(earlier: generated, later: expires)
+      }
+  }
 }
 
 // The day itself still joins (the expiry day is the LAST valid day); the day after refuses. This is the
@@ -169,9 +173,15 @@ test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
 // The file argument is the `file:` form and nothing else -- and its path is the custody row's own path,
 // so there is one spelling of where the key sits on a host.
 test fn w_key_reaches_up_only_as_a_file_reference() -> Bool {
-  tailscale_auth_key_file_is_absolute(file: tailscale_fleet_auth_key_file)
-    && tailscale_auth_key_file_argument(file: tailscale_fleet_auth_key_file)
-      == concat("file:", tailscale_fleet_auth_key_host_path)
+  match tailscale_fleet_auth_key_file {
+    // Absent would mean the checked constructor refused the custody row's own path -- and then the join
+    // command must refuse rather than emit an uncredentialed argv (the population claim below pins that
+    // every rostered host's command is Built, which is only possible while this is Present).
+    Absent => false
+    Present { value: file } =>
+      tailscale_auth_key_file_argument(file: file)
+        == concat("file:", tailscale_fleet_auth_key_host_path)
+  }
     && (tailscale_fleet_auth_key_host_path as String)
       == concat(tailscale_fleet_auth_key_host_directory, "/fleet-auth.key")
 }
@@ -297,7 +307,7 @@ test fn w_new_argv_admissions_are_alive() -> Bool {
   match tailscale_ping_command(spec: tailscale_ping_spec_of(
     destination: "host.example" as NonEmptyStr,
     count: 1,
-    timeout_seconds: 5,
+    timeout: second(count: 5),
   )) {
     TailscalePingCommandBuilt { command: command } =>
       command.arguments.count() == 4
@@ -331,5 +341,5 @@ test fn w_new_argv_admissions_are_alive() -> Bool {
 test fn w_population_and_tags_are_consistent() -> Bool {
   tailscale_join_tag_consistency()
     && tailscale_join_population().count() > 0
-    && tailscale_join_up_timeout_seconds > 0
+    && second_count(tailscale_join_up_timeout) > 0
 }

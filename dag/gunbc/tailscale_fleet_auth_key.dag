@@ -45,6 +45,8 @@ import extdeps.tailscale.join {
 }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import std.measure { Second, second, seconds_per_day }
+import std.optional { Optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_ke
   kind: AuthKeyReusable,
   approval: AuthKeyPreApproved,
   key_tags: [tailscale_fleet_node_tag],
-  expires_after_days: 90,
+  expires_after: second(count: 90 * seconds_per_day()),
 )
 
 // THE ADMITTANCE THE CONVERGE RUNS BEFORE IT TOUCHES A HOST. Fail closed: a key that is not reusable, not
@@ -155,13 +157,16 @@ fn tailscale_fleet_auth_key_approval_wire() -> String {
 // lives, and the expiry verdict is consulted only on the arm that would actually use the credential.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-data tailscale_fleet_auth_key_generated_on: TailscaleCalendarDate = tailscale_calendar_date(
+data tailscale_fleet_auth_key_generated_on: Optional<TailscaleCalendarDate> = tailscale_calendar_date(
   year: 2026,
   month: 11,
   day: 15,
 )
 
-data tailscale_fleet_auth_key_expires_on: TailscaleCalendarDate = tailscale_calendar_date(
+// The recorded expiry, checked at the constructor: if this record ever reads Absent, the model has been
+// edited into an impossible date and every join using the key REFUSES (tailscale_fleet_auth_key_usable_on
+// fails closed on Absent), rather than comparing a month-13 number forever.
+data tailscale_fleet_auth_key_expires_on: Optional<TailscaleCalendarDate> = tailscale_calendar_date(
   year: 2027,
   month: 2,
   day: 13,
@@ -172,10 +177,21 @@ data tailscale_fleet_auth_key_expires_on: TailscaleCalendarDate = tailscale_cale
 // same way gunbc.tailscale_machine_name_converge reads its host selector), so the same plan can be
 // re-derived -- and re-refused -- on any date without a hidden dependency on the wall clock of whoever
 // compiled it.
-fn tailscale_fleet_auth_key_usable_on(today: TailscaleCalendarDate) -> Bool {
-  match tailscale_auth_key_expiry_verdict(expires_on: tailscale_fleet_auth_key_expires_on, today: today) {
-    AuthKeyStillValid => true
-    AuthKeyExpiredOn { on: _ } => false
+fn tailscale_fleet_auth_key_usable_on(today: Optional<TailscaleCalendarDate>) -> Bool {
+  match tailscale_fleet_auth_key_expires_on {
+    // A key whose recorded expiry is not a real date cannot be vouched for -- refuse.
+    Absent => false
+    Present { value: expires_on } =>
+      match today {
+        // No readable "today" means the expiry cannot be checked -- and an unchecked expiry is exactly
+        // the silent join-with-a-dead-key this function exists to prevent.
+        Absent => false
+        Present { value: day } =>
+          match tailscale_auth_key_expiry_verdict(expires_on: expires_on, today: day) {
+            AuthKeyStillValid => true
+            AuthKeyExpiredOn { on: _ } => false
+          }
+      }
   }
 }
 
@@ -201,7 +217,7 @@ data tailscale_fleet_auth_key_host_path: NonEmptyStr = "/etc/gunbc-tailscale/fle
 // THE TYPED FILE REFERENCE the join passes upstream. Constructed from the custody path rather than from a
 // literal a caller could vary, so "the file the join points at" and "the file custody placed" are the same
 // string by construction (@ref(gunbc.design_argument::single_authority)).
-data tailscale_fleet_auth_key_file: TailscaleAuthKeyFile = tailscale_auth_key_file_at(
+data tailscale_fleet_auth_key_file: Optional<TailscaleAuthKeyFile> = tailscale_auth_key_file_at(
   path: tailscale_fleet_auth_key_host_path,
 )
 
