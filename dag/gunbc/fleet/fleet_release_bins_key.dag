@@ -1047,6 +1047,7 @@ data fleet_converge_release_bins_retention_excluded_prefixes: List<String> = [
 ]
 data release_bins_retention_answer_basename: String = "release-bins-retention-answer.json"
 data release_bins_retention_ids_basename: String = "release-bins-retention.ids"
+data release_bins_retention_union_basename: String = "release-bins-retention.union"
 data release_bins_retention_flag_basename: String = "release-bins-retention.seen-answer"
 data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
 data release_bins_retention_delete_header_basename: String = "release-bins-retention-delete-auth-header"
@@ -1093,7 +1094,13 @@ fn release_bins_retention_excluded_fragment(p: String) -> String {
   join([" and (.key | startswith(\"", p, "\") | not)"], "")
 }
 
-fn release_bins_retention_program() -> String {
+// The page-1 listing admitted in full, emitting its family entries as one JSON
+// array. Page 1 carries the newest 100 (the API lists created_at-descending),
+// but the KEEP WINDOW is never decided page-locally: every page appends its own
+// admitted family objects to the union file and the plan below sorts the UNION
+// once, by the same key everywhere, before choosing the keep window (manager
+// msg_9d49bb52: keep-newest is a union decision, never a per-page one).
+fn release_bins_retention_page1_program() -> String {
   join([
     ". as $answer | [inputs] | if length != 0 then error(\"the cache-API answer is not exactly one JSON document\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
     release_bins_retention_max_total_text,
@@ -1107,14 +1114,25 @@ fn release_bins_retention_program() -> String {
     " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
     release_bins_retention_prefix,
     "\")) and .key != $ENV.RELEASE_BINS_KEY",
-    join(map(fleet_converge_release_bins_retention_excluded_prefixes, p => release_bins_retention_excluded_fragment(p: p)), ""),
-    ")] | sort_by(.created_at) | .[0: (if length > ",
+    join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
+    ")] else error(\"cache-API answer is not the admitted shape\") end end",
+  ], "")
+}
+
+// THE UNION PLAN: reads every page's appended family array, flattens, admits
+// only {id, key, created_at} objects, sorts the WHOLE union by created_at --
+// one sort, one recency key -- and the keep window falls out of the union
+// order: the 16 newest survive, everything older is due.
+fn release_bins_retention_union_program() -> String {
+  join([
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\")) then $union | sort_by(.created_at) | .[0: (if length > ",
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
-    " else 0 end)] | .[] | .id | tostring else error(\"cache-API answer is not the admitted shape\") end end",
+    " else 0 end)] | .[] | .id | tostring else error(\"union entries are not the admitted family objects\") end",
   ], "")
 }
+
 
 // JqProgramExit, not JqLastResultExit: with --exit-status, jq exits 4 when it
 // produced NO output at all -- the at-cap case (nothing due) reads as a
@@ -1125,9 +1143,9 @@ fn release_bins_retention_program() -> String {
 // empty-plan case by the ids file, not by jq's exit code.
 fn release_bins_retention_plan() -> Outcome<JqAdmittedProcessPlan> {
   jq_invocation_process_plan(invocation: JqInvocation {
-    program: JqProgram { source: release_bins_retention_program() },
+    program: JqProgram { source: release_bins_retention_union_program() },
     bindings: Empty,
-    input: JqInputFile { path: release_bins_retention_answer_file() },
+    input: JqInputFile { path: release_bins_retention_union_basename },
     output_encoding: JqRawOutput,
     exit_policy: JqProgramExit,
   })
@@ -1187,8 +1205,18 @@ fn release_bins_retention_page_program() -> String {
     release_bins_retention_prefix,
     "\")) and .key != $ENV.RELEASE_BINS_KEY",
     join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
-    ")] | .[] | .id | tostring else error(\"cache-API answer is not the admitted shape\") end end",
+    ")] else error(\"cache-API answer is not the admitted shape\") end end",
   ], "")
+}
+
+fn release_bins_retention_page1_words() -> List<Node> {
+  release_bins_jq_words(plan: jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_page1_program() },
+    bindings: Empty,
+    input: JqInputFile { path: release_bins_retention_answer_file() },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }))
 }
 
 fn release_bins_retention_page_words(n_text: String) -> List<Node> {
@@ -1327,7 +1355,7 @@ fn release_bins_retention_delete(header: Node) -> Node {
     ),
   ))
   let delete_pipe = bash_build_pipe(
-    left: cmd(ws: [lit(t: "printf"), lit(t: "%s\\n"), var(n: "IDS")]),
+    left: cmd(ws: [lit(t: "printf"), lit(t: "%s\n"), var(n: "IDS")]),
     right: xargs_delete,
   )
   bash_build_or_else(
@@ -1368,6 +1396,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
   let answer_operand = lit(t: release_bins_retention_answer_file())
   let answer_present = test_words(ws: [lit(t: "-s"), answer_operand])
   let ids_present = test_words(ws: [lit(t: "-s"), ids_file])
+  let union_present = test_words(ws: [lit(t: "-s"), temp(file: release_bins_retention_union_basename)])
   let ids_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), ids_file])
   let ids_exists = test_words(ws: [lit(t: "-e"), ids_file])
   let nothing_arm = cmdl(ls: ["true"])
@@ -1419,24 +1448,43 @@ fn release_bins_retention_decide_statements() -> List<Node> {
       ),
       right: nothing_arm,
     ),
-    bash_build_or_else(left: bash_build_and_then(left: answer_present, right: jq_run), right: nothing_arm),
+    // Page 1 admits itself into the union file; a refused admission is the
+    // typed plan-failed (the plan cannot run without its first page) and takes
+    // the answer with it, so the pages gated on TOTAL never half-run.
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: answer_present,
+        right: bash_build_or_else(
+          left: bash_build_with_redir_append_to_file(
+            inner: cmd(ws: release_bins_retention_page1_words()),
+            path: temp(file: release_bins_retention_union_basename),
+          ),
+          right: bash_build_subshell_from_stmts(stmts: [
+            cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
+            release_bins_retention_echo(word: "plan-failed"),
+          ]),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    bash_build_or_else(left: bash_build_and_then(left: union_present, right: jq_run), right: nothing_arm),
     // no-answer fires only when this invocation never held an answer at all --
     // over-cap removed the answer deliberately and touched the flag to say so.
     bash_build_or_else(
       left: bash_build_and_then(left: answer_present, right: nothing_arm),
       right: bash_build_and_then(left: flag_absent, right: release_bins_retention_echo(word: "no-answer")),
     ),
-    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: ids_file),
-    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: ids_file),
-    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: ids_file),
-    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: ids_file),
+    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
     bash_build_or_else(left: bash_build_and_then(left: ids_present, right: delete_block), right: nothing_arm),
     bash_build_or_else(
-      left: bash_build_and_then(left: answer_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed")))),
+      left: bash_build_and_then(left: union_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed")))),
       right: nothing_arm,
     ),
     bash_build_or_else(
-      left: bash_build_and_then(left: answer_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_exists, right: release_bins_retention_echo(word: "nothing-due")))),
+      left: bash_build_and_then(left: union_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_exists, right: release_bins_retention_echo(word: "nothing-due")))),
       right: nothing_arm,
     ),
   ]
@@ -1453,6 +1501,7 @@ fn release_bins_retention_statements() -> List<Node> {
       // own curl answers.
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_flag_basename)]),
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_union_basename)]),
       release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
     ],
     release_bins_retention_decide_statements(),
