@@ -25,7 +25,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { trim, skip, non_empty_to_list }
-import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
+import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_group_name_of, EtcGroupEntry }
 import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 
 import product.host_identity { HostIdentity }
@@ -79,6 +79,13 @@ type ServingDeviation
   | AccountUidMismatch { desired: Int, observed: Int? }
   | AccountGidMismatch { desired: Int, observed: Int? }
   | GroupMembersMismatch { desired: List<String>, observed: List<String>? }
+  // The two required groups (the account's primary group, and the ledger group) as OBSERVED for
+  // presence and gid. Absent is a proven absence the apply may create (groupadd at the declared gid);
+  // a group present at the wrong gid, or a declared gid already held by a different name, is NOT
+  // auto-fixable — those become unhandled so the run refuses rather than fabricating a gid (fail_closed).
+  | GroupAbsent { name: String }
+  | GroupGidMismatch { name: String, desired: Int, observed: Int }
+  | GroupGidTaken { gid: Int, holder: String }
   | ForcedCommandMismatch { desired: String, observed: String? }
   | ExpectedMismatch { item: String, desired: String, observed: String }
   | LedgerNameMismatch { path: FilePath, field: String, declared: String, observed: String }
@@ -94,6 +101,9 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     AccountUidMismatch { desired: _, observed: _ } => "account.uid"
     AccountGidMismatch { desired: _, observed: _ } => "account.gid"
     GroupMembersMismatch { desired: _, observed: _ } => "group.members"
+    GroupAbsent { name } => concat("group.", name)
+    GroupGidMismatch { name, desired: _, observed: _ } => concat("group.", name, ".gid")
+    GroupGidTaken { gid: _, holder: _ } => "group.gid_taken"
     ForcedCommandMismatch { desired: _, observed: _ } => "authorized_keys.forced_command"
     ExpectedMismatch { item: item, desired: _, observed: _ } => item
     LedgerNameMismatch { path: _, field: _, declared: _, observed: _ } => "ledger"
@@ -117,6 +127,9 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     AccountUidMismatch { desired, observed } => concat("account.uid (want ", to_string(desired), ", have ", serving_opt_int_text(observed), ")")
     AccountGidMismatch { desired, observed } => concat("account.gid (want ", to_string(desired), ", have ", serving_opt_int_text(observed), ")")
     GroupMembersMismatch { desired, observed } => concat("group.members (want ", join(desired, ","), ", have ", serving_opt_names_text(observed), ")")
+    GroupAbsent { name } => concat("group.", name, " (confirmed absent)")
+    GroupGidMismatch { name, desired, observed } => concat("group.", name, " gid (want ", to_string(desired), ", have ", to_string(observed), ")")
+    GroupGidTaken { gid, holder } => concat("gid ", to_string(gid), " already held by group ", holder)
     ForcedCommandMismatch { desired: _, observed: _ } => "authorized_keys.forced_command (value withheld from the receipt)"
     ExpectedMismatch { item, desired, observed } => concat(item, " (want ", desired, ", have ", observed, ")")
     LedgerNameMismatch { path, field, declared, observed } => concat((path as String), " ", field, " (want ", declared, ", have ", observed, ")")
@@ -187,6 +200,12 @@ type RemoteBuildServingDesired {
   account_name: String
   account_uid: Int
   account_gid: Int
+  // the account's PRIMARY group name. On srv1 the reference host this is "gunbc-build" (the account
+  // and its primary group share the name at gid account_gid — standard useradd -U). It is DISTINCT
+  // from the ledger group below (gunbc-compute @ group_gid), which is only a SUPPLEMENTARY group.
+  // Merging the two (one EnsureGroup with the ledger name at the account gid) fabricates the ledger
+  // group at the wrong gid and strands the host: review 95905 follow-up.
+  account_group_name: String
   account_home: String
   group_name: String
   group_gid: Int
@@ -271,6 +290,7 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     account_name: fleet_posix_remote_build_user.name as String,
     account_uid: fleet_posix_remote_build_user.uid,
     account_gid: fleet_posix_remote_build_user.gid,
+    account_group_name: fleet_posix_remote_build_user.name as String,
     account_home: home,
     group_name: fleet_posix_compute_ledger_group_name as String,
     group_gid: fleet_posix_compute_ledger_group_gid,
@@ -384,6 +404,42 @@ fn serving_group_deviations(d: RemoteBuildServingDesired, group: ObservationAtte
           false => [GroupMembersMismatch { desired: d.group_members, observed: Present { value: ms } }]
         }
       }
+  }
+}
+
+// One required group's presence + gid, judged from the SAME /etc/group text serving_group_deviations
+// already reads (no new SSH leg). Established:
+//   present at the declared gid            -> met (membership is judged separately, by serving_group_deviations)
+//   present at a DIFFERENT gid             -> GroupGidMismatch (never auto-renumbered; the apply refuses)
+//   absent, but a DIFFERENT group holds the declared gid -> GroupGidTaken (never auto-stolen; the apply refuses)
+//   absent, and the gid is free            -> GroupAbsent (a proven absence the apply may groupadd at that gid)
+// A REFUSED /etc/group read yields nothing (the leg's refusal is carried as an unknown, never a value).
+fn serving_group_presence(name: String, gid: Int, entries: List<EtcGroupEntry>) -> List<ServingDeviation> {
+  match etc_group_entry_named(entries: entries, name: name as NonEmptyStr) {
+    Present { value: e } => match e.gid == gid {
+      true => []
+      false => [GroupGidMismatch { name: name, desired: gid, observed: e.gid }]
+    }
+    Absent => match etc_group_name_of(entries: entries, gid: gid) {
+      Absent => [GroupAbsent { name: name }]
+      Present { value: h } => match (h as String) == name {
+        true => []
+        false => [GroupGidTaken { gid: gid, holder: h as String }]
+      }
+    }
+  }
+}
+
+fn serving_group_presence_deviations(d: RemoteBuildServingDesired, group: ObservationAttempt<String, ServingLegFailure>) -> List<ServingDeviation> {
+  match group {
+    ObservationRefused { cause: _ } => []
+    ObservationEstablished { observed: t } => {
+      let entries = etc_group_entries(text: t)
+      concat(
+        serving_group_presence(name: d.account_group_name, gid: d.account_gid, entries: entries),
+        serving_group_presence(name: d.group_name, gid: d.group_gid, entries: entries),
+      )
+    }
   }
 }
 
@@ -550,7 +606,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       let deviations = concat(
         concat(
           serving_account_deviations(d: d, passwd: o.passwd),
-          serving_group_deviations(d: d, group: o.group),
+          concat(serving_group_deviations(d: d, group: o.group), serving_group_presence_deviations(d: d, group: o.group)),
         ),
         concat(
           serving_ak_deviations(dline: dline, ak: o.authorized_keys),
