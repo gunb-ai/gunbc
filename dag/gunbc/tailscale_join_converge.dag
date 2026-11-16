@@ -94,6 +94,7 @@ import extdeps.tailscale.join {
   TailscaleUpJoinCommandRefused,
   tailscale_ping_command,
   tailscale_ping_spec_of,
+  tailscale_ping_verdict,
   tailscale_up_join_command,
   tailscale_up_join_spec_of,
   tailscale_up_join_state_is_joined,
