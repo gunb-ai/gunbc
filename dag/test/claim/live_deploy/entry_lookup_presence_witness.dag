@@ -17,7 +17,7 @@
 // is NOT supplied is the interpretation of a status: the readings are built only from
 // extdeps.posix.test_utility's own constructors, whose 0/1/other law is path_existence_reading_of_exit.
 // The last two claims execute: the production legs, the production fold, real paths, real modes.
-module gunbc.test.claim.live_deploy.entry_lookup_presence_witness
+module test.claim.live_deploy.entry_lookup_presence_witness
 
 import std.types { String, Bool }
 import std.optional { Optional, Present, Absent }
