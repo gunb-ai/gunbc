@@ -816,13 +816,11 @@ test fn the_tailscale_no_read_is_derived_from_the_declared_backend() -> Bool {
   }
 }
 
-// THE FILE BACKEND IS A DECLARED READ THAT REFUSES WHEN THE TARGET IS ABSENT — the negative beside the
-// proxy positive above. Same fixture, same route key, backend word an absolute path: tailscaled SERVES
-// (reads) that path at serve time, so the mapping row must read Declared{[backend]} and the closure must
-// refuse naming exactly it while the host lacks it, and allow once it is installed. A proxy answer here
-// (NoReadOfRecord) would let a deploy admit a mapping over a directory the host never installed.
-test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> Bool {
-  let backend = "/srv/gunbc/static" as NonEmptyStr
+// One absolute backend word, through the REAL adapter: the mapping row must read Declared with EXACTLY
+// that path, the closure must refuse naming it while the host lacks it, the gate must halt naming it, and
+// the closure must allow once it is installed. A proxy answer (NoReadOfRecord) would let a deploy admit a
+// mapping over a directory the host never installed.
+fn file_backend_is_declared_read(backend: NonEmptyStr) -> Bool {
   let variant = srv1_over_backend(backend: backend)
   match mapping_step_of(steps: variant.steps) {
     Absent => false
@@ -847,6 +845,28 @@ test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> 
         _ => false
       }
   }
+}
+
+// THE FILE BACKEND IS A DECLARED READ THAT REFUSES WHEN THE TARGET IS ABSENT — the negative beside the
+// proxy positive above. Same fixture, same route key, backend word an absolute path: tailscaled SERVES
+// (reads) that path at serve time. TWO WORDS, because the shape of the word is what the classifier gets
+// right: the plain absolute path, AND an absolute path that CONTAINS a URL marker ("/srv/gunbc/a://b").
+// tailscale's applyWebServe asks filepath.IsAbs FIRST (cmd/tailscale/cli/serve_v2.go ~1263-1297 at
+// 9ad2a962) and serves such a path, so the second word must be a Declared read too — if the "://" test
+// ran first it answered ServeBackendProxyTarget and the gate admitted the mapping as NoReadOfRecord with
+// the target absent.
+test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> Bool {
+  let plain = file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
+  let marker_in_path = file_backend_is_declared_read(backend: "/srv/gunbc/a://b" as NonEmptyStr)
+  let classifier_agrees = match tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint {
+    https_port: srv1_spec().names.tailscale_serve_endpoint.https_port,
+    mount: srv1_spec().names.tailscale_serve_endpoint.mount,
+    backend: "/srv/gunbc/a://b" as NonEmptyStr,
+  }) {
+    ServeBackendFilesystemTarget { path } => (path as String) == "/srv/gunbc/a://b"
+    _ => false
+  }
+  plain && marker_in_path && classifier_agrees
 }
 
 // ONE PORT-LABEL RULE FOR BOTH CALLERS (review 95857, root_generalization). The word is judged a port

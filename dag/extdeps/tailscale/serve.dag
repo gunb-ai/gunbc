@@ -230,14 +230,21 @@ fn tailscale_serve_backend_is_host_port(backend: String) -> Bool {
   }
 }
 
+// THE ORDER IS THE UPSTREAM ORDER. tailscale's applyWebServe (cmd/tailscale/cli/serve_v2.go
+// ~1263-1297 at 9ad2a962) asks filepath.IsAbs FIRST and serves the path, so an absolute path that
+// merely CONTAINS a URL marker -- /srv/www/a://b -- is a filesystem target upstream, not a URL.
+// Testing the marker first here would classify it ServeBackendProxyTarget, the gate would read
+// NoReadOfRecord, and a deploy would admit a mapping whose target the host never installed. The
+// absolute-path test therefore precedes the "://" test; the unix-socket prefix is a scheme name
+// that can never begin with '/', so its position relative to the path test does not matter.
 fn tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint) -> TailscaleServeBackendTarget {
   let backend = endpoint.backend as String
   if tailscale_serve_backend_is_unix_target(endpoint: endpoint) {
     ServeBackendProxyTarget
-  } else if string_contains(s: backend, pattern: "://") {
-    ServeBackendProxyTarget
   } else if starts_with(s: backend, prefix: "/") {
     ServeBackendFilesystemTarget { path: endpoint.backend }
+  } else if string_contains(s: backend, pattern: "://") {
+    ServeBackendProxyTarget
   } else if tailscale_serve_backend_is_port_label(backend: backend) {
     ServeBackendProxyTarget
   } else if tailscale_serve_backend_is_host_port(backend: backend) {
