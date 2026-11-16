@@ -80,14 +80,12 @@ import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
 import gunbc.live_deploy.release_binding {
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
+  ReleaseBindingUnobserved,
 }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObservation, DeployedTreeObserved, DeployedTreeUnobservable,
-  DeployedTreeContentState, DeployedScopeMatchesCommit, TreeCommandFailed,
-}
-import gunbc.running_release_identity {
-  RunningReleaseIdentity, RunningReleaseUnidentified, RunningReleaseUnidentifiedCause,
-  ReleaseIdentityBodyUnparseable,
+  DeployedTreeContentState, DeployedScopeMatchesCommit, DeployedScopeDiverged,
+  TreeCommandFailed,
 }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
@@ -225,17 +223,24 @@ fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSn
 // that rejected, making the refusal visible through the existing authority.
 fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
   let observation = local_deployed_tree_observation(repo_root: instance.repo_root)
-  let identity = match observe_healthz(port: instance.listen_port as Int) {
-    HealthzServed { body: _, identity: id } => id
-    HealthzRefused { detail: _ } =>
-      RunningReleaseUnidentified { cause: ReleaseIdentityBodyUnparseable }
+  match observe_healthz(port: instance.listen_port as Int) {
+    HealthzServed { body: _, identity: id } =>
+      lab_pair_serve_verdict(
+        observation: observation,
+        identity: id,
+        expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+      )
+    HealthzRefused { detail: d } =>
+      PairServeRefused {
+        binding: ReleaseBindingUnobserved {
+          cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),
+        },
+        reason: join([
+          "release-binding UNOBSERVED -- healthz probe refused, running release identity undecidable: ",
+          d,
+        ], ""),
+      }
   }
-  let expected_surface = materialize_live_roadmap_site_surface_bundle().bundle_identity
-  lab_pair_serve_verdict(
-    observation: observation,
-    identity: identity,
-    expected_surface: expected_surface,
-  )
 }
 
 fn local_deployed_tree_observation(repo_root: FilePath) -> DeployedTreeObservation {
@@ -245,10 +250,27 @@ fn local_deployed_tree_observation(repo_root: FilePath) -> DeployedTreeObservati
     Present { value: revision_oid } =>
       match git_object_id_from_untagged_hex(hex: root_tree.revision) {
         Present { value: tree_oid } =>
-          DeployedTreeObserved {
-            revision: revision_oid,
-            tree: tree_oid,
-            content: DeployedScopeMatchesCommit,
+          match scope_check(repo: repo_root, revision: "HEAD") {
+            ScopeClean =>
+              DeployedTreeObserved {
+                revision: revision_oid,
+                tree: tree_oid,
+                content: DeployedScopeMatchesCommit,
+              }
+            ScopeDiverged =>
+              DeployedTreeObserved {
+                revision: revision_oid,
+                tree: tree_oid,
+                content: DeployedScopeDiverged,
+              }
+            ScopeUnreadable { detail: d } =>
+              DeployedTreeUnobservable {
+                cause: TreeCommandFailed {
+                  leg: "scope check (worktree vs HEAD)",
+                  exit_code: 1,
+                  stderr: d,
+                },
+              }
           }
         Absent =>
           DeployedTreeUnobservable {
@@ -267,6 +289,20 @@ fn local_deployed_tree_observation(repo_root: FilePath) -> DeployedTreeObservati
           stderr: head.stderr,
         },
       }
+  }
+}
+
+type LocalScopeOutcome = ScopeClean | ScopeDiverged | ScopeUnreadable { detail: String }
+
+fn scope_check(repo: FilePath, revision: String) -> LocalScopeOutcome {
+  let diff = git.Core.TrackedWorktreeDiffFromInRepo(
+    repository_path: repo as String,
+    treeish: revision as GitRef,
+  )
+  if diff.exit_code != 0 {
+    ScopeUnreadable { detail: diff.stderr }
+  } else {
+    if diff.paths_nul == "" { ScopeClean } else { ScopeDiverged }
   }
 }
 
