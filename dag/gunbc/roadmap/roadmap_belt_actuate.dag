@@ -2991,9 +2991,9 @@ fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
-// writes and a resume appends to), so the decision and the harness read one record. An unreadable
-// stream reads as no recovery: it can lose a resume, never manufacture one, and the lineage then ends
-// exactly as it did before this slice.
+// writes and a resume appends to), so the decision and the harness read one record. Absent reads as no
+// recovery (nothing to recover); unreadable reads as SessionRecoveryUnreadable (the consumer can
+// distinguish a read failure from a malformed log by the typed arm alone).
 fn belt_prior_attempt_recovery_from_exact(exact: FilesystemExactRead) -> SessionRecovery {
   match exact {
     FilesystemExactPathAbsent { path: _ } => SessionRecoveryNone
