@@ -65,6 +65,10 @@ fn privilege_answered_with_a_code() -> ColdResetPoll { failed(exit_code: 1, stde
 // answered, so this is not a loss.
 fn unanswered_then_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> RAKP 2 HMAC is invalid\n", session_line)) }
 fn probe_failed() -> ColdResetPoll { failed(exit_code: 1, stderr: "Unable to read password from file /run/bmc/password\n") }
+// The read deadline expired AFTER the controller answered (side chat on gunbc#16529 at e930da53): exit 124 beside a
+// line ipmitool prints only on receiving a reply.
+fn timed_out_after_hmac() -> ColdResetPoll { failed(exit_code: 124, stderr: "> RAKP 2 HMAC is invalid\n") }
+fn timed_out_after_a_code() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Auth Capabilities error: Invalid command\nError issuing Get Channel Authentication Capabilities request\n") }
 fn not_installed() -> ColdResetPoll { failed(exit_code: 127, stderr: "timeout: failed to run command 'ipmitool': No such file or directory\n") }
 
 // A successful poll at one -v: lprintf noise on stderr (ipmi_main.c "Discovered IPMB address 0x%x", LOG_INFO) and the
@@ -246,6 +250,21 @@ test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recover
          Present { value: e } => match e { WatchRecovered { polls_to_loss: d, loss: _, polls_to_recovery: a, report: _ } => d == 2 && a == 1  _ => false }
          Absent => false
        }
+}
+
+// AN ANSWER OUTLIVES THE DEADLINE (side chat on gunbc#16529 at e930da53): exit 124 says the command ran out of time,
+// not that the controller was silent. Beside a line showing it answered (the HMAC check, a completion code), the
+// poll is a failed probe, so available before, that poll, then available with power agreeing is no observed loss and
+// never accepted. Exit 124 with nothing answered stays a missing response (only_a_stage_... above).
+test fn an_answer_before_the_read_deadline_is_a_failed_probe_and_cannot_reach_an_accepted_recovery() -> Bool {
+  all([timed_out_after_hmac(), timed_out_after_a_code()], f =>
+    match f { ControllerProbeFailed { exit_code: e, cause: c } => e == 124 && string_contains(s: c as String, pattern: "after the controller answered (exit 124)")  _ => false }
+      && match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+           Present { value: v } =>
+             match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+               && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+           Absent => false
+         })
 }
 
 // ONE -v LEAVES THE REPORT ALONE: lprintf noise on stderr beside a valid report on stdout decodes available, at the

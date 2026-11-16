@@ -5,7 +5,7 @@ import std.optional { Present, Absent, Optional }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation_text }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, McInfoReported, McInfoUnreadable, ipmitool_mc_info_of, ipmitool_mc_info_firmware_text }
 import std.algebra { trim }
-import extdeps.bmc.ipmi_session { IpmitoolReadDeadlineExpired, ipmitool_read_failure, ipmitool_lanplus_verbose_no_answer_stage }
+import extdeps.bmc.ipmi_session { IpmitoolReadDeadlineExpired, ipmitool_read_failure, ipmitool_lanplus_stderr_shows_an_answer, ipmitool_lanplus_verbose_no_answer_stage }
 import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdReportedSent, McResetColdExitedNonzero, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_text }
 
 // A CONTROLLER COLD RESET ATTEMPT, JUDGED. The pure half of a cold reset (extdeps.bmc.ipmi McResetCold): what one
@@ -29,9 +29,11 @@ type ColdResetWatchBounds { drop_polls: Int, answer_polls: Int }
 // - ControllerAvailable: mc info exited 0 with a decodable report saying Device Available: yes.
 // - ControllerInitializing: a decodable report saying Device Available: no. The controller ANSWERED and said it is
 //   not ready; that is a loss of availability, not a missing response.
-// - ControllerNoResponse: mc info failed in a way that EVIDENCES no answer: the read deadline expired
-//   (extdeps.bmc.ipmi_session ipmitool_read_failure), or ipmitool -v named a stage of the lanplus open that got no
-//   reply (ipmitool_lanplus_verbose_no_answer_stage).
+// - ControllerNoResponse: mc info failed in a way that EVIDENCES no answer, and no stderr line shows an answer
+//   (extdeps.bmc.ipmi_session ipmitool_lanplus_stderr_shows_an_answer, checked FIRST for every failed poll): the
+//   read deadline expired (ipmitool_read_failure), or ipmitool -v named a stage of the lanplus open that got no
+//   reply (ipmitool_lanplus_verbose_no_answer_stage). An answered line beside exit 124 is a failed probe: the
+//   deadline expired after the controller answered.
 // - ControllerProbeFailed: mc info failed for any other reason -- the bare "Unable to establish" line naming no
 //   stage, a refused credential, a completion code, a local exec failure. A failed COMMAND is not a silent
 //   CONTROLLER, so it is evidence of neither a loss nor a recovery.
@@ -56,19 +58,24 @@ fn cold_reset_poll_of(success: Bool, exit_code: Int, stdout: String, stderr: Str
   }
 }
 
-// A FAILED mc info. Only an expired read deadline or a -v stage line naming an unanswered stage becomes
-// ControllerNoResponse; everything else is a failed probe, with ipmitool's stderr kept in the cause.
+// A FAILED mc info. Any line showing the controller answered makes it a failed probe, whatever the exit code;
+// otherwise only an expired read deadline or a -v stage line naming an unanswered stage becomes
+// ControllerNoResponse, and everything else is a failed probe, with ipmitool's stderr kept in the cause.
 fn cold_reset_failed_poll(exit_code: Int, stderr: String) -> ColdResetPoll {
   let said = if trim(s: stderr) == "" { "no stderr" } else { trim(s: stderr) }
   let code = to_string(exit_code)
-  match ipmitool_read_failure(exit_code: exit_code, stderr: stderr) {
-    IpmitoolReadDeadlineExpired =>
-      ControllerNoResponse { cause: join(["mc info got no answer within its read deadline (timeout exit ", code, ")"], "") as NonEmptyStr }
-    _ =>
-      match ipmitool_lanplus_verbose_no_answer_stage(stderr: stderr) {
-        Present { value: stage } => ControllerNoResponse { cause: join([stage as String, " (exit ", code, "): ", said], "") as NonEmptyStr }
-        Absent => ControllerProbeFailed { exit_code: exit_code, cause: join(["mc info failed without naming an unanswered stage (exit ", code, "): ", said], "") as NonEmptyStr }
-      }
+  if ipmitool_lanplus_stderr_shows_an_answer(stderr: stderr) {
+    ControllerProbeFailed { exit_code: exit_code, cause: join(["mc info failed after the controller answered (exit ", code, "): ", said], "") as NonEmptyStr }
+  } else {
+    match ipmitool_read_failure(exit_code: exit_code, stderr: stderr) {
+      IpmitoolReadDeadlineExpired =>
+        ControllerNoResponse { cause: join(["mc info got no answer within its read deadline (timeout exit ", code, ")"], "") as NonEmptyStr }
+      _ =>
+        match ipmitool_lanplus_verbose_no_answer_stage(stderr: stderr) {
+          Present { value: stage } => ControllerNoResponse { cause: join([stage as String, " (exit ", code, "): ", said], "") as NonEmptyStr }
+          Absent => ControllerProbeFailed { exit_code: exit_code, cause: join(["mc info failed without naming an unanswered stage (exit ", code, "): ", said], "") as NonEmptyStr }
+        }
+    }
   }
 }
 

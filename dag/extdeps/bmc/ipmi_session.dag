@@ -179,10 +179,20 @@ fn ipmitool_verbosity_argv(verbosity: IpmitoolVerbosity) -> List<String> {
   }
 }
 
+fn ipmitool_lanplus_stderr_lines(stderr: String) -> List<String> {
+  map(split(s: stderr, delimiter: "\n"), l => trim(s: l))
+}
+
+// Whether any trimmed stderr line shows the controller ANSWERED (an answered-failure line above). This is
+// independent of the exit code: a command that later hit its read deadline still received the answer it printed.
+fn ipmitool_lanplus_stderr_shows_an_answer(stderr: String) -> Bool {
+  ipmitool_lanplus_verbose_answered(lines: ipmitool_lanplus_stderr_lines(stderr: stderr))
+}
+
 // The no-answer stage a -v stderr names, or Absent when it names none or when any line shows the controller
 // answered. Matched per whole, trimmed line.
 fn ipmitool_lanplus_verbose_no_answer_stage(stderr: String) -> NonEmptyStr? {
-  let lines = map(split(s: stderr, delimiter: "\n"), l => trim(s: l))
+  let lines = ipmitool_lanplus_stderr_lines(stderr: stderr)
   if ipmitool_lanplus_verbose_answered(lines: lines) {
     none
   } else if any(lines, l => l == ipmitool_lanplus_get_auth_caps_no_reply_line) {
