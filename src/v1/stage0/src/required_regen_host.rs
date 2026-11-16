@@ -12767,7 +12767,7 @@ pub fn regen_module_edges(
     // reverse walk takes, so the rows it is handed are the DIRECT dependencies the route reads --
     // a reference target, or a resolved bare-name provider for a source that declares no `import`
     // line -- not each endpoint that target's import closure reaches. Spelling the closure cost
-    // 34x the rows on a drain-shaped pool (2,065,084 against 61,052, run 43808654519) and the round
+    // 34x the rows on a drain-shaped pool (2,065,084 against 61,044, run 43817027204) and the round
     // died evaluating them in the model, while the walked member sets were identical on nine edited
     // sets. Same admission, same fail-closed refusals, same eligibility roster.
     let edge_index = super::whole_pool_generator_edge_index(&index)?;

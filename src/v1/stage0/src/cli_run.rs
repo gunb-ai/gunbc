@@ -7644,7 +7644,7 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
 /// (`extend_sources_to_both_closure_fixpoint`). The regen affected set asks WHO IS AFFECTED, and it
 /// walks rows IN REVERSE -- a reverse walk over direct rows already takes the closure, so spelling it
 /// first multiplies rows without adding reachability. Measured on a drain-shaped pool: 2,065,084
-/// composed rows against 61,052 direct ones (run 43808654519), the same affected members, and the
+/// composed rows against 61,044 direct ones (run 43817027204), the same affected members, and the
 /// round died in the model evaluating the composed form
 /// (@ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence)).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -8596,8 +8596,8 @@ fn whole_pool_closure_edge_index(
 
 /// The regen scope round's whole-pool demand, UNCOMPOSED: it reads rows in reverse, and a reverse
 /// walk over direct rows already takes the closure. The production differential (nine edited sets,
-/// identical affected members, 2,065,084 composed rows against 61,052 direct ones -- run 43808654519)
-/// is cited in the PR that introduced this; `regen_generator_rows_answer_the_same_reverse_closure`
+/// identical affected members, 2,065,084 composed rows against 61,044 direct ones -- run 43817027204)
+/// is cited in the PR that introduced this; `generator_rows_answer_the_same_reverse_closure_as_the_composition`
 /// is the landed gate.
 fn whole_pool_generator_edge_index(
     index: &MultiEntryIndex,
@@ -8738,8 +8738,8 @@ mod closure_edge_demand_tests {
     /// route's own reverse walk runs over each row set. The direct relation reaches exactly the same
     /// dependents. This is the landed gate for handing the regen scope round
     /// `whole_pool_generator_edge_index`; the corpus-scale gate is the production differential named
-    /// on that function (nine edited sets, identical members, 2,065,084 composed rows against 61,052
-    /// direct ones on a drain-shaped pool).
+    /// on that function (nine edited sets, identical members, 2,065,084 composed rows against 61,044
+    /// direct ones (run 43817027204) on a drain-shaped pool).
     #[test]
     fn generator_rows_answer_the_same_reverse_closure_as_the_composition() {
         let fixture = Fixture::new(&[
