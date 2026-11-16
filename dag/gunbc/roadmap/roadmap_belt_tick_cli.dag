@@ -79,8 +79,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
 import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
-  ReleaseBindingUnobserved,
+  ReleaseBindingUnobserved, release_binding_line,
 }
 import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_over_self_ssh }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
@@ -226,16 +227,15 @@ fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict 
         identity: id,
         expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
       )
-    HealthzRefused { detail: d } =>
-      PairServeRefused {
-        binding: ReleaseBindingUnobserved {
-          cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),
-        },
-        reason: join([
-          "release-binding UNOBSERVED -- healthz probe refused, running release identity undecidable: ",
-          d,
-        ], ""),
+    HealthzRefused { detail: d } => {
+      let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+        cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),
       }
+      PairServeRefused {
+        binding: binding,
+        reason: release_binding_line(binding: binding),
+      }
+    }
   }
 }
 
