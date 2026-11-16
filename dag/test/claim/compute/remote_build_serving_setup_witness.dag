@@ -148,6 +148,16 @@ fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: true }
 }
 
+// The elevation precondition for hermetic cells: est_elevation() = the sudo grant works;
+// refused_elevation() = 'sudo -n' refused (the red control for review 95915).
+fn est_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
+fn refused_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
+}
+
 fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: false }
 }
@@ -211,6 +221,7 @@ fn converged_group() -> String {
 // declaration (the ADOPT / converged host). `dline` is the host's forced-command line.
 fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
   serving_observed_from_reads(
+    elevation: est_elevation(),
     passwd: est_s(converged_passwd()),
     group: est_s(converged_group()),
     authorized_keys: est_s(dline),
@@ -280,6 +291,7 @@ test fn wrong_uid_diverges_the_account() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
@@ -304,6 +316,7 @@ test fn group_without_the_account_diverges() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s("gunbc-compute:x:1006:briansrls\n"),
         authorized_keys: est_s(line),
@@ -328,6 +341,7 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(concat(line, " ssh-rsa STRAY stray@host")),
@@ -355,6 +369,7 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(""),
@@ -382,6 +397,7 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
@@ -413,6 +429,7 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: refused_s("account", "sudo: no tty"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
@@ -440,6 +457,7 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
@@ -466,6 +484,7 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
     Absent => false
     Present { value: line } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: refused_s("account", "ssh refused"),
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
@@ -544,6 +563,7 @@ fn reads_over(
   ledger: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
   serving_observed_from_reads(
+    elevation: est_elevation(),
     passwd: est_s(converged_passwd()), group: est_s(converged_group()), authorized_keys: est_s(forced_line(d)),
     store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
@@ -760,6 +780,7 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
     Absent => false
     Present { value: d } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
@@ -781,6 +802,7 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
     Absent => false
     Present { value: d } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:9999:\n"),
         authorized_keys: est_s(forced_line(d)),
@@ -802,6 +824,7 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
     Absent => false
     Present { value: d } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s("squatter:x:1006:\ngunbc-build:x:1005:\n"),
         authorized_keys: est_s(forced_line(d)),
@@ -824,6 +847,7 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
     Absent => false
     Present { value: d } => {
       let o = serving_observed_from_reads(
+        elevation: est_elevation(),
         passwd: est_s(converged_passwd()),
         group: est_s("root:x:0:\n"),
         authorized_keys: est_s(forced_line(d)),
@@ -835,6 +859,84 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gunbc-build")
         && has_deviation(a: a, item: "group.gunbc-compute")
+    }
+  }
+}
+
+// ── elevation precondition (review 95915) ─────────────────────────────────────────
+// 'sudo -n' exits 1 when IT refuses — the same exit the 'test' legs read as "confirmed absent".
+// A drifted sudo grant must therefore make every sudo-dependent item UNREAD (Indeterminate),
+// never "confirmed absent" that 5(b) would then write over. The elevation precondition is the
+// single gate: refused => sudo-dependent legs unread + an elevation unknown => GoalIndeterminate.
+// RED CONTROL: a store dir that would otherwise be proven-absent (drift) is NOT reported as a
+// store.root deviation when elevation is refused; the verdict is Indeterminate, and the run is
+// not runnable, so the apply is never dispatched.
+test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: refused_elevation(),
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(forced_line(d)),
+        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
+        ledger_rows: converged_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      is_indeterminate(a)
+        && serving_assessment_terminal(a: a) == "indeterminate"
+        && serving_assessment_runnable(a: a) == false
+        && has_deviation(a: a, item: "store.root") == false
+        && has_deviation(a: a, item: "elevation") == false
+    }
+  }
+}
+
+// The elevation refusal must dominate even when a NON-sudo leg genuinely drifts: unknowns take
+// priority over deviations, so a real (passwd-readable) account drift + refused elevation is still
+// Indeterminate, never Diverged — the apply never acts on a host whose sudo-dependent state it could
+// not have written.
+test fn refused_elevation_beats_a_real_drift() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: refused_elevation(),
+        passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(forced_line(d)),
+        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
+        ledger_rows: converged_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      is_indeterminate(a) && !is_diverged(a) && serving_assessment_runnable(a: a) == false
+    }
+  }
+}
+
+// Established elevation keeps the absent store dir a genuine drift (the gate does not over-refuse):
+// paired with the two controls above so the elevation field is proven to be load-bearing, not inert.
+test fn established_elevation_still_reports_store_drift() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(forced_line(d)),
+        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+        serve_binary_sha256: pin_sha_leg(), checkout_revision: pin_rev_leg(), target_arch: pin_arch_leg(),
+        ledger_rows: converged_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      is_diverged(a) && has_deviation(a: a, item: "store.root")
     }
   }
 }

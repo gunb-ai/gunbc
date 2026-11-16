@@ -322,6 +322,15 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
 // and the assessment goes GoalIndeterminate, which the observe mode refuses — it is never a
 // deviation the apply would write. std.goal_assessment paragraph ONE.
 type ServingObserved {
+  // The one elevation precondition: 'sudo -n true'. It is the TYPED PRECONDITION the sudo-dependent
+  // legs take (see serving_observed_from_reads), NOT a check repeated in each leg. 'sudo -n' exits 1
+  // when IT refuses (no grant / password required / command not allowed) — the same exit 1 the
+  // 'test' legs would read as "confirmed absent". Without this gate a drifted sudo grant makes every
+  // sudo-dependent item look proven-absent, and 5(b) would then write over files nobody read. When
+  // elevation is refused, serving_observed_from_reads forces every sudo-dependent leg to ObservationRefused
+  // and serving_assess folds an elevation unknown into the chain, so the verdict is GoalIndeterminate
+  // (never Diverged / never PresentAbsent) and the apply writes nothing.
+  elevation: ObservationAttempt<Bool, ServingLegFailure>
   passwd: ObservationAttempt<String, ServingLegFailure>
   group: ObservationAttempt<String, ServingLegFailure>
   // the authorized_keys content (established even when the file is confirmed absent: then
@@ -665,7 +674,14 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
         deviations: concat(deviations, concat(pin_deviations, ledger.deviations)),
-        unknowns: concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)),
+        // the elevation precondition, folded in FIRST: 'sudo -n' refused (or an elevation leg nobody
+        // read) is itself an unknown, and unknowns dominate deviations in assess_by_deviations_and_unknowns,
+        // so a refused elevation forces GoalIndeterminate even if a non-sudo leg also shows drift — the
+        // apply can never read "drift" for a host whose sudo-dependent state it could not have written anyway.
+        unknowns: concat(
+          match o.elevation { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "elevation", cause: c.cause }] },
+          concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)),
+        ),
       )
     }
   }
@@ -795,6 +811,7 @@ fn serving_authorized_keys_line(text: String?) -> String? {
 // (which holds the desired account/group names), so the red controls and the indeterminate
 // control (a refused leg) all flow through the SAME comparison code the wet receipt takes.
 fn serving_observed_from_reads(
+  elevation: ObservationAttempt<Bool, ServingLegFailure>,
   passwd: ObservationAttempt<String, ServingLegFailure>,
   group: ObservationAttempt<String, ServingLegFailure>,
   authorized_keys: ObservationAttempt<String, ServingLegFailure>,
@@ -808,15 +825,28 @@ fn serving_observed_from_reads(
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
+  // The elevation precondition applied ONCE here (not re-checked in each leg): when 'sudo -n true' was
+  // refused, every sudo-dependent leg is ObservationRefused regardless of what the leg would have read,
+  // because its exit status is not trustworthy (sudo's own refusal shares the 'test' legs' exit 1). The
+  // non-sudo legs (passwd, group, toolchain, the three pins, the stat'd ledger) pass through unchanged.
+  let sudo_str = (a: ObservationAttempt<String, ServingLegFailure>) => match elevation {
+    ObservationEstablished { observed: _ } => a
+    ObservationRefused { cause: c } => ObservationRefused { cause: ServingLegFailure { item: c.item, cause: "sudo -n refused" } }
+  }
+  let sudo_bool = (a: ObservationAttempt<Bool, ServingLegFailure>) => match elevation {
+    ObservationEstablished { observed: _ } => a
+    ObservationRefused { cause: c } => ObservationRefused { cause: ServingLegFailure { item: c.item, cause: "sudo -n refused" } }
+  }
   {
+    elevation: elevation,
     passwd: passwd,
     group: group,
-    authorized_keys: authorized_keys,
-    store_root: store_root,
-    store_staging: store_staging,
-    serve_binary: serve_binary,
-    checkout: checkout,
-    toolchain: toolchain,
+    authorized_keys: sudo_str(authorized_keys),
+    store_root: sudo_bool(store_root),
+    store_staging: sudo_bool(store_staging),
+    serve_binary: sudo_bool(serve_binary),
+    checkout: sudo_bool(checkout),
+    toolchain: sudo_bool(toolchain),
     serve_binary_sha256: serve_binary_sha256,
     checkout_revision: checkout_revision,
     target_arch: target_arch,
