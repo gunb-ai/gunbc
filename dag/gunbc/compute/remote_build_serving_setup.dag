@@ -24,7 +24,7 @@ module gunbc.compute.remote_build_serving_setup
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.list { first_where }
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 
 import product.host_identity { HostIdentity }
@@ -41,40 +41,57 @@ import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.ssh.keys { authorized_key_entry_line }
-
-// ---------------------------------------------------------------------------
-// verdict vocabulary
-// ---------------------------------------------------------------------------
-
-// One item of the serving setup, judged against what was observed on the host.
-// `Met` is a no-op; `Drifted`/`Missing` are the drift the apply must write; `Refused`
-// is a host the converger must NOT touch (an unrenderable principal or forced command,
-// a missing authority) — refuse, never guess.
-type ServingItemVerdict
-  = Met
-  | Drifted { desired: String, observed: String }
-  | Missing { desired: String }
-  | Refused { reason: String }
-
-fn serving_verdict_settled(v: ServingItemVerdict) -> Bool {
-  match v {
-    Met => true
-    _ => false
-  }
+import std.goal_assessment {
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns,
 }
 
-// Compare an observed string against the desired string: equal -> Met, unequal ->
-// Drifted, unobserved -> Missing. The discriminating control for the witness lives in
-// the caller: a wrong observed MUST yield Drifted, never Met.
-fn serving_compare_string(desired: String, observed: String?) -> ServingItemVerdict {
-  match observed {
-    Absent => Missing { desired: desired }
-    Present { value: o } => match o == desired {
-      true => Met
-      false => Drifted { desired: desired, observed: o }
-    }
-  }
+// ---------------------------------------------------------------------------
+// assessment vocabulary — reused from std.goal_assessment, NOT reinvented here
+// ---------------------------------------------------------------------------
+//
+// The serving setup is exactly the question std.goal_assessment exists to answer: "is the
+// world as it was declared to be". A SECOND verdict coproduct here (Met/Drifted/Missing/
+// Refused) was a rival to GoalAssessment and, worse, collapsed the one distinction the
+// module exists to protect: an UNREAD fact is not an ABSENT fact (gunbc.design_argument::
+// fail_closed; std.goal_assessment paragraph ONE — "it licenses treating an UNOBSERVABLE
+// member as an ABSENT one, which is what makes an unreadable subject look like a subject
+// that needs creating"). So each host's judgement is a GoalAssessment, and an unreadable
+// observation is an ObservationRefused that becomes a ServingUnknown — never a deviation
+// the apply would "write" against a host nobody could read.
+
+// Why a leg produced NO usable snapshot: SSH refused, sudo -n failed, an unexpected exit,
+// a parse the module cannot trust. This is a DIFFERENT fact from the item being absent.
+type ServingLegFailure { item: String, cause: String }
+
+// A PROVED mismatch: the leg was read successfully and the host differs from the
+// declaration (absent, or present-but-wrong). Only these may be written by the apply.
+type ServingDeviation { item: String, desired: String, observed: String }
+
+// A declared fact that could NOT be established because its leg failed. It makes the whole
+// host indeterminate; it is never written as though it were a proven absence.
+type ServingUnknown { item: String, cause: String }
+
+// Why the assessment itself is refused: a malformed goal. A host whose forced-command line
+// will not render cannot serve, so it is refused outright, never half-written.
+type ServingAssessRefusal { reason: String }
+
+// Evidence minted for a host judged against the declaration. All fields optional so the
+// arm that cannot reach a value mints no default (std.goal_assessment HostTopologyEvidence
+// precedent — "evidence is only minted when nothing is unknown").
+type ServingEvidence {
+  account_uid: Int?
+  account_gid: Int?
+  group_members: List<String>?
+  authorized_keys_line: String?
+  store_root_present: Bool?
+  store_staging_present: Bool?
+  serve_binary_present: Bool?
+  checkout_present: Bool?
+  toolchain_present: Bool?
 }
+
+type ServingAssessment = GoalAssessment<ServingEvidence, ServingDeviation, ServingUnknown, ServingAssessRefusal>
 
 // ---------------------------------------------------------------------------
 // desired state, per host
@@ -190,94 +207,221 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
 // RemoteBuildServingObserve wet entrypoint, whose consumer is the plan receipt)
 // ---------------------------------------------------------------------------
 
-// What an observe pass READS off the host over fleet SSH. Every field is optional so
-// an unobserved fact is distinguishable from an observed-but-wrong one (Missing vs
-// Drifted) — the plan must never read "I did not look" as "it is correct".
+// What an observe pass READS off the host over fleet SSH. Each leg is ESTABLISHED (a value
+// was read — possibly the value `false`, i.e. a confirmed-absent directory) or REFUSED (no
+// usable snapshot: the read failed for a reason we must NOT read as "the item is absent").
+// This is the fix for the unread-vs-absent conflation: a refused leg becomes a ServingUnknown
+// and the assessment goes GoalIndeterminate, which the observe mode refuses — it is never a
+// deviation the apply would write. std.goal_assessment paragraph ONE.
 type ServingObserved {
-  account_uid: Int?
-  account_gid: Int?
-  // the members the host lists for the ledger group (from `getent group gunbc-compute`).
-  group_members: List<String>?
-  // the single forced-command line currently in authorized_keys.
-  authorized_keys_line: String?
-  store_root_present: Bool?
-  store_staging_present: Bool?
-  serve_binary_present: Bool?
-  checkout_present: Bool?
-  toolchain_present: Bool?
+  passwd: ObservationAttempt<String, ServingLegFailure>
+  group: ObservationAttempt<String, ServingLegFailure>
+  // the authorized_keys content (established even when the file is confirmed absent: then
+  // the observed value is the empty string, which the comparison reads as "no forced command").
+  authorized_keys: ObservationAttempt<String, ServingLegFailure>
+  store_root: ObservationAttempt<Bool, ServingLegFailure>
+  store_staging: ObservationAttempt<Bool, ServingLegFailure>
+  serve_binary: ObservationAttempt<Bool, ServingLegFailure>
+  checkout: ObservationAttempt<Bool, ServingLegFailure>
+  toolchain: ObservationAttempt<Bool, ServingLegFailure>
 }
 
-type ServingPlanItem { item: String, verdict: ServingItemVerdict }
+// ---------------------------------------------------------------------------
+// assessment: the declaration judged against the observation, as ONE GoalAssessment
+// ---------------------------------------------------------------------------
 
-fn serving_compare_int(desired: Int, observed: Int?) -> ServingItemVerdict {
-  match observed {
-    Absent => Missing { desired: "int" }
-    Present { value: v } => match v == desired {
-      true => Met
-      false => Drifted { desired: "int", observed: "int" }
+// A present-desired item whose leg was ESTABLISHED false is a proven absence (a deviation
+// the apply must write); established true is met; a REFUSED leg contributes NOTHING here
+// (it surfaces as a ServingUnknown below), so an unread fact is never reported as absent.
+fn serving_present_deviations(item: String, present: ObservationAttempt<Bool, ServingLegFailure>) -> List<ServingDeviation> {
+  match present {
+    ObservationEstablished { observed: true } => []
+    ObservationEstablished { observed: false } => [ServingDeviation { item: item, desired: "present", observed: "absent" }]
+    ObservationRefused { cause: _ } => []
+  }
+}
+
+// The serving account's uid/gid, parsed from a SUCCESSFULLY-read /etc/passwd. The leg being
+// established but the row absent is a proven absence (the account must be created); a wrong
+// number is proven drift; only a REFUSED passwd read yields nothing (it becomes an unknown).
+fn serving_account_deviations(d: RemoteBuildServingDesired, passwd: ObservationAttempt<String, ServingLegFailure>) -> List<ServingDeviation> {
+  match passwd {
+    ObservationRefused { cause: _ } => []
+    ObservationEstablished { observed: t } => {
+      let uid = serving_passwd_uid(text: Present { value: t }, name: d.account_name)
+      let gid = serving_passwd_gid(text: Present { value: t }, name: d.account_name)
+      concat(
+        match uid {
+          Absent => [ServingDeviation { item: "account.uid", desired: to_string(d.account_uid), observed: "absent" }]
+          Present { value: v } => match v == d.account_uid {
+            true => []
+            false => [ServingDeviation { item: "account.uid", desired: to_string(d.account_uid), observed: to_string(v) }]
+          }
+        },
+        match gid {
+          Absent => [ServingDeviation { item: "account.gid", desired: to_string(d.account_gid), observed: "absent" }]
+          Present { value: v } => match v == d.account_gid {
+            true => []
+            false => [ServingDeviation { item: "account.gid", desired: to_string(d.account_gid), observed: to_string(v) }]
+          }
+        },
+      )
     }
   }
 }
 
-// A present-desired item (store dirs, seed binary, checkout, toolchain): unobserved ->
-// Missing, observed-absent -> Drifted, observed-present -> Met.
-fn serving_compare_present(observed: Bool?) -> ServingItemVerdict {
-  match observed {
-    Absent => Missing { desired: "present" }
-    Present { value: p } => match p {
-      true => Met
-      false => Drifted { desired: "present", observed: "absent" }
-    }
-  }
-}
-
-// The ledger group must list EXACTLY the required members (service user + account):
-// same membership and same count, so neither an extra nor a missing member reads Met.
-fn serving_membership_verdict(members: List<String>, observed: List<String>?) -> ServingItemVerdict {
-  match observed {
-    Absent => Missing { desired: join(members, ",") }
-    Present { value: ms } =>
-      match all(members, m => any(ms, o => o == m)) && count(ms) == count(members) {
-        true => Met
-        false => Drifted { desired: join(members, ","), observed: join(ms, ",") }
+// The ledger group must list EXACTLY the required members (service user + account): same
+// membership and same count. Established-but-absent is proven absence; established-wrong
+// (an extra or missing member) is proven drift; a REFUSED /etc/group read yields nothing.
+fn serving_group_deviations(d: RemoteBuildServingDesired, group: ObservationAttempt<String, ServingLegFailure>) -> List<ServingDeviation> {
+  match group {
+    ObservationRefused { cause: _ } => []
+    ObservationEstablished { observed: t } =>
+      match serving_group_members(text: Present { value: t }, name: d.group_name) {
+        Absent => [ServingDeviation { item: "group.members", desired: join(d.group_members, ","), observed: "absent" }]
+        Present { value: ms } => match all(d.group_members, m => any(ms, o => o == m)) && count(ms) == count(d.group_members) {
+          true => []
+          false => [ServingDeviation { item: "group.members", desired: join(d.group_members, ","), observed: join(ms, ",") }]
+        }
       }
   }
 }
 
-// The forced-command line: a host whose line is unrenderable is REFUSED outright (a
-// host that cannot serve must not be half-written); otherwise exact string equality.
-fn serving_authorized_keys_verdict(desired: String?, observed: String?) -> ServingItemVerdict {
-  match desired {
-    Absent => Refused { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" }
-    Present { value: d } => serving_compare_string(desired: d, observed: observed)
+// The forced-command line, by exact equality against the SUCCESSFULLY-read authorized_keys
+// content (empty observed = no key present = proven absence). A REFUSED read yields nothing.
+fn serving_ak_deviations(dline: String, ak: ObservationAttempt<String, ServingLegFailure>) -> List<ServingDeviation> {
+  match ak {
+    ObservationRefused { cause: _ } => []
+    ObservationEstablished { observed: t } =>
+      match serving_authorized_keys_line(text: Present { value: t }) {
+        Absent => [ServingDeviation { item: "authorized_keys.forced_command", desired: dline, observed: "absent" }]
+        Present { value: obs } => match obs == dline {
+          true => []
+          false => [ServingDeviation { item: "authorized_keys.forced_command", desired: dline, observed: obs }]
+        }
+      }
   }
 }
 
-// The plan: each serving component judged against the observation. A host srv1 already
-// matches yields all-Met (the ADOPT case the converger must not rebuild); drift is the
-// work the converge mode (PR5 b) will write.
-fn serving_plan(d: RemoteBuildServingDesired, o: ServingObserved) -> List<ServingPlanItem> {
-  [
-    ServingPlanItem { item: "account.uid", verdict: serving_compare_int(desired: d.account_uid, observed: o.account_uid) },
-    ServingPlanItem { item: "account.gid", verdict: serving_compare_int(desired: d.account_gid, observed: o.account_gid) },
-    ServingPlanItem { item: "group.members", verdict: serving_membership_verdict(members: d.group_members, observed: o.group_members) },
-    ServingPlanItem { item: "authorized_keys.forced_command", verdict: serving_authorized_keys_verdict(desired: d.forced_command_line, observed: o.authorized_keys_line) },
-    ServingPlanItem { item: "store.root", verdict: serving_compare_present(o.store_root_present) },
-    ServingPlanItem { item: "store.staging", verdict: serving_compare_present(o.store_staging_present) },
-    ServingPlanItem { item: "seed.serve_binary", verdict: serving_compare_present(o.serve_binary_present) },
-    ServingPlanItem { item: "checkout", verdict: serving_compare_present(o.checkout_present) },
-    ServingPlanItem { item: "toolchain", verdict: serving_compare_present(o.toolchain_present) },
-  ]
+// The ONE assessment for one host. A host whose forced-command line will not render is
+// refused outright (a host that cannot serve is never written). Otherwise every leg's proven
+// mismatch is a deviation and every refused leg is an unknown, folded through
+// assess_by_deviations_and_unknowns — so UNKNOWNs WIN over deviations: a partly-unread host
+// is GoalIndeterminate (the observe refuses), NOT GoalDiverged (which would license the
+// apply writing items nobody actually read). This is gunbc.design_argument::fail_closed.
+fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved) -> ServingAssessment {
+  match d.forced_command_line {
+    Absent => GoalAssessmentRefused { cause: ServingAssessRefusal { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" } }
+    Present { value: dline } => {
+      let unknowns = concat(
+        concat(
+          match o.passwd { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "account", cause: c.cause }] },
+          match o.group { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "group.members", cause: c.cause }] },
+        ),
+        concat(
+          match o.authorized_keys { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "authorized_keys.forced_command", cause: c.cause }] },
+          concat(
+            match o.store_root { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.root", cause: c.cause }] },
+            match o.store_staging { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.staging", cause: c.cause }] },
+          ),
+        ),
+      )
+      let present_unknowns = concat(
+        concat(
+          match o.serve_binary { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "seed.serve_binary", cause: c.cause }] },
+          match o.checkout { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout", cause: c.cause }] },
+        ),
+        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "toolchain", cause: c.cause }] },
+      )
+      let deviations = concat(
+        concat(
+          serving_account_deviations(d: d, passwd: o.passwd),
+          serving_group_deviations(d: d, group: o.group),
+        ),
+        concat(
+          serving_ak_deviations(dline: dline, ak: o.authorized_keys),
+          concat(
+            concat(
+              serving_present_deviations(item: "store.root", present: o.store_root),
+              serving_present_deviations(item: "store.staging", present: o.store_staging),
+            ),
+            concat(
+              serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
+              concat(
+                serving_present_deviations(item: "checkout", present: o.checkout),
+                serving_present_deviations(item: "toolchain", present: o.toolchain),
+              ),
+            ),
+          ),
+        ),
+      )
+      assess_by_deviations_and_unknowns(
+        evidence: ServingEvidence {
+          account_uid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_uid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
+          account_gid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_gid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
+          group_members: match o.group { ObservationEstablished { observed: t } => serving_group_members(text: Present { value: t }, name: d.group_name)  ObservationRefused { cause: _ } => Absent },
+          authorized_keys_line: match o.authorized_keys { ObservationEstablished { observed: t } => serving_authorized_keys_line(text: Present { value: t })  ObservationRefused { cause: _ } => Absent },
+          store_root_present: match o.store_root { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+          store_staging_present: match o.store_staging { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+          serve_binary_present: match o.serve_binary { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+          checkout_present: match o.checkout { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+          toolchain_present: match o.toolchain { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+        },
+        deviations: deviations,
+        unknowns: concat(unknowns, present_unknowns),
+      )
+    }
+  }
 }
 
-// Settled (all Met) is the no-op plan — an already-correct host is ADOPTED unchanged.
-fn serving_plan_settled(plan: List<ServingPlanItem>) -> Bool {
-  all(plan, i => serving_verdict_settled(i.verdict))
+// A settled host is a no-op (ADOPTED unchanged); a diverged host reports drift; an
+// indeterminate or refused host is what the observe must refuse.
+fn serving_assessment_settled(a: ServingAssessment) -> Bool {
+  match a { GoalSatisfied { evidence: _ } => true  _ => false }
 }
 
-// Any refused item makes the whole host a refuse — never a partial write.
-fn serving_plan_refused(plan: List<ServingPlanItem>) -> Bool {
-  any(plan, i => match i.verdict { Refused { reason } => true, _ => false })
+// The four-arm terminal state, for the receipt.
+fn serving_assessment_terminal(a: ServingAssessment) -> String {
+  match a {
+    GoalSatisfied { evidence: _ } => "settled"
+    GoalDiverged { deviations: _ } => "drift"
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => "indeterminate"
+    GoalAssessmentRefused { cause: _ } => "refused"
+  }
+}
+
+// An observe run SUCCEEDS only when it produced a usable judgement: settled or a reportable
+// divergence. Indeterminate (a leg could not be read) and refused (a malformed goal) make
+// the run exit FAILURE — fail_closed: "failing to compute the answer is a different outcome
+// from computing a conservative one." The receipt never says "drift" for a host it could not
+// read, so the apply is never dispatched against an unobserved item.
+fn serving_assessment_runnable(a: ServingAssessment) -> Bool {
+  match a {
+    GoalSatisfied { evidence: _ } => true
+    GoalDiverged { deviations: _ } => true
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => false
+    GoalAssessmentRefused { cause: _ } => false
+  }
+}
+
+// The receipt: the terminal state, each drift item by NAME, and the cause of every unread
+// leg — but NEVER the value of a secret item (the forced-command line / key material). The
+// structured assessment carries values for the apply; the receipt stays leak-free.
+fn serving_assessment_receipt_text(a: ServingAssessment) -> String {
+  let head = concat("remote-build-serving-plan: ", serving_assessment_terminal(a: a), "\n")
+  match a {
+    GoalSatisfied { evidence: _ } => concat(head, "all items met — host adopted unchanged (no-op)\n")
+    GoalDiverged { deviations: ds } =>
+      concat(head, "drift (the apply's work):\n", join(map(non_empty_to_list(ds), x => concat("  - ", x.item, "\n")), ""))
+    GoalIndeterminate { known_deviations: ks, unknowns: us } =>
+      concat(
+        head,
+        "indeterminate — a declared fact could not be read; the observe REFUSES to report drift\n",
+        join(map(ks, x => concat("  (known deviation) ", x.item, "\n")), ""),
+        join(map(non_empty_to_list(us), u => concat("  (unread) ", u.item, ": ", u.cause, "\n")), ""),
+      )
+    GoalAssessmentRefused { cause: c } => concat(head, "assessment refused: ", c.reason, "\n")
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -359,31 +503,31 @@ fn serving_authorized_keys_line(text: String?) -> String? {
   }
 }
 
-// Assemble the observation from the raw reads. `passwd_text`/`group_text`/
-// `authorized_keys_text` are the `cat` stdout of those files (Absent when the read
-// itself failed, which must read Missing, never Met); the presence flags are the exit-
-// code booleans of the observe `test` legs. Pure and total: no SSH, no effects.
+// Assemble the observation from the per-leg reads. Each argument is an ObservationAttempt:
+// established with the raw read (for `cat`, the stdout; for `test -d/-x`, the exit-0 boolean,
+// where `false` is a CONFIRMED absence) or refused with a cause (the read failed for a reason
+// that must NOT be read as "the item is absent"). The wet observe builds these from the fleet-
+// SSH legs; the witness from crafted strings/flags. Parsing to values happens in serving_assess
+// (which holds the desired account/group names), so the red controls and the indeterminate
+// control (a refused leg) all flow through the SAME comparison code the wet receipt takes.
 fn serving_observed_from_reads(
-  passwd_text: String?,
-  group_text: String?,
-  authorized_keys_text: String?,
-  store_root_present: Bool?,
-  store_staging_present: Bool?,
-  serve_binary_present: Bool?,
-  checkout_present: Bool?,
-  toolchain_present: Bool?,
-  account_name: String,
-  group_name: String,
+  passwd: ObservationAttempt<String, ServingLegFailure>,
+  group: ObservationAttempt<String, ServingLegFailure>,
+  authorized_keys: ObservationAttempt<String, ServingLegFailure>,
+  store_root: ObservationAttempt<Bool, ServingLegFailure>,
+  store_staging: ObservationAttempt<Bool, ServingLegFailure>,
+  serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
+  checkout: ObservationAttempt<Bool, ServingLegFailure>,
+  toolchain: ObservationAttempt<Bool, ServingLegFailure>,
 ) -> ServingObserved {
   {
-    account_uid: serving_passwd_uid(text: passwd_text, name: account_name),
-    account_gid: serving_passwd_gid(text: passwd_text, name: account_name),
-    group_members: serving_group_members(text: group_text, name: group_name),
-    authorized_keys_line: serving_authorized_keys_line(text: authorized_keys_text),
-    store_root_present: store_root_present,
-    store_staging_present: store_staging_present,
-    serve_binary_present: serve_binary_present,
-    checkout_present: checkout_present,
-    toolchain_present: toolchain_present,
+    passwd: passwd,
+    group: group,
+    authorized_keys: authorized_keys,
+    store_root: store_root,
+    store_staging: store_staging,
+    serve_binary: serve_binary,
+    checkout: checkout,
+    toolchain: toolchain,
   }
 }

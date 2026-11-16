@@ -1,22 +1,29 @@
 module test.claim.compute.remote_build_serving_setup_witness
 
 // PR 5: the desired-state derivation for the remote-build serving setup, plus its
-// discriminating RED CONTROLS. A red control is a claim that FAILS if the model were
-// made wrong on purpose: the string comparator must report a wrong observation as
-// Drifted (not Met), and a host off the roster must carry NO forced-command line
-// (Absent), never a fabricated one. Run:
+// discriminating RED CONTROLS, judged through std.goal_assessment::GoalAssessment. The
+// central red control is the one std.goal_assessment exists to protect: an UNREADABLE read
+// must make the host GoalIndeterminate (and the observe REFUSE), never a GoalDiverged the
+// apply would "write" against a host nobody read (std.goal_assessment paragraph ONE;
+// gunbc.design_argument::fail_closed). The paired control proves the opposite direction:
+// a CONFIRMED-absent read (test exit 1) IS a divergence the apply should write — so we have
+// not collapsed real drift into indeterminate either. Run:
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/compute/remote_build_serving_setup_witness.dag --claim-run
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
-import std.list { first_where }
+import std.algebra { non_empty_to_list }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired,
-  serving_compare_string, Met, Drifted, Missing,
-  ServingObserved, serving_plan, serving_plan_settled, serving_plan_refused,
-  serving_forced_command_line, serving_observed_from_reads,
+  serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
+  serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
+  serving_assessment_receipt_text, ServingLegFailure, ServingObserved,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { owned_directory_owner }
@@ -63,7 +70,7 @@ test fn srv1_serving_paths_match_the_serving_instance() -> Bool {
     && d.store_staging == concat(inst.instance_root as String, "/materialization-store-staging")
 }
 
-// ── every roster host renders a forced-command line ────────────────────────────
+// ── every candidate host renders a forced-command line ─────────────────────────
 
 fn line_present(d: RemoteBuildServingDesired) -> Bool {
   match d.forced_command_line {
@@ -84,9 +91,7 @@ test fn every_pr5_candidate_host_renders_a_forced_command() -> Bool {
   )
 }
 
-// ── RED CONTROL: a host off the roster carries NO forced-command line ───────────
-// srv5 is not a remote-build serving host, so it has no candidate and its forced
-// command must be Absent. If the render ever fell back to a fabricated line, this fails.
+// ── RED CONTROL: a host off the candidate row carries NO forced-command line ────
 
 test fn a_host_outside_the_candidate_row_has_no_forced_command() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv9)
@@ -96,229 +101,260 @@ test fn a_host_outside_the_candidate_row_has_no_forced_command() -> Bool {
   }
 }
 
-// ── RED CONTROL: the comparator discriminates a wrong observation ───────────────
-// Correct -> Met, wrong -> Drifted (NOT Met), unobserved -> Missing. A comparator that
-// always returned Met would make the plan report a drifted host as settled — the exact
-// failure this control exists to catch.
-
-test fn comparator_met_on_correct_observation() -> Bool {
-  match serving_compare_string(desired: "gunbc-build", observed: Present { value: "gunbc-build" }) {
-    Met => true
-    _ => false
-  }
-}
-
-test fn comparator_drifted_on_wrong_observation() -> Bool {
-  match serving_compare_string(desired: "1005", observed: Present { value: "1006" }) {
-    Drifted { desired, observed } => desired == "1005" && observed == "1006"
-    _ => false
-  }
-}
-
-test fn comparator_missing_on_unobserved() -> Bool {
-  match serving_compare_string(desired: "gunbc-build", observed: Absent) {
-    Missing { desired } => desired == "gunbc-build"
-    _ => false
-  }
-}
-
-// ── the observe plan: ADOPT an already-correct host, and the red controls ───────
-// serving_plan turns (desired, observed) into per-item verdicts. The observe-only mode
-// consumes it to emit the plan receipt. These claims exercise that real path: an exactly
-// matching observation is SETTLED (srv1 is adopted, not rebuilt); a wrong value drifts;
-// an unobserved fact is NOT silently settled; a non-roster host REFUSES the whole plan.
-
-// The observation that matches srv1's desired state on every component.
-fn srv1_matching_observation(d: RemoteBuildServingDesired) -> ServingObserved {
-  let line = match d.forced_command_line { Present { value: l } => l, Absent => "" }
-  ServingObserved {
-    account_uid: Present { value: d.account_uid },
-    account_gid: Present { value: d.account_gid },
-    group_members: Present { value: d.group_members },
-    authorized_keys_line: Present { value: line },
-    store_root_present: Present { value: true },
-    store_staging_present: Present { value: true },
-    serve_binary_present: Present { value: true },
-    checkout_present: Present { value: true },
-    toolchain_present: Present { value: true },
-  }
-}
-
-fn srv1_blank_observation() -> ServingObserved {
-  ServingObserved {
-    account_uid: Absent, account_gid: Absent, group_members: Absent, authorized_keys_line: Absent,
-    store_root_present: Absent, store_staging_present: Absent, serve_binary_present: Absent,
-    checkout_present: Absent, toolchain_present: Absent,
-  }
-}
-
-// ADOPT: srv1 already carries the whole setup; a matching observation yields a settled
-// (all-Met, no-op) plan — the converger must NOT rebuild it.
-test fn a_matching_host_is_adopted_as_a_settled_plan() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
-  serving_plan_settled(plan: serving_plan(d: d, o: srv1_matching_observation(d)))
-}
-
-// RED CONTROL: one wrong observed value must make the plan non-settled and drift that item.
-test fn a_wrong_uid_observation_drifts_the_account_item() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
-  let base = srv1_matching_observation(d)
-  let o = ServingObserved {
-    account_uid: Present { value: 9999 },
-    account_gid: base.account_gid,
-    group_members: base.group_members,
-    authorized_keys_line: base.authorized_keys_line,
-    store_root_present: base.store_root_present,
-    store_staging_present: base.store_staging_present,
-    serve_binary_present: base.serve_binary_present,
-    checkout_present: base.checkout_present,
-    toolchain_present: base.toolchain_present,
-  }
-  let plan = serving_plan(d: d, o: o)
-  match first_where(plan, i => i.item == "account.uid") {
-    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
-    Absent => false
-  }
-}
-
-// RED CONTROL: an unobserved fact is Missing, never quietly settled.
-test fn an_unobserved_host_is_not_reported_settled() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
-  let plan = serving_plan(d: d, o: srv1_blank_observation())
-  match first_where(plan, i => i.item == "store.root") {
-    Present { value: i } => match i.verdict { Missing { desired } => true, _ => false }
-    Absent => false
-  }
-}
-
-// RED CONTROL: a non-roster host (its forced-command line is unrenderable) REFUSES the
-// plan outright — the converger must not half-write a host that cannot serve.
-test fn a_host_outside_the_candidate_row_refuses_the_plan() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv9)
-  let o = srv1_blank_observation()
-  serving_plan_refused(plan: serving_plan(d: d, o: o))
-}
-
-// ── readback: raw host reads feed the SAME comparator, with REAL values ──────────
+// ── observation builders for the assessment cells ───────────────────────────────
 //
-// These cells drive the wet observe path (serving_observed_from_reads -> serving_plan)
-// with synthetic /etc/passwd, /etc/group and authorized_keys, exactly as the observe
-// mode feeds them from `cat` over fleet SSH. They are the discriminating controls the
-// receipt depends on: a presence-only reading would call all of these Met, while the
-// serve entry would refuse the host at runtime. The fixtures hardcode the admitted
-// constants and are GUARDED against the model, so the control is never vacuous.
+// Each leg is established (a value was read) or refused (no usable snapshot). The
+// converged fixtures below hardcode the ADMITTED constants (uid/gid 1005, group 1006,
+// members briansrls+gunbc-build) and are guarded against the model so the controls are
+// never vacuous.
 
-fn srv1_converged_passwd() -> String? {
-  Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\nroot:x:0:0:root:/root:/bin/bash\n" }
+fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationEstablished { observed: text }
 }
 
-fn srv1_converged_group() -> String? {
-  Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n" }
+fn refused_s(item: String, cause: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: item, cause: cause } }
 }
 
-fn all_present() -> Bool? { Present { value: true } }
+fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
 
-// The full readback of an already-converged host is the no-op ADOPT: value-compared on
-// uid/gid/members/authorized_keys, not merely presence.
-test fn readback_of_a_converged_host_is_settled() -> Bool {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
-  let guard = d.account_uid == 1005 && d.account_gid == 1005 && d.group_gid == 1006
-    && d.account_name == "gunbc-build" && d.group_name == "gunbc-compute" && d.ledger_service_user == "briansrls"
-  let ak = serving_forced_command_line(host: operator_host_srv1)
-  let ak_present = match ak { Present { value: _ } => true, Absent => false }
-  let o = serving_observed_from_reads(
-    passwd_text: srv1_converged_passwd(),
-    group_text: srv1_converged_group(),
-    authorized_keys_text: ak,
-    store_root_present: all_present(),
-    store_staging_present: all_present(),
-    serve_binary_present: all_present(),
-    checkout_present: all_present(),
-    toolchain_present: all_present(),
-    account_name: d.account_name,
-    group_name: d.group_name,
+fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: false }
+}
+
+fn refused_b(item: String) -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: item, cause: "leg failed" } }
+}
+
+fn converged_passwd() -> String {
+  "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\nroot:x:0:0:root:/root:/bin/bash\n"
+}
+
+fn converged_group() -> String {
+  "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
+}
+
+// An observation in which every fact was READ SUCCESSFULLY and every value matches the
+// declaration (the ADOPT / converged host). `dline` is the host's forced-command line.
+fn converged_observed(dline: String) -> ServingObserved {
+  serving_observed_from_reads(
+    passwd: est_s(converged_passwd()),
+    group: est_s(converged_group()),
+    authorized_keys: est_s(dline),
+    store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(),
   )
-  guard && ak_present && serving_plan_settled(plan: serving_plan(d: d, o: o))
 }
 
-// RED CONTROL: the account exists but at the WRONG uid. A presence-only reading would
-// call the host Met; the value comparison must report Drifted (else the receipt says
-// "ready" while the serve entry refuses the host for the wrong uid).
-test fn readback_wrong_uid_drifts_the_account() -> Bool {
+fn has_deviation(a: ServingAssessment, item: String) -> Bool {
+  match a {
+    GoalDiverged { deviations: ds } => any(non_empty_to_list(ds), x => x.item == item)
+    _ => false
+  }
+}
+
+fn is_indeterminate(a: ServingAssessment) -> Bool {
+  match a { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
+}
+
+fn is_diverged(a: ServingAssessment) -> Bool {
+  match a { GoalDiverged { deviations: _ } => true  _ => false }
+}
+
+// ── ADOPT: an already-correct host is settled, never rebuilt ────────────────────
+
+test fn a_matching_host_is_adopted_as_a_settled_assessment() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv1)
-  let o = serving_observed_from_reads(
-    passwd_text: Present { value: "gunbc-build:x:1099:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
-    group_text: srv1_converged_group(),
-    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
-    store_root_present: all_present(),
-    store_staging_present: all_present(),
-    serve_binary_present: all_present(),
-    checkout_present: all_present(),
-    toolchain_present: all_present(),
-    account_name: d.account_name,
-    group_name: d.group_name,
-  )
-  match first_where(serving_plan(d: d, o: o), i => i.item == "account.uid") {
-    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+  match d.forced_command_line {
     Absent => false
+    Present { value: line } => serving_assessment_settled(a: serving_assess(d: d, o: converged_observed(line)))
   }
 }
 
-// RED CONTROL: the ledger group exists at the right gid but omits the serving account
-// from its members. Presence would read Met; membership comparison must report Drifted.
-test fn readback_group_without_the_account_drifts() -> Bool {
+// ── RED CONTROLS: a PROVEN wrong value must diverge, and be reported as runnable ─
+
+test fn wrong_uid_diverges_the_account() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv1)
-  let o = serving_observed_from_reads(
-    passwd_text: srv1_converged_passwd(),
-    group_text: Present { value: "gunbc-compute:x:1006:briansrls\ngunbc-build:x:1005:\n" },
-    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
-    store_root_present: all_present(),
-    store_staging_present: all_present(),
-    serve_binary_present: all_present(),
-    checkout_present: all_present(),
-    toolchain_present: all_present(),
-    account_name: d.account_name,
-    group_name: d.group_name,
-  )
-  match first_where(serving_plan(d: d, o: o), i => i.item == "group.members") {
-    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+  match d.forced_command_line {
     Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_diverged(a) && has_deviation(a: a, item: "account.uid") && serving_assessment_runnable(a: a)
+    }
   }
 }
 
-// RED CONTROL: the account's authorized_keys carries the correct forced-command line
-// PLUS a stray second key. Exact equality on the trimmed file must report Drifted (the
-// host would otherwise accept a second, unforced key).
-test fn readback_authorized_keys_with_a_stray_key_drifts() -> Bool {
+test fn group_without_the_account_diverges() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv1)
-  let ak = match serving_forced_command_line(host: operator_host_srv1) {
-    Present { value: l } => Present { value: concat(l, "\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5 stray-authorised-key") }
-    Absent => Absent
-  }
-  let o = serving_observed_from_reads(
-    passwd_text: srv1_converged_passwd(),
-    group_text: srv1_converged_group(),
-    authorized_keys_text: ak,
-    store_root_present: all_present(),
-    store_staging_present: all_present(),
-    serve_binary_present: all_present(),
-    checkout_present: all_present(),
-    toolchain_present: all_present(),
-    account_name: d.account_name,
-    group_name: d.group_name,
-  )
-  match first_where(serving_plan(d: d, o: o), i => i.item == "authorized_keys.forced_command") {
-    Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+  match d.forced_command_line {
     Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s(converged_passwd()),
+        group: est_s("gunbc-compute:x:1006:briansrls\n"),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_diverged(a) && has_deviation(a: a, item: "group.members")
+    }
   }
 }
 
-// PR 5 owns the candidate set precisely so the OBSERVE arm covers hosts the LIVE roster has not
-// admitted yet: PR 4 keeps remote_build_serving_hosts at srv1 only (admitting early is fail-open,
-// review 95791), and srv3/srv4 are admitted by PR 5(b) LAST, once their home/store/account exist.
-// They must still render a per-host forced-command line off the PR 5-owned candidate row, and the
-// lines must differ (a per-host render, not a constant) — proving the observe is decoupled from the
-// roster it does not yet gate.
+test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(concat(line, " ssh-rsa STRAY stray@host")),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_diverged(a) && has_deviation(a: a, item: "authorized_keys.forced_command")
+    }
+  }
+}
+
+// A CONFIRMED-absent authorized_keys (the file was tested present-and-empty, or a
+// confirmed no-key) is a PROVEN divergence the apply writes — distinct from an unreadable
+// file. This is the positive half: real drift is still reported as drift (runnable).
+test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(""),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_diverged(a) && serving_assessment_terminal(a: a) == "drift" && has_deviation(a: a, item: "authorized_keys.forced_command")
+    }
+  }
+}
+
+// A CONFIRMED-absent directory (test exit 1) is proven drift, NOT indeterminate. This is
+// the paired control to the unreadable-leg control: we refuse on UNREAD, we still report
+// drift on a confirmed absence — the two are not collapsed into each other.
+test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(line),
+        store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_diverged(a) && !is_indeterminate(a) && serving_assessment_runnable(a: a) && has_deviation(a: a, item: "store.root")
+    }
+  }
+}
+
+// ── THE central red control (std.goal_assessment paragraph ONE) ─────────────────
+// An UNREADABLE read — here a refused `cat /etc/passwd` — must make the host
+// GoalIndeterminate (a ServingUnknown), NOT GoalDiverged and NOT settled. If the code
+// wrongly read "could not read" as "the account is absent", this assessment would be
+// Diverged and the apply would WRITE an account on a host nobody could read. A presence-
+// only or naive model returns drift here and this cell FAILS.
+
+test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: refused_s("account", "sudo: no tty"),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_indeterminate(a) && !is_diverged(a) && !serving_assessment_settled(a: a)
+        && serving_assessment_runnable(a: a) == false && serving_assessment_terminal(a: a) == "indeterminate"
+    }
+  }
+}
+
+// Same doctrine for a presence test: a store dir whose `test` leg ERRORED (not a clean
+// 0/1) is UNREADABLE -> indeterminate, never a proven absence the apply would create.
+test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(line),
+        store_root: refused_b("store.root"), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let a = serving_assess(d: d, o: o)
+      is_indeterminate(a) && serving_assessment_runnable(a: a) == false
+    }
+  }
+}
+
+// The receipt for an indeterminate host says "indeterminate", never "drift" — so the CI
+// consumer never sees a plan it could hand the apply for a host that was not read.
+test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        passwd: refused_s("account", "ssh refused"),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      )
+      let r = serving_assessment_receipt_text(a: serving_assess(d: d, o: o))
+      starts_with(s: r, prefix: "remote-build-serving-plan: indeterminate")
+        && starts_with(s: r, prefix: "remote-build-serving-plan: drift") == false
+    }
+  }
+}
+
+// ── an unrenderable host (off the candidate row) is REFUSED, not written ────────
+
+test fn a_host_outside_the_candidate_row_refuses_the_assessment() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv9)
+  let o = converged_observed("")
+  match serving_assess(d: d, o: o) {
+    GoalAssessmentRefused { cause: _ } => serving_assessment_runnable(a: serving_assess(d: d, o: o)) == false
+    _ => false
+  }
+}
+
+// ── PR 5 owns the candidate set so the OBSERVE arm covers hosts the roster has not ─
+// PR 4 keeps remote_build_serving_hosts at srv1 only (admitting early is fail-open,
+// review 95791), and srv3/srv4 are admitted by PR 5(b) LAST, once their home/store/account
+// exist. They must still render a per-host forced-command line off the PR 5-owned candidate
+// row, and the lines must differ (a per-host render, not a constant) — proving the observe is
+// decoupled from the roster it does not yet gate.
 test fn a_not_yet_rostered_candidate_still_renders_a_forced_command() -> Bool {
   match serving_forced_command_line(host: operator_host_srv3) {
     Present { value: l3 } => match serving_forced_command_line(host: operator_host_srv4) {

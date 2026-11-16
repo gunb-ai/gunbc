@@ -1,97 +1,93 @@
 module test.claim.compute.remote_build_serving_converge_witness
 
-// PR 5(a): the OBSERVE arm's pure surface. These cells force gunbc.compute.remote_build_
-// serving_converge to COMPILE (its wet entry defines the fleet-SSH reads the CI observe
-// dispatch will run on main; here only its pure receipt renderers are called, so no
-// effect executes) and prove two things the receipt depends on: the verdict kinds are
-// spelled as the converge and the operator expect, and — the discriminating control — a
-// receipt for an already-converged host reports `terminal=settled` WITHOUT leaking the
-// account's authorized_keys material or its private-home paths. A receipt that exfiltrated
-// secret host material would still be a green run; this cell makes that a red one.
-//
-// Run:
+// PR 5(a): the read-only observe arm's receipt COMPOSITION. It lives in the converge module
+// so importing it forces the whole observe entry (the fleet-converge workflow --function) to
+// type-check; the cells prove the receipt carries the host/probe header and the terminal
+// state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
+// only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
+// controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
 
-import std.types { Bool, String }
 import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.compute.remote_build_serving_setup {
-  remote_build_serving_desired, serving_observed_from_reads, serving_forced_command_line,
-  serving_plan, serving_plan_settled, ServingPlanItem, Met, Drifted, Missing, Refused,
+  remote_build_serving_desired, serving_assess, serving_observed_from_reads, ServingObserved,
+  ServingLegFailure, serving_forced_command_line,
 }
-import gunbc.compute.remote_build_serving_converge {
-  serving_verdict_kind, serving_plan_terminal, serving_plan_receipt_text,
-}
+import gunbc.compute.remote_build_serving_converge { serving_receipt_body }
 
-// ── verdict kinds are spelled the way the converge and operator read them ──────────
-
-test fn verdict_kind_names_each_state() -> Bool {
-  serving_verdict_kind(verdict: Met) == "met"
-    && serving_verdict_kind(verdict: Drifted { desired: "a", observed: "b" }) == "drifted"
-    && serving_verdict_kind(verdict: Missing { desired: "a" }) == "missing"
-    && serving_verdict_kind(verdict: Refused { reason: "r" }) == "refused"
+fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationEstablished { observed: text }
 }
 
-// ── the receipt of an already-converged host ───────────────────────────────────────
+fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
 
-// Build the plan of a host whose reads match the desired state exactly, via the SAME
-// readback path the wet observe entry uses.
-fn srv1_settled_plan() -> List<ServingPlanItem> {
-  let d = remote_build_serving_desired(host: operator_host_srv1)
-  let o = serving_observed_from_reads(
-    passwd_text: Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
-    group_text: Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\n" },
-    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
-    store_root_present: Present { value: true },
-    store_staging_present: Present { value: true },
-    serve_binary_present: Present { value: true },
-    checkout_present: Present { value: true },
-    toolchain_present: Present { value: true },
-    account_name: d.account_name,
-    group_name: d.group_name,
+fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: false }
+}
+
+// A host that is correct except a confirmed-absent store directory: a real drift, whose
+// assessment carries the secret forced-command line in its structured deviation but which the
+// receipt must render by NAME only.
+fn drifted_observed(dline: String) -> ServingObserved {
+  serving_observed_from_reads(
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
+    authorized_keys: est_s(dline),
+    store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(),
   )
-  serving_plan(d: d, o: o)
 }
 
-// A convenience: count of a delimiter occurrence is parts-1, so contains(hay,needle) is
-// (count(split(hay,needle)) > 1) and "does not contain" is (== 1).
-fn not_contains(hay: String, needle: String) -> Bool { count(split(s: hay, delimiter: needle)) == 1 }
-fn contains(hay: String, needle: String) -> Bool { count(split(s: hay, delimiter: needle)) > 1 }
-
-test fn a_converged_host_reports_settled() -> Bool {
-  serving_plan_terminal(plan: srv1_settled_plan()) == "settled"
-    && serving_plan_settled(plan: srv1_settled_plan())
-}
-
-// RED CONTROL: the receipt names items and verdicts but must carry NO secret host
-// material — not the forced-command line (its `command=` prefix and key blob), and not
-// the account's private-home path. The plan VALUE-compared those, but the receipt must
-// not echo them.
-test fn the_receipt_leaks_no_secret_host_material() -> Bool {
-  let body = serving_plan_receipt_text(host_name: "srv1", probed_at: "2026-11-16T00:00:00Z", context_receipt: "ctx\n", plan: srv1_settled_plan())
-  contains(hay: body, needle: "terminal=settled")
-    && contains(hay: body, needle: "planned[account.uid]=met")
-    && not_contains(hay: body, needle: "command=")
-    && not_contains(hay: body, needle: "/home/gunbc-build")
-    && not_contains(hay: body, needle: "ssh-")
-}
-
-// A host with unobserved facts is `drift`, not silently `settled`: an unmet item keeps the
-// terminal off settled even though the observation succeeded.
-test fn an_unconverged_host_reports_drift_not_settled() -> Bool {
+// The header names the host and the probed_at context; the body names the terminal state.
+test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv1)
-  let o = serving_observed_from_reads(
-    passwd_text: Present { value: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n" },
-    group_text: Present { value: "gunbc-compute:x:1006:briansrls,gunbc-build\n" },
-    authorized_keys_text: serving_forced_command_line(host: operator_host_srv1),
-    store_root_present: Present { value: false },
-    store_staging_present: Present { value: false },
-    serve_binary_present: Present { value: false },
-    checkout_present: Present { value: false },
-    toolchain_present: Present { value: false },
-    account_name: d.account_name,
-    group_name: d.group_name,
-  )
-  serving_plan_terminal(plan: serving_plan(d: d, o: o)) == "drift"
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line))
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "2026-11-16T00:00:00Z", context_receipt: "fleet ssh receipt\n", assessment: a)
+      string_contains(s: body, pattern: "srv1.example") && string_contains(s: body, pattern: "remote-build-serving-plan: drift")
+    }
+  }
+}
+
+// LEAK CONTROL: the receipt must carry the unmet item by NAME but never the value of the
+// secret forced-command line (the candidate public key / command). A naive renderer that
+// printed deviations' observed/desired strings would leak the key into a CI artifact.
+test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line))
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "store.root") && string_contains(s: body, pattern: line) == false
+    }
+  }
+}
+
+// An already-converged host's receipt is the settled/adopt wording — the observe reports the
+// host as a no-op rather than planning to rebuild it.
+test fn a_converged_host_receipt_reports_settled() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: serving_observed_from_reads(
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(),
+      ))
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "remote-build-serving-plan: settled")
+    }
+  }
 }
