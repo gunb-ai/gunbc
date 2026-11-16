@@ -209,6 +209,19 @@ fn bash_fold_word_compound_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
         grammar_formal_terminal(identity: ^bash_fold_cmdsubst_close)
       ]
+    ),
+    // Bash manual, node "Arithmetic Evaluation": the expression is words, so
+    // the frame is the two sentinel-bounded terminals and a word list.
+    // Same flat shape as the ${parameter:?word} row: the kind tag and each
+    // text part are separate flat children; the frame is fixed terminals.
+    grammar_formal_production(
+      lhs: ^bash_production_fold_arith_word,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^bash_fold_word_kind_arith, binding: ^bash_fold_word_kind_arith),
+        grammar_formal_terminal(identity: ^bash_fold_arith_open),
+        grammar_formal_terminal_free(identity: ^bash_token_arith_expr),
+        grammar_formal_terminal(identity: ^bash_fold_arith_close)
+      ]
     )
   ]
 }
@@ -251,9 +264,11 @@ fn bash_fold_concat_parts_productions() -> List<FormalProduction> {
     bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_lit_word),
     bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_concat_word),
     bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_cmdsubst_word),
+    bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_arith_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_lit_word),
     bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_concat_word),
-    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_cmdsubst_word)
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_cmdsubst_word),
+    bash_fold_concat_parts_pair_production(word_kind: ^bash_production_fold_arith_word)
   ]
 }
 
@@ -270,6 +285,10 @@ fn bash_fold_command_words_leaf_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^bash_production_fold_command_words,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_cmdsubst_word)]
+    ),
+    grammar_formal_production(
+      lhs: ^bash_production_fold_command_words,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_arith_word)]
     )
   ]
 }
@@ -289,7 +308,8 @@ fn bash_fold_command_words_list_productions() -> List<FormalProduction> {
   [
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_lit_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_concat_word),
-    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_cmdsubst_word)
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_cmdsubst_word),
+    bash_fold_command_words_list_production(word_kind: ^bash_production_fold_arith_word)
   ]
 }
 
@@ -370,6 +390,13 @@ fn bash_fold_operand_assign_cmdsubst_production() -> FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_cmdsubst_word)
+  )
+}
+
+fn bash_fold_operand_assign_arith_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_operand,
+    rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_arith_word)
   )
 }
 
@@ -540,6 +567,7 @@ fn bash_fold_operand_productions() -> List<FormalProduction> {
     bash_fold_operand_assign_double_quoted_production(),
     bash_fold_operand_assign_concat_production(),
     bash_fold_operand_assign_cmdsubst_production(),
+    bash_fold_operand_assign_arith_production(),
     bash_fold_operand_and_then_production(),
     bash_fold_operand_or_else_production(),
     bash_fold_operand_pipe_production(),
@@ -647,6 +675,13 @@ fn bash_fold_assign_cmdsubst_top_production() -> FormalProduction {
   )
 }
 
+fn bash_fold_assign_arith_top_production() -> FormalProduction {
+  bash_fold_top_level_production(
+    binding: ^bash_production_fold_assign,
+    rule_rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_arith_word)
+  )
+}
+
 fn bash_fold_subshell_top_production() -> FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_subshell,
@@ -722,7 +757,8 @@ fn bash_fold_base_formal_productions() -> List<FormalProduction> {
           bash_fold_assign_lit_top_production(),
           bash_fold_assign_double_quoted_top_production(),
           bash_fold_assign_concat_top_production(),
-          bash_fold_assign_cmdsubst_top_production()
+          bash_fold_assign_cmdsubst_top_production(),
+          bash_fold_assign_arith_top_production()
         ],
         list_append(
           bash_fold_list_stmt_productions(),
@@ -797,6 +833,7 @@ data bash_fold_stmt_kind_sentinel: String = "\u{0002}"
 data bash_fold_word_lit_sentinel: String = "\u{0000}"
 data bash_fold_word_concat_sentinel: String = "\u{0003}"
 data bash_fold_word_cmdsubst_sentinel: String = "\u{0004}"
+data bash_fold_word_arith_sentinel: String = "\u{0010}"
 // The four word kinds this lane gained for the srv1 boot path, sentinelled the
 // same way: a kind marker that can never occur in emitted shell.
 data bash_fold_word_bare_sentinel: String = "\u{0005}"
@@ -843,6 +880,7 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_lit, text: bash_fold_word_lit_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_concat, text: bash_fold_word_concat_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_cmdsubst, text: bash_fold_word_cmdsubst_sentinel),
+      bash_fold_lex_rule(token_class: ^bash_fold_word_kind_arith, text: bash_fold_word_arith_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_bare, text: bash_fold_word_bare_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_array_expansion, text: bash_fold_word_array_expansion_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_param_error, text: bash_fold_word_param_error_sentinel),
@@ -856,6 +894,11 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_word_kind_exit_status, text: bash_fold_word_exit_status_sentinel),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_open, text: "$("),
       bash_fold_lex_rule(token_class: ^bash_fold_cmdsubst_close, text: ")"),
+      // "$(( " is four bytes and extends "$(", its strict prefix, so the lexer's
+      // longest-match picks the arithmetic opener wherever both classes are
+      // candidates; the ingest-side comment above names this arbitration.
+      bash_fold_lex_rule(token_class: ^bash_fold_arith_open, text: "$(( "),
+      bash_fold_lex_rule(token_class: ^bash_fold_arith_close, text: " ))"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_null, text: " 2>/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_and_stderr_null, text: " >/dev/null 2>&1"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_null, text: " >/dev/null"),
@@ -915,8 +958,8 @@ fn bash_ingest_only_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_in, text: bash_kw_in_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_do, text: bash_kw_do_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_done, text: bash_kw_done_text),
-      bash_fold_lex_rule(token_class: ^bash_ingest_kw_while, text: "while "),
-      bash_fold_lex_rule(token_class: ^bash_ingest_kw_until, text: "until "),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_while, text: bash_kw_while_text),
+      bash_fold_lex_rule(token_class: ^bash_ingest_kw_until, text: bash_kw_until_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_select, text: "select "),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_case, text: bash_kw_case_text),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_esac, text: bash_kw_esac_text),
@@ -1438,6 +1481,67 @@ fn bash_fold_operand_for_production() -> FormalProduction {
   )
 }
 
+// Bash manual, node "Looping Control Words": while and until run their body
+// while (respectively until) their condition's exit status is zero. Same
+// shape as the for production above: the kind tag is the fold sentinel, the
+// condition is an operand (the if arm's condition shape), and the body is a
+// stmt list between the do/done tokens the for loop already lexes.
+fn bash_fold_while_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_while,
+    rhs: [
+      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_while),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_while),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_do),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_stmt_list),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_done)
+    ]
+  )
+}
+
+fn bash_fold_operand_while_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_operand,
+    rhs: [
+      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_while),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_while),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_do),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_stmt_list),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_done)
+    ]
+  )
+}
+
+fn bash_fold_until_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_until,
+    rhs: [
+      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_until),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_until),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_do),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_stmt_list),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_done)
+    ]
+  )
+}
+
+fn bash_fold_operand_until_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^bash_production_fold_operand,
+    rhs: [
+      bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_until),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_until),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_do),
+      grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_stmt_list),
+      grammar_formal_terminal(identity: ^bash_ingest_kw_done)
+    ]
+  )
+}
+
 // Bash manual, node "Arrays": name=(word1 word2 …). Elements are words, so each
 // keeps its own quoting; the list shape is the same one a command's words use.
 fn bash_fold_array_assign_element_productions() -> List<FormalProduction> {
@@ -1840,7 +1944,11 @@ fn bash_fold_new_construct_productions() -> List<FormalProduction> {
           bash_fold_case_clause_block_production(),
           bash_fold_case_clause_inline_production(),
           bash_fold_for_production(),
-          bash_fold_operand_for_production()
+          bash_fold_operand_for_production(),
+          bash_fold_while_production(),
+          bash_fold_operand_while_production(),
+          bash_fold_until_production(),
+          bash_fold_operand_until_production()
         ],
         bash_fold_case_clause_body_productions()
       ),

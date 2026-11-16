@@ -1661,6 +1661,65 @@ fn bash_word_cmdsubst_target_model(body: String) -> TargetModel {
   )
 }
 
+// Bash manual, node "Arithmetic Evaluation": "$(( expression ))". The frame
+// is fixed and the expression is the bound middle; the characters an
+// expression may hold are checked by the builder's arithmetic alphabet
+// (v2.extdeps.languages.bash_build::bash_build_word_arith), never here.
+// The opener is spelled "$(( " with its trailing space, four bytes, so the
+// lexer's longest-match picks it over the command substitution's "$(", which
+// is its strict prefix -- the arbitration the ingest-side comment in
+// v2.extdeps.languages.bash_command_fold::bash_fold_lex_rules relies on.
+fn bash_word_arith_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_arith_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_arith_expr },
+    FixedToken { token_class: ^bash_token_arith_close }
+  ]
+}
+data bash_word_arith_tokens_carried: List<ConcreteSyntaxToken> = bash_word_arith_tokens()
+
+data bash_word_arith_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_arith_tokens_carried
+)
+
+fn bash_word_arith_source_text(expr: String) -> String {
+  concat("$(( ", concat(expr, " ))"))
+}
+
+fn bash_word_arith_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$(( ", class: ^bash_token_arith_open),
+    span(text: " ))", class: ^bash_token_arith_close)
+  ]))
+}
+data bash_word_arith_lex_carried: LexRules = bash_word_arith_lex()
+
+fn bash_word_arith_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_arith,
+    lhs: ^bash_production_word_arith,
+    tokens: bash_word_arith_tokens_carried,
+    emitted: bash_word_arith_emitted
+  )
+}
+data bash_word_arith_translation_rules_node_carried: Node = bash_word_arith_translation_rules_node()
+
+fn bash_word_arith_binding_spellings(expr: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_arith_expr, expr)
+}
+
+fn bash_word_arith_target_model(expr: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_arith_translation_rules_node_carried,
+    source_literal: ^bash_word_arith_source_literal,
+    production_name: ^bash_production_word_arith,
+    tokens: bash_word_arith_tokens_carried,
+    source_text: bash_word_arith_source_text(expr: expr),
+    lex: bash_word_arith_lex_carried,
+    binding_spellings: bash_word_arith_binding_spellings(expr: expr)
+  )
+}
+
 fn bash_stmt_subshell_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_subshell_open },
@@ -2807,6 +2866,8 @@ data bash_kw_in_text: String = " in "
 // reading words, never sees the 'do' keyword, and fails at 'done'.
 data bash_kw_do_text: String = "; do "
 data bash_kw_done_text: String = "; done"
+data bash_kw_while_text: String = "while "
+data bash_kw_until_text: String = "until "
 // The brace group's delimiters and the function definition's parameter-list
 // parens are spelled ONCE here. srv1's container command emits a function whose
 // compound-command is a brace group; the brace-group statement and the function
@@ -3281,6 +3342,131 @@ fn bash_stmt_for_target_model(name: String, words: String, body: String) -> Targ
 // ── array assignment ──────────────────────────────────────────────────────
 // Bash manual, node "Arrays": an array is created by
 //   name=(word1 word2 …)
+// Bash manual, node "Looping Control Words": `while list-1; do list-2; done`.
+// Same construction as the for loop above: the keyword text is a token of
+// this module (one data row shared with the ingest lex), the condition is the
+// serialized spelling of an operand, and the body is the ";"-joined stmt-list
+// spelling the for arm already produces between the same do/done tokens.
+fn bash_stmt_while_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_kw_while },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_cond },
+    FixedToken { token_class: ^bash_ingest_kw_do },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_body },
+    FixedToken { token_class: ^bash_ingest_kw_done }
+  ]
+}
+data bash_stmt_while_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_while_tokens()
+
+data bash_stmt_while_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_while_tokens_carried
+)
+
+fn bash_stmt_while_source_text(cond: String, body: String) -> String {
+  concat(bash_kw_while_text, concat(cond, concat(bash_kw_do_text, concat(body, bash_kw_done_text))))
+}
+
+fn bash_stmt_while_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_while_text, class: ^bash_ingest_kw_while),
+    span(text: bash_kw_do_text, class: ^bash_ingest_kw_do),
+    span(text: bash_kw_done_text, class: ^bash_ingest_kw_done)
+  ]))
+}
+data bash_stmt_while_lex_carried: LexRules = bash_stmt_while_lex()
+
+fn bash_stmt_while_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_while,
+    lhs: ^bash_production_stmt_while,
+    tokens: bash_stmt_while_tokens_carried,
+    emitted: bash_stmt_while_emitted
+  )
+}
+data bash_stmt_while_translation_rules_node_carried: Node = bash_stmt_while_translation_rules_node()
+
+fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_while_cond, cond),
+    ^bash_stmt_while_body,
+    body
+  )
+}
+
+fn bash_stmt_while_target_model(cond: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_while_translation_rules_node_carried,
+    source_literal: ^bash_stmt_while_source_literal,
+    production_name: ^bash_production_stmt_while,
+    tokens: bash_stmt_while_tokens_carried,
+    source_text: bash_stmt_while_source_text(cond: cond, body: body),
+    lex: bash_stmt_while_lex_carried,
+    binding_spellings: bash_stmt_while_binding_spellings(cond: cond, body: body)
+  )
+}
+
+// Bash manual, node "Looping Control Words": `until list-1; do list-2; done`.
+// The until loop is the while loop with the test's sense inverted; the
+// concrete frame is the same tokens, so this is the same construction over
+// the until keyword row.
+fn bash_stmt_until_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_ingest_kw_until },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_until_cond },
+    FixedToken { token_class: ^bash_ingest_kw_do },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_until_body },
+    FixedToken { token_class: ^bash_ingest_kw_done }
+  ]
+}
+data bash_stmt_until_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_until_tokens()
+
+data bash_stmt_until_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_until_tokens_carried
+)
+
+fn bash_stmt_until_source_text(cond: String, body: String) -> String {
+  concat(bash_kw_until_text, concat(cond, concat(bash_kw_do_text, concat(body, bash_kw_done_text))))
+}
+
+fn bash_stmt_until_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: bash_kw_until_text, class: ^bash_ingest_kw_until),
+    span(text: bash_kw_do_text, class: ^bash_ingest_kw_do),
+    span(text: bash_kw_done_text, class: ^bash_ingest_kw_done)
+  ]))
+}
+data bash_stmt_until_lex_carried: LexRules = bash_stmt_until_lex()
+
+fn bash_stmt_until_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_until,
+    lhs: ^bash_production_stmt_until,
+    tokens: bash_stmt_until_tokens_carried,
+    emitted: bash_stmt_until_emitted
+  )
+}
+data bash_stmt_until_translation_rules_node_carried: Node = bash_stmt_until_translation_rules_node()
+
+fn bash_stmt_until_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_until_cond, cond),
+    ^bash_stmt_until_body,
+    body
+  )
+}
+
+fn bash_stmt_until_target_model(cond: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_until_translation_rules_node_carried,
+    source_literal: ^bash_stmt_until_source_literal,
+    production_name: ^bash_production_stmt_until,
+    tokens: bash_stmt_until_tokens_carried,
+    source_text: bash_stmt_until_source_text(cond: cond, body: body),
+    lex: bash_stmt_until_lex_carried,
+    binding_spellings: bash_stmt_until_binding_spellings(cond: cond, body: body)
+  )
+}
+
 // The elements are words, so they keep whatever quoting their own kinds give
 // them — an element is never flattened into a raw string.
 fn bash_stmt_array_assign_tokens() -> List<ConcreteSyntaxToken> {

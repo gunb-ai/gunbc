@@ -40,6 +40,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_comment,
   bash_build_for,
   bash_build_function_def,
+  bash_build_while,
+  bash_build_until,
+  bash_build_word_arith,
   bash_build_word_array_expansion,
   bash_build_word_bare,
   bash_build_word_cmdsubst,
@@ -443,6 +446,107 @@ test fn for_refuses_a_loop_variable_that_is_not_a_name() -> Bool {
     words: [word("1")],
     body: [command([word("true")])]
   ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── while / until loops ────────────────────────────────────────────────────
+// Bash manual, node "Looping Control Words": while list-1; do list-2; done
+// and until list-1; do list-2; done. Before these builders existed, a runner
+// that needed a bounded poll had to write the loop as raw shell text (the
+// blocker on review 95948).
+
+data while_golden: String = "while true; do echo up; echo down; done\n"
+
+fn while_statement() -> Node {
+  match bash_build_while(
+    cond: command([word("true")]),
+    body: [
+      command([word("echo"), word("up")]),
+      command([word("echo"), word("down")])
+    ]
+  ) {
+    Present { value: n } => n
+    Absent => command([word("unreachable")])
+  }
+}
+
+test fn while_serializes() -> Bool {
+  emits(stmt: while_statement(), golden: while_golden)
+}
+
+// RED: an empty body is refused; there is no default.
+test fn while_refuses_an_empty_body() -> Bool {
+  match bash_build_while(cond: command([word("true")]), body: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+data until_golden: String = "until true; do echo up; done\n"
+
+test fn until_serializes() -> Bool {
+  match bash_build_until(
+    cond: command([word("true")]),
+    body: [command([word("echo"), word("up")])]
+  ) {
+    Present { value: n } => emits(stmt: n, golden: until_golden)
+    Absent => false
+  }
+}
+
+// ── arithmetic expansion ───────────────────────────────────────────────────
+// Bash manual, node "Arithmetic Evaluation": $(( expression )). The frame is
+// fixed; the expression holds only the arithmetic alphabet.
+
+
+// Command-position arithmetic is NOT claimed: the command-words fold refuses a
+// node this builder does not model as a formal nonterminal, so `echo $(( 1 ))`
+// fails closed at fold time. The shapes in service today -- counter
+// assignments like `N=$(( N - 1 ))` and the refuses below -- are claimed.
+// An arith word in command position is reachable only by a future row pairing
+// the word production with a formal nonterminal the builder can emit.
+
+fn arith_word(expr: String) -> Node {
+  match bash_build_word_arith(expr: expr) {
+    Present { value: n } => n
+    Absent => word("unreachable")
+  }
+}
+
+// The same word as an assignment value: the decrement of a poll counter, the
+// shape the fast-lane wait needs.
+data arith_assign_golden: String = "N=$(( N - 1 ))\n"
+
+test fn arith_assign_serializes() -> Bool {
+  emits(
+    stmt: bash_build_assign(name: "N", value: arith_word("N - 1")),
+    golden: arith_assign_golden
+  )
+}
+
+// RED: an expansion inside the expression would put a caller's raw bytes
+// behind arithmetic evaluation.
+test fn arith_refuses_a_dollar_in_the_expression() -> Bool {
+  match bash_build_word_arith(expr: "$(rm -rf /)") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: empty is refused; there is no default.
+test fn arith_refuses_an_empty_expression() -> Bool {
+  match bash_build_word_arith(expr: "") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: characters outside the arithmetic alphabet -- a command separator, a
+// quote, a redirect -- never reach the frame.
+test fn arith_refuses_a_semicolon_in_the_expression() -> Bool {
+  match bash_build_word_arith(expr: "1 ; rm -rf /") {
     Absent => true
     Present { value: _ } => false
   }
