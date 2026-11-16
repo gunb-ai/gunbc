@@ -1,18 +1,20 @@
 module test.claim.compute.host_capacity_seal_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.measure { ByteSize, kibibyte_count, kibibyte_from_byte_size_floor }
+import std.measure { ByteSize, byte_size, kibibyte_count, kibibyte_from_byte_size_floor }
 import product.host_identity { HostIdentity }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import gunbc.compute.host_capacity {
-  compute_root, compute_capacity_root, host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved,
-  ComputeSubjectHostUnresolved, ComputeBuildPool, compute_capacity_home_root,
+  compute_root, compute_capacity_root, compute_capacity_root_carrier, host_capacity_subject, host_capacity_subject_in,
+  host_capacity_home_for_host, host_capacity_build_seat, capacity_seat_for_reservation,
+  host_capacity_pool_appropriation_carrier, HostCapacityHomeFound, HostCapacityHomeUnknown,
+  ComputeSubjectResolution, ComputeSubjectResolved,
+  ComputeSubjectHostUnresolved, ComputeBuildPool,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_ledger_home, host_capacity_carrier_of, compute_build_memory_ceiling_default }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max, host_build_pool_reservation, build_pool_carve_is_due }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
 // THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
@@ -22,9 +24,11 @@ import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 // outside the declaring file and asserts the refusal on the real acceptance path: a forged literal and a forged
 // cast are EXACTLY ONE SoleConstructorViolation on ComputeCapacitySubject; the mint handed a path adds at least one
 // blocking diagnostic beyond a baseline importing the same closure. Claimed rung: a consumer cannot be handed a
-// forged subject or one over the wrong root. NOT claimed: that business code cannot read subject.root (field
-// reads are not module-private; the declared residual gunbc.recurring_failure_mode
-// a_slot_store_is_built_over_a_literal_path_by_any_module, recorded below by an expecting-red probe).
+// forged subject or one over the wrong root. NOT claimed: that business code cannot read the carrier's public
+// fields -- the subject carries a narrow HostCapacityHome whose instance_root the ledger legitimately needs to open
+// its store, and field reads are not module-private (the declared residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, recorded below by the
+// root_out probe that reaches `.instance` off the mint result and is refused).
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
@@ -35,11 +39,11 @@ fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> Cens
 }
 
 data capacity_baseline_source: String = "module probe_capacity_baseline\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
-data capacity_forged_literal_source: String = "module probe_capacity_literal\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance, p: PartitionId) -> ComputeCapacitySubject {\n  ComputeCapacitySubject { instance: i, partition: p }\n}\n"
+data capacity_forged_literal_source: String = "module probe_capacity_literal\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, host_capacity_carrier_of }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance, p: PartitionId) -> ComputeCapacitySubject {\n  ComputeCapacitySubject { home: host_capacity_carrier_of(instance: i), partition: p }\n}\n"
 data capacity_forged_cast_source: String = "module probe_capacity_cast\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(r: NonEmptyStr) -> ComputeCapacitySubject {\n  r as ComputeCapacitySubject\n}\n"
 data capacity_path_minter_source: String = "module probe_capacity_path_minter\nimport std.types { NonEmptyStr }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  \"the subject mint takes no path; the deleted path mint is unreachable\"\n}\n"
-data capacity_root_out_source: String = "module probe_capacity_root_out\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool).instance.instance_id as NonEmptyStr\n}\n"
-data capacity_lawful_source: String = "module probe_capacity_lawful\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool)\n}\n"
+data capacity_root_out_source: String = "module probe_capacity_root_out\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, host_capacity_carrier_of }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  host_capacity_subject_in(requesting: i, host_home: host_capacity_carrier_of(instance: i), pool: ComputeBuildPool).instance.instance_id as NonEmptyStr\n}\n"
+data capacity_lawful_source: String = "module probe_capacity_lawful\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, host_capacity_carrier_of }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_home: host_capacity_carrier_of(instance: i), pool: ComputeBuildPool)\n}\n"
 
 test fn a_forged_capacity_subject_literal_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: capacity_forged_literal_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 1 }))
@@ -57,11 +61,12 @@ test fn no_capacity_subject_mint_takes_a_path() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: capacity_path_minter_source, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_root"), holds: fn(n) { n == 1 }))
 }
 
-// WHAT THE SEAL DOES NOT CLOSE, restated for the new record: ComputeCapacitySubject no longer carries a
-// root at all (it was the deleted path mint's input), so a root is not reachable through a subject. What IS
-// reachable is the business key -- the resolved instance -- and a holder could rebuild a path from it: the
-// same declared residual (field reads are not module-private), now on the instance rather than on a root.
-test fn no_root_is_reachable_through_a_capacity_subject_and_the_instance_is() -> ProcessExit {
+// WHAT THE SEAL DOES NOT CLOSE, restated for the carrier: the mint returns a ComputeCapacityLedger (subject +
+// appropriation); the subject carries the narrow home carrier, whose instance_root the ledger legitimately
+// needs to open its store. Fields are not module-private, so a holder reads the carrier's public fields -- the
+// declared residual -- but cannot FABRICATE the subject (sealed above). root_out reaches `.instance` off the
+// mint result, which is not a field of ComputeCapacityLedger, and is refused: the 1 blocking diagnostic.
+test fn the_mint_result_exposes_only_its_public_carrier_fields() -> ProcessExit {
   census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n == 1 }))
 }
 
@@ -81,39 +86,82 @@ test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member
   (compute_capacity_root(host_instance: instance) as String) == join([compute_root(instance: instance) as String, "/capacity"], "")
 }
 
-// THE LEDGER IS FOUND BY HOST, NOT THROUGH A DASHBOARD INSTANCE (remote-build PR 4). A host on the
-// roster resolves its ledger home THROUGH host_capacity_subject, which keys on host identity and NOT on
-// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host. This is the DISCRIMINATING
-// control for the host-scoped home: srv3 and srv4 resolve NO dashboard instance, so if the subject still
-// walked the old instance path they would come back ComputeSubjectHostUnresolved and this would be
-// false; srv2 resolves a /home/briansrls dashboard instance, so on the old path its ledger would root
-// under /home and this would be false. Every roster host now resolves to the one host home at
-// compute_capacity_home_root/compute/capacity. It is dry -- host_capacity_subject is a pure function, so
-// unlike the wet witness this runs green on its own -- and it asks nothing of the host's real filesystem.
-test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() -> Bool {
-  remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
-    ComputeSubjectHostUnresolved { host: _ } => false
-    ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
-  })
+// THE ADMITTED HOST'S LEDGER IS THE HOST HOME, NOT ITS OWN DASHBOARD INSTANCE. srv1 is the only host on
+// the roster today (PR 5 admits the others as it creates and reads back their homes). Its dashboard
+// instance ALSO lives at /opt/gunbc, so a root check alone cannot tell the host home from a walk of
+// srv1's dashboard instance -- they share the root. The identity fields tell them apart: host home
+// carries actuator_host == the host ("srv1"); srv1's live dashboard instance is actuated from the
+// operator laptop ("macbook"). host_capacity_home_for_host is the one table; for an admitted host it MUST
+// return the host home carrier. srv1 deliberately does NOT migrate: its ledger home is byte-identical to
+// its own dashboard instance on every field the ledger reads (root /opt/gunbc, host_identity srv1, the
+// default build ceiling) -- that identity is the no-regression bar the compute provider depends on, pinned
+// here. (The DISCRIMINATING control -- a rostered host resolving by host, not by a walk -- is the walk
+// witness host_capacity_home_walk_witness, which uses srv2's real /home-rooted instance so a fall-back to
+// the instance is caught by a root that actually differs.)
+test fn an_admitted_host_resolves_its_ledger_to_the_host_carrier_not_its_dashboard_instance() -> Bool {
+  let default_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: compute_build_memory_ceiling_default))
+  match host_capacity_home_for_host(host: "srv1" as NonEmptyStr) {
+    HostCapacityHomeUnknown { host: _ } => false
+    HostCapacityHomeFound { home: h } =>
+      ((h.instance_root as String) == "/opt/gunbc")
+        && ((h.host_identity as String) == "srv1")
+        && kibibyte_count(k: kibibyte_from_byte_size_floor(b: h.compute_build_memory_ceiling)) == default_kib
+  }
 }
 
-// A HOST WITH NO DASHBOARD INSTANCE STILL HAS A DECLARED BUILD POOL, DERIVED FROM THE RUNNER CARVE (PR 4,
-// item 2). srv3/srv4 carry no HostDashboardInstance, so their pool is not read off a dashboard instance's
-// ceilings -- it is the one CI runner slot host_build_pool_reservation carves, reached through
-// host_capacity_build_seat and re-multiplied by the pool's seats. The appropriation must equal one
-// gunbc_runner_slot_memory_max to the KiB. srv1, which is NOT carved, must differ -- otherwise the
-// "per-host" in per-host appropriation would be vacuous (one number for every host). A hand-copied figure
-// would drift from the slot; this reads the slot itself.
-test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot() -> Bool {
+// A HOST OFF THE ROSTER IS NOT CARVED, SO NO CI MEMORY IS LOST (PR 4, review 95809 -- the conservation
+// invariant). The build-pool carve (gunbc.runner runner_slot_desired host_build_pool_reservation) is gated
+// on the host being ON the serving roster AND resolving no dashboard instance. srv3/srv4 are not yet admitted
+// (PR 5 admits each as it creates and reads back its /opt/gunbc home), so NOTHING is carved for them: their
+// reservation is byte_size(0) and their seat is the host default ceiling -- NOT a phantom carved slot. This
+// is the red control for the carve gate: were the carve an ungated srv3/srv4 test (as it was), their
+// reservation would come back one slot while no rostered pool held it, this cell's zero-check would fail,
+// and a full slot per host would be lost to neither side. When PR 5 admits srv3/srv4 the carve and the pool
+// appropriation fire in that same change -- host_capacity_build_seat then reads the carved slot and the pool
+// equals it (the derived-once mechanism host_capacity_build_seat -> host_build_pool_reservation).
+test fn a_host_off_the_roster_is_not_carved_and_keeps_its_full_ci_width() -> Bool {
+  let default_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: compute_build_memory_ceiling_default))
+  kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv3" as HostIdentity))) == 0
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv4" as HostIdentity))) == 0
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv3" as HostIdentity))) == default_kib
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv4" as HostIdentity))) == default_kib
+}
+
+// THE POSITIVE CASE, PROVEN BEFORE PR 5 EXERCISES IT (manager, review 95809). The carve rule
+// (build_pool_carve_is_due) and the seat derivation (capacity_seat_for_reservation) are PURE over the host
+// facts / the reservation, so both are witnessed even though PR 4 carves nothing. A host that IS on the
+// roster and carries no ledger carves exactly one slot; a rostered host that DOES carry its ledger (srv1)
+// and an off-roster host (srv3 today) do NOT. And a full carved slot becomes a seat that, split across the
+// pool's seats, is re-multiplied by host_capacity_pool_appropriation back to EXACTLY the carved slot -- the
+// slot leaves CI and is held by the ledger pool. PR 5's admission of srv3/srv4 (rostered, no dashboard
+// instance) flips THIS proven rule, so it is not an unexercised one when it lands.
+test fn a_rostered_host_with_no_instance_carves_one_slot_and_the_seat_is_derived() -> Bool {
   let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  let srv3_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv3" as HostIdentity), pool: ComputeBuildPool) {
-    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
-    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
+  let carved_seat = capacity_seat_for_reservation(reservation: gunbc_runner_slot_memory_max)
+  let home = host_capacity_ledger_home(host: "srv3" as NonEmptyStr, build_seat: carved_seat)
+  let pool_kib = kibibyte_count(k: host_capacity_pool_appropriation_carrier(home: home, pool: ComputeBuildPool))
+  build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && !build_pool_carve_is_due(rostered: true, carries_own_ledger: true)
+    && !build_pool_carve_is_due(rostered: false, carries_own_ledger: false)
+    && one_slot_kib > 0
+    && pool_kib == one_slot_kib
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: carved_seat)) < one_slot_kib
+}
+
+// A NON-ROSTER HOST STILL RESOLVES ITS SUBJECT THROUGH ITS DASHBOARD INSTANCE (PR 4, review fix --
+// review 38602 / artifact 95775). host_capacity_home_for_host is ONE table covering EVERY host: a roster
+// host's home is the /opt/gunbc host home (the two cells above); every OTHER host keeps the dashboard
+// instance it resolved BEFORE this PR. macbook (host_identity "macbook"; instance_id
+// macbook_local_dashboard_id) is off-roster, so its ledger resolves through dashboard_instance_for_host
+// and lands under ITS OWN instance root, NOT the host home. This pins the defect clever-raven caught: the
+// first cut returned ComputeSubjectHostUnresolved for any host off the roster, which would have made the
+// local compute provider on macbook refuse. If host_capacity_subject refuses a non-roster host that has a
+// dashboard instance, this cell reds -- while the two roster cells above stay green -- so BOTH arms of the
+// one table are pinned, and "found by host" cannot silently collapse back to "found only on the roster."
+test fn a_host_off_the_roster_still_resolves_a_subject_through_its_instance() -> Bool {
+  match host_capacity_home_for_host(host: "macbook" as NonEmptyStr) {
+    HostCapacityHomeUnknown { host: _ } => false
+    HostCapacityHomeFound { home: h } =>
+      (compute_capacity_root_carrier(home: h) as String) != "/opt/gunbc/compute/capacity"
   }
-  let srv1_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv1" as HostIdentity), pool: ComputeBuildPool) {
-    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
-    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
-  }
-  one_slot_kib > 0 && srv3_app == one_slot_kib && srv1_app != srv3_app
 }

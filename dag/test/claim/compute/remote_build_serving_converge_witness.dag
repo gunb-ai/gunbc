@@ -21,6 +21,7 @@ import gunbc.compute.remote_build_serving_setup {
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
 }
+import extdeps.access.posix { file_mode_octal }
 import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_cause }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
@@ -84,12 +85,15 @@ fn store_mode_refused(item: String) -> ObservationAttempt<String, ServingLegFail
 fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
   serving_observed_from_reads(
     elevation: est_elevation(),
+    account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
     group: est_s(converged_groups()),
     authorized_keys: est_s(dline),
     store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
-    serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -190,12 +194,15 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
     Present { value: line } => {
       let a = serving_assess(d: d, o: serving_observed_from_reads(
         elevation: est_elevation(),
+        account_name: d.account_name,
         passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
-        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       ), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)

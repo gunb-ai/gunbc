@@ -20,15 +20,28 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret, String }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.algebra { length, skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.types",
+      decl_name: "RedfishPowerState",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = ExternalAuthority {

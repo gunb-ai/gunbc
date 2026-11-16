@@ -33,6 +33,7 @@ import gunbc.compute.remote_build_serving_setup {
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
+  serving_passwd_uid, serving_gate_and, serving_account_presence_gate,
 }
 import extdeps.access.posix { file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
@@ -283,23 +284,65 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and
   // serving_observed_from_reads forces them refused + serving_assess folds the elevation unknown => Indeterminate.
   let elevation = serving_elevation_leg(target: target, context: context)
+  let passwd = serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd"))
+  let group = serving_leg_read(item: "group.members", target: target, context: context, argv: serving_cat_sudo("/etc/group"))
+  let authorized_keys = serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path)
+  let store_root = serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root)
+  let store_staging = serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging)
+  // The store dirs' octal modes, read alongside their presence: a drifted mode on a present directory
+  // is a proved deviation, not a presence-check pass (review 95935). The stat legs stand on their own.
+  let store_root_mode = serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root))
+  let store_staging_mode = serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging))
+  let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary)
+  let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir)
+  let toolchain = serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home)
+  // THE DEPENDENT READS (finding A1, side-chat review of 2026-11-16): each value leg runs only under a
+  // subject its presence leg CONFIRMED PRESENT — a confirmed-absent subject (a fresh host: no serve
+  // binary, no checkout, no account to sudo -u) has nothing to read, so the leg is not attempted and
+  // Absent is handed down, which serving_observed_from_reads turns into SubjectValueSkipped against the
+  // gate it re-derives from the SAME attempts (a skip the gates do not justify is fail-closed there).
+  // An unread gate (elevation refused, passwd unread) runs the read anyway: it is marked unread either
+  // way, and a real read beats a skip nobody proved.
+  let serve_binary_value = match serve_binary {
+    ObservationEstablished { observed: true } => Present { value: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: d.serve_binary) }
+    _ => Absent
+  }
+  let revision_gate = serving_gate_and(checkout, serving_account_presence_gate(account_name: d.account_name, passwd: passwd))
+  let checkout_revision_value = match revision_gate {
+    ObservationEstablished { observed: false } => Absent
+    _ => Present { value: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name) }
+  }
+  // A3: the file-mode legs, gated the same way — stat runs only under a confirmed-present file. The
+  // authorized_keys reader mints the established empty string exactly when the file was confirmed
+  // absent, so established-non-empty IS the subject; a refused content read runs the stat anyway.
+  let authorized_keys_mode_value = match authorized_keys {
+    ObservationEstablished { observed: t } => match t != "" {
+      true => Present { value: serving_leg_stat(item: "authorized_keys.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.authorized_keys_path)) }
+      false => Absent
+    }
+    ObservationRefused { cause: _ } => Present { value: serving_leg_stat(item: "authorized_keys.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.authorized_keys_path)) }
+  }
+  let serve_binary_mode_value = match serve_binary {
+    ObservationEstablished { observed: true } => Present { value: serving_leg_stat(item: "serve.binary.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.serve_binary)) }
+    _ => Absent
+  }
   let o = serving_observed_from_reads(
     elevation: elevation,
-    passwd: serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd")),
-    group: serving_leg_read(item: "group.members", target: target, context: context, argv: serving_cat_sudo("/etc/group")),
-    authorized_keys: serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path),
-    store_root: serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root),
-    store_staging: serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging),
-    // The octal MODE of each store directory, read by the same stat route the ledger rows use (stat_mode_argv,
-    // %a). A present directory at the wrong mode is now a proved deviation routing to EnsureDirectory, where
-    // before the only store check was `test -d` — presence could not see a mode drift (review 95935).
-    store_root_mode: serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root)),
-    store_staging_mode: serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging)),
-    serve_binary: serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary),
-    checkout: serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir),
-    toolchain: serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home),
-    serve_binary_sha256: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: d.serve_binary),
-    checkout_revision: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name),
+    account_name: d.account_name,
+    passwd: passwd,
+    group: group,
+    authorized_keys: authorized_keys,
+    store_root: store_root,
+    store_staging: store_staging,
+    store_root_mode: store_root_mode,
+    store_staging_mode: store_staging_mode,
+    serve_binary: serve_binary,
+    checkout: checkout,
+    toolchain: toolchain,
+    serve_binary_sha256: serve_binary_value,
+    checkout_revision: checkout_revision_value,
+    authorized_keys_mode: authorized_keys_mode_value,
+    serve_binary_mode: serve_binary_mode_value,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
   )

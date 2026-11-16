@@ -15,7 +15,9 @@ module gunbc.compute.remote_build_serving_setup
 // EVERY FIELD IS READ FROM AN EXISTING AUTHORITY, never restated as a literal:
 //   account  -> gunbc.fleet.fleet_posix_accounts (uid/gid/shell/home/supplementary)
 //   paths    -> gunbc.compute.remote_build::remote_build_serving_instance
-//   ledger   -> gunbc.compute.host_capacity::host_capacity_home_directories (PR 4)
+//   ledger   -> gunbc.compute.host_capacity::host_capacity_home_directories_admitted (PR 4's module;
+//              the ADMITTED spelling — see remote_build_serving_desired and finding A2 of the
+//              side-chat review of 2026-11-16: a candidate host's serving posture is the POST-admission one)
 //   ak line  -> gunbc.compute.remote_build_serve forced-command render (per host)
 // The serve-time principal check (remote_build_serve_principal) is the contract the
 // account shape must satisfy; a host whose forced-command line will not render is
@@ -37,7 +39,7 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_supplementary_groups,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
-import gunbc.compute.host_capacity { host_capacity_home_directories }
+import gunbc.compute.host_capacity { host_capacity_home_directories_admitted }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
@@ -100,6 +102,13 @@ type ServingDeviation
   // and each routes to its own EnsureDirectory at the declared mode (review 95935).
   | StoreRootModeMismatch { path: String, declared: FileMode, observed: FileMode }
   | StoreStagingModeMismatch { path: String, declared: FileMode, observed: FileMode }
+  // The two FILE modes the observe used to be blind to: authorized_keys and the serve binary were
+  // compared on their BYTES only, so a world-writable file with the right bytes reported settled
+  // (side-chat review of 2026-11-16, finding A3). Each is a stat-mode deviation under a confirmed-present
+  // file (its mode leg, ServingSubjectValue, is read only then); a drift routes to the write that
+  // installs the file AT the declared mode, so remediating the content also fixes the mode.
+  | AuthorizedKeysModeMismatch { path: String, declared: FileMode, observed: FileMode }
+  | ServeBinaryModeMismatch { path: String, declared: FileMode, observed: FileMode }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -121,6 +130,8 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     AccountShellMismatch { desired: _, observed: _ } => "account.shell"
     StoreRootModeMismatch { path: _, declared: _, observed: _ } => "store.root.mode"
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => "store.staging.mode"
+    AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => "authorized_keys.mode"
+    ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => "serve.binary.mode"
   }
 }
 
@@ -150,6 +161,8 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     AccountShellMismatch { desired, observed } => concat("account.shell (want ", desired, ", have ", observed, ")")
     StoreRootModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     StoreStagingModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    AuthorizedKeysModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    ServeBinaryModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
   }
 }
 
@@ -197,6 +210,127 @@ type ServingLedgerOutcome {
   deviations: List<ServingDeviation>
   unknowns: List<ServingUnknown>
 }
+
+// A VALUE leg that exists only UNDER a subject whose presence the observe CONFIRMED: with no subject
+// there is nothing to read, and that absence is already the presence deviation (PresentAbsent) that
+// drives the plan. The dependency — a binary's sha256 under the binary; the checkout's revision under
+// BOTH the checkout AND the account (the read runs `sudo -u <account>` and fails exactly like a missing
+// subject when the account does not exist); authorized_keys' and the serve binary's stat MODES under
+// their files — is modeled HERE, in the observed type, not as ad hoc ifs in the comparators (side-chat
+// review of 2026-11-16, finding A1). serving_observed_from_reads constructs the arm from the gates the
+// reads returned; the comparators see only the arm:
+//   CONFIRMED-ABSENT subject  -> SubjectValueSkipped: no unknown, the presence deviation alone drives
+//                                the plan (a FRESH HOST is Diverged and runnable, never Indeterminate).
+//   CONFIRMED-PRESENT subject -> SubjectValueRead: the value was read or its read refused — a refused
+//                                read is an unknown, so 'installed but the hash is unreadable' stays
+//                                Indeterminate (fail_closed).
+//   UNREAD subject presence   -> SubjectValueUnread: unknown too; an unread subject never settles its
+//                                value.
+type ServingSubjectValue
+  = SubjectValueSkipped
+  | SubjectValueRead { read: ObservationAttempt<String, ServingLegFailure> }
+  | SubjectValueUnread { cause: String }
+
+// THE GATE MACHINERY, kept beside the type it feeds. A gate is an established-Bool observation:
+// established-false skips the value leg, established-true demands it, refused marks it unread.
+fn serving_gate_and(a: ObservationAttempt<Bool, ServingLegFailure>, b: ObservationAttempt<Bool, ServingLegFailure>) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match a {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: x } => match b {
+      ObservationRefused { cause: c } => ObservationRefused { cause: c }
+      ObservationEstablished { observed: y } => ObservationEstablished { observed: x && y }
+    }
+  }
+}
+
+// The account-presence gate off the passwd leg: a read-back table carrying the account establishes
+// true; a read-back table WITHOUT it establishes false (the `sudo -u` revision read fails before it
+// starts); a refused read leaves the gate unread.
+fn serving_account_presence_gate(account_name: String, passwd: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match passwd {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: t } => match serving_passwd_uid(text: Present { value: t }, name: account_name) {
+      Present { value: _ } => ObservationEstablished { observed: true }
+      Absent => ObservationEstablished { observed: false }
+    }
+  }
+}
+
+// The authorized_keys-presence gate off the content leg: the reader mints the established empty
+// string exactly when the file was CONFIRMED absent, so established-empty is 'no subject' — and the
+// content deviation (the forced line is missing) fires the write that installs the file AT the declared
+// mode, so skipping the mode leg there self-heals. A whitespace-free non-empty content establishes the
+// subject; a refused read leaves the gate unread.
+fn serving_authorized_keys_presence_gate(authorized_keys: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match authorized_keys {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: t } => ObservationEstablished { observed: t != "" }
+  }
+}
+
+// THE ONE constructor of a value leg from its gate + the raw read. Under a confirmed-present subject
+// a MISSING read attempt is fail-closed: the leg counts as a refused read (unknown), never as settled.
+fn serving_subject_value_leg(item: String, gate: ObservationAttempt<Bool, ServingLegFailure>, read: ObservationAttempt<String, ServingLegFailure>?) -> ServingSubjectValue {
+  match gate {
+    ObservationEstablished { observed: false } => SubjectValueSkipped
+    ObservationEstablished { observed: true } => match read {
+      Absent => SubjectValueRead { read: ObservationRefused { cause: ServingLegFailure { item: item, cause: "value leg never read under a confirmed-present subject" } } }
+      Present { value: r } => SubjectValueRead { read: r }
+    }
+    ObservationRefused { cause: c } => SubjectValueUnread { cause: c.cause }
+  }
+}
+
+// The pin compare over a value leg: a skipped leg mints neither deviation nor unknown (the subject's
+// own presence deviation drives the plan); an unread leg (either flavor) mints its unknown under the
+// leg's item; a read leg falls to the ONE string comparator, so a match is never a deviation and a
+// mismatch always is.
+fn serving_subject_value_deviation(item: String, expected: String, leg: ServingSubjectValue) -> List<ServingDeviation> {
+  match leg {
+    SubjectValueSkipped => []
+    SubjectValueUnread { cause: _ } => []
+    SubjectValueRead { read: r } => serving_expected_deviation(item: item, expected: expected, leg: r)
+  }
+}
+
+fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List<ServingUnknown> {
+  match leg {
+    SubjectValueSkipped => []
+    SubjectValueRead { read: ObservationEstablished { observed: _ } } => []
+    SubjectValueRead { read: ObservationRefused { cause: c } } => [ServingUnknown { item: item, cause: c.cause }]
+    SubjectValueUnread { cause: c } => [ServingUnknown { item: item, cause: c }]
+  }
+}
+
+// The stat-mode compare over a value leg, reusing the SAME two-way decision the store dirs use
+// (serving_store_mode_check's StoreModeCheck): a skipped leg is unconcerned; an unread leg (either
+// flavor) and a present subject whose octal text is missing or unparseable are unknowns; a parseable
+// mode differing from the declared one is the caller's mode deviation. One decision, three subjects
+// (store dirs, authorized_keys, the serve binary) — no per-subject copies of the parse-and-compare.
+fn serving_subject_mode_check(leg: ServingSubjectValue, declared: FileMode, subject: String) -> StoreModeCheck {
+  match leg {
+    SubjectValueSkipped => StoreModeCheckUnconcerned
+    SubjectValueUnread { cause: c } => StoreModeCheckUnknown { cause: c }
+    SubjectValueRead { read: r } => match r {
+      ObservationRefused { cause: c } => StoreModeCheckUnknown { cause: c.cause }
+      ObservationEstablished { observed: text } =>
+        if text == "" {
+          StoreModeCheckUnknown { cause: concat(subject, " reported present but its mode was unreadable") }
+        } else {
+          match file_mode_of_octal_text(text: text) {
+            Absent => StoreModeCheckUnknown { cause: concat(subject, "'s mode ", text, " is not an octal mode") }
+            Present { value: got } =>
+              if file_mode_octal(mode: got) == file_mode_octal(mode: declared) {
+                StoreModeCheckMet
+              } else {
+                StoreModeCheckDrifted { observed: got }
+              }
+          }
+        }
+    }
+  }
+}
+
 
 // Evidence minted for a host judged against the declaration. All fields optional so the
 // arm that cannot reach a value mints no default (std.goal_assessment HostTopologyEvidence
@@ -351,6 +485,17 @@ fn serving_store_dir_mode_octal(d: RemoteBuildServingDesired) -> String {
   file_mode_octal(mode: d.store_dir_mode)
 }
 
+// The two A3 file-mode declarations as chmod octals, spelled from the same FileMode authority the
+// assess compares against — the witnesses derive "correct" mode fixtures from these, never a bare
+// literal (single_authority, side-chat review of 2026-11-16).
+fn serving_authorized_keys_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.authorized_keys_mode)
+}
+
+fn serving_serve_binary_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.serve_binary_mode)
+}
+
 // The account's login shell as an observation of its passwd row's 7th field (the field's authority
 // is extdeps.linux.etc_passwd::EtcPasswdEntry.shell). Mirror of serving_passwd_uid/gid: none means
 // the read was refused OR the account row is absent — the caller only consults it once the account
@@ -426,7 +571,7 @@ fn serving_store_mode_check(present: ObservationAttempt<Bool, ServingLegFailure>
 fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired? {
   let instance = remote_build_serving_instance(host: host)
   let home = fleet_posix_remote_build_home() as String
-  let ledger = host_capacity_home_directories(host: host)
+  let ledger = host_capacity_home_directories_admitted(host: host)
   let service_user_opt = serving_ledger_service_user(dirs: ledger)
   // A host with NO capacity home directory has no ledger service user to name. The "" it would
   // otherwise fall back to is a fabricated member (fail_closed, review 95884): it would flow into
@@ -518,12 +663,25 @@ type ServingObserved {
   checkout: ObservationAttempt<Bool, ServingLegFailure>
   toolchain: ObservationAttempt<Bool, ServingLegFailure>
   // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
-  // the apply would act on, so the observe reads these three host facts and compares them to
-  // the pin. An unread leg is an ObservationRefused -> a ServingUnknown (GoalIndeterminate),
-  // NEVER a deviation the apply would write against a host nobody read.
-  serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>
-  checkout_revision: ObservationAttempt<String, ServingLegFailure>
+  // the apply would act on, so the observe reads these host facts and compares them to
+  // the pin. Each VALUE leg exists only under its CONFIRMED-PRESENT subject (see
+  // ServingSubjectValue): a confirmed-absent subject SKIPS its value read — no unknown, the presence
+  // deviation alone drives the plan, so a FRESH HOST is Diverged and runnable, never Indeterminate
+  // (finding A1, side-chat review of 2026-11-16). A refused read under a confirmed-present subject
+  // ('installed, but the hash is unreadable') is an ObservationRefused -> a ServingUnknown
+  // (GoalIndeterminate), NEVER a deviation the apply would write against a host nobody read.
+  serve_binary_sha256: ServingSubjectValue
+  // the checkout's own revision, read by `git -C <dir> rev-parse HEAD` AS ITS OWNER; compared to the
+  // dispatched revision the pin carries. Read only under BOTH the checkout and the account — the read
+  // runs `sudo -u <account>` and fails like a missing subject when the account does not exist (A1).
+  checkout_revision: ServingSubjectValue
   target_arch: ObservationAttempt<String, ServingLegFailure>
+  // A3 (side-chat review of 2026-11-16): the two FILE modes the observe was blind to —
+  // authorized_keys and the serve binary were byte-compared only, so a world-writable file with the
+  // right bytes reported settled. Each is a stat-mode value leg under its file: read only under a
+  // confirmed-present file, and a refused read under a present subject is an unknown, never a pass.
+  authorized_keys_mode: ServingSubjectValue
+  serve_binary_mode: ServingSubjectValue
   // the host_capacity ledger, read per row: one entry per ledger directory the observe read,
   // keyed BY PATH. A desired row with NO entry here is an unknown (nobody read it), NOT an
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
@@ -816,17 +974,21 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       // writes toward a host whose fact nobody read. host.arch is a deviation on mismatch and
       // converge_plan has no arm for it, so 5(b)'s apply treats it as unhandled and REFUSES —
       // the correct outcome: a wrong-arch executor is never silently converged by a write.
+      // The two SUBJECT-GATED legs (findings A1/A3, side-chat review of 2026-11-16) fold their
+      // unknowns through serving_subject_value_unknown: a SKIPPED leg (confirmed-absent subject — a
+      // fresh host) mints nothing, an UNREAD leg (subject presence unread) and a refused read under a
+      // present subject each mint one, and only target_arch (read on any host) keeps the plain fold.
       let pin_unknowns = concat(
         concat(
-          match o.serve_binary_sha256 { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "serve_binary.sha256", cause: c.cause }] },
-          match o.checkout_revision { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout.revision", cause: c.cause }] },
+          serving_subject_value_unknown(item: "serve_binary.sha256", leg: o.serve_binary_sha256),
+          serving_subject_value_unknown(item: "checkout.revision", leg: o.checkout_revision),
         ),
         match o.target_arch { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "host.arch", cause: c.cause }] },
       )
       let pin_deviations = concat(
         concat(
-          serving_expected_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
-          serving_expected_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
+          serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
+          serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
         ),
         serving_expected_deviation(item: "host.arch", expected: pin.executor_arch, leg: o.target_arch),
       )
@@ -839,17 +1001,36 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       let root_mode_check = serving_store_mode_check(present: o.store_root, mode: o.store_root_mode, declared: d.store_dir_mode)
       let staging_mode_check = serving_store_mode_check(present: o.store_staging, mode: o.store_staging_mode, declared: d.store_dir_mode)
       let shell_check = serving_account_shell_check(d: d, passwd: o.passwd)
+      // A3 (side-chat review of 2026-11-16): the two file modes the byte-only compares were blind to.
+      // Each is a gated value leg judged with the same parse-and-compare; a drift routes to the write
+      // that installs the file AT the declared mode (converge_step sends AuthorizedKeysModeMismatch to
+      // EnsureAuthorizedKeys and ServeBinaryModeMismatch to InstallServeBinary), and an unread mode
+      // under a present file is an unknown — a file nobody could stat never reports settled.
+      let ak_mode_check = serving_subject_mode_check(leg: o.authorized_keys_mode, declared: d.authorized_keys_mode, subject: "authorized_keys file")
+      let binary_mode_check = serving_subject_mode_check(leg: o.serve_binary_mode, declared: d.serve_binary_mode, subject: "serve binary")
       let mode_shell_deviations = concat(
         concat(
           match root_mode_check { StoreModeCheckDrifted { observed: g } => [StoreRootModeMismatch { path: d.store_root, declared: d.store_dir_mode, observed: g }]  _ => [] },
-          match staging_mode_check { StoreModeCheckDrifted { observed: g } => [StoreStagingModeMismatch { path: d.store_staging, declared: d.store_dir_mode, observed: g }]  _ => [] },
+          concat(
+            match staging_mode_check { StoreModeCheckDrifted { observed: g } => [StoreStagingModeMismatch { path: d.store_staging, declared: d.store_dir_mode, observed: g }]  _ => [] },
+            concat(
+              match ak_mode_check { StoreModeCheckDrifted { observed: g } => [AuthorizedKeysModeMismatch { path: d.authorized_keys_path, declared: d.authorized_keys_mode, observed: g }]  _ => [] },
+              match binary_mode_check { StoreModeCheckDrifted { observed: g } => [ServeBinaryModeMismatch { path: d.serve_binary, declared: d.serve_binary_mode, observed: g }]  _ => [] },
+            ),
+          ),
         ),
         match shell_check { AccountShellCheckDrifted { observed: s } => [AccountShellMismatch { desired: d.account_shell, observed: s }]  _ => [] },
       )
       let mode_shell_unknowns = concat(
         concat(
           match root_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "store.root.mode", cause: c }]  _ => [] },
-          match staging_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "store.staging.mode", cause: c }]  _ => [] },
+          concat(
+            match staging_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "store.staging.mode", cause: c }]  _ => [] },
+            concat(
+              match ak_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "authorized_keys.mode", cause: c }]  _ => [] },
+              match binary_mode_check { StoreModeCheckUnknown { cause: c } => [ServingUnknown { item: "serve.binary.mode", cause: c }]  _ => [] },
+            ),
+          ),
         ),
         match shell_check { AccountShellCheckUnknown { cause: c } => [ServingUnknown { item: "account.shell", cause: c }]  _ => [] },
       )
@@ -866,8 +1047,8 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           toolchain_present: match o.toolchain { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
           // minted only where the leg was read; an unread leg mints no evidence, the fact lives
           // in the unknowns chain instead (never a value over an unknown).
-          serve_binary_sha256: match o.serve_binary_sha256 { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
-          checkout_revision: match o.checkout_revision { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
+          serve_binary_sha256: match o.serve_binary_sha256 { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent },
+          checkout_revision: match o.checkout_revision { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent },
           target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
         deviations: concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations),
@@ -1027,6 +1208,7 @@ fn serving_elevation_gate_bool(elevation: ObservationAttempt<Bool, ServingLegFai
 
 fn serving_observed_from_reads(
   elevation: ObservationAttempt<Bool, ServingLegFailure>,
+  account_name: String,
   passwd: ObservationAttempt<String, ServingLegFailure>,
   group: ObservationAttempt<String, ServingLegFailure>,
   authorized_keys: ObservationAttempt<String, ServingLegFailure>,
@@ -1037,8 +1219,18 @@ fn serving_observed_from_reads(
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
-  serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>,
-  checkout_revision: ObservationAttempt<String, ServingLegFailure>,
+  // THE VALUE LEGS, as far as the READ got: the observe runs one only under a confirmed-present
+  // subject (its presence, and for the revision also the account, established true) and passes
+  // Absent ("never read") otherwise. THIS function is where the raw read becomes a typed
+  // ServingSubjectValue arm — the subject/value dependency lives in the observed type, and the
+  // comparators never re-derive it (finding A1, side-chat review of 2026-11-16). A missing attempt
+  // under a confirmed-present subject is fail-closed (unknown), so skipping is legal only where the
+  // gates prove it was right.
+  serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>?,
+  checkout_revision: ObservationAttempt<String, ServingLegFailure>?,
+  // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
+  authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
+  serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
@@ -1047,21 +1239,35 @@ fn serving_observed_from_reads(
   // because its exit status is not trustworthy (sudo's own refusal shares the 'test' legs' exit 1). Each
   // forced refusal keeps the LEG's own item (passed in), so the resulting unknowns name the real item
   // (store.root, …), while serving_assess adds the single 'elevation' unknown separately. Non-sudo legs
-  // (passwd, group, the three pins, the stat'd ledger) pass through unchanged.
+  // (passwd, group, the arch pin, the stat'd ledger) pass through unchanged.
+  let serve_binary_g = serving_elevation_gate_bool(elevation, "seed.serve_binary", serve_binary)
+  let checkout_g = serving_elevation_gate_bool(elevation, "checkout", checkout)
+  let ak_g = serving_elevation_gate_str(elevation, "authorized_keys.forced_command", authorized_keys)
   {
     elevation: elevation,
     passwd: passwd,
     group: group,
-    authorized_keys: serving_elevation_gate_str(elevation, "authorized_keys.forced_command", authorized_keys),
+    authorized_keys: ak_g,
     store_root: serving_elevation_gate_bool(elevation, "store.root", store_root),
     store_staging: serving_elevation_gate_bool(elevation, "store.staging", store_staging),
     store_root_mode: serving_elevation_gate_str(elevation, "store.root.mode", store_root_mode),
     store_staging_mode: serving_elevation_gate_str(elevation, "store.staging.mode", store_staging_mode),
-    serve_binary: serving_elevation_gate_bool(elevation, "seed.serve_binary", serve_binary),
-    checkout: serving_elevation_gate_bool(elevation, "checkout", checkout),
+    serve_binary: serve_binary_g,
+    checkout: checkout_g,
     toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),
-    serve_binary_sha256: serve_binary_sha256,
-    checkout_revision: checkout_revision,
+    // Each value leg is constructed from the gates the reads returned. Elevation refusal propagates
+    // THROUGH the subject gate into the value leg as SubjectValueUnread — an unread subject never
+    // settles its value; it is never read as Skipped.
+    serve_binary_sha256: serving_subject_value_leg("serve_binary.sha256", serve_binary_g, serve_binary_sha256),
+    // The revision rides TWO gates: the checkout dir AND the account (the read runs sudo -u
+    // <account_name> and dies exactly like a missing subject without it).
+    checkout_revision: serving_subject_value_leg(
+      "checkout.revision",
+      serving_gate_and(checkout_g, serving_account_presence_gate(account_name: account_name, passwd: passwd)),
+      checkout_revision,
+    ),
+    authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
+    serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
     target_arch: target_arch,
     ledger_rows: ledger_rows,
   }

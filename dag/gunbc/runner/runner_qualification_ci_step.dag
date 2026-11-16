@@ -4,10 +4,10 @@ module gunbc.runner.runner_qualification_ci_step
 // of the qualification_attempt step, beside the domain whose entry module it invokes
 // (gunbc.runner.runner_qualification_attempt_run). NO import of that entry module, and none
 // is needed: gunbc_ci_qualification_attempt_target names its entry and function as strings.
-// It would cycle — gunbc.runner.runner_qualification_attempt_run reaches gunbc.ci.ci_spec
+// It would cycle — gunbc.runner.runner_qualification_attempt_run reaches the roster module
 // through gunbc.runner.runner_qualification_dispatch and
-// gunbc.fleet.fleet_converge_workflow, and gunbc.ci.ci_spec imports this module's target.
-// A step module imports the shared machinery, never ci_spec.
+// gunbc.fleet.fleet_converge_workflow, and gunbc.instruments.ci_run_step_roster imports this module's target.
+// A step module imports the shared machinery, never the roster.
 
 import std.types { String }
 import v2.workflow.gunbc_invoke_step_emit {

@@ -1,7 +1,7 @@
 module extdeps.boot.emit
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.boot.freestanding_payload { FreestandingPayloadRef, HollowPrebuiltInit, PrebuiltPayload }
 import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr }
@@ -9,11 +9,24 @@ import extdeps.formats.elf.segments { Elf64Phdr }
 import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
 import extdeps.exec_format { EntryPoint }
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boot.emit",
+      decl_name: "pixel_writer_code_bytes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data pixel_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-slice-0.5"

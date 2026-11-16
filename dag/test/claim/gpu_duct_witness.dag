@@ -641,6 +641,7 @@ test fn w_an_insert_thread_iso_273_does_not_publish_refuses_by_name() -> Bool {
       upper_near_edge_from_top: a16_end_cap_inserts.upper_near_edge_from_top, lower_near_edge_from_bottom: a16_end_cap_inserts.lower_near_edge_from_bottom,
     } },
     connector: FeaturePresent { value: a16_face_connector },
+    overhang: i.overhang,
   }
   match screwed_end_cap_of(i: card) {
     ScrewedEndCap { face: _ } => false

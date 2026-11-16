@@ -7,7 +7,7 @@ import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot
   authored_microvm_slots_charge_over, memory_admitted_width_of_envelope_over,
   transitional_ci_slot_memory_max_of_envelope_over, committed_width_of_over, committed_width_with_serving,
   srv1_microvm_shakedown_slot_realization, srv1_microvm_revision_job_slot_realization }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, host_build_pool_reservation, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
 }
@@ -177,18 +177,22 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtracted: 2 authored + floor(145.85/25) = 7. The pin is the fold's answer, not a remembered number
 // -- the same fold against a MicrovmSlotRealized reading returns 3, which the row below pins.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  // srv3/srv4 now pay their strata engine's cgroup MemoryMax (112 GiB / 64 GiB, gunbc.serving.serving_reservation)
-  // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18 this witness carried: srv3's
-  // 112 GiB costs 4 (18->14), srv4's 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a
-  // silent widen; the committed-width witness below re-baselines to the same charged numbers.
-  // REMOTE-BUILD PR 4 CARVES ONE CI RUNNER SLOT PER HOST for their build pool (gunbc.runner
-  // host_build_pool_reservation, subtracted as an envelope term and given to the capacity ledger by
-  // gunbc.compute.host_capacity host_capacity_build_seat). So each admits one slot FEWER: srv3 14->13, srv4
-  // 16->15. This is the "srv3/srv4 runner width reduced by one, with the pool appropriation derived from it"
-  // claim pinned at its source -- srv1 is untouched (7), because the carve is host-scoped to srv3/srv4.
+  // srv3/srv4 pay their strata engine's cgroup MemoryMax (112 GiB / 64 GiB, gunbc.serving.serving_reservation)
+  // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18: srv3 112 GiB costs 4 (18->14),
+  // srv4 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a silent widen; the
+  // committed-width witness below agrees at the same charged numbers.
+  // REMOTE-BUILD PR 4 carves NOTHING here: gunbc.runner host_build_pool_reservation is gated on the host being
+  // on the serving roster (a host-fact gate, review 95809 -- rostered AND no dashboard instance), and srv3/
+  // srv4 are not yet admitted. PR 5 admits each host in the same change that creates and reads back its
+  // /opt/gunbc home, and the one-slot carve (14->13, 16->15) fires in THAT change -- the slot leaves CI only
+  // when the ledger pool exists to hold it (conservation; the bug an ungated carve would leave between this PR
+  // and PR 5 is a full slot per host lost to neither side). So in THIS PR srv3/srv4 keep the full charged width
+  // (14 / 16) and host_build_pool_reservation returns byte_size(0) for them. srv1 is untouched (7).
   host_memory_admitted_width(host: operator_host_srv1) == 7
-    && host_memory_admitted_width(host: operator_host_srv3) == 13
-    && host_memory_admitted_width(host: operator_host_srv4) == 15
+    && host_memory_admitted_width(host: operator_host_srv3) == 14
+    && host_memory_admitted_width(host: operator_host_srv4) == 16
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3)) == 0
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4)) == 0
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -284,9 +288,12 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
   // srv3/srv4 committed widths are re-baselined from the pre-engine 18 to the charged values (their engine's
-  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16. The dynamic assertions
-  // just below (committed == memory-admitted, and cpu axis > memory-admitted) still hold and prove memory is
-  // the binding axis at these charged values; srv1 pays nothing and stays at memory-admitted + transitional.
+  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16. In THIS PR the build-pool
+  // carve is NOT applied to them -- host_build_pool_reservation is gated on the host being on the serving roster
+  // (rostered AND no dashboard instance), and srv3/srv4 are not admitted yet; PR 5 admits each and the one-slot
+  // carve (-> 13 / -> 15) lands in that same change, so CI never loses a slot that a pool does not hold
+  // (conservation). The dynamic assertions below (committed == memory-admitted, and cpu axis > memory-admitted)
+  // prove memory is the binding axis at these charged, un-carved values; srv1 pays nothing and stays 7.
   committed_width_is(host: operator_host_srv3, expected: 14)
     && committed_width_is(host: operator_host_srv4, expected: 16)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))

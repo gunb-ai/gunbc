@@ -1,0 +1,50 @@
+module gunbc.roadmap.roadmap_native_ingress
+
+import std.types { String, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram }
+import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+// The handler lives in gunbc.roadmap.roadmap_serve; importing it is what puts that module in the EMITTED
+// closure so native_ingress_program_resolution can resolve the descriptor's handler reference to one whole
+// declaration. Mirrors gunbc.instruments.native_serve_fixture, which imports its handler likewise.
+import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
+// Route B native serve ingress for the roadmap program (roadmap node demand-serve-program-image). It
+// installs the seed-embedded NativeIngressProgram for the roadmap serve entry -- the earliest-boundary fix
+// for refusal R0 (roadmap had no native serve program at all). It mirrors
+// gunbc.instruments.native_serve_fixture (the smallest self-binding native serve) and the
+// gunbc.auth.approval_device_crypto_{ingress,serve,realization} production native serve door: the descriptor
+// names the exact binding constructor and the exact handler by declaration identity, and the emitter
+// (v1.compiler.emit_rust native_ingress_program_resolution) resolves them as a closed typed boundary and
+// refuses emission on anything else.
+//
+// startup and request_key are Absent and this descriptor is not fleet-run. The node's remaining work is
+// carried once on the node ticket demand-serve-program-image (roadmap_authority), whose fields are its
+// single authority (gunbc.design_argument::source_annotations) -- read them there, not here.
+
+data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram {
+  binding: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress", field: WholeDeclaration },
+  // Manager (crisp-dove-117): fix the handler that exists on MAIN and is what PRODUCTION serves.
+  // Verified: gunbc.live_deploy.spec (serve_function / the instance-selecting handler) = roadmap_serve_handle,
+  // which binds srv1_live_dashboard_instance (the handler is what selects the instance -- the class behind
+  // the current prod outage: a handler named only by --arg the demanded run did not realize). Fixing it at
+  // compile time MOVES deploy-time selection (which built product to start), it does not collapse it.
+  // srv1 native cutover remains a bright-ibex-807 deploy step (scope 5); this row is not a srv1 unit.
+  handler: DeclarationRef { module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle", field: WholeDeclaration },
+  // startup: Absent -- deferred; the authority is this node's handback (see the module header note).
+  startup: Absent,
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeIngressDriver {
+  program: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress_program", field: WholeDeclaration },
+}
+
+// The exact binding constructor the rendered native main calls with its argv. It is the same
+// http_ingress_binding the interpreted entry uses (one authority for the binding contract), with the
+// handler module pinned to gunbc.roadmap.roadmap_serve; the descriptor's handler reference is the one
+// the binding must name or emission is refused.
+fn roadmap_native_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
+  http_ingress_binding(
+    handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
+    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+  )
+}
