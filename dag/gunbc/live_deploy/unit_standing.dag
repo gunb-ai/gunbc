@@ -194,23 +194,28 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
 //   * everything else (Restart/RestartSec knobs, User, Group, Slice, Nice, Timeout*, StandardOutput, ...)
 //     -- a scalar setting the unit carries, no file the unit reads to come up.
 // The single classification: what each service directive contributes to the unit's REQUIRED reads (the
-// files it must have installed to come up). The class -- not the raw path -- is the meaning; each deploy
-// layer maps it to its own read representation (the lower stack -> a path string; the gate -> a
-// DeclaredRead with a kind). ReadUnparsable marks an Exec command whose argv[0] could not be extracted:
-// the consuming layer maps it to NotYetModeled rather than fabricating an empty path (fail_closed: "no
-// plausible output is fabricated").
-type DirectiveReadClass = ReadCommand | ReadWorkingDirectory | ReadRequiredFile | ReadUnparsable
-
-type RequiredDirectiveRead = RequiredDirectiveRead { path: String, class: DirectiveReadClass }
+// files it must have installed to come up). A genuine coproduct, not a {path, class} tag: each variant
+// carries only what it means. UnparsableCommand carries the offending command and NO path, so the bad
+// state -- an unparsable read masquerading as a path -- is unwritable rather than merely caught
+// (fail_closed: "stronger than catching a wrong state is making it unwritable"; "no plausible output is
+// fabricated"). The single authoritative classification of "what files a unit must have installed to come
+// up"; each deploy layer maps each variant to its own read representation (this lower stack -> a path;
+// the gate -> a DeclaredRead with a kind), so there is one classifier at the lowest PR and no second copy
+// at the gate.
+type RequiredDirectiveRead =
+    CommandRead { path: String }
+  | WorkingDirectoryRead { path: String }
+  | RequiredFileRead { path: String }
+  | UnparsableCommand { command: NonEmptyStr }
 
 fn service_directive_required_reads(directives: List<SystemdServiceDirective>) -> List<RequiredDirectiveRead> {
   fold(directives, init: [], f: (acc, d) => match d {
     ExecStart { command: c } => push_command_read(acc, command: c)
     ExecStartPre { command: c } => push_command_read(acc, command: c)
     ExecStartPost { command: c } => push_command_read(acc, command: c)
-    WorkingDirectory { path: p } => list_push(xs: acc, item: RequiredDirectiveRead { path: p as String, class: ReadWorkingDirectory })
-    EnvironmentFile { path: p } => list_push(xs: acc, item: RequiredDirectiveRead { path: p as String, class: ReadRequiredFile })
-    LoadCredential { identifier: _, source: s } => list_push(xs: acc, item: RequiredDirectiveRead { path: s as String, class: ReadRequiredFile })
+    WorkingDirectory { path: p } => list_push(xs: acc, item: WorkingDirectoryRead { path: p as String })
+    EnvironmentFile { path: p } => list_push(xs: acc, item: RequiredFileRead { path: p as String })
+    LoadCredential { identifier: _, source: s } => list_push(xs: acc, item: RequiredFileRead { path: s as String })
     EnvironmentFileIfPresent { path: _ } => acc
     ExecStop { command: _ } => acc
     ExecStopPost { command: _ } => acc
@@ -241,12 +246,13 @@ fn service_directive_required_reads(directives: List<SystemdServiceDirective>) -
   })
 }
 
-// one start command -> a ReadCommand read carrying its argv[0], or a ReadUnparsable marker when argv[0]
-// cannot be extracted (empty/absent first token) so the consuming layer refuses instead of fabricating.
+// one start command -> a CommandRead carrying its argv[0], or an UnparsableCommand carrying the command
+// itself (and NO path) when argv[0] cannot be extracted, so the consuming layer refuses rather than
+// fabricating an empty path.
 fn push_command_read(acc: List<RequiredDirectiveRead>, command: NonEmptyStr) -> List<RequiredDirectiveRead> {
   match argv0_of_command(command as String) {
-    Present { value: b } => list_push(xs: acc, item: RequiredDirectiveRead { path: b, class: ReadCommand })
-    Absent => list_push(xs: acc, item: RequiredDirectiveRead { path: "", class: ReadUnparsable })
+    Present { value: b } => list_push(xs: acc, item: CommandRead { path: b })
+    Absent => list_push(xs: acc, item: UnparsableCommand { command: command })
   }
 }
 
