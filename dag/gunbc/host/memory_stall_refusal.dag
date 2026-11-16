@@ -5,6 +5,14 @@ import std.disposition { Disposition, Terminal }
 import extdeps.linux.procfs { ProcSelfStat, procfs_path_literal }
 import extdeps.linux.psi { PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, parse_psi, psi_full_stall_interval }
 import std.nat { Nat }
+import gunbc.runner.runner_slot_desired {
+  gunbc_runner_slot_watchdog_envelope_event_rate_line,
+  gunbc_runner_slot_watchdog_user_cpu_share_floor,
+  gunbc_runner_slot_watchdog_window_minimum_wall,
+  gunbc_runner_slot_watchdog_sample_interval,
+  gunbc_runner_slot_watchdog_term_grace,
+  gunbc_runner_slot_watchdog_receipt_dir,
+}
 import std.optional { Present, Absent }
 import std.measure {
   EventsPerMinute,
@@ -310,6 +318,13 @@ type SupervisedSubjectVerdict
       envelope_events_in_window: Int,
     }
   | SupervisedSubjectRefusedPageThrash { since_progress_wall: Millisecond, page_thrash: MemoryStallVerdict }
+  | SupervisedSubjectRefusedReclaimLivelock {
+      window_wall: Millisecond,
+      envelope_event_rate: EventsPerMinute,
+      envelope_event_rate_line: EventsPerMinute,
+      user_cpu_share: BasisPoint,
+      user_cpu_share_floor: BasisPoint,
+    }
 
 fn supervised_subject_window_wall(w: SupervisedSubjectWindow) -> Millisecond {
   match w {
@@ -353,6 +368,45 @@ fn supervised_subject_page_thrash_or_silent(w: SupervisedSubjectWindow) -> Super
   }
 }
 
+// THE RECLAIM LIVELOCK ARM (slot progress watchdog, 2026-11-04 ruling). A slot at its envelope that
+// allocates nothing further and retires almost no user instructions while memory.events keeps
+// climbing is neither throttled (no PSI evidence needed) nor killed (oom 0): no cgroup setting ends
+// it, so the observer does. TWO CONJUNCTS OVER THE WHOLE WINDOW, both rates: the envelope-event rate
+// (high + max) at or above its line AND user CPU below its floor share of the window. It reads the
+// same window the other arms read and is judged first because it needs the shortest wall; a window
+// shorter than the watchdog minimum falls through to the arms below untouched. Never memory.current.
+fn supervised_subject_reclaim_livelock(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict? {
+  match w {
+    SupervisedSubjectWindow { since_progress: o, pressure: _, envelope_events_in_window: e } => match o {
+      MemoryStallObservation {
+        window_wall: wall,
+        major_faults_in_window: _,
+        self_user_cpu_in_window: _,
+        cache_evictions_in_window: _,
+        cache_readmissions_in_window: _,
+      } =>
+        if millisecond_count(m: wall) < millisecond_count(m: gunbc_runner_slot_watchdog_window_minimum_wall) {
+          Absent
+        } else {
+          let rate = events_per_minute(count: e * 60000 / millisecond_count(m: wall))
+          let share = memory_stall_self_cpu_share(o: o)
+          if events_per_minute_count(r: rate) >= events_per_minute_count(r: gunbc_runner_slot_watchdog_envelope_event_rate_line)
+            && basis_point_count(bp: share) < basis_point_count(bp: gunbc_runner_slot_watchdog_user_cpu_share_floor) {
+            Present { value: SupervisedSubjectRefusedReclaimLivelock {
+              window_wall: wall,
+              envelope_event_rate: rate,
+              envelope_event_rate_line: gunbc_runner_slot_watchdog_envelope_event_rate_line,
+              user_cpu_share: share,
+              user_cpu_share_floor: gunbc_runner_slot_watchdog_user_cpu_share_floor,
+            } }
+          } else {
+            Absent
+          }
+        }
+    }
+  }
+}
+
 fn supervised_subject_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
   let wall = supervised_subject_window_wall(w: w)
   if millisecond_count(m: wall) < millisecond_count(m: supervised_subject_no_progress_window_minimum_wall) {
@@ -384,8 +438,11 @@ fn supervised_subject_verdict_refuses(v: SupervisedSubjectVerdict) -> Bool {
     SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => false
     SupervisedSubjectRefusedEnvelopeThrottle { since_progress_wall: _, pressure_full_share: _, pressure_full_share_floor: _, envelope_events_in_window: _ } => true
     SupervisedSubjectRefusedPageThrash { since_progress_wall: _, page_thrash: _ } => true
+    SupervisedSubjectRefusedReclaimLivelock { window_wall: _, envelope_event_rate: _, envelope_event_rate_line: _, user_cpu_share: _, user_cpu_share_floor: _ } => true
   }
 }
+
+data supervised_subject_refusal_reclaim_livelock_class_name: String = "MemoryStallRefusedReclaimLivelock"
 
 data supervised_subject_refusal_envelope_throttle_class_name: String = "MemoryStallRefusedEnvelopeThrottle"
 
@@ -397,6 +454,27 @@ fn supervised_subject_refusal_text(v: SupervisedSubjectVerdict) -> String {
   match v {
     SupervisedSubjectProgressing { since_progress_wall: _, minimum_wall: _ } => ""
     SupervisedSubjectSilentWithoutEnvelopeEvidence { since_progress_wall: _, pressure: _, envelope_events_in_window: _, page_thrash: _ } => ""
+    SupervisedSubjectRefusedReclaimLivelock {
+      window_wall: wall,
+      envelope_event_rate: rate,
+      envelope_event_rate_line: line,
+      user_cpu_share: share,
+      user_cpu_share_floor: floor,
+    } =>
+      join([
+        supervised_subject_refusal_reclaim_livelock_class_name,
+        ": over the last ",
+        to_string(millisecond_count(m: wall)),
+        " ms the slot hit its memory envelope ",
+        to_string(events_per_minute_count(r: rate)),
+        " times/minute (memory.events high + max; line ",
+        to_string(events_per_minute_count(r: line)),
+        "/minute) while its processes retired user CPU for only ",
+        to_string(basis_point_count(bp: share) / 100),
+        "% of one core (cpu.stat user_usec; floor ",
+        to_string(basis_point_count(bp: floor) / 100),
+        "%). The slot is pinned at its envelope making no progress and the kernel is not ending it (no OOM kill, no swap). Refusing rather than holding.",
+      ], "")
     SupervisedSubjectRefusedEnvelopeThrottle {
       since_progress_wall: wall,
       pressure_full_share: share,
@@ -521,4 +599,34 @@ fn supervised_subject_window_text(w: SupervisedSubjectWindow) -> String {
         ], "")
     }
   }
+}
+
+// THE SLOT WATCHDOG'S ENTRY: the same verdict type, the livelock arm consulted first. A slot has no
+// progress marks, so its window is a sliding baseline (gunbc_runner_slot_watchdog_window_minimum_wall),
+// not a since-progress average; the regen supervisor's supervised_subject_verdict keeps its contract
+// that a recent progress mark admits whatever the pressure.
+fn supervised_slot_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
+  match supervised_subject_reclaim_livelock(w: w) {
+    Present { value: livelock } => livelock
+    Absent => supervised_subject_verdict(w: w)
+  }
+}
+
+// THE HOST VERB'S SHAPE, ASKED OF THE AUTHORITY: the seed reads these four answers through the
+// interpreter, so no number or path is restated in Rust or on the unit's argv. The baseline window
+// is the livelock arm's own minimum wall.
+fn supervised_slot_baseline_window_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_window_minimum_wall)
+}
+
+fn supervised_slot_sample_interval_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_sample_interval)
+}
+
+fn supervised_slot_term_grace_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_term_grace)
+}
+
+fn supervised_slot_receipt_dir() -> String {
+  gunbc_runner_slot_watchdog_receipt_dir
 }

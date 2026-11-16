@@ -4,6 +4,7 @@ import std.types { Bool }
 import extdeps.linux.cgroup_v2_memory {
   MemoryEvents, MemoryEventsLocal, CumulativeCounter,
   cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
+  parse_cgroup_memory_events, CgroupMemoryEventsRead, CgroupMemoryEventsIncomplete, CgroupMemoryEventCounters,
 }
 
 // THE TWO EVENTS FILES, AT THEIR OWN INTERFACE. cgroup-v2 gives them the same entries and moves only
@@ -27,10 +28,19 @@ test fn the_local_events_file_is_not_the_hierarchical_one() -> Bool {
     && cgroup_memory_metric_kind(f: MemoryEvents) == cgroup_memory_metric_kind(f: MemoryEventsLocal)
 }
 
-// NO TEST IS WRITTEN OVER THE RECORD'S FIELD LIST, AND THAT IS STATED RATHER THAN HIDDEN. A test
-// would build a literal, read it back and compare it with what it put in: true by construction, with
-// no forbidden state expressible anywhere it runs. The record's consumer is the memory_events field
-// of BuildCacheEndpointObservation in gunbc.build_cache.build_cache_instance, and that field is the
-// only place the five names are exercised. A field-level check needs a reader of an events body,
-// which the corpus does not have yet -- the authority module says the same thing where the record
-// sits.
+// THE READER, over the srv1 drift-peak-e1f753b9 body (2026-11-05): max climbing with high 0 is the
+// shape memory.high == memory.max produces, and the parser must read it as such.
+test fn the_drift_peak_events_body_reads_with_max_climbing_and_high_zero() -> Bool {
+  match parse_cgroup_memory_events(body: "low 0\nhigh 0\nmax 18744469\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n") {
+    CgroupMemoryEventsRead { counters: c } => c == CgroupMemoryEventCounters { low: 0, high: 0, max: 18744469, oom: 0, oom_kill: 0 }
+    CgroupMemoryEventsIncomplete { missing: _ } => false
+  }
+}
+
+// RED: a body missing a key is Incomplete naming it, never a zero fabricated in its place.
+test fn RED_a_body_without_max_is_incomplete_not_zero() -> Bool {
+  match parse_cgroup_memory_events(body: "low 0\nhigh 0\noom 0\noom_kill 0\n") {
+    CgroupMemoryEventsRead { counters: _ } => false
+    CgroupMemoryEventsIncomplete { missing: m } => m == ["max"]
+  }
+}

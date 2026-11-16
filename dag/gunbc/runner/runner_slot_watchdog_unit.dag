@@ -1,0 +1,101 @@
+module gunbc.runner.runner_slot_watchdog_unit
+
+import std.types { String, NonEmptyStr }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SliceUnitFile, NotInstallable,
+  Description, After, Requires, Wants, ServiceType, SimpleMode, ExecStart, Restart, RestartSec, ServiceSlice,
+  StartLimitIntervalSec, ServiceResourceControl, service_memory_max, service_memory_swap_max, SystemdDropIn, DropInUnitSection, serialize_systemd_unit_file,
+  serialize_systemd_drop_in, systemd_instance_name_specifier
+}
+import std.measure { byte_size }
+import gunbc.runner.runner_unit { runner_unit_dropin_path }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_watchdog_memory_max }
+
+// THE SLOT PROGRESS WATCHDOG'S UNIT. One template instance per runner slot, in a slice of its own.
+//
+// WHY A SLICE OUTSIDE system-actions-runner.slice: the watchdog judges a slot that is, by hypothesis, in a
+// reclaim livelock at its memory.max. A watchdog inside that slice, or inside the slot's own cgroup, would be
+// charged to the memory it is judging and starved by the same refaulting; it must be evictable by neither the
+// slot nor the slice. `gunbc-slot-watchdog.slice` is a direct child of the root slice (the name carries no
+// parent), so it shares no memory ancestor with `system-actions-runner.slice`.
+// RESIDUE, NAMED: this module does not set OOMScoreAdjust or MemoryLow on the watchdog (neither is a modeled
+// directive in extdeps.systemd.unit_file); a host-wide OOM kill is the kernel's choice among all tasks and this
+// unit is not exempt from it. The srv1 fixtures read its resident size before any ceiling is declared.
+//
+// WHAT IT KILLS: the verb it runs (`gunbc slot-watchdog`) ends every process in the slot's cgroup except the
+// Runner.Listener and its ancestors, so the Listener stays registered and the slot takes its next job. Its
+// verdict, thresholds, clock, grace and receipt directory are gunbc.host.memory_stall_refusal and
+// gunbc.runner.runner_slot_desired; this module spells none of them.
+//
+// HOW IT STARTS WITHOUT AN `enable`: the converge writes files only, so the slot template gets a drop-in
+// `Wants=` on the watchdog instance, and the watchdog `Requires=` + `After=` the slot, so it follows the
+// slot's start and stops when the slot stops. Both take effect at the next daemon-reload and slot start,
+// which the converge's pending-reload reading already reports per slot.
+
+data gunbc_slot_watchdog_unit_prefix: String = "gunbc-slot-watchdog@"
+
+data gunbc_slot_watchdog_slice_name: NonEmptyStr = "gunbc-slot-watchdog.slice" as NonEmptyStr
+
+data gunbc_slot_watchdog_template_name: NonEmptyStr = join([gunbc_slot_watchdog_unit_prefix, ".service"], "") as NonEmptyStr
+
+data gunbc_slot_watchdog_unit_path: NonEmptyStr = join(["/etc/systemd/system/", gunbc_slot_watchdog_template_name as String], "") as NonEmptyStr
+
+data gunbc_slot_watchdog_slice_path: NonEmptyStr = join(["/etc/systemd/system/", gunbc_slot_watchdog_slice_name as String], "") as NonEmptyStr
+
+data gunbc_slot_watchdog_binary_path: NonEmptyStr = "/usr/local/bin/gunbc" as NonEmptyStr
+
+data gunbc_slot_watchdog_instance_unit_ref: String = join([gunbc_slot_watchdog_unit_prefix, systemd_instance_name_specifier, ".service"], "")
+
+fn gunbc_slot_watchdog_slot_unit_ref() -> String {
+  join(["actions-runner@", systemd_instance_name_specifier, ".service"], "")
+}
+
+fn gunbc_slot_watchdog_slice_text() -> String {
+  serialize_systemd_unit_file(file: SliceUnitFile {
+    unit: [Description { text: "Slot progress watchdogs: outside system-actions-runner.slice so the judged slot cannot starve its judge" as NonEmptyStr }],
+    slice: [],
+    install: NotInstallable,
+  })
+}
+
+// THE CHECKOUT IS A PARAMETER: the admitted-revision checkout the binary was built from
+// (gunbc.live_deploy.serve_binary_build). The verb refuses to start unless that checkout's HEAD equals its own
+// build identity, so one revision names the binary and the verdict it evaluates.
+fn gunbc_slot_watchdog_unit_text(checkout: NonEmptyStr) -> String {
+  serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: join(["Slot progress watchdog (", systemd_instance_name_specifier, ")"], "") as NonEmptyStr },
+      Requires { target: gunbc_slot_watchdog_slot_unit_ref() as NonEmptyStr },
+      After { target: gunbc_slot_watchdog_slot_unit_ref() as NonEmptyStr },
+      StartLimitIntervalSec { duration: "0" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: SimpleMode },
+      ServiceSlice { name: gunbc_slot_watchdog_slice_name },
+      // THE VERB'S OWN BOUND IS A DEPENDENCY OF ITS VERDICT: the host-budget model refuses a process no cgroup
+      // memory.max binds (HostBudgetUnreadable, measured on srv1 2026-11-05), so a watchdog without this refuses at start.
+      ServiceResourceControl { directive: service_memory_max(bytes: gunbc_runner_slot_watchdog_memory_max) },
+      ServiceResourceControl { directive: service_memory_swap_max(bytes: byte_size(0)) },
+      ExecStart { command: join([
+        gunbc_slot_watchdog_binary_path as String, " slot-watchdog --slot-cgroup ",
+        gunbc_slot_watchdog_slot_unit_ref(), " --source-root ", join([checkout as String, "/dag"], ""),
+        " --source-root ", join([checkout as String, "/src/v2"], ""),
+      ], "") as NonEmptyStr },
+      Restart { policy: "always" as NonEmptyStr },
+      RestartSec { duration: "5" as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  })
+}
+
+data gunbc_slot_watchdog_wants_dropin_file_name: NonEmptyStr = "80-slot-watchdog.conf" as NonEmptyStr
+
+fn gunbc_slot_watchdog_wants_dropin_path() -> NonEmptyStr {
+  runner_unit_dropin_path(file_name: gunbc_slot_watchdog_wants_dropin_file_name)
+}
+
+fn gunbc_slot_watchdog_wants_dropin_text() -> String {
+  serialize_systemd_drop_in(drop_in: SystemdDropIn {
+    sections: [DropInUnitSection { directives: [Wants { target: gunbc_slot_watchdog_instance_unit_ref as NonEmptyStr }] }],
+  })
+}
