@@ -1008,6 +1008,16 @@ data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRulin
   provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
 }
 
+// ONE HOST'S EDGE APPLY, HELD BY THE OPERATOR'S BRING-UP LANE. Ruled rather than modeled as a fact about the
+// edge: what it decides is what a lane may do to a real host today, and the model's stale fold cannot see the
+// reason (it computes staleness per edge, not per host lifecycle stage).
+data srv4_edge_apply_held_until_srv15_install_binding_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv4_edge_apply_held_until_srv15_install_binding_admitted"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
+  provenance: "smart-crane-730 to still-fox-404 on 2026-11-16 (msg_213b421e-00c4-46fb-bd42-805c4c741f18), inside the site PXE edge lane's own bring-up plan, relaying the operator's fact: '9c:6b:00:e7:ca:63 is srv15's NIC (gunbc.machine_intake.srv15_host_nic_observation). The files the converge would remove that are not yours are srv15's hand-staged install entry and seed, which #16357's arrival targets. No apply on the srv4 edge until srv15's binding is admitted, or until proud-badger confirms the arrival renders that entry from the model.' The read that surfaced the fact is this lane's, not the operator's: a read-only site_pxe_edge_observe of srv4 (workflow run 43789720870, 2026-11-16T02:17Z) listed five stale install paths under the edge's owned roots, three of them named for 9c:6b:00:e7:ca:63, which gunbc.machine_intake.srv15_host_nic_observation::srv15_host_nic_mac records as srv15's install NIC. HELD by this ruling: an apply against srv4's pinned edge, whose stale fold would `rm -f` those files path by path (site_pxe_edge_remove_stale), deleting the staged install state of a host whose install binding that lane has not admitted. NOT HELD: the read-only observation, which has already run and wrote nothing; any other host's edge; and any claim about where srv15's render will land. The conditional stays open and is not decided here: the stale fold is 'install files no admitted binding renders', so those paths leave the stale set IF AND ONLY IF the binding admitted on this edge renders exactly those paths -- a property of the render, and proud-badger's arrival renders nothing on this edge. Ends when srv15's install binding is admitted on this edge, or when the render question is settled another way."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     no_ci_claim_execution_until_native_frontier_clears,
@@ -1126,6 +1136,7 @@ fn design_rulings() -> List<DesignRuling> {
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
+    srv4_edge_apply_held_until_srv15_install_binding_admitted,
     srv15_arrival_reviewer_selected_by_operator,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
   ]

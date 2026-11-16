@@ -191,6 +191,31 @@ data supermicro_h11ssl_unit3_edge_sighting: H11sslUnit3EdgeSighting = H11sslUnit
   read_obligation: "the in-band read that ties a MAC to a port on THIS board: ip -o link (or /sys/class/net with carrier state) on the installed OS; plus, for the edge side, srv4's dnsmasq package version (dnsmasq --version) so the log layout being counted is srv4's and not v2.90's." as NonEmptyStr,
 }
 
+// THE BASEBOARD ROW IS OWED AND HELD, and this records what it waits on rather than leaving that in chat.
+// The precedent is gunbc.fleet.fleet_intent::srv15_baseboard -- a ServerBaseboard pairing a catalog model with a
+// BmcEndpoint. This lane cannot write that row for this unit yet, and not for want of a place to put it: the row
+// asserts a board identity AND an endpoint, and neither is held at board standing. The board model, BIOS 2.0a and
+// BMC firmware 1.52 are the operator's reports (TranscribedUncited rows above, each naming its confirming read);
+// the BMC address has no basis the board itself reported (BasisUnobserved); the name a fleet row would be keyed
+// by does not exist until gunbc.hostname_allocation names this slot; and the H11SSL-i series is carried here as a
+// unit identity, not as a fleet catalog model, so inventing a catalog row to fit the type would mint a fact rather
+// than record one.
+type H11sslUnit3BaseboardRowStanding {
+  owed_reads: List<NonEmptyStr>,
+  home: NonEmptyStr,
+  account: NonEmptyStr,
+}
+
+data supermicro_h11ssl_unit3_baseboard_row_standing: H11sslUnit3BaseboardRowStanding = H11sslUnit3BaseboardRowStanding {
+  owed_reads: [
+    "dmidecode -t baseboard on the installed OS: the product name, serial and firmware revisions the BOARD reports, which is what turns the operator's H11SSL-i / 2.0a / 1.52 reports into board-reported figures" as NonEmptyStr,
+    "ipmitool lan print, or Redfish EthernetInterfaces, on the management controller at 192.168.1.249: the controller's own MAC and address, which is what a BmcEndpoint needs and what a neighbour table can never give" as NonEmptyStr,
+    "gunbc.hostname_allocation naming this unit's slot: a fleet intent row is keyed by a host, and no name has been approved for this one yet" as NonEmptyStr,
+  ],
+  home: "the row belongs in gunbc.fleet.fleet_intent beside srv15_baseboard, not here: this module is receipts, that one is intent, and writing the row here would let a receipt masquerade as an intent row" as NonEmptyStr,
+  account: "Held, not forgotten. Nothing about this board has been read off the board -- there is no in-band route, the hand install seeded no fleet authorized_keys roster (recorded in the register as its own concern), and the address this lane can reach is seen only in a neighbour table at a stale state. So the baseboard row and its BMC-control standing wait on the three reads above, in that order: name first, then the key, then the reads. The CMOS battery item is the operator's physical task and can confound boot-related reads until it is done." as NonEmptyStr,
+}
+
 // THE ACCELERATORS, as the operator reports them: two Tesla T10 in this box. They matter to the serving
 // half of this unit's enrollment, and they matter to the slot topology jolly-otter-830's cooling lane
 // needs -- which is a read of the installed OS (lspci -vv for the bus ids, dmidecode -t slot for the

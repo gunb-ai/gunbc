@@ -13,6 +13,7 @@ import std.algebra { length, string_contains }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import gunbc.design_ruling { srv4_edge_apply_held_until_srv15_install_binding_admitted }
 import gunbc.integration_concern {
   ConcernDisposition, ConcernKind, Distinct, Integrated, IntegrationConcern, Open, RequirementEstablished,
   RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
@@ -45,6 +46,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_bmc_lan_address,
   supermicro_h11ssl_unit3_bios_version,
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
+  supermicro_h11ssl_unit3_baseboard_row_standing,
   supermicro_h11ssl_unit3_edge_sighting,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
@@ -375,4 +377,33 @@ test fn witness_the_edge_sighting_binds_the_install_port_and_keeps_the_caveats()
     && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.account), pattern: "host attribution")
     && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.account), pattern: "readings=0")
     && string_contains(s: text(supermicro_h11ssl_unit3_edge_sighting.read_obligation), pattern: "ip -o link")
+}
+
+// THE BASEBOARD ROW IS HELD WITH ITS OBLIGATIONS NAMED, not left as prose. Two claims, kept apart on purpose:
+// conjoining a string probe and a list-length probe in one arm makes THIS entry's typecheck run past fifteen
+// minutes (measured twice), while either alone elaborates in well under a minute -- a fact about the checker that
+// belongs in the record because it changes how claims here have to be written.
+test fn witness_the_baseboard_row_holds_three_named_obligations() -> Bool {
+  length(supermicro_h11ssl_unit3_baseboard_row_standing.owed_reads) == 3
+}
+
+test fn witness_the_baseboard_row_is_held_in_the_right_home() -> Bool {
+  string_contains(s: text(supermicro_h11ssl_unit3_baseboard_row_standing.home), pattern: "gunbc.fleet.fleet_intent")
+}
+
+// THE OPERATOR-LANE HOLD ON THIS EDGE HAS A CARRIER OF ITS OWN, and the concern CITES it instead of swallowing
+// it. A concern's `requirement` states what must hold about the model; a ruling states what a lane may do to a
+// host today. Folding the second into the first is how a temporary hold outlives its end condition, because the
+// end condition lives in the ruling's provenance and nobody reads a concern's prose for a date.
+test fn witness_the_edge_hold_lives_in_a_ruling_the_concern_cites() -> Bool {
+  (text(srv4_edge_apply_held_until_srv15_install_binding_admitted.decided) == "2026-11-16")
+    && (text(srv4_edge_apply_held_until_srv15_install_binding_admitted.governs.decl_name) == "site_pxe_edge_remove_stale")
+}
+
+test fn witness_the_concern_points_at_the_ruling_without_restating_it() -> Bool {
+  match h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.kind {
+    SuspectedCapabilityGap { model: _, requirement: owed, standing: _ } =>
+      string_contains(s: text(owed), pattern: "srv4_edge_apply_held_until_srv15_install_binding_admitted")
+    SuspectedFork { authorities: _ } => false
+  }
 }
