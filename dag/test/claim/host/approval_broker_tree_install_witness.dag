@@ -118,6 +118,24 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
   ), at: TreeStepSourceObserve)
 }
 
+// THE PLANT'S POSITIVE CONTROL (the same real route, the root PRESENT): with a source root that
+// exists (its `dag` and `src/v2` subdirs hash), the real LocalShell find|sha256sum SUCCEEDS at the
+// source observation, so the route must NOT refuse at source-observe — it proceeds (and here refuses
+// later at the installed observation, since the base root is still absent). This is what makes the
+// negative claim above meaningful: the refusal is root-caused, not an unconditional stub that refuses
+// regardless. It is a WET control (shell.Exec.RunArgv has no hermetic arm by design): carry it with
+// `claim_batch --wet`, creating /var/tmp/gunbc-broker-present-source/{dag,src/v2} with a file in each
+// beforehand — the same run-time-created-root pattern as test.claim.fleet.fleet_revision_relation_wet_matrix.
+test fn the_real_route_does_not_refuse_at_source_observe_when_the_source_root_is_present() -> Bool {
+  !refused_at(v: approval_broker_tree_install(
+    owner: "gunbc" as NonEmptyStr,
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
+    source_root: "/var/tmp/gunbc-broker-present-source",
+    executables: approval_broker_release_locus_executables,
+    transport: one_transport_route(transport: LocalShell),
+  ), at: TreeStepSourceObserve)
+}
+
 test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
