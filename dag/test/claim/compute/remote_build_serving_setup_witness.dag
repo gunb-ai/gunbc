@@ -1,0 +1,120 @@
+module test.claim.compute.remote_build_serving_setup_witness
+
+// PR 5: the desired-state derivation for the remote-build serving setup, plus its
+// discriminating RED CONTROLS. A red control is a claim that FAILS if the model were
+// made wrong on purpose: the string comparator must report a wrong observation as
+// Drifted (not Met), and a host off the roster must carry NO forced-command line
+// (Absent), never a fabricated one. Run:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/compute/remote_build_serving_setup_witness.dag --claim-run
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
+import gunbc.compute.remote_build_serving_setup {
+  remote_build_serving_desired, RemoteBuildServingDesired,
+  serving_compare_string, Met, Drifted, Missing,
+}
+import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.owned_directory { owned_directory_owner }
+
+// ── the declared principal is the serving account ──────────────────────────────
+
+test fn srv1_desired_account_is_the_declared_principal() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  d.account_uid == 1005 && d.account_gid == 1005 && d.account_name == "gunbc-build"
+    && d.group_name == "gunbc-compute" && d.group_gid == 1006
+}
+
+test fn the_serving_account_is_not_root() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  d.account_uid != 0 && d.account_gid != 0
+}
+
+// ── the ledger is shared with the host's service user, group-owned ──────────────
+
+test fn srv1_ledger_is_shared_with_its_service_user() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  d.ledger_service_user == "briansrls" && any(d.group_members, m => m == d.account_name)
+}
+
+// The ledger is [root, objects-area, heads-area]. The root stays traverse-only and is
+// owned service_user:service_user; ONLY the two 03770 areas are grouped to gunbc-compute
+// so both principals' reservations survive. This is the discriminating control for the
+// ledger sharing: if the areas lost the group (ComputeLedgerServiceOnly) count==0 fails
+// it; if the model over-grouped the root, count==3 fails it.
+test fn the_two_ledger_areas_are_service_user_shared_with_the_compute_group() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let shared = filter(d.ledger_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
+  count(shared) == 2 && all(shared, t => (owned_directory_owner(t: t).user as String) == d.ledger_service_user)
+}
+
+// ── the serving paths are derived from the admitted serving instance ────────────
+
+test fn srv1_serving_paths_match_the_serving_instance() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv1)
+  let inst = remote_build_serving_instance(host: operator_host_srv1)
+  d.serve_binary == (inst.serve_binary as String)
+    && d.checkout_dir == (inst.repo_root as String)
+    && d.store_root == concat(inst.instance_root as String, "/materialization-store")
+    && d.store_staging == concat(inst.instance_root as String, "/materialization-store-staging")
+}
+
+// ── every roster host renders a forced-command line ────────────────────────────
+
+fn line_present(d: RemoteBuildServingDesired) -> Bool {
+  match d.forced_command_line {
+    Present { value: l } => l != ""
+    Absent => false
+  }
+}
+
+test fn all_four_roster_hosts_render_a_forced_command() -> Bool {
+  all(
+    [
+      remote_build_serving_desired(host: operator_host_srv1),
+      remote_build_serving_desired(host: operator_host_srv2),
+      remote_build_serving_desired(host: operator_host_srv3),
+      remote_build_serving_desired(host: operator_host_srv4)
+    ],
+    line_present
+  )
+}
+
+// ── RED CONTROL: a host off the roster carries NO forced-command line ───────────
+// srv5 is not a remote-build serving host, so it has no candidate and its forced
+// command must be Absent. If the render ever fell back to a fabricated line, this fails.
+
+test fn a_non_roster_host_has_no_forced_command() -> Bool {
+  let d = remote_build_serving_desired(host: operator_host_srv9)
+  match d.forced_command_line {
+    Absent => true
+    Present { value: l } => false
+  }
+}
+
+// ── RED CONTROL: the comparator discriminates a wrong observation ───────────────
+// Correct -> Met, wrong -> Drifted (NOT Met), unobserved -> Missing. A comparator that
+// always returned Met would make the plan report a drifted host as settled — the exact
+// failure this control exists to catch.
+
+test fn comparator_met_on_correct_observation() -> Bool {
+  match serving_compare_string(desired: "gunbc-build", observed: Present { value: "gunbc-build" }) {
+    Met => true
+    _ => false
+  }
+}
+
+test fn comparator_drifted_on_wrong_observation() -> Bool {
+  match serving_compare_string(desired: "1005", observed: Present { value: "1006" }) {
+    Drifted { desired, observed } => desired == "1005" && observed == "1006"
+    _ => false
+  }
+}
+
+test fn comparator_missing_on_unobserved() -> Bool {
+  match serving_compare_string(desired: "gunbc-build", observed: Absent) {
+    Missing { desired } => desired == "gunbc-build"
+    _ => false
+  }
+}

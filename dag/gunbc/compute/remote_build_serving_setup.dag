@@ -1,0 +1,171 @@
+module gunbc.compute.remote_build_serving_setup
+
+// PR 5 of the remote-build scaffold: the DESIRED STATE of the remote-build serving
+// setup on one roster host, derived purely from the admitted model. This module owns
+// NO SSH and NO actuation; it is the model the converger observes against and the
+// witness claims against. The wet entrypoints that run observe/apply over fleet SSH
+// live in gunbc.compute.remote_build_serving_converge and call into here.
+//
+// WHY A SEPARATE MODULE. clever-raven-401 performed this setup by hand on srv1 on
+// 2026-11-15 (group, user, ledger, toolchain, checkout, seed binary, store, and the
+// forced-command authorized_keys line). Those hand steps become a desired-state
+// derivation here so the converger can ADOPT an existing correct host (plan shows
+// no-op) and CONVERGE a fresh one, from one source of truth.
+//
+// EVERY FIELD IS READ FROM AN EXISTING AUTHORITY, never restated as a literal:
+//   account  -> gunbc.fleet.fleet_posix_accounts (uid/gid/shell/home/supplementary)
+//   paths    -> gunbc.compute.remote_build::remote_build_serving_instance
+//   ledger   -> gunbc.compute.host_capacity::host_capacity_home_directories (PR 4)
+//   ak line  -> gunbc.compute.remote_build_serve forced-command render (per host)
+// The serve-time principal check (remote_build_serve_principal) is the contract the
+// account shape must satisfy; a host whose forced-command line will not render is
+// `none` here exactly as `remote_build_authorized_keys_lines` refuses it there.
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.list { first_where }
+
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user,
+  fleet_posix_remote_build_home,
+  fleet_posix_compute_ledger_group_name,
+  fleet_posix_compute_ledger_group_gid,
+  fleet_posix_remote_build_supplementary_groups,
+}
+import gunbc.compute.remote_build { remote_build_serving_instance, remote_build_candidates }
+import gunbc.compute.host_capacity { host_capacity_home_directories }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner }
+import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
+import extdeps.ssh.keys { authorized_key_entry_line }
+
+// ---------------------------------------------------------------------------
+// verdict vocabulary
+// ---------------------------------------------------------------------------
+
+// One item of the serving setup, judged against what was observed on the host.
+// `Met` is a no-op; `Drifted`/`Missing` are the drift the apply must write; `Refused`
+// is a host the converger must NOT touch (an unrenderable principal or forced command,
+// a missing authority) — refuse, never guess.
+type ServingItemVerdict
+  = Met
+  | Drifted { desired: String, observed: String }
+  | Missing { desired: String }
+  | Refused { reason: String }
+
+fn serving_verdict_settled(v: ServingItemVerdict) -> Bool {
+  match v {
+    Met => true
+    _ => false
+  }
+}
+
+// Compare an observed string against the desired string: equal -> Met, unequal ->
+// Drifted, unobserved -> Missing. The discriminating control for the witness lives in
+// the caller: a wrong observed MUST yield Drifted, never Met.
+fn serving_compare_string(desired: String, observed: String?) -> ServingItemVerdict {
+  match observed {
+    Absent => Missing { desired: desired }
+    Present { value: o } => match o == desired {
+      true => Met
+      false => Drifted { desired: desired, observed: o }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// desired state, per host
+// ---------------------------------------------------------------------------
+
+// The full desired state of the remote-build serving setup on ONE host. Built only
+// from the admitted model + a host identity; nothing here depends on SSH.
+type RemoteBuildServingDesired {
+  host: HostIdentity
+
+  // component 1+2: the serving principal and its group.
+  account_name: String
+  account_uid: Int
+  account_gid: Int
+  account_home: String
+  group_name: String
+  group_gid: Int
+  // gunbc-compute's required members: the host ledger's service user, then the account.
+  group_members: List<String>
+  // the account's supplementary groups, from the fleet's declared set.
+  supplementary_groups: List<NonEmptyStr>
+
+  // component 3: the host-scoped compute-capacity ledger (root + 03770 areas).
+  ledger_dirs: List<OwnedDirectoryTarget>
+  ledger_service_user: String
+
+  // component 4: the rustup toolchain homes under the account home.
+  cargo_home: String
+  rustup_home: String
+
+  // component 5: the public-repo checkout, https, detached at the admitted revision.
+  checkout_dir: String
+  // component 6: the seed binary installed for THIS host's architecture.
+  serve_binary: String
+  // component 7: the materialization store root + its staging sibling, 0755.
+  store_root: String
+  store_staging: String
+
+  // component 8: the account's authorized_keys (mode 0600), and the single
+  // forced-command line the host must carry. none when the host's line is
+  // unrenderable — exactly the serve-time refusal, surfaced at plan time so a host
+  // that cannot serve is refused, not half-written at apply.
+  authorized_keys_path: String
+  forced_command_line: String?
+}
+
+// The service user that must share the ledger group is read off the ledger's own area
+// ownership (the first shared 03770 area is service-user : gunbc-compute owned), so the
+// group membership and the ledger owner can never drift apart in the model.
+fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String {
+  match first_where(dirs, _ => true) {
+    Present { value: d } => owned_directory_owner(t: d).user as String
+    Absent => ""
+  }
+}
+
+// Render the account's authorized_keys forced-command line for the host, none when no
+// candidate exists (an unadmitted host has no candidate, as the serve CLI skips it) or
+// when the render itself refuses (unresolvable instance / repo).
+fn serving_forced_command_line(host: HostIdentity) -> String? {
+  let mine = filter(remote_build_candidates(), c => c.host == host)
+  match first_where(mine, _ => true) {
+    Absent => Absent
+    Present { value: c } => match remote_build_render_entry(candidate: c) {
+      RemoteBuildEntryRendered { entry } => Present { value: authorized_key_entry_line(e: entry) }
+      _ => Absent
+    }
+  }
+}
+
+fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired {
+  let instance = remote_build_serving_instance(host: host)
+  let home = fleet_posix_remote_build_home() as String
+  let ledger = host_capacity_home_directories(host: host)
+  let service_user = serving_ledger_service_user(dirs: ledger)
+  {
+    host: host,
+    account_name: fleet_posix_remote_build_user.name as String,
+    account_uid: fleet_posix_remote_build_user.uid,
+    account_gid: fleet_posix_remote_build_user.gid,
+    account_home: home,
+    group_name: fleet_posix_compute_ledger_group_name as String,
+    group_gid: fleet_posix_compute_ledger_group_gid,
+    group_members: [service_user, fleet_posix_remote_build_user.name as String],
+    supplementary_groups: fleet_posix_remote_build_supplementary_groups,
+    ledger_dirs: ledger,
+    ledger_service_user: service_user,
+    cargo_home: concat(home, "/.cargo"),
+    rustup_home: concat(home, "/.rustup"),
+    checkout_dir: instance.repo_root as String,
+    serve_binary: instance.serve_binary as String,
+    store_root: concat(instance.instance_root as String, "/materialization-store"),
+    store_staging: concat(instance.instance_root as String, "/materialization-store-staging"),
+    authorized_keys_path: concat(home, "/.ssh/authorized_keys"),
+    forced_command_line: serving_forced_command_line(host: host),
+  }
+}
