@@ -2,6 +2,7 @@ module gunbc.live_deploy.unit_standing
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim, length, list_push }
+import std.list { first_where }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -649,17 +650,47 @@ fn service_type_of_unit_file(file: SystemdUnitFile) -> SystemdServiceMode? {
   }
 }
 
+// Does the unit declare ANY ExecStart=? Used with the CITED systemd.service(5) Type= default: a unit that
+// carries NO Type= line is `simple`, EXCEPT that it is `oneshot` when there is no ExecStart= (and no Type=
+// and no BusName=). This model has no BusName= directive, so that clause is always satisfied and the
+// deciding fact is whether an ExecStart= exists. Read straight off the unit's OWN directives -- no guessing.
+fn service_has_exec_start(file: SystemdUnitFile) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      fold(ds, init: false, f: (acc, d) => match acc {
+        true => true
+        false => match d {
+          ExecStart { command: _ } => true
+          _ => false
+        }
+      })
+    _ => false
+  }
+}
+
 // Two independent accessors the closure WITNESS uses to cross-check the read set against the raw
 // emitted unit text WITHOUT calling the same derivation the gate uses (an oracle must not reuse its
-// subject). The read SET itself derives from service_directive_required_reads, NOT from these.
+// subject). The read SET itself derives from service_directive_required_reads, NOT from these. Each reads
+// the unit's OWN [Service] directives directly -- ExecStart= argv[0] and WorkingDirectory= -- so they never
+// route through the read-set classifier. Total over SystemdUnitFile: a non-service unit yields no read.
 fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
-  let command = service_directive_exec_start_of_unit_file(file)
-  match command {
-    Present { value: cmd } => argv0_of_command(cmd)
-    Absent => none
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { ExecStart { command: _ } => true, _ => false } }) {
+        Present { value: ExecStart { command: cmd } } => argv0_of_command(command: cmd as String)
+        _ => none
+      }
+    _ => none
   }
 }
 
 fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
-  service_directive_working_directory_of_unit_file(file)
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { WorkingDirectory { path: _ } => true, _ => false } }) {
+        Present { value: WorkingDirectory { path: p } } => Present { value: p as String }
+        _ => none
+      }
+    _ => none
+  }
 }

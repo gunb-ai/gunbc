@@ -44,6 +44,7 @@ import gunbc.live_deploy.emit {
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_approval_broker_unit_file,
+  device_crypto_deployed_digest_env_file_path,
   tree_remote_convergence_oneshot,
   live_deploy_belt_exit_path_unit_file, live_deploy_publication_path_unit_file,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
@@ -53,7 +54,16 @@ import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_
 import gunbc.live_deploy.unit_standing {
   exec_start_binary_of_unit_file, working_directory_of_unit_file, watched_paths_of_unit_file
 }
-import extdeps.systemd.unit_file { SystemdUnitFile }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, SystemdServiceMode,
+  ExecStart, WorkingDirectory, ServiceType, Restart, SimpleMode, OneshotMode, NotInstallable,
+}
+import gunbc.live_deploy.apply_legs {
+  converger_kind_of, ConvergerUnitKind, ConvergerKindKnown, ConvergerKindMissingUnitFile, Oneshot, LongRunning,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.host_credential_custody_converge { custody_owned_for_read }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_oauth_client_secret_host_path }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
@@ -501,6 +511,13 @@ fn unit_wd(f: SystemdUnitFile) -> String {
   match working_directory_of_unit_file(f) { Present { value: w } => w, Absent => "" }
 }
 
+// The broker's REQUIRED EnvironmentFile path, spelled independently of the read-set classifier: it comes
+// straight from the device-crypto digest-env authority over the broker's own repo root -- the SAME authority
+// the emitted unit's EnvironmentFile= directive uses. This is the oracle for the env-read controls.
+fn unit_env() -> String {
+  device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+}
+
 fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
   unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
 }
@@ -515,15 +532,19 @@ test fn the_serve_unit_reads_the_installed_serve_binary() -> Bool {
 
 // THE BROKER runs its OWN serve binary (serve_binary_path over spec.approval_broker's source), which on
 // the srv1 fixture is NOT the served ServeBinary step path — so the honest item-1 property is that the
-// adapter records exactly what the broker emits: its argv[0] and WorkingDirectory, read from its own
-// typed file. The broker is an always-enabled role singleton, so srv1 MUST own an ApprovalBrokerFrontDoor
+// adapter records exactly what the broker emits: its argv[0], its WorkingDirectory, and its REQUIRED
+// EnvironmentFile= -- the device-crypto digest env the unit hard-depends on (the classifier maps
+// EnvironmentFile= to a required FileContent). The digest env is NOT hand-declared; it is a live required
+// read of record, refused when the deploy omits it
+// (the_broker_refuses_when_its_required_env_file_is_absent). The broker is an always-enabled role singleton,
+// so srv1 MUST own an ApprovalBrokerFrontDoor
 // step — a missing step is a fixture defect (false), not a silent pass (guarantee_ladder: no decoration).
-// RED if the adapter drops either or fabricates a different path. Whether the intent OWNS
+// RED if the adapter drops any of the three or fabricates a different path. Whether the intent OWNS
 // that binary is the wired gate's concern (item 5): a broker naming a binary no step installs must then
 // be refused, not silently allowed here.
 test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
   let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
-  let want = [unit_argv0(f), unit_wd(f)]
+  let want = [unit_argv0(f), unit_wd(f), unit_env()]
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
     Present { value: s } => read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), want)
     Absent => false
@@ -656,4 +677,131 @@ fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
 
 test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
   any(srv1_steps(), fn(s) { kind_is_drain(s) && drain_not_admitted_by_parent(s) })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// CONVERGER KIND (review 95919): decided FAIL-CLOSED from the unit's OWN [Service]
+// directives. The tree-remote converger confers TreeContent ownership only for a kind the
+// gate DERIVES from the unit -- never a guessed default. A present unit file with NO Type=
+// line is NOT a guess: systemd.service(5) makes it `simple` (LongRunning), or `oneshot` when
+// there is no ExecStart= (and no Type= and no BusName=); this model carries no BusName= so
+// ExecStart= presence decides. Only a MISSING unit file is a genuine unknown, and the gate
+// refuses it (the gate turns ConvergerKindMissingUnitFile into a located halt naming the
+// converger; it NEVER Proceeds on an undecided kind). These four controls fix the decision.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// [Service] Type=oneshot (tree-remote's real kind, #16544) -> Oneshot: a start/restart leg, not an enable.
+test fn the_converger_kind_is_oneshot_for_a_oneshot_unit_file() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [Restart { policy: "always" as NonEmptyStr }, ServiceType { mode: OneshotMode }, ExecStart { command: "/bin/true" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { Oneshot => true, _ => false }
+    _ => false
+  }
+}
+
+// Type= MISSING but ExecStart= present -> the CITED systemd.service(5) default `simple` -> LongRunning (an
+// enable leg brings it up). This is a cited upstream default APPLIED, not a fabricated guess.
+test fn the_converger_kind_is_simple_when_type_absent_and_exec_start_present() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [ExecStart { command: "/bin/true" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { LongRunning => true, _ => false }
+    _ => false
+  }
+}
+
+// Type= MISSING and NO ExecStart= -> the same cited default `oneshot` -> Oneshot (a start leg, not an enable).
+test fn the_converger_kind_is_oneshot_when_type_and_exec_start_absent() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [Restart { policy: "always" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { Oneshot => true, _ => false }
+    _ => false
+  }
+}
+
+// No unit of record at all is NOT defaulted -- it is refused (the gate never Proceeds on an undecided kind).
+// RED if an absent unit file is ever folded to a guessed kind instead of refused.
+test fn the_converger_kind_is_refused_when_the_unit_file_is_absent() -> Bool {
+  match converger_kind_of(unit_label: "tree-remote", unit: Absent) {
+    ConvergerKindMissingUnitFile { unit: u } => u == "tree-remote"
+    _ => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// CUSTODY-OWNED SECRET (review 95811 item 5): a read covered by the custody ROSTER,
+// not by an install leg. The OIDC secret_file a serve/door unit opens is installed by FLEET
+// CUSTODY (host_credential_custody_converge), never by the deploy. A required FileContent read
+// whose path the host custody roster DECLARES is covered -- and this coverage PROVES CUSTODY IS
+// DECLARED on the roster, NOT that the file is present on the host (the same rung honesty as a
+// covered TreeContent proving a converger RUNS, not that its content is present at read time).
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// When the roster DECLARES the secret path for srv1, custody covers it: with the binary installed by the
+// deploy and the secret covered by custody, the gate PROCEEDS. (Proves custody DECLARED, not file present.)
+test fn the_gate_covers_a_custody_declared_secret_and_proceeds() -> Bool {
+  let binary = "/usr/local/bin/gunbc-serve"
+  let secret = tracker_web_test_oauth_client_secret_host_path as String
+  let secret_read = DeclaredRead { path: secret, kind: FileContent }
+  let row = ReadRow { located: "tracker-web-serve", reads: Declared { reads: [
+    DeclaredRead { path: binary, kind: FileContent },
+    secret_read
+  ] } }
+  // The model ownership kind: the roster DECLARING the secret is what covers it -- the deploy installs no
+  // install leg for it. custody_owned_for_read yields the owned artifact only because the roster declares it.
+  let secret_owned = custody_owned_for_read(host: operator_host_srv1, want: secret_read)
+  let roster_covers_secret = any(xs: secret_owned, fn(o) { o.path == secret })
+  // With the binary installed by the deploy and the secret covered by custody, the gate PROCEEDS. (Proves
+  // custody DECLARED, not file present.)
+  let installed = ownb([binary, secret])
+  is_allowed(deploy_closure_halts(rows: [row], installed: installed)) && roster_covers_secret
+}
+
+// When the roster does NOT declare the secret path, custody confers nothing: the gate HALTS and NAMES the
+// secret. Proves custody is a DECLARATION check, not a presence check -- an undeclared secret is refused.
+test fn the_gate_halts_a_secret_read_the_custody_roster_does_not_declare() -> Bool {
+  let binary = "/usr/local/bin/gunbc-serve"
+  let secret = "/etc/gunbc-oidc/not-rostered-secret"
+  let row = ReadRow { located: "tracker-web-serve", reads: Declared { reads: [
+    DeclaredRead { path: binary, kind: FileContent },
+    DeclaredRead { path: secret, kind: FileContent }
+  ] } }
+  let halts = deploy_closure_halts(rows: [row], installed: ownb([binary]))
+  is_refused(halts) && refused_names(halts, "tracker-web-serve", secret)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// BROKER ENV (item 3): the required EnvironmentFile= is REFUSED and NAMED when the deploy
+// omits it. The broker unit hard-depends on its device-crypto digest env (EnvironmentFile=),
+// derived as a required FileContent read. On the gate route, installing the broker's binary and
+// working directory but NOT the env must halt, naming the env file (Halt{MissingArtifact} whose
+// artifact is the env path); installing the env must let the gate Proceed. Migrated from main's
+// the_broker_refuses_when_its_required_env_file_is_absent to this gate route (review 95811).
+// ─────────────────────────────────────────────────────────────────────────────────
+
+fn owns_of(reads: List<DeclaredRead>) -> List<OwnedArtifact> {
+  list_map(xs: reads, f: fn(r) { OwnedArtifact { path: r.path, kind: r.kind } })
+}
+
+test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
+  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
+    Absent => false
+    Present { value: s } => {
+      let env = unit_env()
+      let loc = s.path as String
+      let read_set = deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev())
+      let derived_reads = match read_set { Declared { reads: rs } => rs, _ => [] }
+      let row = ReadRow { located: loc, reads: read_set }
+      // The digest env IS a required read of record (otherwise this control would prove nothing).
+      let env_is_a_read = list_member(xs: paths_of(derived_reads), x: env, eq: eq_str)
+      // partial: install every required read EXCEPT the env (correct kinds, env dropped).
+      let partial = owns_of(filter(derived_reads, fn(r) { r.path != env }))
+      // complete: install every required read, the env included.
+      let complete = owns_of(derived_reads)
+      let partial_halts = deploy_closure_halts(rows: [row], installed: partial)
+      env_is_a_read
+        && is_refused(partial_halts)
+        && refused_names(partial_halts, loc, env)
+        && is_allowed(deploy_closure_halts(rows: [row], installed: complete))
+    }
+  }
 }

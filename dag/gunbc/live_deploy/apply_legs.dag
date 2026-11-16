@@ -3,7 +3,7 @@ module gunbc.live_deploy.apply_legs
 import std.types { String }
 import std.algebra { Cons, Empty, list_append, list_map, non_empty }
 import std.list { first_where }
-import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, DeployGateDecision, DeployReadRow, OwnedArtifact, TreeContent, Proceed, Halt }
+import gunbc.live_deploy.deploy_artifact_closure { deploy_gate, render_deploy_halt_causes, render_deploy_halt_cause, DeployGateDecision, DeployReadRow, OwnedArtifact, TreeContent, Proceed, Halt, ConvergerKindUnknown }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_rows }
 import gunbc.live_deploy.spec { deployment_owned_steps, DeploymentArtifactStep }
 import extdeps.exec.command { ArgvCommand }
@@ -173,7 +173,7 @@ import gunbc.host.host_layout {
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
 import extdeps.systemd.unit_file { SystemdUnitFile, SystemdServiceMode, OneshotMode }
-import gunbc.live_deploy.unit_standing { service_type_of_unit_file }
+import gunbc.live_deploy.unit_standing { service_type_of_unit_file, service_has_exec_start }
 import gunbc.live_deploy.emit { live_deploy_tree_remote_unit_file_for_closure }
 import gunbc.live_deploy.emit {
   spec_has_artifact_kind,
@@ -266,48 +266,8 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
   }
 }
 
-// ── WHAT A LEG INSTALLS / WHAT A LEG ENABLES (deploy-intent-owns-artifact-closure) ────────────────
+// ── WHAT A LEG INSTALLS (deploy-intent-owns-artifact-closure) ────────────────
 //
-// The pre-leg artifact gate (deploy_artifact_closure) asks, of the plan the deploy EXECUTES: which units
-// does it ENABLE (their read set must close), and which artifacts does it INSTALL (those are the owned
-// set)? Both answers come from ONE total match over `DeployApplyLeg` with NO wildcard arm, per the node's
-// fail-closed demand: adding a leg kind must fail to compile until someone decides whether it installs or
-// enables. A leg's concrete INSTALLED PATHS are NOT taken from here -- ApplyLegInstallFile carries its
-// destination inside an opaque ArgvCommand (the executor pipes the payload to it) and the broker/helper
-// legs carry only a revision/locus, so the concrete paths are re-derived from the SAME install authority
-// the leg's realization uses, keyed by the step; this predicate only says WHETHER a leg installs anything.
-fn leg_installs_anything(leg: DeployApplyLeg) -> Bool {
-  match leg {
-    // Installs: writes an artifact onto the host that a later-enabled unit can read.
-    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => true
-    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => true
-    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
-    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
-    ApplyLegBrokerTree { revision: _ } => true
-    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: a } => match a {
-      HelperSnapshotInstall => true
-      HelperSnapshotRetireSuperseded => false
-      HelperSnapshotVerify => false
-    }
-    // Writes no deployment artifact another unit reads: directories, verifications, reports, commands.
-    ApplyLegEnsureDirectory { target: _ } => false
-    ApplyLegRepairDirectoryEntries { command: _ } => false
-    ApplyLegCommand { step: _, command: _ } => false
-    ApplyLegReport { step: _, line: _ } => false
-    ApplyLegObjectSource => false
-    ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
-    ApplyLegBrokerStateDirectories { revision: _ } => false
-    ApplyLegRetract { step: _, leg: _ } => false
-    ApplyLegDependency { dep: _ } => false
-  }
-}
-
-// A leg ENABLES a unit (systemctl enable) iff its typed step label marks an enable leg: every enable leg is
-// built through apply_root_leg/apply_enable_restart_legs with a step ending "-enable" (serve-enable,
-// approval-broker-enable, belt-exit-drain-enable, ...), while restarts end "-restart" and reloads/reloads
-// carry other labels. This keys on the leg's typed step field, never on its argv, so no destination or
-// command is re-parsed. Total match, no wildcard: a new leg kind forces the decision.
 // THE PATHS EACH LEG WRITES, TAKEN FROM THE LEG'S OWN TYPED DESTINATION -- never from "what the
 // per-step authority says step X installs" (review 95702-class gap: the gate would then check the model
 // against itself and a leg that argv-spells a different path would still pass). Every one of the 15
@@ -350,28 +310,6 @@ fn leg_installed_paths(leg: DeployApplyLeg, broker_base_root: String) -> List<Ow
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: dest, owner: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
     ApplyLegCredstoreCopy { step: _, source: _, dest: dest, file_name: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
-  }
-}
-
-fn leg_enables_anything(leg: DeployApplyLeg) -> Bool {
-  match leg {
-    ApplyLegCommand { step: st, command: _ } => ends_with(s: st, suffix: "-enable")
-    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => ends_with(s: st, suffix: "-enable")
-    // No other leg kind runs systemctl enable.
-    ApplyLegEnsureDirectory { target: _ } => false
-    ApplyLegRepairDirectoryEntries { command: _ } => false
-    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => false
-    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => false
-    ApplyLegReport { step: _, line: _ } => false
-    ApplyLegObjectSource => false
-    ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
-    ApplyLegBrokerStateDirectories { revision: _ } => false
-    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => false
-    ApplyLegBrokerTree { revision: _ } => false
-    ApplyLegRetract { step: _, leg: _ } => false
-    ApplyLegDependency { dep: _ } => false
-    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
-    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
   }
 }
 
@@ -1672,6 +1610,37 @@ fn converger_brought_up(legs: List<DeployApplyLeg>, unit_step: String, kind: Con
   }
 }
 
+// The converger's kind decided FAIL-CLOSED from the unit's OWN directives -- never a guessed default:
+//   * no unit of record at all          -> ConvergerKindMissingUnitFile  (an unknown; the gate REFUSES it)
+//   * [Service] Type=oneshot            -> Oneshot            (a start/restart leg runs it this deploy)
+//   * [Service] Type=<anything else>    -> LongRunning        (simple/forking/notify/idle stay up on enable)
+//   * NO Type= line, ExecStart= present -> LongRunning        (the CITED systemd.service(5) default: simple)
+//   * NO Type= line, no ExecStart=      -> Oneshot            (the same cited default: oneshot)
+// The two "no Type=" arms are a cited upstream default APPLIED, not a fabrication; only the absent-unit-file
+// case is a genuine unknown and is refused, so the gate never Proceeds on a kind it did not derive. The unit
+// label is carried so the refusal NAMES the converger whose kind could not be decided.
+type ConvergerKindDecision =
+  | ConvergerKindKnown { kind: ConvergerUnitKind }
+  | ConvergerKindMissingUnitFile { unit: String }
+
+fn converger_kind_of(unit_label: String, unit: SystemdUnitFile?) -> ConvergerKindDecision {
+  match unit {
+    Absent => ConvergerKindMissingUnitFile { unit: unit_label }
+    Present { value: uf } => match service_type_of_unit_file(file: uf) {
+      Present { value: OneshotMode } => ConvergerKindKnown { kind: Oneshot }
+      Present { value: _ } => ConvergerKindKnown { kind: LongRunning }
+      // No Type= line. systemd.service(5): "Type= ... defaults to simple ... oneshot if ExecStart= is not
+      // set and neither Type= nor BusName= are set." This model carries no BusName= directive, so that clause
+      // is always met and ExecStart= presence decides simple(LongRunning) vs oneshot(Oneshot). Cited default.
+      Absent => if service_has_exec_start(file: uf) {
+        ConvergerKindKnown { kind: LongRunning }
+      } else {
+        ConvergerKindKnown { kind: Oneshot }
+      }
+    }
+  }
+}
+
 fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, result: DeployApplyPlan) -> DeployApplyPlan {
   match result {
     ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
@@ -1680,41 +1649,37 @@ fn deploy_artifact_closure_gate(spec: DeploymentSpec, plan: ReleaseEffectPlan, r
         DashboardInstanceIdUnknown { instance_id: id } =>
           ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: no HostDashboardInstance for instance ", id, " -- the artifact-closure gate cannot resolve the roster to check its unit reads against the install legs"], "") }
         DashboardInstanceForId { instance: instance } =>
-          let owned: List<OwnedArtifact> = list_append(
-            left: deploy_gate_installed_paths(legs: legs, broker_base_root: spec.approval_broker.repo_root as String),
-            // The deployed source tree is owned by a CONVERGER, not an installer: the plan RUNS the tree-remote
-            // converger this deploy. Which leg counts is decided by the converger's OWN [Service] Type= via a
-            // total match (converger_brought_up): a oneshot converger -- tree-remote is a typed oneshot (#16544,
-            // [Service] Type=oneshot) -- is covered by a start/restart leg that runs it during the deploy; a
-            // long-running converger would instead be covered by an enable leg. There is NO tree-remote-enable
-            // leg (the unit is restarted, never systemctl-enable'd) -- which is exactly why the unit kind decides,
-            // not "either leg". It lays content at the instance's declared repo_root (HostDashboardInstance.
-            // repo_root -- the one tree authority, never re-spelled). This proves a converger RUNS this deploy,
-            // NOT that the content is present when a reader starts; that ordering (each reader unit After=/
-            // Requires= its converger) is a SEPARATE obligation, filed as a gunbc.integration_concern row
-            // "deploy-readers-must-order-after-tree-converger" (ServeBinary / roadmap-daemon / door units read the
-            // tree at repo_root). Rung: converger runs this deploy, not ordering. OBSERVED (not a guarantee): in
-            // this plan shape the tree-remote-restart leg precedes the reader units' start/restart legs -- a
-            // property of the plan, not something the gate enforces.
-            right: if converger_brought_up(
-              legs: legs,
-              unit_step: "tree-remote",
-              kind: match live_deploy_tree_remote_unit_file_for_closure(spec: spec) {
-                Present { value: uf } => match service_type_of_unit_file(file: uf) {
-                  Present { value: OneshotMode } => Oneshot
-                  Present { value: _ } => LongRunning
-                  Absent => LongRunning
-                }
-                Absent => LongRunning
-              }
-            ) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
-          )
           let steps: List<DeploymentArtifactStep> = deployment_owned_steps(instance: instance, names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
           let rows: List<DeployReadRow> = deployment_artifact_read_rows(steps: steps, spec: spec, instance: instance, revision: RevisionBoundAtEmission { revision: plan.target.revision })
-          match deploy_gate(rows: rows, installed: owned) {
-            Proceed => ApplyPlanReady { legs: legs }
-            Halt { causes: causes } =>
-              ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: the deploy artifact-closure gate halted -- ", render_deploy_halt_causes(causes: causes), "; the plan is refused before any enable leg runs"], "") }
+          // The tree-content ownership the converger confers is decided FAIL-CLOSED from the converger's own
+          // [Service] Type= (converger_kind_of): the absent-unit-file case is an unknown the gate REFUSES, never
+          // a guessed kind the gate Proceeds on. Only a KNOWN kind contributes the instance's repo_root tree.
+          match converger_kind_of(unit_label: "tree-remote", unit: live_deploy_tree_remote_unit_file_for_closure(spec: spec)) {
+            ConvergerKindMissingUnitFile { unit: unit } =>
+              ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: ", render_deploy_halt_cause(cause: ConvergerKindUnknown { unit: unit }), "; the plan is refused before any enable leg runs"], "") }
+            ConvergerKindKnown { kind: kind } =>
+              let owned: List<OwnedArtifact> = list_append(
+                left: deploy_gate_installed_paths(legs: legs, broker_base_root: spec.approval_broker.repo_root as String),
+                // The deployed source tree is owned by a CONVERGER, not an installer: the plan RUNS the tree-remote
+                // converger this deploy. Which leg counts is decided by the converger's OWN [Service] Type= via a
+                // total match (converger_brought_up): a oneshot converger -- tree-remote is a typed oneshot (#16544,
+                // [Service] Type=oneshot) -- is covered by a start/restart leg that runs it during the deploy; a
+                // long-running converger would instead be covered by an enable leg. There is NO tree-remote-enable
+                // leg (the unit is restarted, never systemctl-enable'd) -- which is exactly why the unit kind decides,
+                // not "either leg". It lays content at the instance's declared repo_root (HostDashboardInstance.
+                // repo_root -- the one tree authority, never re-spelled). This proves a converger RUNS this deploy,
+                // NOT that the content is present when a reader starts; reader ordering (each reader unit After=/
+                // Requires= its converger) is a SEPARATE obligation this gate does not establish. Rung: converger
+                // runs this deploy, not ordering. OBSERVED (not a guarantee): in this plan shape the tree-remote-
+                // restart leg precedes the reader units' start/restart legs -- a property of the plan, not something
+                // the gate enforces.
+                right: if converger_brought_up(legs: legs, unit_step: "tree-remote", kind: kind) { [OwnedArtifact { path: instance.repo_root as String, kind: TreeContent }] } else { [] }
+              )
+              match deploy_gate(rows: rows, installed: owned) {
+                Proceed => ApplyPlanReady { legs: legs }
+                Halt { causes: causes } =>
+                  ApplyPlanRefused { step: "deploy-artifact-gate", reason: join(["live-deploy apply refused: the deploy artifact-closure gate halted -- ", render_deploy_halt_causes(causes: causes), "; the plan is refused before any enable leg runs"], "") }
+              }
           }
       }
   }

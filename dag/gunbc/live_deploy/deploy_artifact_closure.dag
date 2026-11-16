@@ -158,6 +158,7 @@ type DeployReadRow
 type DeployHaltCause
   = MissingArtifact { located: String, artifact: String, kind: ReadKind }
   | UnclosedRead { located: String }
+  | ConvergerKindUnknown { unit: String }
 
 type DeployGateDecision
   = Proceed
@@ -172,10 +173,11 @@ fn render_read_kind(kind: ReadKind) -> String {
 }
 
 // Render one halt cause, naming the read KIND and how it is satisfied. The TreeContent wording is
-// deliberately honest about the rung it establishes (guarantee_ladder): a CoveredBy converger proves a
-// converger unit is ENABLED for the tree, NOT that the tree content is present when a reader starts;
-// reader ordering (each reader After=/Requires= its converger) is a separate obligation, filed as an
-// integration_concern -- this gate does not establish it.
+// deliberately honest about the rung it establishes (guarantee_ladder): a converger that runs this deploy
+// proves a converger unit RUNS for the tree, NOT that the tree content is present when a reader starts;
+// reader ordering (each reader After=/Requires= its converger) is a separate obligation this gate does not
+// establish. A ConvergerKindUnknown names the converger whose [Service] kind could not be decided from a
+// unit of record: the gate refuses it fail-closed rather than assuming a kind.
 fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
   match cause {
     MissingArtifact { located: loc, artifact: art, kind: k } =>
@@ -185,6 +187,7 @@ fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
         TreeContent => join(["tree content at [", art, "] read by [", loc, "]: no enabled converger unit declares producing this tree (a covered TreeContent proves a converger is ENABLED for the tree, NOT that its content is present when a reader starts)"], "")
       }
     UnclosedRead { located: loc } => join(["unclosed read by [", loc, "]: its read set is not yet modeled, so the gate cannot confirm any install leg provides it"], "")
+    ConvergerKindUnknown { unit: u } => join(["converger [", u, "]: no unit of record, so its [Service] kind cannot be decided; the tree-content ownership it would confer is refused (fail-closed), never assumed"], "")
   }
 }
 
