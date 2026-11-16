@@ -368,7 +368,16 @@ fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarg
 // (BuildPool) = seat * compute_pool_slots reproduces the carved slot exactly on the carved hosts rather
 // than restating 25 GiB.
 fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
-  let reservation = host_build_pool_reservation(host: host)
+  capacity_seat_for_reservation(reservation: host_build_pool_reservation(host: host))
+}
+
+// THE SEAT IS DERIVED FROM THE RESERVATION, not re-decided. Given the carve (one slot), the seat is that
+// slot split across the pool's seats (compute_pool_slots); a carved host's BuildPool appropriation
+// (seat * compute_pool_slots) therefore reproduces the carved slot EXACTLY -- the slot leaves CI and is
+// held by the pool. A host with NO reservation (off the roster, not carved) gets the host default ceiling.
+// Pure over the reservation so the positive "carved -> one slot" case is witnessed even though PR 4 carves
+// nothing (review 95809 / manager): the derivation is proven before PR 5's admission exercises it.
+fn capacity_seat_for_reservation(reservation: ByteSize) -> ByteSize {
   if byte_size_count(reservation) > 0 {
     byte_size(byte_size_count(reservation) / compute_pool_slots)
   } else {

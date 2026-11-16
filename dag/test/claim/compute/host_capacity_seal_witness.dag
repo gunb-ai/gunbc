@@ -8,12 +8,12 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import gunbc.compute.host_capacity {
   compute_root, compute_capacity_root, host_capacity_subject, host_capacity_subject_in,
-  host_capacity_home_for_host, host_capacity_build_seat,
+  host_capacity_home_for_host, host_capacity_build_seat, capacity_seat_for_reservation,
   ComputeSubjectResolution, ComputeSubjectResolved,
   ComputeSubjectHostUnresolved, ComputeBuildPool,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_home, DashboardInstanceForHost, DashboardInstanceHostUnknown }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_home, compute_build_memory_ceiling_default, DashboardInstanceForHost, DashboardInstanceHostUnknown }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max, host_build_pool_reservation, build_pool_carve_is_due }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
 // THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
@@ -122,20 +122,43 @@ test fn an_admitted_host_resolves_its_ledger_to_the_host_carrier_not_its_dashboa
   }
 }
 
-// A HOST WITH NO DASHBOARD INSTANCE STILL HAS A DECLARED BUILD POOL, DERIVED FROM THE RUNNER CARVE (PR 4,
-// item 2). srv3/srv4 carry no HostDashboardInstance, so their pool is not read off a dashboard instance's
-// ceilings -- it is the one CI runner slot host_build_pool_reservation carves, reached through
-// host_capacity_build_seat and re-multiplied by the pool's seats. The appropriation must equal one
-// gunbc_runner_slot_memory_max to the KiB. srv1, which is NOT carved, must differ -- otherwise the
-// "per-host" in per-host appropriation would be vacuous (one number for every host). A hand-copied figure
-// would drift from the slot; this reads the slot itself.
-test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot() -> Bool {
+// A HOST OFF THE ROSTER IS NOT CARVED, SO NO CI MEMORY IS LOST (PR 4, review 95809 -- the conservation
+// invariant). The build-pool carve (gunbc.runner runner_slot_desired host_build_pool_reservation) is gated
+// on the host being ON the serving roster AND resolving no dashboard instance. srv3/srv4 are not yet admitted
+// (PR 5 admits each as it creates and reads back its /opt/gunbc home), so NOTHING is carved for them: their
+// reservation is byte_size(0) and their seat is the host default ceiling -- NOT a phantom carved slot. This
+// is the red control for the carve gate: were the carve an ungated srv3/srv4 test (as it was), their
+// reservation would come back one slot while no rostered pool held it, this cell's zero-check would fail,
+// and a full slot per host would be lost to neither side. When PR 5 admits srv3/srv4 the carve and the pool
+// appropriation fire in that same change -- host_capacity_build_seat then reads the carved slot and the pool
+// equals it (the derived-once mechanism host_capacity_build_seat -> host_build_pool_reservation).
+test fn a_host_off_the_roster_is_not_carved_and_keeps_its_full_ci_width() -> Bool {
+  let default_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: compute_build_memory_ceiling_default))
+  kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv3" as HostIdentity))) == 0
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv4" as HostIdentity))) == 0
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv3" as HostIdentity))) == default_kib
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv4" as HostIdentity))) == default_kib
+}
+
+// THE POSITIVE CASE, PROVEN BEFORE PR 5 EXERCISES IT (manager, review 95809). The carve rule
+// (build_pool_carve_is_due) and the seat derivation (capacity_seat_for_reservation) are PURE over the host
+// facts / the reservation, so both are witnessed even though PR 4 carves nothing. A host that IS on the
+// roster and carries no ledger carves exactly one slot; a rostered host that DOES carry its ledger (srv1)
+// and an off-roster host (srv3 today) do NOT. And a full carved slot becomes a seat that, split across the
+// pool's seats, is re-multiplied by host_capacity_pool_appropriation back to EXACTLY the carved slot -- the
+// slot leaves CI and is held by the ledger pool. PR 5's admission of srv3/srv4 (rostered, no dashboard
+// instance) flips THIS proven rule, so it is not an unexercised one when it lands.
+test fn a_rostered_host_with_no_instance_carves_one_slot_and_the_seat_is_derived() -> Bool {
   let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  let srv3_home = host_capacity_home(host: "srv3", build_seat: host_capacity_build_seat(host: "srv3" as HostIdentity))
-  let srv1_home = host_capacity_home(host: "srv1", build_seat: host_capacity_build_seat(host: "srv1" as HostIdentity))
-  let srv3_app = kibibyte_count(k: host_capacity_subject_in(requesting: srv3_home, host_instance: srv3_home, pool: ComputeBuildPool).appropriation)
-  let srv1_app = kibibyte_count(k: host_capacity_subject_in(requesting: srv1_home, host_instance: srv1_home, pool: ComputeBuildPool).appropriation)
-  one_slot_kib > 0 && srv3_app == one_slot_kib && srv1_app != srv3_app
+  let carved_seat = capacity_seat_for_reservation(reservation: gunbc_runner_slot_memory_max)
+  let home = host_capacity_home(host: "srv3", build_seat: carved_seat)
+  let pool_kib = kibibyte_count(k: host_capacity_subject_in(requesting: home, host_instance: home, pool: ComputeBuildPool).appropriation)
+  build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && !build_pool_carve_is_due(rostered: true, carries_own_ledger: true)
+    && !build_pool_carve_is_due(rostered: false, carries_own_ledger: false)
+    && one_slot_kib > 0
+    && pool_kib == one_slot_kib
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: carved_seat)) < one_slot_kib
 }
 
 // A NON-ROSTER HOST STILL RESOLVES ITS SUBJECT THROUGH ITS DASHBOARD INSTANCE (PR 4, review fix --

@@ -238,18 +238,20 @@ test fn every_instance_on_a_host_reserves_in_the_one_host_ledger() -> Bool {
     && (compute_capacity_root(host_instance: ledger.subject.instance) as String) == "/opt/gunbc/compute/capacity"
 }
 
-// THE srv3/srv4 BUILD POOL IS THE ONE CARVED RUNNER SLOT, DERIVED not restated. host_build_pool_reservation
-// subtracts exactly one gunbc_runner_slot_memory_max from those hosts' CI envelope; host_capacity
-// host_capacity_build_seat hands the SAME slot to the pool (split across its seats, re-multiplied by
-// host_capacity_pool_appropriation). So the appropriation must equal one slot to the KiB, and it must be
-// read from gunbc_runner_slot_memory_max -- a figure hand-copied here would drift the moment the slot moves.
-// srv3/srv4 are not on the roster yet (PR 5 admits them as it creates their homes), so this asks the pool
-// of the host home directly through host_capacity_subject_in, forcing the seat derived from the carve.
-test fn srv3_and_srv4_build_pool_appropriation_is_one_carved_runner_slot() -> Bool {
-  let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  one_slot_kib > 0
-    && ["srv3", "srv4"] |> all(name => {
-      let home = host_capacity_home(host: (name as String) as NonEmptyStr, build_seat: host_capacity_build_seat(host: (name as String) as HostIdentity))
-      kibibyte_count(k: host_capacity_subject_in(requesting: remote_build_serving_instance(host: (name as String) as HostIdentity), host_instance: home, pool: ComputeBuildPool).appropriation) == one_slot_kib
-    })
+// srv3/srv4 HAVE NO DASHBOARD INSTANCE TO CARRY THEIR LEDGER, yet the remote-build account's reservation
+// still lands in the SINGLE host ledger -- asked of the host home directly through
+// host_capacity_subject_in, forcing srv3/srv4's host_capacity_home (they are not on the roster yet; PR 5
+// admits each as it creates and reads back its home). The root must be the one host home
+// /opt/gunbc/compute/capacity, not any per-instance tree. The BUILD-POOL CARVE itself is gated on
+// admission (host_build_pool_reservation is roster-gated, review 95809) and so is NOT applied in this PR --
+// the conservation invariant (srv3/srv4 not carved, no CI slot lost) is carried by the seal witness
+// a_host_off_the_roster_is_not_carved_and_keeps_its_full_ci_width, and PR 5 carves + admits each host
+// together.
+test fn srv3_and_srv4_reserve_in_the_one_host_ledger() -> Bool {
+  ["srv3", "srv4"] |> all(name => {
+    let home = host_capacity_home(host: (name as String) as NonEmptyStr, build_seat: host_capacity_build_seat(host: (name as String) as HostIdentity))
+    let ledger = host_capacity_subject_in(requesting: remote_build_serving_instance(host: (name as String) as HostIdentity), host_instance: home, pool: ComputeBuildPool)
+    (ledger.subject.instance.instance_root as String) == "/opt/gunbc"
+      && (compute_capacity_root(host_instance: ledger.subject.instance) as String) == "/opt/gunbc/compute/capacity"
+  })
 }
