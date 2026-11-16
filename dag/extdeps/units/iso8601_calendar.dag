@@ -2,7 +2,8 @@ module extdeps.units.iso8601_calendar
 
 import std.types { Int, String }
 import std.measure { Second, second }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatOverflow, CheckedNatReady }
+import std.optional { Absent, Optional, Present }
 import std.algebra { trim }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 
@@ -71,6 +72,20 @@ fn iso8601_civil_from_days(days: Int) -> Iso8601CivilDate {
   let d = doy - (153 * mp + 2) / 5 + 1
   let m = if mp < 10 { mp + 3 } else { mp - 9 }
   Iso8601CivilDate { year: if m <= 2 { y + 1 } else { y }, month: m, day: d }
+}
+
+// THE CHECKED CONSTRUCTOR, exported instead of the record, for a caller that holds three integers --
+// typically read from a console or a file -- and must not be able to hold a date that does not exist.
+// It is the one place a component is bounded, and it borrows no new calendar authority: the day-of-month
+// bound is this module's own days-in-month function, which knows the leap rule. The text parsers above
+// stay the authority for reading a date from wire form; this is the surface for holding one that was
+// read some other way.
+fn iso8601_civil_date(year: Int, month: Int, day: Int) -> Optional<Iso8601CivilDate> {
+  if 1 <= month && month <= 12 && 1 <= day && day <= iso8601_gregorian_days_in_month(y: year, m: month) {
+    Present { value: Iso8601CivilDate { year: year, month: month, day: day } }
+  } else {
+    Absent
+  }
 }
 
 // The day-in-month bound with the leap rule, so a calendar-impossible day (Feb 30, Apr 31) is refused
