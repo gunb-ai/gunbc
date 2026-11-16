@@ -162,6 +162,20 @@ fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDi
   ]
 }
 
+// THE LEDGER ROWS A HOST GETS ONCE ADMITTED, spelled from the same parts as compute_capacity_directories
+// — the shared rows come from compute_capacity_area_shared (the ONE shared-posture spelling), never from a
+// copied literal. The roster gate in compute_ledger_sharing decides the posture for hosts the roster
+// already knows; this function is what the serving desired state asks for a CANDIDATE (not-yet-rostered)
+// host, so admission is not a desired-state change (side-chat review of 2026-11-16, finding A2).
+fn compute_capacity_directories_admitted(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  let areas = fabric_store_area_paths(members: compute_capacity_slots, instance: instance)
+  [
+    dashboard_instance_shared_directory(instance: instance, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
+    compute_capacity_area_shared(instance: instance, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
+    compute_capacity_area_shared(instance: instance, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
+  ]
+}
+
 // A LEDGER AREA IS SHARED WHEN ITS HOST SERVES REMOTE BUILDS, and only the ledger the host resolves to:
 // the remote-build account reserves in this host's one ledger (host_capacity_subject), so the two areas
 // it creates entries in are grouped to the ledger group, group-writable and setgid so an entry either
@@ -200,6 +214,24 @@ fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerShari
   }
 }
 
+// THE POST-ADMISSION LEDGER-AREA POSTURE, SPELLED ONCE. A host joins the roster (is admitted) by
+// operator decision, so EVERY consumer of a candidate's serving posture needs the areas AS THEY
+// WILL BE once that decision lands: the roster gate below selects this function for a serving host,
+// and gunbc.compute.remote_build_serving_setup remote_build_serving_desired calls it directly for a
+// CANDIDATE host (a host not yet on the roster) — asking the roster-gated path for a candidate would
+// hand it the service-only posture, so a pre-admission 'settled' receipt would describe a ledger the
+// admission itself then changes (side-chat review of 2026-11-16, finding A2). One spelling, two
+// selectors: nobody re-declares the group, the mode, or the adoption.
+fn compute_capacity_area_shared(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member,
+    path: path,
+    owner: PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
+    mode: DirectoryOwnerGroupWritableSetgidSticky,
+    group_adoption: SameUserRegroupToDeclaredGroup,
+  }
+}
+
 fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
   match compute_ledger_sharing(instance: instance) {
     ComputeLedgerServiceOnly => OwnedDirectoryDeclared {
@@ -209,13 +241,7 @@ fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, p
       mode: DirectoryOwnerAllEveryoneTraverse,
       group_adoption: ForeignOwnershipRefuses,
     }
-    ComputeLedgerSharedWithRemoteBuild => OwnedDirectoryDeclared {
-      member: member,
-      path: path,
-      owner: PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
-      mode: DirectoryOwnerGroupWritableSetgidSticky,
-      group_adoption: SameUserRegroupToDeclaredGroup,
-    }
+    ComputeLedgerSharedWithRemoteBuild => compute_capacity_area_shared(instance: instance, member: member, path: path)
   }
 }
 
@@ -337,6 +363,15 @@ fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectRe
 // actuation. Spelled once -- it calls compute_capacity_directories, never a second copy of the rows.
 fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarget> {
   compute_capacity_directories(instance: host_capacity_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
+}
+
+// THE LEDGER ROWS A CANDIDATE HOST MUST CARRY BEFORE IT CAN BE ADMITTED: the same rows
+// host_capacity_home_directories would yield AFTER admission, taken directly from the shared-posture
+// authority (compute_capacity_directories_admitted) instead of through the roster gate — which a
+// candidate does not yet pass. remote_build_serving_desired uses this so a pre-admission 'settled'
+// receipt describes the post-admission ledger (side-chat review of 2026-11-16, finding A2).
+fn host_capacity_home_directories_admitted(host: HostIdentity) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_admitted(instance: host_capacity_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
 }
 
 // THE ONE RUNNER SLOT THE BUILD POOL IS CARVED FROM, ON srv3/srv4. A host with no dashboard
