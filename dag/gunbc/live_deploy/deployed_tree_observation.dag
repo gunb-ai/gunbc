@@ -236,10 +236,7 @@ type DeployedTreeLegOutcome
   | DeployedTreeLegNotAttempted { reason: String }
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
-  match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
-    TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
-    TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
-  }
+  deployed_tree_leg_over_transport(transport: deployed_tree_locus_transport(locus: locus), argv: argv)
 }
 
 fn deployed_tree_leg_over_transport(transport: HostEffectTransport, argv: List<String>) -> DeployedTreeLegOutcome {
@@ -367,53 +364,31 @@ fn observe_deployed_tree_at(context: FleetSshExecutionContext, target: SshTarget
 }
 
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
-  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
-    DeployedTreeLegNotAttempted { reason: why } =>
-      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
-    DeployedTreeLegRan { result: rev } =>
-      if rev.exit_code != 0 {
-        DeployedTreeUnobservable {
-          cause: TreeCommandFailed { leg: "revision", exit_code: rev.exit_code, stderr: rev.stderr },
-        }
-      } else {
-        match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
-          Absent =>
-            DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
-          Present { value: oid } =>
-            match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: locus.repo)) {
-              DeployedTreeLegNotAttempted { reason: why } =>
-                DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
-              DeployedTreeLegRan { result: tr } =>
-                if tr.exit_code != 0 {
-                  DeployedTreeUnobservable {
-                    cause: TreeCommandFailed { leg: "root tree", exit_code: tr.exit_code, stderr: tr.stderr },
-                  }
-                } else {
-                  match git_object_id_from_untagged_hex(hex: trim(s: tr.stdout)) {
-                    Absent =>
-                      DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: tr.stdout) } }
-                    Present { value: tree_oid } =>
-                      observe_deployed_tree_against_revision(
-                        locus: locus,
-                        revision: oid,
-                        tree: tree_oid,
-                        revision_hex: trim(s: rev.stdout),
-                      )
-                  }
-                }
-            }
-        }
-      }
-  }
+  observe_deployed_tree_on_transport(
+    transport: deployed_tree_locus_transport(locus: locus),
+    repo: locus.repo,
+    index_path: deployed_tree_temp_index_path(locus: locus),
+  )
 }
 
 // Observe the deployed tree by SSH-ing to the same host the caller is already on (the belt tick
-// runs ON srv1 and observes the lab checkout by SSH-ing to srv1 with SshShell). Uses the same
-// canonical 4-leg instrument as observe_deployed_tree: revision, root tree, read-tree to a temp
-// index, status, ignored paths. This is the single observer -- not a re-derivation.
+// runs ON srv1 and observes the lab checkout by SSH-ing to srv1 via SshShell). Uses the same
+// canonical instrument as observe_deployed_tree -- this is not a re-derivation.
 fn observe_deployed_tree_over_self_ssh(ssh_host: NonEmptyStr, repo: NonEmptyStr) -> DeployedTreeObservation {
-  let transport: HostEffectTransport = SshShell { ssh_host: ssh_host }
-  let index_path = join(["/tmp/gunbc-deployed-tree-index-self-", repo as String], "")
+  observe_deployed_tree_on_transport(
+    transport: SshShell { ssh_host: ssh_host },
+    repo: repo,
+    index_path: join(["/tmp/gunbc-deployed-tree-index-self-", repo as String], ""),
+  )
+}
+
+// THE CANONICAL INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
+// See the comments on observe_deployed_tree for why each leg is separate.
+fn observe_deployed_tree_on_transport(
+  transport: HostEffectTransport,
+  repo: NonEmptyStr,
+  index_path: String,
+) -> DeployedTreeObservation {
   match deployed_tree_leg_over_transport(transport: transport, argv: deployed_tree_revision_argv(repo: repo)) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
@@ -440,7 +415,7 @@ fn observe_deployed_tree_over_self_ssh(ssh_host: NonEmptyStr, repo: NonEmptyStr)
                     Absent =>
                       DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: tr.stdout) } }
                     Present { value: tree_oid } =>
-                      observe_deployed_tree_against_revision_over_transport(
+                      observe_deployed_tree_against_revision_on_transport(
                         transport: transport,
                         repo: repo,
                         revision: oid,
@@ -456,7 +431,7 @@ fn observe_deployed_tree_over_self_ssh(ssh_host: NonEmptyStr, repo: NonEmptyStr)
   }
 }
 
-fn observe_deployed_tree_against_revision_over_transport(
+fn observe_deployed_tree_against_revision_on_transport(
   transport: HostEffectTransport,
   repo: NonEmptyStr,
   revision: GitObjectId,
@@ -521,8 +496,6 @@ fn observe_deployed_tree_against_revision_over_transport(
       }
   }
 }
-
-// THE TEMP INDEX IS BUILT FROM THE REVISION THE HOST IS ACTUALLY ON, not from the admitted one. That
 // keeps this observation answering ONE question -- does the deployed scope realize the commit HEAD names --
 // and leaves "is that the right commit" to the standing. Building it from the desired revision would
 // fuse the two, and a host on the wrong commit would then report modifications for every path that
@@ -533,63 +506,14 @@ fn observe_deployed_tree_against_revision(
   tree: GitObjectId,
   revision_hex: String,
 ) -> DeployedTreeObservation {
-  let index_path = deployed_tree_temp_index_path(locus: locus)
-  match deployed_tree_leg(
-    locus: locus,
-    argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
-  ) {
-    DeployedTreeLegNotAttempted { reason: why } =>
-      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
-    DeployedTreeLegRan { result: rt } =>
-      if rt.exit_code != 0 {
-        DeployedTreeUnobservable {
-          cause: TreeCommandFailed { leg: "index materialization", exit_code: rt.exit_code, stderr: rt.stderr },
-        }
-      } else {
-        match deployed_tree_leg(
-          locus: locus,
-          argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
-        ) {
-          DeployedTreeLegNotAttempted { reason: why2 } =>
-            DeployedTreeUnobservable {
-              cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
-            }
-          DeployedTreeLegRan { result: st } =>
-            if st.exit_code != 0 {
-              DeployedTreeUnobservable {
-                cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
-              }
-            } else {
-              match deployed_tree_leg(
-                locus: locus,
-                argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
-              ) {
-                DeployedTreeLegNotAttempted { reason: why3 } =>
-                  DeployedTreeUnobservable {
-                    cause: TreeLegNotAttempted { leg: "ignored deployed paths", reason: why3 },
-                  }
-                DeployedTreeLegRan { result: ig } =>
-                  if ig.exit_code != 0 {
-                    DeployedTreeUnobservable {
-                      cause: TreeCommandFailed {
-                        leg: "ignored deployed paths",
-                        exit_code: ig.exit_code,
-                        stderr: ig.stderr,
-                      },
-                    }
-                  } else {
-                    match deployed_tree_content_reading(entries_nul: st.stdout, ignored_nul: ig.stdout) {
-                      ContentUnreadable { detail: d } =>
-                        DeployedTreeUnobservable { cause: TreeStatusUnreadable { detail: d } }
-                      ContentRead { state: s } =>
-                        DeployedTreeObserved { revision: revision, tree: tree, content: s }
-                    }
-                  }
-              }
-            }
-        }
-      }
-  }
+  observe_deployed_tree_against_revision_on_transport(
+    transport: deployed_tree_locus_transport(locus: locus),
+    repo: locus.repo,
+    revision: revision,
+    tree: tree,
+    revision_hex: revision_hex,
+    index_path: deployed_tree_temp_index_path(locus: locus),
+  )
 }
 
 // FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet.origin_main_revision_observe` `fleet_revision_standing`
