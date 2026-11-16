@@ -2741,21 +2741,21 @@ fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
 // or fetch refusal by cause. The read-back keeps srv1's router pointed at tailnet names, not LAN literals.
 fn fleet_converge_tailscale_join_step() -> Step {
   RunStep {
-    name: Present { value: "Tailscale fleet join converge" },
+    name: Present { value: "Tailscale fleet join: install if absent, tailscale up with the auth key from the root-only file (never argv), advertise the fleet tag, then read the tailnet name back resolving and answering from srv1" },
     id: Present { value: "tailscale_join_converge" },
-    runs_on: Present { value: fleet_converge_runner(github_runner_labels_input) },
-    steps: Absent,
-    env: Present { value: [
-      EnvVar { name: fleet_converge_expected_host_env_name, value: ContextAccess { context: Github, path: ["event", "inputs", "host"] } },
-      EnvVar { name: "TAILSCALE_JOIN_HOST", value: ContextAccess { context: Github, path: ["event", "inputs", "host"] } },
-      EnvVar { name: "WIF_ACCESS_TOKEN", value: ContextAccess { context: Steps, path: ["wif_auth", "outputs", "wif_access_token"] } },
-    ] },
-    if_condition: Present { value: concat(fleet_converge_tailscale_join_step_if, " && github.event.inputs.host != ''") },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_fleet_converge_step_timeout_minutes },
-    container: none,
-    services: none,
     run: gunbc_ci_tailscale_join_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: "TAILSCALE_JOIN_HOST", value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_tailscale_join_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
