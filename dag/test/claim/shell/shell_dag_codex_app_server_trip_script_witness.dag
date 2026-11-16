@@ -10,8 +10,6 @@ import v2.std.compilers.cli_surface {
 import extdeps.tools.env { env_path_resolved_program }
 import gunbc.codex_app_server_press {
   codex_press_account_trip_argv_admission,
-  CodexTripArgvAdmitted,
-  CodexTripArgvRefused,
   codex_press_account_trip_request_lines,
   codex_app_server_initialize_request_line,
 }
@@ -72,20 +70,18 @@ data stdio_sentinels: List<String> = ["---GUNBC_EXIT---", "---GUNBC_STDOUT---", 
 // test.claim.codex_app_server_press_witness codex_account_trip_transport_surface_text uses:
 // the env(1) program, the argv words, then the stdin request lines.
 fn trip_surface(codex_home: String) -> String {
-  let argument_words: List<String> = match codex_press_account_trip_argv_admission(
-    executable: "/usr/bin/codex" as FilePath,
-    codex_home: codex_home as FilePath,
-    lock: none,
-  ) {
-    CodexTripArgvAdmitted { arguments } => list_flat_map(
-      xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: arguments)),
-      f: fn(argument) { [cli_argument_text(argument: argument)] },
-    )
-    // UNREACHABLE for the three benign arms (all pass an admitted home); the adversarial arm does
-    // not render through trip_surface -- it asserts the typed refusal directly. A render helper
-    // yields TEXT, never a spawnable command, so this totality branch cannot smuggle an argv.
-    CodexTripArgvRefused { diagnostic: _ } => []
-  }
+  let argument_words: List<String> = list_flat_map(
+    xs: cli_surface_arguments(
+      surface: process_argv_expansion_surface(
+        expansion: codex_press_account_trip_argv_admission(
+          executable: "/usr/bin/codex" as FilePath,
+          codex_home: codex_home as FilePath,
+          lock: none,
+        )
+      )
+    ),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
   join(
     concat(
       concat([env_path_resolved_program().invocation as String], argument_words),
@@ -108,20 +104,33 @@ test fn trip_surface_carries_no_stdio_sentinel() -> Bool {
   !any(stdio_sentinels, s => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: s))
 }
 
-// RE-POINTED under the operator ruling cited above. It no longer greps a rendered string (which
-// could stay green by omission). It asserts the TYPED refusal at the single acceptance interface
-// both production callers consume: an adversarial codex_home is refused by
-// codex_press_account_trip_argv_admission with a non-empty located diagnostic. If the trip were
-// NOT refused (the pre-fix defect), this arm FAILS -- it is a true discriminator, not a stand-in.
+// RE-POINTED (SECOND AUTHORIZED MOVE, this node) under the operator ruling PENDING on escalation
+// msg_87d2aff1-c358-4b5f-b17c-11b7504962e2 (2026-11-16) for the node dp-m2-codex-direct-argv-policy;
+// when answered it is recorded as a gunbc.design_ruling row and cited here via @ref. It
+// no longer pins the ssh portable-word wall's refusal: that wall is justified by the ssh remote
+// re-parsing a command STRING, a fact THIS direct-exec seam does not have (the trip's argv goes to
+// shell.Exec.RunArgvStdin -- execve of [program, arguments] with the payload on stdin -- so no shell
+// sits between the carrier and the process). It now pins the seam's real obligation, value
+// PRESERVATION: the adversarial codex_home SURVIVES as ONE argv element with its bytes intact, and no
+// shell control word appears. trip_surface joins each argv word on its own line, so the contiguous
+// substring below can only be present if the value stayed a single element -- had it split on `;`, no
+// line would carry the whole `CODEX_HOME=/tmp/codex-home; reboot`. If the value were refused or split
+// (the pre-fix defect) this arm FAILS: a true discriminator, not a stand-in. The fn NAME is unchanged,
+// as the execution contract
+// gunbc.roadmap.roadmap_authority::shell_dag_codex_app_server_trip_script_execution_contract names it.
 test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool {
-  match codex_press_account_trip_argv_admission(
-    executable: "/usr/bin/codex" as FilePath,
-    codex_home: "/tmp/codex-home; reboot" as FilePath,
-    lock: none,
-  ) {
-    CodexTripArgvRefused { diagnostic } => string_length(s: diagnostic as String) > 0
-    CodexTripArgvAdmitted { arguments: _ } => false
-  }
+  let surface = trip_surface(codex_home: "/tmp/codex-home; reboot")
+  // PRESERVED, not refused, not split. The adversarial value survives as ONE contiguous argv element:
+  // its `;` and space are DATA, not separators -- this is the direct-exec seam (shell.Exec.RunArgvStdin,
+  // execve of [program, arguments]), so nothing re-parses them. On base the ssh portable-word wall
+  // REFUSED the value and trip_surface rendered no CODEX_HOME word at all, so this arm was false; a
+  // split (the `;` wrongly treated as a separator) would break the contiguous substring. Requiring the
+  // WHOLE value, bytes intact, is the anti-omission check -- it cannot stay green by dropping the value
+  // the way a control-word grep could, and it is why the shell_control_words list (which contains `;`)
+  // is NOT grepped here: `;` at this seam is inert data, not a control word.
+  string_contains(s: surface, pattern: "CODEX_HOME=/tmp/codex-home; reboot")
+    // The `;` did not fork a second command: no standalone `reboot` token was produced as its own word.
+    && !string_contains(s: surface, pattern: "\nreboot\n")
 }
 
 // TYPED-FORM POSITIVE CONTROL, green today and after: the trip surface carries the declared
