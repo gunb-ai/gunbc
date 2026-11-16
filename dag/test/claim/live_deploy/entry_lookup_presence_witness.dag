@@ -28,10 +28,11 @@ import extdeps.posix.test_utility {
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
   FilesystemEntryUnobservable, filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
-  filesystem_listing_observation, FilesystemAdmittedListing, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
 }
 import extdeps.shell
-import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
@@ -178,7 +179,7 @@ test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by
   if made.success == false {
     false
   } else {
-    let root = trim(s: made.path as String)
+    let root = made.path as String
     let parent = join([root, "/share"], "")
     let staged = run_shell_command_observe_outcome(command: mkdir_parents_command(path: parent), transport: LocalExec)
     match staged {
@@ -200,13 +201,14 @@ test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by
               error: listed.error,
             ) {
               FilesystemDirectorySubjectRefused { directory: _, cause: _ } => true
-              FilesystemAdmittedListing { directory: _, entries: _ } => false
+              FilesystemDirectoryListingRefused { directory: _, error: _ } => false
+              FilesystemDirectoryListed(_) => false
             }
             // The one-name question, through the production host arm.
             let absent = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
             let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
             let present = host_entry_presence_in_parent(parent: parent, name: "gunbc-entry")
-            let wrote = created.success && created.error_kind == ""
+            let wrote = created.success
             let is_absent = presence_is_absent(absent)
             let is_present = presence_is_present(present)
             listing_refused && wrote && is_absent && is_present
