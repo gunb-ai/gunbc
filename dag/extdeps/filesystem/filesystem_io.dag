@@ -5,6 +5,10 @@ import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
 import std.algebra { collection_join_shape }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.posix.test_utility {
+  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
+  entry_existence_reading, contained_existence, ContainedPresent, ContainedAbsent, ContainedUnreadable,
+}
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -684,6 +688,84 @@ fn filesystem_entry_presence(
 fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPresence {
   let listed = Filesystem.List(path: directory)
   filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
+}
+
+// THE SAME QUESTION, ASKED OF THE HOST BY NAME. `listed_entry_presence` answers "does this name appear
+// in that directory", which is the right question for a CENSUS and the wrong one for a single named
+// entry: a census must enumerate, and enumeration needs READ on the directory. Presence of one named
+// entry needs only SEARCH on its ancestors -- the traversal right -- so a parent published drwx--x---
+// (searchable, not listable) ANSWERS the lookup and REFUSES the listing. That is not a corner case: it
+// is the published shape of a directory whose contents are private to its owner, and the deployment's
+// own observer runs as a principal deliberately granted `--x` and not `r-x`. Measured, not argued: the
+// srv1 fold refused with "the directory /home/briansrls/.local/share could not be listed, so the absence
+// of gunbc-srv2-deploy is not established" while every ancestor was traversable -- a listing the model
+// did not need, demanded of a directory this repository itself publishes as unlistable
+// (gunbc.roadmap.roadmap_dashboard_instance: ".local/share is drwx--x---" and opening it "would expose
+// every instance"). Listing stays where ENUMERATION is what is asked (filesystem_listing_observation,
+// filesystem_listing_absence); absence of a NAMED entry is a lookup.
+//
+// NO NEW EFFECT, AND NO NEW READER OF EXIT CODES. The readings are the ones
+// extdeps.posix.test_utility already owns (PathExistenceReading, entry_existence_reading,
+// contained_existence) -- the same authority gunbc.host.host_effect_realize's removal read-back
+// consumes -- so `test`'s status is interpreted in exactly ONE place. This region adds only the
+// presence-shaped result over those readings, kept BESIDE the listing-shaped result rather than widened
+// into it: FilesystemEntryListed and FilesystemEstablishedAbsence name the LISTING that carried the
+// fact, and putting a lookup in them would attribute the fact to a listing that never happened.
+//
+// FAIL-CLOSED, AND WHERE IT CLOSES. `test -e` exits 1 both for "absent" and for "I could not stat it",
+// and the two have opposite consequences -- Absent releases a cell, Unobservable stops the deployment --
+// so a false is never trusted alone (extdeps.posix.test_utility states exactly this). Absence is granted
+// only when the PARENT's search bit answered yes: search, never read. Any other status, a refused
+// transport, or a parent that cannot answer is Unobservable, and Unobservable never folds into Absent.
+type FilesystemEntryLookup
+  = FilesystemEntryPresentByLookup { path: String }
+  | FilesystemEntryAbsentByLookup { path: String, parent: String }
+  | FilesystemEntryUnobservable { path: String, cause: String }
+
+// PURE: the readings as one presence answer. `link` is `test -L` and `follow` is `test -e` on the
+// ENTRY, folded by entry_existence_reading so a symlink counts as the entry it IS -- dangling, pointing
+// into an unsearchable directory, or looping on itself, all of which `test -e` alone reads as false
+// while the entry is nevertheless there. `parent_search` is `test -x` on the PARENT. It is demanded
+// only when both entry readings are false (filesystem_entry_lookup_needs_parent_search says when, so a
+// consumer that asks the question never re-reads the readings), and absence is granted only when it
+// answered yes -- which makes it evidence about the parent's SEARCH bit, never an opinion about the
+// entry. Omitting it where it is needed answers Unobservable rather than guessing.
+fn filesystem_entry_lookup(
+  path: String,
+  parent: String,
+  link: PathExistenceReading,
+  follow: PathExistenceReading,
+  parent_search: Optional<PathExistenceReading>,
+) -> FilesystemEntryLookup {
+  match entry_existence_reading(link: link, follow: follow) {
+    PathPresent => FilesystemEntryPresentByLookup { path: path }
+    PathExistenceUnreadable { reason: r } => FilesystemEntryUnobservable { path: path, cause: r as String }
+    PathAbsentOrUnstattable =>
+      match parent_search {
+        Absent => FilesystemEntryUnobservable {
+          path: path,
+          cause: join(["neither lookup of ", path, " resolved and the parent's search bit was never asked; absence of a named entry is established only under a parent that answered searchable"], ""),
+        }
+        Present { value: ps } =>
+          match contained_existence(path: path, parent: parent, parent_reading: ps, child_reading: PathAbsentOrUnstattable) {
+            ContainedPresent => FilesystemEntryPresentByLookup { path: path }
+            ContainedAbsent => FilesystemEntryAbsentByLookup { path: path, parent: parent }
+            ContainedUnreadable { reason: r } => FilesystemEntryUnobservable { path: path, cause: r as String }
+          }
+      }
+  }
+}
+
+// WHEN THE PARENT'S SEARCH LEG IS NEEDED -- the owner's own predicate, so a consumer can stay lazy (the
+// leg is a real host call) WITHOUT becoming a second reader of the readings. True exactly when neither
+// entry lookup resolved: the two that resolved already answered, and an unreadable entry answer cannot
+// be rescued by any parent reading.
+fn filesystem_entry_lookup_needs_parent_search(link: PathExistenceReading, follow: PathExistenceReading) -> Bool {
+  match entry_existence_reading(link: link, follow: follow) {
+    PathPresent => false
+    PathExistenceUnreadable { reason: _ } => false
+    PathAbsentOrUnstattable => true
+  }
 }
 
 // THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is

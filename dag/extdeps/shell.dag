@@ -670,8 +670,23 @@ service shell.Chmod {
     }
   }
 
-  operation OwnerReadWriteFile {
+  // SEARCHABLE, NOT LISTABLE -- the shape a private directory publishes to a principal that may NAME
+  // entries inside it but may not enumerate them: srv1's ~/.local/share, granted to the deployment's
+  // observing principal as `u:ghrunner:--x`. The presence route must ANSWER here where the listing
+  // route refuses, so this is the mode the presence witness stages. Five digits, per
+  // extdeps.tools.gnu_coreutils coreutils_directory_mode_operand.
+  operation SearchableNotListableDirectory {
     requires none
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "00710", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 00710 failed"
+    }
+  }
+
+  operation OwnerReadWriteFile {    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0600", "{path}"] }

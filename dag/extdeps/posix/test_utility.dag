@@ -108,18 +108,30 @@ type PathExistenceReading
   | PathAbsentOrUnstattable
   | PathExistenceUnreadable { reason: NonEmptyStr }
 
+// THE ONE READER OF WHAT A `test` STATUS MEANS. Every consumer that obtains the status from some
+// transport -- a ProcessOutcome here, a run-argv outcome in gunbc.host.host_effect_realize's removal
+// read-back, a typed transport leg in gunbc.live_deploy.member_observe -- maps it to a
+// PathExistenceReading through THIS, so the 0/1/other law lives in exactly one place: 0 is present; 1
+// is absent-or-unstattable, which containment then decides; any other status is the host failing to
+// answer and stays unreadable. A consumer that re-implements this mapping is a second reader of the
+// same status, and the two drift.
+fn path_existence_reading_of_exit(path: String, exit_code: Int, stderr: String) -> PathExistenceReading {
+  if exit_code == 0 {
+    PathPresent
+  } else if exit_code == 1 {
+    PathAbsentOrUnstattable
+  } else {
+    PathExistenceUnreadable {
+      reason: join(["`test ", path, "` exited ", to_string(exit_code), ": ", trim(s: stderr)], "") as NonEmptyStr,
+    }
+  }
+}
+
 fn path_existence_reading(path: String, outcome: ProcessOutcome) -> PathExistenceReading {
   match outcome {
-    ProcessOutputPresent { text: _ } => PathPresent
-    ProcessOutputAbsent => PathPresent
-    ProcessRefused { exit_code: code, stderr: e } =>
-      if code == 1 {
-        PathAbsentOrUnstattable
-      } else {
-        PathExistenceUnreadable {
-          reason: join(["`test -e ", path, "` exited ", to_string(code), ": ", trim(s: e)], "") as NonEmptyStr,
-        }
-      }
+    ProcessOutputPresent { text: _ } => path_existence_reading_of_exit(path: path, exit_code: 0, stderr: "")
+    ProcessOutputAbsent => path_existence_reading_of_exit(path: path, exit_code: 0, stderr: "")
+    ProcessRefused { exit_code: code, stderr: e } => path_existence_reading_of_exit(path: path, exit_code: code, stderr: e)
   }
 }
 
