@@ -69,8 +69,9 @@ fn getent_shadow_command(key: NonEmptyStr) -> ArgvCommand {
 //
 // THE OUTPUT SHAPE IS NOT CLAIMED. getent(1) documents the databases and the address family, not a column
 // layout for ahostsv4, so no field indexing happens here and this module does not parse the reply at all;
-// the caller judges non-emptiness and looks for the name it asked about (gunbc.tailscale_join_converge::
-// tailscale_join_name_resolved_verdict), and the raw reply travels in any refusal rather than being
+// the caller judges non-emptiness and looks for the name it asked about
+// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), and the raw reply
+// travels in any refusal rather than being
 // silently re-shaped into a success. THE NOT-FOUND CODE IS THE SAME ONE as every other database above:
 // getent(1) EXIT STATUS "2 One or more supplied key could not be found in the database".
 fn getent_hosts_command(name: NonEmptyStr) -> ArgvCommand {
