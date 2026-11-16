@@ -18,6 +18,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
   release_bins_credential_pattern,
   release_bins_retention_decide_statements, release_bins_retention_answer_file,
+  release_bins_retention_statements, release_bins_outcome_with_retention_script,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -545,4 +546,85 @@ test fn release_bins_retention_malformed_answer_is_plan_failed() -> Bool {
 
 test fn release_bins_retention_missing_answer_is_no_answer() -> Bool {
   succeeded_with(script: script_retention_missing_answer, marker: "release-bins retention: no-answer")
+}
+
+// F1 (side chat, 2026-11-16): the outcome=build arm must NOT end in an exit 0,
+// or the retention chore appended after the outcome statements never runs --
+// and the build runs are exactly the ones that ADD cache entries. The script
+// text is the emitted step text; no exit 0 anywhere in it, while both the
+// build outcome and the chore's markers are present, means the build arm
+// falls through to the chore. Before the fix this was red: the arm ended in
+// 'exit' '0'.
+data script_outcome_with_retention_text: String = release_bins_outcome_with_retention_script()
+
+test fn release_bins_retention_outcome_script_falls_through_build_to_the_chore() -> Bool {
+  string_contains(s: script_outcome_with_retention_text, pattern: "outcome=build")
+    && string_contains(s: script_outcome_with_retention_text, pattern: "release-bins retention:")
+    && !string_contains(s: script_outcome_with_retention_text, pattern: "'exit' '0'")
+}
+
+// F3 (side chat): a failed lookup is TYPED as lookup-failed, and deletions can
+// only be planned from THIS invocation's own successful answer. The fixture
+// pre-seeds a stale answer that would plan deletions (the over-cap body), then
+// the fetch's curl fails: after the fix the answer is invalidated before the
+// fetch and removed again on failure, so nothing is planned or deleted and
+// both lookup-failed and no-answer appear. Pre-fix this was red: the failure
+// was swallowed ('|| true'), the stale answer drove the plan, and the step
+// printed deleting=... lines from data it never fetched.
+data part_retention_stale_answer: Outcome<String> = retention_answer_part(body: retention_over_cap_body)
+
+fn fake_curl_failing() -> Outcome<String> {
+  e(statements: fake_tool(name: "curl", lines: ["exit 22"]))
+}
+
+data script_retention_fetch_fails_over_stale: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    part_retention_stale_answer,
+    fake_curl_failing(),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_fetch_failure_is_typed_and_cannot_delete_on_stale() -> Bool {
+  let r = run_script(script: script_retention_fetch_fails_over_stale)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: lookup-failed")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: no-answer")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "due=1010")
+}
+
+// The successful end of the same path: the chore fetches its OWN answer
+// (fake curl honours -o), plans and deletes through the real statements --
+// so the typed success lines are produced by the code the workflow runs,
+// not only by a pre-seeded file.
+fn fake_curl_answering(body: String) -> Outcome<String> {
+  e(statements: fake_tool(
+    name: "curl",
+    lines: [
+      "o=0",
+      "for a in \"$\"@\"; do if [ \"$\"o\" = 1 ]; then printf %s \"" + body + "\" > \"$\"a\"; o=0; fi; if [ \"$\"a\" = -o ]; then o=1; fi; done",
+      "exit 0",
+    ]
+  ))
+}
+
+data script_retention_full_chore: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    fake_curl_answering(body: retention_over_cap_body),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_full_chore_deletes_from_its_own_answer() -> Bool {
+  let r = run_script(script: script_retention_full_chore)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1010")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
 }
