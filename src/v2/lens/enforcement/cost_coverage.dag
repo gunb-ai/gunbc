@@ -1,10 +1,8 @@
 module v2.lens.enforcement.cost_coverage
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.lens.cost { ClassConstant, ClassExponential, ClassFactorial, ClassLinear, ClassLinearithmic, ClassLog }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.cost { asymptotic_class_of_cost }
 import v2.lens.enforcement.receipts { judge_subject_node }
@@ -116,28 +114,36 @@ fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
 fn cost_coverage_fn_verdict_is_unknown(verdict: CostCoverageFnVerdict) -> Bool {
   match verdict {
     FnCostUnknown { reason: _ } => true
-    _ => false
+    FnCostKnown { asymptotic_class: _ } => false
+    FnBodyParseTreeOpaque => false
+    FnBodyNotLocated => false
   }
 }
 
 fn cost_coverage_fn_verdict_is_known(verdict: CostCoverageFnVerdict) -> Bool {
   match verdict {
     FnCostKnown { asymptotic_class: _ } => true
-    _ => false
+    FnCostUnknown { reason: _ } => false
+    FnBodyParseTreeOpaque => false
+    FnBodyNotLocated => false
   }
 }
 
 fn cost_coverage_fn_verdict_is_parse_tree_opaque(verdict: CostCoverageFnVerdict) -> Bool {
   match verdict {
     FnBodyParseTreeOpaque => true
-    _ => false
+    FnCostKnown { asymptotic_class: _ } => false
+    FnCostUnknown { reason: _ } => false
+    FnBodyNotLocated => false
   }
 }
 
 fn cost_coverage_fn_verdict_is_body_not_located(verdict: CostCoverageFnVerdict) -> Bool {
   match verdict {
     FnBodyNotLocated => true
-    _ => false
+    FnCostKnown { asymptotic_class: _ } => false
+    FnCostUnknown { reason: _ } => false
+    FnBodyParseTreeOpaque => false
   }
 }
 
@@ -435,26 +441,3 @@ fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
     false => (receipt.fn_unknown * 10000) / receipt.fn_attempted
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "cost_coverage_fn_verdict_is_body_not_located" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "cost_coverage_fn_verdict_is_known" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "cost_coverage_fn_verdict_is_parse_tree_opaque" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "cost_coverage_fn_verdict_is_unknown" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]

@@ -16,7 +16,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
-import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
+import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural, lower_hex_16 }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
 import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
@@ -241,10 +241,58 @@ fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePat
   concat(roadmap_event_snapshot_namespace(layout: layout), roadmap_event_snapshot_placeholder) as FilePath
 }
 
+// WHICH PRIVATE SNAPSHOTS ONE LAYOUT OWNS. A path is this layout's own when it carries the private
+// snapshot shape at all AND begins with THIS layout's namespace (the stem plus the digest of the
+// layout's long-lived worktree). Composing on `roadmap_event_snapshot_path_is_private` keeps that shape
+// stated exactly once; the namespace prefix is the only per-layout addition. Used to close exactly the
+// layout's own snapshot and never a co-resident instance's.
 fn roadmap_event_snapshot_path_owned(namespace: String, path: String) -> Bool {
-  starts_with(s: path, prefix: namespace)
-    && string_length(s: path) == string_length(s: namespace) + string_length(s: roadmap_event_snapshot_placeholder)
-    && all((path |> chars).skip(n: string_length(s: namespace)), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+  roadmap_event_snapshot_path_is_private(path: path)
+    && starts_with(s: path, prefix: namespace)
+}
+
+// THE SUFFIX mktemp APPENDS, derived from the single authority `roadmap_event_snapshot_placeholder` (its
+// width is the template's run of X's, its alphabet mktemp's), so this cannot drift from the template the
+// carrier hands `shell.Mktemp.DirWithTemplate`.
+fn is_snapshot_suffix_segment(segment: String) -> Bool {
+  string_length(s: segment) == string_length(s: roadmap_event_snapshot_placeholder)
+    && all((segment |> chars), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+}
+
+// THE SHAPE EVERY PRIVATE EVENT SNAPSHOT IS CREATED AT, WHATEVER INSTANCE CREATED IT. The stem, then the
+// namespace's lower-hex structural digest -- width and alphabet owned by `std.content_hash::lower_hex_16`,
+// the same predicate that walls `Fnv1a64Structural.digest` (this module states no width of its own) -- a
+// dot, then mktemp's placeholder-width alnum suffix. A path that merely BEGINS with the stem, or whose
+// digest or suffix is off, is not a serve snapshot. Convergence uses this to tell the transient worktrees
+// serve opens and closes continuously from the linked worktrees that hold someone's in-flight work
+// (roadmap node deploy-converge-serve-quiesced), so it is exported rather than kept local.
+//
+// STATED RESIDUAL: a path is exempted from the transition guard by this SHAPE ALONE, so a local principal
+// that already has git on the host could register a durable worktree at a snapshot-shaped path to keep it
+// out of the guard. Every actor able to do that can already drive git on these hosts, so this shape check
+// is a guard against serve's ordinary churn, not a security boundary against a hostile local principal.
+fn roadmap_event_snapshot_path_is_private(path: String) -> Bool {
+  if !starts_with(s: path, prefix: roadmap_event_snapshot_stem) {
+    false
+  } else {
+    let body = substring(
+      s: path,
+      start: string_length(s: roadmap_event_snapshot_stem),
+      end: string_length(s: path)
+    )
+    let segments = split(s: body, delimiter: ".")
+    match segments.get(2) {
+      Present { value: _ } => false
+      Absent => match segments.get(0) {
+        Absent => false
+        Present { value: digest } => match segments.get(1) {
+          Absent => false
+          Present { value: suffix } =>
+            lower_hex_16(value: digest) && is_snapshot_suffix_segment(segment: suffix)
+        }
+      }
+    }
+  }
 }
 
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }

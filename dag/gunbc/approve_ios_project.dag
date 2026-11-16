@@ -2,7 +2,8 @@ module gunbc.approve_ios_project
 
 import std.types { String, List, NonEmptyStr, Port, Bool }
 import std.optional { Optional, Present, Absent }
-import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string }
+import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string, PlistBoolean }
+import extdeps.apple.apns { apns_time_sensitive_entitlement_key }
 import extdeps.apple.info_plist {
   LaunchScreen, system_default_launch_screen, BackgroundMode, RemoteNotificationMode,
   launch_screen_entry, face_id_usage_entry, display_name_entry, background_modes_entry,
@@ -97,10 +98,14 @@ fn approve_info_properties(i: ApproveAppInfo) -> List<PlistEntry> {
 
 // aps-environment follows how the build was signed (extdeps.apple.apns ApnsEnvironment); the App
 // Attest environment is extdeps.apple.app_attest AppAttestEnvironment -- "development" for an Xcode
-// build, "production" for TestFlight/App Store (the AAGUID the server checks follows it).
+// build, "production" for TestFlight/App Store (the AAGUID the server checks follows it). The
+// time-sensitive key grants the level gunbc.auth.approval_apns_publish sends approval requests at, so
+// they reach the phone through Focus; it needs no Apple review, and automatic signing adds the
+// capability to the App ID.
 data approve_entitlements: List<PlistEntry> = [
   plist_entry(key: "aps-environment", value: plist_string(s: "$(APNS_ENVIRONMENT)")),
-  plist_entry(key: "com.apple.developer.devicecheck.appattest-environment", value: plist_string(s: "$(APP_ATTEST_ENVIRONMENT)"))
+  plist_entry(key: "com.apple.developer.devicecheck.appattest-environment", value: plist_string(s: "$(APP_ATTEST_ENVIRONMENT)")),
+  plist_entry(key: apns_time_sensitive_entitlement_key as String, value: PlistBoolean { value: true })
 ]
 
 // XCODE RELEASE: the one the operator builds with (extdeps.apple.xcode xcode_26_6), so XcodeGen

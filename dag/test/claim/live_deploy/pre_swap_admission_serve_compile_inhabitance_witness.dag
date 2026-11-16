@@ -7,10 +7,15 @@ import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.live_deploy.spec { deployment_serve_source_roots, roadmap_serve_entry_file }
 import gunbc.live_deploy.pre_swap_admission {
   observe_serve_entry_compile_clean,
+  serve_command_verdict_of,
+  serve_entry_run_args,
+  serve_entry_bind_probe_listener,
+  serve_entry_probe_socket_path,
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
 }
+import std.optional { Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.shell
@@ -80,4 +85,133 @@ test fn a_staged_type_error_entry_is_blocked_by_real_execution() -> Bool {
 
 test fn a_staged_clean_entry_is_admitted_by_real_execution() -> Bool {
   staged_verdict_is(source: "module test.claim.live_deploy.pre_swap_serve_probe_green\nfn f() -> Int { 1 }\n", file: "pre_swap_serve_probe_green.dag", want_blocked: false)
+}
+
+// ── THE SERVED-COMMAND CLASSIFIER (node demand-serve-entry-compile-time) ────────────────────────
+// The plan route's verdict is serve_command_verdict_of over the served command's stderr. It is a pure
+// fold, so it is checked here directly -- no wet lane, no live srv1 -- including the halves a wet lane
+// cannot exercise until PR #16507 realizes the --arg handler. The ingress host prints the SAME
+// `REFUSED: ingress binding:` prefix for many pre-bind refusals, so the discriminator is that a bind
+// refusal ALSO names the probe socket path (only bind_listener embeds it); every other case FAILS
+// CLOSED. The probe path is a fixed fixture here because the classifier takes it as an argument.
+
+data served_probe_socket_path: String = "/tmp/gunbc-verdict-fixture/absent/serve.sock"
+
+test fn a_compile_or_type_refusal_is_blocked_not_admitted() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "error[E0308]: mismatched types\n  --> dag/gunbc/roadmap/belt_actuate.dag:12:1\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileBlocked { blocking, diagnostics: _ } => blocking == 1
+    _ => false
+  }
+}
+
+// The bind stage failure is the ONLY `REFUSED: ingress binding:` that names the probe socket path.
+test fn a_bind_refusal_naming_the_probe_socket_is_admitted() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "REFUSED: ingress binding: could not open the socket's lock /tmp/gunbc-verdict-fixture/absent/serve.sock.lock: No such file or directory (os error 2)\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileAdmitted => true
+    _ => false
+  }
+}
+
+// THE FAIL-OPEN RED. The real pre-#16507 refusal carries the bind prefix but NOT the probe path; it
+// must NOT be read as reached-bind (else a release whose served handler never loaded would be admitted).
+test fn a_runtime_keyed_refusal_with_the_prefix_is_not_admitted() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "REFUSED: ingress binding: runtime-keyed reads not realized by this execution's loaded index: gunbc.roadmap.roadmap_serve.roadmap_serve_handle\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_refusal_short_of_bind_is_unobserved_failing_closed() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: "runtime-keyed reads not realized: roadmap_serve_handle\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_clean_exit_without_a_bind_refusal_is_unobserved() -> Bool {
+  match serve_command_verdict_of(
+    exit_success: true,
+    exit_code: 0,
+    stderr: "serving at unix:/run/serve.sock\n",
+    socket_path: served_probe_socket_path,
+  ) {
+    ServeEntryCompileUnobserved { detail: _ } => true
+    _ => false
+  }
+}
+
+// ── THE ONE BOUND REAL-EXECUTION PAIRING (gunbc.design_argument::witness_one_interface) ─────────────
+// The five controls above feed HANDWRITTEN stderr straight to the bind-probe classifier, so they prove the
+// pure fold but not the INTEGRATION: that the actual served-command builder, run for real, produces the very
+// bind refusal the classifier reads as Admitted. That pairing is what the hermetic verdict claims are
+// supplied against, and until now it was only ever exercised through the wet-lane full roadmap serve-entry
+// compile (observe_serve_entry_compile_clean -- ~45 min), never through the bind route at all.
+//
+// This control closes the obligation on a bounded scale: it runs the class's smallest realized ingress
+// fixture (test.fixture.serve_seam_ingress, whose handlers the runtime-key registry seeds so the run gets
+// PAST the pre-bind realization refusal and actually reaches bind), built with the real serve_entry_run_args
+// + serve_entry_bind_probe_listener, and feeds the child's REAL stderr through the real serve_command_verdict_of.
+// The listener is a unix socket under an ABSENT parent, so the real run fails at bind_listener's lock open and
+// names the probe path -- the one `REFUSED: ingress binding:` that must be Admitted. It runs the checkout's
+// own built gunbc, so it is a LocalRepoWetLane claim like the ones above. It deliberately does NOT re-run the
+// full roadmap serve entry; deleting the served-command integration (the builder's listener wiring, or
+// substituting a hand-written stderr for run.stderr) turns this red -- the whole point of feeding the real
+// run rather than a fixture string.
+data bind_probe_fixture_entry: String = "dag/test/fixture/serve_seam_ingress.dag"
+data bind_probe_fixture_binding_function: String = "serve_seam_ingress"
+data bind_probe_fixture_handler: String = "serve_seam_probe"
+data bind_probe_fixture_release_revision: String = "0000000000000000000000000000000000000000"
+
+test fn the_served_command_builder_produces_a_bind_refusal_the_classifier_admits() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let socket_path = serve_entry_probe_socket_path(tmp_dir: tmp.path as String)
+    let run = gunbc.WitnessBin.Run(
+      workdir: checkout_root(),
+      bin_path: checkout_gunbc(),
+      args: serve_entry_run_args(
+        roots: deployment_serve_source_roots,
+        entry: bind_probe_fixture_entry,
+        binding_function: bind_probe_fixture_binding_function,
+        handler: bind_probe_fixture_handler,
+        listener: serve_entry_bind_probe_listener(socket_path: socket_path),
+        release_revision: bind_probe_fixture_release_revision,
+        cpu_limit_ms: Present { value: 1000 },
+        wall_limit_ms: Present { value: 1000 },
+      ),
+      expect: OutcomeIsData,
+    )
+    let _ = shell.Remove.RecursiveForce(path: tmp.path)
+    match serve_command_verdict_of(
+      exit_success: run.success,
+      exit_code: run.exit_code,
+      stderr: run.stderr,
+      socket_path: socket_path,
+    ) {
+      ServeEntryCompileAdmitted => true
+      _ => false
+    }
+  }
 }

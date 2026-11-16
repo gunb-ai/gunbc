@@ -202,6 +202,67 @@ fn http_ingress_handler_module(b: HttpIngressBinding) -> String { b.handler.modu
 // be the one served.
 fn http_ingress_handler_identity(b: HttpIngressBinding) -> String { concat(http_ingress_handler_module(b: b), concat(".", http_ingress_handler_name(b: b))) }
 
+// WHETHER AN ENTRY MAY SERVE A HANDLER NAMED AT LAUNCH, and the one refusal its row gives. A
+// deployment binding takes its handler from `gunbc run --arg handler=...` (gunbc.live_deploy.emit
+// live_deploy_serve_unit_ingress_args renders the unit's ExecStart), so the name is RUNTIME data:
+// under the demanded-scope run (#16069, gunbc.design_ruling::run_realizes_only_demanded_declarations)
+// nothing in the graph names it, and the run host refuses at startup rather than bind a listener whose
+// FIRST request would die on a handler its loaded index does not hold
+// (src/v1/stage0/src/cli_run/http_ingress_host.rs realize_in, the second startup check). So the set an
+// entry serves is DECLARED DATA -- the entry's row, seeded into the realization by the runtime-key
+// registry (src/v1/04_infer.dag runtime_key_readers, instances loaded_index_runtime_named_handler_*) --
+// and this fold is the ONE admission test: an entry asks it before it constructs the binding, so a name
+// the row does not carry is refused before any socket is opened. No entry spells its own test; a fork
+// here is how a host ends up serving a handler no deployment ever declared.
+//
+// THE ROW LIVES WITH THE ENTRY, NOT HERE (gunbc.design_argument::single_authority). Which handler an
+// instance serves is that instance's own fact, so the DATA is declared in the module that binds it --
+// gunbc.roadmap.roadmap_ingress roadmap_ingress_served_handlers names the roadmap dashboard roster's
+// serve_function handlers and their door derivations -- while the RULE to judge one lives here, once,
+// beside the binding it guards. `served_handlers` is a List<String> because that is the shape the seed
+// fold reads out of a declared row (src/v1/04_infer.dag runtime_key_declared_row_keys reads a data row's
+// literal string elements); an empty row admits nothing, which is the fail-closed direction: a row that
+// forgets its handler refuses its own launch, loudly, naming the row.
+//
+// It is spelled with the builtin `fold` rather than std.list's list_member for the reason stated on
+// http_ingress_host_read_folds below: an import of a module that carries data declarations would add
+// those declarations to every module that binds an ingress entry, and the run host reads THIS module's
+// declarations by name when it checks a binding before it binds.
+fn http_ingress_serves_declared_handler(served_handlers: List<String>, handler: String) -> Bool {
+  fold(served_handlers, init: false, f: (admitted, declared) =>
+    if admitted { true } else if declared == handler { true } else { false })
+}
+
+// THE REFUSAL, spelled once so every entry says the same thing: the handler, the row that should have
+// carried it, and why a demanded run cannot serve what no declaration named -- so an operator reading a
+// refused unit knows which file to open, and a reviewer reading an entry sees the row its refusals rest
+// on. The phrase "not realized by this execution's loaded index" is the host's own wording
+// (http_ingress_host.rs realize_in), kept so one grep finds both halves of the guard.
+fn http_ingress_undeclared_handler_reason(entry: String, row: String, handler: String) -> String {
+  join([
+    "ingress entry ", entry, " declares no handler [", handler, "] in its row ", row,
+    ": runtime-keyed reads are not realized by this execution's loaded index, because a demanded run",
+    " realizes only what a demanded declaration names",
+    " (gunbc.design_ruling::run_realizes_only_demanded_declarations) and this entry does not name",
+    " what it was launched to serve; a serve unit may serve only a handler its row declares",
+  ], "")
+}
+
+// THE ENTRY'S OWN COUPLING TO ITS AUTHORITY. A row mirrors a deployment authority -- for the roadmap
+// entry it is the instance roster's serve_function values -- so an entry that checks its row against
+// that authority reports a drifted row with this reason: the unit that WOULD serve the missing handler
+// refuses at startup, naming it, rather than starting for the handlers that happen to be declared and
+// failing after a cutover (gunbc.design_argument::fail_closed; the class is the 2026-11-14 srv1 outage,
+// where the cutover stopped production and the serve entry then refused on the host).
+fn http_ingress_row_missing_authority_handler_reason(row: String, handlers: List<String>) -> String {
+  join([
+    "ingress row ", row, " does not name every handler the deployment authority launches this entry",
+    " with; missing:", fold(handlers, init: "", f: (acc, h) => concat(acc, concat(" [", concat(h, "]")))),
+    "; the row must name all of them, so the unit that would serve a missing one refuses here rather",
+    " than after the cutover that depends on it",
+  ], "")
+}
+
 // The line the host prints once it has bound, naming the address ACTUALLY bound (a port-0 caller
 // reads the chosen port from here) and every limit the process will enforce. Unset is not a state
 // a binding can hold: both budgets are positive by construction.

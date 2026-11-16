@@ -1312,3 +1312,52 @@ fn bash_build_test_comparison(
   bash_build_test_bracket(words: [left, op_word, right], spelling: spelling)
 }
 
+
+// A SINGLE-QUOTED INERT WORD. The fold row for ^bash_fold_word_kind_single_quoted spells
+// the two quote characters as terminals and carries the body through the free slot, so
+// emit and ingest read one declaration (gunbc.design_argument::single_authority). Inside
+// single quotes bash preserves every character but the quote itself (bash manual,
+// "Quotes"), so this guard refuses exactly what single quoting cannot carry: the quote,
+// backquote, backslash, newline, and the history bang. Any other text -- a header value
+// with a space, a printf format, a JSON program -- is provably inert as one word.
+data bash_build_single_quoted_forbidden: String = "\u{0027}\u{0060}\u{005C}\u{000A}!"
+
+fn bash_build_is_single_quoted_word(text: String) -> Bool {
+  !string_is_empty(s: text) && !string_any_char_in(s: text, alphabet: bash_build_single_quoted_forbidden)
+}
+
+fn bash_build_single_quoted_word(text: String) -> Optional<Node> {
+  if bash_build_is_single_quoted_word(text: text) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_single_quoted,
+        value: text,
+      )
+    }
+  } else {
+    Absent {  }
+  }
+}
+
+// A JSON literal is a single-quoted word that also carries its envelope: a half body
+// (no braces on both sides) is a wire bug the grammar cannot see but this check can,
+// so the JSON builder refuses it at construction instead of installing it.
+data bash_build_json_word_forbidden: String = bash_build_single_quoted_forbidden
+data bash_build_char_open_brace: Char = 123
+
+fn bash_build_is_json_word(text: String) -> Bool {
+  bash_build_is_single_quoted_word(text: text) && string_contains_char(s: text, c: bash_build_char_open_brace) && string_contains_char(s: text, c: bash_build_char_close_brace)
+}
+
+fn bash_build_json_word(text: String) -> Optional<Node> {
+  if bash_build_is_json_word(text: text) {
+    Present {
+      value: bash_build_word_kinded(
+        kind: ^bash_fold_word_kind_single_quoted,
+        value: text,
+      )
+    }
+  } else {
+    Absent {  }
+  }
+}
