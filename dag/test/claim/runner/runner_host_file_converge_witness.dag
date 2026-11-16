@@ -508,7 +508,7 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 // Every desired path is inside the scope its OWN row names (the /etc rows name fleet_host_file_scope),
 // so the write seal admits it; a path outside its row's tree would refuse at the seal rather than
 // reaching a sudo leg.
-test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+test fn every_desired_file_is_admitted_by_its_own_write_seal() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
