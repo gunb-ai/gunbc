@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.the_import_relation_is_extracted_twice_and_the_two_disagree
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// ONE FACT, TWO EXTRACTIONS, MEASURED APART. The regen round's affected set and its entry traversal
+// each derive "which module does this file depend on" from the corpus, by different code. This row
+// records that they do not agree on the same corpus, and what that costs, because the disagreement is
+// invisible from inside either route: each one's own answer is internally consistent.
+data the_import_relation_is_extracted_twice_and_the_two_disagree: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_import_relation_is_extracted_twice_and_the_two_disagree" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: over one 8,471-file pool the import relation exists twice. Entry resolve's own facts adjacency names 60,504 import edges; the affected-set route's parsed-reference join (cli_run parsed_file_references_of with cli_run module_paths_of_references over the pool module-name set) names 60,707 reference rows. Neither number is the other's superset in effect: walking the REVERSE closure over the union of the two reaches a module the route's own relation does not -- `test.claim.compute_unit_stop_observation_witness`, on the heal round's own 177-module edited set (measurement-only head edc3b1c1f61c, run 43808654519: `rel-probe: set=change roots=177 today=5857 admit=5858 (lost=0 gained=1)`) -- while walking the route's extraction alone matches today's answer on all nine edited sets (head 00a0fcd0419f, run 43817027204: `rel-probe-verdict: sets=9 admit2-equal=9 admit2-lost=0 admit2-gained=0`). So on a real diff, one dependent was not regened because one route did not see an edge the other route did.",
+
+    "WHY NEITHER ROUTE SEES IT: the affected set is intersected with the host's eligibility roster, so a module missing from the roster cannot appear as a member, and the entry route that DOES see the edge never asks who is affected. The disagreement is therefore invisible in both directions at once -- which is what makes it recurring rather than a one-file bug.",
+
+    "WHAT DECIDING IT WOULD CHANGE: which extraction is authoritative decides which modules an import declaration makes eligible, i.e. what regens -- so this is not a representation cleanup. It is the defect gunbc.design_argument::single_authority names (one fact, extracted twice), and the fix is to make one extraction derived from the other, not to reconcile two lists. Carried as its own plan node; the repair of the affected-set relation in @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence) deliberately keeps today's answer (equal sets, not the superset) so that this decision is not made implicitly inside a cost fix.",
+
+    "RUNG: unread. The disagreement is MEASURED at the two runs above, but its extent is not -- no run has yet counted the disagreeing edges corpus-wide, nor named which extraction is authoritative. The rung is readable when a run names that count and a fix leaves one extraction derived from the other.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.regen_affected_set", decl_name: "regen_reverse_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence", decl_name: "an_edge_index_spells_each_endpoint_once_per_occurrence", field: WholeDeclaration },
+  ],
+}
