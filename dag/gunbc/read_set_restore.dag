@@ -55,6 +55,7 @@ import v2.std.read_set {
   read_set_kind_dir, read_set_exact_kinds, read_set_kind_separator,
 }
 import gunbc.seed_build_inputs { seed_build_input_members }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
   native_cli_bin,
@@ -276,9 +277,12 @@ data fast_lane_wait_hit_word: String = "hit"
 
 // THE WAIT BUDGET, measured 2026-11-16. The median completed main witnesses run is 51.3 minutes (97 runs
 // sampled); FL_TYPICAL rounds that up to 55 minutes, so the estimate `created + FL_TYPICAL - now` is
-// conservative: a run the model calls "within cap" is usually closer than the estimate says. The cap is the
-// manager-approved 12 minutes; FL_STEPS is cap/30s of polls. The step's `if:` keeps it PR-only; the job
-// timeout (90) is UNCHANGED -- a full run (~41-50) plus a worst-case wait (12) still fits with margin.
+// conservative: a run the model calls "within cap" is usually closer than the estimate says. The cap is
+// the 12 minutes the manager ruled on (message 2026-11-16, with four conditions, all implemented); the
+// OPERATOR ruling on the occupancy increase is escalation msg_fd0c2170-6434-44d2-b46e-7770aada5aa5 (the 90-minute job
+// timeout is UNCHANGED and no budget constant moves -- a wait can only add wall time when it fails, and
+// a full run (~41-50) plus a worst-case wait (12) still fits). If the operator withholds the ruling, the
+// step must be removed or capped at zero, which degenerates to today's behavior.
 data fast_lane_wait_cap_secs: String = "720"
 data fast_lane_wait_typical_secs: String = "3300"
 data fast_lane_wait_poll_secs: String = "30"
@@ -399,6 +403,12 @@ fn fl_classify_reuse_after() -> Node {
 // follow then find the unit the run saves. Conditions it must honor, from the manager: it NEVER waits when
 // the estimate already exceeds the cap (that is a straight full build), it stops the moment the run
 // concludes non-success or cancelled, and the decision labels what the wait produced.
+// SCAFFOLD (design_argument how_to_work, medium-as-string): the poll loop below is raw shell because
+// src/v2/extdeps/languages/bash_build.dag has no loop, case, or arithmetic builders -- the surrounding
+// decision script is Node-built (fl_cmd/fl_test/bash_build_*) and stays that way. Marked on-carrier:
+// see fast_lane_wait_script_dissolution_trigger; convert this function to Node builders when they land.
+data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fl_wait_script_raw -- the bounded poll loop (say() helper, while/case/curl|jq/arith) is one raw sh -c string, unlike every other script in this file which is bash_build Nodes, because src/v2/extdeps/languages/bash_build.dag has NO loop, case, or arithmetic builders. DISSOLVES WHEN the orchestration-to-shell bash-emit capability lands those builders (loop + case + integer arithmetic) -- then fl_wait_script_raw is rebuilt through them as Nodes and this raw string retires. Until then the loop's semantics are visible only in the emitted text, and bash_emit_stmts checks the wrapping, not the body.")
+
 //
 // FAIL CLOSED IN EVERY DIRECTION: the script is `sh -c` under `|| :`, so nothing it does can fail the job;
 // every error path exits 0 with a marker word and no unit, which is exactly the old behavior; it touches
