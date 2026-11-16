@@ -1196,12 +1196,27 @@ fn release_bins_retention_total_words(answer_path: String) -> List<Node> {
 // first is older than everything on page 1 (the listing is created_at-
 // descending), so all of them are due. The current run's key is still excluded,
 // per page, by $ENV.
-fn release_bins_retention_page_program() -> String {
+fn release_bins_retention_page_program(n: Int) -> String {
+  // A page must carry EXACTLY as many entries as its own total_count declares
+  // for its position: pages before the last are full (per_page each), the last
+  // page carries the remainder. A page that comes back shorter than its own
+  // arithmetic demands is a broken or mid-stream answer; it is refused here
+  // (typed plan-failed at the append) rather than silently truncating the
+  // union the keep window is decided over.
+  let lo = int_to_decimal_string(100 * (n - 1))
+  let hi = int_to_decimal_string(100 * (n - 1) + 100)
   join([
     ". as $answer | [inputs] | if length != 0 then error(\"multiple JSON documents\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
     release_bins_retention_max_total_text,
-    " and (.actions_caches | length) <= ",
+    " and (.actions_caches | length) == (if .total_count >= ",
+    hi,
+    " then ",
     release_bins_retention_page_size_text,
+    " elif .total_count <= ",
+    lo,
+    " then 0 else (.total_count - ",
+    lo,
+    ") end)",
     " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
     release_bins_retention_prefix,
     "\")) and .key != $ENV.RELEASE_BINS_KEY",
@@ -1220,9 +1235,10 @@ fn release_bins_retention_page1_words() -> List<Node> {
   }))
 }
 
-fn release_bins_retention_page_words(n_text: String) -> List<Node> {
+fn release_bins_retention_page_words(n: Int) -> List<Node> {
+  let n_text = int_to_decimal_string(n)
   release_bins_jq_words(plan: jq_invocation_process_plan(invocation: JqInvocation {
-    program: JqProgram { source: release_bins_retention_page_program() },
+    program: JqProgram { source: release_bins_retention_page_program(n: n) },
     bindings: Empty,
     input: JqInputFile { path: release_bins_retention_answer_page_basename(n_text: n_text) },
     output_encoding: JqRawOutput,
@@ -1311,7 +1327,7 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
     release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
   ])
   let append_plan = bash_build_with_redir_append_to_file(
-    inner: cmd(ws: release_bins_retention_page_words(n_text: n_text)),
+    inner: cmd(ws: release_bins_retention_page_words(n: n)),
     path: ids_file,
   )
   bash_build_or_else(
