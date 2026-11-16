@@ -40,17 +40,6 @@ data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = gunbc_run_ste
   module: "gunbc.runner.runner_host_file_converge",
   function: "runner_host_cap_release_ci_wet",
 )
-// THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files
-// from the converge, but they are DISPATCHES OF THE SAME fleet-converge job -- the modes live in the
-// workflow's roster, not in a new job (the roster is closed to growth).
-data gunbc_ci_runner_host_withdraw_target: GunbcRunStepTarget = gunbc_run_step_target(
-  module: "gunbc.runner.runner_host_withdraw",
-  function: "runner_host_withdraw_ci_wet",
-)
-data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = gunbc_run_step_target(
-  module: "gunbc.runner.runner_host_withdraw",
-  function: "runner_host_restore_ci_wet",
-)
 data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.runner.runner_password_session_tool_converge",
   function: "runner_password_session_tool_converge_ci_wet",
@@ -98,13 +87,19 @@ fn gunbc_ci_runner_host_cap_release_invoke() -> String {
     receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
+// THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files
+// from the converge, but they are DISPATCHES OF THE SAME fleet-converge job -- the modes live in the
+// workflow's roster, not in a new job (the roster is closed to growth).
 // THE WITHDRAW AND RESTORE INVOKE SCRIPTS. No org-roster prelude: the bracket's drain reads the roster
 // only for units it must PROVE admitted, and the withdraw's drain walks the same reading -- it is
 // carried by the step's own gunbc run, exactly as the cap release runs without the roster token.
 fn gunbc_ci_runner_host_withdraw_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    target: gunbc_ci_runner_host_withdraw_target,
+    target: gunbc_run_step_target(
+      module: "gunbc.runner.runner_host_withdraw",
+      function: "runner_host_withdraw_ci_wet",
+    ),
     claim_run: false,
     receipt_rel: gunbc_ci_runner_host_withdraw_receipt_path
   )
@@ -112,7 +107,10 @@ fn gunbc_ci_runner_host_withdraw_invoke() -> String {
 fn gunbc_ci_runner_host_restore_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    target: gunbc_ci_runner_host_restore_target,
+    target: gunbc_run_step_target(
+      module: "gunbc.runner.runner_host_withdraw",
+      function: "runner_host_restore_ci_wet",
+    ),
     claim_run: false,
     receipt_rel: gunbc_ci_runner_host_restore_receipt_path
   )

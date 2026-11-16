@@ -18568,7 +18568,7 @@ mod closure_bare_disposition_tests {
     #[test]
     fn zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing() {
         let d = closure_bare_disposition(
-            "gunbc.ci.ci_spec",
+            "gunbc.instruments.ci_run_step_roster",
             Rc::new(im::Vector::from(vec![
                 candidate("std.nat"),
                 candidate("v2.std.nat"),

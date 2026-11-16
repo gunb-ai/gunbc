@@ -53,8 +53,8 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 //       were replaced by bash_build node trees in gunbc.fleet.fleet_release_bins_key.)
 //   (2) gunbc_ci_fleet_key_agent_script -- DISSOLVED (2026-08-21): its Scaffold and
 //       DissolutionCondition rows named host_effect_apply, which cannot express a
-//       runner-local ephemeral target and so could never fire (see gunbc.ci.ci_spec, at the
-//       former site of gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, for the
+//       runner-local ephemeral target and so could never fire (see gunbc.fleet.fleet_key_agent, at the
+//       site of gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, for the
 //       full record). It is now typed-orchestration-emitted through THIS module's
 //       gunbc_invoke_step_emit_pipeline directly -- not through the gunbc-run-argv path
 //       above, since it invokes no `gunbc run` -- via gunbc_ci_fleet_key_agent_prelude.

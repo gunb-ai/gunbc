@@ -1,7 +1,7 @@
 module gunbc.fleet.site_pxe_edge_step
 
 // THE SITE-PXE EDGE RUN STEPS live here, beside the site PXE domain they operate, not in the central
-// ci_spec. The machinery they borrow is shared and imported, never reached through ci_spec:
+// ci_spec. The machinery they borrow is shared and imported, never reached through the roster:
 // gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from
 // gunbc.ci.ci_layer_roots.
 

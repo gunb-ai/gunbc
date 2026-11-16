@@ -2,7 +2,7 @@ module gunbc.host.host_fleet_run_step
 
 // THE HOST-FLEET RUN STEPS live here, beside the gunbc.host domain they operate, not in the central
 // ci_spec. Each is a GunbcRunStepTarget (its wet entry, function and receipt) beside the invoke that
-// wraps it. The only machinery they borrow is shared and imported, never reached through ci_spec:
+// wraps it. The only machinery they borrow is shared and imported, never reached through the roster:
 // gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from
 // gunbc.ci.ci_layer_roots. fleet_reach_probe lives here too because its entry,
 // gunbc.host.host_reach_identity_probe, is host-side.
@@ -20,10 +20,6 @@ import gunbc.host.host_primary_network_apply { host_primary_network_receipt_path
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
 
-data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = gunbc_run_step_target(
-  module: "gunbc.host.host_reach_identity_probe",
-  function: "probe_fleet_reach_wet",
-)
 
 data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.host.export_host_reader_converge",
@@ -89,14 +85,6 @@ data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = gunbc_r
   function: "host_reset_return_dispatch_admission_wet",
 )
 
-fn gunbc_ci_fleet_reach_probe_invoke() -> String {
-  gunbc_run_step_script_for_target(
-    source_roots: witness_layer_roots,
-    target: gunbc_ci_fleet_reach_probe_target,
-    claim_run: false,
-    receipt_rel: "target/fleet-reach-probe-receipt.txt"
-  )
-}
 
 fn gunbc_ci_export_host_reader_converge_invoke() -> String {
   gunbc_run_step_script_for_target(

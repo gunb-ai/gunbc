@@ -3,7 +3,7 @@ module gunbc.host.network_install_ci_step
 // THE NETWORK-INSTALL RUN STEPS live here, beside the host network-install domain they operate, not in
 // the central ci_spec (gunbc.plans.closure_consolidation P2 -- the pattern of gunbc.fleet.site_pxe_edge_step
 // and gunbc.host.hostname_converge_step). The machinery they borrow is shared and imported, never reached
-// through ci_spec: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit and
+// through the roster: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit and
 // witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
