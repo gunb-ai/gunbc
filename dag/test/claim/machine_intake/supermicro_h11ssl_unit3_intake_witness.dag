@@ -10,6 +10,7 @@ module test.claim.machine_intake.supermicro_h11ssl_unit3_intake_witness
 // module says so row by row.
 import std.types { Bool, List, NonEmptyStr }
 import std.algebra { length, string_contains }
+import std.decl_ref { DeclarationRef }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
@@ -30,6 +31,8 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_identity {
 }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
 import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
+  H11sslBoardPortLabel, h11ssl_board_port_label_text,
+  RotationRouteNotYetRunnable, RotationRouteStandingCommitted,
   AddressConfirmed,
   AddressSeenOnlyInStaleNeighbourEntry,
   BasisObservedDhcp,
@@ -58,6 +61,12 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   unit3_bmc_address_is_not_the_install_nic_address,
   unit3_boot_path_cites_a_selectable_device,
   unit3_install_nic_is_not_the_bmc_port,
+}
+
+// Claims below assert WHICH declaration a row points at, so renaming that row reds here instead of
+// leaving a name inside a paragraph that nothing checks.
+fn decl_ref_names(ref: DeclarationRef, module_path: String, decl_name: String) -> Bool {
+  (text(ref.module_path) == module_path) && (text(ref.decl_name) == decl_name)
 }
 
 fn text(value: String) -> String {
@@ -103,11 +112,11 @@ test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> 
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry {
       address: seen,
-      collision_claimed_by: claimed_by,
+      claimed_by_authority: claimed_by,
       read_obligation: owed,
     } =>
       ipv4_address_eq(a: seen, b: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236))
-        && string_contains(s: text(claimed_by), pattern: "srv9")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
         && (text(owed) != "")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
@@ -128,14 +137,17 @@ test fn witness_boot_path_renders_the_selection_as_the_authority_renders_it() ->
     IpxeForcedBootObservedOnOtherPort {
       selection_the_flag_asked_for: selection,
       selection_as_the_authority_renders_it: rendered,
-      port_the_pxe_attempt_landed_on: _,
+      board_port_the_pxe_attempt_landed_on: landed_label,
+      board_port_the_install_needed: install_label,
       port_the_install_needed: install_port,
-      route_that_reached_the_install_port: _,
-      confounder_open_at_this_reading: _,
+      route_that_reached_the_install_port: route_figure,
+      confounder_row: _,
       read_obligation: _,
     } =>
       (text(rendered) == text(ipmi_boot_selection_label(selection: selection)))
         && (mac_text(install_port) == mac_text(supermicro_h11ssl_unit3_install_nic_mac))
+        && (h11ssl_board_port_label_text(label: install_label) == text(supermicro_h11ssl_unit3_install_nic_port_label.value))
+        && (text(route_figure.value) != "")
     BootPathUnobserved { read_obligation: _ } => false
   }
 }
@@ -148,12 +160,15 @@ test fn witness_the_port_that_pxe_landed_on_is_not_the_install_port() -> Bool {
     IpxeForcedBootObservedOnOtherPort {
       selection_the_flag_asked_for: _,
       selection_as_the_authority_renders_it: _,
-      port_the_pxe_attempt_landed_on: landed,
+      board_port_the_pxe_attempt_landed_on: landed_label,
+      board_port_the_install_needed: install_label,
       port_the_install_needed: _,
       route_that_reached_the_install_port: _,
-      confounder_open_at_this_reading: _,
+      confounder_row: _,
       read_obligation: _,
-    } => string_contains(s: text(landed.value), pattern: "LAN1")
+    } =>
+      (h11ssl_board_port_label_text(label: landed_label) != h11ssl_board_port_label_text(label: install_label))
+        && (h11ssl_board_port_label_text(label: landed_label) != text(supermicro_h11ssl_unit3_install_nic_port_label.value))
     BootPathUnobserved { read_obligation: _ } => false
   }
 }
@@ -166,12 +181,13 @@ test fn witness_boot_path_keeps_the_cmos_confounder_open() -> Bool {
     IpxeForcedBootObservedOnOtherPort {
       selection_the_flag_asked_for: _,
       selection_as_the_authority_renders_it: _,
-      port_the_pxe_attempt_landed_on: _,
+      board_port_the_pxe_attempt_landed_on: _,
+      board_port_the_install_needed: _,
       port_the_install_needed: _,
       route_that_reached_the_install_port: _,
-      confounder_open_at_this_reading: confounder,
+      confounder_row: confounder,
       read_obligation: _,
-    } => string_contains(s: text(confounder), pattern: "CMOS")
+    } => decl_ref_names(ref: confounder, module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_cmos_battery_outstanding")
     BootPathUnobserved { read_obligation: _ } => false
   }
 }
@@ -187,7 +203,13 @@ test fn witness_bmc_credential_stands_as_factory_in_force() -> Bool {
       read_obligation: owed,
     } =>
       (text(attested_by) != "")
-        && string_contains(s: text(route), pattern: "No BmcRotationRouteStanding")
+        && (match route {
+            RotationRouteNotYetRunnable {
+              secret_name_convention: _, secret_name_blocked_on: _, route_authority: _,
+              secret_ref_precedent: _, gate_precedent: _, secret_placement: _, who_owes_which_step: _,
+            } => true
+            RotationRouteStandingCommitted { standing: _ } => false
+          })
         && (text(owed) != "")
     RotatedCredentialObserved { observed_at: _ } => false
   }
@@ -225,10 +247,13 @@ test fn witness_every_reported_figure_owes_its_read() -> Bool {
   all(figures, figure_owes_a_read)
 }
 
-// THE PHYSICAL MAINTENANCE ROW NAMES WHAT IT BEARS ON. The CMOS battery is the operator's action, and
-// the row is only worth keeping because it says which standing the missing read depends on.
+// THE PHYSICAL MAINTENANCE ROW AND THE BOOT-PATH STANDING POINT AT EACH OTHER, BY CITATION. The CMOS
+// battery is the operator's action, and the row is only worth keeping because of which standing the
+// missing read depends on: the standing cites this row as its confounder, this row cites the standing as
+// what it bears on, and neither edge is a word inside a sentence that a rename could quietly invalidate.
 test fn witness_cmos_battery_row_names_what_it_bears_on() -> Bool {
-  string_contains(s: text(supermicro_h11ssl_unit3_cmos_battery_outstanding.bears_on), pattern: "boot")
+  decl_ref_names(ref: supermicro_h11ssl_unit3_cmos_battery_outstanding.bears_on_row, module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing")
+    && (text(supermicro_h11ssl_unit3_cmos_battery_outstanding.account) != "")
 }
 
 
@@ -299,10 +324,9 @@ test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satis
 // to catch, so the agreement is asserted rather than assumed.
 test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
-    AddressSeenOnlyInStaleNeighbourEntry { address: seen, collision_claimed_by: claimed_by, read_obligation: _ } =>
+    AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: claimed_by, read_obligation: _ } =>
       ipv4_address_eq(a: supermicro_h11ssl_unit3_lan_name_sighting.answered_with, b: seen)
-        && string_contains(s: text(supermicro_h11ssl_unit3_lan_name_sighting.account), pattern: "srv9")
-        && string_contains(s: text(claimed_by), pattern: "srv9")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
 }
@@ -319,12 +343,13 @@ test fn witness_the_gpu_figure_owes_the_bus_to_slot_pairing() -> Bool {
   }
 }
 
-// THE ROTATION IS PLANNED THROUGH THE MODELED CI ROUTE, AND ITS SECRET ID IS NOT MINTABLE YET. The
-// credential name carries the fleet name, so writing a concrete secret id here before
-// gunbc.hostname_allocation names this slot would be minting an identity through a side door. The claim
-// is that the standing states the route (operator places the factory credential in Secret Manager under
-// the srv15 convention, then the modeled BmcSecure route runs gated by a deployment environment) and
-// still refuses the id.
+// THE ROTATION IS NOT RUNNABLE YET, AND WHAT IT IS WAITING ON IS CITED, NOT DESCRIBED. The standing must
+// be the variant that says no route is committed, and it must point by citation at (a) the authority that
+// owns the fleet name the credential id is keyed to, (b) the BmcSecure standing that does not exist yet,
+// (c) srv15's secret-ref row and (d) the deployment-environment gate that carries srv15's arrival. Rename
+// any of those four and this reds -- a paragraph naming them in prose would not. And the credential name
+// is carried as a FORM with the name still blank: a concrete id here before the allocation authority
+// fills the slot would be minting an identity through a side door.
 test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Bool {
   match supermicro_h11ssl_unit3_bmc_credential_standing {
     FactoryCredentialInForce {
@@ -333,9 +358,24 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
       rotation_route_standing: route,
       read_obligation: _,
     } =>
-      string_contains(s: text(route), pattern: "Secret Manager")
-        && string_contains(s: text(route), pattern: "deployment environment")
-        && string_contains(s: text(route), pattern: "until gunbc.hostname_allocation")
+      match route {
+        RotationRouteNotYetRunnable {
+          secret_name_convention: convention,
+          secret_name_blocked_on: name_gate,
+          route_authority: route_authority,
+          secret_ref_precedent: secret_precedent,
+          gate_precedent: gate_precedent,
+          secret_placement: placement,
+          who_owes_which_step: _,
+        } =>
+          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname")
+            && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding")
+            && decl_ref_names(ref: secret_precedent, module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref")
+            && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth", decl_name: "srv15_arrival_federation_provision")
+            && string_contains(s: text(convention), pattern: "-admin")
+            && string_contains(s: text(placement), pattern: "stdin")
+        RotationRouteStandingCommitted { standing: _ } => false
+      }
     RotatedCredentialObserved { observed_at: _ } => false
   }
 }

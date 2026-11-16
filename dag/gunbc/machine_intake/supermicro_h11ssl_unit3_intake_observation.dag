@@ -3,6 +3,7 @@ module gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, Succ, Zero }
 import std.content_hash { Sha256DigestHex }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -106,10 +107,13 @@ data supermicro_h11ssl_unit3_install_nic_port_label: H11sslReportedFigure = H11s
 // what smart-crane-730's ssh attempt found when it met a different host key at that IP), or two hosts
 // hold one address. Either way this unit's install-NIC address is UNCONFIRMED and no NetworkEndpoint
 // row is written for it, because writing one would put this board in front of srv9's endpoint.
+// Whom the address is already modelled as belonging to is carried as a DECLARATION REF, not as a name
+// inside a sentence: the collision is a fact about a row that exists, and a rename of that row must move
+// this citation with it instead of leaving a stale string in a paragraph.
 type H11sslUnit3InstallNicAddressStanding
   = AddressSeenOnlyInStaleNeighbourEntry {
       address: Ipv4Address,
-      collision_claimed_by: NonEmptyStr,
+      claimed_by_authority: DeclarationRef,
       read_obligation: NonEmptyStr,
     }
   | AddressConfirmed { address: Ipv4Address, confirmed_at: Rfc3339Timestamp }
@@ -117,7 +121,9 @@ type H11sslUnit3InstallNicAddressStanding
 data supermicro_h11ssl_unit3_install_nic_address_standing: H11sslUnit3InstallNicAddressStanding =
   AddressSeenOnlyInStaleNeighbourEntry {
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
-    collision_claimed_by: "gunbc.fleet.fleet_intent_network.srv9_host_lan_endpoint, which models 192.168.1.236 as srv9's host LAN address" as NonEmptyStr,
+    // gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models 192.168.1.236 as srv9's host LAN
+    // address -- which is why this pairing is a collision and not a free lease.
+    claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint"),
     read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS; until then the address belongs to no row." as NonEmptyStr,
   }
 
@@ -268,14 +274,31 @@ data supermicro_h11ssl_unit3_seen_host_key_fingerprint: H11sslReportedFigure = H
 // The read that discriminates them is one capture: an SOL transcript of a forced-PXE attempt showing
 // which port's PXE client ran, together with `ipmitool chassis bootparam get 5` before and after and
 // the BIOS setup boot order -- and the same read repeated after the battery is replaced.
+// The two Ethernet ports on this board, by the label printed on the board. The quirk this unit owes a row
+// for is a fact ABOUT these labels -- the forced boot landed on one, the install needed the other -- and it
+// can only be stated, and checked, if the labels are things rather than words inside a sentence. Whether a
+// given unit's port really carries that label is itself a reported figure (the read that would confirm it is
+// the SOL transcript); what is not open is that the two are different ports.
+type H11sslBoardPortLabel = Lan1 | Lan2
+
+fn h11ssl_board_port_label_text(label: H11sslBoardPortLabel) -> String {
+  match label {
+    Lan1 => "LAN1"
+    Lan2 => "LAN2"
+  }
+}
+
 type H11sslUnit3IpxeBootPathStanding
   = IpxeForcedBootObservedOnOtherPort {
       selection_the_flag_asked_for: IpmiBootSelection,
       selection_as_the_authority_renders_it: NonEmptyStr,
-      port_the_pxe_attempt_landed_on: H11sslReportedFigure,
+      board_port_the_pxe_attempt_landed_on: H11sslBoardPortLabel,
+      board_port_the_install_needed: H11sslBoardPortLabel,
       port_the_install_needed: Eui48Address,
       route_that_reached_the_install_port: H11sslReportedFigure,
-      confounder_open_at_this_reading: NonEmptyStr,
+      // The alternative explanation for this sightng is not a sentence in this row: it is the row that
+      // carries it. A typed edge to that row is what keeps the standing honest when the battery is replaced.
+      confounder_row: DeclarationRef,
       read_obligation: NonEmptyStr,
     }
   | BootPathUnobserved { read_obligation: NonEmptyStr }
@@ -289,12 +312,8 @@ data supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing: H11sslUnit3IpxeBootPat
   IpxeForcedBootObservedOnOtherPort {
     selection_the_flag_asked_for: uefi_once_boot_selection(device: IpmiBootPxe),
     selection_as_the_authority_renders_it: ipmi_boot_selection_label(selection: uefi_once_boot_selection(device: IpmiBootPxe)),
-    port_the_pxe_attempt_landed_on: H11sslReportedFigure {
-      value: "LAN1 (the port the forced IPMI PXE booted on this board)" as NonEmptyStr,
-      standing: TranscribedUncited {
-        read_obligation: "an SOL transcript of the forced-PXE attempt, showing which port's PXE client ran and which server it found." as NonEmptyStr,
-      },
-    },
+    board_port_the_pxe_attempt_landed_on: Lan1,
+    board_port_the_install_needed: Lan2,
     port_the_install_needed: supermicro_h11ssl_unit3_install_nic_mac,
     route_that_reached_the_install_port: H11sslReportedFigure {
       value: "BIOS Boot Override (the firmware's one-shot boot menu), chosen by the operator by hand" as NonEmptyStr,
@@ -302,7 +321,7 @@ data supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing: H11sslUnit3IpxeBootPat
         read_obligation: "the same SOL transcript: the override entry the operator picked, and whether the board offers a persistent UEFI entry for the LAN2 port that survives a power cycle." as NonEmptyStr,
       },
     },
-    confounder_open_at_this_reading: "the CMOS battery on this unit is reported as needing replacement, and a reset BIOS would also send a PXE attempt to the first enabled port; the sightng is recorded, its explanation is not settled." as NonEmptyStr,
+    confounder_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_cmos_battery_outstanding"),
     read_obligation: "one capture settles the standing and the confounder together: `ipmitool chassis bootparam get 5` before and after a forced PXE, the SOL transcript of that attempt, the BIOS setup boot order, and the same read again after the CMOS battery is replaced." as NonEmptyStr,
   }
 
@@ -319,11 +338,28 @@ data supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing: H11sslUnit3IpxeBootPat
 // So the honest standing is: factory credential in force, rotation owed, route not grounded, secret
 // custody not established. The rotation is an EFFECT on a live controller; the operator holds the
 // factory secret, and any run of it carries the secret by stdin or a 0600 file, never argv or logs.
+// HOW FAR THE ROTATION ROUTE STANDS FOR THIS CONTROLLER, as a thing rather than a paragraph. The two
+// things it has to say separately are (a) that no BmcRotationRouteStanding is committed for this
+// controller, so no rotation is runnable here today, and (b) what would make it runnable. Both are facts
+// about declarations, so both are carried as citations: rename or remove the precedent row, or the gate
+// that carries it, and this row has to move with it instead of keeping a stale sentence.
+type H11sslUnit3RotationRouteStanding
+  = RotationRouteNotYetRunnable {
+      secret_name_convention: NonEmptyStr,
+      secret_name_blocked_on: DeclarationRef,
+      route_authority: DeclarationRef,
+      secret_ref_precedent: DeclarationRef,
+      gate_precedent: DeclarationRef,
+      secret_placement: NonEmptyStr,
+      who_owes_which_step: NonEmptyStr,
+    }
+  | RotationRouteStandingCommitted { standing: NonEmptyStr }
+
 type H11sslUnit3BmcCredentialStanding
   = FactoryCredentialInForce {
       attested_by: NonEmptyStr,
       attested_at: Rfc3339Timestamp,
-      rotation_route_standing: NonEmptyStr,
+      rotation_route_standing: H11sslUnit3RotationRouteStanding,
       read_obligation: NonEmptyStr,
     }
   | RotatedCredentialObserved { observed_at: Rfc3339Timestamp }
@@ -332,7 +368,17 @@ data supermicro_h11ssl_unit3_bmc_credential_standing: H11sslUnit3BmcCredentialSt
   FactoryCredentialInForce {
     attested_by: "operator, relayed by smart-crane-730 in the task brief for this unit (2026-11-15)" as NonEmptyStr,
     attested_at: "2026-11-15T00:00:00Z",
-    rotation_route_standing: "No BmcRotationRouteStanding is committed for this controller at this firmware build, so the modeled rotation has no grounded route to run; the rotation is owed, not skipped. The route it will take is the one srv15 took, and there is no hand route and no second path: the operator places the factory credential in Secret Manager under the gunbai-secrets project with the id the srv15 convention fixes -- bmc-<the fleet name the allocation authority gives this slot>-admin, the form of gunbc.secret_provision.srv15_bmc_gunbc_secret_ref (bmc-srv15-admin) -- added by stdin, never argv or logs; then the rotation runs through the modeled BmcSecure route on the fleet runner, gated by a deployment environment the operator creates, as gunbc.auth.srv15_arrival_federation_provision gates srv15's arrival (arrival effects, the pinned-version secretAccessor role, no hand IAM). It is therefore NOT mintable today: the secret id carries the fleet name, and this slot has no name until gunbc.hostname_allocation says it does." as NonEmptyStr,
+    rotation_route_standing: RotationRouteNotYetRunnable {
+      // The credential name carries the fleet name, so no concrete secret id can be written here until the
+      // allocation authority fills this slot -- naming it here would mint an identity through a side door.
+      secret_name_convention: "bmc-<the fleet name the allocation authority gives this slot>-admin, the form of srv15's bmc-srv15-admin" as NonEmptyStr,
+      secret_name_blocked_on: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"),
+      route_authority: decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding"),
+      secret_ref_precedent: decl_ref(module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref"),
+      gate_precedent: decl_ref(module_path: "gunbc.auth", decl_name: "srv15_arrival_federation_provision"),
+      secret_placement: "Secret Manager, gunbai-secrets project, added by stdin -- never argv, never logs" as NonEmptyStr,
+      who_owes_which_step: "the operator places the factory credential and creates the deployment environment; the rotation itself runs through the modeled BmcSecure route on the fleet runner, gated by that environment, the way srv15's arrival is gated. Nothing here may probe the factory credential to find out what it is." as NonEmptyStr,
+    },
     read_obligation: "a read of the controller's own account state through the modeled access surface (Get User Access on the channel, and the firmware's factory-account row from gunbc.bmc.bmc_implementation_dispatch), never a login attempt with a published default password." as NonEmptyStr,
   }
 
@@ -360,14 +406,18 @@ data supermicro_h11ssl_unit3_bmc_firmware_version: H11sslReportedFigure = H11ssl
 type H11sslUnit3PhysicalMaintenanceItem {
   item: NonEmptyStr,
   owner: NonEmptyStr,
-  bears_on: NonEmptyStr,
+  // WHICH STANDING this bears on, as a citation: the row that goes stale when the battery is replaced is a
+  // declaration, and a rename of it has to move this row. The WHY stays prose.
+  bears_on_row: DeclarationRef,
+  account: NonEmptyStr,
 }
 
 data supermicro_h11ssl_unit3_cmos_battery_outstanding: H11sslUnit3PhysicalMaintenanceItem =
   H11sslUnit3PhysicalMaintenanceItem {
     item: "CMOS battery needs replacing on this unit (operator-reported, 2026-11-15)" as NonEmptyStr,
     owner: "the operator: a physical action on the board, not an effect any converge run can produce" as NonEmptyStr,
-    bears_on: "the boot-path standing above: a dead CMOS battery resets BIOS boot order and UEFI entries, which is the open alternative explanation for the forced-PXE-lands-on-LAN1 sightng." as NonEmptyStr,
+    bears_on_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing"),
+    account: "a dead CMOS battery resets BIOS boot order and UEFI entries, which is the open alternative explanation for the forced-PXE sightng. The boot-path standing names THIS row back as its confounder, so the two move together." as NonEmptyStr,
   }
 
 // ── WHAT THE ABOVE RULES OUT, AS A CHECK THE WITNESS RUNS ────────────────────────────────────────
@@ -379,7 +429,7 @@ fn unit3_bmc_address_is_not_the_install_nic_address(
   bmc: Ipv4Address, nic: H11sslUnit3InstallNicAddressStanding,
 ) -> Bool {
   match nic {
-    AddressSeenOnlyInStaleNeighbourEntry { address: a, collision_claimed_by: _, read_obligation: _ } =>
+    AddressSeenOnlyInStaleNeighbourEntry { address: a, claimed_by_authority: _, read_obligation: _ } =>
       !(a == bmc)
     AddressConfirmed { address: a, confirmed_at: _ } => !(a == bmc)
   }
