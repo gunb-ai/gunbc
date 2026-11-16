@@ -8551,6 +8551,23 @@ pub fn relation_variant_probe(
     for (_, dependent) in bare_gated.iter() {
         *per_dependent.entry(dependent.to_string()).or_default() += 1;
     }
+    // ADMIT2 -- the generator from the ROUTE's OWN extraction only: the parsed reference targets and
+    // the gated provider edges, with entry resolve's `facts.adjacency` left out. ADMIT's one gained
+    // module came from unioning that second import extraction, whose disagreement with this route's is
+    // a separate finding. ADMIT2 is the form that must reproduce TODAY exactly for the composition to
+    // be cost with no answer behind it.
+    let mut admit2: Vec<(Rc<str>, Rc<str>)> = Vec::new();
+    for table in [&reference, &bare_gated] {
+        admit2.extend(table.iter().cloned());
+    }
+    admit2.sort_unstable_by(|a, b| (a.0.as_ref(), a.1.as_ref()).cmp(&(b.0.as_ref(), b.1.as_ref())));
+    admit2.dedup();
+    eprintln!(
+        "rel-probe: admit2 rows={} ref_rows={} bare_rows_gated={}",
+        admit2.len(),
+        reference.len(),
+        bare_gated.len()
+    );
     let mut busiest: Vec<(usize, String)> =
         per_dependent.into_iter().map(|(k, v)| (v, k)).collect();
     busiest.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
@@ -8641,12 +8658,14 @@ pub fn relation_variant_probe(
     let (mut imp_equal, mut ref_equal, mut prov_equal, mut prov_superset) =
         (0usize, 0usize, 0usize, 0usize);
     let (mut admit_equal, mut admit_lost, mut admit_gained) = (0usize, 0usize, 0usize);
+    let (mut admit2_equal, mut admit2_lost, mut admit2_gained) = (0usize, 0usize, 0usize);
     for (label, roots) in &sets {
         let today = walk(edges, roots);
         let imp_set = walk(&imp, roots);
         let ref_set = walk(&reference, roots);
         let prov_set = walk(&provider_form, roots);
         let admit_set = walk(&admit, roots);
+        let admit2_set = walk(&admit2, roots);
         let (i_lost, i_gained, i_detail) = diff(&today, &imp_set);
         let (r_lost, r_gained, r_detail) = diff(&today, &ref_set);
         let (p_lost, p_gained, p_detail) = diff(&today, &prov_set);
@@ -8654,6 +8673,10 @@ pub fn relation_variant_probe(
         admit_lost += a_lost;
         admit_gained += a_gained;
         admit_equal += usize::from(a_lost == 0 && a_gained == 0);
+        let (a2_lost, a2_gained, a2_detail) = diff(&today, &admit2_set);
+        admit2_lost += a2_lost;
+        admit2_gained += a2_gained;
+        admit2_equal += usize::from(a2_lost == 0 && a2_gained == 0);
         imp_lost += i_lost;
         imp_gained += i_gained;
         prov_lost += p_lost;
@@ -8664,20 +8687,22 @@ pub fn relation_variant_probe(
         prov_superset += usize::from(p_lost == 0);
         eprintln!(
             "rel-probe: set={label} roots={} today={} imp={} (lost={i_lost} gained={i_gained}) ref={} \
-             (lost={r_lost} gained={r_gained}) prov={} (lost={p_lost} gained={p_gained}) admit={}          (lost={a_lost} gained={a_gained})",
+             (lost={r_lost} gained={r_gained}) prov={} (lost={p_lost} gained={p_gained}) admit={} (lost={a_lost} gained={a_gained}) admit2={}          (lost={a2_lost} gained={a2_gained})",
             roots.len(),
             today.len(),
             imp_set.len(),
             ref_set.len(),
             prov_set.len(),
-            admit_set.len()
+            admit_set.len(),
+            admit2_set.len()
         );
         eprintln!(
-            "rel-probe-diff: set={label} imp {i_detail} | ref {r_detail} | prov {p_detail} | admit {a_detail}"
+            "rel-probe-diff: set={label} imp {i_detail} | ref {r_detail} | prov {p_detail} | admit {a_detail} | admit2 {a2_detail}"
         );
     }
     eprintln!(
-        "rel-probe-verdict: sets={} admit-equal={admit_equal} admit-lost={admit_lost} \
+        "rel-probe-verdict: sets={} admit2-equal={admit2_equal} admit2-lost={admit2_lost} \
+         admit2-gained={admit2_gained} admit-equal={admit_equal} admit-lost={admit_lost} \
          admit-gained={admit_gained} imp-equal={imp_equal} ref-equal={ref_equal} prov-equal={prov_equal} \
          prov-never-loses={prov_superset} imp-lost={imp_lost} imp-gained={imp_gained} prov-lost={prov_lost} \
          prov-gained={prov_gained}",
