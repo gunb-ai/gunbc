@@ -1989,7 +1989,12 @@ fn matrix_cold_reset_receipt(state: MtCollins1BootWorld?) -> String {
 // A world whose answers do not decode (the boot's firmware-row-only record) cannot satisfy these, which is the
 // control the first version of these claims lacked.
 data matrix_cold_reset_baseline_available_line: String = "mc_before=available, firmware 0.45"
-data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (the RMCP+ session never came up (exit 1)"
+data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (no reply to Get Channel Authentication Capabilities (exit 1)"
+// The watch polls run at one -v, and the dry controller names the unanswered stage only when the call carried -v
+// (gunbc.bmc_dry_realization bmc_controller_unanswered), so this record in the receipt is also the evidence that the
+// polls ran at -v. The baseline read runs at the default verbosity.
+data matrix_cold_reset_verbose_unanswered_record: String = "poll=exit 1; stderr: Get Auth Capabilities error | Error issuing Get Channel Authentication Capabilities request | Error: Unable to establish IPMI v2 / RMCP+ session"
+data matrix_cold_reset_answered_record: String = "poll=exit 0; stderr: (none)"
 
 // The boot's own world (firmware-row-only mc info) with this scenario's power and receipt directory.
 fn matrix_cold_reset_world_firmware_row_only() -> MtCollins1BootWorld {
@@ -2052,6 +2057,17 @@ fn matrix_cold_reset_mc_info_failing_locally_in_window(world: BmcWorld, call: Op
   }
 }
 
+// The same reset window, but every mc info inside it is killed at the read deadline (coreutils timeout exit 124,
+// nothing printed): the other no-answer form, the one this unit's capture shows
+// (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt, "exit=124 stdout=[] stderr=[]").
+fn matrix_cold_reset_mc_info_deadline_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    BmcRefused { exit_code: 124, stderr: "", world: world }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
 // Chassis status that never answers (the baseline read included).
 fn matrix_cold_reset_power_unreadable(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
@@ -2080,6 +2096,8 @@ test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fr
         && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
         && string_contains(s: receipt, pattern: "more (firmware 0.45)")
         && string_contains(s: receipt, pattern: "fan=unobserved")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_answered_record)
     }
     _ => false
   }
@@ -2165,6 +2183,22 @@ test fn a_controller_that_ignores_the_attempt_is_not_read_as_reset() -> Bool {
         && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "no loss of availability was observed")
         && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
         && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "last: available, firmware 0.45")
+    }
+    _ => false
+  }
+}
+
+// THE CAPTURED NO-ANSWER FORM ALSO ESTABLISHES THE LOSS: a reset window whose polls are killed at the read deadline
+// is a loss by no answer, and the route recovers, reads power fresh, and accepts, as in the positive.
+test fn a_reset_window_answered_only_by_the_read_deadline_is_a_loss_and_recovers() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_deadline_in_window)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && string_contains(s: receipt, pattern: "lost after 1 poll(s) (no response (mc info got no answer within its read deadline (timeout exit 124)")
+        && string_contains(s: receipt, pattern: "poll=exit 124; stderr: (none)")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
     }
     _ => false
   }

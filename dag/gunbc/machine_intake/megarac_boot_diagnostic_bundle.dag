@@ -25,7 +25,7 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
-import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, ipmitool_read_failure, IpmitoolReadDeadlineExpired, IpmitoolReadSessionFailed, IpmitoolReadFailedOtherwise }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, ipmitool_read_failure, IpmitoolReadDeadlineExpired, IpmitoolReadSessionFailed, IpmitoolReadFailedOtherwise, ipmitool_verbosity_argv, IpmitoolDefaultVerbosity }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -2869,6 +2869,7 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
   )
   bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -3480,6 +3481,7 @@ fn mtcollins1_boot_mc_info_retain(row: MegaRacBootRow, username: NonEmptyStr, pa
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
   )
   if r.success {
     let path = mtcollins1_boot_mc_info_path(row: row, run_attempt: run_attempt)

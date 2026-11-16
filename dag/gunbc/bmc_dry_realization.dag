@@ -7,7 +7,7 @@ import std.operation_argv { OperationRef, ArgvMaterialized, ArgvMaterializationR
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
   OperationObserved, OperationHarnessFault, ShellObserved,
-  operation_input_text, virtual_delay_binding,
+  operation_input_text, operation_input_text_list, virtual_delay_binding,
 }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.bmc.ipmi_chassis_control {
@@ -40,7 +40,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
-import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, ipmitool_lanplus_get_auth_caps_no_reply_line, ipmitool_lanplus_get_channel_auth_caps_issuing_line, ipmitool_verbosity_argv, IpmitoolVerboseOnce }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_fru_print_0_mt_collins,
@@ -97,16 +97,27 @@ type BmcReply
   | BmcRefused { exit_code: Int, stderr: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
 
-// A CONTROLLER THAT IS NOT ANSWERING: no RMCP+ session comes up, so ipmitool prints its lanplus session error and
-// exits 1, for every authenticated command alike. This is the controller declining to answer (an observation), not
-// a harness fault.
-fn bmc_controller_unanswered(world: BmcWorld) -> BmcReply {
-  BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
+// A CONTROLLER THAT IS NOT ANSWERING: no RMCP+ session comes up, so ipmitool exits 1. What it prints depends on
+// its verbosity (extdeps.bmc.ipmi_session, source-transcribed from ipmitool 1.8.19): at the default only the bare
+// session line; at one -v, the Get Channel Authentication Capabilities request that got no reply is named first.
+// This is the controller declining to answer (an observation), not a harness fault.
+fn bmc_controller_unanswered(world: BmcWorld, verbose: Bool) -> BmcReply {
+  let named = if verbose { join([ipmitool_lanplus_get_auth_caps_no_reply_line, "\n", ipmitool_lanplus_get_channel_auth_caps_issuing_line, "\n"], "") } else { "" }
+  BmcRefused { exit_code: 1, stderr: join([named, ipmitool_lanplus_session_unestablished_line, "\n"], ""), world: world }
+}
+
+// Whether a call ran ipmitool at one -v, read from the words its verbosity input was bound to. An operation without
+// that input runs at the default.
+fn bmc_call_verbose(call: OperationCall) -> Bool {
+  match operation_input_text_list(invocation: call.invocation, name: "verbosity_argv") {
+    Present { value: words } => words == ipmitool_verbosity_argv(verbosity: IpmitoolVerboseOnce)
+    Absent => false
+  }
 }
 
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world)
+    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
   } else {
     BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
   }
@@ -122,7 +133,7 @@ data bmc_dry_cold_reset_back_after: Second = second(count: 60)
 
 fn bmc_mc_reset_cold_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world)
+    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
   } else {
     BmcReplied {
       stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
@@ -264,7 +275,7 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world)
+    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
   } else {
     match world.record_surfaces.mc_info {
       Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }

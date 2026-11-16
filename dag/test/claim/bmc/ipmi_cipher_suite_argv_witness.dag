@@ -5,6 +5,7 @@ import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.operation_argv { ArgvMaterialization, OperationInputBinding, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import extdeps.bmc.ipmi_session { ipmitool_verbosity_argv, IpmitoolDefaultVerbosity, IpmitoolVerboseOnce }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -355,6 +356,7 @@ fn bindings_mc_info() -> List<OperationInputBinding> {
     operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
     operation_argv_bind_text(name: "deadline", text: "20s"),
     operation_argv_bind_text(name: "kill_after", text: "5s"),
+    operation_argv_bind_text_list(name: "verbosity_argv", items: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity)),
   ]
 }
 
@@ -363,6 +365,17 @@ data main_argv_mc_info: List<String> = ["timeout", "--kill-after", "5s", "20s", 
 test fn mc_info_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
   materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_observation_suite()) == main_argv_mc_info
     && materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_row_suite()) == main_argv_mc_info
+}
+
+// THE COLD-RESET WATCH POLL (gunbc.machine_intake.mtcollins1_bmc_cold_reset): the same argv with one -v as ipmitool's
+// own option, before the interface options; nothing else moves.
+fn bindings_mc_info_verbose() -> List<OperationInputBinding> {
+  filter(bindings_mc_info(), b => b.name != "verbosity_argv") + [operation_argv_bind_text_list(name: "verbosity_argv", items: ipmitool_verbosity_argv(verbosity: IpmitoolVerboseOnce))]
+}
+
+test fn the_cold_reset_watch_poll_argv_is_mains_with_one_verbose_flag() -> Bool {
+  materialize(operation: "McInfo", bindings: bindings_mc_info_verbose(), suite: none)
+    == ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-v", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "info"]
 }
 
 // ── The suite each route supplies, and the renderer ─────────────────────────────────────────────

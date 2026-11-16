@@ -16,9 +16,11 @@ module extdeps.bmc.ipmi_session
 //                                 that never reached the credential is not a reading of the credential).
 // A caller that reads IpmiSessionUnestablished as a refused credential would report the managed credential as
 // rejected merely because the link was down -- a false negative off a read that never looked.
-import std.algebra { string_contains }
-import std.types { Int, String }
+import std.algebra { string_contains, trim }
+import std.types { Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 
 type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
@@ -74,5 +76,124 @@ fn ipmitool_read_failure(exit_code: Int, stderr: String) -> IpmitoolReadFailure 
       Present { value: f } => IpmitoolReadSessionFailed { failure: f }
       Absent => IpmitoolReadFailedOtherwise
     }
+  }
+}
+
+// ── ipmitool -v: WHICH STAGE OF THE LANPLUS OPEN WENT UNANSWERED ─────────────────────────────────────
+// SOURCE-TRANSCRIBED, NOT CAPTURED. Every line and rule below is read from ipmitool 1.8.19's source (the standing
+// rows below), not from a capture of this unit. The first live -v run grounds them: the cold-reset route retains the
+// polls' -v stderr in its receipt (gunbc.machine_intake.mtcollins1_bmc_cold_reset).
+//
+// WHY -v. lib/log.c sets the level to verbose + LOG_NOTICE, and lprintf prints a message only when its level is at
+// most that. Without -v, every stage line of src/plugins/lanplus/lanplus.c ipmi_lanplus_open that tells a controller
+// that did not answer from one that refused (RAKP 2 errors, the RAKP 2 HMAC check, the Get Channel Authentication
+// Capabilities failure) is LOG_INFO and is dropped, and both end in the same LOG_ERR line
+// ipmitool_lanplus_session_unestablished_line. With one -v, LOG_INFO prints.
+//
+// THE NO-ANSWER STAGES (each a reply pointer that came back NULL in lanplus.c):
+// - ipmi_get_auth_capabilities_cmd: "Get Auth Capabilities error", bare. A reply with a completion code prints the
+//   same words followed by ": <code>", which is an ANSWER; so the bare line is matched as a whole line. (The line
+//   ipmi_lanplus_open prints after either form, "Error issuing Get Channel Authentication Capabilities request", is
+//   not evidence of either.)
+// - ipmi_lanplus_rakp1 / ipmi_lanplus_rakp3: "> Error: no response from RAKP 1 message" / "... RAKP 3 message"
+//   (LOG_WARNING).
+// - ipmi_lanplus_open_session: its no-reply line is LOG_DEBUG and does not print at -v. Its retry loop then ends
+//   without `goto fail`, and the session-privilege request that follows gets no reply either:
+//   ipmi_set_session_privlvl_cmd prints "Set Session Privilege Level to <level> failed", bare (a reply with a
+//   completion code adds ": <code>").
+// Anything else -- an RAKP 2/4 error code, the HMAC/integrity lines, an open session response error code, an
+// unexpected-message line, a coded stage line -- is the controller ANSWERING, and the bare session line alone names
+// no stage. The open/RAKP 1/RAKP 3 sequence RETRIES (ipmi_lanplus_open's IPMI_LAN_RETRY loop), so one stderr can
+// hold a no-response line from an early try and a refusal from a later one: an answering line then wins, because
+// the controller did answer.
+data ipmitool_lanplus_get_auth_caps_no_reply_line: String = "Get Auth Capabilities error"
+data ipmitool_lanplus_get_channel_auth_caps_issuing_line: String = "Error issuing Get Channel Authentication Capabilities request"
+data ipmitool_lanplus_rakp1_no_response_line: String = "> Error: no response from RAKP 1 message"
+data ipmitool_lanplus_rakp3_no_response_line: String = "> Error: no response from RAKP 3 message"
+data ipmitool_lanplus_set_privilege_prefix: String = "Set Session Privilege Level to "
+data ipmitool_lanplus_set_privilege_bare_suffix: String = " failed"
+
+// Lines lanplus.c prints when the controller ANSWERED and the exchange failed (matched as line prefixes):
+// ipmi_lanplus_open_session "Error in open session response message : %s" (LOG_WARNING); ipmi_lanplus_rakp1
+// "RAKP 2 message indicates an error : %s" and "> RAKP 2 HMAC is invalid" (LOG_INFO); ipmi_lanplus_rakp3
+// "RAKP 4 message indicates an error : %s" and "> RAKP 4 message has invalid integrity check value" (LOG_INFO);
+// ipmi_get_auth_capabilities_cmd "Get Auth Capabilities error: %s" (LOG_INFO, a completion code);
+// ipmi_set_session_privlvl_cmd "Set Session Privilege Level to %s failed: %s" (LOG_ERR, a completion code); and
+// "Error: Received an Unexpected" (an answer of the wrong kind).
+data ipmitool_lanplus_answered_failure_prefixes: List<String> = [
+  "Error in open session response message",
+  "RAKP 2 message indicates an error",
+  "> RAKP 2 HMAC is invalid",
+  "RAKP 4 message indicates an error",
+  "> RAKP 4 message has invalid integrity check value",
+  "Get Auth Capabilities error: ",
+  "Error: Received an Unexpected",
+]
+
+fn ipmitool_lanplus_verbose_answered(lines: List<String>) -> Bool {
+  any(lines, l => any(ipmitool_lanplus_answered_failure_prefixes, pre => starts_with(s: l, prefix: pre)))
+    || any(lines, l => starts_with(s: l, prefix: ipmitool_lanplus_set_privilege_prefix) && string_contains(s: l, pattern: " failed: "))
+}
+
+data ipmitool_lanplus_source_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: "github.com/ipmitool/ipmitool/blob/IPMITOOL_1_8_19/src/plugins/lanplus/lanplus.c (sha256 0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068)",
+    },
+  },
+}
+
+data ipmitool_log_source_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: "github.com/ipmitool/ipmitool/blob/IPMITOOL_1_8_19/lib/log.c (sha256 7b1728649b4b77e49b9cad0cad0b499d80658761c85068ff9332321a169b2115)",
+    },
+  },
+}
+
+data ipmitool_lanplus_dump_source_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: "github.com/ipmitool/ipmitool/blob/IPMITOOL_1_8_19/src/plugins/lanplus/lanplus_dump.c (sha256 42f3b2d9ae12a9b72d599462ea371c0f28b20f1c0dc5d3fadc2bb04587ea0d24)",
+    },
+  },
+}
+
+// THE VERBOSITY ipmitool RUNS AT, typed; rendered to words by ipmitool_verbosity_argv for the same stated divergence
+// as extdeps.bmc.ipmi ipmi_cipher_suite_argv (operations take argv words, not records). There is deliberately no
+// arm above one -v: src/plugins/lanplus/lanplus_crypt.c prints the session's authcode (the password) and keys with
+// printbuf only at verbose > 2, so stderr at one -v carries no credential and may be retained in a receipt.
+// ONE -v LEAVES STDOUT ALONE: everything it enables on this path is lprintf (log.c writes it to stderr); the
+// lanplus_dump.c dumps, which use printf, return at verbose < 2; and the RMCP pong line in lanplus.c
+// ipmi_handle_pong answers a ping that ipmiv2_lan_ping sends, which nothing on this path calls. So the command's
+// report on stdout is parsed as it is at the default verbosity.
+type IpmitoolVerbosity = IpmitoolDefaultVerbosity | IpmitoolVerboseOnce
+
+fn ipmitool_verbosity_argv(verbosity: IpmitoolVerbosity) -> List<String> {
+  match verbosity {
+    IpmitoolDefaultVerbosity => []
+    IpmitoolVerboseOnce => ["-v"]
+  }
+}
+
+// The no-answer stage a -v stderr names, or Absent when it names none or when any line shows the controller
+// answered. Matched per whole, trimmed line.
+fn ipmitool_lanplus_verbose_no_answer_stage(stderr: String) -> NonEmptyStr? {
+  let lines = map(split(s: stderr, delimiter: "\n"), l => trim(s: l))
+  if ipmitool_lanplus_verbose_answered(lines: lines) {
+    none
+  } else if any(lines, l => l == ipmitool_lanplus_get_auth_caps_no_reply_line) {
+    Present { value: "no reply to Get Channel Authentication Capabilities" as NonEmptyStr }
+  } else if any(lines, l => l == ipmitool_lanplus_rakp1_no_response_line) {
+    Present { value: "no reply to RAKP 1" as NonEmptyStr }
+  } else if any(lines, l => l == ipmitool_lanplus_rakp3_no_response_line) {
+    Present { value: "no reply to RAKP 3" as NonEmptyStr }
+  } else if any(lines, l => starts_with(s: l, prefix: ipmitool_lanplus_set_privilege_prefix) && ends_with(s: l, suffix: ipmitool_lanplus_set_privilege_bare_suffix)) {
+    Present { value: "no reply after open session (Set Session Privilege Level)" as NonEmptyStr }
+  } else {
+    none
   }
 }

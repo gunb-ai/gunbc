@@ -688,9 +688,11 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // verbosity_argv: extdeps.bmc.ipmi_session ipmitool_verbosity_argv, the typed verbosity rendered to words (empty, or
+  // "-v" so the lanplus open names the stage that went unanswered on stderr; one -v leaves stdout unchanged).
   operation McInfo {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String>, verbosity_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -698,7 +700,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", verbosity_argv, "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool mc info failed"

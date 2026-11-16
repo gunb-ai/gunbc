@@ -38,16 +38,38 @@ fn real_mc_info() -> String { Filesystem.Read(path: real_mc_info_path).content }
 fn real_chassis_state() -> String { Filesystem.Read(path: real_chassis_state_path).content }
 
 fn available() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: real_mc_info(), stderr: "") }
-// THE TWO EVIDENCED NO-ANSWER FORMS, as this unit's controller produced them while it was not answering
-// (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt: "exit=1 ... stderr=[Error: Unable to
-// establish IPMI v2 / RMCP+ session]", and "exit=124 stdout=[] stderr=[]" under the coreutils read deadline).
-fn no_response() -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: 1, stdout: "", stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n")) }
-fn timed_out() -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: 124, stdout: "", stderr: "") }
-// FAILURES THAT ARE NOT EVIDENCE OF NO ANSWER: the command failed locally (a missing password file, a missing
-// binary), or the controller answered and refused the credential.
-fn probe_failed() -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: 1, stdout: "", stderr: "Unable to read password from file /run/bmc/password\n") }
-fn not_installed() -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: 127, stdout: "", stderr: "timeout: failed to run command 'ipmitool': No such file or directory\n") }
-fn credential_refused() -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: 1, stdout: "", stderr: "Error in open session response message : invalid authentication algorithm\nError: Unable to establish IPMI v2 / RMCP+ session\nRAKP 2 HMAC is invalid\n") }
+// FAILED POLLS AT ONE -v, as ipmitool 1.8.19 prints them. SOURCE-TRANSCRIBED, not captured (extdeps.bmc.ipmi_session
+// ipmitool_lanplus_source_standing): src/plugins/lanplus/lanplus.c ipmi_get_auth_capabilities_cmd, ipmi_lanplus_open,
+// ipmi_lanplus_rakp1 / _rakp3 and ipmi_set_session_privlvl_cmd; the RAKP status words from lanplus_strings.c.
+// The deadline form (exit 124, nothing printed) IS captured on this unit
+// (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt, "exit=124 stdout=[] stderr=[]"),
+// and so is the bare session line at the default verbosity ("exit=1 ... stderr=[Error: Unable to establish IPMI v2 /
+// RMCP+ session]"), which names no stage.
+data session_line: String = concat(ipmitool_lanplus_session_unestablished_line, "\n")
+fn failed(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
+
+// No answer, each stage named.
+fn no_response() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Get Auth Capabilities error\nError issuing Get Channel Authentication Capabilities request\n", session_line)) }
+fn no_reply_to_rakp1() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> Error: no response from RAKP 1 message\nSet Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
+fn no_reply_after_open_session() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Set Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
+fn timed_out() -> ColdResetPoll { failed(exit_code: 124, stderr: "") }
+
+// NOT evidence of no answer.
+fn bare_session_line() -> ColdResetPoll { failed(exit_code: 1, stderr: session_line) }
+fn credential_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("RAKP 2 message indicates an error : unauthorized name\n", session_line)) }
+fn hmac_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> RAKP 2 HMAC is invalid\n", session_line)) }
+fn open_session_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Error in open session response message : invalid role\n\n", session_line)) }
+fn auth_caps_answered_with_a_code() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Get Auth Capabilities error: Invalid command\nError issuing Get Channel Authentication Capabilities request\n", session_line)) }
+fn privilege_answered_with_a_code() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Set Session Privilege Level to ADMINISTRATOR failed: Insufficient privilege level\n", session_line)) }
+// The open/RAKP 1/RAKP 3 sequence retries: an early try went unanswered, a later one was refused. The controller
+// answered, so this is not a loss.
+fn unanswered_then_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> RAKP 2 HMAC is invalid\n", session_line)) }
+fn probe_failed() -> ColdResetPoll { failed(exit_code: 1, stderr: "Unable to read password from file /run/bmc/password\n") }
+fn not_installed() -> ColdResetPoll { failed(exit_code: 127, stderr: "timeout: failed to run command 'ipmitool': No such file or directory\n") }
+
+// A successful poll at one -v: lprintf noise on stderr (ipmi_main.c "Discovered IPMB address 0x%x", LOG_INFO) and the
+// controller's report on stdout, which one -v leaves alone.
+fn verbose_available() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: real_mc_info(), stderr: "Discovered IPMB address 0x20\n") }
 fn undecodable() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: "this is not an mc info report\n", stderr: "") }
 fn initializing() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: replace(s: real_mc_info(), from: "Device Available          : yes", to: "Device Available          : no"), stderr: "") }
 fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
@@ -184,27 +206,55 @@ test fn an_undecodable_response_then_a_valid_answer_cannot_reach_a_recovery() ->
        }
 }
 
-// A FAILED COMMAND IS NOT A SILENT CONTROLLER (side chat on gunbc#16529 at 7d87d15b, F1 narrowed). Only the two
-// evidenced no-answer forms are a missing response; a local failure, a missing binary and a refused credential are
-// failed probes. The counterexample: available before, the first poll after the attempt fails locally, the next
-// answers available, power agrees -- no loss was observed, so it is never a recovery and never accepted. A failed
-// probe still counts against the bound, and an evidenced loss after it is still a loss.
-test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recovery() -> Bool {
-  match no_response() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "session never came up")  _ => false }
+fn is_no_response(p: ColdResetPoll) -> Bool { match p { ControllerNoResponse { cause: _ } => true  _ => false } }
+fn is_probe_failed(p: ColdResetPoll) -> Bool { match p { ControllerProbeFailed { exit_code: _, cause: _ } => true  _ => false } }
+
+// A FAILED COMMAND IS NOT A SILENT CONTROLLER (side chat on gunbc#16529 at 7d87d15b, F1 narrowed; the -v ruling).
+// Only the read deadline, or a stage ipmitool -v names as unanswered, is a missing response. The bare session line
+// names no stage (without -v a refused credential prints exactly that), and every line showing the controller
+// answered -- a RAKP 2 error, the HMAC check, an open session error, a completion code -- is a failed probe, also
+// when an earlier retry went unanswered.
+test fn only_a_stage_ipmitool_names_as_unanswered_is_a_missing_response() -> Bool {
+  match no_response() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to Get Channel Authentication Capabilities")  _ => false }
+    && match no_reply_to_rakp1() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to RAKP 1")  _ => false }
+    && match no_reply_after_open_session() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "Set Session Privilege Level")  _ => false }
     && match timed_out() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "timeout exit 124")  _ => false }
+    && is_probe_failed(p: bare_session_line())
+    && is_probe_failed(p: credential_refused())
+    && is_probe_failed(p: hmac_refused())
+    && is_probe_failed(p: open_session_refused())
+    && is_probe_failed(p: auth_caps_answered_with_a_code())
+    && is_probe_failed(p: privilege_answered_with_a_code())
+    && is_probe_failed(p: unanswered_then_refused())
     && match probe_failed() { ControllerProbeFailed { exit_code: e, cause: _ } => e == 1  _ => false }
     && match not_installed() { ControllerProbeFailed { exit_code: e, cause: _ } => e == 127  _ => false }
-    && match credential_refused() { ControllerProbeFailed { exit_code: _, cause: c } => string_contains(s: c as String, pattern: "credential was refused")  _ => false }
-    && match verdict_of(before_on: true, polls: [probe_failed(), available(), available()], after: Present { value: power_on() }) {
-         Present { value: v } =>
-           match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
-             && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
-         Absent => false
-       }
-    && match watch(polls: [probe_failed(), timed_out(), available()]) {
+}
+
+// THE COUNTEREXAMPLE: available before, the first poll after the attempt fails without evidencing no answer (a local
+// failure, a refused credential, the bare session line), the next answers available, power agrees. No loss was
+// observed, so it is never a recovery and never accepted. A failed probe still counts against the bound, and an
+// evidenced loss after it is still a loss.
+test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recovery() -> Bool {
+  all([probe_failed(), credential_refused(), bare_session_line()], f =>
+    match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+      Present { value: v } =>
+        match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+          && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+      Absent => false
+    })
+    && match watch(polls: [credential_refused(), timed_out(), available()]) {
          Present { value: e } => match e { WatchRecovered { polls_to_loss: d, loss: _, polls_to_recovery: a, report: _ } => d == 2 && a == 1  _ => false }
          Absent => false
        }
+}
+
+// ONE -v LEAVES THE REPORT ALONE: lprintf noise on stderr beside a valid report on stdout decodes available, at the
+// firmware the capture names.
+test fn a_verbose_poll_with_stderr_noise_and_a_valid_report_decodes_available() -> Bool {
+  match verbose_available() {
+    ControllerAvailable { report: r } => (ipmitool_mc_info_firmware_text(report: r) as String) == "0.45"
+    _ => false
+  }
 }
 
 // THE BASELINE CONSTRAINS THE CONCLUSION: a controller not available before the attempt can recover later without
