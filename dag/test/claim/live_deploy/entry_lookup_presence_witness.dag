@@ -29,7 +29,9 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
   FilesystemEntryUnobservable, filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
-  FilesystemDirectorySubjectRefused,
+  FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryPresence,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
 }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
@@ -208,10 +210,21 @@ test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by
             let absent = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
             let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
             let present = host_entry_presence_in_parent(parent: parent, name: "gunbc-entry")
+            // THE BEFORE, EXECUTED: the rule the route used until this change -- ask the directory to
+            // enumerate -- on the SAME directory, the SAME principal, the SAME name. It gives up, in the
+            // model's own words ("could not be listed, so the absence of ... is not established"), which
+            // is verbatim what the srv1 fold stopped on. Red before, green after, in one claim.
+            let old_rule = listed_entry_presence(directory: parent, name: "gunbc-no-such-entry")
+            let old_rule_gives_up = match old_rule {
+              FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => true
+              FilesystemEntryPresenceIndeterminate { cause: _ } => true
+              FilesystemEntryListed { directory: _, name: _ } => false
+              FilesystemEntryAbsent(_) => false
+            }
             let wrote = created.success
             let is_absent = presence_is_absent(absent)
             let is_present = presence_is_present(present)
-            listing_refused && wrote && is_absent && is_present
+            listing_refused && old_rule_gives_up && wrote && is_absent && is_present
           }
         }
     }
