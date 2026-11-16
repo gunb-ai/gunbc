@@ -32,7 +32,10 @@ import gunbc.compute.remote_build_serving_setup {
 }
 
 data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
-data gunbc_ci_remote_build_serving_observe_receipt_path: String = "/tmp/fleet-converge-remote-build-serving-plan"
+// Repo-relative (under the CI checkout's target/, which the build creates), mirroring the
+// sibling runner_host_file converge receipt. The generated workflow step cats "$ROOT/<this>",
+// so an absolute path here would double-prefix and miss; it must stay repo-relative.
+data gunbc_ci_remote_build_serving_observe_receipt_path: String = "target/remote-build-serving-plan-receipt.txt"
 
 // Only the desired/observation PAIR is needed downstream; carried together so the entry
 // computes the plan once and renders and decides from the same result.
