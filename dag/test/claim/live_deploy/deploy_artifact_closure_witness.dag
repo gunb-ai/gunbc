@@ -55,6 +55,8 @@ import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint, tailscale_serve_backend_target,
   ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable,
+  tailscale_serve_backend_is_port_label, tailscale_serve_backend_of_proxy_target,
+  tailscale_serve_port_proxy_prefix,
 }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_placement, TrackerWebOidcServeReady,
@@ -656,7 +658,7 @@ test fn the_missing_oidc_secret_refuses_naming_it_and_the_complete_set_allows() 
       let secret = cfg.secret_file as String
       // Rows through the REAL adapter, restricted to the readers that exist as unit files (a door the
       // spec never demanded is NotYetModeled here and belongs to no gate decision).
-      let rows = list_map(filter(xs: oidc_reader_steps(), predicate: fn(s) { kind_is_declared_reader(s) }), fn(s) {
+      let rows = list_map(xs: filter(xs: oidc_reader_steps(), predicate: fn(s) { kind_is_declared_reader(s) }), f: fn(s) {
         ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }
       })
       let complete = fold_list(xs: rows, empty: [], cons: fn(acc, row) {
@@ -845,6 +847,25 @@ test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> 
         _ => false
       }
   }
+}
+
+// ONE PORT-LABEL RULE FOR BOTH CALLERS (review 95857, root_generalization). The word is judged a port
+// label by tailscale_serve_backend_is_port_label and is accepted as the port half of a loopback proxy
+// URL by tailscale_serve_backend_of_proxy_target -- which now CALLS that predicate rather than restating
+// it. Same verdict for every word of a spanning sample (a positive port, boundaries, leading-zero and
+// trailing-garbage words, the uncapped 70000, the empty word); if either caller grew a private copy of
+// the rule, some word here would split them. The UPPER bound is a gap named at the predicate, not a
+// disagreement between the two callers -- 70000 answers true on both sides until the admission fold lands.
+test fn the_port_label_rule_is_one_rule_for_both_callers() -> Bool {
+  let words = ["1", "80", "3000", "65535", "70000", "0", "-3", "03000", "3000x", "x", " 3000", ""]
+  all(xs: words, predicate: fn(w) {
+    let via_word = tailscale_serve_backend_is_port_label(backend: w)
+    let via_proxy_target = match tailscale_serve_backend_of_proxy_target(target: concat(tailscale_serve_port_proxy_prefix, w)) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    via_word == via_proxy_target
+  })
 }
 
 // AN UNCLASSIFIABLE BACKEND WORD IS NOT YET MODELED, never a silent NoReadOfRecord: a word that is neither
