@@ -1,7 +1,7 @@
 module gunbc.live_deploy.unit_standing
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
-import std.algebra { trim, length }
+import std.algebra { trim, length, list_append }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -169,6 +169,86 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceAmbientCapabilities { capabilities: _ } => none
     }
   })
+}
+
+// THE UNIT'S REQUIRED READ PATHS, derived by ONE exhaustive match over SystemdServiceDirective. Every
+// directive classifies as: a path the unit MUST have installed to come up, an OPTIONAL (IfPresent)
+// read that systemd tolerates absent, or no file read at all. A new SystemdServiceDirective variant
+// fails to compile until it is classified here -- the same fail-closed rule as the apply-leg classifiers
+// (gunbc.design_argument::fail_closed: "it can be satisfied by editing the declaration while the
+// realization still lies" is closed off by the compiler, not by a comment). No wildcard arm.
+//
+// WHY EACH CLASSIFICATION:
+//   * ExecStart / ExecStartPre / ExecStartPost binaries -- the unit's START job execs these; if the
+//     binary is absent the unit never reaches running, so the deploy that is meant to bring it up must
+//     install it. argv[0] is the binary.
+//   * WorkingDirectory -- systemd chdirs here on start and requires the directory to exist.
+//   * EnvironmentFile (required) -- systemd reads the file into the unit's environment BEFORE the
+//     process runs. The deploy installs it via its own apply leg (ApplyLegDigestEnvFile); omitting it
+//     must halt the deploy rather than start a unit with a missing required input.
+//   * LoadCredential -- systemd reads the source file to populate the unit's credential; the unit needs
+//     it to come up, so it is a required read.
+//   * EnvironmentFileIfPresent -- explicitly OPTIONAL (systemd tolerates absence); NOT a required read.
+//   * ExecStop / ExecStopPost / ExecReload / ExecStopPostIgnoringFailure -- run on stop/reload, not on
+//     the start the deploy performs; their binaries are not required reads for bring-up.
+//   * everything else (Restart/RestartSec knobs, User, Group, Slice, Nice, Timeout*, StandardOutput, ...)
+//     -- a scalar setting the unit carries, no file the unit reads to come up.
+fn service_directive_required_read_paths(directives: List<SystemdServiceDirective>) -> List<String> {
+  fold(directives, init: [], f: (acc, d) => match d {
+    ExecStart { command: c } => list_append(acc, argv0_of_command(c))
+    ExecStartPre { command: c } => list_append(acc, argv0_of_command(c))
+    ExecStartPost { command: c } => list_append(acc, argv0_of_command(c))
+    WorkingDirectory { path: p } => list_append(acc, p as String)
+    EnvironmentFile { path: p } => list_append(acc, p as String)
+    LoadCredential { identifier: _, source: s } => list_append(acc, s as String)
+    EnvironmentFileIfPresent { path: _ } => acc
+    ExecStop { command: _ } => acc
+    ExecStopPost { command: _ } => acc
+    ExecReload { command: _ } => acc
+    ExecStopPostIgnoringFailure { command: _ } => acc
+    ServiceType { mode: _ } => acc
+    RemainAfterExit { active: _ } => acc
+    ServiceStandardOutput { stream: _ } => acc
+    ServiceStandardError { stream: _ } => acc
+    Restart { policy: _ } => acc
+    Environment { assignment: _ } => acc
+    ServiceUser { name: _ } => acc
+    ServiceGroup { name: _ } => acc
+    ServiceSlice { name: _ } => acc
+    ServiceNice { priority: _ } => acc
+    ServiceIoSchedulingClass { scheduling_class: _ } => acc
+    TimeoutStartSec { duration: _ } => acc
+    RuntimeMaxSec { duration: _ } => acc
+    ServiceExitType { exit_type: _ } => acc
+    ServiceKillMode { mode: _ } => acc
+    RestartSec { duration: _ } => acc
+    ServiceTasksMax { count: _ } => acc
+    ServiceResourceControl { directive: _ } => acc
+    TimeoutStopSec { duration: _ } => acc
+    ServiceUMask { mask: _ } => acc
+    ServiceCapabilityBoundingSet { capabilities: _ } => acc
+    ServiceAmbientCapabilities { capabilities: _ } => acc
+  })
+}
+
+// argv[0] of a systemd Exec command line is the binary the unit reads. A NonEmptyStr command always
+// splits to at least one token, so first is always Present.
+fn argv0_of_command(command: NonEmptyStr) -> String {
+  match first(xs: split(s: command as String, delimiter: " ")) {
+    Present { value: tok } => tok
+    Absent => ""
+  }
+}
+
+// The required read paths of an emitted unit file: its service directives (empty for a non-service
+// unit file) passed to the single exhaustive classifier above.
+fn service_directive_required_read_paths_of_unit_file(file: SystemdUnitFile) -> List<String> {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } => service_directive_required_read_paths(ds)
+    TimerUnitFile { unit: _, timer: _, install: _ } => []
+    SliceUnitFile { unit: _, slice: _, install: _ } => []
+    PathUnitFile { unit: _, path: _, install: _ } => []
+  }
 }
 
 fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {

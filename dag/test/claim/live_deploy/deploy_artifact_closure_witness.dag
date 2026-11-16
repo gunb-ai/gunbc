@@ -397,10 +397,67 @@ test fn the_serve_unit_reads_the_installed_serve_binary() -> Bool {
 // be refused, not silently allowed here.
 test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
   let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
-  let want = [unit_argv0(f), unit_wd(f)]
+  let binary = unit_argv0(f)
+  let wd = unit_wd(f)
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
-    Present { value: s } => read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), want)
+    Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+      // the broker's declared reads are derived from its own unit file and CONTAIN the start binary and
+      // its WorkingDirectory. It is no longer asserted to be EXACTLY those two: the unit also carries a
+      // required EnvironmentFile (see the_broker_refuses_when_its_required_env_file_is_absent).
+      Declared { paths: paths } =>
+        binary != ""
+        && list_member(xs: paths, x: binary, eq: eq_str)
+        && list_member(xs: paths, x: wd, eq: eq_str)
+      _ => false
+    }
     Absent => false
+  }
+}
+
+// F1 (side-chat, exec-extractor PR): the broker unit carries a REQUIRED EnvironmentFile -- the
+// device-crypto digest env file, written by its own ApplyLegDigestEnvFile apply leg. Before this change
+// the unit's read set declared only argv[0] + WorkingDirectory, so with the binary and its directory
+// installed and the digest env file ABSENT, the broker row read Allowed and the gate Proceeded -- a
+// false admission. The read set is now derived by ONE exhaustive match over SystemdServiceDirective
+// (gunbc.live_deploy.unit_standing::service_directive_required_read_paths), which declares the required
+// EnvironmentFile. Discriminating, THROUGH THE REAL BROKER ADAPTER (deployment_artifact_read_set over
+// the srv1 broker step): with only the binary and directory installed, the row is Refused and the gate
+// Halts naming that env file; with the complete installed set, it is Allowed and the gate Proceeds. This
+// control goes RED if the classifier ever drops EnvironmentFile (then no declared read is neither the
+// binary nor the directory, so the env file to omit cannot be found).
+test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
+  let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
+  let binary = unit_argv0(f)
+  let wd = unit_wd(f)
+  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
+    Absent => false
+    Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
+      Declared { paths: paths } =>
+        match first_where(xs: paths, keep: fn(p) { p != binary && p != wd }) {
+          Absent => false
+          Present { value: env } =>
+            let row = ReadRow { located: s.path as String, reads: Declared { paths: paths } }
+            let partial = [binary, wd]
+            let refused_names_env = match deploy_closure_verdict(rows: [row], installed: partial) {
+              Refused { located: _, artifact: a } => a == env
+              _ => false
+            }
+            let halts_names_env = match deploy_gate(rows: [row], installed: partial) {
+              Halt { cause: MissingArtifact { located: _, artifact: a } } => a == env
+              _ => false
+            }
+            let allowed = match deploy_closure_verdict(rows: [row], installed: paths) {
+              Allowed => true
+              _ => false
+            }
+            let proceeds = match deploy_gate(rows: [row], installed: paths) {
+              Proceed => true
+              _ => false
+            }
+            refused_names_env && halts_names_env && allowed && proceeds
+        }
+      _ => false
+    }
   }
 }
 

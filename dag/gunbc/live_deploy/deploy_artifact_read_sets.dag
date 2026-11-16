@@ -33,7 +33,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_unit_drain_read_paths 
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 import gunbc.live_deploy.spec { DeploymentSpec }
-import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, working_directory_of_unit_file }
+import gunbc.live_deploy.unit_standing { exec_start_binary_of_unit_file, service_directive_required_read_paths_of_unit_file }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
@@ -68,10 +68,12 @@ fn unit_file_read_set(file: SystemdUnitFile?) -> ArtifactReadSet {
     Absent => NotYetModeled { reason: "this spec does not enable the unit (its unit file is not emitted); no read of record to own" }
     Present { value: f } => match exec_start_binary_of_unit_file(file: f) {
       Absent => NotYetModeled { reason: "the emitted unit file carries no service ExecStart; its read is not modeled here (DISSOLUTION: model the unit's argv)" }
-      Present { value: binary } => match working_directory_of_unit_file(file: f) {
-        Present { value: wd } => Declared { paths: [binary, wd] }
-        Absent => Declared { paths: [binary] }
-      }
+      // The read set is the ONE exhaustive classification over the unit's service directives (its
+      // start-job binaries, WorkingDirectory, required EnvironmentFile(s), and LoadCredential sources).
+      // NOT just argv[0] + WorkingDirectory: a unit that carries a REQUIRED EnvironmentFile the deploy
+      // does not install is a false admission -- the gate must halt on it (side-chat F1 on the
+      // exec-extractor PR). The classification lives in gunbc.live_deploy.unit_standing, not here.
+      Present { value: _ } => Declared { paths: service_directive_required_read_paths_of_unit_file(f) }
     }
   }
 }
