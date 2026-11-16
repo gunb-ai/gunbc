@@ -3,7 +3,7 @@ module gunbc.live_deploy.member_observe
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
 import std.measure { Second }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
@@ -306,9 +306,9 @@ fn host_entry_presence_in_parent(parent: String, name: String) -> EntryPresence 
   let link = host_entry_lookup_reading(command: test_symbolic_link_command(path: entry), leg: join(["lookup -L ", entry], ""), path: entry)
   let follow = host_entry_lookup_reading(command: test_exists_command(path: entry), leg: join(["lookup -e ", entry], ""), path: entry)
   let search = if filesystem_entry_lookup_needs_parent_search(link: link, follow: follow) {
-    Present { value: host_entry_lookup_reading(command: test_executable_command(path: parent), leg: join(["lookup -x ", parent], ""), path: parent) }
+    optional_present(host_entry_lookup_reading(command: test_executable_command(path: parent), leg: join(["lookup -x ", parent], ""), path: parent))
   } else {
-    Absent
+    optional_absent()
   }
   entry_lookup_to_presence(
     lookup: filesystem_entry_lookup(path: entry, parent: parent, link: link, follow: follow, parent_search: search),
@@ -330,9 +330,9 @@ fn peer_entry_presence_in_parent(transport: HostEffectTransport, privilege: List
     path: entry,
   )
   let search = if filesystem_entry_lookup_needs_parent_search(link: link, follow: follow) {
-    Present { value: peer_entry_lookup_reading(transport: transport, argv: parent_search_leg_argv(parent: parent, privilege: privilege), leg: join(["lookup -x ", parent], ""), path: parent) }
+    optional_present(peer_entry_lookup_reading(transport: transport, argv: parent_search_leg_argv(parent: parent, privilege: privilege), leg: join(["lookup -x ", parent], ""), path: parent))
   } else {
-    Absent
+    optional_absent()
   }
   entry_lookup_to_presence(
     lookup: filesystem_entry_lookup(path: entry, parent: parent, link: link, follow: follow, parent_search: search),
