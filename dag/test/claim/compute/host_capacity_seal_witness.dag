@@ -1,16 +1,16 @@
 module test.claim.compute.host_capacity_seal_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.measure { ByteSize, kibibyte_count, kibibyte_from_byte_size_floor }
+import std.measure { ByteSize, byte_size, kibibyte_count, kibibyte_from_byte_size_floor }
 import product.host_identity { HostIdentity }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import gunbc.compute.host_capacity {
   compute_root, compute_capacity_root, host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved,
-  ComputeSubjectHostUnresolved, ComputeBuildPool, compute_capacity_home_root,
+  ComputeSubjectHostUnresolved, ComputeBuildPool,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
@@ -91,7 +91,7 @@ test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member
 // compute_capacity_home_root/compute/capacity. It is dry -- host_capacity_subject is a pure function, so
 // unlike the wet witness this runs green on its own -- and it asks nothing of the host's real filesystem.
 test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() -> Bool {
-  remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
+  remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: host_capacity_home(host: (h as String) as NonEmptyStr, build_seat: byte_size(0)), pool: ComputeBuildPool) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: s, appropriation: _ } =>
       (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
@@ -107,11 +107,11 @@ test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() ->
 // would drift from the slot; this reads the slot itself.
 test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot() -> Bool {
   let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  let srv3_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv3" as HostIdentity), pool: ComputeBuildPool) {
+  let srv3_app = match host_capacity_subject(instance: host_capacity_home(host: "srv3", build_seat: byte_size(0)), pool: ComputeBuildPool) {
     ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
     ComputeSubjectHostUnresolved { host: _ } => 0 - 1
   }
-  let srv1_app = match host_capacity_subject(instance: remote_build_serving_instance(host: "srv1" as HostIdentity), pool: ComputeBuildPool) {
+  let srv1_app = match host_capacity_subject(instance: host_capacity_home(host: "srv1", build_seat: byte_size(0)), pool: ComputeBuildPool) {
     ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
     ComputeSubjectHostUnresolved { host: _ } => 0 - 1
   }
