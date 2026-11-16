@@ -3,8 +3,9 @@ module extdeps.bootloader.grub
 import std.types { Bool, NonEmptyStr, String, Int, List, Seconds }
 import std.algebra { trim }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, kernel_cmdline_arg_wire }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // GNU GRUB AT TAG grub-2.12, the boot loader the Ubuntu 24.04 install media carry. ONE upstream
 // product, so ONE module authority (gunbc.design_argument::single_authority): both what we WRITE for GRUB (grub.cfg, whose
@@ -22,6 +23,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "git.savannah.gnu.org/cgit/grub.git/tree/?h=grub-2.12"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bootloader.grub",
+      decl_name: "GrubConsoleFold",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type GrubMenuEntry {
