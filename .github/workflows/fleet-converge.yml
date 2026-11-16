@@ -4352,13 +4352,23 @@ jobs:
           BRANCH_RUN_KEY: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'branch_run_grant' && steps.branch_run_grant_request.outputs.approved == 'true'
         timeout-minutes: 15
+      - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA; the srv15 versions read alone)
+        id: wif_auth_srv15_read
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-converge/providers/github-gcp-iam-converge-oidc
+          service_account: iam-observe@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        if: github.event.inputs.mode == 'gcp_iam_converge'
+        timeout-minutes: 5
       - name: "srv15 arrival: read bmc-srv15-admin versions metadata with the job identity (typed receipt to the artifact; every refusal named, no fallback)"
         id: srv15_bmc_secret_versions_read
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/srv15_bmc_secret_versions_receipt.dag --function srv15_bmc_secret_versions_read_wet
         env:
-          WIF_ACCESS_TOKEN: ${{ steps.wif_auth_iam_observe.outputs.access_token }}
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth_srv15_read.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
         timeout-minutes: 5
       - name: Publish the srv15 BMC secret-versions receipt (the artifact the accessor pin cites)
