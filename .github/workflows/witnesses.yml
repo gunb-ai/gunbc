@@ -179,7 +179,7 @@ jobs:
           MARK="$RUNNER_TEMP/gunbc-fl-waited.txt"
           rm -f "$MARK"
           say() { echo "fast lane: wait -- $1"; echo "$1" > "$MARK"; exit 0; }
-          if [ "$FL_CAP" -le 0 ]; then say disabled; fi
+          if [ "$FL_CAP" -le 0 ]; then echo "fast lane: dissolve: $FL_DISSOLVE"; say disabled; fi
           git diff --name-only --no-renames "$BASE_SHA"...HEAD > "$RUNNER_TEMP/fl-own.txt" 2>/dev/null
           if [ ! -s "$RUNNER_TEMP/fl-own.txt" ]; then say skipped-no-diff; fi
           if grep -qE "Cargo.toml|Cargo.lock|rust-toolchain|rust-toolchain.toml|src/v2/std/read_set.dag|dag/gunbc/seed_build_inputs.dag|dag/gunbc/read_set_schema.dag|dag/gunbc/read_set_publish.dag|dag/gunbc/read_set_restore.dag|dag/gunbc/parse_verdict_schema.dag|dag/gunbc/parse_verdict_publish.dag|dag/gunbc/parse_verdict_restore.dag|dag/gunbc/witness/compiler_gate_workflow.dag|dag/gunbc/source_layout.dag|dag/gunbc/source_layout_namespaces.dag|dag/gunbc/layout_namespace_row.dag|dag/gunbc/layout_namespace_row/gunbc_tree.dag|src/v1/|.cargo/|fixtures/|.github/" "$RUNNER_TEMP/fl-own.txt" 2>/dev/null; then say skipped-own-input; fi
@@ -215,6 +215,7 @@ jobs:
           FL_CAP: "0"
           FL_TYPICAL: "3300"
           FL_STEPS: "24"
+          FL_DISSOLVE: "🟡 dissolve-on: fl_wait_script_raw -- the bounded poll loop (say() helper, while/case/curl|jq/arith) is one raw sh -c string, unlike every other script in this file which is bash_build Nodes, because src/v2/extdeps/languages/bash_build.dag has NO loop, case, or arithmetic builders. DISSOLVES WHEN the orchestration-to-shell bash-emit capability lands those builders (loop + case + integer arithmetic) -- then fl_wait_script_raw is rebuilt through them as Nodes and this raw string retires. Until then the loop's semantics are visible only in the emitted text, and bash_emit_stmts checks the wrapping, not the body."
         if: github.event_name == 'pull_request'
       - name: Restore fast-lane unit for base ancestor 0
         id: fast_lane_unit_0

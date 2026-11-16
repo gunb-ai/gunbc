@@ -55,7 +55,7 @@ import v2.std.read_set {
   read_set_kind_dir, read_set_exact_kinds, read_set_kind_separator,
 }
 import gunbc.seed_build_inputs { seed_build_input_members }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.measure { Second, second, second_count }
 import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
@@ -420,7 +420,9 @@ fn fl_classify_reuse_after() -> Node {
 // SCAFFOLD (design_argument how_to_work, medium-as-string): the poll loop below is raw shell because
 // src/v2/extdeps/languages/bash_build.dag has no loop, case, or arithmetic builders -- the surrounding
 // decision script is Node-built (fl_cmd/fl_test/bash_build_*) and stays that way. Marked on-carrier:
-// see fast_lane_wait_script_dissolution_trigger; convert this function to Node builders when they land.
+// see fast_lane_wait_script_dissolution_trigger -- the row is READ (dissolution_description renders it
+// into the wait step's FL_DISSOLVE env, printed in the run log while the wait is dormant), not dangling;
+// convert this function to Node builders when they land.
 data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fl_wait_script_raw -- the bounded poll loop (say() helper, while/case/curl|jq/arith) is one raw sh -c string, unlike every other script in this file which is bash_build Nodes, because src/v2/extdeps/languages/bash_build.dag has NO loop, case, or arithmetic builders. DISSOLVES WHEN the orchestration-to-shell bash-emit capability lands those builders (loop + case + integer arithmetic) -- then fl_wait_script_raw is rebuilt through them as Nodes and this raw string retires. Until then the loop's semantics are visible only in the emitted text, and bash_emit_stmts checks the wrapping, not the body.")
 
 //
@@ -442,7 +444,7 @@ fn fl_wait_script_raw() -> String {
     "MARK=\"$RUNNER_TEMP/" + fast_lane_wait_marker_basename + "\"",
     "rm -f \"$MARK\"",
     "say() { echo \"fast lane: wait -- $1\"; echo \"$1\" > \"$MARK\"; exit 0; }",
-    "if [ \"$FL_CAP\" -le 0 ]; then say disabled; fi",
+    "if [ \"$FL_CAP\" -le 0 ]; then echo \"fast lane: dissolve: $FL_DISSOLVE\"; say disabled; fi",
     "git diff --name-only --no-renames \"$BASE_SHA\"...HEAD > \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null",
     "if [ ! -s \"$RUNNER_TEMP/fl-own.txt\" ]; then say skipped-no-diff; fi",
     "if grep -qE \"" + input_pattern + "|" + impl_pattern + "\" \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null; then say skipped-own-input; fi",
@@ -511,7 +513,8 @@ fn fl_wait_step() -> Step {
       kv(key: "FL_WINDOW", value: yaml_string(s: fast_lane_wait_window_str())),
       kv(key: "FL_CAP", value: yaml_string(s: fast_lane_wait_secs_text(fast_lane_wait_cap_secs))),
       kv(key: "FL_TYPICAL", value: yaml_string(s: fast_lane_wait_secs_text(fast_lane_wait_typical_secs))),
-      kv(key: "FL_STEPS", value: yaml_string(s: fast_lane_wait_poll_steps_text()))
+      kv(key: "FL_STEPS", value: yaml_string(s: fast_lane_wait_poll_steps_text())),
+      kv(key: "FL_DISSOLVE", value: yaml_string(s: dissolution_description(condition: fast_lane_wait_script_dissolution_trigger)))
     ] },
     working_directory: none,
     if_condition: Present { value: "github.event_name == 'pull_request'" },
