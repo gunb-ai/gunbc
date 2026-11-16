@@ -241,7 +241,7 @@ fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> 
   with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_snoc_item(xs: w.worker.processes, item: p), uptime_at_origin: w.worker.uptime_at_origin, principal: w.worker.principal })
 }
 
-// THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci.ci_spec): its token in the
+// THE NOTICE WATCHER the boot step starts before the entry (gunbc.machine_intake.mtcollins1_sol_notice): its token in the
 // environment, its readiness file holding that token, and its record naming a live process -- what
 // gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_await_observer requires before any BMC
 // contact. It is scenario state because the entry does not start it.

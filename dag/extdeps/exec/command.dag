@@ -274,6 +274,14 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // name with another member survives), because the account's absence is exactly the state that does
     // NOT prove the group is gone.
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_group_command"),
+    // getent ahostsv4 <name>: the fourth database of the same read-only lookup, admitted on the same terms
+    // as its siblings -- it names a database the utility resolves itself and names no path, no key file, and
+    // no account, and it writes nothing. Its caller is the srv1 read-back
+// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), which
+    // must ask whether the JOINED HOST'S TAILNET NAME resolves through NSS -- the resolver path the router's
+    // own upstream lookups take -- because `tailscale ping` resolves names from Tailscale's peer list instead
+    // and so cannot answer that question (@ref(extdeps.posix.getent::getent_hosts_command)).
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_hosts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
@@ -410,6 +418,14 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // serve.dag carries, so the words that execute are the words that module cites.
     decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_status_json_command"),
     decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_set_hostname_command"),
+    // The join surfaces (extdeps.tailscale.join): `up` is the membership step itself and `ping` is the
+    // read-back that asks whether the new member ANSWERS, from the peer that has to reach it. Both name the
+    // same program row serve.dag carries, and neither can carry key material: `up`'s credential argument is
+    // built only through tailscale_auth_key_file_argument, the `file:` form (cmd/tailscale/cli/up.go), so
+    // what executes is a path and not the secret (gunbc.tailscale_fleet_auth_key states where the file is
+    // custody's; extdeps.tailscale.join's module header states why argv never holds the key).
+    decl_ref(module_path: "extdeps.tailscale.join", decl_name: "tailscale_up_join_command"),
+    decl_ref(module_path: "extdeps.tailscale.join", decl_name: "tailscale_ping_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),

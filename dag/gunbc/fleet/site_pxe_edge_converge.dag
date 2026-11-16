@@ -3336,5 +3336,7 @@ fn site_pxe_edge_converge_ci_wet() -> ProcessExit
 }
 
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared with the writer, and imported by
-// ci_spec's run-step target and the upload step (the import graph runs ci_spec -> converge, toward the writer).
+// the step module's run-step targets and the upload step (the import graph runs from the step module and
+// gunbc.fleet.fleet_converge_workflow, and from the roster module gunbc.instruments.ci_run_step_roster, toward
+// the writer).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
