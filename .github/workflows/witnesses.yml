@@ -179,6 +179,7 @@ jobs:
           MARK="$RUNNER_TEMP/gunbc-fl-waited.txt"
           rm -f "$MARK"
           say() { echo "fast lane: wait -- $1"; echo "$1" > "$MARK"; exit 0; }
+          if [ "$FL_CAP" -le 0 ]; then say disabled; fi
           git diff --name-only --no-renames "$BASE_SHA"...HEAD > "$RUNNER_TEMP/fl-own.txt" 2>/dev/null
           if [ ! -s "$RUNNER_TEMP/fl-own.txt" ]; then say skipped-no-diff; fi
           if grep -qE "Cargo.toml|Cargo.lock|rust-toolchain|rust-toolchain.toml|src/v2/std/read_set.dag|dag/gunbc/seed_build_inputs.dag|dag/gunbc/read_set_schema.dag|dag/gunbc/read_set_publish.dag|dag/gunbc/read_set_restore.dag|dag/gunbc/parse_verdict_schema.dag|dag/gunbc/parse_verdict_publish.dag|dag/gunbc/parse_verdict_restore.dag|dag/gunbc/witness/compiler_gate_workflow.dag|dag/gunbc/source_layout.dag|dag/gunbc/source_layout_namespaces.dag|dag/gunbc/layout_namespace_row.dag|dag/gunbc/layout_namespace_row/gunbc_tree.dag|src/v1/|.cargo/|fixtures/|.github/" "$RUNNER_TEMP/fl-own.txt" 2>/dev/null; then say skipped-own-input; fi
@@ -211,7 +212,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GUNBC_REPO: ${{ github.repository }}
           FL_WINDOW: "12"
-          FL_CAP: "720"
+          FL_CAP: "0"
           FL_TYPICAL: "3300"
           FL_STEPS: "24"
         if: github.event_name == 'pull_request'

@@ -278,13 +278,16 @@ data fast_lane_wait_hit_word: String = "hit"
 
 // THE WAIT BUDGET, measured 2026-11-16. The median completed main witnesses run is 51.3 minutes (97 runs
 // sampled); FL_TYPICAL rounds that up to 55 minutes, so the estimate `created + FL_TYPICAL - now` is
-// conservative: a run the model calls "within cap" is usually closer than the estimate says. The cap is
-// the 12 minutes the manager ruled on (message 2026-11-16, with four conditions, all implemented); the
-// OPERATOR ruling on the occupancy increase is escalation msg_926f150f-da3a-474b-930a-34c3bc166c10 (the 90-minute job
-// timeout is UNCHANGED and no budget constant moves -- a wait can only add wall time when it fails, and
-// a full run (~41-50) plus a worst-case wait (12) still fits). If the operator withholds the ruling, the
-// step must be removed or capped at zero, which degenerates to today's behavior.
-data fast_lane_wait_cap_secs: Second = second(count: 720)
+// conservative: a run the model calls "within cap" is usually closer than the estimate says. THE CAP IS
+// 0 -- THE WAIT IS DORMANT. Per DESIGN (operator bans any increase to a CI time budget without explicit
+// sign-off) and review 95821, the wait may not run until a `gunbc.design_ruling` row records the
+// operator's EXPLICIT approval of this occupancy increase (escalation msg_926f150f; a default-decided
+// escalation is not sign-off). With cap 0 the step prints `wait -- disabled` and exits before any API
+// call: zero added wall time, identical behavior to before this PR. Enabling = flip the cap to
+// second(count: 720) in the same change that adds the ruling row. The manager ruled the 12-minute cap
+// with four conditions (all implemented); the 90-minute job timeout is UNCHANGED either way, and a full
+// run (~41-50) plus a worst-case wait (12, hard-deadlined) fits.
+data fast_lane_wait_cap_secs: Second = second(count: 0)
 data fast_lane_wait_typical_secs: Second = second(count: 3300)
 data fast_lane_wait_poll_secs: Second = second(count: 30)
 data fast_lane_wait_poll_steps: Int = 24
@@ -439,6 +442,7 @@ fn fl_wait_script_raw() -> String {
     "MARK=\"$RUNNER_TEMP/" + fast_lane_wait_marker_basename + "\"",
     "rm -f \"$MARK\"",
     "say() { echo \"fast lane: wait -- $1\"; echo \"$1\" > \"$MARK\"; exit 0; }",
+    "if [ \"$FL_CAP\" -le 0 ]; then say disabled; fi",
     "git diff --name-only --no-renames \"$BASE_SHA\"...HEAD > \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null",
     "if [ ! -s \"$RUNNER_TEMP/fl-own.txt\" ]; then say skipped-no-diff; fi",
     "if grep -qE \"" + input_pattern + "|" + impl_pattern + "\" \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null; then say skipped-own-input; fi",
