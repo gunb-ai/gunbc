@@ -760,15 +760,20 @@ test fn the_standings_refresh_oneshot_runs_the_observation_fold_only() -> Bool {
     // The fold, not the frontier walk: it must NOT be the launch enqueue the belt timer ran.
     && !any(refresh, l => string_contains(s: l, pattern: "belt_launch_enqueue_cli"))
     && !any(refresh, l => starts_with(s: l, prefix: "WantedBy="))
+    // Defect (2): the emitted unit's TimeoutStartSec must be the fold budget (belt_tick_run_bound =
+    // 2700 s), so a cold fold is never killed by a too-short timeout and the next deploy reinstalls
+    // the correct bound. The horizon derives from this SAME constant, so they cannot drift apart.
+    && any(refresh, l => string_contains(s: l, pattern: "TimeoutStartSec=2700s"))
 }
 
-// The staleness horizon is DERIVED from the backstop, not a copied literal (condition 1 review): it
-// is exactly three refresh periods, and it lives in the Second carrier, so an edit to the 600 s
-// cadence moves the horizon with it — it cannot silently stop being three periods
+// The staleness horizon is DERIVED from the real refresh cycle, not a copied multiple of the cadence
+// (it is 2 * belt_standings_refresh_backstop + belt_tick_run_bound), and it lives in the Second
+// carrier, so widening the fold's bound raises the tolerated staleness with it — a horizon shorter
+// than a healthy cycle (the old 3 x 600 s) can never silently 409 fresh data again
 // (gunbc.design_argument::minimize_redundancy: the concept is modeled once, every use derived).
-test fn the_staleness_horizon_is_three_periods_derived_from_the_backstop() -> Bool {
+test fn the_staleness_horizon_is_the_real_cycle_derived_from_the_fold_budget() -> Bool {
   second_count(s: belt_standings_refresh_staleness_horizon)
-    == second_count(s: belt_standings_refresh_backstop) * 3
+    == second_count(s: belt_standings_refresh_backstop) * 2 + second_count(s: belt_tick_run_bound)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

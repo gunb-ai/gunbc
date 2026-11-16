@@ -1237,6 +1237,14 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
 // snapshot worktree (roadmap_event_carrier::roadmap_event_private_snapshot — every operation owns
 // its worktree) and every body read is digest-verified, so the two are idempotent by construction and
 // cannot corrupt one another; whichever runs last leaves the same-or-newer document.
+// Its TimeoutStartSec is the fold's bounded runtime, `belt_tick_run_bound` (2700 s, a cold fold
+// measures 13-16 min) — NOT a standings-specific copy. The staleness gate's horizon is derived from
+// that SAME constant (gunbc.live_deploy.belt_cadence::belt_standings_refresh_staleness_horizon =
+// 2 * belt_standings_refresh_backstop + belt_tick_run_bound), so the fold budget the unit enforces
+// and the staleness the route tolerates can never drift apart: widening the unit's timeout
+// automatically widens the tolerated staleness so a healthy long fold is never 409'd (defect: a
+// horizon shorter than the cycle refused fresh data). Reused through the shared event-service row, so
+// the emitted timeout is single-authored on belt_tick_run_bound.
 fn live_deploy_belt_standings_refresh_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_event_service_unit_file(
     spec: spec,
