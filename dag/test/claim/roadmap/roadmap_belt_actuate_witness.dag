@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, FilesystemReadSucceeded, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
-import gunbc.harness.harness_session_recovery { SessionRecoveryNone, SessionRecoveryMalformed }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone, SessionRecoveryMalformed, SessionRecoveryUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
@@ -3516,7 +3516,7 @@ test fn an_unreadable_attempt_log_is_not_none() -> Bool {
     exact: filesystem_exact_read(path: "/log/worker-events.jsonl", content: "", success: false, error: "EIO", error_kind: "permission_denied"),
   )
   match recovery {
-    SessionRecoveryMalformed { mismatch } => string_contains(s: mismatch, pattern: "EIO")
+    SessionRecoveryUnreadable { detail } => detail == "EIO"
     _ => false
   }
 }

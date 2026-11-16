@@ -464,6 +464,7 @@ type SessionRecovery
   // and stream all hand each other; then these fields become it and session_epoch_member deletes.
   | SessionRecoveryRequestPending { cause: RequestPendingCause, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
+  | SessionRecoveryUnreadable { detail: String }
 
 // THE TYPED RESUMABILITY READING (review 88393: a Bool flattened not-pending, malformed and interrupted into one
 // false). Each case the restore must tell apart is its own arm, so no consumer re-reads the recovery to recover them.
@@ -495,6 +496,7 @@ fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumabili
         ResumabilityResumable
       }
     SessionRecoveryMalformed { mismatch: mismatch } => ResumabilityMalformed { mismatch: mismatch }
+    SessionRecoveryUnreadable { detail } => ResumabilityMalformed { mismatch: detail }
     SessionRecoveryNone => ResumabilityNotRequestPending
     SessionRecoveryPending { causes: _, resumes_made: _, wakes_made: _, interrupted_calls: _, resume_round: _ } => ResumabilityNotRequestPending
   }

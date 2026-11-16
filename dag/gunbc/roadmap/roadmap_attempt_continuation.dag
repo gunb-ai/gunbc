@@ -49,7 +49,7 @@ import gunbc.harness.harness_transport_retry_policy {
   harness_transport_retry_policy_now, transport_retry_next_delivery_at, transport_retry_redelivery_due,
 }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryRequestPending, session_resume_bound, RequestPendingCause, request_pending_cause_text,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryRequestPending, SessionRecoveryUnreadable, session_resume_bound, RequestPendingCause, request_pending_cause_text,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable, CaptureNotAttempted,
@@ -492,6 +492,11 @@ fn continuation_from_absent_capture(prior: PriorExecutionObservation, recovery: 
       Refuse {
         cause: RecoveryRecordMalformed { mismatch },
         reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor a next attempt is established: ", mismatch], ""),
+      }
+    SessionRecoveryUnreadable { detail } =>
+      Refuse {
+        cause: RecoveryRecordMalformed { mismatch: detail },
+        reason: join(["the prior attempt ", prior.attempt_key, "'s attempt event log could not be read, so neither a resume nor a next attempt is established: ", detail], ""),
       }
     SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
       continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, interrupted: interrupted)
