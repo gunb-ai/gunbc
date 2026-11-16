@@ -22,7 +22,7 @@ import gunbc.host.host_effect_realize {
   TreeStepSourceObserve,
   TreeStepRevision,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables, release_locus_record }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
@@ -111,9 +111,8 @@ fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool 
 test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepSourceObserve)
@@ -122,9 +121,8 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
 test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionNotInstalled),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionNotInstalled,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepRevision)
