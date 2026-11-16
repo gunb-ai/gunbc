@@ -8424,7 +8424,7 @@ fn reference_pull_paths_for_source(
 /// synthetic ones included, goes through the production walk -- a mirror of the walk would measure
 /// the mirror, not the answer.
 pub fn relation_variant_probe(
-    workspace: &Path,
+    index: &MultiEntryIndex,
     walk_roots: &[String],
     edges: &[(Rc<str>, Rc<str>)],
     modules: &[String],
@@ -8445,25 +8445,11 @@ pub fn relation_variant_probe(
     };
     let (rss, peak) = resident();
     eprintln!("rel-probe-step: rss={rss} peak={peak} label=relation_probe_start");
-    // The SAME roots the round's own edge list was built from, so this is a cache hit on the pool
-    // the round already holds -- a different roots key is refused rather than a second resident pool.
-    let abs_roots: Vec<String> = regen_source_roots()
-        .all()
-        .iter()
-        .map(|root| {
-            workspace
-                .join(root.repo_relative_path())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    let index = match try_process_shared_index(&abs_roots) {
-        Ok(index) => index,
-        Err(cause) => {
-            eprintln!("rel-probe: no reading -- the round's corpus index was not shared: {cause}");
-            return;
-        }
-    };
+    // The probe reads the pool the round ALREADY HOLDS, handed over by the route that built it. It
+    // cannot go through the shared memo: that memo is one slot, and on the heal route the model's
+    // pool (dag + src/v2) wins it while the regen route's pool is src/v1 + dag -- run 43784443590
+    // records both refusals. Asking the memo would mean building a second whole-corpus index in a
+    // process already at 12.7 GB, which is the very memory this experiment is measuring.
     let facts = &index.module_graph_facts;
     // The edge list the model is handed is keyed by MODULE NAME, so every alternative relation is
     // spelled in the same key space: a facts path joins back through the pool index.
@@ -8472,7 +8458,7 @@ pub fn relation_variant_probe(
     for (module, source) in index.source_files.iter() {
         module_of_path.insert(workspace_relative_repo_path(&source.path), module.clone());
     }
-    let pool_names = pool_module_names(&index);
+    let pool_names = pool_module_names(index);
     let mut imp: std::collections::HashSet<(Rc<str>, Rc<str>)> = std::collections::HashSet::new();
     let mut reference: std::collections::HashSet<(Rc<str>, Rc<str>)> =
         std::collections::HashSet::new();
@@ -8494,7 +8480,7 @@ pub fn relation_variant_probe(
                 }
             }
         }
-        match parsed_file_references_of(&index, source) {
+        match parsed_file_references_of(index, source) {
             Ok(refs) => {
                 for dep in module_paths_of_references(&refs, &pool_names) {
                     if dep != *module && index.source_files.contains_key(&dep) {
@@ -8506,8 +8492,8 @@ pub fn relation_variant_probe(
         }
         if let Err(cause) = visit_bare_reference_providers(
             source,
-            &index,
-            |root| closure_name_census(&index, root),
+            index,
+            |root| closure_name_census(index, root),
             |_name, _name_at, provider, _role| {
                 match module_of_path.get(provider) {
                     Some(provider) if provider != module => {
@@ -10161,7 +10147,7 @@ mod closure_edge_demand_tests {
         for root in regen_source_roots().all() {
             std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
         }
-        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
+        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0, None).unwrap();
         assert!(modules.contains(&"entry".to_string()));
         assert!(edges.contains(&(Rc::from("chain.consumer"), Rc::from("chain.provider"))));
         let reached = required_regen_host::regen_reverse_closure_host(
@@ -10198,7 +10184,7 @@ mod closure_edge_demand_tests {
         for root in regen_source_roots().all() {
             std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
         }
-        let (edges, _modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
+        let (edges, _modules) = required_regen_host::regen_module_edges(&fixture.0, None).unwrap();
         let spelled: BTreeSet<(String, String)> = edges
             .iter()
             .map(|(from, to)| (from.to_string(), to.to_string()))
@@ -10266,13 +10252,9 @@ mod closure_edge_demand_tests {
         for root in regen_source_roots().all() {
             std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
         }
-        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
-        relation_variant_probe(
-            &fixture.0,
-            &["chain.provider".to_string()],
-            &edges,
-            &modules,
-        );
+        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0, None).unwrap();
+        let index = fixture.index();
+        relation_variant_probe(&index, &["chain.provider".to_string()], &edges, &modules);
     }
 
     /// THE INTERNER AT ITS OWN GRAIN. The sharing the test above pins is the roster's; the interner

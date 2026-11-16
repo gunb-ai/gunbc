@@ -6855,7 +6855,7 @@ fn partition_move_explained_by_this_change(
         )
     };
     let population = edited_population_from_diff(workspace, &diff_text);
-    let (edges, modules) = regen_module_edges(workspace).map_err(unexplainable)?;
+    let (edges, modules) = regen_module_edges(workspace, None).map_err(unexplainable)?;
     let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
         .map_err(unexplainable)?;
     match rebuild_scope_decision_with(
@@ -12732,6 +12732,9 @@ pub fn regen_module_names(workspace: &Path) -> Vec<String> {
 
 pub fn regen_module_edges(
     workspace: &Path,
+    // MEASUREMENT ONLY (the DP-M3 drain proof, PR #16531): the edited set whose affected members the
+    // relation probe walks. Nothing reads the probe; delete with the experiment.
+    probe_edited: Option<&[String]>,
 ) -> Result<(Vec<(Rc<str>, Rc<str>)>, Vec<String>), String> {
     let abs_roots: Vec<String> = super::regen_source_roots()
         .all()
@@ -12839,6 +12842,10 @@ pub fn regen_module_edges(
             )
         })
         .collect();
+    if let Some(edited) = probe_edited {
+        let roster: Vec<String> = modules.iter().cloned().collect();
+        crate::cli_run::relation_variant_probe(&*index, edited, &edges, &roster);
+    }
     Ok((edges, modules.into_iter().collect()))
 }
 
@@ -13286,7 +13293,7 @@ pub fn affected_set_bound_for(
     population_changes: &[String],
     base_delta: &[String],
 ) -> Result<AffectedSetBound, String> {
-    let (edges, modules) = regen_module_edges(workspace)?;
+    let (edges, modules) = regen_module_edges(workspace, Some(edited))?;
     scope_step_resident(
         "edge_index",
         format!("edges={} modules={}", edges.len(), modules.len()),
@@ -13325,14 +13332,6 @@ pub fn affected_set_bound_for(
         }
     }
     let base_delta_modules: Vec<String> = base_delta_modules.into_iter().collect();
-    // MEASUREMENT ONLY (the DP-M3 drain proof, PR #16531): the relation-variant probe, over the
-    // edited set this round actually answers with. Nothing reads it; delete with the experiment.
-    let probe_roots: Vec<String> = edited
-        .iter()
-        .chain(base_delta_modules.iter())
-        .cloned()
-        .collect();
-    crate::cli_run::relation_variant_probe(workspace, &probe_roots, &edges, &modules);
     let bound = render_affected_set_bound(
         source_roots,
         &BaseDelta {
@@ -14976,7 +14975,7 @@ mod surface_roles_receipt_tests {
         let names = regen_module_names(&ws);
         eprintln!("MEASURE names={} {:?} {}", names.len(), t.elapsed(), rss());
         let t = Instant::now();
-        let (_edges, modules) = regen_module_edges(&ws).unwrap();
+        let (_edges, modules) = regen_module_edges(&ws, None).unwrap();
         eprintln!(
             "MEASURE edges path modules={} {:?} {}",
             modules.len(),
