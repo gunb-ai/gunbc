@@ -73,7 +73,6 @@ type Quantity =
   | Velocity
   | Acceleration
   | ResistancePerLength
-  | CountPerEnergy
 
   | Dimensionless
 
@@ -1658,19 +1657,6 @@ fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {
 
 fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
   measure_count(r)
-}
-
-// TOKENS PER JOULE at Milli: generated tokens per joule of energy spent, a count per energy (tokens/J), so
-// 0.54 tok/J is carried exactly as 540. Its own quantity, not Frequency: the denominator is energy, not time.
-// First consumer: gunbc.serving.t10_pair_strata_bench_receipt (tokens per GPU joule of a serving pair).
-type MilliTokensPerJoule = Measure<CountPerEnergy, Milli, Nat>
-
-fn milli_tokens_per_joule(count: Nat) -> MilliTokensPerJoule {
-  Measure { count: count }
-}
-
-fn milli_tokens_per_joule_count(e: MilliTokensPerJoule) -> Nat {
-  measure_count(e)
 }
 
 // GIGA OPERATIONS PER SECOND — a per-second rate of arithmetic OPERATIONS on the Frequency axis at

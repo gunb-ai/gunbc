@@ -4,7 +4,7 @@ import std.types { Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { watt_count, celsius_count, celsius_delta_count, hertz_count, MilliTokensPerJoule, milli_tokens_per_joule_count }
+import std.measure { watt_count, celsius_count, celsius_delta_count, hertz_count }
 import std.interval { interval_high, interval_low }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import gunbc.serving.t10_pair_strata_bench_receipt {
@@ -33,9 +33,9 @@ fn strictly_between(a: Nat?, t: Nat?, b: Nat?) -> Bool {
   }
 }
 
-fn tokens_per_joule_point(r: BenchReading<MilliTokensPerJoule>) -> Nat? {
+fn tokens_per_joule_point(r: BenchReading<Nat>) -> Nat? {
   match r {
-    Read { span: s, precision: _ } => Present { value: milli_tokens_per_joule_count(e: interval_high(interval: s)) }
+    Read { span: s, precision: _ } => Present { value: interval_high(interval: s) }
     NotMeasured => Absent
     ReadingRefused { reason: _ } => Absent
   }

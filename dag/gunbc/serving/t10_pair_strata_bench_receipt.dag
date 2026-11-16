@@ -7,7 +7,7 @@ import std.interval { OrderedClosedInterval, closed_interval, degenerate_interva
 import std.measure {
   Watt, watt, watt_count, Celsius, celsius, celsius_count, Millisecond, millisecond, millisecond_count,
   Hertz, hertz, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
-  MilliTokensPerJoule, milli_tokens_per_joule, CelsiusDelta, celsius_delta, celsius_delta_count,
+  CelsiusDelta, celsius_delta, celsius_delta_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -90,8 +90,8 @@ fn rate_range(low: Nat, high: Nat, p: ReadingPrecision) -> BenchReading<MilliTok
   bench_span(low: milli_tokens_per_second(count: low), high: milli_tokens_per_second(count: high), le: rate_le, precision: p)
 }
 
-fn tpj(milli: Nat, p: ReadingPrecision) -> BenchReading<MilliTokensPerJoule> {
-  bench_point(value: milli_tokens_per_joule(count: milli), precision: p)
+fn tpj(milli: Nat, p: ReadingPrecision) -> BenchReading<Nat> {
+  bench_point(value: milli, precision: p)
 }
 
 fn ms(count: Nat, p: ReadingPrecision) -> BenchReading<Millisecond> {
@@ -122,9 +122,15 @@ type PairBenchRow {
   long_context_cold_first_turn: BenchReading<Millisecond>
   long_context_warm_decode: BenchReading<MilliTokensPerSecond>
   long_context_warm_time_to_first_token: BenchReading<Millisecond>
-  // Generated tokens per joule of GPU energy (0.54 tok/J is milli_tokens_per_joule 540).
-  c4_tokens_per_gpu_joule: BenchReading<MilliTokensPerJoule>
-  c8_tokens_per_gpu_joule: BenchReading<MilliTokensPerJoule>
+  // Generated tokens per joule of GPU energy, in thousandths (0.54 tok/J is 540).
+  // feature:tokens-per-energy-measure — dissolve-on: std.measure carries a tokens-per-energy unit
+  // (a Measure<CountPerEnergy, Milli, Nat> beside MilliTokensPerSecond) and these two fields take it. It was
+  // added on this PR and withdrawn: a std.measure edit reaches the ~1,700 modules importing std.measure, and
+  // gunbc.heal_workflow's affected-scope round refused it twice on page thrash (MemoryStallRefusedPageThrash,
+  // runs 43784613094 attempts 1-2, slots srv3-09 and srv3-17). Owning lane: heal's scope cost,
+  // gunbc.plans.read_set_convergence P7. BOUNDED POPULATION: these two fields.
+  c4_tokens_per_gpu_joule: BenchReading<Nat>
+  c8_tokens_per_gpu_joule: BenchReading<Nat>
   // Both cards' draw under load, and the pair's cap where the session stated one.
   pair_power_under_load: BenchReading<Watt>
   pair_power_cap: Watt?
