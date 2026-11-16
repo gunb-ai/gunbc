@@ -20,17 +20,16 @@
 module test.claim.live_deploy.entry_lookup_presence_witness
 
 import std.types { String, Bool }
-import std.optional { Optional, Present, Absent }
-import std.algebra { trim, string_contains }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
 import extdeps.posix.test_utility {
-  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
+  PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
 }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
+  Filesystem, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
   FilesystemEntryUnobservable, filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
-  FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryPresence,
-  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate,
+  FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate,
   FilesystemEntrySubjectRefused,
 }
 import extdeps.shell

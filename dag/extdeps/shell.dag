@@ -686,7 +686,8 @@ service shell.Chmod {
     }
   }
 
-  operation OwnerReadWriteFile {    requires none
+  operation OwnerReadWriteFile {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0600", "{path}"] }

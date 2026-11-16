@@ -15,8 +15,7 @@ import extdeps.git.inspect
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, filesystem_listing_observation, filesystem_entry_presence, filesystem_read_outcome, filesystem_file_observation,
-  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  Filesystem, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
   FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup, FilesystemEntryUnobservable,
   filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
