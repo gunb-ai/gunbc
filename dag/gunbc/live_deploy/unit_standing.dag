@@ -277,6 +277,21 @@ fn service_directive_required_reads_of_unit_file(file: SystemdUnitFile) -> List<
   }
 }
 
+// THE DirectoryNotEmpty= watched directories of a [Path] UNIT, in order. A .path unit has no ExecStart;
+// its read of record is what it watches — the dirs that must EXIST for the level trigger to fire. Read
+// from the unit's own PathUnitFile so a closure control can compare it to the read the intent records
+// without going through the same helper both sides call.
+fn watched_paths_of_unit_file(file: SystemdUnitFile) -> List<String> {
+  match file {
+    PathUnitFile { unit: _, path: pd, install: _ } =>
+      fold(pd, init: [] as List<String>, f: (acc, d) => match d {
+        DirectoryNotEmpty { path: p } => list_push(xs: acc, item: p as String)
+        _ => acc
+      })
+    _ => [] as List<String>
+  }
+}
+
 fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
   fold(directives, init: none, f: (acc, d) => match acc {
     Present { value: v } => Present { value: v }

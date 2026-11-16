@@ -77,6 +77,7 @@ import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_sp
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergenceOneshot,
   convergence_oneshot_unit_text,
+  convergence_oneshot_service_unit_file_if_admitted,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
@@ -534,6 +535,22 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
   live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
+// THE CLOSURE VIEW OF THE OIDC UNIT ENV. A deployment step's closure view must equal the file the
+// deploy EMITS (deploy intent owns every artifact its units read), so the door closure accessors
+// below install exactly the directives the admitted emission installs — the one Environment
+// directive the reader's PLACEMENT AUTHORITY projects (tracker_web_oidc_serve_placement's Ready
+// config, the same cfg tracker_web_oidc_serve_standing answers ServeConfigured with). An
+// unassigned or unbound placement receives no OIDC Environment and the closure view carries none;
+// a missing-realization placement is refused before any file exists, so no comparison arises.
+fn live_deploy_oidc_unit_env_from_placement(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
 // The belt-B unit: ExecStart is `gunbc run` on the roadmap's ingress binding (gunbc.roadmap.roadmap_ingress;
 // the seed binary answering every request through the ONE .dag handler gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
@@ -646,15 +663,16 @@ fn live_deploy_tailnet_door_serve_unit_file(
   )
 }
 
-// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, with the
-// OIDC readback factored out (oidc_env: []). argv[0] and WorkingDirectory come from `svc` inside
-// over_listener, never from the OIDC directives, so the read-set is the unit's own declaration; a
-// control asserts it equals the Emitted file's on an admitted fixture. Absent when the spec carries no
+// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, carrying
+// the SAME OIDC Environment the admitted emission installs (live_deploy_oidc_unit_env_from_placement
+// — the closure view equals what is emitted; it no longer strips the env). argv[0] and
+// WorkingDirectory come from `svc` inside over_listener, never from the OIDC directives; a control
+// asserts the view equals the Emitted file's on an admitted fixture. Absent when the spec carries no
 // tailnet-door demand (not an enabled unit), the same condition as the producer's NotDeployed.
 fn live_deploy_tailnet_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
   match deployment_tailnet_door_socket(names: spec.names) {
     Absent => none
-    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
   }
 }
 
@@ -688,12 +706,14 @@ fn live_deploy_agent_door_serve_unit_file(
   )
 }
 
-// THE CLOSURE VIEW of the agent door's unit file: same core, OIDC readback factored out (oidc_env:
-// []). A control asserts its argv[0]/WorkingDirectory equal the Emitted file's on an admitted fixture.
+// THE CLOSURE VIEW of the agent door's unit file: same core, and the SAME OIDC Environment the admitted
+// emission installs (live_deploy_oidc_unit_env_from_placement) — the closure view equals what is
+// emitted; it no longer strips the env. A control asserts WHOLE equality with the Emitted file's
+// directives on an admitted fixture.
 fn live_deploy_agent_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
   match deployment_agent_door_socket_of(spec: spec) {
     Absent => none
-    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: [], socket: socket) }
+    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
   }
 }
 
@@ -818,8 +838,9 @@ fn live_deploy_approval_broker_unit_file_on(
 
 // THE SHARED BROKER UNIT PRODUCER. The Environment directive list is a PARAMETER, so the closure view
 // (which reads only argv[0]/WorkingDirectory) can build the SAME unit with no environment rather than
-// being handed a fabricated base URL — the tailnet/agent doors take the same shape (a core with the
-// OIDC env factored out). Every non-environment directive — ExecStart argv[0], WorkingDirectory, slice,
+// being handed a fabricated base URL — the tailnet/agent doors take the same core shape, with the
+// OIDC Environment they are emitted WITH (live_deploy_oidc_unit_env_from_placement), so their closure
+// view equals what is emitted. Every non-environment directive — ExecStart argv[0], WorkingDirectory, slice,
 // user, EnvironmentFile, sidecar deps — is identical across the deploy and the closure view.
 fn live_deploy_approval_broker_serve_unit_file(
   spec: DeploymentSpec,
@@ -996,6 +1017,13 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
 // refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
 // the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
+// THE PUBLICATION HELPER .path unit's read of record: the directories it watches for non-empty (the request
+// roles' spool dirs). One authority for both the unit file (below) and the closure read row, so a control can
+// compare them as one list without going through the same helper both sides call.
+fn live_deploy_publication_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication))
+}
+
 fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [
@@ -1006,7 +1034,7 @@ fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     path: concat(
       concat(
         [PathUnit { target: deployment_publication_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_publication_path_read_paths(spec: spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
@@ -1237,6 +1265,14 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
 // snapshot worktree (roadmap_event_carrier::roadmap_event_private_snapshot — every operation owns
 // its worktree) and every body read is digest-verified, so the two are idempotent by construction and
 // cannot corrupt one another; whichever runs last leaves the same-or-newer document.
+// Its TimeoutStartSec is the fold's bounded runtime, `belt_tick_run_bound` (2700 s, a cold fold
+// measures 13-16 min) — NOT a standings-specific copy. The staleness gate's horizon is derived from
+// that SAME constant (gunbc.live_deploy.belt_cadence::belt_standings_refresh_staleness_horizon =
+// 2 * belt_standings_refresh_backstop + belt_tick_run_bound), so the fold budget the unit enforces
+// and the staleness the route tolerates can never drift apart: widening the unit's timeout
+// automatically widens the tolerated staleness so a healthy long fold is never 409'd (defect: a
+// horizon shorter than the cycle refused fresh data). Reused through the shared event-service row, so
+// the emitted timeout is single-authored on belt_tick_run_bound.
 fn live_deploy_belt_standings_refresh_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_event_service_unit_file(
     spec: spec,
@@ -1259,13 +1295,20 @@ fn live_deploy_belt_standings_refresh_timer_unit_file(spec: DeploymentSpec) -> S
   }
 }
 
+// THE BELT EXIT .path unit's read of record: the directories it watches for non-empty (the attempt-exit
+// request roles' spool dirs). One authority for both the unit file (below) and the closure read row, so a
+// control can compare them as one list without going through the same helper both sides call.
+fn live_deploy_belt_event_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit))
+}
+
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
     path: concat(
       concat(
         [PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_belt_event_path_read_paths(spec: spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
@@ -1340,6 +1383,14 @@ fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
 
 fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
+}
+
+// The deployed-tree-remote unit's TYPED unit file, from the SAME placement authority that renders its host text —
+// present only when the convergence slice is admitted (via the one placement helper; emit does NOT re-match slice
+// admission). The deploy-artifact closure classifies THIS unit file through the unit_standing classifier, so the
+// tree-remote read is derived from the same unit the deploy emits — not a hand-kept path beside it.
+fn live_deploy_tree_remote_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
+  convergence_oneshot_service_unit_file_if_admitted(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
 }
 
 // apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile

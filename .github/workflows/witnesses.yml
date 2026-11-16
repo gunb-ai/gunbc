@@ -28,7 +28,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
-  GUNBC_COMPILER_GATE_CONTRACT_STAMP: e57b498c8813770c
+  GUNBC_COMPILER_GATE_CONTRACT_STAMP: 8b09a9b18d5dc731
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
@@ -167,6 +167,42 @@ jobs:
           'echo' 'a10='"$ANCESTOR_10" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
           ANCESTOR_11=$('git' 'rev-list' '--first-parent' '--skip=11' '--max-count=1' "$BASE_SHA") || 'true'
           'echo' 'a11='"$ANCESTOR_11" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_12=$('git' 'rev-list' '--first-parent' '--skip=12' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a12='"$ANCESTOR_12" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_13=$('git' 'rev-list' '--first-parent' '--skip=13' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a13='"$ANCESTOR_13" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_14=$('git' 'rev-list' '--first-parent' '--skip=14' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a14='"$ANCESTOR_14" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_15=$('git' 'rev-list' '--first-parent' '--skip=15' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a15='"$ANCESTOR_15" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_16=$('git' 'rev-list' '--first-parent' '--skip=16' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a16='"$ANCESTOR_16" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_17=$('git' 'rev-list' '--first-parent' '--skip=17' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a17='"$ANCESTOR_17" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_18=$('git' 'rev-list' '--first-parent' '--skip=18' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a18='"$ANCESTOR_18" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_19=$('git' 'rev-list' '--first-parent' '--skip=19' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a19='"$ANCESTOR_19" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_20=$('git' 'rev-list' '--first-parent' '--skip=20' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a20='"$ANCESTOR_20" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_21=$('git' 'rev-list' '--first-parent' '--skip=21' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a21='"$ANCESTOR_21" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_22=$('git' 'rev-list' '--first-parent' '--skip=22' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a22='"$ANCESTOR_22" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_23=$('git' 'rev-list' '--first-parent' '--skip=23' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a23='"$ANCESTOR_23" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_24=$('git' 'rev-list' '--first-parent' '--skip=24' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a24='"$ANCESTOR_24" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_25=$('git' 'rev-list' '--first-parent' '--skip=25' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a25='"$ANCESTOR_25" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_26=$('git' 'rev-list' '--first-parent' '--skip=26' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a26='"$ANCESTOR_26" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_27=$('git' 'rev-list' '--first-parent' '--skip=27' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a27='"$ANCESTOR_27" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_28=$('git' 'rev-list' '--first-parent' '--skip=28' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a28='"$ANCESTOR_28" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          ANCESTOR_29=$('git' 'rev-list' '--first-parent' '--skip=29' '--max-count=1' "$BASE_SHA") || 'true'
+          'echo' 'a29='"$ANCESTOR_29" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         if: github.event_name == 'pull_request'
@@ -290,6 +326,186 @@ jobs:
             gunbc-fast-lane-compiler-identity
           key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a11 }}
         if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 12
+        id: fast_lane_unit_12
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a12 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 13
+        id: fast_lane_unit_13
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a13 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 14
+        id: fast_lane_unit_14
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a14 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 15
+        id: fast_lane_unit_15
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a15 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 16
+        id: fast_lane_unit_16
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a16 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 17
+        id: fast_lane_unit_17
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a17 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 18
+        id: fast_lane_unit_18
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a18 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 19
+        id: fast_lane_unit_19
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a19 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 20
+        id: fast_lane_unit_20
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a20 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 21
+        id: fast_lane_unit_21
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a21 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 22
+        id: fast_lane_unit_22
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a22 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 23
+        id: fast_lane_unit_23
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a23 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 24
+        id: fast_lane_unit_24
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a24 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 25
+        id: fast_lane_unit_25
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a25 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_24.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 26
+        id: fast_lane_unit_26
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a26 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_24.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_25.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 27
+        id: fast_lane_unit_27
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a27 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_24.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_25.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_26.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 28
+        id: fast_lane_unit_28
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a28 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_24.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_25.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_26.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_27.outputs['cache-hit'] != 'true'
+      - name: Restore fast-lane unit for base ancestor 29
+        id: fast_lane_unit_29
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ steps.parse_ancestors.outputs.a29 }}
+        if: github.event_name == 'pull_request' && steps.fast_lane_unit_0.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_1.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_2.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_3.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_4.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_5.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_6.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_7.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_8.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_9.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_10.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_11.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_12.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_13.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_14.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_15.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_16.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_17.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_18.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_19.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_20.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_21.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_22.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_23.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_24.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_25.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_26.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_27.outputs['cache-hit'] != 'true' && steps.fast_lane_unit_28.outputs['cache-hit'] != 'true'
       - name: Decide whether the fast-lane unit covers this change
         id: fast_lane
         run: |
@@ -328,7 +544,7 @@ jobs:
           'echo' 'fast lane: classify -- reuse'
           'echo' 'skip=''true' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         env:
-          FAST_LANE_ANCESTOR: ${{ '' || steps.fast_lane_unit_0.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a0 || steps.fast_lane_unit_1.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a1 || steps.fast_lane_unit_2.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a2 || steps.fast_lane_unit_3.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a3 || steps.fast_lane_unit_4.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a4 || steps.fast_lane_unit_5.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a5 || steps.fast_lane_unit_6.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a6 || steps.fast_lane_unit_7.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a7 || steps.fast_lane_unit_8.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a8 || steps.fast_lane_unit_9.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a9 || steps.fast_lane_unit_10.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a10 || steps.fast_lane_unit_11.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a11 || '' }}
+          FAST_LANE_ANCESTOR: ${{ '' || steps.fast_lane_unit_0.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a0 || steps.fast_lane_unit_1.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a1 || steps.fast_lane_unit_2.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a2 || steps.fast_lane_unit_3.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a3 || steps.fast_lane_unit_4.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a4 || steps.fast_lane_unit_5.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a5 || steps.fast_lane_unit_6.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a6 || steps.fast_lane_unit_7.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a7 || steps.fast_lane_unit_8.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a8 || steps.fast_lane_unit_9.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a9 || steps.fast_lane_unit_10.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a10 || steps.fast_lane_unit_11.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a11 || steps.fast_lane_unit_12.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a12 || steps.fast_lane_unit_13.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a13 || steps.fast_lane_unit_14.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a14 || steps.fast_lane_unit_15.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a15 || steps.fast_lane_unit_16.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a16 || steps.fast_lane_unit_17.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a17 || steps.fast_lane_unit_18.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a18 || steps.fast_lane_unit_19.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a19 || steps.fast_lane_unit_20.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a20 || steps.fast_lane_unit_21.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a21 || steps.fast_lane_unit_22.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a22 || steps.fast_lane_unit_23.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a23 || steps.fast_lane_unit_24.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a24 || steps.fast_lane_unit_25.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a25 || steps.fast_lane_unit_26.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a26 || steps.fast_lane_unit_27.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a27 || steps.fast_lane_unit_28.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a28 || steps.fast_lane_unit_29.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a29 || '' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         if: github.event_name == 'pull_request'
         continue-on-error: true
@@ -505,6 +721,24 @@ jobs:
           GUNBC_READ_SET_OUT: gunbc-read-set.txt
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
         if: steps.fast_lane.outputs.skip != 'true'
+      - name: Stage the fast-lane unit
+        run: |
+          set -e
+          'cp' "$GEN_ONE" 'gunbc-fast-lane-native-cli'
+          'echo' "$COMPILER" | 'tee' 'gunbc-fast-lane-compiler-identity' > '/dev/null'
+        env:
+          GEN_ONE: ${{ runner.temp }}/v2-native-cli-gen-one
+          COMPILER: ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.emit_build_self_host.outcome == 'success' && steps.emit_build_v2_native_cli.outcome == 'success'
+      - name: Save fast-lane receipts to Actions cache
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-read-set.txt
+            gunbc-fast-lane-native-cli
+            gunbc-fast-lane-compiler-identity
+          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ github.sha }}
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.emit_build_self_host.outcome == 'success' && steps.emit_build_v2_native_cli.outcome == 'success'
       - name: Check the layout with the restored native CLI (fast lane)
         run: |
           ${{ steps.fast_lane.outputs.skip == 'true' && './gunbc-fast-lane-native-cli' || format('{0}/v2-native-cli-gen-one', runner.temp) }} check-layout --source-root dag --source-root src/v2
@@ -625,12 +859,174 @@ jobs:
             gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a11 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 12
+        id: parse_receipts_12
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a12 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 13
+        id: parse_receipts_13
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a13 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 14
+        id: parse_receipts_14
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a14 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 15
+        id: parse_receipts_15
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a15 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 16
+        id: parse_receipts_16
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a16 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 17
+        id: parse_receipts_17
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a17 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 18
+        id: parse_receipts_18
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a18 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 19
+        id: parse_receipts_19
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a19 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 20
+        id: parse_receipts_20
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a20 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 21
+        id: parse_receipts_21
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a21 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 22
+        id: parse_receipts_22
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a22 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 23
+        id: parse_receipts_23
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a23 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 24
+        id: parse_receipts_24
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a24 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 25
+        id: parse_receipts_25
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a25 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true' && steps.parse_receipts_24.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 26
+        id: parse_receipts_26
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a26 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true' && steps.parse_receipts_24.outputs['cache-hit'] != 'true' && steps.parse_receipts_25.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 27
+        id: parse_receipts_27
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a27 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true' && steps.parse_receipts_24.outputs['cache-hit'] != 'true' && steps.parse_receipts_25.outputs['cache-hit'] != 'true' && steps.parse_receipts_26.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 28
+        id: parse_receipts_28
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a28 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true' && steps.parse_receipts_24.outputs['cache-hit'] != 'true' && steps.parse_receipts_25.outputs['cache-hit'] != 'true' && steps.parse_receipts_26.outputs['cache-hit'] != 'true' && steps.parse_receipts_27.outputs['cache-hit'] != 'true'
+      - name: Restore parse-verdict unit for base ancestor 29
+        id: parse_receipts_29
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
+          key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a29 }}
+        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true' && steps.parse_receipts_11.outputs['cache-hit'] != 'true' && steps.parse_receipts_12.outputs['cache-hit'] != 'true' && steps.parse_receipts_13.outputs['cache-hit'] != 'true' && steps.parse_receipts_14.outputs['cache-hit'] != 'true' && steps.parse_receipts_15.outputs['cache-hit'] != 'true' && steps.parse_receipts_16.outputs['cache-hit'] != 'true' && steps.parse_receipts_17.outputs['cache-hit'] != 'true' && steps.parse_receipts_18.outputs['cache-hit'] != 'true' && steps.parse_receipts_19.outputs['cache-hit'] != 'true' && steps.parse_receipts_20.outputs['cache-hit'] != 'true' && steps.parse_receipts_21.outputs['cache-hit'] != 'true' && steps.parse_receipts_22.outputs['cache-hit'] != 'true' && steps.parse_receipts_23.outputs['cache-hit'] != 'true' && steps.parse_receipts_24.outputs['cache-hit'] != 'true' && steps.parse_receipts_25.outputs['cache-hit'] != 'true' && steps.parse_receipts_26.outputs['cache-hit'] != 'true' && steps.parse_receipts_27.outputs['cache-hit'] != 'true' && steps.parse_receipts_28.outputs['cache-hit'] != 'true'
       - name: Record the restored parse-verdict ancestor
         run: |
           set -e
           'echo' "$RESTORED_ANCESTOR" | 'tee' '-a' 'gunbc-parse-ancestor' > '/dev/null'
         env:
-          RESTORED_ANCESTOR: ${{ '' || steps.parse_receipts_0.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a0 || steps.parse_receipts_1.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a1 || steps.parse_receipts_2.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a2 || steps.parse_receipts_3.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a3 || steps.parse_receipts_4.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a4 || steps.parse_receipts_5.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a5 || steps.parse_receipts_6.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a6 || steps.parse_receipts_7.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a7 || steps.parse_receipts_8.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a8 || steps.parse_receipts_9.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a9 || steps.parse_receipts_10.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a10 || steps.parse_receipts_11.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a11 || '' }}
+          RESTORED_ANCESTOR: ${{ '' || steps.parse_receipts_0.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a0 || steps.parse_receipts_1.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a1 || steps.parse_receipts_2.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a2 || steps.parse_receipts_3.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a3 || steps.parse_receipts_4.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a4 || steps.parse_receipts_5.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a5 || steps.parse_receipts_6.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a6 || steps.parse_receipts_7.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a7 || steps.parse_receipts_8.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a8 || steps.parse_receipts_9.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a9 || steps.parse_receipts_10.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a10 || steps.parse_receipts_11.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a11 || steps.parse_receipts_12.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a12 || steps.parse_receipts_13.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a13 || steps.parse_receipts_14.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a14 || steps.parse_receipts_15.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a15 || steps.parse_receipts_16.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a16 || steps.parse_receipts_17.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a17 || steps.parse_receipts_18.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a18 || steps.parse_receipts_19.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a19 || steps.parse_receipts_20.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a20 || steps.parse_receipts_21.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a21 || steps.parse_receipts_22.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a22 || steps.parse_receipts_23.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a23 || steps.parse_receipts_24.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a24 || steps.parse_receipts_25.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a25 || steps.parse_receipts_26.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a26 || steps.parse_receipts_27.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a27 || steps.parse_receipts_28.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a28 || steps.parse_receipts_29.outputs['cache-hit'] == 'true' && steps.parse_ancestors.outputs.a29 || '' }}
         if: github.event_name == 'pull_request'
       - name: Walk parse-population reusing the nearest published ancestor's receipts
         run: |
@@ -651,24 +1047,6 @@ jobs:
             gunbc-parse-compiler-identity
             gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Stage the fast-lane unit
-        run: |
-          set -e
-          'cp' "$GEN_ONE" 'gunbc-fast-lane-native-cli'
-          'echo' "$COMPILER" | 'tee' 'gunbc-fast-lane-compiler-identity' > '/dev/null'
-        env:
-          GEN_ONE: ${{ runner.temp }}/v2-native-cli-gen-one
-          COMPILER: ${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Save fast-lane receipts to Actions cache
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: |-
-            gunbc-read-set.txt
-            gunbc-fast-lane-native-cli
-            gunbc-fast-lane-compiler-identity
-          key: gunbc-materialization-fast-lane-${{ runner.arch }}-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-

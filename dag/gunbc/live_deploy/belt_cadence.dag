@@ -242,19 +242,28 @@ data belt_credential_recovery_backstop: Second = second(count: 900)
 // the scheduler slack, so a few minutes of jitter is expected and needs no exactness.
 data belt_standings_refresh_backstop: Second = second(count: 600)
 
-// The freshness law's STALE-BY-AGE horizon for /standings.json, in seconds: about three refresh
-// periods. The existing 409 (`ObservationStale`) compares observed_at against the newest EVENT, so
-// a stopped timer whose carrier also cannot advance its log reads as CURRENT and is served 200 —
-// the exact silent-stale hole this closes. A second, orthogonal gate compares the stored
-// observed_at against the wall clock at read time: if the last refresh is older than this horizon,
-// the route answers 409 (stale) itself, so ctrl's parseStandingsResponse refuses admission rather
-// than trusting bytes whose refresher died. Fail CLOSED: an unreadable clock, an unparseable
-// observed_at, OR a future-dated observed_at is refused, never served as current. Three periods,
-// DERIVED from the backstop (gunbc.design_argument::minimize_redundancy: the "three periods" is
-// modeled once, on the backstop, and every use derived — a future edit to the 600 s cadence moves the
-// horizon with it, it cannot silently stop being three periods), so a timer that misses a beat or two
-// (a transient fetch failure, a slow reload) does not flap the route to stale. Typed as Second, not a
-// bare Int: it is a duration, and a duration carried as a raw scalar is the unit-modeling fork the
-// std.measure carrier exists to prevent.
+// The freshness law's STALE-BY-AGE horizon for /standings.json, in seconds. The existing 409
+// (`ObservationStale`) compares observed_at against the newest EVENT, so a stopped timer whose carrier
+// also cannot advance its log reads as CURRENT and is served 200 — the exact silent-stale hole this
+// closes. A second, orthogonal gate compares the stored observed_at against the wall clock at read
+// time: if the last refresh is older than this horizon, the route answers 409 (stale) itself, so
+// ctrl's parseStandingsResponse refuses admission rather than trusting bytes whose refresher died.
+// Fail CLOSED: an unreadable clock, an unparseable observed_at, OR a future-dated observed_at is
+// refused, never served as current.
+// DERIVED from the real refresh cycle, NOT a copied multiple of the cadence (the earlier "3 x 600 s
+// = 1800 s" was SHORTER than a healthy cycle and so 409'd the route between two SUCCESSFUL folds —
+// a spurious refusal, which is exactly as wrong as a silent-stale). A successful republish can be as
+// far apart as: the timer's own wait `OnUnitInactiveSec` = one belt_standings_refresh_backstop (the
+// next fold starts only after the previous one leaves inactive), PLUS the fold's bounded runtime —
+// the SAME `belt_tick_run_bound` the emitted unit carries as TimeoutStartSec (a cold fold measures
+// 13-16 min here; 2700 s is its ceiling) — PLUS one further belt_standings_refresh_backstop of
+// scheduler slack (AccuracySec jitter plus one tolerated late fire). So the horizon is
+//   2 * belt_standings_refresh_backstop + belt_tick_run_bound.
+// Both terms are DERIVED, never restated: the horizon is pinned to the very constant that bounds a
+// healthy fold (belt_tick_run_bound, the unit's TimeoutStartSec) so the timeout and the horizon can
+// never silently decouple — raise the fold budget and the tolerated staleness rises with it
+// (gunbc.design_argument::single_authority, gunbc.design_argument::minimize_redundancy). Typed as
+// Second, not a bare Int: a duration carried as a raw scalar is the unit-modeling fork the std.measure
+// carrier exists to prevent.
 data belt_standings_refresh_staleness_horizon: Second =
-  second(count: second_count(s: belt_standings_refresh_backstop) * 3)
+  second(count: second_count(s: belt_standings_refresh_backstop) * 2 + second_count(s: belt_tick_run_bound))
