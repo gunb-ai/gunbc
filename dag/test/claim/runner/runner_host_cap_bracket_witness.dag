@@ -13,6 +13,7 @@ import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
 import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.systemd { Active, Inactive }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
@@ -1491,11 +1492,11 @@ test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
 // mask step (a SlotReadRefused that makes running==0 pass by accident).
 test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
   let stopped_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "inactive")) {
-    Present { value: SlotReadingTyped { reading: r } } => systemd_unit_active_state_wire_label(s: r.active) == "inactive"
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Inactive
     _ => false
   }
   let running_ok = match slot_actuation_reading_of(unit: u(n: "02"), show_stdout: show_text(n: "02", load: "loaded", file: "enabled", active: "active")) {
-    Present { value: SlotReadingTyped { reading: r } } => systemd_unit_active_state_wire_label(s: r.active) == "active"
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Active
     _ => false
   }
   stopped_ok && running_ok
