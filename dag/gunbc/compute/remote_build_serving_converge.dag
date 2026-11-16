@@ -75,11 +75,13 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // This single leg is the typed precondition the 'test'-based legs take, so a drifted sudo grant can never be
 // misread as "the file is absent" (see serving_observed_from_reads; review 95915).
 fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
-  let r = typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"])
-  if r.success == false {
-    ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
-  } else {
-    ObservationEstablished { observed: true }
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"]) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => if r.exit_code == 0 {
+      ObservationEstablished { observed: true }
+    } else {
+      ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("sudo -n exit ", to_string(r.exit_code)) } }
+    }
   }
 }
 
