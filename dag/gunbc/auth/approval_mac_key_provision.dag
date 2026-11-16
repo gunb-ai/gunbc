@@ -125,9 +125,10 @@ fn standing_ok(s: KeyProvisionStanding) -> Bool {
 // version that does not answer, or a container that exists while the ref is unpinned, is a
 // refusal naming what to reconcile, because a second version minted beside the pin would be
 // exactly the sprawl secret_rotation's inventory wall exists to prevent. (A version inventory was
-// the first design; ListVersions' state field has no realizable wire spelling for SmVersionState
-// today, and the pin is the more honest oracle anyway: it is what the links in flight were
-// issued under.)
+// the first design; its state decode was then un-runnable -- the transport asked the lifecycle sum to
+// spell itself off the wire, which Google never sends -- since fixed in extdeps.cloud.gcp.secret_manager
+// (state decodes as the wire string, projected via sm_version_state_of), and the pin is the more
+// honest oracle anyway: it is what the links in flight were issued under.)
 type PinnedVersionStanding
   = PinnedVersionAccessible { version: NonEmptyStr }
   | PinnedVersionNotAccessible { version: NonEmptyStr, detail: String }
