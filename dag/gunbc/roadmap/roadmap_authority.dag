@@ -2736,6 +2736,57 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
     ),
     roadmap_node(
+      identity: "rn_D3470QB6GPYD3PWSJMNGGMFV27",
+      id: "native-emit-match-binding-keeps-its-type",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/04_infer.dag"),
+      line: ticket(t: fields(
+        headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
+        boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). The cause, measured in PR #16534 against a pattern-side substitution pass: the seed's kernel Optional mint (v1.compiler.infer kernel_optional_type_node) declared no type parameter and typed Present.value unbound, so the existing generic substitution received an empty slot map. Scrutinee expansion in src/v1/04_patterns.dag is not at fault and needs no second substitution pass. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
+        displaced_cost: "Every program that matches on a variant and converts the bound value cannot be emitted natively, so native serving and any other native target is blocked by an ordinary pattern the rest of the compiler accepts.",
+        first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal. PR #16534 carries this slice.",
+        red_control: "The generic-binding fixtures emit natively and the non-generic control keeps emitting, RED on main where each refuses at emit; the mint-shape witness's fixtures declare the module the kernel binding names (std.optional), its conforming control requires a completed fixture compile, and a declaration spelled without its type parameter refuses with KernelMintShapeMismatch through that route. A recurring_failure_mode row records the class with its rung and receipts.",
+        out_of_scope: "Other native-emission refusals in the roadmap serve entry's closure; each is found and fixed under demand-serve-program-image.",
+        handback: "The fix site and reason, the generic-binding and mint-shape controls passing on a seed built from heal's mirror and failing on main, the failure-mode row, and the roadmap serve entry's next refusal, if any."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Native emission accepts what typecheck accepts for variant bindings."),
+    ),
+    roadmap_node(
+      identity: "rn_5Y4YAYGG7Y4EVCDN7T9XT1Z89P",
+      id: "fleet-converge-artifact-closure",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/intent.dag"),
+      line: ticket(t: fields(
+        headline: "Fleet convergence refuses to enable a unit whose read artifacts it has not installed",
+        boundary: "deploy-intent-owns-artifact-closure makes the deploy closure check generic over an enable authority and each unit's declared reads, and applies it to gunbc.live_deploy.spec deployment_owned_steps. Units enabled by fleet convergence rather than by the deploy are not in that roster: board-function-converge (gunbc.fleet.board_function_admission), gpu-power-cap (gunbc.fleet.gpu_power_cap_converge) and the serving replicas (gunbc.serving.srv1_serving_launch). The gpu-power-cap unit runs from the board-function converge snapshot, so a converge that enables it without that snapshot fails it the same way lab bug 5 failed the drain.",
+        displaced_cost: "A fleet unit whose artifact convergence did not install fails only at run time, and the cause is found from that unit's logs.",
+        first_slice: "Name the fleet-converge enable authority for each of the three units, and declare each unit's reads in its own module.",
+        red_control: "A fleet convergence whose enabled units read an artifact it does not install refuses before enabling any of them, naming the unit and the artifact; RED on main.",
+        out_of_scope: "The deploy roster, which deploy-intent-owns-artifact-closure covers, and moving any srv1 unit.",
+        handback: "The enable authority per unit, the read declarations, and the control with its red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A fleet convergence cannot leave a unit without what it needs."),
+    ),
+    roadmap_node(
+      identity: "rn_V2SSDWZR3G2KNSQ1BGRARSKTE2",
+      id: "fleet-no-route-masks-a-running-unit",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/a_running_unit_masked_loses_its_drop_ins_at_the_next_reload.dag"),
+      line: ticket(t: fields(
+        headline: "No built runner route masks a unit that is still running",
+        boundary: "fleet-cap-bracket-keeps-running-units repairs the cap bracket's masking pass. The recurring failure mode gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload still lists built routes that mask an active unit: drain_runner_slot_over with MaskWhileRunning, the default slot_drain_plan, and withdraw. Masking a running unit drops its drop-ins at the next reload, which failed required CI on srv4 runners. The class's rung is the minimum across its routes, so it stays below ceiling until every route is repaired.",
+        displaced_cost: "A masked running runner fails required CI jobs at random, and each failure costs a rerun and someone reading the log.",
+        first_slice: "Decide whether any route needs to mask an active unit; if none does, delete the MaskWhileRunning arm so the state cannot be constructed.",
+        red_control: "For each listed route, a pass over a fixture host with a running runner unit issues no mask for that unit and a stopped unit is still masked; RED on main for each route that masks today. The failure-mode row's rung is raised to what the executed evidence shows.",
+        out_of_scope: "The cap bracket's own masking pass (fleet-cap-bracket-keeps-running-units).",
+        handback: "The decision on MaskWhileRunning with its reason, the per-route controls with red runs on main, and the updated failure-mode row."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
       identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
       id: "factory-dogfood-route",
       owner: "harness",

@@ -130,11 +130,17 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 // nobody checked was true.
 //
 // The admitted population is the call sites that genuinely hold runtime words -- a filesystem
-// path, a hostname -- the gunbc.command_runner runner entry points and, added 2026-10-02
-// (session/witty-wren-554), gunbc.codex_app_server_press.codex_press_account_trip_invocation,
-// which holds the bundled Codex executable's projected path and the CODEX_HOME binding as argv
-// words riding shell.Exec.RunArgvStdin; and the same date's gunbc.host.host_effect_realize
-// run_argv_parameters_of, the pure decomposition both host-effect transport runners delegate to --
+// path, a hostname -- the gunbc.command_runner runner entry points and
+// gunbc.codex_app_server_press.codex_press_account_trip_argv_admission (added 2026-10-02,
+// session/witty-wren-554 as codex_press_account_trip_invocation; collapsed onto the admission on
+// 2026-11-15, session/gentle-ram-388, DP-M2, once the test-only invocation projection was retired)
+// -- the admission is the SINGLE construction that admits the bundled Codex executable's projected
+// path and the CODEX_HOME binding as argv words through the portable-argv wall and mints their
+// CliSurface exactly once, so its Admitted arm is what the two production callers carry to the
+// spawn and what both witnesses render (a refused trip carries no minted surface at all -- never a
+// runnable-but-empty projection). And, from that same 2026-10-02 date,
+// gunbc.host.host_effect_realize run_argv_parameters_of, the pure decomposition both host-effect
+// transport runners delegate to --
 // it carries the host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and
 // RunArgvStdin, and it is the ONLY host_effect_realize caller (the two runner fns themselves
 // stopped calling this fold directly when the split was factored, so their entries left the list
@@ -154,7 +160,7 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
     decl_ref(
       module_path: "gunbc.codex_app_server_press",
-      decl_name: "codex_press_account_trip_invocation",
+      decl_name: "codex_press_account_trip_argv_admission",
     ),
     decl_ref(
       module_path: "gunbc.host.host_effect_realize",

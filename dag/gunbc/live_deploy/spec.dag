@@ -880,6 +880,18 @@ fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -
   join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
 }
 
+// THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). Same stem discipline as the credential-recovery
+// backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
+// belt_standings_refresh_backstop seconds.
+fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.timer"], "") as NonEmptyStr
+}
+
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
 // field (see that type's header for why a name is carried rather than derived). It is one account
 // for the host rather than one per instance, and that is correct rather than a shortcut: the
@@ -1016,6 +1028,14 @@ fn deployment_belt_credential_recovery_unit_path(names: DeploymentNames) -> NonE
 
 fn deployment_belt_credential_recovery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_credential_recovery_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
