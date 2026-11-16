@@ -8023,12 +8023,27 @@ fn type_nodes_deeply_equal(l: Node, r: Node) -> Bool {
   else if l.return_cardinality != r.return_cardinality { false }
   else if (l.connective == Arrow) != (r.connective == Arrow) { false }
   else if (l.params |> count) == 0 && (r.params |> count) == 0 {
-    if (l.children |> count) == 0 || (r.children |> count) == 0 {
-      // Non-generic declarations compare by name (plus cardinality and shape):
-      // the same record may arrive as a bare reference leaf or as the resolved
-      // record node carrying its field roster -- one type, two spellings.
-      // Demanding equal child shape here invents conflicts (measured: a valid
-      // `Cons { head: Edge { .. }, tail: rest2 }` refused as applied vs bare).
+    // LEAVES COMPARE THROUGH THE SOLUTION, NOT BY SPELLING (PR F, review
+    // 95543 line): two leaves with no params and no children are equal only
+    // when their SOLUTIONS agree. The name check above already passed, so a
+    // pair of leaves named T with DIFFERENT solutions -- one solving to the
+    // unsolved empty_list_element carrier, one to NonEmptyStr -- was being
+    // called equal because the leaf comparison read the name and not the
+    // solution: the same two-readings fork the root verdict closed in
+    // v1.compiler.infer_types::type_resolution_verdict. Identity is the
+    // variable id read through the existing reader
+    // `v1.compiler.infer_types`::var_id_of -- never the spelled name. A leaf
+    // that solves to a variable is never equal to a leaf that solves to a
+    // concrete; two unsolved variables with different ids are NOT equal even
+    // when both are spelled T.
+    if var_id_of(a: l) != "" && var_id_of(a: r) != "" { var_id_of(a: l) == var_id_of(a: r) }
+    else if var_id_of(a: l) != "" || var_id_of(a: r) != "" { false }
+    else if (l.children |> count) == 0 || (r.children |> count) == 0 {
+      // CONCRETE non-generic declarations compare by name (plus cardinality
+      // and shape): the same record may arrive as a bare reference leaf or as
+      // the resolved record node carrying its field roster -- one type, two
+      // spellings. The measured evidence for this rule lives in
+      // `gunbc.integration_concern`::name_only_param_free_leaf_equality.
       true
     }
     else if (l.children |> count) != (r.children |> count) { false }

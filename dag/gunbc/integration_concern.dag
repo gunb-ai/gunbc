@@ -3011,3 +3011,118 @@ data realization_names_collection_element_never_unified: IntegrationConcern = In
 }
 
   inband_smbios_board_parse_fleet_and_arrival_lanes, fold_step_adoption_tolerates_join_refusals, realization_names_collection_element_never_unified]
+
+data name_only_param_free_leaf_equality: IntegrationConcern = IntegrationConcern {
+  identity: "name_only_param_free_leaf_equality",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal"),
+      second: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_arg_pairs"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "join_arg_pairs"),
+    ],
+  },
+  question: "For param-free leaves the deep-equality answers by NAME alone (one type, two spellings: a bare reference leaf and the resolved record node), while the join's bare-vs-applied refusal asks for argument shape. May those two readings of the same-type question be unified under declaration identity (alias-resolved), and the name-only rule deleted with it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c143dc4d038",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 review 95543 finding 3: tightening the name-only rule to require equal child shape REFUSED VALID CODE -- a `Cons { head: Edge { .. }, tail: rest2 }` construction compares a bare Edge reference leaf against the applied record node and the shapes disagree while the types agree. The rule stays; the measured specimen is recorded here rather than in the comment. The join-side refusal arm had ZERO arrivals on the pinned population (chainY probe ARM-PERM=0), so the two readings do not meet in the population today.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data two_pickers_beside_the_join: IntegrationConcern = IntegrationConcern {
+  identity: "two_pickers_beside_the_join",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+      second: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type"),
+      rest: [decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types"),
+    ],
+  },
+  question: "join_or_prefer's refused-join arm returns prefer_specific_type(left, right) and join_live_branch_types returns first_type(arms) when join_type_nodes_opt refuses across branch arms: both pick one side of a pair the join could not reconcile, with no compatibility check (the same silent-pick class as the deleted join_or_left). May a refused join ever be answered by a picker, or must it become a typed, located refusal?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c143dc4d038",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 (chainY probe census at a178b3c8b3e, the tree the heal CI judged, hard=0): main's fold site reads prefer_specific_type unconditionally, so both picks are main behaviour, not a regression. The SECOND picker answered the fold: join_live_branch_types' Absent arm fired [JLB-PICK] 2523 times population-wide (the size of the residue this row records), of which 25 carried fname=List fchd=T -- the generic side returned to folds including the crate-partition accumulator whose emitted closure lost its annotation (gunbc_crate_partition.rs |acc: _,). join_or_prefer's own picker arm fired 0 times there. After the join fix (root verdict on unwrapped children at the PREF branch, type-variable-leaf gate on the BIND arms, symmetric substitution returning the derived instance): [JLB-PICK] total 2523 -> [FILL-AFTER], List<T> subset 25 -> 0 (each disappearing fold named in the PR). Neither picker is fixed here (Falsifier: a refusing Absent arm must keep hard=0 on the population); they remain beside a join that now answers correctly, and a real mismatch could still be picked instead of refused.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data guard_id_spelling_beside_identity_verdict: IntegrationConcern = IntegrationConcern {
+  identity: "guard_id_spelling_beside_identity_verdict",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_never_constrained_enclosing_generic_base"),
+      second: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_never_constrained_enclosing_generic_base"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict")],
+  },
+  question: "two readers answer 'is this type variable unsolved?' by different keys: the guard matches the id spelling of n.inferred against \"empty_list_element\", while type_resolution_verdict answers by the variable's identity, read through its solution. Once the red control of the rfm row a_field_read_on_an_unestablished_element_type_is_accepted_through_its_slot still refuses with hard=0, the guard should read the verdict instead of the id spelling; the mint-name \"empty_list_element\" then survives as a marker only, or the mint site keys on something other than a string compared in a guard.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "bf190e64fdc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict") },
+        tail: [],
+      },
+      account: "Found while fixing the root verdict for gunbc#16278: is_never_constrained_enclosing_generic_base (src/v1/04_infer.dag) matches n.inferred directly and enforces a refusal (no deferral) for a field read on a directly-placeholder base, so making the verdict follow the solution does not make it redundant -- the earlier deletion order was retracted on that reading. The ARM-NC probe counts its arrivals population-wide as a reading only; the guard stays enrolled regardless of the count, and gunbc.recurring_failure_mode a_field_read_on_an_unestablished_element_type_is_accepted_through_its_slot remains its red control.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data empty_init_element_never_unified_with_step_element: IntegrationConcern = IntegrationConcern {
+  identity: "empty_init_element_never_unified_with_step_element",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+    requirement: "a fold whose init is [] needs the init element's slot related to the step's element by construction (unified when the step constrains it, explicitly unrelated when it does not); today the placeholder is minted at the init site and left unsolved, so the accumulator's element answers honestly but unbound",
+    standing: RequirementUnestablished { decided_by: "the fold accumulator profile row (option_b_profile_row_element_relation): whether ReceiverElement binds the init leaf or the step item settles where this relation would live" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict")],
+  },
+  question: "should the [] init unify its element slot with the fold step's element variable at the producer (the rejected-by-scope option (b)), instead of minting an unsolved empty_list_element placeholder and letting the honest verdict report UnderResolved -- and if the profile row's return shape settles first, would that producer be where the relation belongs?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "bf190e64fdc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return") },
+        tail: [],
+      },
+      account: "Localized while fixing gunbc#16278 (TLEAF probe, 382 fold arrivals): the right child of the crate-partition fold arrival was a leaf named T whose solution was the unsolved variable empty_list_element, minted at the [] init site (src/v1/04_infer.dag) with no element evidence ever attached. The verdict now reports that honestly and the join derives the instance from the CONCRETE side; nothing yet relates the init element to the step's element when both sides are generic, so a fold whose step never adds an element stays unannotated (asserted, not fabricated). Filed per warm-bear msg_a8836647: the producer-side unification is a separate question from the verdict repair.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
