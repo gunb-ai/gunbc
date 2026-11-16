@@ -1,0 +1,301 @@
+module gunbc.serving.t10_pair_strata_bench_receipt
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.interval { OrderedClosedInterval, closed_interval, degenerate_interval, interval_low, interval_high, interval_construction_fold, IntervalConstructionFold }
+import std.measure {
+  Watt, watt, watt_count, Celsius, celsius, celsius_count, Millisecond, millisecond, millisecond_count,
+  Hertz, hertz, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
+  CelsiusDelta, celsius_delta, celsius_delta_count,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv14 }
+
+// THREE TWO-CARD STRATA SERVING PAIRS UNDER ONE TEST SHAPE, 2026-11-16: an RTX 2000 Ada pair (srv3), an A2 pair
+// (butch, srv14) and a Tesla T10 pair (the host the operator's session calls h11-new), every row as the
+// operator's benching session RELAYED it.
+//
+// WHAT THIS IS NOT. The R9700 receipt beside this one (gunbc.serving.h11_r9700_strata_bench_receipt) transcribes
+// committed, sha256-pinned files. These rows do not: the raw outputs live only on h11-new (the session reported
+// "all results are saved on h11-new"), which this repository's sessions cannot reach, so no file is committed and
+// no digest is carried. Every row's standing is therefore TranscribedUncited, and its read obligation names the
+// files to commit; a reader who consumes these numbers as pinned evidence is the defect
+// (gunbc.design_argument::epistemic_humility).
+//
+// THE SHAPE. The T10 pair ran srv3's exact engine config and test shape: concurrency 1, 4 and 8 short turns, and
+// a 140k-token long-context conversation (a cold first turn, then warm turns reusing it). The T10s were capped at
+// 100 W each with a Delta blower held over the cards by hand. The producer is h11-new:~/strata-test/t10_check.sh.
+// The A2 and Ada columns are the comparison rows the same session laid beside it; their own run dates and files
+// are not stated here.
+//
+// COLD PAGE CACHE. The T10's first run was slowed by a cold host page cache; the T10 rows below are the WARM rerun,
+// and t10_check.sh now prewarms the cache before measuring. This is not
+// gunbc.recurring_failure_mode::benchmark_warm_capacity_violation_read_as_engine_performance (that class is a KV
+// working set over capacity); it is the cold-read cost of a first load, and the 140k cold first turn is kept as
+// its own row rather than being mixed into a warm figure.
+//
+// THE RELAYED SUMMARY IS NOT EXACTLY THE ROWS. The session summarized the T10 pair as "about 40-60% faster than
+// an A2 pair and about 75-90% of an Ada pair". The rows give c1 aggregate 25.0/18.7 = 1.34x the A2 and c8
+// aggregate 54.3/74.3 = 0.73x the Ada, both outside those bands. The rows are the record; the prose is not
+// carried as a figure.
+
+// "~" on a figure is Approximate; a bare figure is AsReported (rounded as relayed, not a raw sample).
+type ReadingPrecision = AsReported | Approximate
+
+// One relayed figure. A range is an std.interval (its endpoints cannot be reversed); a single figure is the
+// degenerate interval. "—" in the relayed table is NotMeasured. A reversed range is refused, never swapped.
+type BenchReading<T>
+  = Read { span: OrderedClosedInterval<T>, precision: ReadingPrecision }
+  | NotMeasured
+  | ReadingRefused { reason: NonEmptyStr }
+
+fn bench_point<T>(value: T, precision: ReadingPrecision) -> BenchReading<T> {
+  Read { span: degenerate_interval(point: value), precision: precision }
+}
+
+fn bench_span<T>(low: T, high: T, le: fn(T, T) -> Bool, precision: ReadingPrecision) -> BenchReading<T> {
+  interval_construction_fold(
+    construction: closed_interval(low: low, high: high, le: le),
+    fold: IntervalConstructionFold {
+      ready: i => Read { span: i, precision: precision },
+      refused: r => ReadingRefused { reason: r },
+    },
+  )
+}
+
+fn rate_le(a: MilliTokensPerSecond, b: MilliTokensPerSecond) -> Bool {
+  milli_tokens_per_second_count(r: a) <= milli_tokens_per_second_count(r: b)
+}
+
+fn ms_le(a: Millisecond, b: Millisecond) -> Bool {
+  millisecond_count(m: a) <= millisecond_count(m: b)
+}
+
+fn watt_le(a: Watt, b: Watt) -> Bool {
+  watt_count(w: a) <= watt_count(w: b)
+}
+
+fn celsius_le(a: Celsius, b: Celsius) -> Bool {
+  celsius_count(c: a) <= celsius_count(c: b)
+}
+
+fn rate(milli: Nat, p: ReadingPrecision) -> BenchReading<MilliTokensPerSecond> {
+  bench_point(value: milli_tokens_per_second(count: milli), precision: p)
+}
+
+fn rate_range(low: Nat, high: Nat, p: ReadingPrecision) -> BenchReading<MilliTokensPerSecond> {
+  bench_span(low: milli_tokens_per_second(count: low), high: milli_tokens_per_second(count: high), le: rate_le, precision: p)
+}
+
+fn tpj(milli: Nat, p: ReadingPrecision) -> BenchReading<Nat> {
+  bench_point(value: milli, precision: p)
+}
+
+fn ms(count: Nat, p: ReadingPrecision) -> BenchReading<Millisecond> {
+  bench_point(value: millisecond(count: count), precision: p)
+}
+
+fn ms_range(low: Nat, high: Nat, p: ReadingPrecision) -> BenchReading<Millisecond> {
+  bench_span(low: millisecond(count: low), high: millisecond(count: high), le: ms_le, precision: p)
+}
+
+// The host a pair ran on. h11-new has no HostIdentity in gunbc.fleet.fleet_host_identity, and one is not minted
+// here: its name is carried with the obligation to bind it.
+type PairBenchHost
+  = FleetHost { host: HostIdentity }
+  | HostWithoutIdentity { name: NonEmptyStr, obligation: NonEmptyStr }
+
+type PairCard = RtxTwoThousandAdaPair | NvidiaA2Pair | TeslaT10Pair
+
+type PairBenchRow {
+  cards: PairCard
+  host: PairBenchHost
+  standing: CitedFigureStanding
+  c1_aggregate: BenchReading<MilliTokensPerSecond>
+  c1_decode: BenchReading<MilliTokensPerSecond>
+  c1_time_to_first_token: BenchReading<Millisecond>
+  c4_aggregate: BenchReading<MilliTokensPerSecond>
+  c8_aggregate: BenchReading<MilliTokensPerSecond>
+  long_context_cold_first_turn: BenchReading<Millisecond>
+  long_context_warm_decode: BenchReading<MilliTokensPerSecond>
+  long_context_warm_time_to_first_token: BenchReading<Millisecond>
+  // Generated tokens per joule of GPU energy, in thousandths (0.54 tok/J is 540).
+  // feature:tokens-per-energy-measure — dissolve-on: std.measure carries a tokens-per-energy unit
+  // (a Measure<CountPerEnergy, Milli, Nat> beside MilliTokensPerSecond) and these two fields take it. It was
+  // added on this PR and withdrawn: a std.measure edit reaches the ~1,700 modules importing std.measure, and
+  // gunbc.heal_workflow's affected-scope round refused it twice on page thrash (MemoryStallRefusedPageThrash,
+  // runs 43784613094 attempts 1-2, slots srv3-09 and srv3-17). Owning lane: heal's scope cost,
+  // gunbc.plans.read_set_convergence P7. BOUNDED POPULATION: these two fields.
+  c4_tokens_per_gpu_joule: BenchReading<Nat>
+  c8_tokens_per_gpu_joule: BenchReading<Nat>
+  // Both cards' draw under load, and the pair's cap where the session stated one.
+  pair_power_under_load: BenchReading<Watt>
+  pair_power_cap: Watt?
+}
+
+fn relayed_standing(host_files: NonEmptyStr) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: join([
+    "Relayed by the operator's benching session on 2026-11-16 as a summary table; no file is committed. Commit the raw outputs under artifacts/host-observations/ with a SHA256SUMS and re-point this row at them: ",
+    host_files as String,
+  ], "") as NonEmptyStr }
+}
+
+data t10_pair_bench_host_obligation: NonEmptyStr = "h11-new (h11-new.mynetworksettings.com) has no row in gunbc.fleet.fleet_host_identity. Bind it to the HostIdentity of the board it is (gunbc.machine_intake keys the H11SSL units by BMC MAC) before any fleet fold reads this row." as NonEmptyStr
+
+data t10_pair_bench_rows: List<PairBenchRow> = [
+  PairBenchRow {
+    cards: RtxTwoThousandAdaPair,
+    host: FleetHost { host: operator_host_srv3 },
+    standing: relayed_standing(host_files: "the srv3 Ada-pair run this column was taken from (its date and files were not named by the relaying session)." as NonEmptyStr),
+    c1_aggregate: rate(milli: 31200, p: AsReported),
+    c1_decode: rate(milli: 38400, p: AsReported),
+    c1_time_to_first_token: ms(count: 1600, p: AsReported),
+    c4_aggregate: rate(milli: 58800, p: AsReported),
+    c8_aggregate: rate(milli: 74300, p: AsReported),
+    long_context_cold_first_turn: NotMeasured,
+    long_context_warm_decode: rate_range(low: 36000, high: 38000, p: Approximate),
+    long_context_warm_time_to_first_token: ms_range(low: 1900, high: 2300, p: Approximate),
+    c4_tokens_per_gpu_joule: tpj(milli: 540, p: AsReported),
+    c8_tokens_per_gpu_joule: tpj(milli: 690, p: AsReported),
+    pair_power_under_load: bench_point(value: watt(count: 110), precision: Approximate),
+    pair_power_cap: Absent,
+  },
+  // butch's A2s run at the 35 W per-card cap (gunbc.serving.gpu_power_state_policy srv14_a2_cap_decision), so the
+  // pair draws about its 70 W cap under load.
+  PairBenchRow {
+    cards: NvidiaA2Pair,
+    host: FleetHost { host: operator_host_srv14 },
+    standing: relayed_standing(host_files: "the butch (srv14) A2 2x2 server run this column was taken from (its date and files were not named by the relaying session)." as NonEmptyStr),
+    c1_aggregate: rate(milli: 18700, p: AsReported),
+    c1_decode: rate(milli: 21800, p: AsReported),
+    c1_time_to_first_token: ms(count: 2000, p: AsReported),
+    c4_aggregate: rate(milli: 33600, p: AsReported),
+    c8_aggregate: NotMeasured,
+    long_context_cold_first_turn: ms(count: 221000, p: AsReported),
+    long_context_warm_decode: rate(milli: 20500, p: Approximate),
+    long_context_warm_time_to_first_token: ms_range(low: 2100, high: 2600, p: AsReported),
+    c4_tokens_per_gpu_joule: tpj(milli: 270, p: Approximate),
+    c8_tokens_per_gpu_joule: NotMeasured,
+    pair_power_under_load: bench_point(value: watt(count: 70), precision: Approximate),
+    pair_power_cap: Present { value: watt(count: 70) },
+  },
+  // The WARM rerun at 100 W per card. The pair drew 150-175 W against its 200 W cap.
+  PairBenchRow {
+    cards: TeslaT10Pair,
+    host: HostWithoutIdentity { name: "h11-new" as NonEmptyStr, obligation: t10_pair_bench_host_obligation },
+    standing: relayed_standing(host_files: "h11-new:~/strata-test/ (t10_check.sh and the warm-run outputs it wrote, plus the cold first run kept for the page-cache comparison)." as NonEmptyStr),
+    c1_aggregate: rate(milli: 25000, p: AsReported),
+    c1_decode: rate(milli: 32500, p: AsReported),
+    c1_time_to_first_token: ms(count: 2400, p: AsReported),
+    c4_aggregate: rate(milli: 47600, p: AsReported),
+    c8_aggregate: rate(milli: 54300, p: AsReported),
+    long_context_cold_first_turn: ms(count: 240000, p: AsReported),
+    long_context_warm_decode: rate_range(low: 28800, high: 35200, p: AsReported),
+    long_context_warm_time_to_first_token: ms_range(low: 3000, high: 3400, p: AsReported),
+    c4_tokens_per_gpu_joule: tpj(milli: 300, p: AsReported),
+    c8_tokens_per_gpu_joule: tpj(milli: 330, p: AsReported),
+    pair_power_under_load: bench_span(low: watt(count: 150), high: watt(count: 175), le: watt_le, precision: AsReported),
+    pair_power_cap: Present { value: watt(count: 200) },
+  },
+]
+
+// THE T10's POWER FLOOR, as relayed: each card's power limit cannot be set below 100 W, so the 100 W cap the
+// bench ran at IS the floor, and the pair cannot trade throughput for efficiency below 200 W of cap. This is a
+// device reading (nvidia-smi power.min_limit) relayed in prose; its home once read from a committed capture is
+// gunbc.fleet.gpu_device_observation, and extdeps.gpu.nvidia_t10 keeps the board power unread because no NVIDIA
+// document states it.
+data t10_relayed_power_min_limit_per_card: Watt = watt(count: 100)
+data t10_relayed_power_min_limit_standing: CitedFigureStanding = relayed_standing(host_files: "an nvidia-smi --query-gpu=power.min_limit,power.max_limit,power.default_limit,vbios_version reading of both T10s on h11-new, committed and folded into gunbc.fleet.gpu_device_observation." as NonEmptyStr)
+
+// THE T10 PAIR'S THERMAL READINGS UNDER LOAD, as relayed. Each row is one cooling arrangement.
+type T10Cooling = ChassisFansOnly | DeltaBlowerHeldByHand
+
+type T10ThrottleReading
+  = ThrottledTo { clock: Hertz, within: BenchReading<Millisecond> }
+  | NoThrottleReported
+
+// What happened to the cooling during a run, as relayed. The hand-held blower SLIPPED once, and the peak
+// temperature is attributed to that slip, not to the steady arrangement.
+type T10CoolingEvent
+  = BlowerSlipped { peak_during: BenchReading<Celsius> }
+
+fn celsius_delta_le(a: CelsiusDelta, b: CelsiusDelta) -> Bool {
+  celsius_delta_count(delta: a) <= celsius_delta_count(delta: b)
+}
+
+type T10ThermalRow {
+  cooling: T10Cooling
+  // The steady band both cards held, and the highest reading; NotMeasured where the session gave none.
+  gpu_temperature_band: BenchReading<Celsius>
+  gpu_temperature_peak: BenchReading<Celsius>
+  // How much hotter GPU1 ran than GPU0 over the run; NotMeasured where the session gave none.
+  gpu1_over_gpu0: BenchReading<CelsiusDelta>
+  throttle: T10ThrottleReading
+  events: List<T10CoolingEvent>
+}
+
+// THE T10's MAXIMUM OPERATING TEMPERATURE, AS THE OPERATOR STATES IT: 87 C. No NVIDIA document for the T10 is
+// reachable (extdeps.gpu.nvidia_t10), so this is an operator-stated figure, not a vendor fact, and it lives here
+// beside the readings it is compared with rather than in the vendor row.
+data t10_operator_stated_max_operating_temperature: Celsius = celsius(count: 87)
+data t10_operator_stated_max_operating_temperature_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Stated by the operator's benching session on 2026-11-16 as the T10's maximum operating temperature. Ground it in an NVIDIA document for the Tesla T10 (none was reachable: extdeps.gpu.nvidia_t10), or in nvidia-smi -q's 'GPU Max Operating Temp' / 'GPU Slowdown Temp' on both cards on h11-new, committed as a capture." as NonEmptyStr,
+}
+
+data t10_pair_thermal_rows: List<T10ThermalRow> = [
+  T10ThermalRow {
+    cooling: ChassisFansOnly,
+    gpu_temperature_band: NotMeasured,
+    gpu_temperature_peak: NotMeasured,
+    gpu1_over_gpu0: NotMeasured,
+    throttle: ThrottledTo { clock: hertz(count: 300000000), within: ms(count: 90000, p: Approximate) },
+    events: [],
+  },
+  T10ThermalRow {
+    cooling: DeltaBlowerHeldByHand,
+    gpu_temperature_band: bench_span(low: celsius(count: 81), high: celsius(count: 85), le: celsius_le, precision: AsReported),
+    gpu_temperature_peak: bench_point(value: celsius(count: 87), precision: AsReported),
+    gpu1_over_gpu0: bench_span(low: celsius_delta(count: 1), high: celsius_delta(count: 5), le: celsius_delta_le, precision: AsReported),
+    throttle: NoThrottleReported,
+    events: [BlowerSlipped { peak_during: bench_point(value: celsius(count: 87), precision: AsReported) }],
+  },
+]
+
+data t10_pair_thermal_standing: CitedFigureStanding = relayed_standing(host_files: "the nvidia-smi temperature, clock and clocks_event_reasons samples t10_check.sh recorded on h11-new during the hand-held-blower bench and the chassis-fans-only attempt." as NonEmptyStr)
+
+// The c1/c4/c8 aggregate figure of a reading that is one AsReported point, or nothing. A range, an approximate
+// figure or an absent one answers Absent, so an ordering claim below rests only on figures the session stated
+// exactly.
+fn reported_rate_point(r: BenchReading<MilliTokensPerSecond>) -> Nat? {
+  match r {
+    Read { span: s, precision: p } => match p {
+      AsReported =>
+        if milli_tokens_per_second_count(r: interval_low(interval: s)) == milli_tokens_per_second_count(r: interval_high(interval: s)) {
+          Present { value: milli_tokens_per_second_count(r: interval_low(interval: s)) }
+        } else { Absent }
+      Approximate => Absent
+    }
+    NotMeasured => Absent
+    ReadingRefused { reason: _ } => Absent
+  }
+}
+
+fn row_for(cards: PairCard) -> PairBenchRow? {
+  t10_pair_bench_rows.filter(r => match r.cards {
+    RtxTwoThousandAdaPair => match cards { RtxTwoThousandAdaPair => true _ => false }
+    NvidiaA2Pair => match cards { NvidiaA2Pair => true _ => false }
+    TeslaT10Pair => match cards { TeslaT10Pair => true _ => false }
+  }).first()
+}
+
+// No reading in any row was refused (no range was written reversed).
+fn reading_refused<T>(r: BenchReading<T>) -> Bool {
+  match r { ReadingRefused { reason: _ } => true _ => false }
+}
+
+data t10_pair_bench_receipt_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.design_argument::consumption: read today by test.claim.serving.t10_pair_strata_bench_receipt_witness (the T10 pair sits between the A2 and Ada pairs on every exactly-stated aggregate; its tokens per joule sit between them too; its relayed 100 W floor is the cap it ran at; the hand-held blower kept it out of throttle only to an 87 C peak). TRIGGER: the raw outputs on h11-new are committed under artifacts/host-observations/ and these rows are re-pointed at them (standing ObservedByReceipt, not TranscribedUncited), and then the home-serving selection (gunbc.serving.home_serving_candidate_field, whose applied rungs are TranscribedUncited today) reads its T10 and A2 cells' throughput from this receipt. Until then these rows are relayed evidence for the operator's capex comparison only." as NonEmptyStr
+)

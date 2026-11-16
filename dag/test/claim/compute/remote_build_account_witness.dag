@@ -13,14 +13,16 @@ import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_na
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv2_deploy_dashboard_instance,
   dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
-  dashboard_instance_is_disjoint_from_public_builtins,
+  dashboard_instance_is_disjoint_from_public_builtins, host_capacity_ledger_home,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgidSticky, DirectoryOwnerAllEveryoneTraverse }
 import std.measure { ByteSize, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor }
 import gunbc.compute.host_capacity {
   compute_capacity_directories, ComputeLedgerSharing, ComputeLedgerSharedWithRemoteBuild, ComputeLedgerServiceOnly, compute_ledger_sharing,
-  host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
+  compute_ledger_sharing_carrier, compute_capacity_root_carrier,
+  host_capacity_subject, host_capacity_subject_in, host_capacity_build_seat,
+  ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
   compute_capacity_root,
 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
@@ -140,7 +142,7 @@ fn w_shared(s: ComputeLedgerSharing) -> Bool {
 fn w_host_ledger_is_shared(host: HostIdentity) -> Bool {
   match host_capacity_subject(instance: remote_build_serving_instance(host: host), pool: ComputeBuildPool) {
     ComputeSubjectHostUnresolved { host: _ } => false
-    ComputeSubjectResolved { subject: s, appropriation: _ } => w_shared(s: compute_ledger_sharing(instance: s.instance))
+    ComputeSubjectResolved { subject: s, appropriation: _ } => w_shared(s: compute_ledger_sharing_carrier(home: s.home))
   }
 }
 
@@ -200,47 +202,56 @@ test fn the_shared_ledger_grants_exactly_its_two_areas() -> Bool {
 //
 // THE LEDGER IS FOUND BY HOST NOW, so the question is asked of the HOST-SHARED home, not of whatever
 // instance the host happens to resolve. It is asked through gunbc.compute.host_capacity
-// host_capacity_subject, which resolves the carrying instance BY HOST. A host whose ledger walked back
-// through gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host -- srv2 to a /home/briansrls
-// instance the build account cannot traverse, srv3/srv4 to no instance at all -- fails here. THIS IS THE
-// RED CONTROL: revert host_capacity_subject to the old instance walk and srv3/srv4 come back
-// ComputeSubjectHostUnresolved (=> false) and srv2 comes back rooted under /home (=> false), while every
-// roster host today resolves to the one /opt/gunbc/compute/capacity home.
+// host_capacity_subject, which resolves the carrying instance BY HOST. THIS IS THE RED CONTROL. srv1's
+// host home and srv1's own dashboard instance BOTH live at /opt/gunbc, so the root alone cannot tell the
+// host home from a walk of srv1's dashboard instance -- the host home carries actuator_host == the host,
+// while srv1's dashboard instance is actuated from the operator laptop ("macbook"). If
+// host_capacity_subject ever goes back to walking gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_for_host, srv1's ledger resolves through its macbook-actuated dashboard instance and
+// the actuator_host check reds even though the root still reads /opt/gunbc. (The seal witness
+// a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host carries the same claim for the
+// not-yet-admitted srv2/srv3/srv4 on the model home; PR 5 adds each of them to this roster as it creates
+// its home on disk, at which point they are checked here too.)
 test fn every_roster_hosts_ledger_is_the_host_home_not_an_instance_tree() -> Bool {
   remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: remote_build_serving_instance(host: h), pool: ComputeBuildPool) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (s.instance.instance_root as String) == "/opt/gunbc"
-        && (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
-        && !starts_with(s: compute_capacity_root(host_instance: s.instance) as String, prefix: "/home/")
+      (s.home.instance_root as String) == "/opt/gunbc"
+        && (compute_capacity_root_carrier(home: s.home) as String) == "/opt/gunbc/compute/capacity"
+        && !starts_with(s: compute_capacity_root_carrier(home: s.home) as String, prefix: "/home/")
   })
 }
 
 // ONE LEDGER PER HOST, NOT ONE PER INSTANCE. The requesting instance here is a remote-build SERVING
 // instance whose own root is NOT /opt/gunbc (line 156 above already asserts it is not the shared ledger);
-// the subject it mints on srv2 -- which has several dashboard instances scattered under /home/briansrls --
-// still carries the single host home. If the ledger followed the requesting instance, or any one of srv2's
-// several instances, this lands outside /opt/gunbc/compute/capacity and reds. This is the "every instance
-// on a host reserves in that one ledger" claim, discriminated.
+// the ledger it mints on srv2 -- which has several dashboard instances scattered under /home/briansrls --
+// is the single host home. srv2 is not on the roster yet (PR 5 admits it the day it creates and reads
+// back its home), so this asks the claim of the host home directly through host_capacity_subject_in,
+// forcing srv2's host_capacity_home as the carrying instance. If the ledger followed the requesting
+// instance, or any one of srv2's several /home instances instead of the host home, it lands outside
+// /opt/gunbc/compute/capacity and this reds. This is the "every instance on a host reserves in that one
+// ledger" claim, discriminated.
 test fn every_instance_on_a_host_reserves_in_the_one_host_ledger() -> Bool {
-  match host_capacity_subject(instance: remote_build_serving_instance(host: "srv2" as HostIdentity), pool: ComputeBuildPool) {
-    ComputeSubjectHostUnresolved { host: _ } => false
-    ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (s.instance.instance_root as String) == "/opt/gunbc"
-        && (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
-  }
+  let srv2_home = host_capacity_ledger_home(host: "srv2" as NonEmptyStr, build_seat: host_capacity_build_seat(host: "srv2" as HostIdentity))
+  let ledger = host_capacity_subject_in(requesting: remote_build_serving_instance(host: "srv2" as HostIdentity), host_home: srv2_home, pool: ComputeBuildPool)
+  (ledger.subject.home.instance_root as String) == "/opt/gunbc"
+    && (compute_capacity_root_carrier(home: ledger.subject.home) as String) == "/opt/gunbc/compute/capacity"
 }
 
-// THE srv3/srv4 BUILD POOL IS THE ONE CARVED RUNNER SLOT, DERIVED not restated. host_build_pool_reservation
-// subtracts exactly one gunbc_runner_slot_memory_max from those hosts' CI envelope; host_capacity
-// host_capacity_build_seat hands the SAME slot to the pool (split across its seats, re-multiplied by
-// host_capacity_pool_appropriation). So the appropriation must equal one slot to the KiB, and it must be
-// read from gunbc_runner_slot_memory_max -- a figure hand-copied here would drift the moment the slot moves.
-test fn srv3_and_srv4_build_pool_appropriation_is_one_carved_runner_slot() -> Bool {
-  let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  one_slot_kib > 0
-    && ["srv3", "srv4"] |> all(name => match host_capacity_subject(instance: remote_build_serving_instance(host: name as HostIdentity), pool: ComputeBuildPool) {
-      ComputeSubjectHostUnresolved { host: _ } => false
-      ComputeSubjectResolved { subject: _, appropriation: a } => kibibyte_count(k: a) == one_slot_kib
-    })
+// srv3/srv4 HAVE NO DASHBOARD INSTANCE TO CARRY THEIR LEDGER, yet the remote-build account's reservation
+// still lands in the SINGLE host ledger -- asked of the host home directly through
+// host_capacity_subject_in, forcing srv3/srv4's host_capacity_home (they are not on the roster yet; PR 5
+// admits each as it creates and reads back its home). The root must be the one host home
+// /opt/gunbc/compute/capacity, not any per-instance tree. The BUILD-POOL CARVE itself is gated on
+// admission (host_build_pool_reservation is roster-gated, review 95809) and so is NOT applied in this PR --
+// the conservation invariant (srv3/srv4 not carved, no CI slot lost) is carried by the seal witness
+// a_host_off_the_roster_is_not_carved_and_keeps_its_full_ci_width, and PR 5 carves + admits each host
+// together.
+test fn srv3_and_srv4_reserve_in_the_one_host_ledger() -> Bool {
+  ["srv3", "srv4"] |> all(name => {
+    let home = host_capacity_ledger_home(host: (name as String) as NonEmptyStr, build_seat: host_capacity_build_seat(host: (name as String) as HostIdentity))
+    let ledger = host_capacity_subject_in(requesting: remote_build_serving_instance(host: (name as String) as HostIdentity), host_home: home, pool: ComputeBuildPool)
+    (ledger.subject.home.instance_root as String) == "/opt/gunbc"
+      && (compute_capacity_root_carrier(home: ledger.subject.home) as String) == "/opt/gunbc/compute/capacity"
+  })
 }

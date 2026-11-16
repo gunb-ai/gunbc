@@ -769,7 +769,7 @@ fn machine_transition_route(t: MachineTransition) -> MachineTransitionRoute {
 // a leg nobody can run.
 fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
   let network_boot_leg = TransitionLeg {
-    what: "the network-boot delivery arm, which OwnedOsDelivery does not have yet (O2)",
+    what: "the planned network-boot actuation step's landing (P12): OwnedOsDelivery now has its one-shot install arm (InstalledViaNetworkBoot below), and this leg names the actuation step a live managed install still awaits its receipt for",
     producer: planned_producer(module_path: "gunbc.provisioning.network_boot_actuation", decl: "network_boot_actuation", step: StepP12),
   }
   match admitted_enrollment_for(machine: machine) {
@@ -804,6 +804,20 @@ fn reprovision_delivery_legs(machine: HostIdentity) -> List<TransitionLeg> {
                 TransitionLeg {
                   what: "re-run the appliance image arm",
                   producer: real_producer(module_path: "gunbc.provisioning.provisioning_arm", decl: "provisioning_arm_derive", detail: "the appliance delivery arm"),
+                },
+              ]
+              InstalledViaNetworkBoot => [
+                TransitionLeg {
+                  what: "re-run the one-shot managed_host_network_install route the row came through: re-admit the target disk, re-bind the PXE edge, boot once through the handoff, read the install back",
+                  producer: real_producer(module_path: "gunbc.host.network_install", decl: "network_install_run", detail: "the one-shot managed_host_network_install run owns this delivery: a reprovision re-runs the same route, no second route is invented"),
+                },
+                TransitionLeg {
+                  what: "the disk the install lands on must be admitted again for this run",
+                  producer: real_producer(module_path: "gunbc.provisioning.install_target_disk", decl: "admit_install_target_disk", detail: "the admission of the install target disk, mirrored from the host_standup ResolvedInstallRoute arm"),
+                },
+                TransitionLeg {
+                  what: "the request the PXE edge serves goes back through the edge's own admission",
+                  producer: real_producer(module_path: "gunbc.fleet.site_pxe_edge_converge", decl: "site_pxe_edge_request_admission", detail: "the PXE edge admission the install request must pass again"),
                 },
               ]
             },

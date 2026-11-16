@@ -45,6 +45,7 @@ import gunbc.auth.bmc_assimilator_cells { BmcAssimilatorCells, bmc_assimilator_c
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
+import gunbc.secret_provision { srv15_bmc_gunbc_secret_ref }
 import gunbc.auth.gcp_iam_converge_federation {
   gcp_iam_observe_wif_pool_id, gcp_iam_observe_wif_pool_display_name, gcp_iam_observe_wif_provider_id,
   gcp_iam_observe_wif_attribute_mapping, gcp_iam_observe_wif_attribute_condition, gcp_iam_observe_wif_principal_set,
@@ -327,6 +328,73 @@ data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants(), member: grant_member_resolution() },
   GrantSet { label: "fleet roster cells", grants: fleet_roster_grants(), member: grant_member_resolution() },
 ] + bmc_assimilator_grant_sets_over(c: bmc_assimilator_cells_over(grants: bmc_wif_signed_grants()))
+ + srv15_bmc_metadata_observe_grant_sets()
+
+// THE SRV15 BMC METADATA OBSERVE GRANT (operator ruling msg_e277353d, approved on escalation
+// msg_4587747b, relayed by smart-crane-730 msg_594bad54). The one-shot network-install CI
+// entry reads the PUBLICATION STATE of the srv15 BMC secret -- which version is enabled -- to ground
+// its receipt pin. That read is METADATA ONLY: versions.list, never versions.access. The read runs
+// under the converge job's own read-only principal, the iam-observe service account (the same WIF
+// subject the plan and actuate steps run under), so this grant carries exactly that member, exactly
+// this metadata role, exactly this one secret. It is NEVER an accessor grant: a row whose role string
+// is widened to secretmanager.secretAccessor is refused by
+// srv15_bmc_metadata_observe_grant_shape_ok below, and the witness turns it red. This grant is applied
+// by gcp-iam-converge itself -- no console edit, no separate ceremony.
+
+data srv15_bmc_metadata_observe_role: String = "roles/secretmanager.viewer"
+
+data srv15_bmc_metadata_observe_label: NonEmptyStr = "srv15 bmc metadata observe cells"
+
+fn srv15_bmc_metadata_observe_member() -> GrantMemberResolution {
+  GrantMemberResolved {
+    member: join(["serviceAccount:", iam_observe_service_account as String], ""),
+  }
+}
+
+fn srv15_bmc_metadata_observe_grants() -> List<SecretAccessGrant> {
+  [
+    SecretAccessGrant {
+      target: srv15_bmc_gunbc_secret_ref,
+      role: srv15_bmc_metadata_observe_role,
+      condition: none,
+    },
+  ]
+}
+
+fn srv15_bmc_metadata_observe_grant_sets() -> List<GrantSet> {
+  [
+    GrantSet {
+      label: srv15_bmc_metadata_observe_label,
+      grants: srv15_bmc_metadata_observe_grants(),
+      member: srv15_bmc_metadata_observe_member(),
+    },
+  ]
+}
+
+// THE SHAPE THE OBSERVE GRANT MUST KEEP. Exactly one grant, on the srv15 BMC secret, with exactly the
+// metadata role, no condition, and a resolved member. Every arm refuses: a widened role (the accessor
+// in particular), a second or different secret, an added condition, an unresolved member. The witness
+// applies it to the real set (green) and to mutated copies (red), so a later edit cannot quietly
+// upgrade this metadata grant into credential reach.
+fn srv15_bmc_metadata_observe_grant_shape_ok(set: GrantSet) -> Bool {
+  (set.label as String) == (srv15_bmc_metadata_observe_label as String)
+    && match set.member {
+      GrantMemberResolved { member: m } => (m as String)
+        == join(["serviceAccount:", iam_observe_service_account as String], "")
+      GrantMemberUnresolved { cause: c } => false
+    }
+    && length(set.grants) == 1
+    && all(set.grants, g =>
+      (g.role as String) == (srv15_bmc_metadata_observe_role as String)
+        && match g.condition {
+      Absent => true
+      Present { value: v } => false
+    }
+    )
+    && length(filter(set.grants, g =>
+      (g.target.project as String) == (srv15_bmc_gunbc_secret_ref.project as String)
+        && g.target.secret == srv15_bmc_gunbc_secret_ref.secret)) == 1
+}
 
 fn fleet_roster_grants() -> List<SecretAccessGrant> {
   map(filter(fleet_accessor_grant_roster, r => !ceremony_trust_root_secret(secret: r.target.secret)), r => fleet_accessor_grant(row: r))

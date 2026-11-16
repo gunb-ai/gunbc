@@ -13,6 +13,7 @@ import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
 import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.systemd { Active, Inactive, Deactivating, Failed }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
@@ -193,7 +194,7 @@ test fn no_readmit_reading_is_not_admitting() -> Bool {
 // THE REAL PROJECTION, FROM SHOW TEXT AND A PS LISTING, INTO THE BRACKET DECISION. The earlier controls
 // supply a SlotDrainReading and so cannot see a loss in the projection: a deactivating unit with a live
 // Runner.Worker was read as idle there. These start where the wet reader starts.
-fn show_masked_with(active: String) -> String { concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=", active, "\n") }
+fn show_masked_with(active: String) -> String { systemctl_show_fixture(n: "01", load: "masked", file: "masked", active: active) }
 fn listing_worker() -> String { concat(u(n: "01") as String, " Runner.Worker\n") }
 fn listing_listener_only() -> String { concat(u(n: "01") as String, " Runner.Listener\n") }
 
@@ -640,16 +641,43 @@ fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
   }
 }
 
-fn show_text(n: String, load: String, file: String, active: String) -> String {
-  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nNeedDaemonReload=no\n")
+// THE ONE FAITHFUL `systemctl show` FIXTURE for this witness. A real
+// `systemctl show --properties=Id,LoadState,UnitFileState,ActiveState,Result,MainPID` answers ALL SIX
+// words on any unit, and the production reader gunbc.runner.runner_slot_actuation.slot_actuation_reading_of
+// refuses a block that omits ANY of them (Absent -> SlotReadRefused), so both the bracket readbacks
+// (show_text) and the drain projections (show_masked_with) MUST come from here or their controls read
+// 0 masks / unproven by accident instead of executing the decision. Per-state values mirror what
+// systemd actually reports: a running unit (ActiveState=active) and a stop in progress (deactivating)
+// still have their main process (MainPID nonzero); a stopped unit (inactive) and a failed one have no
+// main process (MainPID 0). Result carries WHY the last run ended -- a cleanly stopped or running unit
+// reports success, while a unit that ended failed reports a non-success word (exit-code); systemd never
+// answers Result=failed, so a failed unit's Result is exit-code, not a word the classifier would reject.
+fn systemctl_show_fixture(n: String, load: String, file: String, active: String) -> String {
+  let main_pid = if active == "active" || active == "deactivating" { "424242" } else { "0" }
+  let result = if active == "failed" { "exit-code" } else { "success" }
+  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nResult=", result, "\nMainPID=", main_pid, "\nNeedDaemonReload=no\n")
 }
+fn show_text(n: String, load: String, file: String, active: String) -> String { systemctl_show_fixture(n: n, load: load, file: file, active: active) }
 fn show_leg(n: String, load: String, file: String, active: String) -> Leg { Leg { needle: "systemctl show", answer: shell_ok(stdout: show_text(n: n, load: load, file: file, active: active)) } }
 fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer: shell_ok(stdout: "") } }
 fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdout: listing) } }
 
 fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l, calls: _ } => l BracketRunEnded { cause: _ } => [] } }
 fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _, calls: _ } => v BracketRunEnded { cause: _ } => [] } }
-fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
+// EMPTY IS NOT SETTLED. outcomes_of maps a BracketRunEnded (a refused frame, a refused host subject, an
+// unsealable context) to []. `all` over [] is vacuously true, so the old definition read a run that never
+// installed its frame -- never acted at all -- as "every slot settled": a fail-open, the same direction as
+// witness_evaluation's evaluate_in_witness_frame fabricated-success defect. A release that settled nothing
+// is not all-settled, so empty means false.
+fn all_settled(os: List<SlotActuationOutcome>) -> Bool { length(os) > 0 && all(os, o => slot_actuation_settled(o: o)) }
+
+// THE FAIL-OPEN CONTROL. A frame that refused produces no outcomes (outcomes_of maps it to []), so a claim
+// built on all_settled must then FAIL, not pass vacuously. Both the pure empty list and a real BracketRun
+// that issued nothing must read as not-all-settled. RED before the empty-means-false fix (all over [] == true),
+// GREEN after. Regression control for the fail-open the node's scope work uncovered.
+test fn a_release_that_settles_nothing_is_never_read_as_all_settled() -> Bool {
+  !all_settled(os: []) && !all_settled(os: outcomes_of(r: release_run(legs: [], ns: [])))
+}
 fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
 fn noop(o: SlotActuationOutcome) -> Bool { match o { SlotActuationNoop { unit: _, state: _ } => true _ => false } }
 fn refused(o: SlotActuationOutcome) -> Bool { match o { SlotActuationRefused { unit: _, step: _, reason: _ } => true _ => false } }
@@ -699,8 +727,16 @@ test fn a_failed_first_read_refuses_the_release_and_issues_no_mutating_argv() ->
 
 // a failed start AFTER the unmask: the three argv ran, the readback shows failed, the host stays drained
 test fn a_failed_start_after_unmask_leaves_the_host_drained() -> Bool {
-  let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
-  length(ledger_of(r: r)) == 6 && any(outcomes_of(r: r), o => refused(o: o))
+  // The start was issued and the FIRST read-back reads failed, so activation takes its settled second
+  // read -- gunbc.runner.runner_slot_actuation.activate_runner_slot_over sleeps once then re-reads, it
+  // never samples once. Both reads say failed (a unit whose ExecStart cannot run), so the release
+  // refuses on the second read-back and the host is left drained. The ledger therefore holds EIGHT
+  // legs, not the six a start that comes up clean would: read, read, unmask, enable, start, read-back,
+  // the settle sleep, read-back. (This control was earlier under-specified at six legs; the now-faithful
+  // show fixture is what let it reach the settle path it always meant to exercise.)
+  let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "failed"), Leg { needle: "sleep", answer: shell_ok(stdout: "") }, show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
+  length(ledger_of(r: r)) == 8 && any(outcomes_of(r: r), o => refused(o: o))
+    && count_containing(legs: ledger_of(r: r), needle: " start ") == 1
     && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
@@ -711,8 +747,10 @@ test fn a_transport_with_no_answer_refuses_the_release() -> Bool {
 
 // BLOCKER 1, THROUGH PRODUCTION COMPOSITION: acquisition reads (read_slot_drain_over), owned_set_of, the mask of
 // OWNED units only (mask_slot_only_over), the re-read, and the wait judgment (bracket_wait_step), over a host where
-// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is open. Only 02
-// is owned and masked; 01 is never touched; 01's worker still blocks the write.
+// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is an open STOPPED
+// unit. Only 02 is owned and masked (02 is proven stopped, so masking is the safe leg); 01 is never touched; 01's
+// worker still blocks the write. The running-owned case is covered by a_cap_bracket_pass_never_masks_a_running_runner_unit,
+// not here: the bracket must never mask a unit that is still running (node fleet-cap-bracket-keeps-running-units).
 type MixedDrain {
   owned: List<NonEmptyStr>
   step: BracketWaitStep
@@ -720,11 +758,11 @@ type MixedDrain {
 
 fn mixed_drain(ns: List<String>) -> BracketRun<MixedDrain> {
   bracket_run(legs: [
-    // acquisition reads: 01 masked + running (ps), 02 open + active (ps)
+    // acquisition reads: 01 masked + running (ps), 02 open + STOPPED (no worker to read)
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "02") as String, " Runner.Listener\n")),
-    // mask the one owned unit: read, then the elevated mask
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), step_leg(verb: "mask"),
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"),
+    // mask the one owned unit: read (still stopped), then the elevated mask
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"), step_leg(verb: "mask"),
     // re-read: 01 unchanged, 02 now masked and stopped
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
     show_leg(n: "02", load: "masked", file: "masked", active: "inactive"),
@@ -774,6 +812,38 @@ test fn a_foreign_masked_stopped_unit_does_not_block_and_is_never_masked() -> Bo
     BracketRunEnded { cause: _ } => false
     BracketRunReturned { value: v, legs: l, calls: _ } => v.owned == [u(n: "02")] && is_drained(s: v.step) && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
   }
+}
+
+// RED_CONTROL (node fleet-cap-bracket-keeps-running-units): the cap bracket's masking pass must issue NO mask for a
+// unit that is still RUNNING, and MUST still mask a proven-STOPPED one. mask_slot_only_over is the single site in the
+// bracket that dispatches systemctl mask; on main it masks any unmasked owned unit regardless of run state -- the
+// invalid state named by recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload (the
+// mask's reload drops a live unit's drop-ins, and the bracket's mask-then-wait holds that state for the whole wait).
+// RED on main: unit 02 is systemd-active, so main dispatches "systemctl mask 02" and running_masks is 1, not 0. The
+// stopped control (03, inactive) keeps the claim honest -- it proves the bracket still masks a proven-stopped unit,
+// so this cannot pass vacuously by never masking anything. It mirrors runner_slot_actuation's NeverMaskARunningUnit.
+fn masks_issued_over(legs: List<Leg>, unit: NonEmptyStr) -> Int {
+  match bracket_run(legs: legs, body: fn(target, context) {
+    let _m = mask_slot_only_over(target: target, context: context, unit: unit)
+    0
+  }) {
+    BracketRunReturned { value: _, legs: l, calls: _ } => count_containing(legs: l, needle: concat(" mask ", unit as String))
+    BracketRunEnded { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_cap_bracket_pass_never_masks_a_running_runner_unit() -> Bool {
+  // owned unit 02: systemd-active -- a running runner unit. No mask may be issued for it.
+  let running_masks = masks_issued_over(legs: [
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "02"))
+  // owned unit 03: proven stopped (inactive) -- the positive control, masking is still the safe leg.
+  let stopped_masks = masks_issued_over(legs: [
+    show_leg(n: "03", load: "loaded", file: "enabled", active: "inactive"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "03"))
+  running_masks == 0 && stopped_masks == 1
 }
 
 // an empty owned set owes nothing: no obligation is written (the decoder would reject an empty held list)
@@ -1281,7 +1351,13 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       // gated or foreign sets these controls read. The holder claims themselves run against the judgment
       // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
       // is a control rather than a leg sequence.
-      holder: HolderIdentified { unit: u(n: "02") })
+      holder: HolderIdentified { unit: u(n: "02") },
+      // No slot tree is queued for first-install in these re-convergence scenarios (the subject above carries
+      // slot_trees: [] too), so cap_bracket_units excludes nothing on that basis. `trees` is the argument the
+      // shared cap_phase_after_drain_over route gained for the first-install exclusion; this pre-existing test
+      // call predated that parameter and omitted it, which broke resolution of the whole witness file. Fixing it
+      // here (node fleet-cap-bracket-keeps-running-units) is what lets the cap-bracket controls in this file resolve.
+      trees: [])
   })
 }
 
@@ -1422,4 +1498,49 @@ test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
 test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
   bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
     && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
+}
+
+// The bracket controls decide by READING the unit through the production slot reader
+// (gunbc.runner.runner_slot_actuation.slot_actuation_reading_of), which refuses a reading that is
+// missing any property it requests -- including Result and MainPID. This guard pins the FIXTURE to
+// that contract: if a future edit to show_text drops a required property, the reading goes Absent
+// and THIS control goes red at the fixture, instead of the bracket controls silently losing their
+// mask step (a SlotReadRefused that makes running==0 pass by accident).
+test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
+  // Every ActiveState word this witness feeds the reader must resolve as a real systemctl show would:
+  // a recognized state parses to a typed reading carrying that state, and an unknown word is refused
+  // -- never silently dropped. Covers BOTH fixtures (show_text for the bracket readbacks, show_masked_with
+  // for the drain projections) over every state the file uses: active, deactivating, failed, inactive,
+  // and the unknown word wedged. If a future edit drops a required property from the shared builder, a
+  // state stops parsing and this control goes red at the fixture instead of the bracket controls losing
+  // their mask step and passing by accident.
+  let typed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "active")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Active
+    _ => false
+  }
+  let deact_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "deactivating")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Deactivating
+    _ => false
+  }
+  let failed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "failed")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Failed
+    _ => false
+  }
+  let stopped_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "inactive")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Inactive
+    _ => false
+  }
+  let masked_deact_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "deactivating")) {
+    SlotRead { reading: r } => r.active == Deactivating
+    _ => false
+  }
+  let masked_stopped_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")) {
+    SlotRead { reading: r } => r.active == Inactive
+    _ => false
+  }
+  let unknown_refused_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")) {
+    SlotReadRefused { reason: _ } => true
+    _ => false
+  }
+  typed_ok && deact_ok && failed_ok && stopped_ok && masked_deact_ok && masked_stopped_ok && unknown_refused_ok
 }

@@ -1,8 +1,8 @@
 module gunbc.fleet.board_function_step
 
 // THE BOARD FUNCTION CONVERGE RUN STEP lives here, beside board_function_converge_delivery which owns
-// the board delivery it drives, not in the central ci_spec. The machinery it borrows is shared and
-// imported, never reached through ci_spec: gunbc_run_step_script_for_target from
+// the board delivery it drives, not in a central spec module. The machinery it borrows is shared and
+// imported, never reached through the roster: gunbc_run_step_script_for_target from
 // v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
