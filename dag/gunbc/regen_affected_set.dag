@@ -14,10 +14,20 @@ import v2.std.text { string_eq }
 // THREE SOURCES, ALL DECLARED, NONE A FILENAME EXCEPTION.
 //
 // 1. The dependency graph requested by required_regen_host regen_module_edges through
-//    cli_run whole_pool_closure_edge_index, read in reverse. This explicit whole-pool demand
-//    supplies dotted references (including every `import` line) plus bare references. Entry
-//    traversal through cli_run extend_sources_to_both_closure_fixpoint instead requests
-//    reached source rows through build_both_closure_edge_index. The affected modules are every
+//    cli_run whole_pool_generator_edge_index, read in reverse. This explicit whole-pool demand
+//    supplies each DIRECT dependency the route reads: a dotted reference's target -- every `import`
+//    line included -- and, for a source that declares no `import` line, each resolved bare-name
+//    provider. THE ROWS ARE NOT CLOSURE-EXPANDED PER FILE, and that is a measured claim rather than
+//    a simplification: walking this relation in reverse already reaches everything the expansion
+//    spelled. Over an 8,471-file pool the expansion spells 2,065,084 rows and the direct relation
+//    61,044, and the affected member sets are identical on all nine edited sets measured (lost=0,
+//    gained=0, run 43817027204), while the expanded form refused that same round in its model phase
+//    (run 43808654519). @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence)
+//    carries that cost shape. Entry traversal through cli_run
+//    extend_sources_to_both_closure_fixpoint instead requests closure-expanded rows through
+//    build_both_closure_edge_index: its demand is WHICH source rows to pull, and the expansion is
+//    what makes that source set complete. Two demands, two shapes, one admission -- the shapes live
+//    in two memos so neither consumer can be served the other's rows. The affected modules are every
 //    module from which an edited module is reachable along the regen graph's edges. Measured 2026-08-30 (tree 677988a2, srv1 and BuildBuddy): a data row added to
 //    std.content_hash drifted exactly {std_content_hash.rs} against 72 predicted by the import
 //    lines alone -- contained, over-approximate.
