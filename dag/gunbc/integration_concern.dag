@@ -3047,7 +3047,7 @@ data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = C
 }
 
 data integration_concerns: List<IntegrationConcern> = [fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
-  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once]
+  inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once, fold_step_adoption_tolerates_join_refusals, name_only_param_free_leaf_equality, two_pickers_beside_the_join, guard_id_spelling_beside_identity_verdict, empty_init_element_never_unified_with_step_element, list_push_signature_two_homes, emit_gate_reads_raw_node, option_b_profile_row_element_relation, builtin_signature_fresh_element_siblings]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -3377,3 +3377,278 @@ data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConce
   },
   disposition: Open,
 }
+
+data fold_step_adoption_tolerates_join_refusals: IntegrationConcern = IntegrationConcern {
+  identity: "fold_step_adoption_tolerates_join_refusals",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+    requirement: "when a fold step's return type does not unify with the accumulator, the compiler either adopts a sound refinement or refuses located -- adoption of a non-unifying step should be a decision, not a silence",
+    standing: RequirementUnestablished { decided_by: "resolving, for each census group, whether join_type_nodes_opt is too strict for this representation (TypeVariable argument children versus formal parameters) or these step returns genuinely stray from the accumulator" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "realization_names"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "join_type_nodes_opt"),
+    ],
+  },
+  question: "Is join_type_nodes_opt too strict for this representation, or does main adopt real mismatches? 144 calls over 138 distinct fold sites adopt a step return the join refuses: 118 acc=Map(...) step=Map(...); 4 Container(List,Primitive())/Container(List,Product(OccurrenceId)); 3 /Primitive(String); 3 /Product(RealizationEdge); 2 /Node(FreeMonoid<Primitive(ChildSlot)>); 2 /Primitive(Node); and 12 singletons (Symbol, Int, SweptRegion, Coproduct(Bool), OccurrenceModulePathRow, DeclarationExposureRow, AuthoredOrderRow, ParserProgressEdge, ResolvedModule, ErrorNode, Coproduct(TransportKind), Set/Set(String)). The fix-target fold is among them -- the declaration_index fold of v1.compiler.infer.realization_names, src/v1/04_infer.dag span 1102768 -- where acc's Map arguments are TypeVariable CHILDREN rather than formal parameters, which is the reading of the join's free-formal detection worth recording here, not acting on now.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "de15d69df81862ac5519de0984613c6d2f49b156",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_type_nodes_opt") },
+          CitesArtifact {
+            label: "census extract: TRREFINE3 pred=PRED-REFUSE grouping, 144 calls / 138 sites with per-group counts and the target fold quote, from the cen25 run (F-era checker + m9 + probesL over the de15d69 population, 12435 refinement calls)",
+            sha256: Sha256Digest { hex: "92b6676d2a14abfb264beaa5dc1a3e82e14469f6b0867541c3370cc27d786358" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Found while measuring the veto's overfire for gunbc#16278: the census predicted a refusal at every one of these sites under a join-based rule, which would have been 144 new hard diagnostics; the agreed rule adopts the step (main's proven behavior) and refuses only on a real compiler-error leaf (zero such sites on this population). The adopts are therefore measured sound-enough-to-compile, not established sound.",
+    },
+    tail: [ConcernSighting {
+      revision: "c143dc4d038da0963206266ffdba20fb7f1ab85f",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "arg_is_root_concrete") },
+        ],
+      },
+      account: "The join fix (root verdict consulted at the join_or_prefer entry; the private predicates join_arg_is_free_formal and join_arg_is_concrete replaced by the single root-verdict reading arg_is_root_concrete, JoinArgPair keyed by variable identity) measured clean at the merged landing tree (receipt B4x: claim_executor --required-regen, CE sha 81664fdfda07, rc=0 hard=0 planned=176 executed=176 adjudicated=176 declared_divergent=1 [main.rs]; generated-surface drift exactly the four stage0 mirrors heal republishes: v1_compiler_compiler_tests_rust.rs, v1_compiler_infer.rs, v1_compiler_infer_method.rs, v1_compiler_infer_types.rs; the pre-merge tree measured the same verdict at zero drift, receipt B4v CE 73e087765267). The two predicates existed only inside the unmerged branch lineage and are never on main, so they cannot be cited as HistoricalDeclarations at a main revision; at c143dc4d038 the site reads prefer_specific_type (v1.compiler.infer_types::prefer_specific_type in src/v1/04_types.dag, at c143dc4d038). This row therefore stands OPEN: it closes as Integrated in the follow-up after the squash-merge, citing the squash-merge sha on main.",
+    }],
+  },
+  disposition: Open,
+}
+
+data list_push_signature_two_homes: IntegrationConcern = IntegrationConcern {
+  identity: "list_push_signature_two_homes",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare"),
+      second: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare"),
+    tail: [decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates")],
+  },
+  question: "which home owns the list_push signature -- the 04_method.dag BuiltinSignature row read by func_sig_from_global_bare, or the std/algebra.dag:1154 profile row of free_monoid_collection_templates read by algebra_templates_for_profile? today a method-position call consults only the profile row and the registry row is a shadowed second authority; a signature edit to one silently misses the other",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates") }],
+      },
+      account: "Found while fixing the fold-accumulator annotation for gunbc#16278: the fold's method-position list_push resolves through the profile row's [ReceiverSelf, ReceiverElement] -> ReceiverSelf; the registry row (its list_push BuiltinSignature, with the receiver/item/element sharing one collection_element variable) is read only via the global-bare tier, measured by the suppression probe (TIPv).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data emit_gate_reads_raw_node: IntegrationConcern = IntegrationConcern {
+  identity: "emit_gate_reads_raw_node",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_node_child_is_type_variable"),
+      second: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "is_fully_resolved"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_node_child_is_type_variable"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "is_fully_resolved")],
+  },
+  question: "the fold-accumulator emit gate decides 'inferred' from the RAW type node (the type_node_child_is_type_variable arm of the seven-way OR at v1_compiler_emit_rust.rs ~30885) at the same site where the full annotation string is already resolved through the substitution: should the gate consult the root verdict (is_fully_resolved) instead of a parallel raw-node reading that can disagree with it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 (TIPs/TIPdd probes): at the crate-partition fold the gate wrote the |acc: _ placeholder although the same emit site had resolved the annotation string to Rc<Vec<NonEmptyStr>> -- the raw child read 'T', the resolved string did not. The join fix makes the gate's raw reading agree by handing it the resolved node; the parallel reading itself remains.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data option_b_profile_row_element_relation: IntegrationConcern = IntegrationConcern {
+  identity: "option_b_profile_row_element_relation",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates"),
+    requirement: "a list_push step result carries the pushed item's relation to the collection's element type -- the profile row's return either relates them (ContainerOf { source: SameAsReceiver, element: ReceiverElement }) or it carries the receiver as-is and the relation exists nowhere",
+    standing: RequirementUnestablished { decided_by: "settling what ReceiverElement binds at the fold step (the T4 slot print: does init's childless [] occupy __element__ before the item arrives) and then running the return-shape change against the population" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates"),
+    tail: [decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare")],
+  },
+  question: "should the list_push profile row (std/algebra.dag:1154) return ContainerOf { source: SameAsReceiver, element: ReceiverElement } instead of ReceiverSelf, so the item<->element relation reaches the step result by construction -- and if init's childless [] lands in __element__ first, would that make the element derive from the init leaf rather than the item?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "31da88c6d6e",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "std.algebra", decl_name: "free_monoid_collection_templates") },
+        tail: [],
+      },
+      account: "Found while fixing the fold-accumulator annotation for gunbc#16278: the join fix alone renders the fold annotation by derivation from the accumulator's resolved side, so the row's return shape is not needed for this fold; deferred deliberately (warm-bear msg_a680241d item 3) with the T4 slot print as the open evidence.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data builtin_signature_fresh_element_siblings: IntegrationConcern = IntegrationConcern {
+  identity: "builtin_signature_fresh_element_siblings",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.method", decl_name: "builtin_function_registry"),
+    requirement: "every registry row returning a container shares one element variable between receiver, element-bearing params and the return (the set_contains spelling); today with and get still return a fresh variable unrelated to their inputs",
+    standing: RequirementUnestablished { decided_by: "naming the record-override vs map-insert split for with (its eight measured call sites pass RECORDS, not maps; pinning Map<K,V> fabricates inhabitance errors), and moving the get profile row alongside its signature (declared via derived_signature_in against free_monoid_collection; no call site reaches it with a map receiver)" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.method", decl_name: "builtin_function_registry"),
+    tail: [decl_ref(module_path: "v1.compiler.method", decl_name: "func_sig_from_global_bare")],
+  },
+  question: "which boundary names record-override apart from map-insert (so with can pin its element), and which moves the get profile row together with its registry row",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "695e69c3b93",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.method", decl_name: "builtin_function_registry") },
+        tail: [],
+      },
+      account: "Census for gunbc#16278: grep over src/v1/04_method.dag for the derived_signature rows returning a fresh variable container returned nine rows; eight were rewritten to the shared-element spelling in this PR (list_push, map_insert, map_merge, lookup, map_get, map_keys, map_values, reverse), each measured reachable at the registry lookup (probe leg b14m-tr-PUSHc.log: HIT counts list_push 298, map_get 1446, map_insert 915, map_merge 138, map_keys 112, map_values 25, lookup 98, reverse 126). The survivors with and get keep their fresh-variable returns with the reasons in their standing; no hard diagnostics were introduced on any leg.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data name_only_param_free_leaf_equality: IntegrationConcern = IntegrationConcern {
+  identity: "name_only_param_free_leaf_equality",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal"),
+      second: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_arg_pairs"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "join_arg_pairs"),
+    ],
+  },
+  question: "For param-free leaves the deep-equality answers by NAME alone (one type, two spellings: a bare reference leaf and the resolved record node), while the join's bare-vs-applied refusal asks for argument shape. May those two readings of the same-type question be unified under declaration identity (alias-resolved), and the name-only rule deleted with it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c143dc4d038",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "type_nodes_deeply_equal") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 review 95543 finding 3: tightening the name-only rule to require equal child shape REFUSED VALID CODE -- a `Cons { head: Edge { .. }, tail: rest2 }` construction compares a bare Edge reference leaf against the applied record node and the shapes disagree while the types agree. The rule stays; the measured specimen is recorded here rather than in the comment. The join-side refusal arm had ZERO arrivals on the pinned population (chainY probe ARM-PERM=0), so the two readings do not meet in the population today.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data two_pickers_beside_the_join: IntegrationConcern = IntegrationConcern {
+  identity: "two_pickers_beside_the_join",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+      second: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type"),
+      rest: [decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_or_prefer"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types"),
+    ],
+  },
+  question: "join_or_prefer's refused-join arm returns prefer_specific_type(left, right) and join_live_branch_types returns first_type(arms) when join_type_nodes_opt refuses across branch arms: both pick one side of a pair the join could not reconcile, with no compatibility check (the same silent-pick class as the deleted join_or_left). May a refused join ever be answered by a picker, or must it become a typed, located refusal?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c143dc4d038",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "prefer_specific_type") },
+        tail: [],
+      },
+      account: "Measured for gunbc#16278 (chainY probe census at a178b3c8b3e, the tree the heal CI judged, hard=0): main's fold site reads prefer_specific_type unconditionally, so both picks are main behaviour, not a regression. The SECOND picker answered the fold: join_live_branch_types' Absent arm fired [JLB-PICK] 2523 times population-wide (the size of the residue this row records), of which 25 carried fname=List fchd=T -- the generic side returned to folds including the crate-partition accumulator whose emitted closure lost its annotation (gunbc_crate_partition.rs |acc: _,). join_or_prefer's own picker arm fired 0 times there. After the join fix (root verdict on unwrapped children at the PREF branch, type-variable-leaf gate on the BIND arms, symmetric substitution returning the derived instance): [JLB-PICK] total 2523 -> [FILL-AFTER], List<T> subset 25 -> 0 (each disappearing fold named in the PR). Neither picker is fixed here (Falsifier: a refusing Absent arm must keep hard=0 on the population); they remain beside a join that now answers correctly, and a real mismatch could still be picked instead of refused.",
+    },
+    tail: [ConcernSighting {
+      revision: "b4172f92126",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "join_live_branch_types") },
+        tail: [],
+      },
+      account: "Gated re-measure at this head (fresh per-tree target directories, probe-tag string-gated binaries, same population tree both legs): the pre-repair probed engine reports [JLB-PICK] 2555 (25 with fname=List fchd=T) and [JTR-N8] 1357; the repaired probed engine reports [JLB-PICK] 2555 (25 List<T>), [JTR-N8] 1358, [J4V] 609 to 619. The deep-equality repair moves neither picker's residue: it is not a picker fix; its effect is the join verdict at the crate-partition fold (candidate line :699 '_' before, derived Rc<Vec<NonEmptyStr>> after). The 2555 total and the 25 List<T> picks stand as this row's residue. Jitter note: an earlier ungated run of the same pre-repair binary reported 2556.",
+    }],
+  },
+  disposition: Open,
+}
+
+data guard_id_spelling_beside_identity_verdict: IntegrationConcern = IntegrationConcern {
+  identity: "guard_id_spelling_beside_identity_verdict",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_never_constrained_enclosing_generic_base"),
+      second: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "is_never_constrained_enclosing_generic_base"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict")],
+  },
+  question: "two readers answer 'is this type variable unsolved?' by different keys: the guard matches the id spelling of n.inferred against \"empty_list_element\", while type_resolution_verdict answers by the variable's identity, read through its solution. Once the red control of the rfm row a_field_read_on_an_unestablished_element_type_is_accepted_through_its_slot still refuses with hard=0, the guard should read the verdict instead of the id spelling; the mint-name \"empty_list_element\" then survives as a marker only, or the mint site keys on something other than a string compared in a guard.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "bf190e64fdc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict") },
+        tail: [],
+      },
+      account: "Found while fixing the root verdict for gunbc#16278: is_never_constrained_enclosing_generic_base (src/v1/04_infer.dag) matches n.inferred directly and enforces a refusal (no deferral) for a field read on a directly-placeholder base, so making the verdict follow the solution does not make it redundant -- the earlier deletion order was retracted on that reading. The ARM-NC probe counts its arrivals population-wide as a reading only; the guard stays enrolled regardless of the count, and gunbc.recurring_failure_mode a_field_read_on_an_unestablished_element_type_is_accepted_through_its_slot remains its red control.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data empty_init_element_never_unified_with_step_element: IntegrationConcern = IntegrationConcern {
+  identity: "empty_init_element_never_unified_with_step_element",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+    requirement: "a fold whose init is [] needs the init element's slot related to the step's element by construction (unified when the step constrains it, explicitly unrelated when it does not); today the placeholder is minted at the init site and left unsolved, so the accumulator's element answers honestly but unbound",
+    standing: RequirementUnestablished { decided_by: "the fold accumulator profile row (option_b_profile_row_element_relation): whether ReceiverElement binds the init leaf or the step item settles where this relation would live" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return"),
+    tail: [decl_ref(module_path: "v1.compiler.infer_types", decl_name: "type_resolution_verdict")],
+  },
+  question: "should the [] init unify its element slot with the fold step's element variable at the producer (the rejected-by-scope option (b)), instead of minting an unsolved empty_list_element placeholder and letting the honest verdict report UnderResolved -- and if the profile row's return shape settles first, would that producer be where the relation belongs?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "bf190e64fdc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "refine_fold_acc_from_step_return") },
+        tail: [],
+      },
+      account: "Localized while fixing gunbc#16278 (TLEAF probe, 382 fold arrivals): the right child of the crate-partition fold arrival was a leaf named T whose solution was the unsolved variable empty_list_element, minted at the [] init site (src/v1/04_infer.dag) with no element evidence ever attached. The verdict now reports that honestly and the join derives the instance from the CONCRETE side; nothing yet relates the init element to the step's element when both sides are generic, so a fold whose step never adds an element stays unannotated (asserted, not fabricated). Filed per warm-bear msg_a8836647: the producer-side unification is a separate question from the verdict repair.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+

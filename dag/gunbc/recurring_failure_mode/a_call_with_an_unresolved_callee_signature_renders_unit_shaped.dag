@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_call_with_an_unresolved_callee_signature_renders_unit_shaped
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_call_with_an_unresolved_callee_signature_renders_unit_shaped: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_call_with_an_unresolved_callee_signature_renders_unit_shaped" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a call whose callee signature fails is_fully_resolved continues with an un-instantiated fallback that renders Unit-shaped downstream. The consumer is the global bare callable arm of call typing in v1.compiler.infer: when the callee's base result type reads as not fully resolved, that arm proceeds without the instantiation and the call node carries no real return type, so reads of it five calls later see a Unit-shaped product (observed as no field 'params' on type Unit in v1.compiler.infer and variant variant NativeIngressSiteFound not found in type Unit in v1.compiler.emit_rust) instead of one located refusal at the call. Distinct producer and trigger from a_call_resolving_to_a_coproduct_arm_node_renders_as_unit (coproduct arm); filed separately so retiring one does not silently leave the other open. Surfaced 2026-11-12 by the generated-artifact self-compile refusing a scoped resolution verdict that mistyped valid generic signatures: the leniency is what turned one located verdict failure into seven scattered diagnostics.",
+    "RUNG FOUND AT: above the floor, honest-adjacent: nothing is fabricated at the call itself, but the absence of a type travels as a plausible Unit-shaped node rather than as a refusal, so consumers cannot tell no type from Unit. CEILING: reachable now - the arm holds the callee identity and the failing verdict; refusing AT the call with a located diagnostic is the same refusal the effect summary emits later at greater distance. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: make the global bare callable arm emit a located refusal when is_fully_resolved declines the callee signature, with a claim asserting the refusal at the call site (red today: the call types on and renders Unit-shaped downstream), adopted once the census says the population can bear the new refusals. Needed by the fail-closed program; owner unassigned at filing.",
+    "CLIMB RECEIPT: pending.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.infer", decl_name: "global_bare_callable_node"),
+  ],
+}

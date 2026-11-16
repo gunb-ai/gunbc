@@ -346,8 +346,25 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "to_string": derived_signature(names: ["value"], method: "to_string", returns: string_type),
   "discriminant": BuiltinSignature { params: [BuiltinParam { name: "v", ty: AlgebraTypeVariable { id: "discriminant_subject" } }], returns: string_type },
   "concat": derived_signature(names: ["a", "b"], method: "concat", returns: string_type),
-  "map_insert": derived_signature(names: ["m", "key", "value"], method: "map_insert", returns: map_of_type_variables()),
-  "map_merge": derived_signature(names: ["m", "overlay"], method: "map_merge", returns: map_of_type_variables()),
+// SIBLING CENSUS (gunbc.design_argument::root_generalization; warm-bear condition on the
+// list_push row). Grep over this file: '"[a-z_]+": derived_signature.*(_of_type_variable|type_variable_node)'
+// -- every registry row whose return carries a fresh variable container unrelated to its inputs.
+// It returned nine rows: list_push (fixed above), map_insert, map_merge, with, lookup, map_get,
+// map_keys, map_values, reverse -- all eight are fixed here with the set_insert/set_contains
+// spelling (AlgebraTypeVariable ids shared across params and return through the subst in
+// v1.compiler.infer types, instantiate_algebra_type/unify_template). get is the ONE SURVIVING
+// SIBLING: it is declared via derived_signature_in against the free_monoid_collection profile
+// (the profile argument carries host-text/emit behavior), and the declared-choice comment above
+// it records that no call site reaches that row with a map receiver. Fixing it needs the profile
+// row moved alongside the signature, a separate boundary; it stays filed with that reason.
+  // (2) with: the eight direct `with(m, {field: value})` call sites measured in the bootstrap pass
+  // (b14m-tr-B3b: 04_infer.dag:20494, :22510, 05_emit_rust.dag:10552/10554/10749/12963/13848/18401)
+  // pass RECORDS, not maps -- `with` is the generic field-override method that shares its name with
+  // the map insert. Pinning the receiver to Map<K,V> turns those eight into inhabitance errors, so
+  // the row keeps its fresh-variable return until record-override and map-insert are separately
+  // named -- a different boundary than this PR's fold-accumulator repair.
+  "map_insert": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }, BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "map_value" } }], returns: make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty },
+  "map_merge": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "overlay", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty },
   "with": derived_signature(names: ["m", "key", "value"], method: "with", returns: map_of_type_variables()),
   "empty_set": BuiltinSignature { params: [], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
   "set_insert": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty },
@@ -358,15 +375,25 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "rc_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: AlgebraTypeVariable { id: "rc_subject" } }, BuiltinParam { name: "b", ty: AlgebraTypeVariable { id: "rc_subject" } }], returns: bool_type },
   "rc_vec_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }], returns: bool_type },
   "set_contains": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: bool_type },
-  "lookup": derived_signature(names: ["m", "key"], method: "lookup", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
-  "map_get": derived_signature(names: ["m", "key"], method: "map_get", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
+  "lookup": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }], returns: with_optional_cardinality(n: type_variable_node(id: "map_value")) },
+  "map_get": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }, BuiltinParam { name: "key", ty: AlgebraTypeVariable { id: "map_key" } }], returns: with_optional_cardinality(n: type_variable_node(id: "map_value")) },
   "Some": BuiltinSignature { params: [BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "some_inner" } }], returns: with_optional_cardinality(n: type_variable_node(id: "some_inner")) },
-  "map_keys": derived_signature(names: ["m"], method: "map_keys", returns: list_of_type_variable(id: "collection_element")),
+  "map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: list_of_type_variable(id: "map_key") },
   "sorted_map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: AlgebraTypeVariable { id: "map_subject" } }], returns: list_of_type_variable(id: "collection_element") },
-  "map_values": derived_signature(names: ["m"], method: "map_values", returns: list_of_type_variable(id: "collection_element")),
+  "map_values": BuiltinSignature { params: [BuiltinParam { name: "m", ty: ContainerOf { source: Named { name: "Map" }, element: TupleOf { first: AlgebraTypeVariable { id: "map_key" }, second: AlgebraTypeVariable { id: "map_value" } } } }], returns: list_of_type_variable(id: "map_value") },
   "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
-  "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
-  "list_push": derived_signature(names: ["xs", "item"], method: "list_push", returns: list_of_type_variable(id: "collection_element")),
+  "reverse": BuiltinSignature { params: [BuiltinParam { name: "xs", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "collection_element" } } }], returns: list_of_type_variable(id: "collection_element") },
+  // THE list_push ROW SHARES ONE ELEMENT VARIABLE ACROSS RECEIVER, ITEM AND RESULT (the
+  // set_contains spelling above, not a new invention). As a derived_signature it carried params
+  // with no element relation and a fresh `collection_element` return, so `acc |> list_push(owner)`
+  // over an untyped empty init pinned NOTHING between the element and the item: the fold
+  // accumulator kept a free element variable, the closure renderer correctly deferred the
+  // accumulator annotation to `_` (05_emit_rust: an unbound atom may not be spelled), and the
+  // emitted crate-partition walk lost `T` on acc.iter().cloned() -- an E0282 the moment the
+  // refinement rule adopted the step return. The element is the item's type; now the checker says
+  // so (gunbc.design_argument::earliest_unjustified_boundary; the observation row
+  // gunbc.integration_concern realization_names_collection_element_never_unified).
+  "list_push": BuiltinSignature { params: [BuiltinParam { name: "xs", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "collection_element" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "collection_element" } }], returns: list_of_type_variable(id: "collection_element") },
   "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "b", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "atom_identity_hash": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: nominal_type_ref(name: "std.content_hash.Fnv1a64StructuralDigestHex") },
   "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },

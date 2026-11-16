@@ -2074,6 +2074,276 @@ fn ct_declaration_field_reference_identity_test() -> String {
   )
 }
 
+// A fold's accumulator formal is bound at INFER time by the payload its step body constructs, and
+// the renderer's EXISTING declared-read path then annotates it. Three links, each fixed at its own
+// home (v1.compiler.infer, v1.compiler.infer.types): (1) the resolution verdict counts a formal
+// leaf as resolved only when a binder in scope at that position binds it, so a formal of another
+// declaration stranded outside its owner reads UnderResolved instead of vacuously resolved; (2) a
+// constructor literal that supplies, at a field whose declared type is the owner's formal, a
+// payload of resolved type X HAS instantiated that formal - payload-to-literal synthesis; exactly
+// one consistent candidate per formal, a formal no supplied field carries stays free, conflicting
+// candidates decline; (3) a match's value type is the join of its live arms compared by carrier
+// declaration identity and argument list, so a free argument is refined by an instantiated one
+// instead of first-wins. THE RED (main): the fold whose arms construct Just { value: BadUrl {..} }
+// renders `|acc: _,` because the accumulator formal stays free (emitted
+// extdeps_uri_validation.rs:130 loses its annotation there). THE CONTROLS: the payload-less
+// sibling fold (its arms never construct a payload) KEEPS `|acc: _,` - a free formal is reported
+// free and no annotation is fabricated - and the fixture compiles without diagnostics.
+fn ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_result_formal_is_bound_by_constructed_payload_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let maybe = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/maybe.dag\".to_string(), content: \"module hom.payload_maybe\\n\\ntype Maybe<T>\\n  = Just { value: T }\\n  | Nothing\\n\".to_string() });\n",
+    "        let finder = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/finder.dag\".to_string(), content: \"module hom.fold_payload_binding\\nimport hom.payload_maybe { Maybe, Just, Nothing }\\n\\ntype BadUrl { text: String }\\n\\nfn check_bad(u: String) -> Bool {\\n  !u.is_empty()\\n}\\n\\nfn collect_bad(urls: List<String>) -> Maybe<BadUrl> {\\n  let from_attr = fold(urls, init: Nothing, f: (acc, u) => match acc { Just { value: b } => Just { value: b }, Nothing => if check_bad(u: u) { Just { value: BadUrl { text: u } } } else { Nothing } })\\n  let kept = fold(urls, init: Nothing, f: (acc, u) => match acc { Just { value: b } => Just { value: b }, Nothing => Nothing })\\n  match from_attr {\\n    Just { value: b } => Just { value: b }\\n    Nothing => match kept {\\n      Just { value: b } => Just { value: b }\\n      Nothing => Nothing\\n    }\\n  }\\n}\\n\".to_string() });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![maybe, finder].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        assert!(result.diagnostics.is_empty(), \"the fixture must compile without diagnostics, got {:?}\", result.diagnostics.len());\n",
+    "        let emitted = result.files.iter().find(|f| f.path.contains(\"hom_fold_payload_binding\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            emitted.contains(\"|acc: Rc<Maybe<Rc<BadUrl>>>,\"),\n",
+    "            \"the fold whose arms construct a BadUrl payload must annotate the accumulator through the existing renderer path: {}\", emitted\n",
+    "        );\n",
+    "        assert!(\n",
+    "            emitted.contains(\"|acc: _,\"),\n",
+    "            \"the payload-less sibling fold must KEEP the placeholder - a free formal stays free, no annotation is fabricated: {}\", emitted\n",
+    "        );\n",
+    "        let pair_mod = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/pair.dag\".to_string(), content: \"module hom.payload_pair\\n\\ntype Pair<T> {\\n  a: T,\\n  b: T\\n}\\n\".to_string() });\n",
+    "        let mixed = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/mixed.dag\".to_string(), content: \"module hom.conflict_mixed\\nimport hom.payload_pair { Pair }\\n\\nfn build_mixed() -> Int {\\n  let p = Pair { a: 1, b: \\\"x\\\" }\\n  0\\n}\\n\".to_string() });\n",
+    "        let okpair = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/okpair.dag\".to_string(), content: \"module hom.conflict_ok\\nimport hom.payload_pair { Pair }\\n\\nfn build_ok() -> Int {\\n  let q = Pair { a: 1, b: 2 }\\n  0\\n}\\n\".to_string() });\n",
+    "        let mixed_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![pair_mod.clone(), mixed].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let mixed_emitted = mixed_result.files.iter().find(|f| f.path.contains(\"hom_conflict_mixed\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        let mixed_rendered: Vec<String> = mixed_result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            mixed_rendered.iter().any(|m| m.contains(\"give its parameter T two different types\")),\n",
+    "            \"two fields carrying one formal with different types is a wrong program and must refuse, typed and located: {:?}\", mixed_rendered\n",
+    "        );\n",
+    "        let ok_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![pair_mod, okpair].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let ok_emitted = ok_result.files.iter().find(|f| f.path.contains(\"hom_conflict_ok\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            ok_result.diagnostics.is_empty() && ok_emitted.contains(\"pub fn build_ok\"),\n",
+    "            \"one type per field must not refuse: {}\", ok_emitted\n",
+    "        );\n",
+    "        let holder_mod = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/holder.dag\".to_string(), content: \"module hom.payload_holder\\n\\ntype Holder<T> {\\n  a: T,\\n  b: T\\n}\\n\".to_string() });\n",
+    "        let samename = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/samename.dag\".to_string(), content: \"module hom.conflict_samename\\nimport hom.payload_holder { Holder }\\n\\nfn build_samename() -> Int {\\n  let h = Holder { a: [1], b: [\\\"x\\\"] }\\n  0\\n}\\n\".to_string() });\n",
+    "        let okname = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_payload_binding/okname.dag\".to_string(), content: \"module hom.conflict_okname\\nimport hom.payload_holder { Holder }\\n\\nfn build_okname() -> Int {\\n  let k = Holder { a: [1], b: [2] }\\n  0\\n}\\n\".to_string() });\n",
+    "        let same_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![holder_mod.clone(), samename].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let same_rendered: Vec<String> = same_result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            same_rendered.iter().any(|m| m.contains(\"give its parameter T two different types\")),\n",
+    "            \"List<Int> vs List<String> as one formal's candidates share a carrier name; equality must compare the ARGUMENTS, not answer by name: {:?}\", same_rendered\n",
+    "        );\n",
+    "        let okname_result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![holder_mod, okname].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let okname_emitted = okname_result.files.iter().find(|f| f.path.contains(\"hom_conflict_okname\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(\n",
+    "            okname_result.diagnostics.is_empty() && okname_emitted.contains(\"pub fn build_okname\"),\n",
+    "            \"equal applications must not refuse: {}\", okname_emitted\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
+fn ct_fold_step_error_leaf_refuses_at_the_fold_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_step_error_leaf_refuses_at_the_fold() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let maybe = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_errstep/maybe.dag\".to_string(), content: \"module hom.errstep_maybe\\n\\ntype Maybe<T>\\n  = Just { value: T }\\n  | Nothing\\n\".to_string() });\n",
+    "        let errstep = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_errstep/errstep.dag\".to_string(), content: \"module hom.fold_errstep\\nimport hom.errstep_maybe { Maybe, Just, Nothing }\\n\\nfn collect_err(xs: List<String>) -> Bool {\\n  xs |> any(y => {\\n    let owners = xs |> fold(init: [], f: (acc, z) => oops_undefined_name)\\n    (owners |> count) > 0\\n  })\\n}\\n\".to_string() });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![maybe, errstep].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered.iter().any(|m| m.contains(\"fold step return carries an error leaf\")),\n",
+    "            \"a fold whose step body names an unbound variable must REFUSE at the fold with a located diagnostic (the undefined-name pass leaves an empty-primitive placeholder, not a CompilerError leaf, so the refusal reads the binding evidence on the typed step body): {:?}\", rendered\n",
+    "        );\n",
+    "        let located: Vec<String> = result.diagnostics.iter().map(|e| format!(\"{:?}\", e)).collect();\n",
+    "        assert!(\n",
+    "            located.iter().any(|m| m.contains(\"fold step return carries an error leaf\") && m.contains(\"hom.fold_errstep\")),\n",
+    "            \"the refusal is a located diagnostic of the refusing module, not an unattributed string: {:?}\", located\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
+// THE JOIN DERIVES THE INSTANCE ACROSS MATCH ARMS, AND THE PICKER STAYS OUT. The fold step is a
+// match whose GENERIC arm (acc |> list_push, giving List<T> with T free) comes FIRST and whose
+// concrete arm (a List<String> parameter) comes second: first_type would hand back List<T>, so a
+// green render can only come from the shared-formal join pairing T := String and returning the
+// substituted instance. THE MIRRORED FIXTURE flips the arm order; a green there alone would be
+// the picker answering by accident, so BOTH fixtures and the absence of the `|acc: _,` placeholder
+// are what carry the proof. RED (pre-fix engine): the BIND arms fired at the CONSTRUCTOR head
+// (formal: "List", never a variable) so substitution bound nothing, the shared-formal arm refused,
+// and join_live_branch_types' first_type returned the generic arm -- emitted
+// gunbc_crate_partition.rs:699 rendered |acc: _, (heal rustc E0282, chainY census 25 hits).
+fn ct_fold_match_arms_join_instantiates_generic_annotation_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_match_arms_join_instantiates_generic_annotation_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let generic_first = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/generic_first.dag\".to_string(), content: \"module hom.fold_arm_generic_first\\n\\nfn owners(select: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => match select { true => acc |> list_push(item), false => others })\\n}\\n\".to_string() });\n",
+    "        let concrete_first = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/concrete_first.dag\".to_string(), content: \"module hom.fold_arm_concrete_first\\n\\nfn owners(select: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => match select { false => others, true => acc |> list_push(item) })\\n}\\n\".to_string() });\n",
+    "        let generic = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![generic_first.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = generic.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered.is_empty(),\n",
+    "            \"the fixture compiles without diagnostics: {:?}\", rendered\n",
+    "        );\n",
+    "        let text_g = generic.files.iter().find(|f| f.path.contains(\"hom_fold_arm_generic_first\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            text_g.contains(\"|acc: Rc<Vec<String>>, item: String|\"),\n",
+    "            \"the generic-first fold's accumulator must be DERIVED to the instance Rc<Vec<String>> by the shared-formal join (first_type would return the generic arm, arm order generic-first): {:?}\", text_g\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !text_g.contains(\"|acc: _,\"),\n",
+    "            \"no unannotated accumulator placeholder may survive where the join derives the instance: {:?}\", text_g\n",
+    "        );\n",
+    "        let concrete = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![concrete_first.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered_c: Vec<String> = concrete.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered_c.is_empty(),\n",
+    "            \"the mirrored fixture compiles without diagnostics: {:?}\", rendered_c\n",
+    "        );\n",
+    "        let text_c = concrete.files.iter().find(|f| f.path.contains(\"hom_fold_arm_concrete_first\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            text_c.contains(\"|acc: Rc<Vec<String>>, item: String|\"),\n",
+    "            \"the mirrored fold emits the same derived annotation, and green here is only evidence when read WITH the generic-first arm above: {:?}\", text_c\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
+// LEAF-LEVEL RED CONTROL (review 95543 round, condition 2): the failing shape
+// is the IF/ELSE inside the fold step -- one branch returns the accumulator
+// itself (generic, its element the unsolved empty_list_element carrier of the
+// [] init), the other returns acc |> list_push(x) (element concrete). Pre-repair,
+// the if/else join called the two T leaves equal on NAME (deq=true with
+// differing solutions) and the fold emitted |acc: _; with the fix the join
+// refuses the vacuous pairing and derives the instance through the shared
+// formal. Generic branch first -- first_type would answer the generic side --
+// and the mirrored order; both must be green only by derivation.
+fn ct_fold_ifelse_acc_vs_push_instantiates_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_ifelse_acc_vs_push_instantiates_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let generic_first = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/ifelse_generic_first.dag\".to_string(), content: \"module hom.fold_arm_ifelse_generic_first\\n\\nfn owners(select: Bool, cond: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => match select { true => if cond { acc } else { acc |> list_push(item) }, false => others })\\n}\\n\".to_string() });\n",
+    "        let concrete_first = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/ifelse_concrete_first.dag\".to_string(), content: \"module hom.fold_arm_ifelse_concrete_first\\n\\nfn owners(select: Bool, cond: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => match select { true => if cond { acc |> list_push(item) } else { acc }, false => others })\\n}\\n\".to_string() });\n",
+    "        let generic = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![generic_first.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = generic.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered.is_empty(),\n",
+    "            \"the generic-first if/else fixture compiles without diagnostics: {:?}\", rendered\n",
+    "        );\n",
+    "        let text_g = generic.files.iter().find(|f| f.path.contains(\"hom_fold_arm_ifelse_generic_first\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            text_g.contains(\"|acc: Rc<Vec<String>>, item: String|\"),\n",
+    "            \"the if/else join must DERIVE the instance Rc<Vec<String>> for the accumulator (generic branch first: first_type would return the generic arm): {:?}\", text_g\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !text_g.contains(\"|acc: _,\"),\n",
+    "            \"no unannotated accumulator placeholder may survive where the join derives the instance: {:?}\", text_g\n",
+    "        );\n",
+    "        let concrete = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![concrete_first.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered_c: Vec<String> = concrete.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        assert!(\n",
+    "            rendered_c.is_empty(),\n",
+    "            \"the mirrored if/else fixture compiles without diagnostics: {:?}\", rendered_c\n",
+    "        );\n",
+    "        let text_c = concrete.files.iter().find(|f| f.path.contains(\"hom_fold_arm_ifelse_concrete_first\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            text_c.contains(\"|acc: Rc<Vec<String>>, item: String|\"),\n",
+    "            \"the mirrored if/else fold emits the same derived annotation; green here is only evidence read WITH the generic-first arm above: {:?}\", text_c\n",
+    "        );\n",
+    "    }\n\n"
+  )
+}
+
+// THE HONEST VERDICT DOES NOT FABRICATE (warm-bear condition 5, #16199 vacuity close companion):
+// a fold whose [] init element is NEVER CONSTRAINED -- the step returns the accumulator itself, so
+// no arm ever supplies an element -- must REFUSE (diagnostics) or stay unannotated. The verdict fix
+// (v1.compiler.infer_types::type_resolution_verdict reads a node through its solution) makes the
+// empty_list_element placeholder read UnderResolved instead of FullyResolved; refusing to mint an
+// element type is the fail-closed half of that honesty (gunbc.design_argument::fail_closed). The
+// separate open question -- why the [] init element is never unified with the step's element -- is
+// its own row, linked to option_b_profile_row_element_relation.
+fn ct_fold_empty_init_unconstrained_element_stays_unannotated_at_the_root_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn fold_empty_init_unconstrained_element_stays_unannotated_at_the_root() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let unconstrained = std::rc::Rc::new(SourceFile { path: \"fixtures/fold_arm_join/unconstrained.dag\".to_string(), content: \"module hom.fold_arm_unconstrained\\n\\nfn owners(select: Bool, items: List<String>, others: List<String>) -> List<String> {\\n  items |> fold(init: [], f: (acc, item) => acc)\\n}\\n\".to_string() });\n",
+    "        let pipeline = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![unconstrained.clone()].into()), crate::v1_compiler_compile::RenderTarget::Rust);\n",
+    "        let rendered: Vec<String> = pipeline.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "        if !rendered.is_empty() {\n",
+    "            return;\n",
+    "        }\n",
+    "        let text = pipeline.files.iter().find(|f| f.path.contains(\"hom_fold_arm_unconstrained\")).expect(\"emitted fixture module\").content.clone();\n",
+    "        assert!(\n",
+    "            !text.contains(\"|acc: Rc<Vec<String>\"),\n",
+    "            \"a [] init whose element is never constrained must REFUSE or stay unannotated; minting String from the empty_list_element placeholder is fabrication: {:?}\", text\n",
+    "        );\n",
+    "    }\n",
+    "\n",
+  )
+}
+
+// BARE AGAINST APPLIED REFUSES (review 95543 finding 1, gunbc.design_argument::fail_closed):
+// one side carries arguments for still-declared formals and the other is bare: pairing them
+// would accept a missing argument as a match, so the walk refuses. The pre-fix engine returned
+// Present { value: [] } at this case (accepted it as joined with zero pairings) -- red there,
+// green here.
+fn ct_join_walk_bare_against_applied_refuses_test() -> String {
+    concat(
+    "    #[test]\n",
+    "    fn ct_join_walk_bare_against_applied_refuses_test() {\n",
+    "        use crate::v1_std_core::\{Cardinality, Connective, InferredNode, Node, NodeOccurrenceIdentity};\n",
+    "        use crate::v1_compiler_infer::JoinArgPair;\n",
+    "        let mk = |name: &str, params: Vec<std::rc::Rc<Node>>, children: Vec<std::rc::Rc<Node>>| -> std::rc::Rc<Node> {\n",
+    "            std::rc::Rc::new(Node {\n",
+    "                ident: std::option::Option::None,\n",
+    "                occurrence_identity: std::rc::Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),\n",
+    "                name: name.to_string(),\n",
+    "                span: crate::v1_std_core::no_span(),\n",
+    "                ident_span: std::option::Option::None,\n",
+    "                children: std::rc::Rc::new(im::Vector::from(children)),\n",
+    "                connective: Connective::NoConnective,\n",
+    "                params: std::rc::Rc::new(im::Vector::from(params)),\n",
+    "                inferred: std::option::Option::None,\n",
+    "                return_cardinality: Cardinality::Required,\n",
+    "                uses: std::rc::Rc::new(im::Vector::new()),\n",
+    "                body: std::option::Option::None,\n",
+    "                transport: std::option::Option::None,\n",
+    "                properties: std::rc::Rc::new(im::Vector::new()),\n",
+    "                type_annotation: std::option::Option::None,\n",
+    "                is_self_recursive: false,\n",
+    "                has_non_tail_self_call: false,\n",
+    "                match_pattern: std::option::Option::None,\n",
+    "                module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,\n",
+    "                declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "                declaration: std::option::Option::None,\n",
+    "                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),\n",
+    "            })\n",
+    "        };\n",
+    "        let si = std::rc::Rc::new(im::HashMap::new());\n",
+    "        let tvar = mk(\"T\", vec![], vec![]);\n",
+    "        let int_leaf = mk(\"Int\", vec![], vec![]);\n",
+    "        let bare = mk(\"List\", vec![tvar.clone()], vec![]);\n",
+    "        let applied = mk(\"List\", vec![tvar.clone()], vec![int_leaf.clone()]);\n",
+    "        assert!(crate::v1_compiler_infer_types::is_fully_resolved(bare.clone(), si.clone()),\n",
+    "            \"fixture precondition: the bare name-bound leaf must read fully resolved\");\n",
+    "        assert!(crate::v1_compiler_infer_types::is_fully_resolved(applied.clone(), si.clone()),\n",
+    "            \"fixture precondition: the applied node must read fully resolved\");\n",
+    "        let joined = crate::v1_compiler_infer::join_arg_pairs(bare, applied, si.clone());\n",
+    "        assert!(joined.is_none(),\n",
+    "            \"review 95543 finding 1: bare against applied must refuse, got {:?}\", joined);\n",
+    "        let applied_of_int = mk(\"List\", vec![tvar.clone()], vec![int_leaf.clone()]);\n",
+    "        let applied_of_list = mk(\"List\", vec![tvar.clone()], vec![mk(\"List\", vec![tvar.clone()], vec![int_leaf.clone()])]);\n",
+    "        let nested = crate::v1_compiler_infer::join_arg_pairs(applied_of_int, applied_of_list, si.clone());\n",
+    "        assert!(nested.is_none(),\n",
+    "            \"review 95543 finding 1: the refusal must reach through the per-argument walk, got {:?}\", nested);\n",
+    "    }\n",
+    )
+}
+
 // The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
 // two modules that each declare `Slot` with a different parameter list, and each Slot names a type
 // whose own header is Clone-bounded, so each owes its OWN parameters the bound.
@@ -6823,6 +7093,12 @@ fn compiler_tests_source() -> String {
     ct_profile_full_pipeline_test(),
     ct_profile_reconcile_test(),
     ct_generic_binding_is_refined_by_the_concrete_actual_at_the_root_test(),
+    ct_fold_result_formal_is_bound_by_constructed_payload_at_the_root_test(),
+    ct_fold_step_error_leaf_refuses_at_the_fold_test(),
+    ct_fold_match_arms_join_instantiates_generic_annotation_at_the_root_test(),
+    ct_fold_ifelse_acc_vs_push_instantiates_at_the_root_test(),
+    ct_fold_empty_init_unconstrained_element_stays_unannotated_at_the_root_test(),
+    ct_join_walk_bare_against_applied_refuses_test(),
     ct_service_root_binds_only_where_its_service_is_imported_test(),
     ct_module_footer())
 }
