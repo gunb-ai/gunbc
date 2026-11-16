@@ -25,15 +25,25 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
   serving_observed_from_reads, serving_assess, ServingAssessment,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
-  ServingLegFailure,
+  ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item,
 }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.algebra { trim, string_contains }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
+import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.uname { uname_machine_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.github.actions_environment { github_sha_variable_name }
+import extdeps.rust.rustup { rustup_toolchain_file_channel, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
 
 data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
 // Repo-relative (under the CI checkout's target/, which the build creates), mirroring the
@@ -103,6 +113,137 @@ fn serving_leg_authorized_keys(item: String, target: SshTarget, context: FleetSs
 
 fn serving_cat_sudo(path: String) -> List<String> { ["sudo", "-n", "cat", path] }
 
+// The first whitespace-delimited field of a command's stdout, after trimming. `sha256sum` prints
+// "<hex>  <path>", `git rev-parse HEAD` a lone hash, `uname -m` a lone arch — this reads the value
+// and drops the rest, so a leg's established value is the WORD, comparable to the pin by exact
+// equality (serving_expected_deviation does a String ==). An all-blank stdout is no value.
+fn first_space_token(text: String) -> String {
+  fold(split(s: trim(s: text), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+}
+
+// A remote leg whose established value is the first whitespace field of stdout: sha256sum of the
+// serve binary, `git rev-parse HEAD` of the checkout, `uname -m` of the target. A nonzero exit or an
+// SSH refusal leaves the leg unread (ObservationRefused -> a ServingUnknown), never a guessed value.
+// These argv carry no '%', so they ride the plain typed_ssh route like the other read legs.
+fn serving_leg_first_token(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
+  match serving_leg_read(item: item, target: target, context: context, argv: argv) {
+    ObservationEstablished { observed: out } => match first_space_token(text: out) == "" {
+      true => ObservationRefused { cause: ServingLegFailure { item: item, cause: "no token on stdout" } }
+      false => ObservationEstablished { observed: first_space_token(text: out) }
+    }
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+  }
+}
+
+fn serving_leg_sha256(item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
+  serving_leg_first_token(item: item, target: target, context: context, argv: ["sudo", "-n", "sha256sum", "--", path])
+}
+
+// The checkout's revision, read AS ITS OWNER so git does not refuse a repo owned by another user
+// (the checkout is gunbc-build's; the administrator principal is not). Runs via `sudo -u`, so no
+// `safe.directory` '*' word is needed — and '*' is not a portable remote word anyway.
+fn serving_leg_checkout_revision(item: String, target: SshTarget, context: FleetSshExecutionContext, dir: String, owner: String) -> ObservationAttempt<String, ServingLegFailure> {
+  serving_leg_first_token(item: item, target: target, context: context, argv: ["sudo", "-n", "-u", owner, "git", "-C", dir, "rev-parse", "HEAD"])
+}
+
+fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<String, ServingLegFailure> {
+  serving_leg_first_token(item: item, target: target, context: context, argv: ["uname", "-m"])
+}
+
+// ONE stat leg over the fleet SSH edge. The '%' format words (%U/%G/%a) are refused by the plain
+// portable-word route, so the stat argv rides the POSIX-quoted route (typed_argv_exec_over_fleet_ssh_posix)
+// — established-safe: stat's own "No such file" on a nonzero exit is a CONFIRMED ABSENCE (the
+// established value ""), the value the ledger compare reads as drift; any OTHER nonzero exit, or an
+// SSH refusal, is ObservationRefused (an unknown), never a false absence. sudo because the ledger
+// areas are group-writable with the other bits cleared, so the administrator principal cannot stat
+// them without elevation.
+fn serving_leg_stat(item: String, target: SshTarget, context: FleetSshExecutionContext, stat_argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: concat(["sudo", "-n"], stat_argv)) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => ObservationEstablished { observed: trim(s: r.stdout) }
+      false => match string_contains(s: r.stderr, pattern: "No such file") {
+        true => ObservationEstablished { observed: "" }
+        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("stat exit ", to_string(r.exit_code)) } }
+      }
+    }
+  }
+}
+
+// ONE desired ledger row, read by its three stat legs (owner USER NAME, owner GROUP NAME, octal
+// MODE). Each leg stands alone: any one refused folds to its own per-(path,field) unknown in the
+// comparator; confirmed-absent on any leg means the whole row is absent, which the comparator reads
+// as drift. The names ride the %U/%G commands (NOT the numeric %u/%g — a numeric gid never matches the
+// declared group name); the mode rides %a, value-compared (never string-compared) by the comparator.
+fn serving_ledger_row_read(target: SshTarget, context: FleetSshExecutionContext, t: OwnedDirectoryTarget) -> ServingLedgerRowObserved {
+  let p = owned_directory_path(t: t) as String
+  ServingLedgerRowObserved {
+    path: owned_directory_path(t: t),
+    user: serving_leg_stat(item: serving_ledger_item(), target: target, context: context, stat_argv: argv_words(command: stat_owner_user_name_command(path: p))),
+    group: serving_leg_stat(item: serving_ledger_item(), target: target, context: context, stat_argv: argv_words(command: stat_owner_group_name_command(path: p))),
+    mode: serving_leg_stat(item: serving_ledger_item(), target: target, context: context, stat_argv: stat_mode_argv(path: p)),
+  }
+}
+
+// A command run on the EXECUTOR (the fleet-converge job's own runner), not the target: established
+// first token / trimmed stdout on a clean exit, no value on an absent output or a refusal. The pin
+// is read once per run from the executor's own state — its built binary's sha and its arch.
+fn serving_local_first_token(cmd: ArgvCommand) -> String? {
+  match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => match first_space_token(text: t) == "" { true => none  false => Present { value: first_space_token(text: t) } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
+  match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => match trim(s: t) == "" { true => none  false => Present { value: trim(s: t) } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// THE EXECUTOR PLAN-TIME PIN, read ONCE per run and handed to BOTH observe and apply (the manager's
+// single-comparator decision: the observe receipt is exactly what the apply would act on, so the
+// expected values come from one place). Its four fields are executor facts, not target facts:
+//   local_binary_sha256 = sha256 of the fleet-converge job's own $ROOT/target/release/gunbc;
+//   executor_arch       = the executor's `uname -m` (must equal the target's, or InstallServeBinary refuses);
+//   dispatched_revision = the dispatched commit, from GITHUB_SHA (the checkout detaches here);
+//   toolchain_channel   = the repo's rust-toolchain.toml channel (installed on the host as gunbc-build).
+// Any field unread means the run cannot trust its own expected values, so it is refused (none) and
+// the wet entry exits_failure rather than assessing a host against an unpin.
+fn serving_plan_pin_read() -> ServingPlanInput? {
+  let sha = serving_local_first_token(cmd: sha256sum_file_command(path: "target/release/gunbc"))
+  let arch = serving_local_trimmed(cmd: uname_machine_command())
+  let rev = match actions_variable_read(name: github_sha_variable_name) {
+    ActionsVariablePresent { value: v } => Present { value: v }
+    ActionsVariableAbsent => none
+  }
+  let toolchain = Filesystem.Read(path: "rust-toolchain.toml")
+  let chan = match toolchain.success {
+    false => none
+    true => match rustup_toolchain_file_channel(text: toolchain.content) {
+      RustupChannelNamed { channel: c } => Present { value: c as String }
+      RustupChannelAbsent => none
+      RustupChannelUnsupportedForm { form: _ } => none
+    }
+  }
+  match sha {
+    Absent => none
+    Present { value: s } => match arch {
+      Absent => none
+      Present { value: a } => match rev {
+        Absent => none
+        Present { value: r } => match chan {
+          Absent => none
+          Present { value: c } => Present { value: ServingPlanInput { dispatched_revision: r, executor_arch: a, local_binary_sha256: s, toolchain_channel: c } }
+        }
+      }
+    }
+  }
+}
+
 fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingObservedView {
   let o = serving_observed_from_reads(
     passwd: serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd")),
@@ -113,6 +254,10 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     serve_binary: serving_leg_test(item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary),
     checkout: serving_leg_test(item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir),
     toolchain: serving_leg_test(item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home),
+    serve_binary_sha256: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: d.serve_binary),
+    checkout_revision: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name),
+    target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
+    ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -148,20 +293,29 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
             FleetSshContextReady { context: context, receipt: context_receipt } => {
               let view = observe_host_reads(target: target, context: context, d: remote_build_serving_desired(host: hi))
-              let assessment = serving_assess(d: view.desired, o: view.observed)
-              let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
-              let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)
-              if w.success == false {
-                exit_failure(reason: join(["remote_build_serving_observe: receipt write failed: ", w.error, "\n", body], ""))
-              } else if serving_assessment_runnable(a: assessment) == false {
-                // Indeterminate (a declared fact could not be read) or refused (an unrenderable
-                // forced-command line): the observe produced NO usable judgement, so it exits
-                // failure — it never reports a plan the apply could act on for a host it could
-                // not read (std.goal_assessment paragraph ONE; gunbc.design_argument::fail_closed).
-                exit_failure(reason: body)
-              } else {
-                // settled (adopted) or a reportable divergence: a faithful receipt, exit success.
-                ExitSuccess
+              // The single comparator's expected values are the executor plan-time pin, read ONCE
+              // here and handed to serve_assess (and, in PR 5(b), to the apply). An unbuildable pin
+              // means the run cannot name what the host should match, so it refuses rather than
+              // writing a receipt that could wrongly tell an apply the host is (un)settled.
+              match serving_plan_pin_read() {
+                Absent => exit_failure(reason: concat("remote_build_serving_observe: the executor plan-time pin (binary sha / arch / GITHUB_SHA / rust-toolchain channel) could not be read; refusing to assess ", raw_host))
+                Present { value: pin } => {
+                  let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
+                  let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
+                  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)
+                  if w.success == false {
+                    exit_failure(reason: join(["remote_build_serving_observe: receipt write failed: ", w.error, "\n", body], ""))
+                  } else if serving_assessment_runnable(a: assessment) == false {
+                    // Indeterminate (a declared fact could not be read) or refused (an unrenderable
+                    // forced-command line): the observe produced NO usable judgement, so it exits
+                    // failure — it never reports a plan the apply could act on for a host it could
+                    // not read (std.goal_assessment paragraph ONE; gunbc.design_argument::fail_closed).
+                    exit_failure(reason: body)
+                  } else {
+                    // settled (adopted) or a reportable divergence: a faithful receipt, exit success.
+                    ExitSuccess
+                  }
+                }
               }
             }
           }

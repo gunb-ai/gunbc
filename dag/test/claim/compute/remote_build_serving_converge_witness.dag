@@ -13,9 +13,11 @@ import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
-  remote_build_serving_desired, serving_assess, serving_observed_from_reads, ServingObserved,
+  remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
   ServingLegFailure, serving_forced_command_line,
+  ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
 }
 import gunbc.compute.remote_build_serving_converge { serving_receipt_body }
 
@@ -31,16 +33,36 @@ fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
   ObservationEstablished { observed: false }
 }
 
+// The executor plan-time pin, and matched pins so the ONLY drift in a drifted fixture is the one
+// the cell breaks (here: a confirmed-absent store dir). The three string legs stand equal to the
+// pin, and every ledger row reads its declared owner/group/mode, so no spurious deviation.
+fn pin_sha() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+fn pin_rev() -> String { "0123456789abcdef0123456789abcdef01234567" }
+fn pin_arch() -> String { "aarch64" }
+fn pin_ok() -> ServingPlanInput {
+  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: pin_arch(), local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+}
+fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved> {
+  map(d.ledger_dirs, t => ServingLedgerRowObserved {
+    path: owned_directory_path(t: t),
+    user: est_s(owned_directory_owner(t: t).user as String),
+    group: est_s(owned_directory_owner(t: t).group as String),
+    mode: est_s(serving_ledger_declared_mode_octal(t: t)),
+  })
+}
+
 // A host that is correct except a confirmed-absent store directory: a real drift, whose
 // assessment carries the secret forced-command line in its structured deviation but which the
 // receipt must render by NAME only.
-fn drifted_observed(dline: String) -> ServingObserved {
+fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
   serving_observed_from_reads(
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
     group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\n"),
     authorized_keys: est_s(dline),
     store_root: est_absent(), store_staging: est_ok(), serve_binary: est_ok(),
     checkout: est_ok(), toolchain: est_ok(),
+    serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
 
@@ -50,7 +72,7 @@ test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
-      let a = serving_assess(d: d, o: drifted_observed(line))
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "2026-11-16T00:00:00Z", context_receipt: "fleet ssh receipt\n", assessment: a)
       string_contains(s: body, pattern: "srv1.example") && string_contains(s: body, pattern: "remote-build-serving-plan: drift")
     }
@@ -65,7 +87,7 @@ test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
-      let a = serving_assess(d: d, o: drifted_observed(line))
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
       string_contains(s: body, pattern: "store.root") && string_contains(s: body, pattern: line) == false
     }
@@ -85,7 +107,9 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), serve_binary: est_ok(),
         checkout: est_ok(), toolchain: est_ok(),
-      ))
+        serve_binary_sha256: est_s(pin_sha()), checkout_revision: est_s(pin_rev()),
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      ), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
       string_contains(s: body, pattern: "remote-build-serving-plan: settled")
     }

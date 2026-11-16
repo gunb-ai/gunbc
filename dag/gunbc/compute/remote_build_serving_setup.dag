@@ -21,7 +21,7 @@ module gunbc.compute.remote_build_serving_setup
 // account shape must satisfy; a host whose forced-command line will not render is
 // `none` here exactly as `remote_build_authorized_keys_lines` refuses it there.
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { trim, skip, non_empty_to_list }
@@ -37,7 +37,8 @@ import gunbc.fleet.fleet_posix_accounts {
 }
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
+import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.ssh.keys { authorized_key_entry_line }
@@ -76,6 +77,25 @@ type ServingUnknown { item: String, cause: String }
 // will not render cannot serve, so it is refused outright, never half-written.
 type ServingAssessRefusal { reason: String }
 
+// ONE ledger row as the observe read it, keyed BY PATH so the comparator never indexes by
+// list position. Each field is its own ObservationAttempt so a single unread field is an
+// unknown for THAT (path, field), not a silent absence: the wet observe establishes the empty
+// string ONLY where stat proved 'No such file'; any other failure is an ObservationRefused.
+type ServingLedgerRowObserved {
+  path: FilePath
+  user: ObservationAttempt<String, ServingLegFailure>
+  group: ObservationAttempt<String, ServingLegFailure>
+  mode: ObservationAttempt<String, ServingLegFailure>
+}
+
+// The ledger compare's two chains, returned together so the join-by-path and the per-field
+// match are written ONCE and cannot diverge (a divergence between a deviation producer and a
+// separate unknown producer would be a second home for the same decision).
+type ServingLedgerOutcome {
+  deviations: List<ServingDeviation>
+  unknowns: List<ServingUnknown>
+}
+
 // Evidence minted for a host judged against the declaration. All fields optional so the
 // arm that cannot reach a value mints no default (std.goal_assessment HostTopologyEvidence
 // precedent — "evidence is only minted when nothing is unknown").
@@ -89,6 +109,11 @@ type ServingEvidence {
   serve_binary_present: Bool?
   checkout_present: Bool?
   toolchain_present: Bool?
+  // the three plan-time pin comparisons, minted only when their leg was read (an unread leg
+  // mints no value; it surfaces as an unknown, so evidence is never minted over an unknown fact).
+  serve_binary_sha256: String?
+  checkout_revision: String?
+  target_arch: String?
 }
 
 type ServingAssessment = GoalAssessment<ServingEvidence, ServingDeviation, ServingUnknown, ServingAssessRefusal>
@@ -224,6 +249,18 @@ type ServingObserved {
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>
   checkout: ObservationAttempt<Bool, ServingLegFailure>
   toolchain: ObservationAttempt<Bool, ServingLegFailure>
+  // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
+  // the apply would act on, so the observe reads these three host facts and compares them to
+  // the pin. An unread leg is an ObservationRefused -> a ServingUnknown (GoalIndeterminate),
+  // NEVER a deviation the apply would write against a host nobody read.
+  serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>
+  checkout_revision: ObservationAttempt<String, ServingLegFailure>
+  target_arch: ObservationAttempt<String, ServingLegFailure>
+  // the host_capacity ledger, read per row: one entry per ledger directory the observe read,
+  // keyed BY PATH. A desired row with NO entry here is an unknown (nobody read it), NOT an
+  // absence -- absence is proven only by a leg established to the empty string (stat 'No such
+  // file'). Typed per field so no joined wire format is minted for the comparator to re-parse.
+  ledger_rows: List<ServingLedgerRowObserved>
 }
 
 // ---------------------------------------------------------------------------
@@ -303,13 +340,123 @@ fn serving_ak_deviations(dline: String, ak: ObservationAttempt<String, ServingLe
   }
 }
 
+// ---------------------------------------------------------------------------
+// the ledger compare: the desired host_capacity rows joined to the observe's per-row
+// reads BY PATH (never by list position), each field compared to its declared value.
+// ---------------------------------------------------------------------------
+
+// The item a ledger drift carries: ONE concept the apply routes to the ledger install. The
+// drifted PATH is recovered by serving_ledger_drifted_paths, never parsed back out of a
+// display string (the display strings are evidence, not a wire format).
+fn serving_ledger_item() -> String { "ledger" }
+
+fn serving_ledger_row_found(rows: List<ServingLedgerRowObserved>, path: FilePath) -> ServingLedgerRowObserved? {
+  first_where(rows, r => (r.path as String) == (path as String))
+}
+
+// ONE declared NAME leg (an owner user or group). Established-equal is met; established-unequal
+// is a proven drift the apply re-owns; a REFUSED leg contributes NOTHING as a deviation (it
+// becomes the paired unknown), so an unread field is never reported as a wrong field. The
+// comparison is a NAME equality: a service principal is declared across hosts by NAME only
+// (extdeps.posix.identity PosixOwnerNames — ids are per-host), so this is not the mode's
+// "never string-compare" case; names are compared as the strings they are.
+fn serving_ledger_name_outcome(leg: ObservationAttempt<String, ServingLegFailure>, expected: String) -> ServingLedgerOutcome {
+  match leg {
+    ObservationEstablished { observed: v } => match v == expected {
+      true => ServingLedgerOutcome { deviations: [], unknowns: [] }
+      false => ServingLedgerOutcome { deviations: [ServingDeviation { item: serving_ledger_item(), desired: expected, observed: v }], unknowns: [] }
+    }
+    ObservationRefused { cause: c } => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: c.cause }] }
+  }
+}
+
+// ONE declared MODE leg. The observed octal is PARSED to a FileMode and compared as a VALUE,
+// never string-compared: stat prints '755' while the declared canonical (file_mode_octal) is
+// '0755', so a raw octal-string compare would always mismatch. owned_directory_mode_matches
+// canonicalises BOTH sides through file_mode_octal, so the two spellings are judged equal
+// exactly when the bits agree. An established leg whose token will not parse is an UNKNOWN
+// (the observation did not happen), never a drift the apply would write against a bad read.
+fn serving_ledger_mode_outcome(t: OwnedDirectoryTarget, leg: ObservationAttempt<String, ServingLegFailure>) -> ServingLedgerOutcome {
+  match leg {
+    ObservationEstablished { observed: m } => match file_mode_of_octal_text(text: m) {
+      Absent => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: concat("unreadable ledger mode ", m) }] }
+      Present { value: fm } => match owned_directory_mode_matches(t: t, got: fm) {
+        true => ServingLedgerOutcome { deviations: [], unknowns: [] }
+        false => ServingLedgerOutcome { deviations: [ServingDeviation { item: serving_ledger_item(), desired: "declared mode", observed: m }], unknowns: [] }
+      }
+    }
+    ObservationRefused { cause: c } => ServingLedgerOutcome { deviations: [], unknowns: [ServingUnknown { item: serving_ledger_item(), cause: c.cause }] }
+  }
+}
+
+// JUDGE ONE desired ledger row against its observed entry, joined BY PATH. A row the observe
+// never read is an UNKNOWN, NEVER an absence: an absence is proven only by the OWNER-USER leg
+// established to the empty string (stat 'No such file' on the path), which the wet observe sets
+// ONLY there. So a directory nobody probed can never be mistaken for one to (re)create.
+fn serving_ledger_row_judge(t: OwnedDirectoryTarget, rows: List<ServingLedgerRowObserved>) -> ServingLedgerOutcome {
+  match serving_ledger_row_found(rows: rows, path: owned_directory_path(t: t)) {
+    Absent => ServingLedgerOutcome {
+      deviations: [],
+      unknowns: [ServingUnknown { item: serving_ledger_item(), cause: concat("no ledger read recorded for ", owned_directory_path(t: t) as String) }],
+    }
+    Present { value: r } => match r.user {
+      ObservationEstablished { observed: "" } => ServingLedgerOutcome {
+        deviations: [ServingDeviation { item: serving_ledger_item(), desired: "present", observed: "absent" }],
+        unknowns: [],
+      }
+      _ => {
+        let owner = owned_directory_owner(t: t)
+        let uo = serving_ledger_name_outcome(leg: r.user, expected: owner.user as String)
+        let go = serving_ledger_name_outcome(leg: r.group, expected: owner.group as String)
+        let mo = serving_ledger_mode_outcome(t: t, leg: r.mode)
+        ServingLedgerOutcome {
+          deviations: concat(concat(uo.deviations, go.deviations), mo.deviations),
+          unknowns: concat(concat(uo.unknowns, go.unknowns), mo.unknowns),
+        }
+      }
+    }
+  }
+}
+
+// The whole ledger, folded over the DESIRED rows (so a row absent from the observe's reads is
+// still judged, as an unknown). The fold accumulates both chains together.
+fn serving_ledger_judge(d: RemoteBuildServingDesired, rows: List<ServingLedgerRowObserved>) -> ServingLedgerOutcome {
+  fold(
+    d.ledger_dirs,
+    ServingLedgerOutcome { deviations: [], unknowns: [] },
+    (acc, t) => {
+      let next = serving_ledger_row_judge(t: t, rows: rows)
+      ServingLedgerOutcome {
+        deviations: concat(acc.deviations, next.deviations),
+        unknowns: concat(acc.unknowns, next.unknowns),
+      }
+    },
+  )
+}
+
+// The ledger paths the apply must (re)install: those desired rows whose judge proved a drift.
+// 5(b)'s converge_plan maps these to one EnsureLedgerDirectory write each, by PATH.
+fn serving_ledger_drifted_paths(d: RemoteBuildServingDesired, rows: List<ServingLedgerRowObserved>) -> List<FilePath> {
+  map(filter(d.ledger_dirs, t => count(serving_ledger_row_judge(t: t, rows: rows).deviations) > 0), t => owned_directory_path(t: t))
+}
+
+// The canonical octal a ledger row's declared mode renders to. The witness uses it to build a
+// MATCHED observation, and 5(b)'s receipts use it as the 'desired' rendering. It is the one
+// place the row's mode is spelled as text, so no consumer stringifies it a second way.
+fn serving_ledger_declared_mode_octal(t: OwnedDirectoryTarget) -> String {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => file_mode_octal(mode: mode)
+    OwnedDirectoryModeRefused { reason } => ""
+  }
+}
+
 // The ONE assessment for one host. A host whose forced-command line will not render is
 // refused outright (a host that cannot serve is never written). Otherwise every leg's proven
 // mismatch is a deviation and every refused leg is an unknown, folded through
 // assess_by_deviations_and_unknowns — so UNKNOWNs WIN over deviations: a partly-unread host
 // is GoalIndeterminate (the observe refuses), NOT GoalDiverged (which would license the
 // apply writing items nobody actually read). This is gunbc.design_argument::fail_closed.
-fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved) -> ServingAssessment {
+fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: ServingPlanInput) -> ServingAssessment {
   match d.forced_command_line {
     Absent => GoalAssessmentRefused { cause: ServingAssessRefusal { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" } }
     Present { value: dline } => {
@@ -355,6 +502,28 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved) -> ServingAs
           ),
         ),
       )
+      // The single-comparator plan-time legs. Each of the three is either a proven deviation
+      // from the pin (serving_expected_deviation) or, when the leg was refused, a ServingUnknown
+      // folded into the unknowns chain — a refused leg mints NO deviation, so the apply never
+      // writes toward a host whose fact nobody read. host.arch is a deviation on mismatch and
+      // converge_plan has no arm for it, so 5(b)'s apply treats it as unhandled and REFUSES —
+      // the correct outcome: a wrong-arch executor is never silently converged by a write.
+      let pin_unknowns = concat(
+        concat(
+          match o.serve_binary_sha256 { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "serve_binary.sha256", cause: c.cause }] },
+          match o.checkout_revision { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout.revision", cause: c.cause }] },
+        ),
+        match o.target_arch { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "host.arch", cause: c.cause }] },
+      )
+      let pin_deviations = concat(
+        concat(
+          serving_expected_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
+          serving_expected_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
+        ),
+        serving_expected_deviation(item: "host.arch", expected: pin.executor_arch, leg: o.target_arch),
+      )
+      // the ledger, joined to the observe's per-row reads by path (see serving_ledger_judge).
+      let ledger = serving_ledger_judge(d: d, rows: o.ledger_rows)
       assess_by_deviations_and_unknowns(
         evidence: ServingEvidence {
           account_uid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_uid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
@@ -366,9 +535,14 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved) -> ServingAs
           serve_binary_present: match o.serve_binary { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
           checkout_present: match o.checkout { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
           toolchain_present: match o.toolchain { ObservationEstablished { observed: b } => Present { value: b }  ObservationRefused { cause: _ } => Absent },
+          // minted only where the leg was read; an unread leg mints no evidence, the fact lives
+          // in the unknowns chain instead (never a value over an unknown).
+          serve_binary_sha256: match o.serve_binary_sha256 { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
+          checkout_revision: match o.checkout_revision { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
+          target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
-        deviations: deviations,
-        unknowns: concat(unknowns, present_unknowns),
+        deviations: concat(deviations, concat(pin_deviations, ledger.deviations)),
+        unknowns: concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)),
       )
     }
   }
@@ -519,6 +693,10 @@ fn serving_observed_from_reads(
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
+  serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>,
+  checkout_revision: ObservationAttempt<String, ServingLegFailure>,
+  target_arch: ObservationAttempt<String, ServingLegFailure>,
+  ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
   {
     passwd: passwd,
@@ -529,6 +707,10 @@ fn serving_observed_from_reads(
     serve_binary: serve_binary,
     checkout: checkout,
     toolchain: toolchain,
+    serve_binary_sha256: serve_binary_sha256,
+    checkout_revision: checkout_revision,
+    target_arch: target_arch,
+    ledger_rows: ledger_rows,
   }
 }
 
