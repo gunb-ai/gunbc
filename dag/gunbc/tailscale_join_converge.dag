@@ -79,6 +79,7 @@ import extdeps.package_managers.dpkg {
   dpkg_query_status_verdict_of,
 }
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.tailscale.join {
   TailscaleCalendarDate,
   JoinStateJoined,
@@ -141,6 +142,7 @@ import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.secret_provision { Secret }
 import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_file,
+  tailscale_fleet_auth_key_host_path,
   tailscale_fleet_auth_key_policy,
   tailscale_fleet_auth_key_usable_on,
   tailscale_fleet_node_tag,
@@ -600,6 +602,12 @@ type TailscaleJoinOutcome
       tailnet_name: NonEmptyStr,
       installed: Bool,
       placement_action: String,
+      // Whether the converge's own removal of the placed key copy succeeded. A join is a join either way
+      // (the read-back already proved membership), but a left-behind copy of a reusable enrollment key is a
+      // fact the caller must be able to see and act on -- never one the model hides (
+      // @ref(gunbc.design_argument::epistemic_humility)).
+      key_removed: Bool,
+      removal_cause: String?,
     }
   | JoinRefused { host: HostIdentity, cause: String }
 
@@ -740,11 +748,30 @@ fn tailscale_join_place_and_join(
                     match tailscale_join_readback(router: router, context: context, expected: tailnet_name) {
                       JoinReadbackFailed { cause: cause } => JoinRefused { host: host, cause: cause }
                       JoinReadbackOk =>
-                        JoinConverged {
-                          host: host,
-                          tailnet_name: tailnet_name,
-                          installed: package_action == JoinPackageInstall,
-                          placement_action: action,
+                        // THE PLACED COPY DOES NOT OUTLIVE THE JOIN IT WAS PLACED FOR. The custody comment
+                        // says the host file is a copy "for the duration of a join"; this leg is what makes
+                        // that sentence true. rm -f is coreutils' idempotent teardown (absent is success),
+                        // and its failure does not undo the membership the read-back just proved -- so the
+                        // outcome carries the cause instead of the run losing a proven join.
+                        match tailscale_join_remove_key_leg(subject: subject, context: context) {
+                          Absent =>
+                            JoinConverged {
+                              host: host,
+                              tailnet_name: tailnet_name,
+                              installed: package_action == JoinPackageInstall,
+                              placement_action: action,
+                              key_removed: true,
+                              removal_cause: Absent,
+                            }
+                          Present { value: why } =>
+                            JoinConverged {
+                              host: host,
+                              tailnet_name: tailnet_name,
+                              installed: package_action == JoinPackageInstall,
+                              placement_action: action,
+                              key_removed: false,
+                              removal_cause: Present { value: why },
+                            }
                         }
                     }
                 }
@@ -754,6 +781,26 @@ fn tailscale_join_place_and_join(
   }
 }
 
+
+// THE REMOVAL LEG, run once the read-back has proved membership: it deletes THE COPY THIS CONVERGE PLACED,
+// the one the custody row calls "a copy for the duration of a join". The argv is coreutils' own idempotent
+// force removal (absent is success, so a host that never got the file -- or already lost it -- answers 0),
+// built by the rm authority extdeps.tools.gnu_coreutils rather than spelled here, and pointed at exactly
+// one path: the custody row's own.
+fn tailscale_join_remove_key_leg(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+) -> String? {
+  tailscale_join_elevated_refusal(
+    leg: run_elevated_leg(
+      subject: subject,
+      context: context,
+      argv: coreutils_rm_force_argv(paths: [tailscale_fleet_auth_key_host_path as String]),
+      stdin_payload: "",
+    ),
+    label: "rm placed key copy",
+  )
+}
 
 // THE INSTALL LEG, present only when the plan asked for it.
 fn tailscale_join_install_leg(

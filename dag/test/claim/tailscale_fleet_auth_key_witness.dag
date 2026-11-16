@@ -35,6 +35,7 @@ import extdeps.tailscale.join {
   TailscalePingCommandRefused,
 }
 import extdeps.posix.getent { getent_hosts_command }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_secret_id,
   tailscale_fleet_auth_key_secret_ref,
@@ -334,6 +335,29 @@ test fn w_new_argv_admissions_are_alive() -> Bool {
 }
 
 // ── THE CONVERGE'S OWN INVARIANTS ────────────────────────────────────────────────────────────────────
+
+// THE PLACED COPY'S LIFE IS THE JOIN'S LIFE -- enforced, not asserted (review 95817): the removal argv is
+// coreutils' idempotent force removal (absent is success), three words, and it names exactly ONE path:
+// the custody row's own. No wildcard, no directory, nothing the converge did not place.
+test fn w_removal_leg_targets_only_the_copied_key() -> Bool {
+  let words = coreutils_rm_force_argv(paths: [tailscale_fleet_auth_key_host_path as String])
+  words.count() == 3
+    && match words {
+      Cons { head: prog, tail: rest } =>
+        prog == "rm"
+          && match rest {
+            Cons { head: flag, tail: tail2 } =>
+              flag == "-f"
+                && match tail2 {
+                  Cons { head: path, tail: Empty } =>
+                    path == (tailscale_fleet_auth_key_host_path as String)
+                  _ => false
+                }
+            _ => false
+          }
+      Empty => false
+    }
+}
 
 // Every host the join converge claims as its population is a member of the enrolment roster, every host
 // with a hostname advertises exactly the fleet tag (the tag the ACL will address), and every emitted join

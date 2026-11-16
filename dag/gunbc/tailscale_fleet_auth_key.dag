@@ -220,9 +220,3 @@ data tailscale_fleet_auth_key_host_path: NonEmptyStr = "/etc/gunbc-tailscale/fle
 data tailscale_fleet_auth_key_file: Optional<TailscaleAuthKeyFile> = tailscale_auth_key_file_at(
   path: tailscale_fleet_auth_key_host_path,
 )
-
-// THE ONE FACT ABOUT THE FILE THE JOIN DEPENDS ON BESIDES ITS NAME: it must be readable by the root the
-// join runs as and by nobody else, which is the custody row's owner and mode (root:root, 0400) -- so a
-// converged file satisfies this and a file any other user could read is a custody refusal, not a join
-// concern.
-data tailscale_fleet_auth_key_file_is_root_only: Bool = true
