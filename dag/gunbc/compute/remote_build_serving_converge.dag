@@ -32,7 +32,9 @@ import gunbc.compute.remote_build_serving_setup {
   serving_observed_from_reads, serving_assess, ServingAssessment, ServingDeviation, serving_deviation_item,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item, serving_ledger_declared_mode_octal,
+  serving_store_dir_mode_octal,
 }
+import extdeps.access.posix { file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
@@ -288,6 +290,11 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     authorized_keys: serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path),
     store_root: serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root),
     store_staging: serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging),
+    // The octal MODE of each store directory, read by the same stat route the ledger rows use (stat_mode_argv,
+    // %a). A present directory at the wrong mode is now a proved deviation routing to EnsureDirectory, where
+    // before the only store check was `test -d` — presence could not see a mode drift (review 95935).
+    store_root_mode: serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root)),
+    store_staging_mode: serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging)),
     serve_binary: serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary),
     checkout: serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir),
     toolchain: serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home),
@@ -391,7 +398,7 @@ fn remote_build_serving_observe_ci_wet() -> ProcessExit {
 // serving_assessment_receipt_text and never echoes an action's content.
 type ConvergeAction =
     EnsureGroup { name: String, gid: Int }
-  | EnsureAccount { name: String, uid: Int, gid: Int, primary_group: String, home: String, supplementary: List<NonEmptyStr> }
+  | EnsureAccount { name: String, uid: Int, gid: Int, primary_group: String, home: String, shell: String, supplementary: List<NonEmptyStr> }
   | EnsureGroupMembership { group_name: String, group_gid: Int, member: String }
   | EnsureDirectory { path: String, owner_user: String, owner_group: String, mode: String }
   | EnsureAuthorizedKeys { path: String, owner_user: String, content: String }
@@ -434,7 +441,7 @@ fn converge_draft_unhandled(acc: ConvergeDraft, item: String) -> ConvergeDraft {
 }
 
 fn converge_account(d: RemoteBuildServingDesired) -> ConvergeAction {
-  EnsureAccount { name: d.account_name, uid: d.account_uid, gid: d.account_gid, primary_group: d.account_group_name, home: d.account_home, supplementary: d.supplementary_groups }
+  EnsureAccount { name: d.account_name, uid: d.account_uid, gid: d.account_gid, primary_group: d.account_group_name, home: d.account_home, shell: d.account_shell, supplementary: d.supplementary_groups }
 }
 
 // The account's OWN primary group (gunbc-build @ account_gid), created ONLY when the observe proved it
@@ -471,7 +478,7 @@ fn converge_store_directories(acc: ConvergeDraft, path: String, d: RemoteBuildSe
   // which is what srv1 carries on the serving account's directories — NOT the ledger group (a supplementary
   // group) and NOT the account name (useradd ran with -g <gid>, so it created no private group named after
   // the account). d.account_group_name exists (GroupAbsent→EnsureGroup, or already present per the observe).
-  ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: "0755" }], acc.writes), unhandled: acc.unhandled }
+  ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: serving_store_dir_mode_octal(d: d) }], acc.writes), unhandled: acc.unhandled }
 }
 
 // The authorized_keys write carries the single forced-command line. It is only ever a
@@ -536,7 +543,7 @@ fn converge_ledger_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired, p
 fn converge_kind_rank(a: ConvergeAction) -> Int {
   match a {
     EnsureGroup { name: _, gid: _ } => 0
-    EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, supplementary: _ } => 1
+    EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, shell: _, supplementary: _ } => 1
     EnsureGroupMembership { group_name: _, group_gid: _, member: _ } => 2
     EnsureDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => 3
     EnsureLedgerDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => 3
@@ -549,7 +556,7 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
 fn converge_action_key(a: ConvergeAction) -> String {
   match a {
     EnsureGroup { name: n, gid: _ } => concat("group:", n)
-    EnsureAccount { name: n, uid: _, gid: _, primary_group: _, home: _, supplementary: _ } => concat("account:", n)
+    EnsureAccount { name: n, uid: _, gid: _, primary_group: _, home: _, shell: _, supplementary: _ } => concat("account:", n)
     EnsureGroupMembership { group_name: g, group_gid: _, member: m } => concat("member:", g, ":", m)
     EnsureDirectory { path: p, owner_user: _, owner_group: _, mode: _ } => concat("dir:", p)
     EnsureLedgerDirectory { path: p, owner_user: _, owner_group: _, mode: _ } => concat("ledger:", p)
@@ -628,6 +635,15 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     LedgerNameMismatch { path, field: _, declared: _, observed: _ } => converge_ledger_directory(acc, d: d, path: (path as String))
     LedgerModeMismatch { path, declared: _, observed: _ } => converge_ledger_directory(acc, d: d, path: (path as String))
     LedgerAbsent { path } => converge_ledger_directory(acc, d: d, path: (path as String))
+    // A store directory that exists at the WRONG mode re-establishes itself at the declared store-dir
+    // mode through the SAME EnsureDirectory builder the presence arm uses (single_authority: the mode
+    // is d.store_dir_mode, never a per-arm literal). The two arms stay separate so the routing is by
+    // the arm, not by a stored item string (review 95935).
+    StoreRootModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_root, d)
+    StoreStagingModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_staging, d)
+    // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
+    // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
+    AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
   }
 }
 
@@ -734,7 +750,7 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
 // The serve binary: scp the executor's built $ROOT/target/release/gunbc up, install it 0755 as the
 // serving account, then READ BACK its sha256 and require it to equal the pin. A host whose binary
 // does not read back to the pin's sha is NOT settled (the arm returns false; the re-observe agrees).
-fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, action: ConvergeAction) -> Bool {
+fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: String, action: ConvergeAction) -> Bool {
   match action {
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } =>
       match converge_private_stage_dir(target: target, context: context) {
@@ -743,7 +759,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
           let remote_path = concat(stage, "/serve.upload")
           if converge_upload(target: target, context: context, local_path: up as NonEmptyStr, remote_path: remote_path as NonEmptyStr) == false {
             false
-          } else if converge_sudo(target: target, context: context, argv: ["install", "-m", "0755", "-o", owner, "-g", group, remote_path, ip]) == false {
+          } else if converge_sudo(target: target, context: context, argv: ["install", "-m", mode, "-o", owner, "-g", group, remote_path, ip]) == false {
             false
           } else {
             match serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: ip) {
@@ -754,7 +770,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
         }
       }
     EnsureGroup { name: _, gid: _ } => false
-    EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, supplementary: _ } => false
+    EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, shell: _, supplementary: _ } => false
     EnsureGroupMembership { group_name: _, group_gid: _, member: _ } => false
     EnsureDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => false
     EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => false
@@ -763,36 +779,64 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
   }
 }
 
-fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, action: ConvergeAction) -> Bool {
+// A write's result, spelled as the CAUSE it failed for or "" when it settled. The common arms have no
+// richer cause than the action's own key, so they name the failed write by converge_action_key; the
+// checkout arm returns converge_run_checkout's cause, which can name the FETCH (review 95935). "" means
+// settled (converge_execute_plan filters those out), so the failed list the receipt reports is the causes
+// of the writes that did NOT settle — one execution per write, the filter is on the result, not a re-run.
+fn converge_write_failure(ok: Bool, name: String) -> String {
+  if ok { "" } else { name }
+}
+
+fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, action: ConvergeAction) -> String {
   match action {
     // groupadd WITHOUT -f: this arm runs only for a group the observe PROVED absent (GroupAbsent), so the
     // name must be free at apply time; a spurious -f would silently drop -g on a taken gid and fabricate a
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly, the write fails to settle,
     // and the wet apply refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: ["groupadd", "-g", to_string(g), n])
-    EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, supplementary: sup } => {
+    EnsureGroup { name: n, gid: g } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["groupadd", "-g", to_string(g), n]), name: converge_action_key(action))
+    EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } => {
       let extra = if length(sup) == 0 { [] } else { ["-G", join(map(sup, s => s as String), ",")] }
-      converge_sudo(target: target, context: context, argv: concat(["useradd", "-m", "-u", to_string(u), "-g", to_string(g), "-s", "/bin/bash", "-d", h], concat(extra, [n])))
+      converge_write_failure(ok: converge_sudo(target: target, context: context, argv: concat(["useradd", "-m", "-u", to_string(u), "-g", to_string(g), "-s", sh, "-d", h], concat(extra, [n]))), name: converge_action_key(action))
     }
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: ["gpasswd", "-a", m, gname])
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p])
-    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: "0600", content: c)
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["gpasswd", "-a", m, gname]), name: converge_action_key(action))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
+    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_write_failure(ok: converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c), name: converge_action_key(action))
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
-    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, action: action)
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p])
+    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => converge_write_failure(ok: converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), action: action), name: converge_action_key(action))
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
+  }
+}
+
+// The checkout's verdict + cause, split so the cause is a hermetic (SSH-free) function of the two
+// command outcomes. The DETACH is the verdict: settled when it succeeds, regardless of the clone (a fresh
+// clone proves nothing about the revision) or even the fetch (a fetch can fail on an already-complete local
+// object graph and the detach still lands). Only when the detach FAILS does the fetch's fate matter as the
+// CAUSE: a failed fetch that then blocks the detach NAMES THE FETCH as the cause (the fetch is why the
+// detach could not reach the revision), rather than reporting a bare detach failure. The verdict is still
+// the detach; the cause is what the receipt names (review 95935). "" means settled.
+fn converge_checkout_cause(fetch_ok: Bool, detach_ok: Bool) -> String {
+  if detach_ok {
+    ""
+  } else if fetch_ok == false {
+    "checkout: git fetch of the pinned revision failed, so the detach could not reach it"
+  } else {
+    "checkout: git checkout --detach of the pinned revision failed"
   }
 }
 
 // Clone-if-absent, then FETCH the pinned revision from the canonical URL, then DETACH at it — run AS
 // the serving account so the checkout is owned by it (the same reason the observe reads the revision via
 // sudo -u). On a host whose checkout is at an older commit the revision is not present locally, so a bare
-// 'checkout --detach rev' would fail; the fetch brings the exact pinned object first. The verdict is the
-// DETACH succeeding — not the clone (a fresh clone succeeds but proves nothing about the revision) and not
-// 'cloned || detached' (a failed detach on an existing checkout must not pass on the strength of a no-op clone).
-fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> Bool {
+// 'checkout --detach rev' would fail; the fetch brings the exact pinned object first. The clone RESULT IS
+// IGNORED ON PURPOSE (a fresh clone succeeds but proves nothing about the revision); the fetch and detach
+// results feed converge_checkout_cause, which keeps the DETACH as the verdict but names the FETCH as the
+// cause when a failed fetch is what left the detach with nothing to detach. Returns "" when settled.
+fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> String {
   let _clone = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "clone", "--", url, dir])
-  let _fetch = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "fetch", "--", url, rev])
-  converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "checkout", "--detach", rev])
+  let fetch_ok = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "fetch", "--", url, rev])
+  let detach_ok = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "checkout", "--detach", rev])
+  converge_checkout_cause(fetch_ok: fetch_ok, detach_ok: detach_ok)
 }
 
 // The execute path, and the only consumer of a plan's writes. Its parameter is the PLAN arm's
@@ -803,7 +847,9 @@ fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d
   // Review 95922 #1: the body filtered ConvergeActions, not Strings. Name each
   // failed write by its key so the declared List<String> is true and the receipt
   // can say which writes refused (guarantee_ladder: values inhabit declared types).
-  map(filter(non_empty_to_list(writes), a => converge_run_write(target: target, context: context, d: d, action: a) == false), a => converge_action_key(a))
+  // One execution per write: map each write to its cause ("" settled), then keep the non-empty ones. The
+  // checkout write's cause can name the FETCH (review 95935); every other cause is the write's own key.
+  filter(map(non_empty_to_list(writes), a => converge_run_write(target: target, context: context, d: d, action: a)), c => c != "")
 }
 
 // The three exits, each spelled ONCE, so the SHAPE of the decision is the only thing that routes
@@ -849,7 +895,7 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
   } else {
     match after_plan {
       ConvergeSettled => if length(failed) != 0 || serving_assessment_settled(a: after_assessment) == false {
-        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused\n", body], ""))
+        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused [", join(failed, "; "), "]\n", body], ""))
       } else {
         ExitSuccess
       }
