@@ -35,10 +35,11 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_compute_ledger_group_gid,
   fleet_posix_remote_build_supplementary_groups,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance, remote_build_candidates }
+import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.ssh.keys { authorized_key_entry_line }
 
 // ---------------------------------------------------------------------------
@@ -130,14 +131,26 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String {
   }
 }
 
-// Render the account's authorized_keys forced-command line for the host, none when no
-// candidate exists (an unadmitted host has no candidate, as the serve CLI skips it) or
-// when the render itself refuses (unresolvable instance / repo).
+// The CANDIDATE host set PR 5 owns. It is deliberately NOT gunbc.compute.remote_build_hosts
+// ::remote_build_serving_hosts — that is the LIVE dispatch gate (-> remote_build_host_rows ->
+// the fabric roster) and PR 4 keeps it at srv1 only, because admitting a host before its
+// /opt/gunbc/compute/capacity home, store and account exist is fail-open (review 95791). The
+// OBSERVE arm must still read a host that is not yet rostered, so it takes its candidate set
+// from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
+// the live roster one-by-one (each only after its home/store/account are created and read back).
+fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+}
+
+// Render the account's authorized_keys forced-command line for the host, none when the host
+// is not a PR 5 candidate or the render itself refuses (unresolvable instance / repo). The
+// candidate is constructed from the host's serving instance directly — NOT via the roster-gated
+// remote_build_candidates() — so a not-yet-rostered candidate still renders, and a host outside
+// the candidate row is refused (never silently Met).
 fn serving_forced_command_line(host: HostIdentity) -> String? {
-  let mine = filter(remote_build_candidates(), c => c.host == host)
-  match first_where(mine, _ => true) {
-    Absent => Absent
-    Present { value: c } => match remote_build_render_entry(candidate: c) {
+  match any(remote_build_serving_candidate_hosts(), h => h == host) {
+    false => Absent
+    true => match remote_build_render_entry(candidate: RemoteBuildCandidate { host: host, instance: remote_build_serving_instance(host: host) }) {
       RemoteBuildEntryRendered { entry } => Present { value: authorized_key_entry_line(e: entry) }
       _ => Absent
     }

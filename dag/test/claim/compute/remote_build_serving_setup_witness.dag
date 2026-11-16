@@ -72,7 +72,7 @@ fn line_present(d: RemoteBuildServingDesired) -> Bool {
   }
 }
 
-test fn all_four_roster_hosts_render_a_forced_command() -> Bool {
+test fn every_pr5_candidate_host_renders_a_forced_command() -> Bool {
   all(
     [
       remote_build_serving_desired(host: operator_host_srv1),
@@ -88,7 +88,7 @@ test fn all_four_roster_hosts_render_a_forced_command() -> Bool {
 // srv5 is not a remote-build serving host, so it has no candidate and its forced
 // command must be Absent. If the render ever fell back to a fabricated line, this fails.
 
-test fn a_non_roster_host_has_no_forced_command() -> Bool {
+test fn a_host_outside_the_candidate_row_has_no_forced_command() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv9)
   match d.forced_command_line {
     Absent => true
@@ -193,7 +193,7 @@ test fn an_unobserved_host_is_not_reported_settled() -> Bool {
 
 // RED CONTROL: a non-roster host (its forced-command line is unrenderable) REFUSES the
 // plan outright — the converger must not half-write a host that cannot serve.
-test fn a_non_roster_host_refuses_the_plan() -> Bool {
+test fn a_host_outside_the_candidate_row_refuses_the_plan() -> Bool {
   let d = remote_build_serving_desired(host: operator_host_srv9)
   let o = srv1_blank_observation()
   serving_plan_refused(plan: serving_plan(d: d, o: o))
@@ -309,6 +309,22 @@ test fn readback_authorized_keys_with_a_stray_key_drifts() -> Bool {
   )
   match first_where(serving_plan(d: d, o: o), i => i.item == "authorized_keys.forced_command") {
     Present { value: i } => match i.verdict { Drifted { desired, observed } => true, _ => false }
+    Absent => false
+  }
+}
+
+// PR 5 owns the candidate set precisely so the OBSERVE arm covers hosts the LIVE roster has not
+// admitted yet: PR 4 keeps remote_build_serving_hosts at srv1 only (admitting early is fail-open,
+// review 95791), and srv3/srv4 are admitted by PR 5(b) LAST, once their home/store/account exist.
+// They must still render a per-host forced-command line off the PR 5-owned candidate row, and the
+// lines must differ (a per-host render, not a constant) — proving the observe is decoupled from the
+// roster it does not yet gate.
+test fn a_not_yet_rostered_candidate_still_renders_a_forced_command() -> Bool {
+  match serving_forced_command_line(host: operator_host_srv3) {
+    Present { value: l3 } => match serving_forced_command_line(host: operator_host_srv4) {
+      Present { value: l4 } => l3 != l4
+      Absent => false
+    }
     Absent => false
   }
 }
