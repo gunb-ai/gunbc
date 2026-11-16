@@ -115,7 +115,9 @@ pub fn nat_to_int(n: Nat) -> i64 {
     }
 }
 
-pub fn uint_width_to_int<N: Clone>(n: Compose<UInt, MachineWidth<N>>) -> Rc<DissolutionCondition> {
+pub fn uint_width_int_injection_certificate<N: Clone>(
+    n: Compose<UInt, MachineWidth<N>>,
+) -> Rc<DissolutionCondition> {
     integer_width_carrier_realization_frontier()
 }
 
