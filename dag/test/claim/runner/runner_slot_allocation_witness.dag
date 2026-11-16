@@ -284,11 +284,13 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
   // srv3/srv4 committed widths are re-baselined from the pre-engine 18 to the charged values (their engine's
-  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16. The dynamic assertions
-  // just below (committed == memory-admitted, and cpu axis > memory-admitted) still hold and prove memory is
-  // the binding axis at these charged values; srv1 pays nothing and stays at memory-admitted + transitional.
-  committed_width_is(host: operator_host_srv3, expected: 14)
-    && committed_width_is(host: operator_host_srv4, expected: 16)
+  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16, THEN one CI runner slot
+  // each is reserved to the build pool (host_build_pool_reservation, the remote-build PR 4 carve), so each
+  // commits one slot FEWER: srv3 -> 13, srv4 -> 15. The dynamic assertions just below (committed ==
+  // memory-admitted, and cpu axis > memory-admitted) still hold and prove memory is the binding axis at these
+  // charged post-carve values; srv1 pays nothing (no carve) and stays at memory-admitted + transitional.
+  committed_width_is(host: operator_host_srv3, expected: 13)
+    && committed_width_is(host: operator_host_srv4, expected: 15)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))

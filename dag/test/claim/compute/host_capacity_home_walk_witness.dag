@@ -1,0 +1,25 @@
+module test.claim.compute.host_capacity_home_walk_witness
+
+import std.types { Bool }
+import gunbc.compute.host_capacity { host_capacity_home_for_host }
+import gunbc.roadmap.roadmap_dashboard_instance { DashboardInstanceForHost, DashboardInstanceHostUnknown }
+
+// THE RED CONTROL, executed RED once to prove it DISCRIMINATES (remote-build PR 4). This is the same
+// assertion host_capacity_seal_witness.an_admitted_host_resolves_its_ledger_to_the_host_carrier_not_its_
+// dashboard_instance makes, isolated to one cell so the walk regression can be executed against it
+// cheaply. Under the real model it is TRUE: host_capacity_home_for_host("srv1") takes the host-home arm
+// and returns the host-capacity carrier, whose actuator_host is the host ("srv1"). It is executed RED by
+// temporarily making host_capacity_home_for_host resolve through
+// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host (the old instance walk): srv1's
+// dashboard instance is ALSO rooted /opt/gunbc -- so a root check alone cannot tell the two apart -- but
+// it is actuated from the operator laptop ("macbook"), so this cell fails exactly where the walk would
+// silently re-introduce an instance-scoped ledger behind an identical root. That is the regression the
+// host-scoped home exists to prevent, and this control catches it.
+test fn admitted_host_ledger_is_the_host_home_not_a_dashboard_walk() -> Bool {
+  match host_capacity_home_for_host(host: "srv1") {
+    DashboardInstanceHostUnknown { host: _ } => false
+    DashboardInstanceForHost { instance: i } =>
+      (i.actuator_host as String) == "srv1"
+        && (i.instance_root as String) == "/opt/gunbc"
+  }
+}

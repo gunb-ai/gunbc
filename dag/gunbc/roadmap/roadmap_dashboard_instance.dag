@@ -1374,6 +1374,13 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
+// THE ONE SPELLING OF THE HOST CAPACITY HOME ROOT. Every consumer that asks "is this instance the host
+// home?" compares against THIS, not a re-typed literal: gunbc.compute.host_capacity's
+// compute_ledger_sharing (which decides whether a ledger area is grouped to gunbc-compute) and
+// host_capacity_home (which mints the carrier rooted there) both read it. A second literal could drift
+// and silently un-share a home. gunbc.design_argument::single_authority.
+data host_capacity_home_root: FilePath = "/opt/gunbc"
+
 // THE HOST-SCOPED CAPACITY HOME (remote-build PR 4, operator 2026-11-15 "can we just standardize it
 // now?"). ONE ledger per HOST, at /opt/gunbc/compute/capacity, found by HOST and not through any
 // dashboard instance. srv1's dashboard instance already lives at /opt/gunbc, so srv1's home is the
@@ -1400,7 +1407,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
 // PARAMETER because srv3/srv4's seat is derived from one CI runner slot (a gunbc.runner fact) in
 // gunbc.compute.host_capacity, not restated here.
 fn host_capacity_home(host: NonEmptyStr, build_seat: ByteSize) -> HostDashboardInstance {
-  let home_root = "/opt/gunbc" as FilePath
+  let home_root = host_capacity_home_root
   let toolchain = fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes {
     cargo_home: dashboard_instance_child(root: home_root, child: ".cargo"),
     rustup_home: dashboard_instance_child(root: home_root, child: ".rustup"),

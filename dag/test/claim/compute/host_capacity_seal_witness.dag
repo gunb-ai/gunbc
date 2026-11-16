@@ -7,11 +7,12 @@ import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdic
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import gunbc.compute.host_capacity {
-  compute_root, compute_capacity_root, host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved,
+  compute_root, compute_capacity_root, host_capacity_subject, host_capacity_subject_in,
+  host_capacity_home_for_host, host_capacity_build_seat,
+  ComputeSubjectResolution, ComputeSubjectResolved,
   ComputeSubjectHostUnresolved, ComputeBuildPool,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_home }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_home, DashboardInstanceForHost, DashboardInstanceHostUnknown }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 
@@ -81,21 +82,44 @@ test fn the_ledger_root_is_the_provisioned_compute_directory_plus_its_own_member
   (compute_capacity_root(host_instance: instance) as String) == join([compute_root(instance: instance) as String, "/capacity"], "")
 }
 
-// THE LEDGER IS FOUND BY HOST, NOT THROUGH A DASHBOARD INSTANCE (remote-build PR 4). A host on the
-// roster resolves its ledger home THROUGH host_capacity_subject, which keys on host identity and NOT on
-// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host. This is the DISCRIMINATING
-// control for the host-scoped home: srv3 and srv4 resolve NO dashboard instance, so if the subject still
-// walked the old instance path they would come back ComputeSubjectHostUnresolved and this would be
-// false; srv2 resolves a /home/briansrls dashboard instance, so on the old path its ledger would root
-// under /home and this would be false. Every roster host now resolves to the one host home at
-// compute_capacity_home_root/compute/capacity. It is dry -- host_capacity_subject is a pure function, so
-// unlike the wet witness this runs green on its own -- and it asks nothing of the host's real filesystem.
+// THE LEDGER HOME IS FOUND BY HOST, NOT BY WALKING A DASHBOARD INSTANCE (remote-build PR 4). The three
+// available hosts that are NOT yet admitted -- srv2, srv3, srv4 -- are each given a home by
+// host_capacity_home, and the home must (a) root at the ONE host capacity home /opt/gunbc, and (b) carry
+// the HOST's OWN identity (host_identity and actuator_host both equal the host), never another host's.
+// This is the DISCRIMINATING control for the host-scoped home and it runs on the model alone (dry, a pure
+// function): srv3 and srv4 resolve NO dashboard instance at all, so on the old
+// gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host walk they would come back unknown
+// and never root at /opt/gunbc; srv2 resolves a /home/briansrls dashboard instance, so the old walk rooted
+// its ledger under /home, which the gunbc-build account cannot traverse. If resolution ever goes back to
+// walking the instance, srv2's root becomes /home (not /opt/gunbc) and srv3/srv4 stop rooting at
+// /opt/gunbc -- this cell reds. It also pins the review fix (review 38602 / artifact 95775) that the home
+// is host-derived: host_identity == actuator_host == the host, so no host borrows srv1's identity.
 test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() -> Bool {
-  remote_build_serving_hosts() |> all(h => match host_capacity_subject(instance: host_capacity_home(host: (h as String) as NonEmptyStr, build_seat: byte_size(0)), pool: ComputeBuildPool) {
-    ComputeSubjectHostUnresolved { host: _ } => false
-    ComputeSubjectResolved { subject: s, appropriation: _ } =>
-      (compute_capacity_root(host_instance: s.instance) as String) == "/opt/gunbc/compute/capacity"
+  ["srv2", "srv3", "srv4"] |> all(h => {
+    let home = host_capacity_home(host: (h as String) as NonEmptyStr, build_seat: host_capacity_build_seat(host: (h as String) as HostIdentity))
+    ((home.instance_root as String) == "/opt/gunbc")
+      && ((home.host_identity as String) == (h as String))
+      && ((home.actuator_host as String) == (h as String))
   })
+}
+
+// THE ADMITTED HOST'S LEDGER IS THE HOST HOME, NOT ITS OWN DASHBOARD INSTANCE. srv1 is the only host on
+// the roster today (PR 5 admits the others as it creates and reads back their homes). Its dashboard
+// instance ALSO lives at /opt/gunbc, so a root check alone cannot tell the host home from a walk of
+// srv1's dashboard instance -- they share the root. The identity fields tell them apart: host home
+// carries actuator_host == the host ("srv1"); srv1's live dashboard instance is actuated from the
+// operator laptop ("macbook"). host_capacity_home_for_host is the one table; for an admitted host it MUST
+// return the host home carrier. If it regressed to walking dashboard_instance_for_host, srv1's ledger
+// would resolve through srv1's macbook-actuated dashboard instance and this cell reds even though the
+// root still reads /opt/gunbc. This is the control that catches a root-equal walk regression.
+test fn an_admitted_host_resolves_its_ledger_to_the_host_carrier_not_its_dashboard_instance() -> Bool {
+  match host_capacity_home_for_host(host: "srv1") {
+    DashboardInstanceHostUnknown { host: _ } => false
+    DashboardInstanceForHost { instance: i } =>
+      ((i.instance_root as String) == "/opt/gunbc")
+        && ((i.actuator_host as String) == "srv1")
+        && ((i.host_identity as String) == "srv1")
+  }
 }
 
 // A HOST WITH NO DASHBOARD INSTANCE STILL HAS A DECLARED BUILD POOL, DERIVED FROM THE RUNNER CARVE (PR 4,
@@ -107,14 +131,10 @@ test fn a_host_with_no_dashboard_instance_still_resolves_its_ledger_by_host() ->
 // would drift from the slot; this reads the slot itself.
 test fn a_host_with_no_instance_has_a_declared_pool_derived_from_the_runner_slot() -> Bool {
   let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
-  let srv3_app = match host_capacity_subject(instance: host_capacity_home(host: "srv3", build_seat: byte_size(0)), pool: ComputeBuildPool) {
-    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
-    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
-  }
-  let srv1_app = match host_capacity_subject(instance: host_capacity_home(host: "srv1", build_seat: byte_size(0)), pool: ComputeBuildPool) {
-    ComputeSubjectResolved { appropriation: a, subject: _ } => kibibyte_count(k: a)
-    ComputeSubjectHostUnresolved { host: _ } => 0 - 1
-  }
+  let srv3_home = host_capacity_home(host: "srv3", build_seat: host_capacity_build_seat(host: "srv3" as HostIdentity))
+  let srv1_home = host_capacity_home(host: "srv1", build_seat: host_capacity_build_seat(host: "srv1" as HostIdentity))
+  let srv3_app = kibibyte_count(k: host_capacity_subject_in(requesting: srv3_home, host_instance: srv3_home, pool: ComputeBuildPool).appropriation)
+  let srv1_app = kibibyte_count(k: host_capacity_subject_in(requesting: srv1_home, host_instance: srv1_home, pool: ComputeBuildPool).appropriation)
   one_slot_kib > 0 && srv3_app == one_slot_kib && srv1_app != srv3_app
 }
 

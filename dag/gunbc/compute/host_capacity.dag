@@ -37,7 +37,7 @@ import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
-  host_capacity_home, compute_build_memory_ceiling_default,
+  host_capacity_home, compute_build_memory_ceiling_default, host_capacity_home_root,
 }
 import gunbc.runner.runner_slot_desired { host_build_pool_reservation }
 
@@ -186,9 +186,11 @@ type ComputeLedgerSharing
 // the carried instance against gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host by
 // INSTANCE ID: that walk is exactly what resolved srv2's ledger into /home/briansrls and left srv3/srv4
 // with no ledger, so it must not return. The red control in the witnesses fails if resolution goes back
-// to it. The home root is spelled once here; the srv1 host home carries the same root, so srv1's shared
-// directories are unchanged.
-data compute_capacity_home_root: FilePath = "/opt/gunbc"
+// to it. The home root is NOT re-typed here -- it is gunbc.roadmap.roadmap_dashboard_instance
+// host_capacity_home_root, the SAME data host_capacity_home mints its carrier from, so the sharing test
+// and the carrier can never disagree about what "the host home" is (single_authority). srv1's host home
+// carries that root, so srv1's shared directories are unchanged.
+data compute_capacity_home_root: FilePath = host_capacity_home_root
 
 fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerSharing {
   if remote_build_host_is_serving(host: (instance.host_identity as HostIdentity))
@@ -330,10 +332,21 @@ fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectRe
 // (host_capacity_wet_witness, attempt_discharge_wet_witness, session_placement_wet_witness) pass an
 // ISOLATED instance and expect the ledger rooted in their own test directory, so compute_capacity_-
 // directories stays instance-pure and this function supplies the host root by minting the home itself.
-// The converger (remote-build PR 5) ensures these for the instance-less roster hosts; srv1 keeps
-// flowing them through dashboard_instance_directory_demands (srv1's home and dashboard instance share
-// /opt/gunbc, so the rows are identical), and srv2's switch to the host home is that converger's
-// actuation. Spelled once -- it calls compute_capacity_directories, never a second copy of the rows.
+// Spelled once -- it calls compute_capacity_directories, never a second copy of the rows.
+//
+// DECLARED FRONTIER (gunbc.design_argument::consumption). Named consumer: the remote-build serving-setup
+// converger (remote-build PR 5, gunbc.compute-serve-setup), which ensures these directories for a host
+// and READS THEM BACK before that host is admitted to gunbc.compute.remote_build_hosts
+// remote_build_serving_hosts -- admission follows the home existing on disk, per the fail_closed note
+// there. Trigger: a host being admitted to the roster (the same change that creates and reads back its
+// /opt/gunbc/compute/capacity). Until PR 5 lands this function has no live caller, and that is the honest
+// limit: srv1's host home already flows through dashboard_instance_directory_demands (srv1's home and its
+// live dashboard instance share /opt/gunbc, so the rows are identical), and srv2/3/4 are not yet on the
+// roster, so nothing currently-provisioning depends on this. The cost of the frontier is stated rather
+// than hidden: if PR 5 admits a host without consuming this, that host's host-scoped ledger home would go
+// unensured -- which is exactly the failure this demand exists to prevent, so it is declared here before
+// the converger rather than invented inside it. srv2's switch from its /home/briansrls per-instance ledger
+// to this host home is that converger's actuation (no in-flight reservation carries across it).
 fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarget> {
   compute_capacity_directories(instance: host_capacity_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
 }
