@@ -531,3 +531,35 @@ fn serving_observed_from_reads(
     toolchain: toolchain,
   }
 }
+
+// ---------------------------------------------------------------------------
+// (A) plan-time inputs + the value compare for the deep reads (added to 5(a) so the
+// observe receipt is exactly what 5(b)'s apply acts on — one comparator, no fork).
+// ---------------------------------------------------------------------------
+
+// The executor's plan-time reading, taken ONCE per run and handed to BOTH the observe and the
+// apply (manager msg_b003e0ba / msg_0225bdda). These are not host-model facts: they are computed
+// on the fleet-converge executor at plan time — the dispatched revision (github.sha the binary
+// was built at and the checkout detaches at), the executor's 'uname -m' (the target must match or
+// the binary cannot serve), the sha256 of the executor-built $ROOT/target/release/gunbc, and the
+// pinned rustup channel from rust-toolchain.toml.
+type ServingPlanInput {
+  dispatched_revision: String
+  executor_arch: String
+  local_binary_sha256: String
+  toolchain_channel: String
+}
+
+// A string-valued leg that, when ESTABLISHED, must equal the plan-time expected value, else it
+// is a proven mismatch (a deviation the apply writes); a REFUSED leg yields nothing here (it
+// becomes a ServingUnknown, so an unreadable sha/revision/arch is never read as a mismatch).
+// Mirrors serving_present_deviations for the Bool-presence legs.
+fn serving_expected_deviation(item: String, expected: String, leg: ObservationAttempt<String, ServingLegFailure>) -> List<ServingDeviation> {
+  match leg {
+    ObservationEstablished { observed: v } => match v == expected {
+      true => []
+      false => [ServingDeviation { item: item, desired: expected, observed: v }]
+    }
+    ObservationRefused { cause: _ } => []
+  }
+}
