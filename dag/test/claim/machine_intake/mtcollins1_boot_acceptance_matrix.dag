@@ -17,8 +17,8 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after }
-import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, BmcScheduledEvent, BmcAcPowerLost }
+import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after }
+import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
 import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds }
@@ -1989,7 +1989,7 @@ fn matrix_cold_reset_receipt(state: MtCollins1BootWorld?) -> String {
 // A world whose answers do not decode (the boot's firmware-row-only record) cannot satisfy these, which is the
 // control the first version of these claims lacked.
 data matrix_cold_reset_baseline_available_line: String = "mc_before=available, firmware 0.45"
-data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (mc info did not exit 0"
+data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (the RMCP+ session never came up (exit 1)"
 
 // The boot's own world (firmware-row-only mc info) with this scenario's power and receipt directory.
 fn matrix_cold_reset_world_firmware_row_only() -> MtCollins1BootWorld {
@@ -2030,6 +2030,25 @@ fn matrix_cold_reset_power_lost_in_window(world: BmcWorld, call: OperationCall) 
   BmcReplied {
     stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
     world: bmc_with_pending(world: reset, pending: concat(xs: reset.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 30), event: BmcAcPowerLost {} }]), fired: reset.fired),
+  }
+}
+
+// A controller that resets briefly (gone at +2 s, back at +20 s) while every mc info probe in that window fails
+// LOCALLY: the command cannot read its password file, so it exits 1 without reaching the controller (no session line,
+// no deadline). The first poll after the attempt falls in the window; the later ones answer available. The reset
+// happened, but nothing the route read evidences it, so the route may not report it.
+data matrix_cold_reset_local_failure_back_after: Second = second(count: 20)
+data matrix_cold_reset_local_failure_stderr: String = "Unable to read password from file /run/bmc/password\n"
+
+fn matrix_cold_reset_brief_reset(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: matrix_cold_reset_local_failure_back_after) }
+}
+
+fn matrix_cold_reset_mc_info_failing_locally_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    BmcRefused { exit_code: 1, stderr: matrix_cold_reset_local_failure_stderr, world: world }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
   }
 }
 
@@ -2151,6 +2170,31 @@ test fn a_controller_that_ignores_the_attempt_is_not_read_as_reset() -> Bool {
   }
 }
 
+// A FAILED COMMAND IS NOT A SILENT CONTROLLER (side chat on gunbc#16529 at 7d87d15b, F1 narrowed), through the
+// route: available before, the attempt reported sent, the first poll after it fails locally, the next answers
+// available, and power reads the same. That failed probe is not a loss -- even though the modeled controller did
+// reset -- so nothing after it is a recovery: the route refuses with no loss observed, polls to the loss bound, and
+// never reports a recovery.
+test fn a_local_probe_failure_then_an_available_answer_never_reaches_an_accepted_recovery() -> Bool {
+  match matrix_cold_reset_run(overrides: [
+    matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_brief_reset),
+    matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_failing_locally_in_window),
+  ]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: available, firmware 0.45")
+        && !string_contains(s: receipt, pattern: "recovered after the attempt")
+    }
+    _ => false
+  }
+}
+
 // THE CONTROL THE FIRST VERSION LACKED: the same ignoring controller in the boot's own world, whose mc info answer
 // models only the firmware row. Every answer is UNDECODABLE, so the baseline is not available, no answer establishes a
 // loss or a recovery, and the route refuses naming the undecodable answers -- it is never read as available. The
@@ -2161,7 +2205,7 @@ test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_reco
       let receipt = matrix_cold_reset_receipt(state: state)
       !matrix_cold_reset_exited_success(exit: value)
         && count_named(route: route, name: matrix_cold_reset_attempt) == 1
-        && string_contains(s: receipt, pattern: "mc_before=undecodable")
+        && string_contains(s: receipt, pattern: "mc_before=baseline availability was not established (undecodable")
         && string_contains(s: receipt, pattern: "no loss of availability was observed")
         && string_contains(s: receipt, pattern: "last: undecodable")
         && !string_contains(s: receipt, pattern: "available, firmware")

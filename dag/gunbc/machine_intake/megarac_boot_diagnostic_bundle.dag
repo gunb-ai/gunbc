@@ -17,7 +17,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { FreeSemigroup, non_empty_to_list, non_empty_singleton, non_empty_append, trim }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
-import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -25,7 +25,7 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
-import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, ipmitool_read_failure, IpmitoolReadDeadlineExpired, IpmitoolReadSessionFailed, IpmitoolReadFailedOtherwise }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -373,24 +373,27 @@ fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, s
 // D4h, and "Unable to establish IPMI v2" for a session that never came up) are declared there, not here.
 fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
   let detail = first_line(s: stderr)
-  if exit_code == coreutils_timeout_expired_exit_code {
-    BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
-  } else {
-    match bmc_ipmitool_session_cause(endpoint: endpoint, at: at, stderr: stderr) {
-      Present { value: c } => c
-      Absent => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
-    }
+  match ipmitool_read_failure(exit_code: exit_code, stderr: stderr) {
+    IpmitoolReadDeadlineExpired =>
+      BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
+    IpmitoolReadSessionFailed { failure: f } => bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: detail)
+    IpmitoolReadFailedOtherwise => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
   }
 }
 
 // The session-setup half of that reading, which needs no exit code: a backgrounded collector
 // (gunbc.machine_intake.sol_hold) has no exit status the workflow can read, only the lines it wrote.
 fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: String) -> BmcReadCause? {
-  let detail = first_line(s: stderr)
   match ipmi_session_failure(output: stderr) {
-    Present { value: IpmiSessionAuthRefused } => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
-    Present { value: IpmiSessionUnestablished } => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+    Present { value: f } => Present { value: bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: first_line(s: stderr)) }
     Absent => none
+  }
+}
+
+fn bmc_ipmi_session_failure_cause(endpoint: NonEmptyStr, at: NonEmptyStr, failure: IpmiSessionFailure, detail: String) -> BmcReadCause {
+  match failure {
+    IpmiSessionAuthRefused => BmcAuthRefused { endpoint: endpoint, at: at, detail: detail }
+    IpmiSessionUnestablished => BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail }
   }
 }
 

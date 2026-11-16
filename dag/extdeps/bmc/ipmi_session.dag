@@ -17,8 +17,9 @@ module extdeps.bmc.ipmi_session
 // A caller that reads IpmiSessionUnestablished as a refused credential would report the managed credential as
 // rejected merely because the link was down -- a false negative off a read that never looked.
 import std.algebra { string_contains }
-import std.types { String }
-import std.optional { Present }
+import std.types { Int, String }
+import std.optional { Present, Absent }
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 
 type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
 
@@ -44,5 +45,34 @@ fn ipmi_session_failure(output: String) -> IpmiSessionFailure? {
     Present { value: IpmiSessionUnestablished }
   } else {
     none
+  }
+}
+
+// HOW A BOUNDED `timeout ... ipmitool -I lanplus` READ FAILED, from its exit code and stderr alone. This is the one
+// classification every consumer of a failed read derives from (gunbc.machine_intake.megarac_boot_diagnostic_bundle
+// bmc_ipmitool_read_cause adds its endpoint and time; gunbc.host.bmc_cold_reset cold_reset_poll_of decides from it
+// whether a failed poll is evidence that the controller did not answer).
+//   IpmitoolReadDeadlineExpired -- coreutils timeout killed ipmitool at the read deadline (exit 124): no answer
+//                                  arrived within it. Observed on mtcollins1 while its controller was not answering
+//                                  (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt,
+//                                  "PowerDown (first): command success=false exit=124 stdout=[] stderr=[]").
+//   IpmitoolReadSessionFailed   -- ipmitool printed one of the session lines ipmi_session_failure classifies.
+//                                  Unestablished was observed in the same capture ("exit=1 ... stderr=[Error: Unable
+//                                  to establish IPMI v2 / RMCP+ session]").
+//   IpmitoolReadFailedOtherwise -- any other failure: a local exec failure, a usage error, an IPMI completion code.
+//                                  Its cause is not known from these two facts, and it is never read as either above.
+type IpmitoolReadFailure
+  = IpmitoolReadDeadlineExpired
+  | IpmitoolReadSessionFailed { failure: IpmiSessionFailure }
+  | IpmitoolReadFailedOtherwise
+
+fn ipmitool_read_failure(exit_code: Int, stderr: String) -> IpmitoolReadFailure {
+  if exit_code == coreutils_timeout_expired_exit_code {
+    IpmitoolReadDeadlineExpired
+  } else {
+    match ipmi_session_failure(output: stderr) {
+      Present { value: f } => IpmitoolReadSessionFailed { failure: f }
+      Absent => IpmitoolReadFailedOtherwise
+    }
   }
 }

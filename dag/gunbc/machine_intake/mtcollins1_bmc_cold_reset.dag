@@ -21,7 +21,7 @@ import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.bmc_cold_reset {
   ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved,
-  WatchEnded, WatchContinues, cold_reset_watch_start, cold_reset_watch_step, cold_reset_poll_of, cold_reset_poll_text,
+  WatchEnded, WatchContinues, cold_reset_watch_start, cold_reset_watch_step, cold_reset_poll_of, cold_reset_baseline_text,
   ColdResetVerdict, cold_reset_verdict, cold_reset_verdict_text, cold_reset_power_text,
   ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
 }
@@ -143,9 +143,9 @@ fn cold_reset_stage_lines(stage: ColdResetStage) -> String {
     ColdResetHoldRefused { reason: r } => join(["hold=REFUSED ", r, "\n", "controller=untouched\n"], "")
     ColdResetHoldProofRefused { reason: r } => join(["hold=acquired\n", "stage=hold proof refused: ", r, "\n", "controller=untouched\n"], "")
     ColdResetPowerUnreadBefore { mc_before: m, before: b } =>
-      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", chassis_observation_text(observation: b), "\n", "reset=not-attempted (host power could not be read before it)\n"], "")
+      join(["hold=acquired\n", "mc_before=", cold_reset_baseline_text(poll: m), "\n", "power_before=", chassis_observation_text(observation: b), "\n", "reset=not-attempted (host power could not be read before it)\n"], "")
     ColdResetAttempted { mc_before: m, before_on: b, reply: rep, verdict: v } =>
-      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", cold_reset_power_text(on: b), "\n", "reset=attempted once; ", ipmitool_mc_reset_cold_reply_text(reply: rep), "\n", "observed=", cold_reset_verdict_text(verdict: v), "\n"], "")
+      join(["hold=acquired\n", "mc_before=", cold_reset_baseline_text(poll: m), "\n", "power_before=", cold_reset_power_text(on: b), "\n", "reset=attempted once; ", ipmitool_mc_reset_cold_reply_text(reply: rep), "\n", "observed=", cold_reset_verdict_text(verdict: v), "\n"], "")
   }
 }
 
@@ -185,7 +185,7 @@ fn mtcollins1_bmc_cold_reset_read_mc(bmc_host: NonEmptyStr, username: NonEmptySt
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
-  return cold_reset_poll_of(success: info.success, stdout: info.stdout)
+  return cold_reset_poll_of(success: info.success, exit_code: info.exit_code, stdout: info.stdout, stderr: info.transport_stderr)
 }
 
 fn mtcollins1_bmc_cold_reset_read_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ChassisPowerObservation {
