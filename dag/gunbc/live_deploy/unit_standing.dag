@@ -257,8 +257,8 @@ fn push_command_read(acc: List<RequiredDirectiveRead>, command: NonEmptyStr) -> 
 }
 
 // argv[0] of a systemd Exec command line: the first whitespace-delimited token, absent when the token is
-// empty (e.g. a leading-space command) or there is none. This is the ONE argv[0] extraction; the presence
-// reader exec_start_binary_of_unit_file is built on it (single authority), not a second split.
+// empty (e.g. a leading-space command) or there is none. This is the ONE argv[0] extraction; the
+// classifier's push_command_read is built on it (single authority), not a second split.
 fn argv0_of_command(command: String) -> String? {
   match first(xs: split(s: command, delimiter: " ")) {
     Present { value: tok } => if tok == "" { none } else { Present { value: tok } }
