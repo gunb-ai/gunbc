@@ -37,26 +37,29 @@ type SnapshotResolution
   = SnapshotResolved { commit: String }
   | SnapshotRefused { step: String, detail: String }
 
-fn test_exec(instance: HostDashboardInstance, workdir: String, args: List<String>) -> gunbc.compute.work_provider_local.ComputeExec {
-  gunbc.compute.work_provider_local.compute_exec(
-    program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
-    workdir: workdir,
-    args: args,
-  )
+// The snapshot, the tree listing and the file read need only a git program, not an instance, so they
+// take the program: the local route passes its instance's git (test_git_program), and the remote-build
+// client (gunbc.compute.remote_build_client), which runs where no instance is declared, passes its own.
+fn test_git_program(instance: HostDashboardInstance) -> String {
+  dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
+}
+
+fn test_exec(git: String, workdir: String, args: List<String>) -> gunbc.compute.work_provider_local.ComputeExec {
+  gunbc.compute.work_provider_local.compute_exec(program: git, workdir: workdir, args: args)
 }
 
 // Stage everything, write the tree, wrap it in a dangling commit parented on HEAD. `git add -A` is
 // the same staging the belt performs when it commits the attempt, so the snapshot IS the tree the
 // belt would commit; the commit object is reachable only by its id and is garbage the moment nothing
 // names it, which is what "moves no ref" means.
-fn snapshot_worktree(instance: HostDashboardInstance, worktree: String) -> SnapshotResolution {
-  match test_exec(instance: instance, workdir: worktree, args: ["add", "-A"]) {
+fn snapshot_worktree(git: String, worktree: String) -> SnapshotResolution {
+  match test_exec(git: git, workdir: worktree, args: ["add", "-A"]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git add -A", detail: join([to_string(value: exit_code), ": ", stderr], "") }
     gunbc.compute.work_provider_local.ComputeExecOk { stdout: _, stderr: _ } =>
-      match test_exec(instance: instance, workdir: worktree, args: ["write-tree"]) {
+      match test_exec(git: git, workdir: worktree, args: ["write-tree"]) {
         gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git write-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
         gunbc.compute.work_provider_local.ComputeExecOk { stdout: tree, stderr: _ } =>
-          match test_exec(instance: instance, workdir: worktree, args: ["commit-tree", trim(s: tree), "-p", "HEAD", "-m", "gunbc compute snapshot of the attempt worktree"]) {
+          match test_exec(git: git, workdir: worktree, args: ["commit-tree", trim(s: tree), "-p", "HEAD", "-m", "gunbc compute snapshot of the attempt worktree"]) {
             gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git commit-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
             gunbc.compute.work_provider_local.ComputeExecOk { stdout: commit, stderr: _ } =>
               if trim(s: commit) == "" { SnapshotRefused { step: "git commit-tree", detail: "printed no commit id" } } else { SnapshotResolved { commit: trim(s: commit) } }
@@ -71,15 +74,15 @@ type TreeListing
   = TreeListed { paths: List<String> }
   | TreeListingRefused { detail: String }
 
-fn list_tree(instance: HostDashboardInstance, worktree: String, commit: String) -> TreeListing {
-  match test_exec(instance: instance, workdir: worktree, args: ["ls-tree", "-r", "--name-only", commit]) {
+fn list_tree(git: String, worktree: String, commit: String) -> TreeListing {
+  match test_exec(git: git, workdir: worktree, args: ["ls-tree", "-r", "--name-only", commit]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => TreeListingRefused { detail: join(["git ls-tree exited ", to_string(value: exit_code), ": ", stderr], "") }
     gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => TreeListed { paths: filter(stdout.split(sep: "\n"), p => trim(s: p) != "") }
   }
 }
 
-fn show_file(instance: HostDashboardInstance, worktree: String, commit: String, path: String) -> String? {
-  match test_exec(instance: instance, workdir: worktree, args: ["show", join([commit, ":", path], "")]) {
+fn show_file(git: String, worktree: String, commit: String, path: String) -> String? {
+  match test_exec(git: git, workdir: worktree, args: ["show", join([commit, ":", path], "")]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => none
     gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => Present { value: stdout }
   }
@@ -93,7 +96,7 @@ type ModuleRun
   | ModuleNotAWitness { label: String, path: String, reason: String }
 
 fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit: String, file: SelectedFile) -> ModuleRun {
-  match show_file(instance: instance, worktree: worktree, commit: commit, path: file.path) {
+  match show_file(git: test_git_program(instance: instance), worktree: worktree, commit: commit, path: file.path) {
     Absent => ModuleUnreadable { label: render_label(l: file.label), path: file.path, reason: "git show could not read the file from the snapshot" }
     Present { value: content } =>
       match classify_witness_module(file: file, content: content) {
@@ -186,10 +189,10 @@ fn test_run(instance: HostDashboardInstance, worktree: String, pattern_text: Str
   match parse_target_pattern(text: pattern_text) {
     TargetPatternRefused { cause } => TestRunRefused { pattern: pattern_text, step: "pattern", detail: target_pattern_refusal_text(r: cause) }
     TargetPatternParsed { pattern } =>
-      match snapshot_worktree(instance: instance, worktree: worktree) {
+      match snapshot_worktree(git: test_git_program(instance: instance), worktree: worktree) {
         SnapshotRefused { step, detail } => TestRunRefused { pattern: pattern_text, step: step, detail: detail }
         SnapshotResolved { commit } =>
-          match list_tree(instance: instance, worktree: worktree, commit: commit) {
+          match list_tree(git: test_git_program(instance: instance), worktree: worktree, commit: commit) {
             TreeListingRefused { detail } => TestRunRefused { pattern: pattern_text, step: "git ls-tree", detail: detail }
             TreeListed { paths } => {
               let selected = select_witness_files(pattern: pattern, paths: paths)
@@ -238,7 +241,7 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
       if entry == "" {
         ExitFailure { code: 2, reason: "gunbc compile: entry must name a .dag file relative to the worktree" }
       } else {
-        match snapshot_worktree(instance: instance, worktree: worktree) {
+        match snapshot_worktree(git: test_git_program(instance: instance), worktree: worktree) {
           SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
           SnapshotResolved { commit } => {
             let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: CompileEntry { entry: entry as FilePath }, target: TargetIsExecutingHost)

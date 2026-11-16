@@ -61,8 +61,11 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_file,
 }
 import gunbc.fleet.host_credential_custody_converge {
-  host_custody_credential_roster,
   host_custody_credential_wire,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  host_custody_credential_roster,
   host_credential_custody_row,
   TailscaleFleetAuthKey,
   CustodyFileOwnerRead,

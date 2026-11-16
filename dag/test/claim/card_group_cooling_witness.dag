@@ -13,7 +13,8 @@ import product.printed_chassis.group_duct {
   GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
   GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted, GroupBlowerUnfit, GroupMemberFaceUnfit, t10_h11ssl_slot4_plan,
 }
-import product.printed_chassis.assembly_geometry { Printed, Clearance, M5FanScrewIntoBlowerLug }
+import product.printed_chassis.assembly_geometry { Printed, Clearance, M5FanScrewIntoBlowerLug, AssemblyPart, Primitive, Block }
+import std.affine_space { signed_frame_component_count }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
 import product.printed_chassis.card_installation {
@@ -152,7 +153,7 @@ test fn a_group_total_does_not_qualify_a_starved_card() -> Bool {
 // w_the_a2_row_fit_plate_selects_through_the_same_function.
 
 fn supplied_plan(cards: List<InstalledCard>) -> GroupDuctPlan {
-  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
 }
 
 fn selects(p: GroupDuctPlan) -> Bool {
@@ -243,7 +244,7 @@ test fn the_a2_row_duct_carries_one_flat_blower_and_its_screw() -> Bool {
 // THE BOARD'S COIN CELL IS A KEEP-OUT OF THE REAL A2 DUCT, and a plan that has not read how high the cards'
 // faces stand above the board cannot place it, so its blower stage refuses rather than drawing without it.
 test fn the_a2_row_duct_keeps_out_of_the_coin_cell_and_refuses_without_the_board_height() -> Bool {
-  let unread = GroupDuctPlan { id: "a2-unread-height", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  let unread = GroupDuctPlan { id: "a2-unread-height", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
   let kept = match admit_group_duct(p: a2_altra_row_plan) {
     GroupDuctAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "KEEPOUT-PCIE4" && match x.kind { Clearance => true _ => false })
     _ => false
@@ -265,6 +266,23 @@ test fn the_t10_sleeve_coupon_cuts_the_header_window_and_the_strip_slots() -> Bo
         && any(ps, x => x.id == "CARD-1" && string_contains(s: x.notes, pattern: "length is unread"))
     _ => false
   }
+}
+
+// THE COUPON IS NOT MIRRORED (the first one was: product.printed_chassis.fit_observations t10_sleeve_coupon_fit).
+// The 8-pin is 10.2 mm below the face's top end; on a plate-down fit plate the top end is at -X, so the header's
+// window and its declared keep-out sit on the -X side of the plate. Its sleeve stands 0.3 mm per side clear
+// across the face (the plan's figure) and 0.1 mm along it.
+fn t10_coupon_plate() -> List<AssemblyPart> {
+  match admit_group_fit_plate(p: t10_h11ssl_slot4_plan) { GroupFitPlateAdmitted { parts: ps, interfaces: _ } => ps _ => [] }
+}
+fn block_x(p: Primitive) -> Int { match p { Block { size: _, center: c } => signed_frame_component_count(c: c.x) _ => 0 } }
+fn block_size_y(p: Primitive) -> Int { match p { Block { size: s, center: _ } => micrometer_count(m: s.size_y) as Int _ => 0 } }
+test fn the_t10_coupon_puts_the_header_window_at_the_top_end() -> Bool {
+  let ps = t10_coupon_plate()
+  let face_y = micrometer_count(m: t10_card_end.face_thickness) as Int
+  any(ps, x => x.id == "POWER-KEEPOUT-1" && any(x.adds, b => block_x(p: b) < 0))
+    && any(ps, x => x.id == "FIT-PLATE" && any(x.cuts, b => block_size_y(p: b) == face_y + 600 && block_x(p: b) < 0))
+    && any(ps, x => x.id == "FIT-PLATE" && any(x.adds, b => block_size_y(p: b) == face_y + 600 + 2 * 2000))
 }
 
 // ITS BLOWER STAGE REFUSES the header by name: the coupon is printable and the duct is not, until the stage
@@ -309,7 +327,7 @@ test fn the_t10_pair_stands_on_the_observed_slot_count_and_is_not_side_by_side()
     }
     Absent => false
   }
-  let pair = GroupDuctPlan { id: "t10-pair", installation: t10_h11ssl_installation, sizes: [2], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  let pair = GroupDuctPlan { id: "t10-pair", installation: t10_h11ssl_installation, sizes: [2], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
   count(installation_refusals(inst: t10_h11ssl_installation)) == 0
     && any(installation_refusals(inst: unread), r => match r { SlotCountUnread { instance: i } => i == "a" _ => false })
     && sep
