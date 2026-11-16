@@ -440,11 +440,14 @@ fn secret_custody_targets() -> List<SecretRef> {
 
 type SecretCustodyCell { secret: NonEmptyStr, cell: GcpIamBindingCell }
 
-// THE ONE DERIVATION both binders read: each custody row as the live cell it owes.
-fn secret_custody_cells() -> List<SecretCustodyCell> {
-  flat_map(secret_custody_targets(), t => [
+// THE ONE DERIVATION both binders read: each custody row as the live cell it owes, KEYED BY SECRET so
+// a caller that owns the population (the bootstrap's roster input, which a witness may widen) fires
+// the declaration for a subject the base roster does not yet carry. The bytes of both cells are
+// authored nowhere else.
+fn secret_custody_cells_for(secret: NonEmptyStr) -> List<SecretCustodyCell> {
+  [
     SecretCustodyCell {
-      secret: t.secret,
+      secret: secret,
       cell: GcpIamBindingCell {
         role: secret_custody_policy_setter_role,
         member: secret_custody_policy_setter_member,
@@ -452,14 +455,19 @@ fn secret_custody_cells() -> List<SecretCustodyCell> {
       },
     },
     SecretCustodyCell {
-      secret: t.secret,
+      secret: secret,
       cell: GcpIamBindingCell {
         role: secret_custody_observer_role,
         member: secret_custody_observer_member,
         condition: none,
       },
     },
-  ])
+  ]
+}
+
+// THE PRODUCTION IMAGE: the owner-declared cells over the population the base grant sets carry.
+fn secret_custody_cells() -> List<SecretCustodyCell> {
+  flat_map(secret_custody_targets(), t => secret_custody_cells_for(secret: t.secret))
 }
 
 fn secret_custody_grant_sets() -> List<GrantSet> {
