@@ -13,6 +13,7 @@ module gunbc.live_deploy.deploy_artifact_closure
 import std.types { List }
 import std.algebra { fold_list, list_map }
 import std.list { list_member }
+import std.optional { Optional, Present, Absent }
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // SCOPE — what this module is, and what it is NOT yet
@@ -70,6 +71,12 @@ import std.list { list_member }
 type ArtifactReadSet
   = Declared { paths: List<String> }
   | NotYetModeled { reason: String }
+  // InstalledArtifact: this row is a deploy-installed artifact rather than a unit with
+  // reads — its OWN install is the fact (a source-tree step, a config document), and the
+  // units that consume it (serve's --entry, the tree converger) declare that read on their
+  // own rows. NotYetModeled would be false for it (there is no read left to model), and a
+  // self-read would restate its own install fact.
+  | InstalledArtifact
 
 // A resolved enable row: `located` is where the unit lives (its owned path / identity),
 // `reads` is what that unit's own declaration says it reads. Rows are produced by an
@@ -125,18 +132,20 @@ fn deploy_gate(rows: List<DeployReadRow>, installed: List<String>) -> DeployGate
   deploy_gate_decision(deploy_closure_verdict(rows: rows, installed: installed))
 }
 
-// first_missing_artifact returns the first artifact in `artifacts` that is not in `installed`,
-// as a singleton list, or Empty when every artifact is installed. The recursion keeps the
-// installed set fixed (it does NOT prune it), so an artifact appearing later in the read list
-// is still checked against the full install set.
-fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> List<String> {
+// first_missing_artifact returns Present(the first artifact in `artifacts` that is not in
+// `installed`), or Absent when every artifact is installed. It is Optional (not a list) so a
+// result carrying more than one missing artifact cannot be written at all — the cardinality of
+// "maybe one" is the Optional, not a hand-made singleton list (std.optional is the canonical
+// presence/absence carrier). The recursion keeps the installed set fixed (it does NOT prune it),
+// so an artifact appearing later in the read list is still checked against the full install set.
+fn first_missing_artifact(artifacts: List<String>, installed: List<String>) -> Optional<String> {
   match artifacts {
-    Empty => Empty {  }
+    Empty => Absent
     Cons { head: artifact, tail: rest } =>
       if list_member(xs: installed, x: artifact, eq: fn(a, b) { a == b }) {
         first_missing_artifact(artifacts: rest, installed: installed)
       } else {
-        Cons { head: artifact, tail: Empty {  } }
+        Present { value: artifact }
       }
   }
 }
@@ -149,10 +158,13 @@ fn unit_closure_verdict(row: DeployReadRow, installed: List<String>) -> ClosureV
   match row {
     ReadRow { located: loc, reads: Declared { paths: paths } } =>
       match first_missing_artifact(artifacts: paths, installed: installed) {
-        Cons { head: missing, tail: _ } => Refused { located: loc, artifact: missing }
-        Empty => Allowed
+        Present { value: missing } => Refused { located: loc, artifact: missing }
+        Absent => Allowed
       }
     ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => Unclosed { located: loc }
+    // An installed artifact's own closure is its install, which the plan owns and the deploy
+    // verifies; as a gate row it is allowed. Its consumers declare the read on their own rows.
+    ReadRow { located: _, reads: InstalledArtifact } => Allowed
   }
 }
 
@@ -205,17 +217,20 @@ fn deploy_closure_verdict(rows: List<DeployReadRow>, installed: List<String>) ->
 //   verify over.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-// The three closure states, mirrored from ArtifactReadSet:
+// The closure states, mirrored from ArtifactReadSet:
 //   DerivedRow   — the unit's read set is declared, so the closure can check it.
 //   UnclosedRow  — the unit's read set is not yet declared (a typed, located degradation).
+//   InstalledArtifactRow — the row is an installed artifact, not a unit with reads.
 type ArtifactInventoryRow
   = DerivedRow { located: String, artifacts: List<String> }
   | UnclosedRow { located: String, reason: String }
+  | InstalledArtifactRow { located: String }
 
 fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
   match row {
     ReadRow { located: loc, reads: Declared { paths: paths } } => DerivedRow { located: loc, artifacts: paths }
     ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
   }
 }
 

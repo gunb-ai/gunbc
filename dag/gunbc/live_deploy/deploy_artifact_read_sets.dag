@@ -100,13 +100,14 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // re-transcribed here: [step.path] the binary, [instance.repo_root] the tree (the SAME authority as
       // the GunbcSourceTree step path, so the gate requires the installed tree to be where serve reads it).
       ServeBinary => Declared { paths: [step.path as String, instance.repo_root as String] }
-      // The source-tree step's artifact IS the tree it provides: its read of record is its own owned path
-      // (repo_root), so the intent installs the tree it must own (red_control 2). Its downstream CONSUMER —
-      // the serve binary loading `--entry` from repo_root — is declared on the ServeBinary row above (the
-      // same instance.repo_root), so the serve→tree dependency stays counted, never silently dropped
-      // (fail_closed: "every degradation is typed, located and countable"). When the gate is wired, both
-      // reads match the tree-install leg's target from the apply-leg authority.
-      GunbcSourceTree => Declared { paths: [step.path as String] }
+      // The source-tree step is an ARTIFACT, not a reader: its content is read by the units that
+      // declare it — the ServeBinary row above (repo_root, the tree `gunbc serve --entry` loads)
+      // and, once the gate is wired, the tree-remote/roadmap/door WorkingDirectory reads. A read of
+      // its own step.path would restate the install fact ("read ⊆ owned" re-derives itself and never
+      // goes red) — rung inflation (guarantee_ladder). NotYetModeled would be false: there is no read
+      // left to model, it is a located installed artifact. So it is InstalledArtifact (its install is
+      // owned and verified by the plan; its consumers carry the TreeContent read).
+      GunbcSourceTree => InstalledArtifact
       // The belt is a systemd .path unit (BeltEventPathUnit): it watches the exit inbox becoming
       // non-empty and starts the drain service. A .path unit has no ExecStart; the read of the
       // service it triggers is carried by the AttemptUnitDrainPathUnit row. Its watched-inbox read

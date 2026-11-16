@@ -1,0 +1,29 @@
+module gunbc.compute.remote_build_hosts
+
+import std.types { Bool, List }
+import product.host_identity { HostIdentity }
+
+// THE HOSTS THAT SERVE REMOTE BUILDS, AS THE ONE ROW BOTH SIDES OF THE SHARE READ. A serving host runs
+// the remote-build account (gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user) beside the
+// operator's service user, and both reserve memory in the host's ONE capacity ledger. So two facts
+// follow from membership here, and both are derived from this list rather than restated:
+//   - gunbc.compute.host_capacity groups that host's ledger directories to the ledger group, so the
+//     remote-build account can write them;
+//   - gunbc.compute.remote_build declares that host's serving instance and puts it on the roster.
+// It sits below both modules because host_capacity cannot import the roster (the roster reaches the
+// provider, which reaches host_capacity).
+//
+// WHY ONLY srv1. The ledger lives under the instance the host resolves to (host_capacity
+// host_capacity_subject), and on srv1 that is /opt/gunbc, which every account may traverse. Every srv2
+// instance is rooted under /home/briansrls/.local/share, which the remote-build account cannot traverse
+// without opening the operator's home, and srv3, srv4, butch and bobo resolve no instance at all. A host
+// joins this list when its ledger has a home the remote-build account can reach: the host-scoped ledger
+// that gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance compute_build_memory_ceiling names
+// as the work-execution redesign's.
+fn remote_build_serving_hosts() -> List<HostIdentity> {
+  ["srv1" as HostIdentity]
+}
+
+fn remote_build_host_is_serving(host: HostIdentity) -> Bool {
+  remote_build_serving_hosts() |> any(h => h as String == host as String)
+}

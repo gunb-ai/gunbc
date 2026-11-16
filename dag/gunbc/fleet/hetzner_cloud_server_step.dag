@@ -2,24 +2,28 @@ module gunbc.fleet.hetzner_cloud_server_step
 
 // THE HETZNER CLOUD SERVER READ RUN STEP lives here, beside hetzner_cloud_server_control which owns
 // the cloud control plane it reads, not in the central ci_spec. The machinery it borrows is shared
-// and imported, never reached through ci_spec: gunbc_run_step_script from
+// and imported, never reached through ci_spec: gunbc_run_step_script_for_target from
 // v2.workflow.gunbc_invoke_step_emit and witness_layer_roots from gunbc.ci.ci_layer_roots.
 
 import std.types { String }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
-
-data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
-  function: "read",
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
 }
 
+data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.hetzner_cloud_server_control",
+  function: "read",
+)
+
 fn gunbc_ci_hetzner_cloud_server_read_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_hetzner_cloud_server_read_target.entry,
-    function: gunbc_ci_hetzner_cloud_server_read_target.function,
+    target: gunbc_ci_hetzner_cloud_server_read_target,
     claim_run: false,
     receipt_rel: none
   )
