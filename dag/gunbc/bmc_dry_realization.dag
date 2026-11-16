@@ -23,6 +23,7 @@ import extdeps.bmc.ipmi { ipmi_completion_code_request_data_length_invalid, ipmi
 import extdeps.bmc.ipmitool_raw_reply { IpmitoolRawRequest, ipmitool_raw_request_of_argv, ipmitool_raw_refusal_stderr }
 import gunbc.bmc_model {
   BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
+  bmc_controller_cold_reset, bmc_controller_resetting,
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
 }
 import gunbc.megarac_media_model {
@@ -38,6 +39,8 @@ import extdeps.bmc.megarac_observed_output {
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
+import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_fru_print_0_mt_collins,
@@ -94,8 +97,38 @@ type BmcReply
   | BmcRefused { exit_code: Int, stderr: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
 
+// A CONTROLLER THAT IS NOT ANSWERING: no RMCP+ session comes up, so ipmitool prints its lanplus session error and
+// exits 1, for every authenticated command alike. This is the controller declining to answer (an observation), not
+// a harness fault.
+fn bmc_controller_unanswered(world: BmcWorld) -> BmcReply {
+  BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
+}
+
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_unanswered(world: world)
+  } else {
+    BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+  }
+}
+
+// `mc reset cold`: ipmitool prints its sent line and exits 0 (extdeps.bmc.ipmitool_mc_reset), and the modeled
+// controller stops answering shortly after and answers again a minute later (gunbc.bmc_model
+// bmc_controller_cold_reset). The window is THIS ADAPTER'S scenario default, not a vendor figure; a scenario that
+// needs another behavior (a controller that ignores the reset, a reply that exits nonzero after the request left)
+// binds its own handler for this operation.
+data bmc_dry_cold_reset_drop_after: Second = second(count: 2)
+data bmc_dry_cold_reset_back_after: Second = second(count: 60)
+
+fn bmc_mc_reset_cold_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_unanswered(world: world)
+  } else {
+    BmcReplied {
+      stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
+      world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after),
+    }
+  }
 }
 
 fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
@@ -230,9 +263,13 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // world does not model gets no reply and says so — ipmitool then has nothing to parse, which is the honest
 // outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  match world.record_surfaces.mc_info {
-    Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
-    Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_unanswered(world: world)
+  } else {
+    match world.record_surfaces.mc_info {
+      Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
+      Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
+    }
   }
 }
 
@@ -307,6 +344,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "McResetCold"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_reset_cold_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "FruPrint"), handler: bmc_lift(get: get, put: put, reply: bmc_fru_print_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SdrTypeList"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_type_reply) },

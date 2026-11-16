@@ -48,6 +48,8 @@ type BmcEvent
   | BmcPowerRestored {}
   | BmcSolSessionDropped {}
   | BmcKvmStreamClosed {}
+  | BmcControllerResetBegan {}
+  | BmcControllerResetEnded {}
 
 type BmcScheduledEvent {
   at: Second
@@ -502,12 +504,39 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent, at: Second) -> BmcWorld {
     BmcAcPowerLost {} => bmc_with_power(world: world, power: BmcPowerOff)
     BmcPowerRestored {} => bmc_host_boots(world: world, now: at)
     BmcSolSessionDropped {} => bmc_with_sol_session(world: world, open: false)
+    // A controller reinitializing changes no host state; whether it is answering is read from the events that
+    // fired (bmc_controller_resetting), so neither event rebuilds the world.
+    BmcControllerResetBegan {} => world
+    BmcControllerResetEnded {} => world
     BmcKvmStreamClosed {} => match world.web.kvm {
       BmcKvmStreaming { session: k } => bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: world.web.sessions, next_session_id: world.web.next_session_id, kvm: BmcKvmClosedByController { session: k }))
       BmcKvmIdle {} => world
       BmcKvmClosedByController { session: _ } => world
     }
   }
+}
+
+// A CONTROLLER COLD RESET, AS THIS MODEL CARRIES IT: the controller stops answering `drop_after` after the request
+// and answers again `back_after` after it, and nothing else in the world moves; in particular host power is not
+// touched. These are a scenario's choice, not a vendor figure: a scenario that wants a controller that ignores the
+// reset, or one that moves host power across it, schedules that itself. Whether the controller is answering is
+// DERIVED from the events that fired -- the last controller-reset event to fire was a Began -- so a world that never
+// schedules one answers exactly as before.
+fn bmc_controller_cold_reset(world: BmcWorld, now: Second, drop_after: Second, back_after: Second) -> BmcWorld {
+  bmc_with_pending(world: world, pending: concat(xs: world.pending, ys: [
+    BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: drop_after)), event: BmcControllerResetBegan {} },
+    BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: back_after)), event: BmcControllerResetEnded {} },
+  ]), fired: world.fired)
+}
+
+fn bmc_controller_resetting(world: BmcWorld) -> Bool {
+  fold(world.fired, init: false, f: fn(acc, e) {
+    match e.event {
+      BmcControllerResetBegan {} => true
+      BmcControllerResetEnded {} => false
+      _ => acc
+    }
+  })
 }
 
 // EVERY EVENT DUE AT OR BEFORE `now` FIRES, EARLIEST FIRST, AND AN EVENT A TRANSITION SCHEDULES IS

@@ -17,7 +17,11 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault }
+import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after }
+import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, BmcScheduledEvent, BmcAcPowerLost }
+import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -26,6 +30,7 @@ import gunbc.process_environment_model { ModeledVariable }
 import extdeps.access.posix { FileMode, PermissionBits }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_mc_info_mt_collins_transcribed_fields }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, IpmiMcInfoFirmwareRevision }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.machine_intake.megarac_media_row_reading { boot_run_43040335415_presented_row, boot_run_43040335415_general_before_handoff }
@@ -1900,6 +1905,267 @@ test fn an_unreadable_parameter_five_read_sets_nothing() -> Bool {
         && string_contains(s: outcome_reason(a: value), pattern: "handoff withheld")
         && string_contains(s: override_stale_words(a: value), pattern: "unread")
         && starts_with(s: override_release_words(a: value), prefix: "not required: ")
+    _ => false
+  }
+}
+
+// ─── THE CONTROLLER COLD RESET ROUTE (side chat on gunbc#16529, F4) ─────────────────────────────
+// The PRODUCTION entry, gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_wet, executed in
+// the boot's own world through the boot's own dry realization: every read and the one attempt are real dispatches
+// of extdeps.bmc.ipmi operations, answered by gunbc.bmc_dry_realization over gunbc.bmc_model (whose controller
+// stops answering after a cold reset and answers again later). Each claim reads the ROUTE -- the operations in the
+// order the entry issued them -- and the receipt the entry wrote. A route that read power before the attempt and
+// reused it as the after-reading, attempted twice, attempted before reading power, or polled past its bound makes
+// one of these red. No hardware is touched and no approved reset is spent.
+data matrix_cold_reset_mc_info: String = "diagnostic.ipmi.Tool.McInfo"
+data matrix_cold_reset_chassis_status: String = "diagnostic.ipmi.Tool.ChassisStatus"
+data matrix_cold_reset_attempt: String = "diagnostic.ipmi.Tool.McResetCold"
+
+// THE CONTROLLER'S COMPLETE `mc info` ANSWER, transcribed from this unit's own capture at firmware 0.45
+// (artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-mc-info-41573858366.txt, the bytes
+// test.claim.host.bmc_cold_reset_witness parses). The boot's world models only the firmware row of this
+// controller (ipmitool_mc_info_mt_collins_transcribed_fields), which the cold-reset route reads as undecodable --
+// correctly, since an undecodable answer establishes no recovery -- so a route claim that needs the controller to
+// be seen available must model the whole answer.
+data matrix_cold_reset_mc_info_fields: IpmiMcInfoFields = IpmiMcInfoFields {
+  device_id: Present { value: 32 },
+  device_revision: Present { value: 1 },
+  firmware: Present { value: IpmiMcInfoFirmwareRevision { major: 0, minor: 45 } },
+  manufacturer_id: Present { value: 0 },
+  manufacturer_name: Present { value: "Unknown" },
+  product_id: Present { value: 516 },
+  product_name: Present { value: "Unknown (0x204)" },
+  device_available: Present { value: true },
+  provides_device_sdrs: Present { value: true },
+}
+
+// The boot's world with host power ON, the controller's complete mc info answer (above), the one directory the
+// receipt path lives in, and the controller events a scenario schedules. Everything else -- the credential path,
+// the run identity, the hold store -- is the boot's.
+fn matrix_cold_reset_world() -> MtCollins1BootWorld {
+  let base = world_with_console(lines: [])
+  with_fs(w: with_bmc(w: base, bmc: bmc_with_mc_info(world: bmc_with_power(world: base.bmc, power: BmcPowerOn), fields: Present { value: matrix_cold_reset_mc_info_fields })), fs: ModeledFilesystem {
+    files: base.fs.files,
+    directories: concat(xs: base.fs.directories, ys: ["target"]),
+    refused_reads: base.fs.refused_reads,
+    stats: base.fs.stats,
+  })
+}
+
+fn matrix_cold_reset_binding(operation: String, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding { at: bmc_ipmi_operation(operation: operation), handler: bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: reply) }
+}
+
+// THE BOOT'S PRODUCTION REALIZATION, with a scenario's controller behaviors replacing the production answer for
+// the operations they name (two bindings for one operation is a refusal, so the production one is filtered out).
+fn matrix_cold_reset_run(overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides)
+}
+
+fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  evaluate_in_witness_frame(
+    frame: matrix_frame_over(realization: OperationRealization {
+      identity: production.identity,
+      initial: production.initial,
+      epoch: production.epoch,
+      advance: production.advance,
+      bindings: concat(xs: filter(production.bindings, b => all(overrides, o => !(o.at.service == b.at.service && o.at.operation == b.at.operation))), ys: overrides),
+    }),
+    subject: fn(_scope) { mtcollins1_bmc_cold_reset_wet() },
+  )
+}
+
+fn matrix_cold_reset_receipt(state: MtCollins1BootWorld?) -> String {
+  match state {
+    Absent => ""
+    Present { value: w } => fold(w.fs.files, init: "", f: fn(acc, f) { if string_contains(s: f.path, pattern: mtcollins1_bmc_cold_reset_receipt_path) { f.content } else { acc } })
+  }
+}
+
+// WHAT THE ROUTE READ, as the receipt records it: the baseline mc info DECODED as available (this world's complete
+// answer, firmware 0.45), and -- where the scenario saw a loss -- that loss was a missing response on the first poll
+// after the attempt (the modeled controller stops answering 2 s after the request; the first poll is 15 s later).
+// A world whose answers do not decode (the boot's firmware-row-only record) cannot satisfy these, which is the
+// control the first version of these claims lacked.
+data matrix_cold_reset_baseline_available_line: String = "mc_before=available, firmware 0.45"
+data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (mc info did not exit 0"
+
+// The boot's own world (firmware-row-only mc info) with this scenario's power and receipt directory.
+fn matrix_cold_reset_world_firmware_row_only() -> MtCollins1BootWorld {
+  let w = matrix_cold_reset_world()
+  with_bmc(w: w, bmc: bmc_with_mc_info(world: w.bmc, fields: Present { value: ipmitool_mc_info_mt_collins_transcribed_fields }))
+}
+
+fn matrix_cold_reset_exited_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+fn matrix_cold_reset_count_after(route: List<DispatchRecord>, name: String, after: Int) -> Int {
+  count(filter(route, r => operation_name(r: r) == name && r.ordinal > after))
+}
+
+// SCENARIO CONTROLLERS, each a reply to the one attempt.
+// A controller that ignores the request: ipmitool reports sending, and nothing changes.
+fn matrix_cold_reset_ignored(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: world }
+}
+
+// A controller that goes away and does not come back within any bound this route declares.
+fn matrix_cold_reset_never_back(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: second(count: 100000)) }
+}
+
+// The request took effect, but ipmitool was killed at its deadline (coreutils timeout exits 124) before it printed.
+fn matrix_cold_reset_reply_lost(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcRefused { exit_code: 124, stderr: "", world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after) }
+}
+
+// The controller restarts as usual, and host power is lost inside the window (30 s after the request).
+fn matrix_cold_reset_power_lost_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  let reset = bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after)
+  BmcReplied {
+    stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
+    world: bmc_with_pending(world: reset, pending: concat(xs: reset.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 30), event: BmcAcPowerLost {} }]), fired: reset.fired),
+  }
+}
+
+// Chassis status that never answers (the baseline read included).
+fn matrix_cold_reset_power_unreadable(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
+}
+
+// POSITIVE: mc info and chassis status read BEFORE the one attempt, all under the unit hold; the watch sees the
+// controller go and come back; host power is read AGAIN after the last mc info poll, and the attempt is accepted.
+test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fresh_after_recovery() -> Bool {
+  match matrix_cold_reset_run(overrides: []) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let holds = ordinals_where(route: route, keep: is_hold_write)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && precedes(route: route, earlier: matrix_cold_reset_chassis_status, later: matrix_cold_reset_attempt)
+        && precedes(route: route, earlier: matrix_cold_reset_mc_info, later: matrix_cold_reset_attempt)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && last_ordinal(route: route, name: matrix_cold_reset_chassis_status) > last_ordinal(route: route, name: matrix_cold_reset_mc_info)
+        && last_ordinal(route: route, name: matrix_cold_reset_mc_info) > attempt
+        && count(holds) >= 2
+        && match holds.first() { Present { value: h } => h < attempt  Absent => false }
+        && match holds.last() { Present { value: h } => h > last_ordinal(route: route, name: matrix_cold_reset_chassis_status)  Absent => false }
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && string_contains(s: receipt, pattern: "more (firmware 0.45)")
+        && string_contains(s: receipt, pattern: "fan=unobserved")
+    }
+    _ => false
+  }
+}
+
+// THE AFTER-READING IS FRESH: host power is lost inside the reset window. The route reads it again after the
+// controller recovers and refuses on the difference. A route that reused its baseline reading would read on twice
+// and accept.
+test fn power_lost_inside_the_reset_window_is_read_fresh_and_refused() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_power_lost_in_window)]) {
+    WitnessReturned { value, route, state } =>
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "read differently at the two endpoints (on before, off after)")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+    _ => false
+  }
+}
+
+// NO ATTEMPT ON AN UNREAD BASELINE: chassis status does not answer, so the route attempts nothing.
+test fn an_unreadable_baseline_power_reading_attempts_nothing() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "ChassisStatus", reply: matrix_cold_reset_power_unreadable)]) {
+    WitnessReturned { value, route, state } =>
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 0
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "reset=not-attempted")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+    _ => false
+  }
+}
+
+// THE BOUND IS THE ROUTE'S: a controller that never comes back is polled once to see the loss and then exactly
+// answer_polls more times, attempted once, never read for power after, and refused.
+test fn a_controller_that_never_recovers_is_polled_exactly_to_the_bound_and_attempted_once() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_never_back)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == 1 + mtcollins1_bmc_cold_reset_bounds.answer_polls
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "not recovered within the bound")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_loss_by_no_response)
+    }
+    _ => false
+  }
+}
+
+// AN ATTEMPT IPMITOOL DID NOT REPORT IS STILL AN ATTEMPT: ipmitool is killed at its deadline after the request
+// took effect. The route never reads that as "not sent": it watches (read-only, no second attempt), records what it
+// saw, and refuses with the effect named uncertain.
+test fn an_attempt_whose_reply_was_lost_is_watched_and_reported_uncertain_never_unsent() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_reply_lost)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) >= 2
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && string_contains(s: receipt, pattern: "reset=attempted once; ipmitool exited nonzero, effect unknown")
+        && string_contains(s: receipt, pattern: "UNCERTAIN")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && !string_contains(s: receipt, pattern: "not sent")
+    }
+    _ => false
+  }
+}
+
+// A CONTROLLER THAT IGNORES THE ATTEMPT IS NOT READ AS RESET: ipmitool reports sending, the controller keeps
+// answering, and after drop_polls polls the route refuses with no effect observed.
+test fn a_controller_that_ignores_the_attempt_is_not_read_as_reset() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "no loss of availability was observed")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "last: available, firmware 0.45")
+    }
+    _ => false
+  }
+}
+
+// THE CONTROL THE FIRST VERSION LACKED: the same ignoring controller in the boot's own world, whose mc info answer
+// models only the firmware row. Every answer is UNDECODABLE, so the baseline is not available, no answer establishes a
+// loss or a recovery, and the route refuses naming the undecodable answers -- it is never read as available. The
+// claim above, run in this world, goes red; this one is what it would have read.
+test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_recovery() -> Bool {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && string_contains(s: receipt, pattern: "mc_before=undecodable")
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: undecodable")
+        && !string_contains(s: receipt, pattern: "available, firmware")
+    }
     _ => false
   }
 }

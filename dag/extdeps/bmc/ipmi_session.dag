@@ -22,6 +22,13 @@ import std.optional { Present }
 
 type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
 
+// The line ipmitool 1.8.19's lanplus plugin prints when the RMCP+ session never comes up
+// (src/plugins/lanplus/lanplus.c ipmi_lanplus_open: "Error: Unable to establish IPMI v2 / RMCP+ session"),
+// and the part of it the classifier keys on. A modeled controller that does not answer renders the line; the
+// classifier recognises it.
+data ipmitool_lanplus_session_unestablished_line: String = "Error: Unable to establish IPMI v2 / RMCP+ session"
+data ipmitool_lanplus_session_unestablished_marker: String = "Unable to establish IPMI v2"
+
 // Which way an authenticated read failed, from the vendor lines ipmitool prints -- its source, as the
 // boot-diagnostic classifier names them: "RAKP 2 HMAC is invalid" and "Unauthorized name" come from the RAKP
 // exchange rejecting the credential, and "Insufficient privilege level" is completion code D4h; those three
@@ -33,7 +40,7 @@ type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
 fn ipmi_session_failure(output: String) -> IpmiSessionFailure? {
   if string_contains(s: output, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: output, pattern: "Unauthorized name") || string_contains(s: output, pattern: "Insufficient privilege level") {
     Present { value: IpmiSessionAuthRefused }
-  } else if string_contains(s: output, pattern: "Unable to establish IPMI v2") {
+  } else if string_contains(s: output, pattern: ipmitool_lanplus_session_unestablished_marker) {
     Present { value: IpmiSessionUnestablished }
   } else {
     none

@@ -12,16 +12,18 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.access_profile { bmc_observation_ipmi_cipher_suite }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation, chassis_observation_text }
-import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdSent, McResetColdRefused, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_of, ipmitool_mc_reset_cold_reply_text }
+import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, ipmitool_mc_reset_cold_reply_of, ipmitool_mc_reset_cold_reply_text }
+import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.bmc_cold_reset {
-  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRestarted, WatchNeverDropped, WatchNeverAnswered,
+  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved,
   WatchEnded, WatchContinues, cold_reset_watch_start, cold_reset_watch_step, cold_reset_poll_of, cold_reset_poll_text,
-  ColdResetVerdict, cold_reset_verdict, cold_reset_verdict_converged, cold_reset_verdict_text, cold_reset_power_text,
+  ColdResetVerdict, cold_reset_verdict, cold_reset_verdict_text, cold_reset_power_text,
+  ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
 }
 import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, UnitHoldProof, UnitHoldReleaseOutcome, boot_run_acquire_unit_hold, unit_hold_release_outcome, unit_hold_release_compose, unit_hold_proof_refusal }
 import gunbc.host_state_root { host_state_tree }
@@ -37,21 +39,29 @@ import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
 // ── THE MT. COLLINS UNIT 1 CONTROLLER COLD RESET ─────────────────────────────────────────────────
 // WHAT IT IS FOR. Capture boot 43669572288 refused at media attach: the MegaRAC web login timed out 3 of 3
 // times with 0 bytes and the IPMI SDR read timed out, while Get Chassis Status still answered and no power
-// action was taken. The controller's own cold reset (IPMI v2.0 §20.2, extdeps.bmc.ipmi McResetCold) restarts
-// it without touching host power. The operator approved ONE such reset (msg_05ddb108); this module is the
-// modeled route for it (smart-crane-730, msg_47e5a32f), and that approval does not extend to later runs of it.
+// action was taken. The operator approved ONE cold reset of the controller (IPMI v2.0 §20.2,
+// extdeps.bmc.ipmi McResetCold; msg_05ddb108); this module is the modeled route for it (smart-crane-730,
+// msg_47e5a32f), and that approval does not extend to later runs of it.
 //
-// THE SEQUENCE: read mc info and chassis status; send the cold reset; watch the controller stop answering
-// and then answer again, within a declared bound; read mc info and chassis status again. It REFUSES when the
-// power state before cannot be read (nothing is sent), when the reset is not sent, when the controller never
-// stops answering (the reset is not observed to have taken effect), when it does not answer again within the
-// bound, and when the power state after differs from, or cannot be read beside, the power state before.
+// WHAT IT DOES TO HOST POWER: it issues no chassis-power command, and it compares two endpoint readings of host
+// power, one before the attempt and one after the controller recovered. §20.2 promises no effect, and no absence
+// of one, on the host; two equal endpoint readings cannot see an off-on cycle between them. Nothing here claims
+// more than that.
 //
-// THE READBACK IS READ, NEVER SUPPLIED: every reading the verdict judges is the parse of a live ipmitool
-// read taken AFTER the reset was sent (mtcollins1_bmc_cold_reset_watch_poll, mtcollins1_bmc_cold_reset_read_power).
-// The verdict below is pure, so witnesses fold it over parsed captures; the route's inhabitance is the claim
-// in test.claim.machine_intake.mtcollins1_bmc_cold_reset_witness that feeds this unit's real captured bytes
-// through the same parsers.
+// THE SEQUENCE: under the unit hold, read mc info and chassis status; attempt the cold reset ONCE; watch for the
+// controller's availability to be lost and then recovered, within a declared bound; read chassis status again.
+// It refuses before any attempt when the power state before cannot be read. After the attempt, whatever ipmitool
+// reported, the read-only watch runs and nothing is sent again: a nonzero or unrecognised reply leaves the
+// effect UNCERTAIN, and is reported as attempted, never as "not sent". It is accepted only when ipmitool reported
+// sending and the watch saw the loss and the recovery of a controller that was available before, with host
+// power read the same at both endpoints (gunbc.host.bmc_cold_reset cold_reset_attempt_acceptance).
+//
+// WHAT THE CONTROLS ESTABLISH. test.claim.host.bmc_cold_reset_witness exercises the pure judgment over parsed
+// observations, and its captured-bytes claim shows only that this unit's real mc info and chassis status bytes
+// parse through these parsers (PARSER COMPATIBILITY, not a live readback). The route's ORDER of reads around the
+// attempt -- baseline before it, one attempt, the bounded watch, a fresh after-read -- is exercised by running
+// this module's entry through the boot's dry realization
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix, the cold-reset route claims).
 //
 // NO BOOT-ATTEMPT ADMISSION: gunbc.host.host_boot_attempt_admission admits a boot of a revision, and this boots
 // nothing. The unit hold IS taken, because a reset in the middle of another run's boot would destroy it.
@@ -59,9 +69,9 @@ import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
 // THE FAN IS NOT OBSERVED IN THIS MODE, and the receipt says so (fan=unobserved), never a default: the boot
 // job's fan-policy step is skipped for this mode alone (gunbc.fleet.fleet_converge_workflow
 // fleet_converge_fan_policy_phase_step_if; the 2026-10-16 ruling gates BOOTS on an observed fan reading, and
-// this neither boots nor changes host power; merry-fox-82 msg_7dbfdbb9).
+// this boots nothing and issues no chassis-power command; merry-fox-82 msg_7dbfdbb9).
 
-data mtcollins1_bmc_cold_reset_label: NonEmptyStr = "mtcollins1 controller cold reset (IPMI Cold Reset; host power must not change)" as NonEmptyStr
+data mtcollins1_bmc_cold_reset_label: NonEmptyStr = "mtcollins1 controller cold reset (IPMI Cold Reset; issues no chassis-power command)" as NonEmptyStr
 
 // WHERE THE STEP WRITES ITS TYPED RECEIPT; the step's shell cats it
 // (gunbc.machine_intake.mtcollins1_boot_step gunbc_ci_mtcollins1_bmc_cold_reset_invoke).
@@ -70,11 +80,11 @@ data mtcollins1_bmc_cold_reset_receipt_path: String = "target/mtcollins1-bmc-col
 data mtcollins1_bmc_cold_reset_receipt_absent_line: String = "mtcollins1-bmc-cold-reset-receipt ABSENT: the entry wrote none this run (it exited before its finalization, or the file could not be read)"
 
 // ── THE DECLARED BOUND ───────────────────────────────────────────────────────────────────────────
-// Polls are mc info reads 15 s apart. The controller must stop answering within 6 polls of the reset being
-// sent, and answer again within 40 polls of having stopped: at least 40 x 15 s = 10 min of waiting when every
+// Polls are mc info reads 15 s apart. The controller's availability must be lost within 6 polls of the attempt,
+// and recover within 40 polls of the loss: at least 40 x 15 s = 10 min of waiting when every
 // silent read fails at once, and at most the allowance below when every silent read runs to its timeout.
-// These counts are a policy bound chosen for a MegaRAC restart, not a cited figure; a controller slower than
-// them refuses loudly (NoAnswerWithinBound), it is never waited on without limit.
+// These counts are a policy bound chosen for a MegaRAC controller reinitializing, not a cited figure; a controller slower than
+// them refuses loudly (ColdResetRecoveryNotObserved), it is never waited on without limit.
 data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 6, answer_polls: 40 }
 
 data mtcollins1_bmc_cold_reset_poll_interval: Second = second(count: 15)
@@ -125,8 +135,7 @@ type ColdResetStage
   | ColdResetHoldRefused { reason: String }
   | ColdResetHoldProofRefused { reason: String }
   | ColdResetPowerUnreadBefore { mc_before: ColdResetPoll, before: ChassisPowerObservation }
-  | ColdResetNotSent { mc_before: ColdResetPoll, before_on: Bool, reply: IpmitoolMcResetColdReply }
-  | ColdResetJudged { mc_before: ColdResetPoll, before_on: Bool, verdict: ColdResetVerdict }
+  | ColdResetAttempted { mc_before: ColdResetPoll, before_on: Bool, reply: IpmitoolMcResetColdReply, verdict: ColdResetVerdict }
 
 fn cold_reset_stage_lines(stage: ColdResetStage) -> String {
   match stage {
@@ -134,11 +143,9 @@ fn cold_reset_stage_lines(stage: ColdResetStage) -> String {
     ColdResetHoldRefused { reason: r } => join(["hold=REFUSED ", r, "\n", "controller=untouched\n"], "")
     ColdResetHoldProofRefused { reason: r } => join(["hold=acquired\n", "stage=hold proof refused: ", r, "\n", "controller=untouched\n"], "")
     ColdResetPowerUnreadBefore { mc_before: m, before: b } =>
-      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", chassis_observation_text(observation: b), "\n", "reset=not-sent (host power could not be read before it)\n"], "")
-    ColdResetNotSent { mc_before: m, before_on: b, reply: rep } =>
-      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", cold_reset_power_text(on: b), "\n", "reset=", ipmitool_mc_reset_cold_reply_text(reply: rep), "\n"], "")
-    ColdResetJudged { mc_before: m, before_on: b, verdict: v } =>
-      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", cold_reset_power_text(on: b), "\n", "reset=sent\n", "verdict=", cold_reset_verdict_text(verdict: v), "\n"], "")
+      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", chassis_observation_text(observation: b), "\n", "reset=not-attempted (host power could not be read before it)\n"], "")
+    ColdResetAttempted { mc_before: m, before_on: b, reply: rep, verdict: v } =>
+      join(["hold=acquired\n", "mc_before=", cold_reset_poll_text(poll: m), "\n", "power_before=", cold_reset_power_text(on: b), "\n", "reset=attempted once; ", ipmitool_mc_reset_cold_reply_text(reply: rep), "\n", "observed=", cold_reset_verdict_text(verdict: v), "\n"], "")
   }
 }
 
@@ -203,7 +210,8 @@ fn mtcollins1_bmc_cold_reset_watch_poll(bmc_host: NonEmptyStr, username: NonEmpt
   }
 }
 
-// THE ONE WRITE: sealed to the held sequence, so nothing else in the corpus can send it.
+// THE ONE WRITE: sealed to the held sequence, which is itself sealed to the wet entry (below), so nothing else in
+// the corpus can attempt it.
 fn mtcollins1_bmc_cold_reset_send(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> IpmitoolMcResetColdReply
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_held"),
@@ -220,27 +228,35 @@ fn mtcollins1_bmc_cold_reset_send(bmc_host: NonEmptyStr, username: NonEmptyStr, 
   return ipmitool_mc_reset_cold_reply_of(success: sent.success, exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.transport_stderr)
 }
 
-// THE SEQUENCE UNDER THE HOLD: read, send, watch, read, judge.
-fn mtcollins1_bmc_cold_reset_held(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ColdResetStage {
-  let mc_before = mtcollins1_bmc_cold_reset_read_mc(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
-  let before = mtcollins1_bmc_cold_reset_read_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
-  match before {
-    ChassisStatusUndecodable { cause: _ } => ColdResetPowerUnreadBefore { mc_before: mc_before, before: before }
-    ChassisUnreadable => ColdResetPowerUnreadBefore { mc_before: mc_before, before: before }
-    ChassisPowerRead { power_on: before_on } => {
-      let reply = mtcollins1_bmc_cold_reset_send(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
-      match reply {
-        McResetColdRefused { exit_code: _, detail: _ } => ColdResetNotSent { mc_before: mc_before, before_on: before_on, reply: reply }
-        McResetColdUnrecognised { stdout: _ } => ColdResetNotSent { mc_before: mc_before, before_on: before_on, reply: reply }
-        McResetColdSent => {
+// THE SEQUENCE UNDER THE HOLD: read, attempt once, watch, read, judge. SEALED to the wet entry (the only caller
+// that acquires the hold), and it requires the hold's proof for this unit before anything reads the controller:
+// a call that reaches it without acquiring the hold is refused at compile time, and a proof for another host is
+// refused here, before McResetCold.
+fn mtcollins1_bmc_cold_reset_held(proof: UnitHoldProof, host: HostIdentity, bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ColdResetStage
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+  ]
+{
+  match unit_hold_proof_refusal(proof: proof, host: host, label: mtcollins1_bmc_cold_reset_label as String) {
+    Present { value: why } => ColdResetHoldProofRefused { reason: why }
+    Absent => {
+      let mc_before = mtcollins1_bmc_cold_reset_read_mc(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
+      let before = mtcollins1_bmc_cold_reset_read_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
+      match before {
+        ChassisStatusUndecodable { cause: _ } => ColdResetPowerUnreadBefore { mc_before: mc_before, before: before }
+        ChassisUnreadable => ColdResetPowerUnreadBefore { mc_before: mc_before, before: before }
+        ChassisPowerRead { power_on: before_on } => {
+          // ONE ATTEMPT. Whatever ipmitool reports, the read-only watch follows and nothing is sent again.
+          let reply = mtcollins1_bmc_cold_reset_send(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
           let end = mtcollins1_bmc_cold_reset_watch_poll(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite, watch: cold_reset_watch_start)
+          // A FRESH after-read, taken only once the watch saw a recovery; never the baseline reading again.
           let after = match end {
-            WatchRestarted { polls_to_drop: _, polls_to_answer: _, report: _ } =>
+            WatchRecovered { polls_to_loss: _, loss: _, polls_to_recovery: _, report: _ } =>
               Present { value: mtcollins1_bmc_cold_reset_read_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite) }
-            WatchNeverDropped { polls: _ } => none
-            WatchNeverAnswered { polls_to_drop: _, polls: _, last: _ } => none
+            WatchLossNotObserved { polls: _, last: _ } => none
+            WatchRecoveryNotObserved { polls_to_loss: _, loss: _, polls: _, last: _ } => none
           }
-          ColdResetJudged { mc_before: mc_before, before_on: before_on, verdict: cold_reset_verdict(before_on: before_on, end: end, after: after) }
+          ColdResetAttempted { mc_before: mc_before, before_on: before_on, reply: reply, verdict: cold_reset_verdict(baseline: mc_before, before_on: before_on, end: end, after: after) }
         }
       }
     }
@@ -250,12 +266,14 @@ fn mtcollins1_bmc_cold_reset_held(bmc_host: NonEmptyStr, username: NonEmptyStr, 
 fn cold_reset_stage_exit(stage: ColdResetStage) -> ProcessExit {
   let label = mtcollins1_bmc_cold_reset_label as String
   match stage {
-    ColdResetJudged { mc_before: _, before_on: _, verdict: v } =>
-      if cold_reset_verdict_converged(verdict: v) { ExitSuccess } else { exit_failure(reason: join([label, ": ", cold_reset_verdict_text(verdict: v)], "")) }
+    ColdResetAttempted { mc_before: _, before_on: _, reply: r, verdict: v } =>
+      match cold_reset_attempt_acceptance(reply: r, verdict: v) {
+        ColdResetAttemptAccepted => ExitSuccess
+        ColdResetAttemptNotAccepted { reason: why } => exit_failure(reason: join([label, ": ", why as String], ""))
+      }
     ColdResetPowerUnreadBefore { mc_before: _, before: b } =>
-      exit_failure(reason: join([label, ": host power could not be read before the reset (", chassis_observation_text(observation: b), "); nothing was sent"], ""))
-    ColdResetNotSent { mc_before: _, before_on: _, reply: r } =>
-      exit_failure(reason: join([label, ": the reset was not sent: ", ipmitool_mc_reset_cold_reply_text(reply: r)], ""))
+      exit_failure(reason: join([label, ": host power could not be read before the attempt (", chassis_observation_text(observation: b), "); the reset was not attempted"], ""))
+    ColdResetHoldProofRefused { reason: why } => exit_failure(reason: why)
     _ => exit_failure(reason: concat(label, ": refused before the controller was touched"))
   }
 }
@@ -292,21 +310,18 @@ fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
                 UnitHoldRefused { reason: r } =>
                   mtcollins1_bmc_cold_reset_write_receipt(run_id: run_id, sha: sha, stage: ColdResetHoldRefused { reason: r as String }, released: none,
                     exit: exit_failure(reason: join([mtcollins1_bmc_cold_reset_label as String, ": unit hold refused: ", r as String], "")))
-                UnitHeld { proof: p } =>
-                  match unit_hold_proof_refusal(proof: p, host: host.host, label: mtcollins1_bmc_cold_reset_label as String) {
-                    Present { value: why } =>
-                      mtcollins1_bmc_cold_reset_finish_holding(run_id: run_id, sha: sha, stage: ColdResetHoldProofRefused { reason: why }, proof: p, step_exit: exit_failure(reason: why))
-                    Absent => {
-                      let observation = bmc_control_route_observation(route: route)
-                      let stage = mtcollins1_bmc_cold_reset_held(
-                        bmc_host: observation.endpoint.host,
-                        username: account,
-                        password_file: cred as NonEmptyStr,
-                        cipher_suite: bmc_observation_ipmi_cipher_suite(observation: observation),
-                      )
-                      mtcollins1_bmc_cold_reset_finish_holding(run_id: run_id, sha: sha, stage: stage, proof: p, step_exit: cold_reset_stage_exit(stage: stage))
-                    }
-                  }
+                UnitHeld { proof: p } => {
+                  let observation = bmc_control_route_observation(route: route)
+                  let stage = mtcollins1_bmc_cold_reset_held(
+                    proof: p,
+                    host: host.host,
+                    bmc_host: observation.endpoint.host,
+                    username: account,
+                    password_file: cred as NonEmptyStr,
+                    cipher_suite: bmc_observation_ipmi_cipher_suite(observation: observation),
+                  )
+                  mtcollins1_bmc_cold_reset_finish_holding(run_id: run_id, sha: sha, stage: stage, proof: p, step_exit: cold_reset_stage_exit(stage: stage))
+                }
               }
           }
       }

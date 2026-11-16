@@ -538,9 +538,9 @@ fn mtcollins1_pxe_mac_discovery_effect() -> PrivilegedEffect {
 // from it with the reason below.
 fn mtcollins1_bmc_cold_reset_effect() -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: "mtcollins1 controller cold reset (IPMI Cold Reset over lanplus; host power read before and after and required unchanged) -- by the mtcollins1_bmc_cold_reset_wet root" as NonEmptyStr,
+    subject: "mtcollins1 controller cold reset (IPMI Cold Reset over lanplus; no chassis-power command; host power read at both endpoints and required equal) -- by the mtcollins1_bmc_cold_reset_wet root" as NonEmptyStr,
     frequency: BreakGlassOnly,
-    reversibility: IrreversibleEffect { what_is_lost: "the controller's running state: every open IPMI, SOL, KVM and web session and any attached virtual medium are dropped by the restart, and no reapply restores them" as NonEmptyStr },
+    reversibility: IrreversibleEffect { what_is_lost: "the controller's running state: every open IPMI, SOL, KVM and web session and any attached virtual medium may be dropped by the reinitialization it requests, and no reapply restores them" as NonEmptyStr },
     surface: ApiSurface,
     workload_identity: mtcollins1_boot_job_workload_identity(),
     minted_reach: MintsNoCredential,

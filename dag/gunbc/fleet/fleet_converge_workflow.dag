@@ -4407,7 +4407,7 @@ fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Step {
 
 fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins unit 1 controller cold reset under the unit hold (read, IPMI cold reset, watch it restart, read; host power must not change)" },
+    name: Present { value: "Mt. Collins unit 1 controller cold reset under the unit hold (read, one IPMI cold reset attempt, watch availability lost then recovered, read; no chassis-power command)" },
     id: Present { value: "mtcollins1_bmc_cold_reset" },
     run: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
     shell: none,
@@ -5884,7 +5884,7 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 // concurrent pair.
 // THE FAN-POLICY STEP RUNS FOR EVERY MODE OF THE BOOT JOB EXCEPT THE CONTROLLER COLD RESET, and that one alone.
 // The 2026-10-16 ruling ("stop the boot for all") gates BOOTS on an observed fan reading; the cold reset boots
-// nothing and leaves host power unchanged, and its reason to exist is a controller too wedged to answer reads,
+// nothing and issues no chassis-power command, and its reason to exist is a controller too wedged to answer reads,
 // which the fan series may be one of (capture boot 43669572288: web login and SDR timing out). merry-fox-82
 // (msg_7dbfdbb9) scoped the exclusion to exactly this mode; the reset's receipt records fan=unobserved. Every
 // boot mode keeps this step, and the boot and MAC-discovery steps still require its observed outcome.
