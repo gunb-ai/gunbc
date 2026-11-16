@@ -100,12 +100,23 @@ fn fabric_store_declared_root(members: List<NonEmptyStr>, root: FilePath) -> Fil
 // capability -- only FabricStorageOperations, minted below, does.
 type FabricStoreAreas { objects: NonEmptyStr, heads: NonEmptyStr }
 
-fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricStoreAreas {
-  let root = fabric_store_declared_root(members: members, root: instance.instance_root)
+// THE AREAS ARE KEYED ON A ROOT, NOT AN INSTANCE: the declared member chain and the root are all this
+// needs (fabric_store_declared_root derives the store root under the given root). Taking the root directly
+// lets a caller that only has a root -- the host-scoped capacity ledger, which has no dashboard instance --
+// stand its store without minting one. The instance-taking form below is the one-line projection.
+fn fabric_store_area_paths_root(members: List<NonEmptyStr>, root: FilePath) -> FabricStoreAreas {
+  let declared = fabric_store_declared_root(members: members, root: root)
   FabricStoreAreas {
-    objects: join([root as String, "/objects"], "") as NonEmptyStr,
-    heads: join([root as String, "/heads"], "") as NonEmptyStr,
+    objects: join([declared as String, "/objects"], "") as NonEmptyStr,
+    heads: join([declared as String, "/heads"], "") as NonEmptyStr,
   }
+}
+
+// THE ONE-LINE PROJECTION. A HostDashboardInstance is only a source of its declared root here; callers that
+// hold a root directly use fabric_store_area_paths_root. Migrating the remaining instance-taking callers to
+// the root form is mechanical (the follow-up), so there is a single body, never two that could drift.
+fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricStoreAreas {
+  fabric_store_area_paths_root(members: members, root: instance.instance_root)
 }
 
 // THE MINT. It takes the declared member chain and the business key -- never a path, never a directory
@@ -118,8 +129,15 @@ fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardIn
 // exactly as they did before.
 type FabricStoreStanding = FabricStoreReady { store: FabricStorageOperations } | FabricStoreUnready { area: String, detail: String }
 
+fn fabric_store_open_root(members: List<NonEmptyStr>, root: FilePath, entry_mode: FileMode?) -> FabricStoreStanding {
+  fabric_store_area_standing(areas: fabric_store_area_paths_root(members: members, root: root), entry_mode: entry_mode)
+}
+
+// THE ONE-LINE PROJECTION (see fabric_store_area_paths). A dashboard instance is only a source of its
+// declared root; the host-scoped capacity ledger calls fabric_store_open_root directly with its own root
+// instead of minting a dashboard instance it does not have.
 fn fabric_store_open(members: List<NonEmptyStr>, instance: HostDashboardInstance, entry_mode: FileMode?) -> FabricStoreStanding {
-  fabric_store_area_standing(areas: fabric_store_area_paths(members: members, instance: instance), entry_mode: entry_mode)
+  fabric_store_open_root(members: members, root: instance.instance_root, entry_mode: entry_mode)
 }
 
 // EACH AREA IS OBSERVED, NEVER CREATED. Creation (and the mode) belongs to the owned-directory rows
