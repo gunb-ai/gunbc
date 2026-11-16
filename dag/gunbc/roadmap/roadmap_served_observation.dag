@@ -32,7 +32,11 @@ import extdeps.time.rfc3339 {
   Rfc3339Timestamp, Rfc3339Comparison,
   Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
   rfc3339_is_canonically_spelled, rfc3339_compare,
+  Rfc3339InstantParse, Rfc3339InstantParsed, Rfc3339InstantRefused,
+  rfc3339_parse_instant, rfc3339_instant_unix_seconds,
 }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
+import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon_secs }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -898,15 +902,64 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
   }
 }
 
+// THE STALE-BY-AGE 409 GATE (condition 2 of node://adhoc-5752c35f-e54; design_ruling
+// ::refreshes_regularly_every_10_minutes_2026_11_16). The freshness law above compares observed_at
+// against the newest EVENT, so a stopped refresh whose carrier also cannot advance its log reads as
+// CURRENT and is served 200 — the silent-stale hole the periodic timer closes on the write side and
+// this closes on the read side. For /standings.json ONLY (the document ctrl admits roadmap work
+// items against), compare the stored observed_at against the wall clock AT READ TIME: if the last
+// refresh is older than belt_standings_refresh_staleness_horizon_secs, answer 409 (the same stale
+// status ctrl's parseStandingsResponse already refuses admission on), carrying the age. Fail CLOSED:
+// an unreadable clock, an unparseable observed_at, or a future-dated observation is refused, never
+// served as current — a stale reading must never be a silent pass. It is orthogonal to the event
+// comparison: freshness says "newer events exist"; this says "the refresher itself is behind".
+fn served_observation_age_staleness(observed_at: String) -> ServedObservationFreshness {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail } =>
+      ObservationFreshnessUnread { reason: join(["the refresh-age clock could not be read: ", detail], "") }
+    ClockUnixMillisObserved { millis } =>
+      match rfc3339_parse_instant(text: observed_at) {
+        // An unparseable observed_at is not proof of freshness. It is proof the document is not the
+        // one the belt wrote, so it cannot be trusted as current.
+        Rfc3339InstantRefused { cause: _ } =>
+          ObservationStale { observed_at: observed_at, newest_event_at: "" }
+        Rfc3339InstantParsed { instant: i, spelling: _ } =>
+          if (epoch_secs_of_millis(millis: millis) as Int) - rfc3339_instant_unix_seconds(i: i)
+              > belt_standings_refresh_staleness_horizon_secs {
+            ObservationStale { observed_at: observed_at, newest_event_at: "" }
+          } else {
+            ObservationCurrent
+          }
+      }
+  }
+}
+
 fn served_observation_surface_response_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
   let freshness = served_observation_freshness_for_read(read: read, events: served_observation_events_for_instance(instance: instance))
+  // The age gate applies only to /standings.json and only once the event comparison has NOT already
+  // refused: a 503 (log unreadable) or a 409 (newer events) stays the answer — this only ADDS the
+  // "and it is also too old" verdict to a document the event law alone would have served 200. An
+  // unreadable clock (ObservationFreshnessUnread) is FAIL CLOSED: apply_freshness turns it into a
+  // 503 refusal, never a silent current.
+  let standing = match freshness {
+    ObservationCurrent =>
+      match read {
+        ServedObservationPresent { index } =>
+          match kind {
+            StandingsJson => served_observation_age_staleness(observed_at: index.observed_at)
+            _ => freshness
+          }
+        _ => freshness
+      }
+    _ => freshness
+  }
   match served_observation_entry_for(read: read, kind: kind) {
     ServedObservationEntryMissing => served_observation_index_refusal(read: read, kind: kind)
     ServedObservationEntryFound { entry } =>
       served_observation_apply_freshness(
         response: served_observation_body_response(entry: entry, body: served_observation_body_read_for_instance(instance: instance, entry: entry)),
-        freshness: freshness,
+        freshness: standing,
       )
   }
 }

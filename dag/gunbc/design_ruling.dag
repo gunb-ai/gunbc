@@ -138,6 +138,30 @@ data fleet_observation_deferral_2026_11_12: DesignRuling = DesignRuling {
   provenance: "NOT an operator answer: an escalation raised by vivid-koi-387 on 2026-11-12 — 'P3 SMBIOS reads: srv3 and the Sparks (srv9-srv12) are unreachable. Grant read access, or record them as blocked?' with Defer recommended — went unanswered for 15 minutes, and the dashboard closed it with the recommended option approved by DEFAULT. Defer is therefore applied as an unanswered escalation's default, and this row says so rather than promoting the default to an operator ruling. Its content: record srv3 (ssh answers, refuses every held credential), srv9..srv12 and host-6ce85c (no route from any held read principal; the Sparks have no BMC fallback) as BLOCKED-ON-ACCESS with the typed reason; do not fabricate readings; the fleet proceeds on readable machines; a machine returns to the observed set exactly when its own reading declaration appears in gunbc.fleet.fleet_host_smbios_observation. The blockage itself is measured, not assumed: srv3's key rejection was reproduced twice from two principals, the Sparks and 6ce85c were probed from srv1. Restoring true authority is cheap: a read principal or route appearing, or the operator ratifying or overriding this default.",
 }
 
+// THE PERIODIC STANDINGS REFRESH BACKSTOP (2026-11-16). The operator asked for a regular refresh of
+// the daily workspace's roadmap standings; the served-observation fold that produces /standings.json
+// is otherwise event-driven (a belt tick, fired only on a worker exit or operator action), so an idle
+// host freezes the standings and ctrl — which admits roadmap work items against that one document
+// (scripts/session-dashboard/lib/roadmap_work_items.mjs parseStandingsResponse/admitWorkspaceWorkItem)
+// — sees silently-old data. This ruling is the authority that REOPENS a wall-clock trigger for that
+// one fold after dogfood intervention #4 retired the belt timer: the ruling that retired the timer
+// (spec.dag:849-872, "event-driven, not timer-driven") removed the timer that re-WALKED THE FRONTIER
+// (spawning/launching/tearing down sessions on a cadence). This ruling does not reverse that. What it
+// authorizes is strictly narrower and read-only: a systemd timer that starts a oneshot running ONLY
+// `belt_observe_once_cli` — the observation fold, no spawn/launch/teardown — every
+// `belt_standings_refresh_backstop` seconds, exactly the mechanism the credential-recovery backstop
+// (this module's `belt_credential_recovery_backstop`) already uses for a law with no event to trigger
+// it. It also authorizes the freshness law's second, orthogonal 409 gate (`served_observation_standing_of_read`
+// age check in gunbc.roadmap.roadmap_served_observation): a stored observation older than
+// `belt_standings_refresh_staleness_horizon_secs` at read time answers 409 rather than being served 200,
+// so a dead timer FAILS CLOSED (ctrl refuses admission) instead of serving bytes whose refresher died.
+data refreshes_regularly_every_10_minutes_2026_11_16: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "refreshes_regularly_every_10_minutes_2026_11_16"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.live_deploy.belt_cadence", decl_name: "belt_standings_refresh_backstop"),
+  provenance: "Operator, relayed by neat-badger-614 to silent-hawk-820 on 2026-11-16, verbatim: \"regarding refreshes - we'd need to build something that refreshes regularly - every 10 minutes or something for now is fine\". Measured at intake: https://srv1.tailecbe08.ts.net:8444/standings.json reported observed_at 2026-11-14T22:51:39Z / log_head fa4a936992b6, ~26h stale, while answering 200 — because no belt tick had run since the last lab worker exited (the lab had no owner since the last lab worker was archived). The operator set the cadence ('every 10 minutes') and its looseness ('or something for now is fine'); the value lives in gunbc.live_deploy.belt_cadence::belt_standings_refresh_backstop (600s), the staleness horizon (3 periods, 1800s) in belt_standings_refresh_staleness_horizon_secs, and the emitted timer+oneshot pair in gunbc.live_deploy.emit::live_deploy_belt_standings_refresh_{unit,timer}_unit_file on the credential-recovery-backstop pattern. The fail-closed 409 age gate is not the operator's request but is required by it: a refresh that silently fails to run would reproduce the exact bug, so the route answers stale itself rather than serving frozen bytes. Approver neat-badger-614 approved the approach with four conditions on 2026-11-16; this row is condition (1) — the ruling recorded in the ledger, not only in a comment.",
+}
+
 data t6_fabric_storage_excluded_from_live_deploy_2026_11_10: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "t6_fabric_storage_excluded_from_live_deploy_2026_11_10"),
   decided: "2026-11-10",
