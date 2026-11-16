@@ -138,6 +138,18 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
   helper_locus_dir(locus: attempt_system_unit_launcher_locus(instance: instance), revision: revision)
 }
 
+// THE DRAIN'S READ-OF-RECORD, exported from the drain's own module (the artifact closure consumes
+// this; it never re-spells the path). The attempt-unit drain service's ExecStart is pinned to its
+// helper snapshot — the revision-bound launcher dir — so that dir is BOTH what the unit reads AND
+// what the attempt-unit-drain helper-snapshot install leg writes (its spine is this same locus).
+// One authority (attempt_system_unit_launcher_dir) is the source of both the read and the owned
+// artifact, so the deploy intent owning the drain's read and the drain's read of itself cannot
+// disagree — a re-spelled list beside the unit could (single_authority; build on this authority,
+// not a second inventory of the drain's helper closure).
+fn attempt_unit_drain_read_paths(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
+  [attempt_system_unit_launcher_dir(instance: instance, revision: revision)]
+}
+
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
   "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore file the manager loads as the unit's credential, and its environment carries git's safe.directory grant for the attempt's own worktree -- and no other unit, user, property, credential, environment, or program" as NonEmptyStr
 }
