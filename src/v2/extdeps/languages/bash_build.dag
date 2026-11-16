@@ -1025,7 +1025,7 @@ fn bash_build_word_array_expansion(name: String) -> Optional<Node> {
 
 // Bash manual, node "Looping Control Words": while list-1; do list-2; done.
 // The condition is an operand node and the body a list of stmt nodes --
-// exactly the if builder materials. An empty condition or an empty body is
+// exactly the if builder materials. An empty body is
 // refused; there is no default (gunbc.design_argument::fail_closed).
 fn bash_build_while(cond: Node, body: List<Node>) -> Optional<Node> {
   match list_head(xs: body) {
