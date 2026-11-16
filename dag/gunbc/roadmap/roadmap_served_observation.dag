@@ -938,35 +938,48 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
 // The age is compared in the Second carrier (second_count on both sides), never by re-typing the
 // epoch diff as a bare Int against a bare Int — gunbc.design_argument::minimize_redundancy keeps the
 // duration on std.measure, its single authority.
+// PURE by design (gunbc.design_argument::witness_one_interface: a witness's inputs are SUPPLIED VALUES
+// at its boundary): `now_secs` is a supplied epoch-second value, so a witness pins the clock and drives
+// every arm — current, stale-by-age, future-dated, unparseable — including the comparison direction and
+// which side of the subtraction is taken. The wall clock is read only in served_observation_age_staleness
+// below. The age is compared in the Second carrier (second_count on both sides), never by re-typing the
+// epoch diff as a bare Int against a bare Int — gunbc.design_argument::minimize_redundancy keeps the
+// duration on std.measure, its single authority.
+fn served_observation_age_verdict(observed_at: String, now_secs: Int) -> ServedObservationFreshness {
+  match rfc3339_parse_instant(text: observed_at) {
+    // An unparseable observed_at is its own verdict: the document is not the one the belt wrote,
+    // so it is refused as unparseable — NOT reported as stale-by-age with a fabricated field.
+    Rfc3339InstantRefused { cause: _ } =>
+      ObservationUnparseable { observed_at: observed_at }
+    Rfc3339InstantParsed { instant: i, spelling: _ } => {
+      let age_secs = now_secs - rfc3339_instant_unix_seconds(i: i)
+      if age_secs < 0 {
+        // Future-dated: the observation claims a time after the supplied now. That is an unreadable
+        // clock or a forged index, not freshness — refuse rather than serve 200.
+        ObservationFreshnessUnread { reason: join(["the observation is dated after the present clock: ", observed_at], "") }
+      } else {
+        match checked_int_to_nat(n: age_secs) {
+          Absent => ObservationFreshnessUnread { reason: "the observation age could not be measured" }
+          Present { value } =>
+            if value > second_count(s: belt_standings_refresh_staleness_horizon) {
+              ObservationStaleByAge { observed_at: observed_at, horizon: belt_standings_refresh_staleness_horizon }
+            } else {
+              ObservationCurrent
+            }
+        }
+      }
+    }
+  }
+}
+
+// The clock boundary: read the wall clock ONCE and hand the supplied value to the pure verdict. An
+// unreadable clock is refused (fail closed), so the route never serves frozen bytes as current.
 fn served_observation_age_staleness(observed_at: String) -> ServedObservationFreshness {
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail } =>
       ObservationFreshnessUnread { reason: join(["the refresh-age clock could not be read: ", detail], "") }
     ClockUnixMillisObserved { millis } =>
-      match rfc3339_parse_instant(text: observed_at) {
-        // An unparseable observed_at is its own verdict: the document is not the one the belt wrote,
-        // so it is refused as unparseable — NOT reported as stale-by-age with a fabricated field.
-        Rfc3339InstantRefused { cause: _ } =>
-          ObservationUnparseable { observed_at: observed_at }
-        Rfc3339InstantParsed { instant: i, spelling: _ } => {
-          let age_secs = (epoch_secs_of_millis(millis: millis) as Int) - rfc3339_instant_unix_seconds(i: i)
-          if age_secs < 0 {
-            // Future-dated: the observation claims a time after now. That is an unreadable clock or a
-            // forged index, not freshness — refuse rather than serve 200.
-            ObservationFreshnessUnread { reason: join(["the observation is dated after the present clock: ", observed_at], "") }
-          } else {
-            match checked_int_to_nat(n: age_secs) {
-              Absent => ObservationFreshnessUnread { reason: "the observation age could not be measured" }
-              Present { value } =>
-                if value > second_count(s: belt_standings_refresh_staleness_horizon) {
-                  ObservationStaleByAge { observed_at: observed_at, horizon: belt_standings_refresh_staleness_horizon }
-                } else {
-                  ObservationCurrent
-                }
-            }
-          }
-        }
-      }
+      served_observation_age_verdict(observed_at: observed_at, now_secs: epoch_secs_of_millis(millis: millis) as Int)
   }
 }
 

@@ -38,11 +38,15 @@ import gunbc.roadmap.roadmap_served_observation {
   served_events_after_snapshot_close,
   served_observation_apply_freshness,
   ObservationCurrent, ObservationStale, ObservationFreshnessUnread,
+  ObservationStaleByAge, ObservationUnparseable,
+  served_observation_age_verdict,
   served_observation_entry_for,
   served_observation_standing_json_value,
   served_observation_standing_http_status,
 }
 import extdeps.languages.json.emit { serialize_json }
+import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon, belt_standings_refresh_backstop }
+import std.measure { Second, second_count }
 import gunbc.roadmap.roadmap_event_carrier {
   AllEventsRead, AllEventsReadRefused, CarrierClosed, SnapshotCloseFailed,
 }
@@ -352,45 +356,120 @@ test fn a_newer_event_makes_the_served_observation_stale() -> Bool {
   match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z") {
     ObservationStale { observed_at, newest_event_at } => observed_at == "2026-10-10T18:00:00Z" && newest_event_at == "2026-10-10T18:00:01Z"
     ObservationCurrent => false
+    ObservationStaleByAge { observed_at: _, horizon: _ } => false
+    ObservationUnparseable { observed_at: _ } => false
     ObservationFreshnessUnread { reason: _ } => false
   }
     && match served_observation_freshness(observed_at: "2026-10-10T18:00:01Z", newest_event_at: "2026-10-10T18:00:01Z") {
       ObservationCurrent => true
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
       ObservationFreshnessUnread { reason: _ } => false
     }
     && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "") {
       ObservationFreshnessUnread { reason: _ } => true
       ObservationCurrent => false
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
     }
     && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01+00:00") {
       ObservationFreshnessUnread { reason: _ } => true
       ObservationCurrent => false
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
     }
+}
+
+// Discriminating tests for the pure age verdict. `now_secs` is a SUPPLIED value at the boundary,
+// so the clock is pinned (DESIGN witness_one_interface: a witness's inputs are SUPPLIED VALUES).
+// The observed instant is the epoch ("1970-01-01T00:00:00Z", unix seconds 0), so age_secs == now_secs
+// and every case is decided by the supplied number alone -- no dependence on a guessed base.
+test fn the_age_verdict_is_current_up_to_the_horizon_and_stale_past_it() -> Bool {
+  let observed_at = "1970-01-01T00:00:00Z"
+  let horizon_secs = second_count(s: belt_standings_refresh_staleness_horizon) as Int
+  match served_observation_age_verdict(observed_at: observed_at, now_secs: 0) {
+    ObservationCurrent => true
+    ObservationStale { observed_at: _, newest_event_at: _ } => false
+    ObservationStaleByAge { observed_at: _, horizon: _ } => false
+    ObservationUnparseable { observed_at: _ } => false
+    ObservationFreshnessUnread { reason: _ } => false
+  }
+    // exactly at the horizon is still current: the gate is strictly greater-than, not >=.
+    && match served_observation_age_verdict(observed_at: observed_at, now_secs: horizon_secs) {
+      ObservationCurrent => true
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
+    // one second past the horizon is stale-by-age, and carries the horizon -- never a fabricated newest event.
+    && match served_observation_age_verdict(observed_at: observed_at, now_secs: horizon_secs + 1) {
+      ObservationStaleByAge { observed_at, horizon } =>
+        observed_at == "1970-01-01T00:00:00Z" && horizon == belt_standings_refresh_staleness_horizon
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
+}
+
+test fn the_age_verdict_refuses_future_dated_and_unparseable_observations() -> Bool {
+  // Future-dated: the observation is dated after the supplied now (negative age) -- unread, not current.
+  match served_observation_age_verdict(observed_at: "1970-01-01T00:00:00Z", now_secs: -1) {
+    ObservationFreshnessUnread { reason } => string_contains(s: reason, pattern: "dated after the present clock")
+    ObservationCurrent => false
+    ObservationStale { observed_at: _, newest_event_at: _ } => false
+    ObservationStaleByAge { observed_at: _, horizon: _ } => false
+    ObservationUnparseable { observed_at: _ } => false
+  }
+    // Unparseable: its own verdict, so a forged or hand-written index is never served as current.
+    && match served_observation_age_verdict(observed_at: "2026-13-45T99:99:99Z", now_secs: 1000) {
+      ObservationUnparseable { observed_at } => observed_at == "2026-13-45T99:99:99Z"
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
+}
+
+// The horizon is DERIVED, not a copy: three times the refresh backstop, from the same carrier.
+test fn the_staleness_horizon_is_three_periods_derived_from_the_backstop() -> Bool {
+  second_count(s: belt_standings_refresh_staleness_horizon) == second_count(s: belt_standings_refresh_backstop) * 3
+    && second_count(s: belt_standings_refresh_backstop) == 600
 }
 
 test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
   let stale = ObservationStale { observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z" }
+  let stale_by_age = ObservationStaleByAge { observed_at: "2026-10-10T18:00:00Z", horizon: belt_horizon_fixture() }
+  let unparseable = ObservationUnparseable { observed_at: "2026-10-10T99:99:99Z" }
   let unread = ObservationFreshnessUnread { reason: "snapshot: fixture" }
   let standing_stale = serialize_json(v: served_observation_standing_json_value(read: fixture_read(), freshness: stale))
+  let standing_by_age = serialize_json(v: served_observation_standing_json_value(read: fixture_read(), freshness: stale_by_age))
   let body = served_observation_body_response(
     entry: fixture_entry(kind: DailyPage),
     body: ServedObservationBodyPresent { body: fixture_daily_body },
   )
   let marked = served_observation_apply_freshness(response: body, freshness: stale)
+  let marked_by_age = served_observation_apply_freshness(response: body, freshness: stale_by_age)
+  let marked_unparseable = served_observation_apply_freshness(response: body, freshness: unparseable)
   let unread_r = served_observation_apply_freshness(response: body, freshness: unread)
   served_observation_newest_event_at(envelopes: []) == ""
     && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsRead { envelopes: [] }) {
       ObservationCurrent => true
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
       ObservationFreshnessUnread { reason: _ } => false
     }
     && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsReadRefused { step: "snapshot", reason: "fixture" }) {
       ObservationFreshnessUnread { reason } => string_contains(s: reason, pattern: "fixture")
       ObservationCurrent => false
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationStaleByAge { observed_at: _, horizon: _ } => false
+      ObservationUnparseable { observed_at: _ } => false
     }
     && match served_events_after_snapshot_close(read: CarrierClosed {
       result: AllEventsRead { envelopes: [] },
@@ -404,5 +483,17 @@ test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
     && string_contains(s: standing_stale, pattern: "2026-10-10T18:00:01Z")
     && served_observation_standing_http_status(read: fixture_read(), freshness: stale) == 200
     && marked.status == 409 && marked.body == fixture_daily_body
+    // The age gate: a stale-by-age standing refuses the surface with 409 (fail closed)
+    // and the standing document says so with a horizon field, never a fabricated newest event.
+    && string_contains(s: standing_by_age, pattern: "\"standing\": \"stale\"")
+    && string_contains(s: standing_by_age, pattern: "\"stale_by_age_horizon_secs\": \"1800\"")
+    && !string_contains(s: standing_by_age, pattern: "newest_event_at")
+    && served_observation_standing_http_status(read: fixture_read(), freshness: stale_by_age) == 200
+    && marked_by_age.status == 409 && marked_by_age.body == fixture_daily_body
+    && marked_unparseable.status == 409
     && unread_r.status == 503 && string_contains(s: unread_r.body, pattern: "ServedObservationFreshnessUnread")
+}
+
+fn belt_horizon_fixture() -> Second {
+  belt_standings_refresh_staleness_horizon
 }
