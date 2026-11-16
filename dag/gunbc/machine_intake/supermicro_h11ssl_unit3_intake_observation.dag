@@ -20,10 +20,13 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 // line on srv4. Nothing here was produced by a converge run, and nothing here claims what the board
 // says about itself. Every figure is tagged with how it was come by, and the two ways it was come by
 // are weaker than the unit1 and unit2 receipts: an operator statement, and a read-only LAN read made
-// from srv1 by smart-crane-730 (dashboard msg_01a71ff1, 2026-11-15 ~23:25Z). No capture directory in
-// artifacts/ backs these rows yet; the reads that would back them are named in each row's own
-// read_obligation, and where a read exists it is a WEAKER one than the row it stands in for (the disk
-// row, gunbc.fleet.machine_target_disk_observations, says so in its own words).
+// from srv1 by smart-crane-730 (dashboard msg_01a71ff1, 2026-11-15 ~23:25Z). One capture directory
+// exists -- artifacts/host-observations/h11ssl-unit3-lan-read-2026-11-15/ -- and it backs only the
+// NETWORK rows, and is itself a transcription of another session's read rather than a capture this
+// repository took. Nothing backs the boot-path account, the firmware figures, the GPU count or the disk
+// reading, and the reads that would back them are named in each row's own read_obligation. Where a read
+// does exist it is a WEAKER one than the row it stands in for (the disk row,
+// gunbc.fleet.machine_target_disk_observations, says so in its own words).
 //
 // WHY THIS IS NOT A PER-HOST FORK. The lifecycle this unit now joins is the one srv15 walks: identity,
 // install-NIC observation, install-disk reading, baseboard and BMC standing, enrollment, then the edge
