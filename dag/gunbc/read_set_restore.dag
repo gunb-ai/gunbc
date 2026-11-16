@@ -56,6 +56,7 @@ import v2.std.read_set {
 }
 import gunbc.seed_build_inputs { seed_build_input_members }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { Second, second, second_count }
 import gunbc.read_set_publish { fast_lane_unit_path, fast_lane_unit_cache_key }
 import gunbc.parse_verdict_publish {
   native_cli_bin,
@@ -279,14 +280,24 @@ data fast_lane_wait_hit_word: String = "hit"
 // sampled); FL_TYPICAL rounds that up to 55 minutes, so the estimate `created + FL_TYPICAL - now` is
 // conservative: a run the model calls "within cap" is usually closer than the estimate says. The cap is
 // the 12 minutes the manager ruled on (message 2026-11-16, with four conditions, all implemented); the
-// OPERATOR ruling on the occupancy increase is escalation msg_fd0c2170-6434-44d2-b46e-7770aada5aa5 (the 90-minute job
+// OPERATOR ruling on the occupancy increase is escalation msg_926f150f-da3a-474b-930a-34c3bc166c10 (the 90-minute job
 // timeout is UNCHANGED and no budget constant moves -- a wait can only add wall time when it fails, and
 // a full run (~41-50) plus a worst-case wait (12) still fits). If the operator withholds the ruling, the
 // step must be removed or capped at zero, which degenerates to today's behavior.
-data fast_lane_wait_cap_secs: String = "720"
-data fast_lane_wait_typical_secs: String = "3300"
-data fast_lane_wait_poll_secs: String = "30"
-data fast_lane_wait_poll_steps: String = "24"
+data fast_lane_wait_cap_secs: Second = second(count: 720)
+data fast_lane_wait_typical_secs: Second = second(count: 3300)
+data fast_lane_wait_poll_secs: Second = second(count: 30)
+data fast_lane_wait_poll_steps: Int = 24
+
+// Transport-boundary rendering: the poll script and its env consume decimal text; the model keeps
+// durations in std.measure::Second and the poll count in Int (std.measure::second_count unwraps).
+fn fast_lane_wait_secs_text(s: Second) -> String {
+  int_to_decimal_string(value: second_count(s: s) as Int)
+}
+
+fn fast_lane_wait_poll_steps_text() -> String {
+  int_to_decimal_string(value: fast_lane_wait_poll_steps)
+}
 data fast_lane_wait_step_name: String = "Wait for the base commit's fast-lane unit"
 
 // THE WINDOW IS THE RESTORE WINDOW, one source of truth: the same ordinals the restore steps generate from.
@@ -445,7 +456,7 @@ fn fl_wait_script_raw() -> String {
     "I=0",
     "DEADLINE=$(( $(date +%s) + FL_CAP ))",
     "while [ \"$I\" -lt \"$FL_STEPS\" ]; do",
-    "  sleep " + fast_lane_wait_poll_secs,
+    "  sleep " + fast_lane_wait_secs_text(fast_lane_wait_poll_secs),
     "  if [ \"$(date +%s)\" -gt \"$DEADLINE\" ]; then say timeout; fi",
     "  ST=$(curl -fsS -m 15 -H \"Authorization: Bearer $GITHUB_TOKEN\" -H \"Accept: application/vnd.github+json\" \"$API/repos/$GUNBC_REPO/actions/runs/$RID\" 2>/dev/null | jq -r \"[.status, .conclusion] | join(\\\" \\\")\" 2>/dev/null)",
     "  case \"$ST\" in",
@@ -494,9 +505,9 @@ fn fl_wait_step() -> Step {
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
       kv(key: "GUNBC_REPO", value: yaml_string(s: "${{ github.repository }}")),
       kv(key: "FL_WINDOW", value: yaml_string(s: fast_lane_wait_window_str())),
-      kv(key: "FL_CAP", value: yaml_string(s: fast_lane_wait_cap_secs)),
-      kv(key: "FL_TYPICAL", value: yaml_string(s: fast_lane_wait_typical_secs)),
-      kv(key: "FL_STEPS", value: yaml_string(s: fast_lane_wait_poll_steps))
+      kv(key: "FL_CAP", value: yaml_string(s: fast_lane_wait_secs_text(fast_lane_wait_cap_secs))),
+      kv(key: "FL_TYPICAL", value: yaml_string(s: fast_lane_wait_secs_text(fast_lane_wait_typical_secs))),
+      kv(key: "FL_STEPS", value: yaml_string(s: fast_lane_wait_poll_steps_text()))
     ] },
     working_directory: none,
     if_condition: Present { value: "github.event_name == 'pull_request'" },
