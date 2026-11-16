@@ -1,0 +1,212 @@
+module gunbc.tailscale_fleet_auth_key
+
+// THE FLEET'S TAILSCALE ENROLLMENT CREDENTIAL, AS ONE PINNED SECRET WITH ONE RECORD OF WHAT IT IS.
+//
+// Every host the router is meant to reach by tailnet name has to JOIN the tailnet first, and joining takes
+// an authorization credential. This module is the single home of that credential's identity: which Secret
+// Manager version it is, what kind of Tailscale auth key that version holds, which tag it puts a node in,
+// when it stops working, and where its material may exist on a host. It is deliberately a module of its
+// own rather than a corner of the converge that uses it, for the same reason the APNs key has its own home
+// (gunbc.auth.approval_apns_publish::approval_apns_auth_key_secret_ref): the CUSTODY LEDGER
+// (gunbc.fleet.host_credential_custody_converge) and the ACCESSOR ROSTER
+// (gunbc.auth.fleet_secret_accessor_roster) both need the ref, and a ledger must not import a converge to
+// get the fact it is supposed to be the authority for. The converge that consumes it is
+// gunbc.tailscale_join_converge.
+//
+// WHY AN AUTH KEY AND NOT A PER-MACHINE APPROVAL, which is an operator decision recorded 2026-11-15 rather
+// than a model choice. The alternative to an auth key is the admin console's per-device approval click, and
+// a converge cannot be gated on a human clicking in a web UI for each of four hosts and counting: it makes
+// the enrollment path interactive, and an interactive path is the one a runbook survives by skipping. So
+// the join is authorized by a credential held in Secret Manager and pinned, which is what upstream's own
+// guidance for a reusable key demands -- "Be very careful with reusable keys! ... They are best kept in a
+// key vault product specially designed for the purpose" (Tailscale, KB 1085, quoted at
+// extdeps.tailscale.join). What the key buys is bounded by what the key IS: it is reusable and tagged, and
+// a tagged key's node "assumes the identity of the auth key's tags", so a leaked key enrolls a node in the
+// tag below and nothing more (extdeps.tailscale.tailscale_serving_port_grants is where the ACL's view of
+// that tag lives).
+
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.tailscale.join {
+  AuthKeyExpiredOn,
+  AuthKeyPreApproved,
+  AuthKeyReusable,
+  AuthKeyStillValid,
+  TailscaleAuthKeyFile,
+  TailscaleAuthKeyPolicy,
+  TailscaleCalendarDate,
+  TailscaleAuthKeyPolicyVerdict,
+  tailscale_auth_key_approval_wire,
+  tailscale_auth_key_file_at,
+  tailscale_auth_key_policy_of,
+  tailscale_calendar_date,
+  tailscale_auth_key_kind_wire,
+  tailscale_auth_key_expiry_verdict,
+  tailscale_auth_key_policy_admit,
+}
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE SECRET, PINNED TO A VERSION.
+//
+// The project is the fleet's secrets project -- gunbai-secrets, the one value of
+// gunbc.fleet.fleet_secrets_config::fleet_secrets_gcp_project, which is what
+// gunbc.secret_provision::fleet_secret_ref stamps into every ref below, so this module never restates a
+// project id and can never drift from the roster's or the custody ledger's idea of where fleet secrets
+// live. The operator created the secret on 2026-11-15 as projects/582015116396/secrets/tailscale-fleet-auth-key
+// (that number is gunbai-secrets per gunbc.auth.github_gcp_federation::fleet_secrets_project_number) and
+// added its first version by stdin, so no key material passed through a chat window, a shell history line,
+// or an argv on the way in.
+//
+// WHY PINNED TO "1" AND NOT "latest", which is the same argument the APNs key makes
+// (gunbc.auth.approval_apns_publish): a fleet enrollment credential is a security boundary, and a lane
+// reading "latest" gets whatever the most recent writer put there. A pinned version makes every rotation a
+// code change with a diff -- add the new version in Secret Manager, change the pin below, review it, ship
+// it -- and the converge that runs against a version whose metadata does not match this record refuses
+// rather than proceeding on a credential it cannot describe (the metadata read-back is
+// gunbc.tailscale_join_converge::tailscale_join_secret_metadata_leg; it reads metadata and never the
+// payload, because the payload's only legitimate destination is the custody file on the host being joined).
+data tailscale_fleet_auth_key_secret_id: NonEmptyStr = "tailscale-fleet-auth-key"
+
+data tailscale_fleet_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: tailscale_fleet_auth_key_secret_id),
+  version: "1" as NonEmptyStr,
+)
+
+// THE PROJECT, restated only as a claim this module's consumers can check: the ref above must carry it.
+// A witness reads the two against each other, so "the key lives in the fleet's secrets project" is a
+// checked fact and not a comment (dag/test/claim/tailscale_fleet_auth_key_witness.dag).
+data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_project
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// WHAT KIND OF KEY THE PINNED VERSION IS, AND WHY THOSE SETTINGS AND NOT OTHERS.
+//
+// Every value here is the operator's 2026-11-15 decision, recorded against the upstream meanings in
+// extdeps.tailscale.join; the model's job is to make a drifted key FAIL the converge rather than work
+// quietly differently, which is what the admission below is for.
+//
+// REUSABLE, because one credential has to enroll a fleet: srv3, srv4, butch and h11 today, and the new
+// H11SSL-i and srv15 when they come up. A one-off key binds the credential's life to a node's session and
+// an ephemeral key removes the node when it goes offline -- and these hosts exist to be REACHED, so an
+// outage would delete the very node the router is trying to route to (extdeps.tailscale.join::
+// tailscale_auth_key_kind_supports_permanent_membership).
+//
+// PRE-APPROVED, because the tailnet has device approval on and the join has to be non-interactive. Without
+// it a host enrolls into NeedsMachineAuth: present in the console, unreachable from srv1, and a converge
+// that reads "joined" from the wrong signal would call that success.
+//
+// TAGGED tag:ci, which is the setting that bounds what a leaked key can do. Upstream: a node created by a
+// tagged key "assumes the identity of the auth key's tags", so the tag the key carries IS the identity the
+// ACL will apply. tag:ci was chosen because it already exists in the tailnet's tagOwners and because srv1
+// and srv2 already carry it alongside tag:dashboard -- so a key that leaks enrolls a node into the tag the
+// ACL already treats as unprivileged, and nothing new is minted. The tag string is spelled here in full,
+// `tag:` prefix and all, because this is also the string the ACL is written in and the two have to be
+// comparable (extdeps.tailscale.acl).
+//
+// 90 DAYS, upstream's maximum ("The maximum key expiration is 90 days"). The expiry is not a security
+// theater and not an outage risk: an expired auth key "will not work after that date, but the nodes it
+// authorized continue to work", so when it lapses the fleet loses the ability to ENROLL and keeps every
+// member it has. Rotating it is a deliberate event -- new version in Secret Manager, pin bumped above,
+// converge re-run for the hosts still to join.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_fleet_node_tag: NonEmptyStr = "tag:ci"
+
+data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_key_policy_of(
+  kind: AuthKeyReusable,
+  approval: AuthKeyPreApproved,
+  key_tags: [tailscale_fleet_node_tag],
+  expires_after_days: 90,
+)
+
+// THE ADMITTANCE THE CONVERGE RUNS BEFORE IT TOUCHES A HOST. Fail closed: a key that is not reusable, not
+// pre-approved, untagged, or older than upstream allows is refused here, before any leg runs -- a join with
+// a key of the wrong kind produces a node that is either deleted on its first outage or sits unapproved
+// forever, and neither of those is a state a converge should discover by reading back a peer list.
+fn tailscale_fleet_auth_key_admitted() -> TailscaleAuthKeyPolicyVerdict {
+  tailscale_auth_key_policy_admit(policy: tailscale_fleet_auth_key_policy)
+}
+
+// The two settings that are this fleet's claim about the pinned version, as readable strings, so a refusal
+// can say which property it checked without the operator having to know the model's constructor names.
+fn tailscale_fleet_auth_key_kind_wire() -> String {
+  tailscale_auth_key_kind_wire(kind: tailscale_fleet_auth_key_policy.kind)
+}
+
+fn tailscale_fleet_auth_key_approval_wire() -> String {
+  tailscale_auth_key_approval_wire(approval: tailscale_fleet_auth_key_policy.approval)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// WHEN THE KEY STOPS WORKING -- AND WHY THE JOIN REFUSES ON IT RATHER THAN DISCOVERING IT.
+//
+// The operator generated the key on 2026-11-15 with the 90-day expiry, so its last day of validity is
+// 2027-02-13 (their reading, corrected the same day from an earlier 2026 date; the console is the
+// authority and the read-back below is what checks this record against it). The date is modelled rather
+// than inferred from `expires_after_days` because a lapse and the console's clock are what the operator
+// sees; the day count is what upstream promised at generation.
+//
+// THE REFUSAL HAS TO BE UP FRONT. An expired auth key fails `tailscale up` with an error whose wording is
+// about the login, not about the key's age; a converge that ran `up` and then read a peer list would report
+// a host that "did not join" when the true cause is a calendar. Refusing on the date costs nothing, because
+// expiry stops enrollments and not membership (extdeps.tailscale.join::
+// tailscale_auth_key_expiry_verdict): a host that is already a member is a Noop whether or not the key
+// lives, and the expiry verdict is consulted only on the arm that would actually use the credential.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_fleet_auth_key_generated_on: TailscaleCalendarDate = tailscale_calendar_date(
+  year: 2026,
+  month: 11,
+  day: 15,
+)
+
+data tailscale_fleet_auth_key_expires_on: TailscaleCalendarDate = tailscale_calendar_date(
+  year: 2027,
+  month: 2,
+  day: 13,
+)
+
+// THE DAY THE JOIN IS RUNNING, SUPPLIED BY THE CALLER. The model does not read a clock: a converge entry
+// takes its "today" as an input from the environment it runs in (gunbc.tailscale_join_converge reads it the
+// same way gunbc.tailscale_machine_name_converge reads its host selector), so the same plan can be
+// re-derived -- and re-refused -- on any date without a hidden dependency on the wall clock of whoever
+// compiled it.
+fn tailscale_fleet_auth_key_usable_on(today: TailscaleCalendarDate) -> Bool {
+  match tailscale_auth_key_expiry_verdict(expires_on: tailscale_fleet_auth_key_expires_on, today: today) {
+    AuthKeyStillValid => true
+    AuthKeyExpiredOn { on: _ } => false
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// WHERE THE KEY'S MATERIAL MAY EXIST ON A HOST -- THE CUSTODY PATH, IN ONE PLACE.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// This is the path the custody row pins (gunbc.fleet.host_credential_custody_converge::
+// host_credential_custody_row, credential TailscaleFleetAuthKey) and the path the join hands to
+// `tailscale up --auth-key=file:...` (extdeps.tailscale.join::tailscale_auth_key_file_argument). It is
+// stated once, here, so the row, the file mode, and the argv cannot drift apart into three different
+// opinions about where a fleet-wide reusable credential lives on a machine.
+//
+// THE DIRECTORY IS THE FLEET'S OWN (/etc/gunbc-tailscale), not Tailscale's: /var/lib/tailscale is
+// tailscaled's state directory and is not this fleet's to write into, and a credential placed beside the
+// daemon's own keys would be read back as evidence about a file the converge never placed. Being under
+// /etc is what puts it inside the one custody scope the fleet admits for files a converge writes
+// (gunbc.fleet.runner_host_file_converge::fleet_host_file_scope).
+data tailscale_fleet_auth_key_host_directory: NonEmptyStr = "/etc/gunbc-tailscale"
+
+data tailscale_fleet_auth_key_host_path: NonEmptyStr = "/etc/gunbc-tailscale/fleet-auth.key"
+
+// THE TYPED FILE REFERENCE the join passes upstream. Constructed from the custody path rather than from a
+// literal a caller could vary, so "the file the join points at" and "the file custody placed" are the same
+// string by construction (@ref(gunbc.design_argument::single_authority)).
+data tailscale_fleet_auth_key_file: TailscaleAuthKeyFile = tailscale_auth_key_file_at(
+  path: tailscale_fleet_auth_key_host_path,
+)
+
+// THE ONE FACT ABOUT THE FILE THE JOIN DEPENDS ON BESIDES ITS NAME: it must be readable by the root the
+// join runs as and by nobody else, which is the custody row's owner and mode (root:root, 0400) -- so a
+// converged file satisfies this and a file any other user could read is a custody refusal, not a join
+// concern.
+data tailscale_fleet_auth_key_file_is_root_only: Bool = true

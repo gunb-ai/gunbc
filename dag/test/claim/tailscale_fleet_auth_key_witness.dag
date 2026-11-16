@@ -1,0 +1,273 @@
+module test.claim.tailscale_fleet_auth_key_witness
+
+// THE WITNESSES FOR THE FLEET TAILNET JOIN (node adhoc-977efa46-965, 2026-11-15). What they hold the model
+// to: the secret is ONE pinned version of one named secret; the key is the operator's decided shape
+// (reusable, pre-approved, exactly one tag, a 90-day window ending 2027-02-13); the key material NEVER
+// appears in an argument vector; the custody row is root-only on disk; and the two shared ledgers the work
+// edited carry their provenance counts: the custody roster (16) and the accessor roster (22) are asserted
+// at their exact length HERE, so a fifth credential or a twenty-third grant is a deliberate edit to this
+// file and not a silent append.
+
+import std.logic { Bool }
+import std.algebra { length, Cons, Empty }
+import std.string { NonEmptyStr, concat }
+import std.option { Present, Absent }
+import extdeps.tailscale.join {
+  AuthKeyReusable,
+  AuthKeyPreApproved,
+  AuthKeyPolicyAccepted,
+  tailscale_calendar_date,
+  tailscale_calendar_date_is_wellformed,
+  tailscale_calendar_date_precedes,
+  tailscale_auth_key_expiry_days_are_upstream,
+  tailscale_auth_key_file_argument,
+  tailscale_auth_key_file_is_absolute,
+  tailscale_up_join_argv_carries_no_key_material,
+  tailscale_auth_key_kind_wire,
+  tailscale_auth_key_approval_wire,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
+}
+import gunbc.tailscale_fleet_auth_key {
+  tailscale_fleet_auth_key_secret_id,
+  tailscale_fleet_auth_key_secret_ref,
+  tailscale_fleet_auth_key_expected_project,
+  tailscale_fleet_node_tag,
+  tailscale_fleet_auth_key_policy,
+  tailscale_fleet_auth_key_admitted,
+  tailscale_fleet_auth_key_generated_on,
+  tailscale_fleet_auth_key_expires_on,
+  tailscale_fleet_auth_key_usable_on,
+  tailscale_fleet_auth_key_host_directory,
+  tailscale_fleet_auth_key_host_path,
+  tailscale_fleet_auth_key_file,
+}
+import gunbc.fleet.host_credential_custody_converge {
+  host_custody_credential_roster,
+  host_custody_credential_wire,
+  host_credential_custody_row,
+  TailscaleFleetAuthKey,
+  CustodyFileOwnerRead,
+  DirectoryOwnerOnly,
+  CustodyAnyRunnerHost,
+  CustodyDiskBacked,
+}
+import gunbc.auth.fleet_secret_accessor_roster {
+  fleet_accessor_grant_roster,
+  tailscale_fleet_auth_key_accessor_row,
+}
+import gunbc.tailscale_join_converge {
+  tailscale_join_population,
+  tailscale_join_tag_consistency,
+  tailscale_join_up_command,
+  tailscale_join_up_timeout_seconds,
+}
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+
+// ── THE SECRET: one named secret, one PINNED version, the fleet's own project ────────────────────────
+
+test fn w_secret_is_the_named_pinned_version() -> Bool {
+  tailscale_fleet_auth_key_secret_ref.secret == tailscale_fleet_auth_key_secret_id
+    && tailscale_fleet_auth_key_secret_id == "tailscale-fleet-auth-key"
+    && tailscale_fleet_auth_key_secret_ref.version == "1"
+    && (tailscale_fleet_auth_key_secret_ref.project as String)
+      == (tailscale_fleet_auth_key_expected_project as String)
+}
+
+// The pin is not "latest": a rotating ref would let the fleet's enrollment credential change underneath a
+// converge run, which is what the APNs precedent (approval_apns_auth_key_secret_ref) refuses for the same
+// reason.
+test fn w_pin_is_not_latest() -> Bool {
+  tailscale_fleet_auth_key_secret_ref.version != "latest"
+}
+
+// ── THE KEY: the operator's decided shape, exactly ───────────────────────────────────────────────────
+
+test fn w_key_is_reusable_preapproved_single_tag_90_days() -> Bool {
+  match tailscale_fleet_auth_key_policy {
+    policy =>
+      match policy.kind {
+        AuthKeyReusable =>
+          match policy.approval {
+            AuthKeyPreApproved =>
+              policy.key_tags.count() == 1
+                && policy.expires_after_days == 90
+                && tailscale_auth_key_expiry_days_are_upstream(
+                  expires_after_days: policy.expires_after_days,
+                )
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn w_key_carries_exactly_the_ci_tag() -> Bool {
+  match tailscale_fleet_auth_key_policy.key_tags {
+    Cons { head: head, tail: Empty } => head == tailscale_fleet_node_tag
+    _ => false
+  } && tailscale_fleet_node_tag == "tag:ci"
+}
+
+test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
+  match tailscale_fleet_auth_key_admitted() {
+    AuthKeyPolicyAccepted => true
+    _ => false
+  }
+}
+
+test fn w_key_wires_are_the_upstream_words() -> Bool {
+  tailscale_auth_key_kind_wire(kind: AuthKeyReusable) == "reusable"
+    && tailscale_auth_key_approval_wire(approval: AuthKeyPreApproved) == "pre-approved"
+}
+
+// ── THE EXPIRY: generated 2026-11-15, valid THROUGH 2027-02-13, refused after ─────────────────────────
+
+test fn w_expiry_window_is_the_operators_date() -> Bool {
+  tailscale_calendar_date_is_wellformed(date: tailscale_fleet_auth_key_generated_on)
+    && tailscale_calendar_date_is_wellformed(date: tailscale_fleet_auth_key_expires_on)
+    && tailscale_fleet_auth_key_generated_on.year == 2026
+    && tailscale_fleet_auth_key_generated_on.month == 11
+    && tailscale_fleet_auth_key_generated_on.day == 15
+    && tailscale_fleet_auth_key_expires_on.year == 2027
+    && tailscale_fleet_auth_key_expires_on.month == 2
+    && tailscale_fleet_auth_key_expires_on.day == 13
+    && tailscale_calendar_date_precedes(
+      earlier: tailscale_fleet_auth_key_generated_on,
+      later: tailscale_fleet_auth_key_expires_on,
+    )
+}
+
+// The day itself still joins (the expiry day is the LAST valid day); the day after refuses. This is the
+// arm the join consults before it puts a key in front of `up`, so a stale pin fails as a refusal naming
+// the date rather than as a hang.
+test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
+  tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on)
+    && !tailscale_fleet_auth_key_usable_on(today: tailscale_calendar_date(
+      year: 2027,
+      month: 2,
+      day: 14,
+    ))
+    && !tailscale_fleet_auth_key_usable_on(today: tailscale_calendar_date(
+      year: 2025,
+      month: 1,
+      day: 1,
+    ))
+}
+
+// ── THE KEY NEVER TRAVELS IN ARGV ────────────────────────────────────────────────────────────────────
+
+// The file argument is the `file:` form and nothing else -- and its path is the custody row's own path,
+// so there is one spelling of where the key sits on a host.
+test fn w_key_reaches_up_only_as_a_file_reference() -> Bool {
+  tailscale_auth_key_file_is_absolute(file: tailscale_fleet_auth_key_file)
+    && tailscale_auth_key_file_argument(file: tailscale_fleet_auth_key_file)
+      == concat("file:", tailscale_fleet_auth_key_host_path)
+    && tailscale_fleet_auth_key_host_path
+      == concat(tailscale_fleet_auth_key_host_directory, "/fleet-auth.key")
+}
+
+// EVERY emitted join argv, for EVERY enrolled host that has a hostname, carries no word with the
+// upstream key prefix, is the five-word `up` form, and is never REFUSED for a rostered host. This is the
+// universal form: a host added to the enrolment roster tomorrow is covered by this claim without
+// touching this file.
+test fn w_no_join_argv_carries_key_material() -> Bool {
+  fold(
+    tailscale_join_population(),
+    init: true,
+    f: fn(acc, host) {
+      acc && match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+        Absent => true
+        Present { value: hostname } =>
+          match tailscale_join_up_command(hostname: hostname) {
+            TailscaleUpJoinCommandBuilt { command: command } =>
+              command.arguments.count() == 5
+                && match command.arguments {
+                  Cons { head: head, tail: _ } => head == "up"
+                  Empty => false
+                }
+                && tailscale_up_join_argv_carries_no_key_material(argv: command.arguments)
+            TailscaleUpJoinCommandRefused { cause: _ } => false
+          }
+      }
+    }
+  )
+}
+
+// ── THE CUSTODY ROW: root-only bytes, the pinned secret, the host's own path ─────────────────────────
+
+test fn w_custody_row_is_root_only_and_names_the_pinned_secret() -> Bool {
+  match host_credential_custody_row(c: TailscaleFleetAuthKey) {
+    row =>
+      row.secret == tailscale_fleet_auth_key_secret_ref
+        && row.path == tailscale_fleet_auth_key_host_path
+        && match row.file_mode {
+          CustodyFileOwnerRead => true
+          _ => false
+        }
+        && match row.dir_mode {
+          DirectoryOwnerOnly => true
+          _ => false
+        }
+        && match row.host_scope {
+          CustodyAnyRunnerHost => true
+          _ => false
+        }
+        && match row.medium {
+          CustodyDiskBacked => true
+          _ => false
+        }
+        && host_custody_credential_wire(c: TailscaleFleetAuthKey) == "tailscale_fleet_auth_key"
+  }
+}
+
+// ── THE SHARED LEDGERS: provenance counts, asserted exactly ──────────────────────────────────────────
+
+// host_credential_custody_converge::host_custody_credential_roster gained one entry (TailscaleFleetAuthKey)
+// on 2026-11-15: fifteen before, sixteen after. The existing witness already ties roster length to the
+// sum's arm count; this pins the NUMBER so a silent append cannot pass.
+test fn w_custody_roster_count_is_sixteen() -> Bool {
+  length(xs: host_custody_credential_roster) == 16
+    && fold(
+      host_custody_credential_roster,
+      init: 0,
+      f: fn(acc, c) {
+        acc + match c {
+          TailscaleFleetAuthKey => 1
+          _ => 0
+        }
+      }
+    ) == 1
+}
+
+// fleet_secret_accessor_roster::fleet_accessor_grant_roster gained one entry
+// (tailscale_fleet_auth_key_accessor_row) on 2026-11-15: twenty-one before, twenty-two after.
+test fn w_accessor_roster_count_is_twenty_two() -> Bool {
+  length(xs: fleet_accessor_grant_roster) == 22
+    && fold(
+      fleet_accessor_grant_roster,
+      init: 0,
+      f: fn(acc, r) {
+        acc + if r.target.secret == tailscale_fleet_auth_key_secret_id {
+          1
+        } else {
+          0
+        }
+      }
+    ) == 1
+    && tailscale_fleet_auth_key_accessor_row.target == tailscale_fleet_auth_key_secret_ref
+    // The accessor row's target carries the PINNED version, not latest -- least privilege as modeled is
+    // one secret, one version, read only.
+    && tailscale_fleet_auth_key_accessor_row.target.version == "1"
+}
+
+// ── THE CONVERGE'S OWN INVARIANTS ────────────────────────────────────────────────────────────────────
+
+// Every host the join converge claims as its population is a member of the enrolment roster, every host
+// with a hostname advertises exactly the fleet tag (the tag the ACL will address), and every emitted join
+// waits with a bounded timeout -- upstream's own default blocks FOREVER, which a converge must never do.
+test fn w_population_and_tags_are_consistent() -> Bool {
+  tailscale_join_tag_consistency()
+    && tailscale_join_population().count() > 0
+    && tailscale_join_up_timeout_seconds > 0
+}
