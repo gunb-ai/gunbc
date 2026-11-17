@@ -1332,7 +1332,17 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
   )
   bash_build_or_else(
     left: bash_build_and_then(
-      left: test_words(ws: [lit(t: "-gt"), var(n: "RELEASE_BINS_RETENTION_TOTAL"), lit(t: gate_threshold)]),
+      // Numeric gate by jq on page 1's own answer file, not `test -gt`: a
+      // bracket test needs its operator between operands and any misspelling
+      // exits 2, which the trailing `|| :` would swallow. jq -e is 0 exactly
+      // when the predicate is true and non-zero otherwise, and page 1's
+      // answer has already admitted total_count as a number by here.
+      left: cmd(ws: [
+        lit(t: "jq"),
+        lit(t: "-e"),
+        lit(t: join([".total_count > ", gate_threshold], "")),
+        release_bins_retention_answer_rooted(),
+      ]),
       right: bash_build_subshell_from_stmts(stmts: [
         release_bins_retention_fetch_page(header: header, answer: answer_n, n_text: n_text),
         bash_build_or_else(
@@ -1462,7 +1472,14 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     // is the failure this closes; guessing from page 1 alone is the other one.
     bash_build_or_else(
       left: bash_build_and_then(
-        left: test_words(ws: [lit(t: "-gt"), var(n: "RELEASE_BINS_RETENTION_TOTAL"), lit(t: release_bins_retention_max_total_text)]),
+        // Same jq -e discipline as the page gates: no bracket-operator order
+        // to get wrong, no exit-2 that a `|| :` could hide.
+        left: cmd(ws: [
+          lit(t: "jq"),
+          lit(t: "-e"),
+          lit(t: join([".total_count > ", release_bins_retention_max_total_text], "")),
+          release_bins_retention_answer_rooted(),
+        ]),
         right: bash_build_subshell_from_stmts(stmts: [
           cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
           cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
