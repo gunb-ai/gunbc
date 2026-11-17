@@ -752,6 +752,42 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
     && !string_contains(s: r.stdout, pattern: "page-failed")
 }
 
+// A required page failing, whole step (F4d, review 96005): page 2 never
+// arrives, so the plan must NOT run on a partial listing, nothing may be
+// deleted, and the single refusal line 'pages-incomplete' must be typed.
+fn fake_curl_pages_fail_page2(body1: String, body3: String) -> Outcome<String> {
+  e(statements: fake_tool(
+    name: "curl",
+    lines: [
+      "o=0",
+      "u=\"\"",
+      "for a in \"$\"@\"; do case \"$\"a\" in -o) o=1;; *) if [ \"$\"o\" = 1 ]; then o=\"$\"a\"; fi;; esac; case \"$\"a\" in http*) u=\"$\"a\";; esac; done",
+      "case \"$\"u\" in *page=2*) exit 22;; *page=3*) printf %s \"" + body3 + "\" > \"$\"o\";; *) printf %s \"" + body1 + "\" > \"$\"o\";; esac",
+      "exit 0",
+    ]
+  ))
+}
+
+data script_retention_page2_fail: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    retention_answer_part(body: retention_pages_body1),
+    fake_curl_pages_fail_page2(body1: retention_pages_body1, body3: retention_pages_body3),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_page2_failure_refuses_to_delete() -> Bool {
+  let r = run_script(script: script_retention_page2_fail)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: page-failed=2")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: pages-incomplete")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "plan-failed")
+}
+
 // THE FIVE WHOLE-STEP PATHS (manager, msg_495d8e8e): every claim below runs
 // release_bins_outcome_with_retention_statements -- the emitted step, outcome
 // and chore together -- against the fixture store and a fake curl.
