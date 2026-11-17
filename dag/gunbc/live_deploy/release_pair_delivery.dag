@@ -46,7 +46,7 @@ import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_scri
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   ReleasePairDelivery, PairInstalled, PairRefused,
-  deliver_release_pair, delivered_pair_revision,
+  deliver_release_pair, delivered_pair_revision, VerifiedPack,
   release_locus_member_path, release_locus_tree_receipt_path,
 }
 import gunbc.live_deploy.operations { systemctl_restart_command }
@@ -136,12 +136,17 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
   // The verdict counts ONLY when it names the pack the fetch actually observed present — the cross-stage fact that
   // forbids verifying a pack that was never fetched.
   let verified = match fetch {
-    PackPresent { sha256: _, pack_dir: fetched_dir, binary_source: _ } =>
+    PackPresent { sha256: sha, pack_dir: fetched_dir, binary_source: _ } =>
       match verify {
-        VerifiedOn { pack_dir: verified_dir } => (fetched_dir as String) == (verified_dir as String)
-        Refused { reason: _ } => false
+        VerifiedOn { pack_dir: verified_dir } =>
+          if (fetched_dir as String) == (verified_dir as String) {
+            Present { value: VerifiedPack { digest: sha } }
+          } else {
+            none
+          }
+        Refused { reason: _ } => none
       }
-    PackAbsent { reason: _ } => false
+    PackAbsent { reason: _ } => none
   }
   let decision = deliver_release_pair(
     base_root: base_root,

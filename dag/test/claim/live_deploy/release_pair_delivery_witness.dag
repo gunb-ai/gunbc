@@ -20,7 +20,7 @@ import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.release_locus {
   ReleasePairDelivery, PairInstalled, PairRefused,
-  deliver_release_pair, delivered_pair_revision,
+  deliver_release_pair, delivered_pair_revision, VerifiedPack,
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
   release_locus_dir, release_locus_member_path,
 }
@@ -92,7 +92,7 @@ test fn witness_good_head_installs_bound_pair() -> Bool {
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
     binary_source: Present { value: fetched_src },
-    verified: true,
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
   )
   match d {
     PairInstalled { pair: p, locus: l } =>
@@ -117,7 +117,7 @@ test fn witness_bins_not_built_keeps_last_good() -> Bool {
     source_head: main_head(),
     binaries_sha256: none,
     binary_source: none,
-    verified: true,
+    verified: none,
   )
   kept_is(v: d, want: last_good_serving())
 }
@@ -133,7 +133,7 @@ test fn witness_pack_unverified_keeps_last_good() -> Bool {
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
     binary_source: Present { value: fetched_src },
-    verified: false,
+    verified: none,
   )
   kept_is(v: d, want: last_good_serving())
 }
@@ -150,7 +150,7 @@ test fn witness_source_head_mismatch_keeps_last_good() -> Bool {
     source_head: wrong_head(),
     binaries_sha256: Present { value: bin_sha256 },
     binary_source: Present { value: fetched_src },
-    verified: true,
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
   )
   kept_is(v: d, want: last_good_serving())
 }
@@ -167,7 +167,7 @@ test fn witness_source_missing_keeps_last_good() -> Bool {
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
     binary_source: none,
-    verified: true,
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
   )
   kept_is(v: d, want: last_good_serving())
 }
@@ -186,7 +186,7 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
     binary_source: Present { value: fetched_src },
-    verified: true,
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
   )
   match d {
     PairInstalled { pair: p, locus: _ } =>
@@ -203,3 +203,20 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
 
 // (No empty-digest witness: the input type is NonEmptyStr?, so an empty digest is unrepresentable -- the type
 //  rules it out where a hand-written check used to stand, per review 96047.)
+
+// ── RED CONTROL (review 96067): a verdict for a DIFFERENT pack must NOT authorize an install ─────────────────
+// The fold cross-checks the VerifiedPack digest against the binary it binds; handing it a verdict that verified a
+// different pack (here a foreign digest) is refused, not trusted — fail_closed: the wrong state cannot be used.
+data wrong_bin_sha256: NonEmptyStr = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+test fn witness_verdict_names_other_pack_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: Present { value: VerifiedPack { digest: wrong_bin_sha256 } },
+  )
+  kept_is(v: d, want: last_good_serving())
+}
