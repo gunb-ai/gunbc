@@ -1,0 +1,82 @@
+module test.claim.git_workdir_free_route_spawn_witness
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git {
+  shape_git_checkout_orphan_args,
+  shape_git_commit_allow_empty_args,
+  shape_git_commit_message_args,
+  shape_git_add_all_args,
+  shape_git_add_path_args,
+  git_checkout_revision_args,
+  shape_git_status_porcelain_nul_args,
+  shape_git_rev_parse_head_args,
+}
+import gunbc.git_argv_route_wall {
+  GitWorkdirFreeSpawn,
+  GitWorkdirFreeSpawnAdmitted,
+  GitWorkdirFreeSpawnRefused,
+  spawn_git_argv_workdir_free,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The program the gate is asked about. The gate's decision depends on the ROUTE and the argv
+// WORDS only -- never on which program is named -- so a fixed git program keeps the claim focused
+// on the pairing this wall guards. (The program is carried through unchanged on the admitted path;
+// nothing is spawned here.)
+data git_program: String = "git"
+
+// WHAT THIS WITNESS EARNS. `gunbc.git_argv_route_wall` now exposes a SANCTIONED route for the
+// workdir-FREE channel -- `spawn_git_argv_workdir_free` -- so a route that names no working
+// directory reaches a git spawn ONLY by branching on that gate and running the command it hands
+// back. `test.claim.git_bare_mutating_route_wall_witness` proves the PREDICATE (`admit_git_argv_on_route`)
+// pairs argv and route correctly. THIS file proves the ROUTE does too: it drives `spawn_git_argv_workdir_free`
+// with the REAL argv produced by the `extdeps/git.dag` shapes (never a hand-spelled word list) and
+// checks that a bare mutating shape produces NO command (the refused arm), while the in-repo `-C`
+// dressing and bare read-only inspection are handed back to spawn. Remove the wall consult from the
+// route -- make it always admit -- and `workdir_free_route_refuses_bare_mutation_before_producing_a_command`
+// goes red: the refusal is load-bearing, not decoration.
+
+// The route refuses argv -- and the refused arm carries NO command. The Admitted arm returning false
+// is the whole point: a refused argv yields nothing to spawn. At a workdir-free route the gate refuses
+// both the bare-mutation mis-join and any verb the closed read-only allowlist has not earned; both are
+// the same actionable class (re-dress with `-C`, or take a directory-carrying route), so the refused
+// arm carries nothing and is nullary.
+fn spawn_refused_bare_free(argv: List<String>) -> Bool {
+  match spawn_git_argv_workdir_free(program: git_program, argv: argv) {
+    GitWorkdirFreeSpawnRefused => true
+    GitWorkdirFreeSpawnAdmitted { program: _, arguments: _ } => false
+  }
+}
+
+// The route admits argv and hands back a command to spawn: the same program and the same argv the
+// caller offered, unchanged. A refusal (false) would mean the gate swallowed a legal pairing.
+fn spawn_admitted(argv: List<String>) -> Bool {
+  match spawn_git_argv_workdir_free(program: git_program, argv: argv) {
+    GitWorkdirFreeSpawnAdmitted { program: p, arguments: args } => p == git_program && args == argv
+    GitWorkdirFreeSpawnRefused => false
+  }
+}
+
+// (refusal, before spawn) Every BARE mutating shape -- the leading token writes the tree and there
+// is no in-repo `-C` to name a repository -- is refused at the workdir-free route and produces NO
+// command. Each shape here is produced by an `extdeps/git.dag` shape fn, never spelled by hand; the
+// spread (commit / add / checkout) is the damage class the wall exists to stop on the RunArgv channel.
+test fn workdir_free_route_refuses_bare_mutation_before_producing_a_command() -> Bool {
+     spawn_refused_bare_free(shape_git_commit_allow_empty_args(message: "root commit"))
+  && spawn_refused_bare_free(shape_git_commit_message_args(message: "x"))
+  && spawn_refused_bare_free(shape_git_add_all_args())
+  && spawn_refused_bare_free(shape_git_add_path_args(path: "a/b"))
+  && spawn_refused_bare_free(shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
+}
+
+// (admission, in-repo + read-only) The in-repo `-C <repo>` dressing of the SAME mutating verb the
+// refusal claim rejects bare (a `-C` checkout) is admitted and handed back to spawn -- this is the
+// ONLY way a mutation reaches a directory-less route -- and bare READ-ONLY inspection (no tree
+// write) is admitted too, so the gate guards the defect without refusing a legal pairing.
+test fn workdir_free_route_admits_in_repo_dressing_to_spawn() -> Bool {
+     spawn_admitted(git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"))
+  && spawn_admitted(shape_git_status_porcelain_nul_args())
+  && spawn_admitted(shape_git_rev_parse_head_args())
+}
