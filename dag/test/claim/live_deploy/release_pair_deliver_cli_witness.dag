@@ -13,16 +13,16 @@ import gunbc.live_deploy.release_binding {
   ReleaseMixed,
   ReleaseBindingUnobserved,
 }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled, release_pair_bins_unbuilt_reason, release_pair_pack_unverified_reason }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
 import std.optional { Optional, Present, Absent }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  release_pair_converged_noop, PlanWaits,
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
-  release_pair_deliver_serving, release_pair_reason_is_benign_wait, release_pair_no_run_for_head_reason,
-  release_pair_serving_at_head, release_pair_already_at_head_reason,
+  release_pair_deliver_serving,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
@@ -170,17 +170,10 @@ test fn witness_serving_mixed_is_poison() -> Bool {
   }
 }
 
-// The keep-last-good exit classifier: only the not-built-yet reason is a benign CI wait; a refusal (build-key
-// refused, etc.) is not — the actuator must surface it, not exit green.
-test fn witness_benign_wait_is_the_ci_not_ready_cases() -> Bool {
-  // Both "pack artifact absent" and "no successful run yet for the head" (CI building / run not successful) are
-  // benign waits: the timer keeps serving last-good and retries, it does not fail every tick (review 96214).
-  let unbuilt_benign = release_pair_reason_is_benign_wait(reason: release_pair_bins_unbuilt_reason)
-  let no_run_benign = release_pair_reason_is_benign_wait(reason: release_pair_no_run_for_head_reason)
-  // A refused/unverified pack is NOT a benign wait — it names a refusal the operator must see.
-  let unverified_refusal = !release_pair_reason_is_benign_wait(reason: release_pair_pack_unverified_reason)
-  unbuilt_benign && no_run_benign && unverified_refusal
-}
+// The benign-vs-refusal split is NOT witnessed here: it moved to the typed DeliveryPlan arms
+// (PlanWaits vs PlanKeepsLastGood) and is witnessed against the real producer release_pair_install_plan in
+// release_pair_delivery_plan_witness, and the steady-state short-circuit is witnessed just below via the fold's pure
+// release_pair_converged_noop route. The old string classifier this witness exercised is gone (review 96225).
 
 // The run-list decode reads BOTH sides off the run metadata: the run id (download target) and the run's head_sha
 // (the binary-side observation). A line without the tab separator is malformed and decodes to none (fail-closed).
@@ -198,27 +191,30 @@ test fn witness_decode_run_splits_run_id_and_head_sha() -> Bool {
 }
 
 
-// STEADY-STATE SHORT-CIRCUIT (review 96219): a tick on an ALREADY-CONVERGED pair is a benign no-op that performs NO
-// fetch. The serving binding is supplied the way the entry receives it — release_pair_deliver_serving over the serve
-// gate's observed DeployedReleaseBinding (the real producer, through the GitObjectId->hex authority) — with the head
-// equal to the placed revision. The ROUTE claim: release_pair_serving_at_head is true, so the entry takes
-// PlanKeepsLastGood { reason: already_at_head } BEFORE the run discovery and the fetch (the fetch legs are not
-// reached), and that reason is a benign wait — the timer exits green without touching the network. Mutating the
-// predicate to always-false reddens this claim (the tick would re-fetch the same revision).
-test fn witness_converged_pair_short_circuits_before_fetch() -> Bool {
+// STEADY-STATE SHORT-CIRCUIT (review 96219 / 96225): a SECOND tick on an ALREADY-CONVERGED pair returns the benign
+// PlanWaits no-op and performs NO fetch. The serving binding is supplied the way the entry receives it —
+// release_pair_deliver_serving over the serve gate's observed DeployedReleaseBinding (the real producer, through the
+// GitObjectId->hex authority) — with the head equal to the placed revision. The ROUTE claim: the fold's pure
+// release_pair_converged_noop returns Present(PlanWaits), so the entry takes the keep-serving no-op and never reaches
+// the fetch legs. Flip converged_noop to always-Absent and this reddens (the tick would re-fetch the same revision).
+test fn witness_converged_pair_short_circuits_to_waits() -> Bool {
   match git_object_id_from_untagged_hex(hex: head_hex as String) {
     Absent => false
     Present { value: r } =>
       let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() })
-      let converged = release_pair_serving_at_head(serving: serving, head: head_hex)
-      let benign = release_pair_reason_is_benign_wait(reason: release_pair_already_at_head_reason)
-      converged && benign
+      match release_pair_converged_noop(serving: serving, head: head_hex) {
+        Present { value: noop } => match noop {
+          PlanWaits { kept: _, reason: _ } => true
+          _ => false
+        }
+        none => false
+      }
   }
 }
 
 // RED CONTROL for the short-circuit: it must not swallow the ticks that DO need to deliver. A placed tree on a
-// DIFFERENT revision than the head, and a not-installed tree, both return false — the fetch body runs. Widen the
-// predicate to always-true and delivery silently stops tracking main forever; this reddens that mutation.
+// DIFFERENT revision than the head, and a not-installed tree, both return none — the entry proceeds to the fetch.
+// Widen converged_noop to always-Present and delivery silently stops tracking main forever; this reddens that.
 test fn witness_diverged_or_uninstalled_pair_must_fetch() -> Bool {
   match git_object_id_from_untagged_hex(hex: head_hex as String) {
     Absent => false
@@ -226,11 +222,17 @@ test fn witness_diverged_or_uninstalled_pair_must_fetch() -> Bool {
       match git_object_id_from_untagged_hex(hex: other_head_hex as String) {
         Absent => false
         Present { value: b } =>
-          // Observed tree sits on b, the head to deploy is head_hex: NOT converged, so the fetch must run.
+          // Observed tree sits on b, the head to deploy is head_hex: NOT converged, so the fetch must run (none).
           let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: b, surface: srv_surface() })
-          let diverged_fetches = !release_pair_serving_at_head(serving: serving, head: head_hex)
-          let uninstalled_fetches = !release_pair_serving_at_head(serving: RevisionNotInstalled, head: head_hex)
-          diverged_fetches && uninstalled_fetches
+          let diverged_proceeds = match release_pair_converged_noop(serving: serving, head: head_hex) {
+            none => true
+            Present { value: _ } => false
+          }
+          let uninstalled_proceeds = match release_pair_converged_noop(serving: RevisionNotInstalled, head: head_hex) {
+            none => true
+            Present { value: _ } => false
+          }
+          diverged_proceeds && uninstalled_proceeds
       }
   }
 }

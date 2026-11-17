@@ -9,6 +9,11 @@ module test.claim.live_deploy.release_pair_delivery_plan_witness
 // actually produced. By stage 3 the fetch and verify have already run, so the plan carries ONLY the install steps;
 // the binary placement names its SOURCE from the fetch observation (review 96059), so no file is placed from nowhere.
 //
+// BENIGN WAIT vs REFUSAL IS TYPED (review 96225), not a string comparison: an ABSENT pack (the head's release-bins
+// are not built yet) is a benign PlanWaits — the timer keeps serving and retries GREEN; a PRESENT pack the fold still
+// refused (unverified digest, source/binary drift, wrong-pack verdict) is a real PlanKeepsLastGood refusal that must
+// surface RED. The exit code is read from the plan variant, so re-wording any reason cannot flip green<->red.
+//
 // ── WHY IT IS RED ON BASE ──────────────────────────────────────────────────────────────────────────────────
 // On base the delivery leg does not exist — neither the stages nor their result types — so no plan is built and no
 // refusal is representable. On head a good head whose pack was fetched AND verified on THAT pack yields a
@@ -23,7 +28,7 @@ import std.algebra { fold_list }
 import extdeps.tools.gh { gh_run_download_argv }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
-  DeliveryPlan, PlanToInstall, PlanKeepsLastGood, FilePlacement, SourceReceiptWrite,
+  DeliveryPlan, PlanToInstall, PlanKeepsLastGood, PlanWaits, FilePlacement, SourceReceiptWrite,
   release_pair_fetch_argv, release_pair_verify_dispatch, release_pair_install_plan,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
 }
@@ -112,13 +117,15 @@ test fn witness_plan_good_head_builds_bound_install() -> Bool {
         ((rrev as String) == main_sha) &&
         ((rdg as String) == (bin_sha256 as String))
     PlanKeepsLastGood { kept: _, reason: _ } => false
+    PlanWaits { kept: _, reason: _ } => false
   }
 }
 
-// ── RED CONTROL (arm 1): a head whose release bins were never fetched installs nothing ──────────────────────
-// The fetch observed no pack, so there is no digest and no fetched file to place; even a would-be verify verdict
-// cannot rescue it (the fold refuses on the unbuilt digest). The last-good pair keeps serving.
-test fn witness_plan_pack_not_fetched_keeps_last_good() -> Bool {
+// ── BENIGN WAIT (arm 1): a head whose release bins are not built yet is a WAIT, not a refusal (review 96225) ──
+// The fetch observed no pack (CI still building), so there is no digest and no fetched file to place — but this is
+// NOT a defect. It is a PlanWaits: the last-good pair keeps serving and the timer retries GREEN next tick. The old
+// behaviour reddened the unit on every such tick; the typed arm makes it green without comparing the reason text.
+test fn witness_plan_pack_not_fetched_is_benign_waits() -> Bool {
   let plan = release_pair_install_plan(
     base_root: base_root,
     serving: last_good_serving(),
@@ -130,7 +137,8 @@ test fn witness_plan_pack_not_fetched_keeps_last_good() -> Bool {
   )
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
-    PlanKeepsLastGood { kept: _, reason: _ } => true
+    PlanKeepsLastGood { kept: _, reason: _ } => false
+    PlanWaits { kept: _, reason: _ } => true
   }
 }
 
@@ -150,6 +158,9 @@ test fn witness_plan_pack_unverified_keeps_last_good() -> Bool {
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
     PlanKeepsLastGood { kept: _, reason: _ } => true
+    // A present pack that the fold refused is a RED refusal, never a benign wait — this reddens a mutation that
+    // routed a present-pack refusal into PlanWaits (the exit code is the variant, not the reason text).
+    PlanWaits { kept: _, reason: _ } => false
   }
 }
 
@@ -170,6 +181,7 @@ test fn witness_plan_verify_on_wrong_pack_keeps_last_good() -> Bool {
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
     PlanKeepsLastGood { kept: _, reason: _ } => true
+    PlanWaits { kept: _, reason: _ } => false
   }
 }
 
@@ -187,5 +199,40 @@ test fn witness_plan_source_head_mismatch_keeps_last_good() -> Bool {
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
     PlanKeepsLastGood { kept: _, reason: _ } => true
+    PlanWaits { kept: _, reason: _ } => false
   }
+}
+
+// ── RED CONTROL (review 96225): THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT ────────────────
+// Two pack-ABSENT observations whose reason TEXTS are completely different (one says "CI is still building", the
+// other says "artifact missing") take the SAME arm — the benign PlanWaits (green). A pack PRESENT but refused takes
+// the red PlanKeepsLastGood arm even though its reason is just another string. Only the fetch VARIANT moves the
+// exit class, so no re-wording of any reason can flip a wait to red or a refusal to green. If a mutation compared
+// reason strings to decide, one of these three assertions reddens.
+fn plan_is_red(plan: DeliveryPlan) -> Bool {
+  match plan {
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanWaits { kept: _, reason: _ } => false
+  }
+}
+
+test fn witness_exit_class_follows_variant_not_reason_text() -> Bool {
+  let wait_a = release_pair_install_plan(
+    base_root: base_root, serving: last_good_serving(), main_head: main_head(), source_head: main_head(),
+    fetch: PackAbsent { reason: "CI is still building the head's release-bins" as NonEmptyStr },
+    verify: Refused { reason: "not run" as NonEmptyStr }, serve_unit: serve_unit(),
+  )
+  let wait_b = release_pair_install_plan(
+    base_root: base_root, serving: last_good_serving(), main_head: main_head(), source_head: main_head(),
+    fetch: PackAbsent { reason: "the release-bins artifact is missing entirely (different wording)" as NonEmptyStr },
+    verify: Refused { reason: "not run" as NonEmptyStr }, serve_unit: serve_unit(),
+  )
+  let red = release_pair_install_plan(
+    base_root: base_root, serving: last_good_serving(), main_head: main_head(), source_head: main_head(),
+    fetch: fetched_pack(),
+    verify: Refused { reason: "the build key rejected the pack (a refusal worded no differently than a wait)" as NonEmptyStr },
+    serve_unit: serve_unit(),
+  )
+  !plan_is_red(plan: wait_a) && !plan_is_red(plan: wait_b) && plan_is_red(plan: red)
 }

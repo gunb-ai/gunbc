@@ -27,7 +27,6 @@ import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
   RevisionNotInstalled,
-  release_pair_bins_unbuilt_reason,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
@@ -42,9 +41,9 @@ import gunbc.live_deploy.release_binding {
 import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
-  DeliveryPlan, PlanKeepsLastGood, PlanToInstall,
+  DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
-  release_pair_verify_dispatch, release_pair_install_plan,
+  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
   release_pair_release_bins_artifact_name,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -99,9 +98,8 @@ data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins 
 // head field): the observation is untrustworthy (a gh output-shape or jq change), so this is a refusal, NOT the
 // benign "no successful run" wait — otherwise delivery would silently stop tracking main forever (review 96219).
 data release_pair_run_list_malformed_reason: NonEmptyStr = "the release-bins run discovery returned unparseable output (expected <run-id>TAB<head-sha>); refusing to guess a run"
-// Why the pair keeps serving when the deployed tree is ALREADY at the bound head: nothing new to deliver, so the
-// timer must not re-download/re-link the same revision and go red on an existing link (review 96219). A benign wait.
-data release_pair_already_at_head_reason: NonEmptyStr = "the deployed tree already serves the bound head; nothing to deliver this tick"
+// NOTE: the already-at-head benign-wait reason (review 96219) now lives in release_pair_delivery (with PlanWaits
+// and release_pair_converged_noop, its reader) and is imported above — it is no longer spelled here.
 
 // ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
 // The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
@@ -224,35 +222,12 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 // fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
 // (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
 // ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
-// that yield nothing are typed keep-last-good refusals, never a guess. Executed by the pair-delivery unit's own run
-// (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by release_pair_deliver_cli_witness.
-// A keep-last-good is a benign wait whenever the pack is simply NOT READY YET — either no successful release-bins
-// run exists for the bound head (CI still building, or its run not yet successful: the --status success lookup
-// returns nothing for both) or the run exists but its pack artifact is absent. Both mean "nothing to deliver this
-// tick, keep serving last-good, retry next tick" — a timer must not fail on them (review 96214). Every OTHER
-// keep-last-good names a refusal the operator must see (fail-closed default: anything else is not a no-op).
-fn release_pair_reason_is_benign_wait(reason: NonEmptyStr) -> Bool {
-  (reason as String) == (release_pair_bins_unbuilt_reason as String)
-    || (reason as String) == (release_pair_no_run_for_head_reason as String)
-    // Steady state (review 96219): a tick whose observed serving pair already EQUALS the head to deploy has nothing
-    // to deliver; the short-circuit below returns this reason BEFORE any fetch, so the timer neither re-downloads the
-    // same pack nor reds on the existing hard link. It is a no-op, not a defect.
-    || (reason as String) == (release_pair_already_at_head_reason as String)
-}
-
-// THE STEADY-STATE SHORT-CIRCUIT (review 96219): is the observed serving binding ALREADY the head to deploy? A bound
-// tree whose revision hex equals the observed main head means this tick would re-download and re-link the same
-// revision — and the create-only hard link at the existing locus destination would fail the unit red on a healthy
-// pair. RevisionNotInstalled is never "already at head": the first deploy must never be short-circuited, so an
-// unobserved/uninstalled binding always proceeds to the fetch. Consumed by the entry's head arm, BEFORE the run
-// discovery and the fetch; its witness supplies the binding the real producer (release_pair_deliver_serving, from
-// the serve gate's observed DeployedReleaseBinding) emits, and asserts the ROUTE: true means no fetch is reached.
-fn release_pair_serving_at_head(serving: ReleaseRevisionBinding, head: NonEmptyStr) -> Bool {
-  match serving {
-    RevisionBoundAtEmission { revision: r } => (r as String) == (head as String)
-    RevisionNotInstalled => false
-  }
-}
+// that yield nothing are typed outcomes — a benign PlanWaits when there is simply nothing to deliver yet (no
+// successful run for the head, review 96214; or the pack is not built, review 96225), never a guess. Whether a tick
+// exits green (a wait) or red (a refusal) follows from the DeliveryPlan VARIANT (PlanWaits vs PlanKeepsLastGood),
+// never from comparing the reason text: the old string classifier is gone (review 96225). Executed by the
+// pair-delivery unit's own run (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by
+// release_pair_deliver_cli_witness and the plan arms by release_pair_delivery_plan_witness.
 
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
   let head_outcome = run_shell_command_capture(
@@ -262,15 +237,16 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
   match release_pair_decode_head(outcome: head_outcome) {
     none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_head_reason }
     Present { value: main_head } =>
-      // STEADY-STATE SHORT-CIRCUIT BEFORE THE FETCH (review 96219): if the OBSERVED serving pair is already the head
-      // to deploy, this tick is a benign no-op — it must not re-download the same pack or re-link the same revision
-      // (the create-only link would fail red on a healthy pair). The decision reads the serving binding the caller
-      // observed at the serve gate and the head it just observed; it fabricates nothing and is checked against the
-      // fold again below (short-circuiting a healthy pair cannot mask a real mismatch — the fold still refuses any
-      // source/binary drift on the ticks that DO fetch).
-      if release_pair_serving_at_head(serving: serving, head: main_head) {
-        PlanKeepsLastGood { kept: serving, reason: release_pair_already_at_head_reason }
-      } else {
+      // STEADY-STATE SHORT-CIRCUIT BEFORE THE FETCH (review 96219 / 96225): the pure release_pair_converged_noop
+      // route decides, from the OBSERVED serving binding and the OBSERVED head, whether this tick is a benign no-op.
+      // If the serving pair already equals the head, it returns PlanWaits and NO fetch runs (no re-download of the
+      // same pack, no re-link of the same revision — the create-only link would fail red on a healthy pair). Absent
+      // means the head is new (or the tree is not installed), so the entry proceeds to discovery and the fetch. The
+      // fold still checks source/binary drift on the ticks that DO fetch, so short-circuiting a healthy pair cannot
+      // mask a real mismatch.
+      match release_pair_converged_noop(serving: serving, head: main_head) {
+        Present { value: noop } => noop
+        none => {
       let run_outcome = run_shell_command_capture(
         command: gh_release_bins_run_list_command(
           repo: release_pair_deliver_repo_slug as String,
@@ -281,7 +257,9 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
       )
       match release_pair_decode_run(outcome: run_outcome) {
         RunLookupDiscoveryRefused { reason } => PlanKeepsLastGood { kept: serving, reason: reason }
-        RunLookupNoneForHead => PlanKeepsLastGood { kept: serving, reason: release_pair_no_run_for_head_reason }
+        // Nothing to deliver yet is a BENIGN WAIT (review 96214), not a refusal: no successful release-bins run
+        // exists for the head (CI still building), so keep serving and retry green next tick.
+        RunLookupNoneForHead => PlanWaits { kept: serving, reason: release_pair_no_run_for_head_reason }
         RunLookupFound { run } =>
           let pack_dir = release_pair_incoming_pack_dir(base_root: base_root)
           let member_src = release_pair_incoming_serve_source(base_root: base_root)
@@ -330,6 +308,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             verify: verify,
             serve_unit: serve_unit,
           )
+      }
       }
       }
   }
@@ -421,17 +400,19 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
 fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> ProcessExit {
   match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit) {
-    // A timer tick keeps serving the last good pair for one of two reasons: the release-bins pack for the head is
-    // simply not built yet (a benign wait for CI — exit green), or the delivery was REFUSED for a real defect (gh
-    // head unobservable, no run, build-key refused, source/binary mismatch, missing placement). The latter must not
-    // look green: surface the reason and exit non-zero, so a broken delivery is a located diagnostic, not silence
-    // (fail_closed). The reason is never discarded.
+    // THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT (review 96225).
+    // PlanWaits — nothing to deliver YET (pack not built, no successful run for the head, or the pair is already at
+    //   head): the serve unit keeps serving last-good and the timer retries. GREEN. The reason is logged for
+    //   observability but is never compared to decide this.
+    // PlanKeepsLastGood — the delivery was REFUSED for a real defect (gh head unobservable, discovery refused, pack
+    //   unverified, source/binary drift, missing placement): surface the reason and exit non-zero so a broken
+    //   delivery is a located diagnostic, not silence (fail_closed). The reason is never discarded.
+    // Re-wording a reason cannot flip green<->red — only choosing the wrong arm can, and every arm is witnessed.
+    // The wait reason is carried in the arm (observable to callers and witnesses); a steady-state no-op tick stays
+    // quiet on the journal rather than flooding it every 600s (the refusal below is the loud path).
+    PlanWaits { kept: _, reason: _ } => ExitSuccess
     PlanKeepsLastGood { kept: _, reason: reason } =>
-      if release_pair_reason_is_benign_wait(reason: reason) {
-        ExitSuccess
-      } else {
-        exit_failure(reason: join(["pair-deliver kept last good, not a no-op — ", reason as String], ""))
-      }
+      exit_failure(reason: join(["pair-deliver kept last good, not a no-op — ", reason as String], ""))
     PlanToInstall { place_binary: place, write_source_receipt: receipt, restart_command: restart, revision: _ } => {
       let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
       match filesystem_link_create_new(

@@ -44,7 +44,7 @@ import std.types { String, NonEmptyStr, Bool, CommitSha }
 import extdeps.tools.gh { gh_run_download_argv }
 import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
 import gunbc.live_deploy.release_locus {
-  ReleaseRevisionBinding,
+  ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
   ReleasePairDelivery, PairInstalled, PairRefused,
   deliver_release_pair, delivered_pair_revision, VerifiedPack,
   release_locus_member_path, release_locus_tree_receipt_path,
@@ -99,6 +99,39 @@ type DeliveryPlan
     revision: ReleaseRevisionBinding,
   }
   | PlanKeepsLastGood { kept: ReleaseRevisionBinding, reason: NonEmptyStr }
+  // A BENIGN WAIT, not a refusal (review 96225): the head's release-bins pack is not built yet (CI still running),
+  // no successful run exists yet for the head, or the pair is ALREADY at head and this tick is a no-op. The serve
+  // unit keeps serving last-good and retries next tick; the timer exits GREEN. The variant itself — not the reason
+  // text — is what makes it green: PlanKeepsLastGood is reserved for real refusals (build-key refused, source/binary
+  // drift, head unobservable, discovery refused) that must surface red. `reason` is carried for the log line, never
+  // compared to decide the exit code. This is the declared sum that replaces the old string-equality classifier
+  // (gunbc.design_argument::fail_closed: stronger than catching a wrong state is making it unwritable — there is no
+  // way to spell a refusal that exits green or a wait that exits red except by choosing the wrong arm).
+  | PlanWaits { kept: ReleaseRevisionBinding, reason: NonEmptyStr }
+
+// THE STEADY-STATE SHORT-CIRCUIT DECISION (review 96219 / 96225), as a PURE route the entry calls BEFORE any fetch.
+// Given the OBSERVED serving binding and the OBSERVED origin/main head: if the serving tree's revision already
+// equals the head, this tick has nothing to deliver — return the benign PlanWaits no-op (carrying the last-good
+// binding and the already-at-head reason) so the timer neither re-downloads the same pack nor reds on the existing
+// create-only hard link. Absent means the head is NOT already served (or the tree is not installed at all) and the
+// entry must proceed to run discovery and the fetch. RevisionNotInstalled never short-circuits: the first deploy is
+// never a no-op. Witnessed against the real producer (release_pair_deliver_serving over the serve gate's observed
+// DeployedReleaseBinding) in release_pair_delivery_plan_witness.
+fn release_pair_converged_noop(serving: ReleaseRevisionBinding, head: NonEmptyStr) -> DeliveryPlan? {
+  match serving {
+    RevisionBoundAtEmission { revision: r } =>
+      if (r as String) == (head as String) {
+        Present { value: PlanWaits { kept: serving, reason: release_pair_already_at_head_reason } }
+      } else {
+        none
+      }
+    RevisionNotInstalled => none
+  }
+}
+
+// THE ONE name of the already-at-head benign wait. Declared here (with the other plan-arm reasons) because the
+// short-circuit above emits it and the wet entry surfaces it in the keep-serving log.
+data release_pair_already_at_head_reason: NonEmptyStr = "the pair is already serving the current origin/main head — nothing to deliver this tick (benign no-op, review 96219)"
 
 // THE PACK THE UNIT FETCHES INTO IS A DIRECTORY IT OWNS, never a checked-out deploy source — the lab's serve tree
 // must not be polluted by the incoming pack, so the fetch writes here and the placement steps read from it.
@@ -202,6 +235,17 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
         restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
         revision: rev,
       }
-    PairRefused { reason: reason, kept: kept } => PlanKeepsLastGood { kept: kept, reason: reason }
+    // BENIGN-WAIT vs REFUSAL is decided by the TYPED fetch observation, never by the reason text (review 96225).
+    // An ABSENT pack means CI has not published the head's release-bins yet — the fold refuses with
+    // release_pair_bins_unbuilt_reason — but for the timer that is a benign WAIT (PlanWaits, exit green, retry next
+    // tick). A PRESENT pack the fold still refused (unverified digest, source/binary drift, missing placement member)
+    // is a real DEFECT: keep it PlanKeepsLastGood so it surfaces red. Re-wording any reason cannot flip the exit
+    // code — only the fetch variant and the fold's decision can (the fold's refusal set is unchanged; only its
+    // routing into a wait vs a refusal here is typed). The reason is carried for the log, never compared.
+    PairRefused { reason: reason, kept: kept } =>
+      match fetch {
+        PackAbsent { reason: _ } => PlanWaits { kept: kept, reason: reason }
+        PackPresent { sha256: _, pack_dir: _, binary_source: _ } => PlanKeepsLastGood { kept: kept, reason: reason }
+      }
   }
 }
