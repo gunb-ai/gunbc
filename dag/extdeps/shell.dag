@@ -219,8 +219,9 @@ service shell.Test {
   // failure). Presence and absence belong to ONE authority:
   // @ref(gunbc.filesystem_file_observe::filesystem_entry_presence_of_path), returning the typed
   // @ref(extdeps.filesystem.filesystem_io::FilesystemEntryPresence) -- Absent for a genuine missing entry,
-  // Indeterminate/SubjectRefused when the host could not look. The EACCES-vs-ENOENT boundary is pinned by
-  // test.claim.roadmap.roadmap_event_carrier_fixture the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept.
+  // Indeterminate/SubjectRefused when the host could not look. A collapsing `test` probe cannot tell a
+  // genuine missing entry (ENOENT) from a stat it was refused (EACCES); only the authority's separate
+  // arms keep those apart, so a claim that must prove absence reads the arm, not an exit code.
   operation IsExecutable {
     requires none
     input { path: FilePath }
