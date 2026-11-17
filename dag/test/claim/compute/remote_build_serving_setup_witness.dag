@@ -19,7 +19,7 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
-import gunbc.compute.remote_build_serving_setup {
+import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, serving_ledger_service_user,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
@@ -255,7 +255,7 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     group: est_s(converged_group()),
     authorized_keys: est_s(dline),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     ledger_rows: converged_ledger(d: d),
   )
@@ -326,7 +326,7 @@ test fn wrong_uid_diverges_the_account() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -352,7 +352,7 @@ test fn group_without_the_account_diverges() -> Bool {
         group: est_s("gunbc-compute:x:1006:briansrls\n"),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -378,7 +378,7 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(concat(line, " ssh-rsa STRAY stray@host")),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -407,7 +407,7 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(""),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -436,7 +436,7 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -469,7 +469,7 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -498,7 +498,7 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: refused_b("store.root"), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -526,7 +526,7 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -604,7 +604,7 @@ fn reads_over(
     account_name: d.account_name,
     passwd: est_s(converged_passwd()), group: est_s(converged_group()), authorized_keys: est_s(forced_line(d)),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: sha }, checkout_revision: Present { value: rev }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: arch,
     ledger_rows: ledger,
   )
@@ -824,7 +824,7 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -847,7 +847,7 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
         group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:9999:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -870,7 +870,7 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
         group: est_s("squatter:x:1006:\ngunbc-build:x:1005:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -894,7 +894,7 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
         group: est_s("root:x:0:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -924,7 +924,7 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -953,7 +953,7 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -976,7 +976,7 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1012,7 +1012,7 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     authorized_keys: est_s(text: ""),
     store_root: est_absent(), store_staging: est_absent(),
     store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(),
-    serve_binary: est_absent(), checkout: est_absent(), toolchain: est_absent(),
+    serve_binary: est_absent(), checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
     // the dependent legs were NEVER READ — the subjects are confirmed absent, so Absent is the
     // honest read-state and from_reads turns it into SubjectValueSkipped (no unknown).
     serve_binary_sha256: Absent, checkout_revision: Absent,
@@ -1044,6 +1044,88 @@ test fn fresh_host_with_confirmed_absent_subjects_is_diverged_and_runnable() -> 
 // THE PAIRED WITNESS: the binary is PRESENT (test -x established) but its hash read was REFUSED
 // — the value leg stays an account to take, and unknowns win: Indeterminate, not runnable.
 // Skipping the read here would be the bug in the other direction.
+// RED CONTROL (side-chat review follow-up, finding B1-observe): a host that HAS a ~/.rustup but
+// NOT the pinned channel is a DEVIATION, not settled — the toolchain leg establishes the channel
+// itself via `rustup toolchain list`, so "rustup home exists" no longer satisfies the pin.
+fn wrong_channel_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(converged_passwd()),
+    group: est_s(converged_group()),
+    authorized_keys: est_s(text: dline),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
+    ledger_rows: converged_ledger(d: d),
+  )
+}
+
+test fn rustup_home_with_wrong_channel_is_a_toolchain_deviation() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: wrong_channel_observed(forced_line(d: d), d), pin: pin_ok())
+      match a {
+        GoalDiverged { deviations: ds } => any(non_empty_to_list(ds), x => serving_deviation_item(dev: x) == "toolchain")
+        _ => false
+      }
+    }
+  }
+}
+
+// The other arm of the pair: rustup present AND the pinned channel present reports no toolchain
+// deviation — the leg establishes the channel, not merely the rustup home's existence.
+test fn pinned_channel_present_is_settled_on_toolchain() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: converged_observed(forced_line(d: d), d), pin: pin_ok())
+      match a {
+        GoalDiverged { deviations: ds } => !any(non_empty_to_list(ds), x => serving_deviation_item(dev: x) == "toolchain")
+        GoalSatisfied { evidence: _ } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// RUSTUP UNREADABLE while the account is present: the remediation runner is unknown, so the
+// toolchain remediation is an UNKNOWN (fail-closed: never a plan built on an unproven runner).
+test fn rustup_leg_unreadable_is_an_unknown() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s(converged_passwd()),
+        group: est_s(converged_group()),
+        authorized_keys: est_s(text: forced_line(d: d)),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_absent(),
+        rustup: ObservationRefused { cause: ServingLegFailure { item: "rustup", cause: "ssh refused" } },
+        serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
+        ledger_rows: converged_ledger(d: d),
+      )
+      match serving_assess(d: d, o: o, pin: pin_ok()) {
+        GoalIndeterminate { known_deviations: _, unknowns: us } => any(non_empty_to_list(us), x => x.item == "toolchain.remediation")
+        _ => false
+      }
+    }
+  }
+}
+
+// The channel matcher is boundary-exact: a channel that merely LOOKS LIKE A PREFIX of an
+// installed toolchain ("1.9" against "1.90.0") never matches — a prefix is not a match — while
+// the exact channel and the channel plus its "-<host triple>" suffix do.
+test fn toolchain_channel_matcher_is_prefix_red() -> Bool {
+  !serving_toolchain_line_names_channel(line: "1.90.0-x86_64-unknown-linux-gnu", channel: "1.9")
+    && serving_toolchain_line_names_channel(line: "1.9.0-aarch64-unknown-linux-gnu (default)", channel: "1.9.0")
+    && !serving_toolchain_line_names_channel(line: "stable-x86_64-unknown-linux-gnu", channel: "1.9.0")
+    && serving_toolchain_line_names_channel(line: "1.9.0", channel: "1.9.0")
+}
+
 test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
@@ -1056,7 +1138,7 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: refused_s(item: "serve_binary.sha256", cause: "sha256sum failed") },
         checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
@@ -1084,7 +1166,7 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: refused_b(item: "seed.serve_binary"), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: refused_b(item: "seed.serve_binary"), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         // the observe ran NO read under the unread subject; even a matching value could not rescue it.
         serve_binary_sha256: Absent,
         checkout_revision: Present { value: pin_rev_leg() },
@@ -1115,7 +1197,7 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Absent,
         checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
@@ -1148,7 +1230,7 @@ test fn world_writable_authorized_keys_with_right_line_is_a_drift() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "0666") },
         serve_binary_mode: Present { value: binary_mode_ok(d: d) },
@@ -1173,7 +1255,7 @@ test fn world_writable_serve_binary_with_right_hash_is_a_drift() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
         serve_binary_mode: Present { value: est_s(text: "0777") },
@@ -1200,7 +1282,7 @@ test fn declared_spellings_of_the_same_file_mode_are_settled() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "600") },
         serve_binary_mode: Present { value: est_s(text: "755") },
@@ -1227,7 +1309,7 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
-        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(),
+        serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "") },
         serve_binary_mode: Present { value: binary_mode_ok(d: d) },
