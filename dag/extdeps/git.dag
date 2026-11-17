@@ -2604,3 +2604,19 @@ fn git_ref_component_admitted(component: String) -> Bool {
     && !string_contains(s: component, pattern: "@{")
     && !ends_with(s: component, suffix: ".lock")
 }
+
+// ---- REMOTE-BUILD SERVING CHECKOUT (the three legs gunbc.compute.remote_build_serving_converge
+// runs AS THE BUILD ACCOUNT to bring the pinned tree to a pinned revision). Each row is built on
+// the module's git_program identity; the arms must not hand-type git argv.
+
+fn git_clone_command(url: String, dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["clone", "--", url, dir])
+}
+
+fn git_fetch_revision_command(repo: String, url: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repo, "fetch", "--", url, revision])
+}
+
+fn git_checkout_detached_command(repo: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repo, "checkout", "--detach", revision])
+}
