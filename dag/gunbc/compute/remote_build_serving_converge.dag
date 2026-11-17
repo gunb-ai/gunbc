@@ -47,17 +47,18 @@ import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
-import extdeps.tools.gnu_coreutils { true_command, cat_command }
+import extdeps.shadow.account_creation { groupadd_argv, useradd_argv, usermod_append_group_argv }
+import extdeps.tools.gnu_coreutils {true_command, cat_command, coreutils_mktemp_tempdir_argv, coreutils_install_file_owned_names_argv, coreutils_install_directory_owned_names_argv }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
 import extdeps.crypto.hash { sha256sum_file_command }
-import extdeps.git { git_rev_parse_head_command }
+import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
 import extdeps.tools.uname { uname_machine_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.uname { uname_machine_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.github.actions_environment { github_sha_variable_name }
-import extdeps.rust.rustup { rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
+import extdeps.rust.rustup {rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm, rustup_toolchain_install_command }
 
 data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
 // Repo-relative (under the CI checkout's target/, which the build creates), mirroring the
@@ -564,7 +565,7 @@ fn converge_add_account(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> Con
   ConvergeDraft { writes: concat([converge_account(d)], acc.writes), unhandled: acc.unhandled }
 }
 
-// gpasswd -a <member> <group> needs the LEDGER group to exist; it is guaranteed by the GroupAbsent-driven
+// usermod -aG <member> <group> needs the LEDGER group to exist; it is guaranteed by the GroupAbsent-driven
 // EnsureGroup at d.group_gid, ranked ahead of membership. No group is created here.
 fn converge_group_membership(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   let rows = fold(d.group_members, init: acc.writes, f: (w, member) => concat([EnsureGroupMembership { group_name: d.group_name, group_gid: d.group_gid, member: member }], w))
@@ -730,7 +731,7 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
 }
 
 // B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
-// roster — means REMOVAL, and no removal is modelled (gpasswd -d could silently evict a legitimate
+// roster — means REMOVAL, and no removal is modelled (a bulk group rewrite could silently evict a legitimate
 // member of a shared group; a human decides). So the classifier must not route it through
 // converge_group_membership, which only ever ADDS: it records the item unhandled and the wet apply
 // refuses the host, mutating nothing. Witnesses: ledger_group_extra_member_is_unhandled_not_planned.
@@ -741,7 +742,7 @@ fn converge_membership_has_extra(desired: List<String>, observed: List<String>) 
   }
 }
 
-fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDraft {
+fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, rustup: ObservationAttempt<Bool, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDraft {
   match dev {
     // A present-absent item routes by its declared item name (the only place the item string is
     // consulted, and only for the presence arms that genuinely share a shape). The account is NOT among
@@ -755,10 +756,18 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
-      // B1 (side-chat review of 2026-11-16): the toolchain absence has a remediation — rustup install
-      // of the PINNED channel, as the account — so it no longer falls to unhandled. The pin's
-      // toolchain_channel is consumed here.
-      "toolchain" => converge_ensure_toolchain(acc, d, pin)
+      // B1 (side-chat review of 2026-11-16) + the follow-up (clever-raven-401): the absence of the
+      // PINNED channel has a remediation — `rustup toolchain install` of the pin's channel, as the
+      // account — but its RUNNER is rustup itself, so the plan only when the observe PROVED rustup
+      // present (the account's cargo-bin rustup, established under the account gate). rustup proven
+      // ABSENT is UNHANDLABLE: bootstrapping rustup (curl | sh) is not modelled, and planning the
+      // install would plan a write bound to fail. rustup unreadable never reaches here — the
+      // observe folds it into an unknown, and the assessment refuses.
+      "toolchain" => match rustup {
+        ObservationEstablished { observed: true } => converge_ensure_toolchain(acc, d, pin)
+        ObservationEstablished { observed: false } => converge_draft_unhandled(acc, concat("toolchain: rustup not installed for ", concat(d.account_name, "; no bootstrap modelled")))
+        ObservationRefused { cause: _ } => converge_draft_unhandled(acc, concat("toolchain: rustup presence unreadable for ", d.account_name))
+      }
       "seed.serve_binary" => converge_install_binary(acc, d, pin, target_arch)
       _ => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
@@ -848,12 +857,12 @@ fn converge_classify(draft: ConvergeDraft) -> ConvergeDecision {
 
 // Refused short-circuits BEFORE the fold: an unread leg or a refused assessment never reaches
 // converge_step, so there is no fold over a half-read host that could produce writes at all.
-fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDecision {
+fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, rustup: ObservationAttempt<Bool, ServingLegFailure>) -> ConvergeDecision {
   match a {
     GoalSatisfied { evidence: _ } => ConvergeSettled
     GoalIndeterminate { known_deviations: _, unknowns: _ } => converge_refuse("assessment is indeterminate; an observation leg was unobservable")
     GoalAssessmentRefused { cause: _ } => converge_refuse("assessment was refused")
-    GoalDiverged { deviations: devs } => converge_classify(fold(non_empty_to_list(devs), init: converge_draft(), f: (acc, dev) => converge_step(acc, d, pin, target_arch, dev)))
+    GoalDiverged { deviations: devs } => converge_classify(fold(non_empty_to_list(devs), init: converge_draft(), f: (acc, dev) => converge_step(acc, d, pin, target_arch, rustup, dev)))
   }
 }
 
@@ -868,8 +877,22 @@ fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: Servin
 // per-write exit is NOT the verdict — the re-observe is: a write that did not land leaves the host
 // not-settled and the entry exits failure (gunbc.design_argument::fail_closed).
 
+// The elevated WRITE transport: takes the FULLY BUILT argv — elevation included, composed by the
+// caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
+// over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
+// for elevated writes.
 fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> Bool {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: concat(["sudo", "-n"], argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecConverged { result: r } => r.exit_code == 0
+  }
+}
+
+// The as-user WRITE transport (review 96039 shape): argv_words(command: sudo_elevate_as_command(
+// user: .., command: argv_words(command: <extdeps builder>))) — the command runs as the serving
+// account through sudo, its argv built by extdeps builders (git, rustup), never hand-typed.
+fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> Bool {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))) {
     TypedArgvExecRefused { reason: _ } => false
     TypedArgvExecConverged { result: r } => r.exit_code == 0
   }
@@ -893,7 +916,7 @@ fn converge_upload(target: SshTarget, context: FleetSshExecutionContext, local_p
 // via sudo. The world-writable, predictable /tmp paths it replaces were TOCTOU-open. Returns none when
 // the host could not create it — the write then fails, never settles, and the wet apply refuses.
 fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: ["mktemp", "-d"]) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: coreutils_mktemp_tempdir_argv()) {
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => if r.exit_code == 0 { Present { value: trim(r.stdout) } } else { none }
   }
@@ -914,7 +937,7 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
         let remote_staging = concat(stage, "/ak.upload")
         if converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) == false {
           false
-        } else if converge_sudo(target: target, context: context, argv: ["install", "-m", mode, "-o", owner, "-g", group, remote_staging, path]) == false {
+        } else if converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging as NonEmptyStr, destination: path as NonEmptyStr))) == false {
           false
         } else {
           // Readback of the file we JUST sudo-installed — elevation is established (the install above
@@ -941,7 +964,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
           let remote_path = concat(stage, "/serve.upload")
           if converge_upload(target: target, context: context, local_path: up as NonEmptyStr, remote_path: remote_path as NonEmptyStr) == false {
             false
-          } else if converge_sudo(target: target, context: context, argv: ["install", "-m", mode, "-o", owner, "-g", group, remote_path, ip]) == false {
+          } else if converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path as NonEmptyStr, destination: ip as NonEmptyStr))) == false {
             false
           } else {
             match serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: ip) {
@@ -977,13 +1000,12 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // name must be free at apply time; a spurious -f would silently drop -g on a taken gid and fabricate a
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly, the write fails to settle,
     // and the wet apply refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["groupadd", "-g", to_string(g), n]), name: converge_action_key(action))
+    EnsureGroup { name: n, gid: g } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_argv(name: n as NonEmptyStr, gid: g))), name: converge_action_key(action))
     EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } => {
-      let extra = if length(sup) == 0 { [] } else { ["-G", join(map(sup, s => s as String), ",")] }
-      converge_write_failure(ok: converge_sudo(target: target, context: context, argv: concat(["useradd", "-m", "-u", to_string(u), "-g", to_string(g), "-s", sh, "-d", h], concat(extra, [n]))), name: converge_action_key(action))
+      converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup))), name: converge_action_key(action))
     }
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["gpasswd", "-a", m, gname]), name: converge_action_key(action))
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr))), name: converge_action_key(action))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr))), name: converge_action_key(action))
     EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_write_failure(ok: converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c), name: converge_action_key(action))
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
     // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
@@ -992,9 +1014,9 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // idempotent, so re-applying a settled host is a no-op settle; the absolute rustup path and
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
-    EnsureToolchain { channel: c, as_user: usr } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["-u", usr, "env", concat("RUSTUP_HOME=", concat(d.account_home, "/.rustup")), concat("CARGO_HOME=", concat(d.account_home, "/.cargo")), concat(d.account_home, "/.cargo/bin/rustup"), "toolchain", "install", c, "--profile", "minimal", "--no-self-update"]), name: converge_action_key(action))
+    EnsureToolchain { channel: c, as_user: usr } => converge_write_failure(ok: converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c))), name: converge_action_key(action))
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => converge_write_failure(ok: converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), action: action), name: converge_action_key(action))
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr))), name: converge_action_key(action))
   }
 }
 
@@ -1023,9 +1045,9 @@ fn converge_checkout_cause(fetch_ok: Bool, detach_ok: Bool) -> String {
 // results feed converge_checkout_cause, which keeps the DETACH as the verdict but names the FETCH as the
 // cause when a failed fetch is what left the detach with nothing to detach. Returns "" when settled.
 fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> String {
-  let _clone = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "clone", "--", url, dir])
-  let fetch_ok = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "fetch", "--", url, rev])
-  let detach_ok = converge_sudo(target: target, context: context, argv: ["-u", usr, "git", "-C", dir, "checkout", "--detach", rev])
+  let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
+  let fetch_ok = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
+  let detach_ok = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
   converge_checkout_cause(fetch_ok: fetch_ok, detach_ok: detach_ok)
 }
 
@@ -1130,9 +1152,9 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
   let executed = converge_execute_plan(target: target, context: context, d: d, writes: writes)
   let failed = executed.failed
   let skipped = executed.skipped
-  let after = observe_host_reads(target: target, context: context, d: d)
+  let after = observe_host_reads(target: target, context: context, d: d, pin: pin)
   let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
-  let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch)
+  let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch, rustup: after.observed.rustup)
   let body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
   // B3: the receipt names the writes the failed prerequisite made us SKIP, never attempted.
   let skiplist = if length(skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(skipped, "; "), "\n"], "") }
@@ -1172,12 +1194,12 @@ fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
               match remote_build_serving_desired(host: hi) {
                 Absent => exit_failure(reason: concat("remote_build_serving_converge: ", raw_host, " has no capacity home directory, so its ledger service user is unfabricatable; refusing to mutate (fail_closed)"))
                 Present { value: d } => {
-                  let view = observe_host_reads(target: target, context: context, d: d)
               match serving_plan_pin_read() {
                 Absent => exit_failure(reason: concat("remote_build_serving_converge: the executor plan-time pin could not be read; refusing to mutate ", raw_host))
                 Present { value: pin } => {
+                  let view = observe_host_reads(target: target, context: context, d: d, pin: pin)
                   let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
-                  let decision = converge_plan(d: view.desired, a: assessment, pin: pin, target_arch: view.observed.target_arch)
+                  let decision = converge_plan(d: view.desired, a: assessment, pin: pin, target_arch: view.observed.target_arch, rustup: view.observed.rustup)
                   // ONE match on the decision routes the whole entry (review 95928). The old hand-combined
                   // gate 'decision.refused || length(decision.unhandled) != 0 || !runnable' needs no
                   // re-spelling here: serving_assessment_runnable is false exactly on GoalIndeterminate

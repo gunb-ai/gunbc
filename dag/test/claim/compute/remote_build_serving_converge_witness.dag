@@ -90,7 +90,7 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     group: est_s(converged_groups()),
     authorized_keys: est_s(dline),
     store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
@@ -199,7 +199,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
@@ -228,7 +228,7 @@ test fn diverged_store_plans_a_matching_write() -> Bool {
     Absent => false
     Present { value: line } => {
       let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 1
     }
   }
@@ -253,14 +253,14 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: refused_b(), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
     }
   }
@@ -285,14 +285,14 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
         target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
     }
   }
@@ -352,11 +352,59 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     group: est_s("root:x:0:\n"),
     authorized_keys: est_s(""),
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
-    checkout: est_absent(), toolchain: est_absent(),
+    checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
     serve_binary_sha256: Absent, checkout_revision: Absent,
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
+}
+
+// THE OTHER FRESH WORLD (side-chat review follow-up, clever-raven-401): a DELETED account with its
+// HOME left behind (userdel without -r) — the account's uid/gid rows are gone (so EnsureAccount and
+// the group writes are genuinely planned), but the cargo-bin rustup SURVIVED in the orphaned home.
+// The observe reads rustup independently of the account (test -x needs no account), so the toolchain
+// leg plans the pinned-channel install and every other fresh write rides along. This is the honest
+// world the plan-shape cells (order/dedupe, useradd shell, parents-before-installs, toolchain
+// between checkout and binary) need: on a TRULY fresh host the plan is ConvergeUnhandled (the cell
+// below), because without rustup the toolchain write is bound to fail and no bootstrap is modelled.
+fn fresh_with_rustup_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(""),
+    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    checkout: est_absent(), toolchain: est_absent(), rustup: est_ok(),
+    serve_binary_sha256: Absent, checkout_revision: Absent,
+    authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// UNHANDLED arm (side-chat review follow-up): a truly fresh host (no rustup anywhere) has a REAL
+// toolchain absence with NO runner — the plan classifies it unhandled with the cause naming the
+// account and the missing bootstrap, and carries NO writes at all (a write bound to fail is not
+// planned; curl | sh is not modelled). Paired with fresh_host_plans_the_pinned_toolchain (rustup
+// present -> EnsureToolchain planned): the two arms of the rustup gate.
+test fn fresh_host_without_rustup_is_unhandled_and_plans_no_writes() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
+          let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+          match plan {
+            ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
+              && any(us, x => x == concat("toolchain: rustup not installed for ", concat(d.account_name, "; no bootstrap modelled")))
+            _ => false
+          }
+        }
+      }
+    }
+  }
 }
 
 // ORDER + DEDUPE red control: a fresh host's writes are dirs(rank3) x2, checkout(rank5), binary(rank6) in
@@ -368,8 +416,8 @@ test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
-      let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let a = serving_assess(d: d, o: fresh_with_rustup_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let ws = plan_writes(plan)
       match first_duplicate_by_key(xs: ws, key: converge_action_key) {
         // A fresh host must get groupadd for the account's OWN group at account_gid AND for the ledger
@@ -411,14 +459,14 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-        checkout: est_ok(), toolchain: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
     }
   }
@@ -442,13 +490,13 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
-        checkout: est_absent(), toolchain: est_absent(),
+        checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
         serve_binary_sha256: Absent, checkout_revision: Absent,
         authorized_keys_mode: Absent, serve_binary_mode: Absent,
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
     }
   }
@@ -476,13 +524,13 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-          checkout: est_ok(), toolchain: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
           target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
-        pin: pin_ok(), target_arch: est_s("x86_64"))
+        pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       let refused = converge_plan(
         d: d,
         a: serving_assess(d: d, o: serving_observed_from_reads(
@@ -492,13 +540,13 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-          checkout: est_ok(), toolchain: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
-        pin: pin_ok(), target_arch: est_s(pin_arch()))
+        pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let planned = converge_plan(
         d: d,
         a: serving_assess(d: d, o: serving_observed_from_reads(
@@ -508,13 +556,13 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-          checkout: est_ok(), toolchain: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
-        pin: pin_ok(), target_arch: est_s(pin_arch()))
+        pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       // The two non-plan arms must offer the executor nothing, and the plan arm must offer it
       // something — otherwise the two assertions above are vacuous.
       plan_is_unhandled(unhandled) && length(plan_writes(unhandled)) == 0
@@ -538,7 +586,7 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_root_mode, store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
@@ -554,7 +602,7 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
@@ -593,7 +641,7 @@ test fn store_mode_drift_plans_ensure_directory_at_declared_mode() -> Bool {
       let declared = serving_store_dir_mode_octal(d: d)
       // "0700" parses as an octal mode but differs from the declared 0755: a genuine MODE drift on a present dir.
       let a = serving_assess(d: d, o: fully_matched_store(d: d, line: line, store_root_mode: est_s(text: "0700")), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) == false
         && plan_is_unhandled(plan) == false
         && length(plan_writes(plan)) == 1
@@ -611,7 +659,7 @@ test fn store_mode_matched_plans_no_store_directory() -> Bool {
     Present { value: d } => {
       let line = forced_line(d)
       let a = serving_assess(d: d, o: fully_matched_store(d: d, line: line, store_root_mode: store_mode_ok(d: d)), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
     }
   }
@@ -627,7 +675,7 @@ test fn wrong_shell_on_existing_account_is_unhandled() -> Bool {
       let line = forced_line(d)
       // uid/gid match (1005/1005), only the shell (field 7) is /bin/sh — the ONLY deviation is the shell.
       let a = serving_assess(d: d, o: fully_matched_passwd(d: d, line: line, passwd: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/sh\n"), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
     }
   }
@@ -641,7 +689,7 @@ test fn declared_shell_on_existing_account_is_settled() -> Bool {
     Present { value: d } => {
       let line = forced_line(d)
       let a = serving_assess(d: d, o: fully_matched_passwd(d: d, line: line, passwd: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
     }
   }
@@ -654,8 +702,8 @@ test fn planned_useradd_carries_the_model_shell() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       match account_write_shell(ws: plan_writes(plan)) {
         Absent => false
         Present { value: sh } => sh == d.account_shell
@@ -672,8 +720,8 @@ test fn planned_useradd_shell_is_the_model_value_not_empty() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       d.account_shell != ""
         && match account_write_shell(ws: plan_writes(plan)) {
              Absent => false
@@ -759,8 +807,8 @@ test fn fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary() -> 
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let ws = plan_writes(plan)
       // Diverged-and-runnable, never Indeterminate, and it carries the toolchain write.
       length(ws) > 0
@@ -795,8 +843,8 @@ test fn fresh_host_plans_the_parents_before_the_installs_they_parent() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let ws = plan_writes(plan)
       // Both parents are planned with the DESIRED state's declared owner and mode — the octal string
       // the write carries is file_mode_octal of the declared FileMode, so a per-arm literal that
@@ -880,7 +928,7 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     group: est_s(group_text),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
-    checkout: est_ok(), toolchain: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
@@ -894,9 +942,9 @@ test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
     Present { value: d } => {
       let line = forced_line(d)
       // GREEN half: the exact roster plans nothing (this deviation is absent).
-      let settled = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let settled = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       // RED half: ONE extra observed member — everything else identical — is UNHANDLED with zero writes.
-      let extra = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups_with_intruder()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()))
+      let extra = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups_with_intruder()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_settled(settled) && plan_is_unhandled(extra) && length(plan_writes(extra)) == 0
     }
   }
