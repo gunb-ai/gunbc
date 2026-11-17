@@ -2108,11 +2108,16 @@ fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
 // compact JSON and predates that writer, which spells the same line with a space after every comma and
 // colon. So an entry that was copied wrong, dropped, invented, or duplicated goes red rather than quietly
 // admitting the wrong receipt, or refusing the migration.
-// KEPT FOR: the migration only, and no longer. RETIREMENT TRIGGER: runbook T6 step 2(c) — once the
-// migration's verification has been read back through the production reader, this set comes out — it is
-// the only remaining exception to the rule that an acceptance names the pull request it was earned by
-// (gunbc.design_argument::self_hosting: a retained module is a declared row with reason and migration
-// trigger; the dated rule this replaced is already deleted, not kept beside it).
+// KEPT FOR: it is LIVE LAW, not migration scaffolding. This closed set is the allowlist of the historical
+// seed receipts admitted with NO pull request, and it is consulted on EVERY live acceptance command:
+// gunbc.roadmap.roadmap_issue_command issue_command_acceptance_evidence_law admits an acceptance with no
+// pull request ONLY for a receipt whose canonical identity (roadmap_acceptance_migration_identity) is a
+// member of this set (roadmap_migration_acceptance_identity_is_seeded). There is NO retirement trigger.
+// Removing an entry would refuse a receipt the operator was already granted, which the log must never do,
+// so this set lives as long as those receipts remain in the event log. The one-time migration machinery
+// that once also consumed it is deleted by the T6 dissolution, but the live acceptance law still depends
+// on it — DO NOT delete this set after the migration (the old note's "KEPT FOR: the migration only" /
+// "RETIREMENT TRIGGER: runbook T6 step 2(c)" was wrong and is corrected here).
 fn roadmap_migration_acceptance_identities() -> List<String> {
   [
     "acceptance|{\"node\": \"2-scm-git-upstream-model\", \"criteria_digest\": \"b3747b95baf099cc\", \"red_control\": {\"variant\": \"red_control_executed\", \"witness_module\": \"test.manual.git_upstream_model_execution\", \"witness_fn\": \"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\", \"executed_on\": \"2026-07-29\"}, \"handback\": {\"variant\": \"handback_delivered\", \"first_artifact\": \"dag/extdeps/git/object_store.dag\", \"further_artifacts\": [\"dag/test/claim/git_upstream_model_witness.dag\", \"dag/test/manual/git_upstream_model_execution.dag\"]}, \"accepted_by\": \"operator\", \"accepted_on\": \"2026-07-29\"}",

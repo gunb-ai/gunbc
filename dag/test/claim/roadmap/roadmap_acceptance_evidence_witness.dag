@@ -8,8 +8,8 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 // point where it stops after `compile.normalize` at any cap tried here, so NEITHER the entry probe NOR
 // `gunbc run --claim-run` could execute them — and a witness that cannot run is decoration
 // (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci: rows no lane executes are not evidence).
-// Everything here is decided BEFORE a byte is written — the operation keys, the pull-request door and the
-// migration comparison read only values — so the graph these claims need is the event log, its command
+// Everything here is decided BEFORE a byte is written — the operation keys and the pull-request door read only
+// values — so the graph these claims need is the event log, its command
 // route and the CLI edge, nothing else: they resolve, they run under `--claim-run`, and the fast lane can
 // check them. What only the carrier can answer (that a committed acceptance is really answered by its own
 // recording after the head moved, that a claimed second retirement really refuses, that a refusal really
@@ -31,13 +31,6 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 //           absence is admissible only for one of the migration's own receipts, named by its bytes in
 //           gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities — a date an operator
 //           types decides nothing — and the refusal says where the closed set lives.
-//   VERIFIER — the migration gate's seven facets, one named claim each, because the runbook prints WHICH
-//           problem it found: agreement reports nothing; swapped evidence refuses on BOTH sides of the
-//           difference; a fact the manifest names twice against one copy reports its counts; an acceptance
-//           the log lost refuses with the closedness it carried; a node the log closes that the manifest
-//           never accepted refuses; a manifest that does not replay REFUSES rather than certifying an empty
-//           expectation; and a claimed retirement the log does not hold retired refuses. The comparison
-//           reads complete canonical facts, so a swapped or missing field cannot certify a different history.
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Present, Absent }
@@ -150,9 +143,10 @@ fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
     accepted_on: day as NonEmptyStr,
   }
 }
-// The same receipt with ONE piece of evidence changed: the day its red control ran. The standing folds
-// identically either way — which is exactly why the migration verifier must compare the whole fact and
-// not the two fields that happen to decide a standing.
+// The same receipt with ONE piece of evidence changed: the day its red control ran. The standing and the
+// operation key fold identically either way — neither is made of the red-control day — which is what
+// the_operation_key_is_the_criteria_and_not_the_calendar uses it to show: the fold compares the whole fact
+// (its criteria digest), not the two fields that happen to decide a standing.
 fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
     node: node as NonEmptyStr as RoadmapNodeId,
@@ -204,11 +198,10 @@ fn opr_principal() -> EventPrincipalAuthenticated {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE MIGRATION RESUMES, AND THE VERIFIER PRESERVES FACTS (review 92815 findings 1 and 2, review 92911).
-// The runbook migrates the operator's recorded acceptances and retirements command by command, and an
-// interrupted run is resumed by replaying its commands; the verifier then certifies that the migrated log
-// holds what the exported manifest named. Each facet below is its own named claim, so a failing run names
-// the facet rather than saying only that something is wrong.
+// PURE CLAIMS OF THE ACCEPTANCE LAW, RUNNABLE WITHOUT A REMOTE (review 92815 findings 1 and 2, review 92911).
+// (The migration verifier's facets and the cutover runbook that drove them were the one-time migration's
+// machinery; they were retired with it in the T6 dissolution, and the pre-deletion commit stands as the
+// offline differential oracle if a comparison is ever needed.)
 // The retry law, the retirement key and the pull-request door are DECIDED before any byte is written, so
 // they are witnessed as pure claims. What only the carrier can answer — that a committed acceptance really
 // is answered by its own recording after the head moved, that a claimed second retirement really refuses,
