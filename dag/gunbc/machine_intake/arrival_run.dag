@@ -493,7 +493,6 @@ fn arrival_wet_prefix_record(
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_unreadable_account_body_refuses_the_run"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "ambiguous_check"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "unbound_check"),
-    decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "debug_kernel_reason"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "the_live_arm_carries_the_run_to_the_inhabitance_obligation"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "a_stopped_live_read_refuses_the_run_and_never_falls_back_to_dry"),
     decl_ref(module_path: "test.claim.machine_intake.arrival_run_wet_witness", decl_name: "a_failed_live_read_refuses_the_run_closed"),
