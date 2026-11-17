@@ -1042,21 +1042,13 @@ fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> 
 // delivery CLI gunbc.live_deploy.release_pair_deliver_cli::release_pair_deliver_once_cli. Same stem discipline as
 // the standings-refresh backstop; the oneshot runs the delivery (fetch -> observed build-key verify -> fold ->
 // place + restart) and the timer re-arms it. This unit is what makes the fold + the wet pipeline EXECUTE on a
-// schedule (closes the consumer-dangling finding on the fold); it is registered in apply_legs, not hand-run.
+// schedule. NOTE (split, review 96121): the unit + timer are DECLARED here (name builder + emit builders stay in
+// this PR, witnessed by the emission oracle), but the INSTALL-SPECIFIC builders — the timer unit NAME (needed by its
+// enable leg) and the two .path builders (needed by the install legs) — moved to the stacked PR together with the
+// apply_legs registration, so nothing in this PR installs or runs the unit while the source-side observation is not
+// yet real. They reappear verbatim with the observation that makes the guard check real work.
 fn deployment_pair_delivery_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-pair-delivery.service"], "") as NonEmptyStr
-}
-
-fn deployment_pair_delivery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
-  join([deployment_belt_unit_stem(names: names), "-pair-delivery.timer"], "") as NonEmptyStr
-}
-
-fn deployment_pair_delivery_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_pair_delivery_unit_name(names: names) as String], "") as NonEmptyStr
-}
-
-fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_pair_delivery_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // THE PAIR-DELIVERY unit's environment, single authority. base_root is the per-revision release locus root the
