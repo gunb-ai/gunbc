@@ -2,7 +2,8 @@ module gunbc.fleet.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result }
+import std.error_primitives { Ok, Err }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -1007,8 +1008,10 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
   }
 }
 
-// ============================================================================================
-// THE CACHE BUDGET GUARDIAN (operator-ruled option A, escalation msg_66b5d26e, 2026-11-16).
+// =======================================================================================
+// THE CACHE BUDGET GUARDIAN -- admitted by @ref(gunbc.design_ruling::release_bins_retention_admitted)
+// (operator RULED option A via escalation msg_66b5d26e, 2026-11-16: an in-job retention step on the
+// fleet-converge build job, never a separate janitor job).
 // The Actions cache has a 10 GiB repo quota; the release-bins family measured 5.23 GiB over 59
 // entries on 2026-11-16 -- the majority of the budget -- while fast-lane units (5 MB each) sit
 // behind it and eviction has not reached them only by luck. This step retains the newest
@@ -1020,22 +1023,41 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
 // every failure path prints a typed `release-bins retention: <word>` line and the step continues.
 // The ACTIONS scope is granted on the build job only, for exactly this step.
 //
-// DERIVATION OF KEEP (measured, not guessed -- the manager's constraint), 2026-11-16 census via
-// GET /repos/gunb-ai/gunbc/actions/caches?key=release-bins-:
-//   creation rate   15 entries on the peak day (2026-11-11) -> 15/24 = 0.63 distinct keys/hour;
-//   consumption lag last_accessed_at - created_at, max observed 15.9h (a deploy-only retry reusing
-//                   an older plan's bins -- exactly the T6 pattern the manager named), then 8.3h,
-//                   then 4.4h -- consistent with the 4h approval window
-//                   (gunbc.auth.approval_gate::approval_request_window = 14400s) plus retry slack.
-//   horizon         observed max lag 16h + one full approval window (4h) of margin = 20h;
-//   KEEP            ceil(peak_rate x horizon) + 1 = ceil(0.63 x 20) + 1 = 13; rounded to 16 for a
-//                   ~20% margin over the measured peak. 16 entries ~= 1.4 GiB at the measured
-//                   88 MB mean, leaving the quota dominated by cargo-ci, which is out of scope.
-// Deleting strictly-older-than-KEEP entries frees ~4.4 GiB of accumulated age at first run and
-// holds steady state near ~1.4 GiB. A fast-lane unit older than a day must stay restorable after
-// this ships: it is not in this family and the filter names that exclusion.
-// ============================================================================================
-data fleet_converge_release_bins_retention_keep: Int = 16
+// DERIVATION OF KEEP (the operator's constraint: grounded, not guessed). The census figures are
+// TYPED DATA below and the value is COMPUTED from them, so no deletion can depend on a comment:
+// deleting these lines breaks the build, not the policy. Measured 2026-11-16 (census GET
+// /repos/gunb-ai/gunbc/actions/caches?key=release-bins- plus gh run-list over main-branch
+// fleet-converge runs): creation peaked at 15 entries in one day (>=4x the ~3.6-3.8/day mean);
+// longest observed consumption lag 15.9 h, rounded up to 16 h (a deploy-only retry reuses a
+// plan's bins 3.9 h later today; a plan stays live across its approval window); largest observed
+// approval lag 4 h. Raw need = entries created in the horizon (ceil(15/24 x (16 + 4)) =
+// ceil(12.5) = 13) + 1 for the oldest in-horizon entry's own boundary = 14, rounded up to whole
+// groups of 4 to absorb a burst -> 16. A review that contradicts a datum may change the datum;
+// a review that offers no measurement may not change the number.
+// =======================================================================================
+data release_bins_retention_census_peak_entries_per_day: Int = 15
+data release_bins_retention_census_hours_per_day: Int = 24
+data release_bins_retention_census_observed_lag_hours: Int = 16
+data release_bins_retention_census_approval_margin_hours: Int = 4
+data release_bins_retention_census_group_size: Int = 4
+data release_bins_retention_census_spare_entries: Int = 1
+
+fn release_bins_retention_ceil_div(a: Int, b: Int) -> Int {
+  match int_div_result(int_add(a, int_sub(b, 1)), b) {
+    // A zero divisor is a broken census datum. Fail closed toward KEEPING: a huge
+    // keep deletes nothing, the safe direction for a budget guardian.
+    Ok { value: q } => q
+    Err { value: _ } => 1000000
+  }
+}
+
+fn release_bins_retention_keep_computed() -> Int {
+  let horizon: Int = int_add(release_bins_retention_census_observed_lag_hours, release_bins_retention_census_approval_margin_hours)
+  let raw: Int = int_add(release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_entries_per_day, horizon), release_bins_retention_census_hours_per_day), release_bins_retention_census_spare_entries)
+  int_mul(release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size), release_bins_retention_census_group_size)
+}
+
+data fleet_converge_release_bins_retention_keep: Int = release_bins_retention_keep_computed()
 // The hand-shell gate (ctrl review policy, review 96043): the listing, plan
 // and deletion below are carried as a bash sequence built through the
 // bash_build grammar (curl page ladder, jq plan invocations, xargs deletes).
@@ -1600,6 +1622,9 @@ fn release_bins_retention_decide_statements() -> List<Node> {
       right: nothing_arm,
     ),
     // The typed reason for that refusal, separate from the generic pages line.
+    // jq tests UNIQUENESS, so the echo rides the `||` arm: it names duplicates
+    // exactly when the uniqueness test fails (an `&& echo` would name the
+    // healthy listing).
     bash_build_or_else(
       left: bash_build_and_then(
         left: union_present,
@@ -1607,7 +1632,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
           left: incomplete_present,
           right: bash_build_and_then(
             left: flag_absent,
-            right: bash_build_and_then(
+            right: bash_build_or_else(
               left: release_bins_retention_duplicate_present(),
               right: release_bins_retention_echo(word: "duplicate-ids"),
             ),

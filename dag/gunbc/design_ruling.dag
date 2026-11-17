@@ -296,6 +296,13 @@ data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   provenance: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.",
 }
 
+data release_bins_retention_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "release_bins_retention_admitted"),
+  decided: "2026-11-16",
+  governs: decl_ref(module_path: "gunbc.fleet.fleet_release_bins_key", decl_name: "fleet_converge_release_bins_retention_keep"),
+  provenance: "Operator ruling via escalation msg_66b5d26e (2026-11-16): RULED, option A -- the Actions-cache budget guardian for the release-bins family runs as an in-job retention step on the fleet-converge build job, not as a separate janitor job (no new CI job; job_roster_closed_to_growth). The release-bins family dominates the 10 GiB repo quota (measured 5.23 GiB over 59 entries on 2026-11-16) while 5 MB fast-lane units sit behind it. The operator's stated boundary, verbatim: 'Deletion never fails the job's real work' -- every failure path prints a typed 'release-bins retention: <word>' line and the step continues; deletion scope is the 'release-bins-' key family ONLY, excluding the key the current run restores (env.RELEASE_BINS_KEY) and naming the foreign families (fast-lane, parse-verdict, cargo-ci, gunbc-materialization) as excluded in the filter itself; N must be grounded by measurement, not guessed, keeping enough that any plan younger than the approval window plus a margin still finds its bins.",
+}
+
 data ci_job_budgets_closed_to_growth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ci_job_budgets_closed_to_growth"),
   decided: "2026-11-07",
@@ -1041,6 +1048,7 @@ fn design_rulings() -> List<DesignRuling> {
     emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
     ci_job_budgets_closed_to_growth,
+    release_bins_retention_admitted,
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
     flex_first_recipe_is_flash_next,
