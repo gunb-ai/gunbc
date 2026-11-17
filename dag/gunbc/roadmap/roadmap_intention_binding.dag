@@ -66,7 +66,12 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "native-test-verdict-realization", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
   serves(node: "shared-check-lets-and-matches", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
   serves(node: "v1-rust-source-observation", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
-  serves(node: "v1-test-migration", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  // v1-test-migration was bound to v2_self_host, but its ONLY dependency edge makes it a prerequisite
+  // of v1-zero-hand-maintained-rust, a terminal of debt_payoff; v1-products-v1-free explicitly serves
+  // v2_self_host and its out_of_scope EXCLUDES the repository-wide hand-written-Rust goal, so
+  // v1-test-migration contributes to no v2_self_host terminal. It reaches debt_payoff's terminal, so it
+  // serves debt_payoff, one layer below (not above) that child (operator ruling, PR gunbc#16604).
+  serves(node: "v1-test-migration", module_path: debt_payoff_intention, plan: "debt_payoff_plan", layer: 1),
   serves(node: "native-seven", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
   serves(node: "v1-honest-frontier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
   serves(node: "v1-interpreter-primitive-dispatch-authority", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
