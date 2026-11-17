@@ -42,9 +42,15 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  to `shell.Mktemp.DirWithTemplate` BEFORE the `/tmp` shape check runs, and when that check refuses it returns
 //  `RoadmapEventCarrierMintRefused` without removing the directory mktemp just created — so a caller who passed
 //  `/var/tmp/...` would leave a directory on disk. Reclaim is therefore attempted, not guaranteed: the
-//  seal-planting arm does remove what it made, and if that removal itself fails the detail says so. What does hold
-//  unconditionally is what this file may never touch: /var/lib/gunbc, a production partition, a srv1/srv2/srv3
-//  realization, a service instance. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  seal-planting arm does remove what it made, and if that removal itself fails the detail says so. Confinement to
+//  scratch space is the rule this file is written to, not one the exported mint enforces yet: every template the
+//  checked-in callers pass is a `/tmp` template, and none of them targets `/var/lib/gunbc`, a production partition,
+//  a srv1/srv2/srv3 realization, or a service instance. But the same create-before-admit order that leaks a
+//  `/var/tmp` directory applies to any template, so a caller who passed a production path would have a directory
+//  created there before the refusal arrived. Enforcing the ban inside `roadmap_event_carrier_mint_scratch` — reject
+//  the template before creating, or reclaim on refusal — is the job of the follow-up behaviour change that also
+//  fixes that leak; until that lands this paragraph states an obligation honoured by its callers and by review, not
+//  a check the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
