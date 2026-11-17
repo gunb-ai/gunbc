@@ -48,9 +48,14 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  a srv1/srv2/srv3 realization, or a service instance. But the same create-before-admit order that leaks a
 //  `/var/tmp` directory applies to any template, so a caller who passed a production path would have a directory
 //  created there before the refusal arrived. That ordering is a tracked failure class, not a note to self:
-//  @ref(gunbc.recurring_failure_mode.refused_admission_leaves_the_side_effect_it_ran_first::refused_admission_leaves_the_side_effect_it_ran_first)
-//  carries it, with this mint as its named specimen, its rung reading, and the capability that closes it — test the
-//  admission predicate against the caller-supplied path before any call that creates at that path. Until that row's
+//  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
+//  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and with the
+//  capability that closes this instance — which splits in two, because this file's own gate
+//  `roadmap_carrier_root_is_minted_scratch` ends with `roadmap_carrier_path_is_present` and can therefore speak only
+//  about a path that already exists. BEFORE creation: admit the template and its location, a predicate over the
+//  requested path that needs nothing on disk. AFTER creation: verify the minted directory and reclaim on any later
+//  refusal. The two are not equivalent — pre-create rejection enforces the production boundary, because nothing
+//  unauthorized ever comes into existence, while reclaiming after the refusal closes only the leak. Until that row's
 //  trigger lands, this paragraph states an obligation honoured by the checked-in callers and by review, not a check
 //  the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
