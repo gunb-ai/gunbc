@@ -1,0 +1,35 @@
+module gunbc.integration_concern.remote_build_serving_checkout_pin_has_no_declared_owner
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 23: main 7f27f475982 (#16632).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, remote_build_serving_converge_merge_revision, remote_build_serving_converge_merge_revision }
+
+data remote_build_serving_checkout_pin_has_no_declared_owner: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_serving_checkout_pin_has_no_declared_owner",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision"),
+    requirement: "the serving checkout's desired revision is a declared fact with an owner, so a serving host's settled state does not change when an unrelated commit lands on main",
+    standing: RequirementUnestablished { decided_by: "whether serving is meant to follow main (then the drift after each merge is expected and the converge must be cheap to re-run), or to hold a declared serving revision that moves only by its own change" },
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan")],
+  },
+  question: "Who owns the revision a serving host's checkout is converged to: the commit the converge happens to be dispatched from, or a declared serving revision?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision") },
+        tail: [],
+      },
+      account: "srv1 was observed drifted on checkout.revision on 2026-11-17 because the desired revision is the dispatch commit; the first real apply (fleet-converge run 44123158118) moved it to e8aeb06037b and re-observed it settled. The next merge to main makes srv1 drift again with nothing about serving having changed.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

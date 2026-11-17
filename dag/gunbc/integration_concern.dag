@@ -516,6 +516,14 @@ data string_duration_transport_surface_receipts_revision: CommitSha = "467de6693
 
 data redfish_get_status_read_fork_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
 
+// ---------------------------------------------------------------------------------------------
+// REMOTE-BUILD SERVING (gunbc.compute.remote_build_serving_converge), carried from PR 5(b) #16583 at its
+// merge. Review 96107 on that PR named these as the debt the converge ships with; they are recorded here so
+// they outlive the session that merged it, and each is owed before 5(c) admits more hosts to the roster.
+
+data remote_build_serving_converge_merge_revision: CommitSha = "e8aeb06037b88a5b1fd93dcd453f22ed24cd2504"
+
+
 
 // ---------------------------------------------------------------------------------------------
 // THE READING PATH MOVED TO `gunbc.integration_concern.reading`, which imports the derived roster:
@@ -657,6 +665,11 @@ data fleet_automation_principal_has_two_names_authorities: DistinctAuthorities =
 data fleet_converge_roster_vs_closed_sum_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts"),
   second: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+  rest: [],
+}
+data group_membership_append_spelled_by_two_tools_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv"),
+  second: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
   rest: [],
 }
 data inband_smbios_board_parse_fleet_and_arrival_lanes_authorities: DistinctAuthorities = DistinctAuthorities {
