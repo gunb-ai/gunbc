@@ -1,7 +1,7 @@
 module gunbc.read_set_restore
 
 import std.types { Bool, Int, List, String }
-import std.algebra { fold_list, list_map, list_append, list_find_first }
+import std.algebra { fold_list, list_map, list_append, list_find_first, Empty }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import std.content_hash { lower_hex_64, sha256_hex_digit_count }
@@ -16,8 +16,15 @@ import v2.extdeps.languages.bash_build {
   bash_build_negation, bash_build_if_from_stmts, bash_build_test_bracket,
   bash_build_word_exit_status,
   bash_build_with_redir_to_file, bash_build_with_redir_from_file,
+  bash_build_with_redir, bash_build_with_redir_stdout_append_file, bash_build_assign_lit,
+  bash_build_function_def,
 }
 import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.tools.jq {
+  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
+  jq_invocation_process_plan, jq_admitted_plan_surface, jq_executable,
+}
+import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.github.expressions {
   Expression,
@@ -71,7 +78,6 @@ import gunbc.parse_verdict_restore {
   parse_verdict_cache_restore_step,
   parse_verdict_restore_if,
   parse_verdict_tee_append,
-  pull_request_base_sha_expr,
 }
 
 // THE PULL-REQUEST SIDE OF THE PLANNING FAST LANE (gunbc.read_set_publish is the main side; the operator
@@ -271,7 +277,6 @@ data fast_lane_class_full_after_wait: String = "full_after_wait|"
 // name after-wait outcomes. Absent marker (main push, or the wait step skipped early) means "no wait".
 // THE WAIT STEP READS THE EVENT BASE SHA TO ASK THE API WHICH MAIN RUN IS IN FLIGHT FOR THIS BASE.
 // THE DECISION ITSELF NEVER READS IT (its pr-own set comes from the fork point, #16580).
-data fast_lane_base_sha_env: String = "BASE_SHA"
 data fast_lane_wait_marker_env: String = "GUNBC_FL_WAITED"
 data fast_lane_wait_marker_basename: String = "gunbc-fl-waited.txt"
 data fast_lane_wait_hit_word: String = "hit"
@@ -413,80 +418,237 @@ fn fl_classify_reuse_after() -> Node {
 // emitted products and walk before it can save), and a pull request based on that merge paid the full lane
 // whenever it opened before the save. The step finds the main-push witnesses run whose head is one of the
 // PR base's first-parent ancestors inside the restore window; if that run is IN FLIGHT and its estimated
-// remaining time is within the 12-minute cap, it polls until the run concludes, and the restore steps that
+// remaining time is within the wait cap (today 0: the step is dormant; see the dissolution row below), it polls until the run concludes, and the restore steps that
 // follow then find the unit the run saves. Conditions it must honor, from the manager: it NEVER waits when
 // the estimate already exceeds the cap (that is a straight full build), it stops the moment the run
 // concludes non-success or cancelled, and the decision labels what the wait produced.
-// SCAFFOLD (design_argument how_to_work, medium-as-string): the poll loop below is raw shell because
-// src/v2/extdeps/languages/bash_build.dag has no loop, case, or arithmetic builders -- the surrounding
-// decision script is Node-built (fl_cmd/fl_test/bash_build_*) and stays that way. Marked on-carrier:
-// see fast_lane_wait_script_dissolution_trigger -- the row is READ (dissolution_description renders it
-// into the wait step's FL_DISSOLVE env, printed in the run log while the wait is dormant), not dangling;
-// convert this function to Node builders when they land.
-data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fl_wait_script_raw -- the bounded poll loop (say() helper, while/case/curl|jq/arith) is one raw sh -c string, unlike every other script in this file which is bash_build Nodes, because src/v2/extdeps/languages/bash_build.dag has NO loop, case, or arithmetic builders. DISSOLVES WHEN the orchestration-to-shell bash-emit capability lands those builders (loop + case + integer arithmetic) -- then fl_wait_script_raw is rebuilt through them as Nodes and this raw string retires. Until then the loop's semantics are visible only in the emitted text, and bash_emit_stmts checks the wrapping, not the body.")
+// SCAFFOLD (design_argument how_to_work): the poll loop is now built from bash_build Nodes (every
+// statement the compiler checks; the medium-as-string raw sh -c retired 2026-11-17), but the wait is
+// still a scaffold in TIME: data fast_lane_wait_cap_secs is 0, so today every PR run says disabled and
+// the decision walks the full path. Marked on-carrier: see fast_lane_wait_script_dissolution_trigger --
+// the row is READ (dissolution_description renders it into the wait step's FL_DISSOLVE env, printed in
+// the run log while the wait is dormant), not dangling; it dissolves when the operator grants a
+// positive wait cap (wait-occupancy ruling, manager message msg_b196bf0f).
+data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the wait step is a SCAFFOLD -- the poll loop is now built from bash_build Nodes (the raw sh -c string retired 2026-11-17), but data fast_lane_wait_cap_secs is 0, so on every PR the step says disabled and the decision walks the full path. DISSOLVES WHEN the operator grants a positive wait cap (the wait-occupancy ruling, manager message msg_b196bf0f): until then the loop body below the disabled guard is inert scaffolding and the step must not be relied on to produce hit markers.")
 
 //
-// FAIL CLOSED IN EVERY DIRECTION: the script is `sh -c` under `|| :`, so nothing it does can fail the job;
-// every error path exits 0 with a marker word and no unit, which is exactly the old behavior; it touches
-// none of the decision's checks, and it only ever ADDS time -- a wait that mislabels can delay a full run,
+// FAIL CLOSED IN EVERY DIRECTION: every statement is a bash_build Node emitted with `set +e`
+// semantics, and every error path funnels through `fl_done`, which writes the marker word and exits 0
+// -- nothing the step does can fail the job, and a step that cannot be emitted at all renders the
+// unemittable marker and fails the run BEFORE any reuse decision (fl_wait_script). It touches none of
+// the decision's checks, and it only ever ADDS time -- a wait that mislabels can delay a full run,
 // never skip one. The static-input skip guard is deliberately one-sided: if the PR's OWN diff matches a
 // declared fixed input or decision-implementation module the full run is certain anyway, so waiting cannot
 // help and the step skips; the read-set half of the decision's membership is unknown this early, and a
 // wrong "no input touched, wait anyway" only costs at most the cap. jq and curl absence, API errors and
 // empty listings all exit 0 like everything else.
-fn fl_wait_script_raw() -> String {
+// THE WAIT STEP, as bash_build Nodes. The poll loop is a self-recursive modeled
+// function (`fl_poll`) bounded by a line-count file (`POLL=$(grep -c . CNT)`
+// against `FL_STEPS`) and a deadline (`DEADLINE=$(expr $(date +%s) + FL_CAP)`),
+// and the state dispatch is an if-chain over `test` -- no raw `sh -c` string,
+// no unmodeled loop/case/arith grammar: every statement here is a Node the
+// compiler checks, so `bash_emit_stmts` validates the real text (review 95948).
+// Semantics are unchanged from the retired raw script: same say-words (the
+// marker contract at THE WAIT STEP'S MARKER above), same bounds, same
+// fail-closed posture (every failure path says a word and exits 0; the decision
+// step treats any missing marker as a full run). The poll state is re-read
+// from a freshly fetched file each iteration (`rm -f` before `curl`), so a
+// failed fetch cannot replay a stale answer.
+data fast_lane_wait_runs_basename: String = "gunbc-fl-wait-runs.json"
+data fast_lane_wait_run_basename: String = "gunbc-fl-wait-run.json"
+
+fn fl_wait_done(word: String) -> Node {
+  fl_cmd(ws: [fl_lit(t: "fl_done"), fl_lit(t: word)])
+}
+
+fn fl_wait_curl(url: Node) -> Node {
+  fl_cmd(ws: [
+    fl_lit(t: "curl"), fl_lit(t: "-fsS"), fl_lit(t: "-m"), fl_lit(t: "15"),
+    fl_lit(t: "-H"), bash_build_word_concat_from_nodes(parts: [fl_lit(t: "Authorization: Bearer "), fl_var(n: "GITHUB_TOKEN")]),
+    fl_lit(t: "-H"), fl_lit(t: "Accept: application/vnd.github+json"),
+    url,
+  ])
+}
+
+fn fl_wait_jq_words(program: String, path: String) -> List<Node> {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: program },
+    bindings: Empty,
+    input: JqInputFile { path: path },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Accepted { value: p, diagnostics: _ } =>
+      concat([fl_lit(t: jq_executable as String)], map(cli_surface_arguments(surface: jq_admitted_plan_surface(plan: p)), a => fl_lit(t: cli_argument_text(argument: a))))
+    // A refused plan renders as `false`, which the surrounding guards say
+    // `api-error` on -- refusal fails closed, never silently empty.
+    Rejected { diagnostics: _ } => [fl_lit(t: "false")]
+  }
+}
+
+fn fl_wait_jq_extract(program: String, path: String) -> Node {
+  bash_build_with_redir(inner: fl_cmd(ws: fl_wait_jq_words(program: program, path: path)), redir: ^bash_production_fold_redir_stderr_null)
+}
+
+fn fl_wait_suppressed(command: Node) -> Node {
+  bash_build_with_redir(inner: command, redir: ^bash_production_fold_redir_stderr_null)
+}
+
+fn fl_wait_script_statements() -> Optional<List<Node>> {
   let input_pattern = join(read_set_exact_paths(entries: fast_lane_declared_entries()), "|")
   let impl_pattern = join(read_set_dir_prefixes(entries: fast_lane_declared_entries()), "|")
-  join([
-    "set +e",
-    "API=https://api.github.com",
-    "WF=witnesses.yml",
-    "MARK=\"$RUNNER_TEMP/" + fast_lane_wait_marker_basename + "\"",
-    "rm -f \"$MARK\"",
-    "say() { echo \"fast lane: wait -- $1\"; echo \"$1\" > \"$MARK\"; exit 0; }",
-    "if [ \"$FL_CAP\" -le 0 ]; then echo \"fast lane: dissolve: $FL_DISSOLVE\"; say disabled; fi",
-    "git diff --name-only --no-renames \"$BASE_SHA\"...HEAD > \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null",
-    "if [ ! -s \"$RUNNER_TEMP/fl-own.txt\" ]; then say skipped-no-diff; fi",
-    "if grep -qE \"" + input_pattern + "|" + impl_pattern + "\" \"$RUNNER_TEMP/fl-own.txt\" 2>/dev/null; then say skipped-own-input; fi",
-    "command -v jq >/dev/null 2>&1 || say no-jq",
-    "curl -fsS -m 15 -H \"Authorization: Bearer $GITHUB_TOKEN\" -H \"Accept: application/vnd.github+json\" \"$API/repos/$GUNBC_REPO/actions/workflows/$WF/runs?event=push&branch=main&status=in_progress&per_page=20\" > \"$RUNNER_TEMP/fl-runs.json\" 2>/dev/null || say api-error",
-    "jq -r \".workflow_runs[] | \\\"\\(.id) \\(.head_sha) \\(.created_at)\\\"\" \"$RUNNER_TEMP/fl-runs.json\" > \"$RUNNER_TEMP/fl-idsha.txt\" 2>/dev/null || say api-error",
-    "git rev-list --first-parent -n \"$FL_WINDOW\" \"$BASE_SHA\" > \"$RUNNER_TEMP/fl-anc.txt\" 2>/dev/null",
-    "grep -F -f \"$RUNNER_TEMP/fl-anc.txt\" \"$RUNNER_TEMP/fl-idsha.txt\" 2>/dev/null | head -n 1 > \"$RUNNER_TEMP/fl-match.txt\"",
-    "if [ ! -s \"$RUNNER_TEMP/fl-match.txt\" ]; then say none; fi",
-    "read -r RID SHA CREATED < \"$RUNNER_TEMP/fl-match.txt\"",
-    "CREATED_E=$(date -d \"$CREATED\" +%s 2>/dev/null || echo 0)",
-    "NOW=$(date +%s)",
-    "EST=$(( CREATED_E + FL_TYPICAL - NOW ))",
-    "if [ \"$EST\" -le 0 ] || [ \"$EST\" -gt \"$FL_CAP\" ]; then say too-far; fi",
-    "I=0",
-    "DEADLINE=$(( $(date +%s) + FL_CAP ))",
-    "while [ \"$I\" -lt \"$FL_STEPS\" ]; do",
-    "  sleep " + fast_lane_wait_secs_text(fast_lane_wait_poll_secs),
-    "  if [ \"$(date +%s)\" -gt \"$DEADLINE\" ]; then say timeout; fi",
-    "  ST=$(curl -fsS -m 15 -H \"Authorization: Bearer $GITHUB_TOKEN\" -H \"Accept: application/vnd.github+json\" \"$API/repos/$GUNBC_REPO/actions/runs/$RID\" 2>/dev/null | jq -r \"[.status, .conclusion] | join(\\\" \\\")\" 2>/dev/null)",
-    "  case \"$ST\" in",
-    "    \"completed success\") echo hit > \"$MARK\"; echo \"fast lane: wait -- hit\"; exit 0;;",
-    "    \"completed \"*) echo failed > \"$MARK\"; echo \"fast lane: wait -- failed\"; exit 0;;",
-    "  esac",
-    "  I=$(( I + 1 ))",
-    "done",
-    "say timeout"
-  ], "\n")
+  let own = fl_scratch(basename: "own.txt")
+  let anc = fl_scratch(basename: "anc.txt")
+  let idsha = fl_scratch(basename: "idsha.txt")
+  let matched = fl_scratch(basename: "match.txt")
+  let counter = fl_scratch(basename: "poll.txt")
+  let runs = fl_lit(t: fast_lane_wait_runs_basename)
+  let runf = fl_lit(t: fast_lane_wait_run_basename)
+  let url_runs = bash_build_word_concat_from_nodes(parts: [
+    fl_lit(t: "https://api.github.com/repos/"), fl_var(n: "GUNBC_REPO"),
+    fl_lit(t: "/actions/workflows/"), fl_var(n: "WF"),
+    fl_lit(t: "/runs?event=push&branch=main&status=in_progress&per_page=20"),
+  ])
+  let url_run = bash_build_word_concat_from_nodes(parts: [
+    fl_lit(t: "https://api.github.com/repos/"), fl_var(n: "GUNBC_REPO"),
+    fl_lit(t: "/actions/runs/"), fl_var(n: "RID"),
+  ])
+  let done_def = bash_build_function_def(name: "fl_done", body: [
+    fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "fast lane: wait --"), fl_var(n: "1")]),
+    bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_var(n: "1")]), path: fl_var(n: "MARK")),
+    fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), runs, runf]),
+    bash_build_exit(code: "0"),
+  ])
+  let poll_def = bash_build_function_def(name: "fl_poll", body: [
+    fl_cmd(ws: [fl_lit(t: "sleep"), fl_lit(t: fast_lane_wait_secs_text(fast_lane_wait_poll_secs))]),
+    bash_build_if_from_stmts(
+      cond: fl_test(ws: [bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "+%s")])), fl_lit(t: "-gt"), fl_var(n: "DEADLINE")]),
+      then_stmts: [fl_wait_done(word: "timeout")]
+    ),
+    fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), runf]),
+    fl_wait_suppressed(command: fl_wait_curl(url: url_run)),
+    bash_build_assign(name: "ST_S", value: bash_build_word_cmdsubst(body: fl_wait_jq_extract(program: ".status", path: fast_lane_wait_run_basename))),
+    bash_build_assign(name: "ST_C", value: bash_build_word_cmdsubst(body: fl_wait_jq_extract(program: ".conclusion // \"\"", path: fast_lane_wait_run_basename))),
+    bash_build_if_from_stmts(
+      cond: fl_test(ws: [fl_lit(t: "-n"), fl_var(n: "ST_S"), fl_lit(t: "-a"), fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed"), fl_lit(t: "-a"), fl_var(n: "ST_C"), fl_lit(t: "="), fl_lit(t: "success")]),
+      then_stmts: [fl_wait_done(word: "hit")]
+    ),
+    bash_build_if_from_stmts(
+      cond: fl_test(ws: [fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed")]),
+      then_stmts: [fl_wait_done(word: "failed")]
+    ),
+    bash_build_with_redir_stdout_append_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "poll")]), path: counter),
+    bash_build_assign(name: "POLL", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-c"), fl_lit(t: "."), counter]))),
+    bash_build_if_from_stmts(
+      cond: fl_test(ws: [fl_var(n: "POLL"), fl_lit(t: "-ge"), fl_var(n: "FL_STEPS")]),
+      then_stmts: [fl_wait_done(word: "timeout")]
+    ),
+    fl_cmd(ws: [fl_lit(t: "fl_poll")]),
+  ])
+  match done_def {
+    Absent => Absent
+    Present { value: dd } => match poll_def {
+      Absent => Absent
+      Present { value: pd } => Present { value: [
+        fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), fl_var(n: "MARK"), own, anc, idsha, matched, counter, runs, runf]),
+        bash_build_assign_lit(name: "API", text: "https://api.github.com"),
+        bash_build_assign_lit(name: "WF", text: "witnesses.yml"),
+        bash_build_assign(name: "ANCHOR", value: bash_build_word_cmdsubst(body: bash_build_or_else(
+          left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "git"), fl_lit(t: "rev-parse"), fl_lit(t: "--verify"), fl_lit(t: "-q"), fl_lit(t: "HEAD^1")])),
+          right: fl_cmd(ws: [fl_lit(t: "echo")])
+        ))),
+        dd,
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_var(n: "FL_CAP"), fl_lit(t: "-le"), fl_lit(t: "0")]),
+          then_stmts: [
+            fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "fast lane: dissolve:"), fl_var(n: "FL_DISSOLVE")]),
+            fl_wait_done(word: "disabled"),
+          ]
+        ),
+        fl_cmd(ws: [
+          fl_lit(t: "echo"), fl_lit(t: "fast lane: anchor"), fl_var(n: "ANCHOR"),
+          fl_lit(t: "head"), fl_lit(t: "${{ github.event.pull_request.head.sha }}"),
+          fl_lit(t: "HEAD^1"), bash_build_word_cmdsubst(body: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "git"), fl_lit(t: "rev-parse"), fl_lit(t: "HEAD^1")]))),
+          fl_lit(t: "HEAD^2"), bash_build_word_cmdsubst(body: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "git"), fl_lit(t: "rev-parse"), fl_lit(t: "HEAD^2")]))),
+        ]),
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_lit(t: "-z"), fl_var(n: "ANCHOR")]),
+          then_stmts: [fl_wait_done(word: "none")]
+        ),
+        bash_build_with_redir_to_file(
+          inner: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "git"), fl_lit(t: "diff"), fl_lit(t: "--name-only"), fl_lit(t: "--no-renames"), bash_build_word_concat_from_nodes(parts: [fl_var(n: "ANCHOR"), fl_lit(t: "...HEAD")])])),
+          path: own
+        ),
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), own]),
+          then_stmts: [fl_wait_done(word: "skipped-no-diff")]
+        ),
+        bash_build_and_then(
+          left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-qE"), fl_lit(t: join([input_pattern, "|", impl_pattern], "")), own])),
+          right: fl_wait_done(word: "skipped-own-input")
+        ),
+        bash_build_or_else(
+          left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "command"), fl_lit(t: "-v"), fl_lit(t: "jq")])),
+          right: fl_wait_done(word: "no-jq")
+        ),
+        bash_build_or_else(
+          left: bash_build_with_redir_to_file(inner: fl_wait_suppressed(command: fl_wait_curl(url: url_runs)), path: runs),
+          right: fl_wait_done(word: "api-error")
+        ),
+        bash_build_or_else(
+          left: bash_build_with_redir_to_file(
+            inner: fl_cmd(ws: fl_wait_jq_words(program: ".workflow_runs[] | \"\\(.id) \\(.head_sha) \\(.created_at)\"", path: fast_lane_wait_runs_basename)),
+            path: idsha
+          ),
+          right: fl_wait_done(word: "api-error")
+        ),
+        bash_build_with_redir_to_file(
+          inner: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "git"), fl_lit(t: "rev-list"), fl_lit(t: "--first-parent"), fl_lit(t: "-n"), fl_var(n: "FL_WINDOW"), fl_var(n: "ANCHOR")])),
+          path: anc
+        ),
+        bash_build_with_redir_to_file(
+          inner: bash_build_pipe(
+            left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-F"), fl_lit(t: "-f"), anc, idsha])),
+            right: fl_cmd(ws: [fl_lit(t: "head"), fl_lit(t: "-n"), fl_lit(t: "1")])
+          ),
+          path: matched
+        ),
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), matched]),
+          then_stmts: [fl_wait_done(word: "none")]
+        ),
+        bash_build_assign(name: "RID", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "cut"), fl_lit(t: "-d "), fl_lit(t: "-f1"), matched]))),
+        bash_build_assign(name: "CREATED", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "cut"), fl_lit(t: "-d "), fl_lit(t: "-f3"), matched]))),
+        bash_build_assign(name: "CREATED_E", value: bash_build_word_cmdsubst(body: bash_build_or_else(
+          left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "-d"), fl_var(n: "CREATED"), fl_lit(t: "+%s")])),
+          right: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "0")])
+        ))),
+        bash_build_assign(name: "NOW", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "+%s")]))),
+        bash_build_assign(name: "EST", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "expr"), fl_var(n: "CREATED_E"), fl_lit(t: "+"), fl_var(n: "FL_TYPICAL"), fl_lit(t: "-"), fl_var(n: "NOW")]))),
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_var(n: "EST"), fl_lit(t: "-le"), fl_lit(t: "0")]),
+          then_stmts: [fl_wait_done(word: "too-far")]
+        ),
+        bash_build_if_from_stmts(
+          cond: fl_test(ws: [fl_var(n: "EST"), fl_lit(t: "-gt"), fl_var(n: "FL_CAP")]),
+          then_stmts: [fl_wait_done(word: "too-far")]
+        ),
+        bash_build_assign(name: "DEADLINE", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "expr"), bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "+%s")])), fl_lit(t: "+"), fl_var(n: "FL_CAP")]))),
+        pd,
+        fl_cmd(ws: [fl_lit(t: "fl_poll")]),
+        fl_wait_done(word: "timeout"),
+      ] }
+    }
+  }
 }
 
 fn fl_wait_script_outcome() -> Optional<String> {
-  match bash_emit_stmts(
-    statements: [
-      bash_build_or_else(
-        left: fl_cmd(ws: [fl_lit(t: "sh"), fl_lit(t: "-c"), fl_lit(t: fl_wait_script_raw())]),
-        right: fl_cmd(ws: [fl_lit(t: ":")])
-      )
-    ],
-    set_e: true
-  ) {
-    Accepted { value: v, diagnostics: _ } => Present { value: v }
-    Rejected { diagnostics: _ } => Absent
+  match fl_wait_script_statements() {
+    Absent => Absent
+    Present { value: stmts } => match bash_emit_stmts(statements: stmts, set_e: false) {
+      Accepted { value: v, diagnostics: _ } => Present { value: v }
+      Rejected { diagnostics: _ } => Absent
+    }
   }
 }
 
@@ -507,7 +669,7 @@ fn fl_wait_step() -> Step {
     run: fl_wait_script(),
     shell: none,
     env: Present { value: [
-      kv(key: fast_lane_base_sha_env, value: yaml_string(s: pull_request_base_sha_expr())),
+      kv(key: "MARK", value: yaml_string(s: join(["${{ runner.temp }}/", fast_lane_wait_marker_basename], ""))),
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
       kv(key: "GUNBC_REPO", value: yaml_string(s: "${{ github.repository }}")),
       kv(key: "FL_WINDOW", value: yaml_string(s: fast_lane_wait_window_str())),
