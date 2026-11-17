@@ -6,10 +6,10 @@ import extdeps.access.posix { FileMode, PermissionBits }
 import extdeps.posix.shell_command_language { posix_single_quote }
 
 import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 
 import std.types { NonEmptyStr, String, List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -17,6 +17,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https,
     locator: "docs.docker.com/engine/install/ubuntu/",
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.docker_ce",
+      decl_name: "DockerCeAptRepo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type DockerCeAptRepo {

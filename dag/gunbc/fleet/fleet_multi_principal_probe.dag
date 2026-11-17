@@ -385,8 +385,6 @@ fn spark_converge_execute_apply_from_env() -> Bool {
   }
 }
 
-// Enrolled CI entry (gunbc_ci_multi_principal_probe_invoke): reuses the in-run WIF ssh-agent from
-// gunbc_ci_fleet_key_agent_script — NOT a Secret Manager fetch and NOT GcloudPrintToken.
 fn fleet_multi_principal_probe_wet() -> ProcessExit {
   let now = clock_now_probed_at()
   let body = join([

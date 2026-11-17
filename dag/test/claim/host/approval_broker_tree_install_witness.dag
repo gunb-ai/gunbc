@@ -21,8 +21,12 @@ import gunbc.host.host_effect_realize {
   TreeInstallStep,
   TreeStepSourceObserve,
   TreeStepRevision,
+  observe_tree_hashes,
+  TreeObservation,
+  TreeObserved,
+  TreeObservationFailed,
 }
-import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables, release_locus_record, release_locus_tree_subdirs }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
@@ -111,20 +115,43 @@ fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool 
 test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepSourceObserve)
 }
 
+// THE PLANT'S POSITIVE CONTROL — AT THE SAME INTERFACE the negative control above tests: the source
+// observe step. It calls observe_tree_hashes (the exact function tree_install_in_realm runs for the
+// source observation) through the same real LocalShell route, with a source root that is PRESENT. The
+// root is the RELATIVE ".", i.e. the repository checkout the claim run itself executes from, whose
+// `dag` and `src/v2` are the run's own --source-root inputs — so it observes a tree the run already
+// requires, with no hand-prepared directory and no dependence on host state (it assumes the claim run's
+// working directory is the repository checkout root, the dir from which `dag` and `src/v2` resolve).
+// There the real find|sha256sum succeeds over a populated tree, so the observe step answers TreeObserved
+// with a NONEMPTY entry list — observed, no refusal (an empty observation would not satisfy the
+// installer's next step either). This is the discriminating partner of the refusing control ONE
+// INTERFACE OVER: same route, same observe step, the only difference is whether the source root resolves
+// to a tree — missing refuses (TreeObservationFailed), present observes (TreeObserved). It runs the
+// OBSERVE leg only (no elevated install, no sudo), so it executes in this sandbox next to the refusing
+// control, and the wet run dispatches only the local find.
+test fn the_real_route_observes_the_present_source_root_at_the_source_observe_interface() -> Bool {
+  match observe_tree_hashes(
+    root: ".",
+    subs: release_locus_tree_subdirs,
+    transport: one_transport_route(transport: LocalShell),
+  ) {
+    TreeObserved { entries: es } => count(es) > 0
+    TreeObservationFailed { reason: _ } => false
+  }
+}
+
 test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
   refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
-    base_root: "/nonexistent-w6-base",
+    locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionNotInstalled),
     source_root: "/nonexistent-w6-source",
-    revision: RevisionNotInstalled,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepRevision)
@@ -399,4 +426,77 @@ test fn the_receipt_body_certifies_revision_installed_and_metadata_in_one_text()
 test fn the_two_new_steps_have_names() -> Bool {
   tree_install_step_name(step: TreeStepInstallLink) == "install-link"
     && tree_install_step_name(step: TreeStepMetadataReadback) == "metadata-readback"
+}
+
+// ── BUG 6 READING ────────────────────────────────────────────────────────────────────────────────
+// node://adhoc-3e6e9bfb-d59 (roadmap deploy-intent-owns-artifact-closure), red_control 1: "Two installs
+// of the same revision produce the same receipt digest."
+//
+// A tree install's receipt is tree_receipt_body over two digests: the content digest of the regular-file
+// lines (sha256sum of tree_hash_lines) and the content digest of the certified entry-metadata lines
+// (sha256sum of tree_metadata_lines). sha256sum is a pure function of its input string, so the receipt
+// reproduces between two installs of ONE tree EXACTLY when those two canonical line-spellings reproduce.
+//
+// BEFORE the fix the tree install emitted each line set in the order `find` happened to walk the tree, so
+// two installs of one tree could print two receipts (srv1 lab bug 6, 2026-11-04). host_effect_realize now
+// sorts BOTH line sets bytewise on tree_path_total_order, so the two installs of one tree -- here the same
+// file set and the same metadata supplied in two OPPOSITE find orders -- yield ONE byte-identical
+// installed-digest input, ONE metadata-digest input, and ONE receipt body. This is the reading, and it is
+// the bug 6 red control: it turns RED the moment the bytewise sort is removed, because the assertions
+// below that the emitted order is the sorted order (not the input order) then fail.
+//
+// THE READING (the node's handback artifact, stated hermetically). The install command is the one the
+// tree already exercises as real data -- find_tree_entry_metadata_command (asserted in
+// the_entry_metadata_command_carries_the_target_and_size_fields): `find <root> -xdev -printf
+// %P|%y|%m|%u|%g|%l|%s\n`. The candidate revision is threaded as a CommitSha into the two receipts below.
+//
+// This control does NOT claim to have installed anything on a host (that would be an observation this
+// hermetic witness never makes -- gunbc.design_argument::epistemic_humility). What it asserts is the
+// invariant that MAKES two installs of one revision reproducible: the receipt is a function of the
+// CANONICAL (sorted) line set, not of find's walk order. Two opposite-order finds of one tree
+// canonicalise to the same installed and metadata text, so any digest taken of that text -- and so the
+// receipt carrying it -- is identical between the installs. That is red_control 1's "same receipt digest".
+
+// One tree -- three files, one directory-less set -- observed in two opposite find orders. The metadata is
+// the SAME three entries in the SAME opposite orders; each file is a regular file at mode 0755 owned by
+// gunbc, so the only thing that differs between the two installs is the order `find` returned them.
+data bug6_files_first: List<TreeFileHash> = [
+  TreeFileHash { path: "dag/gunbc/x.dag", hex: hex_a },
+  TreeFileHash { path: "bin/gunbc", hex: hex_b },
+  TreeFileHash { path: "src/v2/std/bool.dag", hex: hex_c },
+]
+data bug6_files_second: List<TreeFileHash> = [
+  TreeFileHash { path: "src/v2/std/bool.dag", hex: hex_c },
+  TreeFileHash { path: "bin/gunbc", hex: hex_b },
+  TreeFileHash { path: "dag/gunbc/x.dag", hex: hex_a },
+]
+// The metadata is the SAME three regular files (mode 0755, owner gunbc) in the two opposite find orders, using
+// this file's own fm() helper and PosixOwnerNames constructor (the same idiom the metadata controls above use).
+test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
+  let a = TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let b = TreeMetadataEntry { path: "bin/gunbc", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let c = TreeMetadataEntry { path: "src/v2/std/bool.dag", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let installed_first = tree_hash_lines(entries: bug6_files_first)
+  let installed_second = tree_hash_lines(entries: bug6_files_second)
+  let metadata_first = tree_metadata_lines(entries: [a, b, c])
+  let metadata_second = tree_metadata_lines(entries: [c, b, a])
+  // One candidate revision, threaded into both receipts (the node's branch base). The receipt digest is a
+  // deterministic function of the canonical line text; here the canonical text stands in for that digest so
+  // that text equality ==> receipt equality is the exact thing under claim.
+  let revision = RevisionBoundAtEmission { revision: "6f3cc6b38c2" as CommitSha }
+  let receipt_first = tree_receipt_body(revision: revision, installed_digest: installed_first, metadata_digest: metadata_first)
+  let receipt_second = tree_receipt_body(revision: revision, installed_digest: installed_second, metadata_digest: metadata_second)
+  // The canonical (sorted) line sets are equal across the two finds, so the receipts are one text.
+  installed_first == installed_second
+    && metadata_first == metadata_second
+    && receipt_first == receipt_second
+    && string_contains(s: receipt_first, pattern: "candidate_revision=6f3cc6b38c2")
+    // ...and the emitted order is the sorted order, NOT either observed order: bin/gunbc (hex_b) leads the
+    // hashed lines and "bin/gunbc|" leads the metadata, though neither install saw it first.
+    && string_contains(s: installed_first, pattern: join([hex_b, "  bin/gunbc\n"], ""))
+    && string_contains(s: metadata_first, pattern: "bin/gunbc|")
+    && substring(s: installed_first, start: 0, end: 2) == "bb"
+    && substring(s: installed_second, start: 0, end: 2) == "bb"
+    && substring(s: metadata_first, start: 0, end: 3) == "bin"
+    && substring(s: metadata_second, start: 0, end: 3) == "bin"
 }

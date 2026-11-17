@@ -6,7 +6,15 @@ import std.algebra { string_contains }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, ipmitool_mc_info_firmware_text }
-import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, IpmitoolDefaultVerbosity, IpmitoolVerboseOnce }
+import std.measure { second_count }
+import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
+import extdeps.bmc.ipmitool_lanplus_timing {
+  IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_seconds,
+  ipmitool_mc_info_slowest_answered_seconds, ipmitool_lanplus_message_survives_drops,
+}
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline }
 import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdReportedSent, McResetColdExitedNonzero, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_of }
 import gunbc.host.bmc_cold_reset {
   ColdResetWatchBounds, ColdResetPoll, ControllerAvailable, ControllerInitializing, ControllerNoResponse, ControllerProbeFailed, ControllerUndecodable, cold_reset_poll_of,
@@ -37,7 +45,7 @@ data real_chassis_state_path: String = "artifacts/bmc/mtcollins1-32dimm/01-state
 fn real_mc_info() -> String { Filesystem.Read(path: real_mc_info_path).content }
 fn real_chassis_state() -> String { Filesystem.Read(path: real_chassis_state_path).content }
 
-fn available() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: real_mc_info(), stderr: "") }
+fn available() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolDefaultVerbosity, success: true, exit_code: 0, stdout: real_mc_info(), stderr: "") }
 // FAILED POLLS AT ONE -v, as ipmitool 1.8.19 prints them. SOURCE-TRANSCRIBED, not captured (extdeps.bmc.ipmi_session
 // ipmitool_lanplus_source_standing): src/plugins/lanplus/lanplus.c ipmi_get_auth_capabilities_cmd, ipmi_lanplus_open,
 // ipmi_lanplus_rakp1 / _rakp3 and ipmi_set_session_privlvl_cmd; the RAKP status words from lanplus_strings.c.
@@ -46,13 +54,19 @@ fn available() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0
 // and so is the bare session line at the default verbosity ("exit=1 ... stderr=[Error: Unable to establish IPMI v2 /
 // RMCP+ session]"), which names no stage.
 data session_line: String = concat(ipmitool_lanplus_session_unestablished_line, "\n")
-fn failed(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
+// The watch polls run at one -v, so a failed poll is read as one; the baseline runs at the default verbosity.
+fn failed(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
+fn failed_at_default(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolDefaultVerbosity, success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
 
 // No answer, each stage named.
 fn no_response() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Get Auth Capabilities error\nError issuing Get Channel Authentication Capabilities request\n", session_line)) }
 fn no_reply_to_rakp1() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> Error: no response from RAKP 1 message\nSet Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
 fn no_reply_after_open_session() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Set Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
-fn timed_out() -> ColdResetPoll { failed(exit_code: 124, stderr: "") }
+// The captured deadline form, at the default verbosity it was captured at.
+fn timed_out() -> ColdResetPoll { failed_at_default(exit_code: 124, stderr: "") }
+// A -v poll killed at its deadline: nothing printed, or the stage line a silent controller leaves before the kill.
+fn timed_out_at_v() -> ColdResetPoll { failed(exit_code: 124, stderr: "") }
+fn timed_out_at_v_after_a_stage() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Auth Capabilities error\nError issuing Get Channel Authentication Capabilities request\n") }
 
 // NOT evidence of no answer.
 fn bare_session_line() -> ColdResetPoll { failed(exit_code: 1, stderr: session_line) }
@@ -69,13 +83,18 @@ fn probe_failed() -> ColdResetPoll { failed(exit_code: 1, stderr: "Unable to rea
 // line ipmitool prints only on receiving a reply.
 fn timed_out_after_hmac() -> ColdResetPoll { failed(exit_code: 124, stderr: "> RAKP 2 HMAC is invalid\n") }
 fn timed_out_after_a_code() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Auth Capabilities error: Invalid command\nError issuing Get Channel Authentication Capabilities request\n") }
+// The session came up and the controller answered Get Device ID with completion code C1h, which ipmitool renders
+// "Invalid command" (lib/ipmi_mc.c ipmi_mc_get_deviceid, lib/ipmi_strings.c): extdeps.bmc.ipmi_session classifies it
+// IpmiCommandNotServed. Source-transcribed, like the -v lines above.
+fn not_served() -> ColdResetPoll { failed(exit_code: 1, stderr: "Get Device ID command failed: Invalid command\n") }
+fn timed_out_after_not_served() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Device ID command failed: Invalid command\n") }
 fn not_installed() -> ColdResetPoll { failed(exit_code: 127, stderr: "timeout: failed to run command 'ipmitool': No such file or directory\n") }
 
 // A successful poll at one -v: lprintf noise on stderr (ipmi_main.c "Discovered IPMB address 0x%x", LOG_INFO) and the
 // controller's report on stdout, which one -v leaves alone.
-fn verbose_available() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: real_mc_info(), stderr: "Discovered IPMB address 0x20\n") }
-fn undecodable() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: "this is not an mc info report\n", stderr: "") }
-fn initializing() -> ColdResetPoll { cold_reset_poll_of(success: true, exit_code: 0, stdout: replace(s: real_mc_info(), from: "Device Available          : yes", to: "Device Available          : no"), stderr: "") }
+fn verbose_available() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: real_mc_info(), stderr: "Discovered IPMB address 0x20\n") }
+fn undecodable() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: "this is not an mc info report\n", stderr: "") }
+fn initializing() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: replace(s: real_mc_info(), from: "Device Available          : yes", to: "Device Available          : no"), stderr: "") }
 fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
 fn power_off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
 
@@ -255,10 +274,90 @@ test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recover
 // AN ANSWER OUTLIVES THE DEADLINE (side chat on gunbc#16529 at e930da53): exit 124 says the command ran out of time,
 // not that the controller was silent. Beside a line showing it answered (the HMAC check, a completion code), the
 // poll is a failed probe, so available before, that poll, then available with power agreeing is no observed loss and
-// never accepted. Exit 124 with nothing answered stays a missing response (only_a_stage_... above).
+// never accepted. Exit 124 with nothing answered is a missing response at the default verbosity (only_a_stage_...
+// above) and a failed probe at -v (the -v deadline rule below).
 test fn an_answer_before_the_read_deadline_is_a_failed_probe_and_cannot_reach_an_accepted_recovery() -> Bool {
   all([timed_out_after_hmac(), timed_out_after_a_code()], f =>
     match f { ControllerProbeFailed { exit_code: e, cause: c } => e == 124 && string_contains(s: c as String, pattern: "after the controller answered (exit 124)")  _ => false }
+      && match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+           Present { value: v } =>
+             match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+               && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+           Absent => false
+         })
+}
+
+// THE -v DEADLINE RULE (decision X on gunbc#16529, msg_4588a441). A -v poll killed at its read deadline with neither
+// an answered line nor a stage line is a FAILED PROBE: under the watch-poll row a silent controller ends inside the
+// deadline on its stage line (the timing claim below), so this is a controller answering too slowly to finish. Read as
+// a loss, it let a slow controller that never reset reach an accepted recovery on its next answer; read as a failed
+// probe, available before, that poll, then available with power agreeing is no observed loss and never accepted. The
+// captured form at the default verbosity stays a missing response, and a -v poll killed after printing a stage line
+// is a missing response through that stage.
+test fn a_verbose_poll_killed_at_its_deadline_with_nothing_said_is_a_failed_probe_and_cannot_reach_an_accepted_recovery() -> Bool {
+  match timed_out_at_v() { ControllerProbeFailed { exit_code: e, cause: c } => e == 124 && string_contains(s: c as String, pattern: "neither an answered line nor an unanswered stage")  _ => false }
+    && match timed_out() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "timeout exit 124")  _ => false }
+    && match timed_out_at_v_after_a_stage() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to Get Channel Authentication Capabilities (exit 124)")  _ => false }
+    && match verdict_of(before_on: true, polls: [timed_out_at_v(), available(), available()], after: Present { value: power_on() }) {
+         Present { value: v } =>
+           match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+             && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+         Absent => false
+       }
+}
+
+// THE WATCH-POLL ROW'S MARGIN, DERIVED (decision X condition 1). The figures in the policy row's table are computed
+// here from the rows themselves, through ipmitool 1.8.19's loops (extdeps.bmc.ipmitool_lanplus_timing), against the
+// read deadline the polls run under: the attempts are read back from the -R/-N words each row renders, exactly as
+// ipmitool reads its argv. Under the watch-poll row a silent controller ends inside the deadline with and without
+// ICMP refusals, a slow-but-alive controller does not (which is the case the -v deadline rule reads as a failed probe),
+// and one dropped datagram per message is retried. Under ipmitool's default a silent, refusing controller reaches the
+// deadline exactly; under the authenticated-read row a single dropped datagram fails the message.
+fn attempts_of_row(bound: IpmiRetryBound) -> IpmitoolLanplusAttempts? {
+  ipmitool_lanplus_attempts_of_argv(argv: ["-R", ipmi_retry_bound_retries_word(bound: bound) as String, "-N", ipmi_retry_bound_timeout_word(bound: bound) as String])
+}
+
+test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retries_one_dropped_datagram() -> Bool {
+  let deadline = second_count(s: mtcollins1_boot_ipmi_read_deadline)
+  let ipmitool_default = ipmitool_lanplus_attempts_of_argv(argv: [])
+  match attempts_of_row(bound: bmc_ipmi_watch_poll_retry_bound()) {
+    Absent => false
+    Present { value: watch } => match attempts_of_row(bound: bmc_ipmi_retry_bound()) {
+      Absent => false
+      Present { value: policy } => match ipmitool_default {
+        Absent => false
+        Present { value: four } =>
+          deadline == 20
+            && watch.attempts == 2 && watch.response_timeout_seconds == 1
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: false) == 3
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: true) == 6
+            && deadline - ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: true) >= 14
+            && ipmitool_mc_info_slowest_answered_seconds(attempts: watch) == 30
+            && ipmitool_mc_info_slowest_answered_seconds(attempts: watch) >= deadline
+            && ipmitool_lanplus_message_survives_drops(attempts: watch, dropped: 1)
+            && four.attempts == 4
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: false) == 10
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: true) == 20
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: true) >= deadline
+            && ipmitool_mc_info_slowest_answered_seconds(attempts: four) == 72
+            && policy.attempts == 1
+            && ipmitool_lanplus_unanswered_message_seconds(attempts: policy, refused: true) == 2
+            && ipmitool_mc_info_slowest_answered_seconds(attempts: policy) == 18
+            && !ipmitool_lanplus_message_survives_drops(attempts: policy, dropped: 1)
+            // "-R 0" is not zero retries: ipmitool falls back to its default of four attempts.
+            && match ipmitool_lanplus_attempts_of_argv(argv: ["-R", "0", "-N", "1"]) { Present { value: z } => z.attempts == 4  Absent => false }
+      }
+    }
+  }
+}
+
+// A COMMAND NOT SERVED IS AN ANSWER (msg_d9c38bd7 on gunbc#16529, after #16357 added IpmiCommandNotServed): the
+// controller answered with a completion code, so the poll is a failed probe on the same veto as every other answered
+// line -- also beside exit 124 -- and available before, that poll, then available with power agreeing is no observed
+// loss and never accepted.
+test fn a_command_not_served_is_an_answer_and_cannot_reach_an_accepted_recovery() -> Bool {
+  all([not_served(), timed_out_after_not_served()], f =>
+    match f { ControllerProbeFailed { exit_code: _, cause: c } => string_contains(s: c as String, pattern: "after the controller answered")  _ => false }
       && match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
            Present { value: v } =>
              match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }

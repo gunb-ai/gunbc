@@ -2,16 +2,29 @@ module extdeps.bmc.virtual_media
 
 import std.types { NonEmptyStr, Int, String, List, Port }
 import std.logic { Bool }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, RedfishVirtualMediaTransferProtocol }
 import extdeps.bmc.megarac { MegaRacImageRedirectionRequired }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "docs.kernel.org/usb/mass-storage.html",
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.virtual_media",
+      decl_name: "VirtualMediaIntent",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // gunbc.design_argument::single_authority single-authority: 'present a block source (ISO) to a host as USB storage' is ONE concept —

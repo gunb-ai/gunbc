@@ -54,6 +54,8 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_entry_names,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  FilesystemReadOutcome, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
+  FilesystemExactRead, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
 import extdeps.shell
 import gunbc.spool_queue {
@@ -136,6 +138,18 @@ fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> Helper
 
 fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
   helper_locus_dir(locus: attempt_system_unit_launcher_locus(instance: instance), revision: revision)
+}
+
+// THE DRAIN'S READ-OF-RECORD, exported from the drain's own module (the artifact closure consumes
+// this; it never re-spells the path). The attempt-unit drain service's ExecStart is pinned to its
+// helper snapshot — the revision-bound launcher dir — so that dir is BOTH what the unit reads AND
+// what the attempt-unit-drain helper-snapshot install leg writes (its spine is this same locus).
+// One authority (attempt_system_unit_launcher_dir) is the source of both the read and the owned
+// artifact, so the deploy intent owning the drain's read and the drain's read of itself cannot
+// disagree — a re-spelled list beside the unit could (single_authority; build on this authority,
+// not a second inventory of the drain's helper closure).
+fn attempt_unit_drain_read_paths(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
+  [attempt_system_unit_launcher_dir(instance: instance, revision: revision)]
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
@@ -812,16 +826,20 @@ fn attempt_system_unit_admit_body_path(path: String) -> AttemptSystemUnitBodyAdm
   }
 }
 
+fn attempt_system_unit_claimed_body_from_outcome(outcome: FilesystemReadOutcome) -> AttemptSystemUnitClaimedBody {
+  match outcome {
+    FilesystemReadSucceeded { content } => AttemptSystemUnitClaimedBodyRead { content: content }
+    FilesystemReadRefused { error } =>
+      AttemptSystemUnitClaimedBodyRefused { reason: join(["claimed request body unreadable: ", error], "") }
+  }
+}
+
 fn attempt_system_unit_read_claimed_body(path: String) -> AttemptSystemUnitClaimedBody {
   match attempt_system_unit_admit_body_path(path: path) {
     AttemptSystemUnitBodyRefused { reason } => AttemptSystemUnitClaimedBodyRefused { reason: reason }
     AttemptSystemUnitBodyRegular => {
       let read = Filesystem.Read(path: path)
-      if !read.success {
-        AttemptSystemUnitClaimedBodyRefused { reason: "claimed request body unreadable" }
-      } else {
-        AttemptSystemUnitClaimedBodyRead { content: read.content }
-      }
+      attempt_system_unit_claimed_body_from_outcome(outcome: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
     }
   }
 }
@@ -941,13 +959,23 @@ fn attempt_system_unit_decode_verdict(content: String) -> AttemptSystemUnitAnswe
   }
 }
 
-fn attempt_system_unit_read_answer(instance_root: String, entry: String, request_body: String) -> AttemptSystemUnitAnswerRead {
-  let read = Filesystem.Read(path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry))
-  if !read.success {
-    AttemptSystemUnitAnswerMissing
-  } else {
-    attempt_system_unit_decode_answer(content: read.content, request_body: request_body)
+fn attempt_system_unit_answer_from_exact(exact: FilesystemExactRead, request_body: String) -> AttemptSystemUnitAnswerRead {
+  match exact {
+    FilesystemExactPathAbsent { path: _ } => AttemptSystemUnitAnswerMissing
+    FilesystemExactPathUnreadable { path: _, kind: _, error } => AttemptSystemUnitAnswerUnreadable { detail: error }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => AttemptSystemUnitAnswerUnreadable { detail: error }
+    FilesystemExactPathRead { path: _, content } =>
+      attempt_system_unit_decode_answer(content: content, request_body: request_body)
   }
+}
+
+fn attempt_system_unit_read_answer(instance_root: String, entry: String, request_body: String) -> AttemptSystemUnitAnswerRead {
+  let path = attempt_system_unit_answer_path(instance_root: instance_root, entry: entry)
+  let read = Filesystem.Read(path: path)
+  attempt_system_unit_answer_from_exact(
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+    request_body: request_body,
+  )
 }
 
 // ONE READ OF answers/<entry>, no wait: the root side answers when the spool's path unit starts it,

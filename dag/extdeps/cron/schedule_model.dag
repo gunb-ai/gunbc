@@ -3,17 +3,31 @@ module extdeps.cron.schedule_model
 import std.integer { NonNegativeInt, PositiveInt }
 import std.optional { Absent, Present }
 import std.types { List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.nat { Nat, nat_to_decimal_string }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { list_head, list_tail, list_append }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cron.schedule_model",
+      decl_name: "CronField",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CronField

@@ -1,0 +1,34 @@
+LAN-side sightings of H11SSL-i unit 3 -- transcribed from smart-crane-730's read-only session on srv1
+2026-11-15T~23:25Z (dashboard msg_01a71ff1). This file is a faithful copy of another session's report;
+this repository did not capture it. Read-only throughout: nothing was written to the unit, its BMC, or
+srv1's files (srv1's known_hosts was left untouched and a throwaway file was used for the probe).
+
+--- neighbour table on srv1 (`ip neigh`) ---------------------------------------------------------
+192.168.1.249  -> ac:1f:6b:e6:72:16   state REACHABLE      # the BMC's LAN port
+192.168.1.236  <-> ac:1f:6b:e6:75:eb  state STALE          # the host's install NIC (LAN2)
+
+  192.168.1.236 is already modelled as srv9's host LAN endpoint
+  (gunbc.fleet.fleet_intent_network.srv9_host_lan_endpoint), so this pairing is either lease reuse of an
+  address srv9 had vacated, or a real collision. This read cannot tell them apart, and the model writes
+  no NetworkEndpoint row for the unit at that address.
+
+  Neither MAC matches unit1 (ac:1f:6b:e3:f5:7b = the serving host h11-a16) or unit2
+  (ac:1f:6b:e3:f6:22), so this board is a third unit.
+
+--- ssh probe of 192.168.1.236 (throwaway known_hosts) -------------------------------------------
+Host key offered: SSH ED25519 SHA256:rS86bHoHXcFgifCUhrKDi6+vmjgL8GVz+MhHkd/Pb0o
+  srv1's known_hosts held an OLDER key for this same IP -- the signature of address reuse. The
+  fingerprint above is UNCONFIRMED: the operator confirming it from the unit's console is what would
+  move it into a trust roster, which is not this file's job.
+Authentication: publickey refused for briansrls, ubuntu, gunbc and admin.
+  The hand install seeded no fleet authorized_keys roster. Recorded as a finding against
+  gunbc.design_ruling::fleet_authorized_keys_on_every_install_route in the integration register
+  (h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster); no key was guessed, probed
+  or copied here.
+
+--- reachability from this repository's own container (2026-11-15T22:38Z) ------------------------
+TCP 192.168.1.249:443 connects (the BMC's Redfish/HTTPS surface answers).
+TCP 192.168.1.247:22 gives "No route to host" from the same position -- the Altra BMCs' addresses do not
+answer from here, so the .249 connect is a live answer and not a stale table entry. No authenticated
+request of any kind was made against .249: the BMC credential is the operator's to hand over, and
+published default credentials are not probed (gunbc.machine_intake.bmc_credential_policy).

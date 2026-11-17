@@ -23,7 +23,7 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Cite
 import extdeps.uri { Uri, Https }
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 
-type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
+type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished | IpmiCommandNotServed
 
 // The line ipmitool 1.8.19's lanplus plugin prints when the RMCP+ session never comes up
 // (src/plugins/lanplus/lanplus.c ipmi_lanplus_open: "Error: Unable to establish IPMI v2 / RMCP+ session"),
@@ -45,6 +45,12 @@ fn ipmi_session_failure(output: String) -> IpmiSessionFailure? {
     Present { value: IpmiSessionAuthRefused }
   } else if string_contains(s: output, pattern: ipmitool_lanplus_session_unestablished_marker) {
     Present { value: IpmiSessionUnestablished }
+  } else if string_contains(s: output, pattern: "Unknown command") || string_contains(s: output, pattern: "Invalid command") {
+    // The session came up and the credential was accepted; the COMMAND is not implemented by this
+    // firmware (ipmitool prints "Unknown command (0x..)" / "Invalid command" for completion codes
+    // C1h/C1-like). That says nothing about the credential — it is served-nothing, and the prior-life
+    // policy row, not this module, decides whether the gap refuses.
+    Present { value: IpmiCommandNotServed }
   } else {
     none
   }
@@ -183,10 +189,28 @@ fn ipmitool_lanplus_stderr_lines(stderr: String) -> List<String> {
   map(split(s: stderr, delimiter: "\n"), l => trim(s: l))
 }
 
-// Whether any trimmed stderr line shows the controller ANSWERED (an answered-failure line above). This is
-// independent of the exit code: a command that later hit its read deadline still received the answer it printed.
+// Whether any trimmed stderr line shows the controller ANSWERED: an answered-failure line above, or a session failure
+// ipmi_session_failure classifies as one the controller had to answer to produce. This is independent of the exit
+// code: a command that later hit its read deadline still received the answer it printed.
 fn ipmitool_lanplus_stderr_shows_an_answer(stderr: String) -> Bool {
   ipmitool_lanplus_verbose_answered(lines: ipmitool_lanplus_stderr_lines(stderr: stderr))
+    || match ipmi_session_failure(output: stderr) {
+         Present { value: f } => ipmi_session_failure_was_answered(failure: f)
+         Absent => false
+       }
+}
+
+// WHICH SESSION FAILURES THE CONTROLLER ANSWERED, exhaustive over IpmiSessionFailure (no wildcard: a new kind of failure
+// must be placed here). A refused credential is the RAKP exchange or a completion code rejecting it -- an answer. A
+// command not served is a completion code for a command this firmware does not implement (ipmitool renders C1h as
+// "Invalid command", lib/ipmi_strings.c; `mc info` prints "Get Device ID command failed: Invalid command") -- an
+// answer from a session that came up. The bare unestablished line names no stage, so it is not evidence of an answer.
+fn ipmi_session_failure_was_answered(failure: IpmiSessionFailure) -> Bool {
+  match failure {
+    IpmiSessionAuthRefused => true
+    IpmiSessionUnestablished => false
+    IpmiCommandNotServed => true
+  }
 }
 
 // The no-answer stage a -v stderr names, or Absent when it names none or when any line shows the controller

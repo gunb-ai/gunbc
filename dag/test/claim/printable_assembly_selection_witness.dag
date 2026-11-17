@@ -162,11 +162,21 @@ fn refuses_naming(s: PrintableAssemblySelection, card: DuctCard) -> Bool {
 // rather than falling back to the A16's geometry. The three direct calls below keep the claim pinned to the
 // geometry producers as well as to the selection.
 test fn w_an_unread_card_refuses_every_shape_by_naming_its_reading() -> Bool {
-  all([t4_duct_card, t10_duct_card], c =>
+  all([t4_duct_card], c =>
     all(duct_root_kinds, k => refuses_naming(s: select_printable_assembly(root: duct_card_root(card: c, kind: k)), card: c))
     && refuses_naming(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct), card: c)
       && refuses_naming(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c), card: c)
       && refuses_naming(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c), card: c))
+}
+
+// THE T10'S FACE IS READ (2026-11-16) BUT ITS END-CAP HOLES ARE NOT, and no T10 duct fastens to them: every
+// single-card shape -- all of which screw into inserts -- refuses it naming the inserts as not observed, not
+// with placeholder inserts. Its sleeve coupon is a group root (card_group_cooling_witness).
+test fn w_the_read_t10_refuses_every_single_card_shape_naming_its_unread_inserts() -> Bool {
+  all(duct_root_kinds, k => match select_printable_assembly(root: duct_card_root(card: t10_duct_card, kind: k)) {
+    PrintableAssemblyReady { assembly: _ } => false
+    PrintableAssemblyRefused { reason: r } => r == duct_card_unread_reason(card: t10_duct_card) && string_contains(s: r, pattern: "end-cap inserts: not observed")
+  })
 }
 
 // A READ CARD WITHOUT THE A16'S FASTENING FEATURES: the A2's face is read (2026-11-02) and has no end-cap
@@ -260,6 +270,7 @@ data slot_count_unread_card: DuctCard = DuctCard {
     sources: a16_card_row.sources,
   },
   end_face: a16_duct_card.end_face,
+  observed_slot_count: Absent,
 }
 
 fn ready(s: PrintableAssemblySelection) -> Bool {

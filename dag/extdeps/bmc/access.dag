@@ -1,16 +1,29 @@
 module extdeps.bmc.access
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.access.rbac { Permission, PermissionAssignment, RbacPolicy }
 import extdeps.bmc.types { AccountRoleOperator, AccountRoleReadOnly, PrivilegeConfigureComponents, PrivilegeConfigureManager, PrivilegeConfigureSelf, PrivilegeConfigureUsers, RedfishAccountRole, RedfishPrivilege, redfish_account_role_wire, redfish_privilege_wire }
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.access",
+      decl_name: "redfish_privilege_object",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data redfish_privilege_object: NonEmptyStr = "redfish"

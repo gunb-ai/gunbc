@@ -40,6 +40,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
+import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_seconds }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, ipmitool_lanplus_get_auth_caps_no_reply_line, ipmitool_lanplus_get_channel_auth_caps_issuing_line, ipmitool_verbosity_argv, IpmitoolVerboseOnce }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
@@ -106,6 +107,63 @@ fn bmc_controller_unanswered(world: BmcWorld, verbose: Bool) -> BmcReply {
   BmcRefused { exit_code: 1, stderr: join([named, ipmitool_lanplus_session_unestablished_line, "\n"], ""), world: world }
 }
 
+// THE CLOCK ONE CALL RUNS UNDER, read from the argv the real transport would run (the operation's declaration with the
+// call's own bindings, as bmc_call_raw_request reads a raw request): the coreutils `timeout` deadline that wraps it,
+// and the attempts ipmitool runs with after its own defaulting (extdeps.bmc.ipmitool_lanplus_timing). A dry
+// controller that does not answer uses it to answer in the time the client would have spent: a silent controller's
+// stage line comes back only if the client finished waiting before the deadline killed it.
+type BmcLanplusCallClock { attempts: IpmitoolLanplusAttempts, deadline_seconds: Int }
+
+fn bmc_call_argv(call: OperationCall) -> List<String>? {
+  match shell_materialize_operation_argv(call.invocation.at.path, call.invocation.at.service, call.invocation.at.operation, call.invocation.bindings) {
+    ArgvMaterialized { argv: a } => Present { value: a }
+    ArgvMaterializationRefused { at: _, cause: _ } => none
+  }
+}
+
+// `timeout --kill-after <k> <duration> ...`: the duration is the fourth word, in seconds with an optional "s" suffix
+// (extdeps.tools.gnu_coreutils coreutils_duration_operand renders "<n>s").
+fn bmc_argv_timeout_deadline_seconds(argv: List<String>) -> Int? {
+  if argv.take(n: 2) == ["timeout", "--kill-after"] {
+    match argv.skip(n: 3).first() {
+      Absent => none
+      Present { value: d } => parse_int(s: replace(s: d, from: "s", to: ""))
+    }
+  } else {
+    none
+  }
+}
+
+fn bmc_call_lanplus_clock(call: OperationCall) -> BmcLanplusCallClock? {
+  match bmc_call_argv(call: call) {
+    Absent => none
+    Present { value: argv } => match ipmitool_lanplus_attempts_of_argv(argv: argv) {
+      Absent => none
+      Present { value: a } => match bmc_argv_timeout_deadline_seconds(argv: argv) {
+        Absent => none
+        Present { value: d } => Present { value: BmcLanplusCallClock { attempts: a, deadline_seconds: d } }
+      }
+    }
+  }
+}
+
+// A CONTROLLER THAT DOES NOT ANSWER, AT THE CLIENT'S PACE. The first message (Get Channel Authentication Capabilities)
+// goes unanswered for every attempt; if the client's wait for it ends before the deadline, ipmitool prints what it
+// prints for an unanswered controller (bmc_controller_unanswered); otherwise coreutils kills it first and nothing is
+// printed (exit 124). `refused` is a controller whose network stack answers each datagram with an ICMP refusal, which
+// doubles the client's wait. A call whose argv carries no readable clock is a harness fault, never a guess.
+fn bmc_controller_silent(world: BmcWorld, call: OperationCall, refused: Bool) -> BmcReply {
+  match bmc_call_lanplus_clock(call: call) {
+    Absent => BmcReplyFault { reason: "an unanswered ipmitool call whose argv carries no readable deadline or attempt count" as NonEmptyStr }
+    Present { value: clock } =>
+      if ipmitool_lanplus_unanswered_message_seconds(attempts: clock.attempts, refused: refused) < clock.deadline_seconds {
+        bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
+      } else {
+        BmcRefused { exit_code: 124, stderr: "", world: world }
+      }
+  }
+}
+
 // Whether a call ran ipmitool at one -v, read from the words its verbosity input was bound to. An operation without
 // that input runs at the default.
 fn bmc_call_verbose(call: OperationCall) -> Bool {
@@ -117,7 +175,7 @@ fn bmc_call_verbose(call: OperationCall) -> Bool {
 
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
+    bmc_controller_silent(world: world, call: call, refused: false)
   } else {
     BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
   }
@@ -133,7 +191,7 @@ data bmc_dry_cold_reset_back_after: Second = second(count: 60)
 
 fn bmc_mc_reset_cold_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
+    bmc_controller_silent(world: world, call: call, refused: false)
   } else {
     BmcReplied {
       stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
@@ -161,12 +219,16 @@ fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
 
 fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "parameter", expected: "5") {
-    BmcReplied {
-      stdout: match world.boot_override {
-        BootOverrideNone => ipmitool_bootparam5_no_override
-        BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
-      },
-      world: world,
+    match world.boot_override {
+      BootOverrideNone => BmcReplied { stdout: ipmitool_bootparam5_no_override, world: world }
+      BootOverrideCdromEfiNextBoot => BmcReplied { stdout: ipmitool_bootparam5_cdrom_efi_next_boot, world: world }
+      // A next-boot PXE override HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER either, and the same rule
+      // that declines parameter 3 below declines synthesizing its bytes here (the SdrElistVerbose
+      // precedent): the model prints only what a committed capture says the controller prints. The arm
+      // exists so a live reading can NAME what it found (smart-crane-730's ruling B -- an unmodeled
+      // target never collapses into None); a dry world that reaches this arm is asking the model to
+      // invent evidence, and it gets a refusal that says the model is declining.
+      BootOverridePxeNextBoot => BmcRefused { exit_code: 1, stderr: "gunbc dry world: the next-boot PXE override has no committed capture of this controller's parameter-5 answer; the model does not answer it", world: world }
     }
   } else if input_is(call: call, name: "parameter", expected: "3") {
     // PARAMETER 3 (valid-bit clearing) HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER, and synthesizing its bytes
@@ -275,12 +337,17 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
-    bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
+    bmc_controller_silent(world: world, call: call, refused: false)
   } else {
-    match world.record_surfaces.mc_info {
-      Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
-      Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
-    }
+    bmc_mc_info_answer(world: world)
+  }
+}
+
+// The answer itself, from what the world models of this controller.
+fn bmc_mc_info_answer(world: BmcWorld) -> BmcReply {
+  match world.record_surfaces.mc_info {
+    Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
+    Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
   }
 }
 

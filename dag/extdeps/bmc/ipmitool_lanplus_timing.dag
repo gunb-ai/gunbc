@@ -1,0 +1,120 @@
+module extdeps.bmc.ipmitool_lanplus_timing
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent, Optional }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// HOW LONG ONE ipmitool lanplus INVOCATION WAITS, read from ipmitool 1.8.19's own loops. This is an upstream fact
+// about the client, kept here so that a caller choosing -R/-N (a workflow policy row) DERIVES the wall time of a read
+// from the client's loops instead of asserting it, and so that a dry controller answers a call in the time the real
+// client would have spent on it. Source files and their sha256, as read for gunbc#16529 on 2026-11-16:
+//   lib/ipmi_main.c                    ddcb7c570167b2d3f68f85c7bbdf294c9336f62272dbb0ca1358416ce392150c
+//   src/plugins/lanplus/lanplus.c      0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068
+//   src/plugins/lanplus/lanplus.h      ef29e07b6ff56eca1435c6212761c6054376b035d166b9fbf9c508bd19471a06
+//   lib/hpm2.c                         4c348ac0a958f0ff4850aad2203b6e065a0b9b951849c75570e835e482d14572
+//
+// THE LOOPS.
+// - -R and -N. ipmi_main.c accepts "-R 0" and "-N 0" but applies them only "if (retry > 0)" / "if (timeout > 0)";
+//   ipmi_lanplus_open then fills an unset value with IPMI_LAN_RETRY (4) / IPMI_LAN_TIMEOUT (1). -R is an ATTEMPT
+//   count: ipmi_lanplus_send_payload loops "while (try < intf->ssn_params.retry)". So "-R 0" is four attempts.
+// - ONE IPMI-PAYLOAD MESSAGE. Each attempt waits select() for session->timeout seconds, and session->timeout is
+//   incremented after every retransmit. A message that is never answered therefore costs
+//   N + (N+1) + ... + (N+R-1) = R·N + R(R−1)/2 seconds. ipmi_lan_recv_packet selects a second time when recv()
+//   returns < 0 (an ICMP port-unreachable refusal, e.g. a controller whose network stack is up and whose IPMI service
+//   is not), which doubles it.
+// - THE SESSION OPEN. The open-session request, RAKP 1 and RAKP 3 are sent once each at the session timeout, inside
+//   an outer loop of the constant IPMI_LAN_RETRY that ignores -R: at most 4 × 3 × N seconds (doubled on refusals).
+// - ONE `mc info` (-C given, so no cipher-suite discovery) makes at least six R-attempt messages: Get Channel
+//   Authentication Capabilities before the open; Set Session Privilege Level after it; hpm2_detect_max_payload_size
+//   (one message, two on an HPM.2 board); ipmi_get_oem's Get Device ID; the mc info Get Device ID; and Close Session.
+//
+// WHAT THIS DOES NOT CLAIM: it bounds the client's own waiting. It says nothing about when a controller answers, which
+// is the world's fact, and it does not model the cipher-suite discovery a call without -C makes.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/IPMITOOL_1_8_19/src/plugins/lanplus/lanplus.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmitool_lanplus_timing",
+      decl_name: "IpmitoolLanplusAttempts",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// lanplus.h IPMI_LAN_RETRY and IPMI_LAN_TIMEOUT: the values an unset (or zero) -R / -N falls back to.
+data ipmitool_lan_retry_default: Int = 4
+data ipmitool_lan_timeout_default_seconds: Int = 1
+
+// The session-open stages sent once per outer try: open session, RAKP 1, RAKP 3.
+data ipmitool_lanplus_open_stages: Int = 3
+
+// The R-attempt messages of one `mc info` with -C given, at the least (an HPM.2 board adds one).
+data ipmitool_mc_info_lanplus_messages: Int = 6
+
+// THE ATTEMPT COUNT AND THE PER-ATTEMPT TIMEOUT ONE INVOCATION RUNS WITH, after ipmitool's own defaulting.
+type IpmitoolLanplusAttempts { attempts: Int, response_timeout_seconds: Int }
+
+// The word that follows `flag` in an argv, the way getopt reads a separated option argument.
+fn ipmitool_argv_word_after(argv: List<String>, flag: String) -> String? {
+  let after = fold(argv, init: [], f: fn(acc, w) { if count(acc) > 0 || w == flag { concat(acc, [w]) } else { acc } })
+  after.skip(n: 1).first()
+}
+
+// A -R / -N word as ipmi_main.c applies it: absent or zero falls back to the default; a word that is not a whole
+// number is refused by ipmitool before any session, so it reads as nothing here.
+fn ipmitool_lanplus_option_value(argv: List<String>, flag: String, fallback: Int) -> Int? {
+  match ipmitool_argv_word_after(argv: argv, flag: flag) {
+    Absent => Present { value: fallback }
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else if n == 0 { Present { value: fallback } } else { Present { value: n } }
+    }
+  }
+}
+
+// THE ATTEMPTS AN INVOCATION RUNS WITH, read from its argv.
+fn ipmitool_lanplus_attempts_of_argv(argv: List<String>) -> IpmitoolLanplusAttempts? {
+  match ipmitool_lanplus_option_value(argv: argv, flag: "-R", fallback: ipmitool_lan_retry_default) {
+    Absent => none
+    Present { value: r } => match ipmitool_lanplus_option_value(argv: argv, flag: "-N", fallback: ipmitool_lan_timeout_default_seconds) {
+      Absent => none
+      Present { value: n } => Present { value: IpmitoolLanplusAttempts { attempts: r, response_timeout_seconds: n } }
+    }
+  }
+}
+
+// ONE MESSAGE NEVER ANSWERED: R·N + R(R−1)/2 seconds, doubled when each attempt is refused.
+fn ipmitool_lanplus_unanswered_message_seconds(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Int {
+  let r = attempts.attempts
+  let once = r * attempts.response_timeout_seconds + (r * (r - 1)) / 2
+  if refused { 2 * once } else { once }
+}
+
+// THE SESSION OPEN AT ITS WORST: every stage of every outer try waits the full session timeout.
+fn ipmitool_lanplus_open_worst_seconds(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Int {
+  let once = ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * attempts.response_timeout_seconds
+  if refused { 2 * once } else { once }
+}
+
+// A CONTROLLER THAT ANSWERS EVERY MESSAGE ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, and the session open at its
+// worst: the longest an `mc info` that does succeed can take.
+fn ipmitool_mc_info_slowest_answered_seconds(attempts: IpmitoolLanplusAttempts) -> Int {
+  ipmitool_mc_info_lanplus_messages * ipmitool_lanplus_unanswered_message_seconds(attempts: attempts, refused: false)
+    + ipmitool_lanplus_open_worst_seconds(attempts: attempts, refused: false)
+}
+
+// A MESSAGE WHOSE FIRST `dropped` DATAGRAMS ARE LOST is still answered iff an attempt is left after them.
+fn ipmitool_lanplus_message_survives_drops(attempts: IpmitoolLanplusAttempts, dropped: Int) -> Bool {
+  dropped < attempts.attempts
+}

@@ -151,3 +151,96 @@ fn ls_long_entry_of_line(line: String) -> LsLongEntry {
     }
   }
 }
+
+// THE READING OF ONE ENTRY QUERY: `ls -l -n -d -- <path>`, which describes the ENTRY rather than its
+// target -- so only the parent's SEARCH permission is needed, and a directory published drwx--x--- still
+// answers "is this name in there" while refusing "what is in there". This is THIS module's command
+// (ls_long_numeric_entries_command), so its words and its output belong here together: the presence fold
+// in extdeps.filesystem.filesystem_io says what each reading licenses and never decodes these bytes
+// itself. There was a fork here once, in the other direction -- a consumer of this command split its own
+// stdout on single spaces and matched the name as a field, where this module's parser trims and drops
+// empty fields and refuses an unparseable mode; gunbc.design_argument::single_authority calls a second
+// place that decides one tool's output a fork, and the two already disagreed.
+//
+// FOUR OUTCOMES, and the last two are different facts for the consumer: MISSING is the host TESTIFYING
+// the name is not there, REFUSED is the host saying it will not or cannot answer and carrying its reason
+// (EACCES from an ACL, an LSM or a parent that will not search; EIO; ESTALE), and UNREADABLE is the
+// observation not being an answer at all -- nothing printed, more than one line, a line this parser will
+// not accept, a status outside the one that testifies.
+type LsEntryQueryReading
+  = LsEntryQueryPresent { path: String, entry: LsLongEntry }
+  | LsEntryQueryMissing { path: String, diagnostic: String }
+  | LsEntryQueryRefused { path: String, diagnostic: String }
+  | LsEntryQueryUnreadable { path: String, cause: String }
+
+// THE ONLY DIAGNOSTICS THAT TESTIFY A NAME IS NOT THERE: the WHOLE line, compared exactly, for the path
+// that was asked about. Two shapes, both emitted on exit 2 -- ENOENT under a searchable parent, and
+// ENOTDIR from a component above it. Nothing here is "contains" and nothing is "ends with": a second
+// diagnostic line, or a message about some other path, is not this host's testimony about this name. An
+// earlier cut of this reader asked for a substring PLUS a suffix, which let a two-line stderr --
+// "ls: cannot access '/srv/instance': Permission denied" then "ls: cannot access '/tmp/other': No such
+// file or directory" -- certify /srv/instance as absent while the host was refusing to answer for it.
+// A path whose name contains an apostrophe is double-quoted by ls and so lands unreadable, which is the
+// safe side of this law: unreadable stops a deployment, absence releases a cell.
+fn ls_entry_missing_diagnostic(line: String, path: String) -> Bool {
+  line == join(["ls: cannot access '", path, "': No such file or directory"], "")
+    || line == join(["ls: cannot access '", path, "': Not a directory"], "")
+}
+
+// A long listing of a symbolic link prints `name -> target` after the fields, so the line DESCRIBES the
+// field before the arrow; every other line describes its last field. That is ls's own format, so it is
+// read here rather than by whichever consumer noticed the arrow.
+fn ls_entry_query_entry_of_line(line: String) -> LsLongEntry {
+  let trimmed = trim(s: line)
+  match get(xs: split(s: trimmed, delimiter: " -> "), index: 0) {
+    Absent => ls_long_entry_of_line(line: trimmed)
+    Present { value: head } => ls_long_entry_of_line(line: head)
+  }
+}
+
+// ONE CALL, ALL THREE INPUTS: the status and both streams decide the reading, because the answer depends
+// on all three, and a reader that drops the words is where an invented absence would come from.
+fn ls_entry_query_reading_of_output(path: String, exit_code: Int, stdout: String, stderr: String) -> LsEntryQueryReading {
+  let out_lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
+  let err_lines = filter(split(s: stderr, delimiter: "\n"), line => trim(s: line) != "")
+  if exit_code == 0 {
+    if count(out_lines) != 1 {
+      LsEntryQueryUnreadable { path: path, cause: join(["ls exited 0 for ", path, " without printing exactly one entry line; a successful observation of something else is not an answer about this name"], "") }
+    } else {
+      match get(xs: out_lines, index: 0) {
+        Absent => LsEntryQueryUnreadable { path: path, cause: join(["ls exited 0 but printed nothing for ", path], "") }
+        Present { value: line } =>
+          match ls_entry_query_entry_of_line(line: line) {
+            LsLongEntryRead { name: name, directory: directory, ownership: ownership, mode: mode } =>
+              if name == path {
+                LsEntryQueryPresent { path: path, entry: LsLongEntryRead { name: name, directory: directory, ownership: ownership, mode: mode } }
+              } else {
+                LsEntryQueryUnreadable { path: path, cause: join(["ls printed an entry named ", name, " rather than ", path, "; an answer about another name is not an answer about this one"], "") }
+              }
+            LsLongEntryRefused { name: name, reason: reason } =>
+              LsEntryQueryUnreadable { path: path, cause: join(["ls printed a line about ", name, " that this module's parser will not accept: ", reason], "") }
+          }
+      }
+    }
+  } else if exit_code == 2 {
+    if count(err_lines) != 1 {
+      LsEntryQueryUnreadable { path: path, cause: join(["ls exited 2 for ", path, " with ", to_string(value: count(err_lines)), " diagnostic line(s); more than one message is not this host's testimony about this name"], "") }
+    } else {
+      match get(xs: err_lines, index: 0) {
+        Absent => LsEntryQueryUnreadable { path: path, cause: join(["ls exited 2 for ", path, " and said nothing"], "") }
+        Present { value: line } =>
+          if ls_entry_missing_diagnostic(line: line, path: path) {
+            LsEntryQueryMissing { path: path, diagnostic: line }
+          } else {
+            LsEntryQueryRefused { path: path, diagnostic: line }
+          }
+      }
+    }
+  } else {
+    match get(xs: err_lines, index: 0) {
+      Absent => LsEntryQueryUnreadable { path: path, cause: join(["ls failed for ", path, " with exit ", to_string(value: exit_code), " and said nothing"], "") }
+      Present { value: line } =>
+        LsEntryQueryUnreadable { path: path, cause: join(["ls failed for ", path, " with exit ", to_string(value: exit_code), ": ", line], "") }
+    }
+  }
+}

@@ -12,6 +12,7 @@ import v2.extdeps.languages.bash_build {
   BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_with_words, bash_build_or_else, bash_build_exit,
+  bash_build_and_then, bash_build_if_else_from_stmts,
   bash_build_negation, bash_build_if_from_stmts, bash_build_test_bracket,
   bash_build_word_exit_status,
   bash_build_with_redir_to_file, bash_build_with_redir_from_file,
@@ -239,6 +240,21 @@ data fast_lane_layout_check_step_name: String = "Check the layout with the resto
 data fast_lane_reference_check_step_name: String = "Check marked references with the restored native CLI (fast lane)"
 data fast_lane_decision_unemittable_marker: String = "__GUNBC_FAST_LANE_DECISION_UNEMITTABLE__"
 data fast_lane_ancestor_env: String = "FAST_LANE_ANCESTOR"
+// ONE STRUCTURED CLASSIFICATION LINE per pull-request decision, so the reuse rate is countable from logs
+// without re-deriving it (grep key: a timestamped line starting `fast lane: classify -- <category>`).
+// Every category except `reuse` is a full run; a full run is never skipped. `full_stale_unit` names the
+// CORRECT decline of a unit older than a compiler-input change main gained after the located ancestor --
+// the remedy is a NEWER unit arriving sooner (save-after-native-cli, wider lookback, wait-for-base), never
+// loosening this decision; the name is chosen so nobody later reads the stale decline as a decision bug.
+// `full_indeterminate` is the fail-safe: the PR's own diff could not be computed to split own vs stale.
+data fast_lane_class_prefix: String = "fast lane: classify -- "
+data fast_lane_class_reuse: String = "reuse"
+data fast_lane_class_miss_none: String = "miss_none"
+data fast_lane_class_integrity: String = "full_integrity"
+data fast_lane_class_full_own: String = "full_own"
+data fast_lane_class_full_stale_unit: String = "full_stale_unit"
+data fast_lane_class_full_indeterminate: String = "full_indeterminate"
+
 
 fn fast_lane_restore_step_name(ordinal: Int) -> String {
   join(["Restore fast-lane unit for base ancestor ", int_to_decimal_string(value: ordinal)], "")
@@ -313,29 +329,112 @@ fn fl_output(name: String, value: Node) -> Node {
 
 fn fl_say(text: String) -> Node { fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: join(["fast lane: ", text], ""))]) }
 
-fn fl_decline(reason: String) -> List<Node> {
+// THE STRUCTURED CLASSIFICATION LINE, emitted once per decision right before the skip output, so the reuse
+// rate is countable from the run log without re-deriving the bucket. It never changes the skip decision.
+fn fl_classify(category: String) -> Node {
+  fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: join([fast_lane_class_prefix, category], ""))])
+}
+
+fn fl_decline(reason: String, category: String) -> List<Node> {
   [
     fl_say(text: join(["full run -- ", reason], "")),
+    fl_classify(category: category),
     fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_false)),
     bash_build_exit(code: "0")
   ]
 }
 
-fn fl_decline_when(cond: Node, reason: String) -> Node {
-  bash_build_if_from_stmts(cond: cond, then_stmts: fl_decline(reason: reason))
+fn fl_decline_when(cond: Node, reason: String, category: String) -> Node {
+  bash_build_if_from_stmts(cond: cond, then_stmts: fl_decline(reason: reason, category: category))
 }
 
-fn fl_decline_listing(cond: Node, reason: String, listing: Node) -> Node {
+fn fl_decline_listing(cond: Node, reason: String, listing: Node, category: String) -> Node {
   bash_build_if_from_stmts(
     cond: cond,
     then_stmts: [
       fl_say(text: join(["full run -- ", reason], "")),
       fl_cmd(ws: [fl_lit(t: "cat"), listing]),
+      fl_classify(category: category),
       fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_false)),
       bash_build_exit(code: "0")
     ]
   )
 }
+
+// THE PR-OWN DIFF, computed only to split an input-hit decline into full_own vs full_stale_unit. It is a
+// labeling aid and nothing else, so it is strictly non-fatal: `pr-own.ok` is written only when `git diff`
+// answered, and a failure to compute it leaves the marker absent so the decline labels `full_indeterminate`
+// rather than guessing. It must never be able to turn a reuse into a full run, so it sits on a `|| true`.
+//
+// THE FORK POINT, NOT THE EVENT BASE. A pull_request run judges the merge ref (HEAD is main merged into the
+// branch), and the event's base.sha is the base branch tip from when the PR was OPENED -- it goes stale as
+// main advances. `BASE_SHA...HEAD` against that stale sha therefore diffs main's own commits in, and a
+// stale-unit decline on a plan-only PR that merely predates main churn gets labeled `full_own` (run 43826192352
+// of PR 16574, a roadmap-only change, was labeled full_own for dag/gunbc/parse_verdict_schema.dag -- a commit
+// main gained after the PR opened). The honest own-set is what the branch contributed over its fork point:
+// `git merge-base HEAD origin/main` to HEAD, where origin/main is the freshly fetched base branch. If git
+// cannot answer, or answers with no fork point, the marker stays absent and the label is `full_indeterminate`.
+fn fl_compute_pr_own(pr_own: Node, pr_own_ok: Node) -> Node {
+  bash_build_or_else(
+    left: bash_build_and_then(
+      left: bash_build_and_then(
+        left: bash_build_assign(
+          name: "FAST_LANE_FORK",
+          value: bash_build_word_cmdsubst(body: fl_cmd(ws: [
+            fl_lit(t: "git"), fl_lit(t: "merge-base"), fl_lit(t: "HEAD"), fl_lit(t: "origin/main")
+          ]))
+        ),
+        right: fl_cmd(ws: [fl_lit(t: "test"), fl_lit(t: "-n"), fl_var(n: "FAST_LANE_FORK")])
+      ),
+      right: bash_build_and_then(
+        left: bash_build_with_redir_to_file(
+          inner: fl_cmd(
+            ws: [
+              fl_lit(t: "git"), fl_lit(t: "diff"), fl_lit(t: "--name-only"), fl_lit(t: "--no-renames"),
+              fl_var(n: "FAST_LANE_FORK"), fl_lit(t: "HEAD")
+            ]
+          ),
+          path: pr_own
+        ),
+        right: bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "ok")]), path: pr_own_ok)
+      )
+    ),
+    right: fl_cmd(ws: [fl_lit(t: ":")])
+  )
+}
+
+// THE CLASSIFICATION OF AN INPUT-HIT DECLINE. If the PR itself changed one of the offending paths it is
+// `full_own` (the decision is doing its job for the right reason); otherwise the offending path came only
+// from main commits after the located ancestor, so the restored unit is stale -- `full_stale_unit`, whose
+// remedy is a newer unit arriving sooner, not a looser decision. If the PR-own set was unavailable, the
+// label is `full_indeterminate` (still a full run).
+fn fl_classify_input_hit(listing: Node, pr_own: Node, pr_own_ok: Node) -> Node {
+  bash_build_if_else_from_stmts(
+    cond: fl_test(ws: [fl_lit(t: "-s"), pr_own_ok]),
+    then_stmts: [
+      bash_build_if_else_from_stmts(
+        cond: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-Fxq"), fl_lit(t: "-f"), pr_own, listing]),
+        then_stmts: [ fl_classify(category: fast_lane_class_full_own) ],
+        else_stmts: [ fl_classify(category: fast_lane_class_full_stale_unit) ]
+      )
+    ],
+    else_stmts: [ fl_classify(category: fast_lane_class_full_indeterminate) ]
+  )
+}
+
+fn fl_decline_input_hit(cond: Node, reason: String, listing: Node, pr_own: Node, pr_own_ok: Node) -> Node {
+  bash_build_if_from_stmts(
+    cond: cond,
+    then_stmts: [
+      fl_say(text: join(["full run -- ", reason], "")),
+      fl_cmd(ws: [fl_lit(t: "cat"), listing]),
+      fl_classify_input_hit(listing: listing, pr_own: pr_own, pr_own_ok: pr_own_ok),
+      fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_false)),
+      bash_build_exit(code: "0")
+    ]
+  )
+}
+
 
 // A grep whose "no line selected" (status 1) is an answer and whose error (status 2) is not: the selected
 // lines go to `out`, and only an error fails the statement, which under `bash -e` ends the step before it can
@@ -365,22 +464,28 @@ fn fast_lane_decision_statements() -> List<Node> {
   let exact = fl_scratch(basename: "exact.txt")
   let prefixes = fl_scratch(basename: "prefixes.txt")
   let prefix_patterns = fl_scratch(basename: "prefix-patterns.txt")
+  let pr_own = fl_scratch(basename: "pr-own.txt")
+  let pr_own_ok = fl_scratch(basename: "pr-own.ok")
   [
     fl_decline_when(
       cond: fl_test(ws: [fl_lit(t: "-z"), fl_var(n: fast_lane_ancestor_env)]),
-      reason: "no fast-lane unit was restored for any located first-parent ancestor of the base"
+      reason: "no fast-lane unit was restored for any located first-parent ancestor of the base",
+      category: fast_lane_class_miss_none
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), receipt]),
-      reason: "the restored read-set receipt is empty or absent"
+      reason: "the restored read-set receipt is empty or absent",
+      category: fast_lane_class_integrity
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-x"), fl_lit(t: fast_lane_native_cli_basename)]),
-      reason: "the restored native CLI is not an executable file"
+      reason: "the restored native CLI is not an executable file",
+      category: fast_lane_class_integrity
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_lit(t: "!"), fl_lit(t: "-s"), identity]),
-      reason: "the restored compiler identity is empty or absent"
+      reason: "the restored compiler identity is empty or absent",
+      category: fast_lane_class_integrity
     ),
     bash_build_assign(
       name: "IDENTITY_BYTES",
@@ -392,30 +497,35 @@ fn fast_lane_decision_statements() -> List<Node> {
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_var(n: "IDENTITY_BYTES"), fl_lit(t: "!="), fl_lit(t: int_to_decimal_string(value: fast_lane_identity_file_bytes()))]),
-      reason: "the restored compiler identity file is not exactly one digest and its newline"
+      reason: "the restored compiler identity file is not exactly one digest and its newline",
+      category: fast_lane_class_integrity
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_var(n: "IDENTITY_NEWLINES"), fl_lit(t: "!="), fl_lit(t: "1")]),
-      reason: "the restored compiler identity file is not exactly one digest and its newline"
+      reason: "the restored compiler identity file is not exactly one digest and its newline",
+      category: fast_lane_class_integrity
     ),
     fl_decline_when(
       cond: bash_build_negation(inner: bash_build_pipe(
         left: fl_cmd(ws: [fl_lit(t: "head"), fl_lit(t: "-c"), fl_lit(t: int_to_decimal_string(value: sha256_hex_digit_count)), identity]),
         right: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-Eqx"), fl_lit(t: fast_lane_identity_regex())])
       )),
-      reason: "the restored compiler identity is not a lowercase hex sha256 digest"
+      reason: "the restored compiler identity is not a lowercase hex sha256 digest",
+      category: fast_lane_class_integrity
     ),
     fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-Ev"), fl_lit(t: fast_lane_receipt_readable_regex()), receipt], out: fl_scratch(basename: "unreadable.txt")),
     fl_decline_listing(
       cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "unreadable.txt")]),
       reason: "these receipt lines have no recorded kind or name an empty or absolute path:",
-      listing: fl_scratch(basename: "unreadable.txt")
+      listing: fl_scratch(basename: "unreadable.txt"),
+      category: fast_lane_class_integrity
     ),
     fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-E"), fl_lit(t: fast_lane_receipt_abnormal_regex()), receipt], out: fl_scratch(basename: "abnormal.txt")),
     fl_decline_listing(
       cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "abnormal.txt")]),
       reason: "these receipt paths are not normalized (an empty, . or .. segment):",
-      listing: fl_scratch(basename: "abnormal.txt")
+      listing: fl_scratch(basename: "abnormal.txt"),
+      category: fast_lane_class_integrity
     ),
     fl_decline_when(
       cond: bash_build_negation(inner: bash_build_with_redir_to_file(
@@ -425,7 +535,8 @@ fn fast_lane_decision_statements() -> List<Node> {
         ]),
         path: changed_z
       )),
-      reason: "git could not diff the restored ancestor against the judged commit"
+      reason: "git could not diff the restored ancestor against the judged commit",
+      category: fast_lane_class_integrity
     ),
     bash_build_with_redir_to_file(
       inner: bash_build_with_redir_from_file(inner: fl_cmd(ws: [fl_lit(t: "tr"), fl_lit(t: "\\0"), fl_lit(t: "\\n")]), path: changed_z),
@@ -437,7 +548,8 @@ fn fast_lane_decision_statements() -> List<Node> {
     ),
     fl_decline_when(
       cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "newlines.txt")]),
-      reason: "a changed path contains a newline, so no line-wise rule can decide it"
+      reason: "a changed path contains a newline, so no line-wise rule can decide it",
+      category: fast_lane_class_integrity
     ),
     bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-En"), fl_lit(t: fast_lane_receipt_exact_sed()), receipt]), path: exact),
     fl_append_lines(lines: read_set_exact_paths(entries: fast_lane_declared_entries()), file: exact),
@@ -447,17 +559,23 @@ fn fast_lane_decision_statements() -> List<Node> {
       inner: fl_cmd(ws: [fl_lit(t: "sed"), fl_lit(t: "-e"), fl_lit(t: "s/[.[\\*^$]/\\\\&/g"), fl_lit(t: "-e"), fl_lit(t: "s/^/^/"), prefixes]),
       path: prefix_patterns
     ),
+    fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), pr_own_ok]),
+    fl_compute_pr_own(pr_own: pr_own, pr_own_ok: pr_own_ok),
     fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-Fx"), fl_lit(t: "-f"), exact, changed], out: fl_scratch(basename: "exact-hits.txt")),
     fl_grep_into(words: [fl_lit(t: "grep"), fl_lit(t: "-f"), prefix_patterns, changed], out: fl_scratch(basename: "prefix-hits.txt")),
-    fl_decline_listing(
+    fl_decline_input_hit(
       cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "exact-hits.txt")]),
       reason: "these changed paths are recorded reads, fixed inputs or the decision's own implementation:",
-      listing: fl_scratch(basename: "exact-hits.txt")
+      listing: fl_scratch(basename: "exact-hits.txt"),
+      pr_own: pr_own,
+      pr_own_ok: pr_own_ok
     ),
-    fl_decline_listing(
+    fl_decline_input_hit(
       cond: fl_test(ws: [fl_lit(t: "-s"), fl_scratch(basename: "prefix-hits.txt")]),
       reason: "these changed paths are under a recorded directory or a fixed input prefix:",
-      listing: fl_scratch(basename: "prefix-hits.txt")
+      listing: fl_scratch(basename: "prefix-hits.txt"),
+      pr_own: pr_own,
+      pr_own_ok: pr_own_ok
     ),
     bash_build_assign(name: "IDENTITY", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "cat"), identity]))),
     fl_cmd(ws: [
@@ -470,6 +588,7 @@ fn fast_lane_decision_statements() -> List<Node> {
       ])
     ]),
     fl_output(name: fast_lane_compiler_identity_output, value: fl_var(n: "IDENTITY")),
+    fl_classify(category: fast_lane_class_reuse),
     fl_output(name: fast_lane_skip_output, value: fl_lit(t: fast_lane_skip_true))
   ]
 }
@@ -508,7 +627,9 @@ fn fast_lane_decision_step() -> Step {
     id: Present { value: fast_lane_decision_step_id },
     run: fast_lane_decision_script(),
     shell: none,
-    env: Present { value: [kv(key: fast_lane_ancestor_env, value: yaml_string(s: fast_lane_restored_ancestor_template()))] },
+    env: Present { value: [
+      kv(key: fast_lane_ancestor_env, value: yaml_string(s: fast_lane_restored_ancestor_template())),
+    ] },
     working_directory: none,
     if_condition: Present { value: parse_verdict_restore_if() },
     continue_on_error: Present { value: true },

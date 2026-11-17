@@ -1,17 +1,30 @@
 module extdeps.cloud.hetzner
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
 import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, MoneyPerHour, MoneyPerMonth, byte_size, hardware_thread_count, money_amount_micro }
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.hetzner.com/cloud/servers/overview"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.hetzner",
+      decl_name: "HetznerCloudListedRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Published-page URIs only. Whether those pages answer a data-path question is a receipt in

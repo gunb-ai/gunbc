@@ -5,7 +5,7 @@ import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.github.github { default_api_base, default_per_page }
 import std.types { CommitSha, NonEmptyStr, Timestamp, Bool }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.checks_contracts {
   check_status_wire_contract,
@@ -15,12 +15,25 @@ import std.optional { Absent, Present }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.transports.rest { RestResult }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/checks/runs"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.checks",
+      decl_name: "github.Checks",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CheckStatus

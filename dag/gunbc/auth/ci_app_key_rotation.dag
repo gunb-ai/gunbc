@@ -142,7 +142,8 @@ data app_key_version_env_name: NonEmptyStr = "APP_KEY_VERSION"
 data app_key_verify_record_env_name: NonEmptyStr = "APP_KEY_VERIFY_RECORD"
 data app_key_verify_receipt_path: String = "target/app-key-version-verify-receipt.txt"
 
-// The record's keys, spelled once and read by the step that writes them (gunbc.ci.ci_spec).
+// The record's keys, spelled once and read by the step that writes them
+// (gunbc.auth.github_app_credential_step).
 data app_key_record_key_status_key: String = "key_http_status"
 data app_key_record_resolved_name_key: String = "resolved_name"
 data app_key_record_token_status_key: String = "token_status_line"

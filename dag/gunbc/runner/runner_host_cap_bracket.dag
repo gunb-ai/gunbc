@@ -637,15 +637,35 @@ fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, un
   slot_drain_reading_of(unit: unit, read: sh.read, worker: sh.worker, roster: RosterUnread { cause: "the roster is not consulted for ownership" })
 }
 
-// MASK ONLY, NEVER STOP: the mask inhibits successors and is safe at any time. Stopping a running idle
-// listener races a job assignment, so this route never takes it (DrainSteps in the shared drain actuator
-// would, for a slot whose job finished mid-wait). A failed mask is not reported here: the next reading
-// shows the slot unmasked, and an unmasked slot is never drained.
+// NEVER MASK A RUNNING UNIT. The mask inhibits successors, but "safe at any time" is FALSE: masking a unit
+// that is STILL ACTIVE is the invalid state named by recurring_failure_mode
+// ::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload -- systemctl mask's implicit daemon-reload
+// drops a live unit's drop-ins (its cap override, its Slice=), and this bracket's mask-then-wait would hold
+// that invalid state for the whole wait (srv4-01/02/08/12/15). Unlike DrainSteps in the shared drain actuator,
+// this route has NO stop leg ("NEVER STOP"): it cannot stop-then-mask a unit whose job finished mid-wait, so
+// the only mask it may issue is on a unit PROVEN stopped (Inactive or Failed) -- exactly runner_slot_actuation's
+// NeverMaskARunningUnit. A unit that is active, activating, reloading or deactivating is left UNMASKED. This
+// route has NO stop leg, so nothing here ever stops that unit: its own restart policy brings it back as a
+// running idle listener, so the next reading still shows it open, bracket_wait_step withholds the cap write
+// (fail-closed), and the bracket ends in BracketAdmissionNotClosed, or BracketBoundExceeded once the wait bound
+// is spent. NO LATER PASS DRAINS A BUSY SLOT: the unit is never stopped or hidden, so on a host with a busy
+// runner the cap write simply never lands; it lands only when every owned slot reads idle or stopped. That lost
+// busy-host drain is a declared LIVENESS COST of this change, not a temporary pending state, and draining a busy
+// slot without masking a running unit is owned by roadmap node fleet-no-route-masks-a-running-unit (its candidate
+// mechanism belongs on that node's first_slice, not here). A failed mask is not reported here: the next reading shows the
+// slot unmasked, and an unmasked slot is never drained.
 fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => Present { value: why }
-    SlotRead { reading: r } => if slot_is_masked(r: r) { none } else { run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)]) }
+    SlotRead { reading: r } =>
+      if slot_is_masked(r: r) {
+        none
+      } else if !slot_state_stopped(active: r.active) {
+        none
+      } else {
+        run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)])
+      }
   }
 }
 

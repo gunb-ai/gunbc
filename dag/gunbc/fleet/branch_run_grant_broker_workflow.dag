@@ -245,7 +245,8 @@ fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkfl
 }
 
 // THE BROKER STEP'S TARGET AND INVOCATION, declared beside the workflow that runs them (moved out of
-// gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1; ci_spec's run-step roster imports the target).
+// gunbc.ci.ci_spec, gunbc.plans.closure_consolidation P1; the run-step roster
+// gunbc.instruments.ci_run_step_roster imports the target).
 data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.auth.branch_run_grant_broker",
   function: "broker",
