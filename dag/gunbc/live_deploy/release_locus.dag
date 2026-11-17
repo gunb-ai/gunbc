@@ -271,9 +271,13 @@ data release_pair_source_missing_reason: NonEmptyStr = "a binary digest was repo
 
 // ONE HEAD, ONE PAIR, OR THE LAST GOOD PAIR KEEPS SERVING. `binaries_sha256` and `binary_source` are `none` when
 // the observed fetch produced no pack for the head (unbuilt); when a pack was fetched they are its OBSERVED digest
-// and the path of the file the fetch produced. `verified` is the consumer script's build-key verdict the executing
-// leg OBSERVED on that fetched pack (the install stage derives it from the paired fetch/verify observations,
-// never from a free boolean). Every refusal returns the handed-in `serving` binding as `kept`, so a refused
+// and the path of the file the fetch produced. `verified` is the build-key verdict of the consumer script as
+// OBSERVED on that fetched pack. At THIS boundary it is a `Bool` — its single consumer,
+// @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan), computes it as the typed equality of the
+// verify observation's `pack_dir` against the fetch observation's `pack_dir`, so a verdict naming a different or
+// absent pack yields `false` and refuses; the same-pack_dir guarantee is THAT witnessed comparison (see the plan
+// witness), not the fold's type, and the fold trusts the boolean as the handoff of the verdict its sole consumer
+// already observed. Every refusal returns the handed-in `serving` binding as `kept`, so a refused
 // delivery installs nothing and restarts nothing — the previous pair keeps serving with the refusal visible. A
 // digest reported WITHOUT an observed source file is incoherent and is refused as its own named degradation
 // (fail_closed), rather than binding a pair whose placement source is unknown.
