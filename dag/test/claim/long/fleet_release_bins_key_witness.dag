@@ -21,6 +21,8 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_retention_decide_statements, release_bins_retention_answer_file,
   release_bins_retention_statements, release_bins_outcome_with_retention_script,
   release_bins_outcome_with_retention_statements, release_bins_retention_answer_page_basename,
+  release_bins_retention_ids_basename, release_bins_retention_ids_dedup_basename,
+  release_bins_retention_union_basename, release_bins_retention_incomplete_basename,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -777,6 +779,85 @@ data script_retention_page2_fail: TransportScript? = release_bins_transport(
     e(statements: release_bins_retention_statements()),
   ]
 )
+
+// THE DUPLICATE-ID REPRODUCTION (side chat, #16596 review 2): three pages all
+// declaring total 250, with id 250 REPEATED across pages 1 and 2 and the
+// per-page counts exactly as full as 250 demands, so every page-admission
+// check passes. A repeated id implies something else was SKIPPED: the listing
+// is incomplete, the typed lines are duplicate-ids and pages-incomplete, and
+// nothing is deleted -- not even the 233 ids a naive keep-16 over the raw
+// union would name.
+fn retention_dup_page(start: Int, end: Int, extra: Int) -> String {
+  join(["{\"total_count\": 250, \"actions_caches\": [\"\"], \"_\": 0}") // unused; see below
+}
+
+fn fake_curl_pages_dup(body1: String, body2: String, body3: String) -> Outcome<String> {
+  e(statements: fake_tool(
+    name: "curl",
+    lines: [
+      "o=0",
+      "u=\"\"",
+      "for a in \"$\"@\"; do case \"$\"a\" in -o) o=1;; *) if [ \"$\"o\" = 1 ]; then o=\"$\"a\"; fi;; esac; case \"$\"a\" in http*) u=\"$\"a\";; esac; done",
+      "case \"$\"u\" in *page=2*) printf %s \"" + body2 + "\" > \"$\"o\";; *page=3*) printf %s \"" + body3 + "\" > \"$\"o\";; *) printf %s \"" + body1 + "\" > \"$\"o\";; esac",
+      "exit 0",
+    ]
+  ))
+}
+
+fn retention_dup_page_body(items: String) -> String {
+  "{\"total_count\": 250, \"actions_caches\": [" + items + "]}"
+}
+
+data retention_dup_body1: String = retention_dup_page_body(items: join(map(retention_int_range(151, 250), i => retention_family_entry_text(i)), ", "))
+data retention_dup_body2: String = retention_dup_page_body(items: retention_family_entry_text(i: 250) + ", " + join(map(retention_int_range(52, 150), i => retention_family_entry_text(i)), ", "))
+data retention_dup_body3: String = retention_dup_page_body(items: join(map(retention_int_range(2, 51), i => retention_family_entry_text(i)), ", "))
+
+data script_retention_dup_ids: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    retention_answer_part(body: retention_dup_body1),
+    fake_curl_pages_dup(body1: retention_dup_body1, body2: retention_dup_body2, body3: retention_dup_body3),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_duplicate_ids_refuse_all_deletions() -> Bool {
+  let r = run_script(script: script_retention_dup_ids)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: duplicate-ids")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: pages-incomplete")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "done")
+}
+
+// THE ATTEMPT-ISOLATION MATRIX CASE (side chat, #16596 review 2): scratch left
+// by an earlier attempt (ids, dedup, pages-incomplete flag) must not drive a
+// later invocation whose own GET fails: the answer, the plan and the
+// deletions all come from THIS invocation or not at all.
+data script_retention_attempt_isolation: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    e(statements: concat(
+      [bash_build_with_redir_to_file(inner: cmdl(ls: ["seq", "1", "40"]), path: rooted(file: release_bins_retention_ids_basename))],
+      [bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", "{\"total_count\": 250, \"actions_caches\": []}"]), path: rooted(file: release_bins_retention_union_basename))],
+      [cmdl(ls: ["touch", rooted(file: release_bins_retention_incomplete_basename)])],
+      [bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", retention_pages_body1]), path: fx(t: release_bins_retention_answer_file()))],
+    )),
+    fake_curl_pages_fail_page2(body1: retention_pages_body1, body3: retention_pages_body3),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_stale_scratch_cannot_delete_on_failed_get() -> Bool {
+  let r = run_script(script: script_retention_attempt_isolation)
+  r.ran
+    && r.success
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+    && !string_contains(s: r.stdout, pattern: "done")
+}
 
 test fn release_bins_retention_page2_failure_refuses_to_delete() -> Bool {
   let r = run_script(script: script_retention_page2_fail)
