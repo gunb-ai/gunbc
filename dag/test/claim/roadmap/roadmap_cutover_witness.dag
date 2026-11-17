@@ -673,13 +673,21 @@ fn roster_with_its_first_name_twice(model: List<String>) -> List<String> {
 }
 
 // A modeled retirement omitted from the supplied roster refuses, and the refusal names the omitted node — the
-// case the reviewer raised: the dropped name must not simply leave the node unexamined.
+// case the reviewer raised: the dropped name must not simply leave the node unexamined. The omitted node is the
+// roster's own first name rather than a literal typed here, so the claim cannot pass by coincidence with whatever
+// the roster happens to hold and cannot go stale when the roster is edited; the name under test is read from the
+// same list the refusal is supposed to speak for.
 test fn the_migration_verifier_refuses_a_retirement_dropped_from_the_supplied_roster() -> Bool {
   let model = roadmap_migration_retirement_ids()
+  let omitted = match model.first() {
+    Absent => ""
+    Present { value: head } => head
+  }
   let refusals = roadmap_migration_roster_refusals(
     supplied: roster_missing_its_first_name(model), model_roster: model)
   count(refusals) == 1
-    && any(refusals, r => string_contains(s: r, pattern: "shell-dag-ci-heal-regen-invoke"))
+    && string_contains(s: refusals_text(refusals), pattern: omitted)
+    && string_contains(s: refusals_text(refusals), pattern: "which the model retires")
 }
 
 // A roster carrying a name the model does not retire refuses, naming the invented node: the file cannot widen
