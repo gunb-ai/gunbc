@@ -146,6 +146,19 @@ fn release_binding_holds(binding: DeployedReleaseBinding) -> Bool {
   }
 }
 
+// THE BOUND TREE'S HEAD, as the wire hex the release identity is stated in -- the source head the served
+// standings document names (gunbc.roadmap.roadmap_standings_document). The serve gate renders that document
+// only under PairBoundToServe, so the non-bound arms are the fail-visible fallback, never a served path: a
+// document that ever shows "unbound" names the degradation rather than pretending a source head.
+fn release_bound_source_head(binding: DeployedReleaseBinding) -> String {
+  match binding {
+    ReleaseBoundToTree { revision: r, surface: _ } => git_object_id_wire_hex(oid: r) as String
+    ReleaseMixed { tree_revision: _, process_revision: _ } => "unbound"
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => "unbound"
+    ReleaseBindingUnobserved { cause: _ } => "unbound"
+  }
+}
+
 fn release_binding_line(binding: DeployedReleaseBinding) -> String {
   match binding {
     ReleaseBoundToTree { revision: r, surface: sfc } =>

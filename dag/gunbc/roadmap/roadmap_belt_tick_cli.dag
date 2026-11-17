@@ -81,7 +81,7 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
-  ReleaseBindingUnobserved, release_binding_line,
+  ReleaseBindingUnobserved, release_binding_line, release_bound_source_head,
 }
 import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
 import gunbc.fleet.fleet_ssh_locus {
@@ -272,8 +272,17 @@ fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: Deploye
   }
 }
 
-fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
-  match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at) {
+// THE IDENTITY IS STAMPED AT THE RENDER, NOT AT THE REQUEST. The standings body is pre-rendered here and
+// served as stored bytes, so the release that produced it is written into it now, from the ONE binding the
+// serve gate resolved (its running identity verified bound to the deployed tree). Both facts derive from that
+// binding via release_binding_line / release_bound_source_head, so they cannot disagree (one authority).
+fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String, binding: DeployedReleaseBinding) -> ProcessExit {
+  match served_observation_observe_and_write_for_instance(
+    instance: instance,
+    observed_at: observed_at,
+    source_head: release_bound_source_head(binding: binding),
+    release_identity: release_binding_line(binding: binding),
+  ) {
     BeltPassRecorded => ExitSuccess
     BeltPassFailed { reason: r } => exit_failure(reason: r)
     BeltPassDeferred { reason: r } =>
@@ -306,8 +315,8 @@ fn belt_observe_once_cli() -> ProcessExit {
             ], ""))
           DashboardInstanceResolved { instance } =>
             match belt_pair_serve_gate(instance: instance) {
-              PairBoundToServe { binding: _ } =>
-                belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+              PairBoundToServe { binding: b } =>
+                belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at(), binding: b)
               PairServeRefused { binding: _, reason: r } =>
                 exit_failure(reason: join([
                   "belt_observe_once_cli: pair unbound, serve refused — last good pair continues: ",
@@ -595,7 +604,12 @@ fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInsta
   let observed_at = belt_tick_observed_at()
   match kind {
     LaunchObligation => belt_run_once_cli_in(spawn_workdir: instance.repo_root as String)
-    ServedObservationObligation => belt_served_observation_exit(instance: instance, observed_at: observed_at)
+    ServedObservationObligation => match belt_pair_serve_gate(instance: instance) {
+      PairBoundToServe { binding: b } =>
+        belt_served_observation_exit(instance: instance, observed_at: observed_at, binding: b)
+      PairServeRefused { binding: _, reason: r } =>
+        exit_failure(reason: join(["served-observation obligation refused, pair unbound — last good pair continues: ", r], ""))
+    }
     ResultReturnObligation => {
       let returned = result_return_attempts_for_instance(instance: instance, recorded_at: observed_at)
       belt_tick_exit_with_snapshot_closes(exit: result_return_pass_exit(pass: returned.pass), closes: returned.closes)

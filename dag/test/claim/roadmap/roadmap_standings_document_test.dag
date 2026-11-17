@@ -122,7 +122,7 @@ test fn witness_standings_undeclared_log_node_is_listed_after_declared_and_marke
 }
 
 test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> Bool {
-  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial())
+  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), source_head: "3333333333333333333333333333333333333333", release_identity: "release-binding BOUND revision=3333333333333333333333333333333333333333 surface=abc123 -- bound")
   string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
     && string_member_is(v: doc, key: "observed_at", want: "2026-11-11T23:00:00Z")
     && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
@@ -131,6 +131,19 @@ test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> 
         && (match elements.first() { Present { value: first } => (match member(v: first, key: "issue_page") { Present { value: JsonBool { value } } => value  _ => false })  Absent => false })
       _ => false
     })
+}
+
+// THE PRE-RENDERED BODY CARRIES THE PAIR THAT PRODUCED IT. This is the readback the delivery leg owes: the
+// served /standings.json names the source head and the release identity, both derived from the ONE deployed
+// release binding the belt tick's serve gate resolved -- so a reader can tell WHICH bound pair these standings
+// came from without hashing the locus (gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source
+// is the failure this witness forecloses: a stored body whose schema omitted the identity it was derived under).
+test fn witness_standings_document_names_the_serving_pair() -> Bool {
+  let head = "3333333333333333333333333333333333333333"
+  let identity = "release-binding BOUND revision=3333333333333333333333333333333333333333 surface=abc123 -- the running process states the revision the deployed tree is on"
+  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), source_head: head, release_identity: identity)
+  string_member_is(v: doc, key: "source_head", want: head)
+    && string_member_is(v: doc, key: "release_identity", want: identity)
 }
 
 test fn witness_standings_issue_page_is_the_plans_not_the_declarations() -> Bool {
