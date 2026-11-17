@@ -1,0 +1,64 @@
+module test.claim.roadmap.roadmap_decomposition_witness
+
+import std.types { Bool, Int }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_decomposition {
+  roadmap_decompositions, decompositions_all_have_nodes, decomposition_has_node, decomposition, decomposition_nodes_unique,
+  decompositions_leaf_days_bounded, piece_leaf_days_within, leaf, leaves, placeholder, piece,
+  decompositions_stages_nonempty, piece_stages_nonempty, decomposition_for, stages_leaf_count, stages_placeholder_count,
+  piece_leaf_count, piece_leaf_days, piece_placeholder_count,
+}
+
+// A decomposition whose node id is not a declared roadmap node is the undefined variable this carrier refuses.
+test fn every_decomposition_names_a_declared_node() -> Bool {
+  decompositions_all_have_nodes()
+}
+
+test fn a_decomposition_for_an_undeclared_node_is_refused() -> Bool {
+  !decomposition_has_node(d: decomposition(node: "no-such-node-2026-11-17", stages: [[leaf(label: "planted", days: 1)]]))
+}
+
+test fn no_node_is_decomposed_twice() -> Bool {
+  decomposition_nodes_unique()
+}
+
+// THE LEAF RULE: at most five working days, at every depth.
+test fn every_leaf_is_within_the_leaf_rule() -> Bool {
+  decompositions_leaf_days_bounded()
+}
+
+test fn a_six_day_leaf_is_refused() -> Bool {
+  !piece_leaf_days_within(p: leaf(label: "planted", days: 6))
+}
+
+test fn a_six_day_leaf_inside_a_composite_is_refused_at_depth() -> Bool {
+  !piece_leaf_days_within(p: piece(label: "outer", stages: [[piece(label: "inner", stages: [[leaf(label: "fine", days: 5)], [leaves(label: "planted", days: 6, n: 2)]])]]))
+}
+
+test fn no_stage_is_empty() -> Bool {
+  decompositions_stages_nonempty()
+}
+
+test fn an_empty_stage_is_refused() -> Bool {
+  !piece_stages_nonempty(p: piece(label: "outer", stages: [[leaf(label: "fine", days: 1)], []]))
+}
+
+// Populations count once per member; a placeholder counts as its assumed size and is reported as such.
+test fn a_population_counts_one_leaf_per_member() -> Bool {
+  piece_leaf_count(p: leaves(label: "members", days: 2, n: 7)) == 7 && piece_leaf_days(p: leaves(label: "members", days: 2, n: 7)) == 14
+}
+
+test fn a_placeholder_is_counted_and_reported() -> Bool {
+  let p = piece(label: "outer", stages: [[leaf(label: "enumerate", days: 2)], [placeholder(label: "one member", days: 3, assumed: 4)]])
+  piece_leaf_count(p: p) == 5 && piece_placeholder_count(p: p) == 4 && piece_placeholder_count(p: leaf(label: "sure", days: 1)) == 0
+}
+
+// The emitter door's population is the grammar: 126 productions counted on 2026-11-17 plus its three single leaves.
+test fn the_direct_rust_door_opens_into_the_grammar() -> Bool {
+  let ds = decomposition_for(node: nid(s: "v2-emitter-direct-rust-door"))
+  count(ds) == 1 && all(ds, d => stages_leaf_count(stages: d.stages) == 129 && stages_placeholder_count(stages: d.stages) == 0)
+}
+
+test fn an_item_with_no_decomposition_reads_as_none() -> Bool {
+  count(decomposition_for(node: nid(s: "shell-typed-invocation"))) == 0
+}

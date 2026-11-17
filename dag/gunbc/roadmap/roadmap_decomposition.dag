@@ -1,0 +1,927 @@
+module gunbc.roadmap.roadmap_decomposition
+
+import std.types { String, Int, Bool, List }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
+
+// THE RECURSIVE DECOMPOSITION OF EVERY OPEN BOUND WORK ITEM, DONE UP FRONT (operator, 2026-11-17: "basically i'm
+// asking us to recursively decompose the tasks up front/now"; "the units of work being sized for a worker node";
+// "honest accounting at a unit level is all that should matter"). A work item is a roadmap node; it opens into
+// STAGES (a stage waits on the stage before it), a stage into PIECES that may run in parallel, and a piece is a
+// LEAF or another list of stages. THE LEAF RULE: at most leaf_days_max working days, one worker, one pull request,
+// one observable named in its label (a claim green, a refusal, a receipt, a deletion). A leaf with a population
+// is one attempt per member; a Placeholder population is unknown until an enumeration leaf earlier in the same
+// item has run, and that is where a replan happens: the assumed count is the simulation's input, never a claim.
+//
+// WHAT THIS IS. The planning input the simulation runs over: aggregate dates are the simulated execution of these
+// leaves under the dependency edges of gunbc.roadmap.roadmap_authority (a parent's every leaf precedes a child's
+// first stage), so there is no estimate at the item grain that is not the sum of its leaves. Each row is a
+// proposal read from the item's own first slice and handback and from populations counted on 2026-11-17 (126
+// grammar productions; 54 unhomed names in the native-seven closure; 26 in the compiler closures; 8 dual std
+// types; about 430 corpus names in home-groups of ten; 32 production modules with reason symbols). A leaf whose
+// label says "retire" records that the ruling of the same day answered the item, so its only work is the receipt.
+//
+// WHAT THIS IS NOT. Not a second roadmap: a leaf is not a RoadmapNode and has no identity, owner or event log; it
+// becomes one only when a worker claims it, and then the claim names its item and its path here. Not a schedule:
+// no leaf carries a date (gunbc.design_ruling planning_scheduling_is_cut). Not a count the tree must keep: a
+// realized claimed-to-accepted duration replaces a leaf's days when it lands, and a measured population replaces
+// a Placeholder; nothing here is ratcheted.
+
+type Population
+  = Counted { n: Int }
+  | Placeholder { assumed: Int }
+
+type WorkPiece
+  = Leaf { label: String, days: Int, population: Population }
+  | Composite { label: String, stages: List<WorkStage> }
+
+type WorkStage { pieces: List<WorkPiece> }
+
+type WorkDecomposition {
+  node: RoadmapNodeId
+  stages: List<WorkStage>
+}
+
+data leaf_days_max: Int = 5
+
+fn leaf(label: String, days: Int) -> WorkPiece {
+  Leaf { label: label, days: days, population: Counted { n: 1 } }
+}
+
+fn leaves(label: String, days: Int, n: Int) -> WorkPiece {
+  Leaf { label: label, days: days, population: Counted { n: n } }
+}
+
+fn placeholder(label: String, days: Int, assumed: Int) -> WorkPiece {
+  Leaf { label: label, days: days, population: Placeholder { assumed: assumed } }
+}
+
+fn stages_of(stages: List<List<WorkPiece>>) -> List<WorkStage> {
+  fold(stages, init: [], f: fn(acc, s) { concat(acc, [WorkStage { pieces: s }]) })
+}
+
+fn piece(label: String, stages: List<List<WorkPiece>>) -> WorkPiece {
+  Composite { label: label, stages: stages_of(stages: stages) }
+}
+
+fn decomposition(node: String, stages: List<List<WorkPiece>>) -> WorkDecomposition {
+  WorkDecomposition { node: nid(s: node), stages: stages_of(stages: stages) }
+}
+
+fn population_count(p: Population) -> Int {
+  match p {
+    Counted { n } => n
+    Placeholder { assumed } => assumed
+  }
+}
+
+fn population_is_placeholder(p: Population) -> Bool {
+  match p {
+    Counted { n } => false
+    Placeholder { assumed } => true
+  }
+}
+
+fn piece_leaf_count(p: WorkPiece) -> Int {
+  match p {
+    Leaf { label, days, population } => population_count(p: population)
+    Composite { label, stages } => stages_leaf_count(stages: stages)
+  }
+}
+
+fn stages_leaf_count(stages: List<WorkStage>) -> Int {
+  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_count(p: p) }) })
+}
+
+fn piece_leaf_days(p: WorkPiece) -> Int {
+  match p {
+    Leaf { label, days, population } => days * population_count(p: population)
+    Composite { label, stages } => stages_leaf_days(stages: stages)
+  }
+}
+
+fn stages_leaf_days(stages: List<WorkStage>) -> Int {
+  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_days(p: p) }) })
+}
+
+fn piece_placeholder_count(p: WorkPiece) -> Int {
+  match p {
+    Leaf { label, days, population } => if population_is_placeholder(p: population) { population_count(p: population) } else { 0 }
+    Composite { label, stages } => stages_placeholder_count(stages: stages)
+  }
+}
+
+fn stages_placeholder_count(stages: List<WorkStage>) -> Int {
+  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_placeholder_count(p: p) }) })
+}
+
+// THE LEAF RULE, as a fold: every leaf under a piece is within leaf_days_max.
+fn piece_leaf_days_within(p: WorkPiece) -> Bool {
+  match p {
+    Leaf { label, days, population } => days <= leaf_days_max
+    Composite { label, stages } => stages_leaf_days_within(stages: stages)
+  }
+}
+
+fn stages_leaf_days_within(stages: List<WorkStage>) -> Bool {
+  all(stages, s => all(s.pieces, p => piece_leaf_days_within(p: p)))
+}
+
+// NO EMPTY STAGE AND NO EMPTY COMPOSITE: a stage with nothing in it would be a free day in the simulation.
+fn piece_stages_nonempty(p: WorkPiece) -> Bool {
+  match p {
+    Leaf { label, days, population } => population_count(p: population) >= 1
+    Composite { label, stages } => count(stages) >= 1 && stages_nonempty(stages: stages)
+  }
+}
+
+fn stages_nonempty(stages: List<WorkStage>) -> Bool {
+  all(stages, s => count(s.pieces) >= 1 && all(s.pieces, p => piece_stages_nonempty(p: p)))
+}
+
+fn decomposition_has_node(d: WorkDecomposition) -> Bool {
+  count(filter(declared_roadmap_nodes(), n => n.node == d.node)) == 1
+}
+
+fn decompositions_all_have_nodes() -> Bool {
+  all(roadmap_decompositions, d => decomposition_has_node(d: d))
+}
+
+fn decomposition_nodes_unique() -> Bool {
+  all(roadmap_decompositions, d => count(filter(roadmap_decompositions, e => e.node == d.node)) == 1)
+}
+
+fn decompositions_leaf_days_bounded() -> Bool {
+  all(roadmap_decompositions, d => stages_leaf_days_within(stages: d.stages))
+}
+
+fn decompositions_stages_nonempty() -> Bool {
+  all(roadmap_decompositions, d => count(d.stages) >= 1 && stages_nonempty(stages: d.stages))
+}
+
+fn decomposition_for(node: RoadmapNodeId) -> List<WorkDecomposition> {
+  filter(roadmap_decompositions, d => d.node == node)
+}
+
+fn decomposition_leaf_count() -> Int {
+  fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) })
+}
+
+fn decomposition_leaf_days() -> Int {
+  fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) })
+}
+
+fn decomposition_placeholder_count() -> Int {
+  fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_placeholder_count(stages: d.stages) })
+}
+
+data roadmap_decompositions: List<WorkDecomposition> = [
+  decomposition(node: "namespace-reference-derived-closure", stages: [
+    [
+      leaf(label: "one module: closure from qualified refs equals its import-list closure", days: 5),
+    ],
+    [
+      leaf(label: "pool-independence arm on one real module", days: 5),
+      piece(label: "generated demands enter the closure", stages: [
+        [
+          leaf(label: "list the generated-provider demand kinds", days: 2),
+        ],
+        [
+          placeholder(label: "one demand kind enters the closure, claim green", days: 2, assumed: 4),
+        ],
+      ]),
+    ],
+    [
+      leaves(label: "remaining arm of the acceptance witness", days: 5, n: 4),
+    ],
+  ]),
+  decomposition(node: "namespace-reference-derived-producer-bounded", stages: [
+    [
+      piece(label: "the producer reads a name table, not the pool", stages: [
+        [
+          leaf(label: "name table carrier: qualified path to declaration, built once from the universe", days: 5),
+        ],
+        [
+          leaf(label: "producer reads the table; same edges on the N7 closure", days: 5),
+        ],
+        [
+          leaf(label: "old pool path deleted; unknown path refuses", days: 3),
+          leaf(label: "pool-independence claim green", days: 2),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "before/after edge equivalence over the N7 closure", days: 5),
+      leaf(label: "residency qualification by invocation", days: 5),
+    ],
+  ]),
+  decomposition(node: "names-bind-to-the-unique-declaration", stages: [
+    [
+      leaf(label: "seed-loader test on a fleet host (three runs, receipt)", days: 3),
+    ],
+    [
+      piece(label: "seed loads its closure from qualified references", stages: [
+        [
+          leaf(label: "seed resolver: qualified reference to declaration lookup", days: 5),
+        ],
+        [
+          leaf(label: "seed closure walk from references, no import list read", days: 5),
+        ],
+      ]),
+      leaf(label: "v2: a bare head no binder answers refuses as unbound", days: 5),
+      leaf(label: "duplicate providers for one path refuse at ingest", days: 5),
+    ],
+    [
+      leaf(label: "delete AmbientKernelTypeSpelling", days: 5),
+      leaf(label: "delete AmbientKernelCanonicalSymbol", days: 5),
+      leaf(label: "delete AmbientPrimitiveAuthority", days: 5),
+      piece(label: "collection roster heads become declarations", stages: [
+        [
+          leaf(label: "list the roster heads", days: 1),
+        ],
+        [
+          placeholder(label: "one head declared in std with its claims", days: 2, assumed: 5),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "closure equals the declaration-demand fixed point in v2, claim green", days: 5),
+    ],
+  ]),
+  decomposition(node: "namespace-ambiguity-discharge", stages: [
+    [
+      leaf(label: "retire as vacuous under the qualified rule, with the receipt", days: 2),
+    ],
+  ]),
+  decomposition(node: "namespace-v2-import-completion", stages: [
+    [
+      leaf(label: "retire: answered by the ruling (import lists do not bind)", days: 2),
+    ],
+  ]),
+  decomposition(node: "declaration-identity-switchover", stages: [
+    [
+      piece(label: "authored references carry their declaration", stages: [
+        [
+          leaf(label: "carrier field on the reference node", days: 3),
+        ],
+        [
+          leaf(label: "resolver writes it", days: 3),
+          leaf(label: "consumers read it instead of re-resolving", days: 4),
+        ],
+      ]),
+      leaf(label: "generated references carry it", days: 5),
+      leaf(label: "type positions carry it", days: 5),
+      leaf(label: "variant and construct references carry it", days: 5),
+      leaf(label: "field projections carry it", days: 5),
+    ],
+  ]),
+  decomposition(node: "namespace-legacy-choice-retirement", stages: [
+    [
+      leaf(label: "delete name-string matching", days: 5),
+      leaf(label: "delete the parent-chain walk", days: 5),
+      leaf(label: "delete the bare-name pool", days: 5),
+      leaf(label: "delete the import retry", days: 5),
+    ],
+    [
+      leaf(label: "seed mirror: dies with v1-interpreter-delete (no work)", days: 0),
+    ],
+  ]),
+  decomposition(node: "declaration-provider-outcomes", stages: [
+    [
+      leaf(label: "vertical: a valid declaration beside an invalid one", days: 5),
+      leaf(label: "dependency propagation", days: 5),
+      leaf(label: "module-admission control", days: 5),
+    ],
+    [
+      leaf(label: "controls executing on the native resolve route", days: 5),
+    ],
+    [
+      leaf(label: "native-seven rerun at the landing head", days: 2),
+    ],
+  ]),
+  decomposition(node: "native-seven-names-homed", stages: [
+    [
+      leaf(label: "generator route: rewrite one closure to qualified spellings, byte-stable on a no-op", days: 5),
+    ],
+    [
+      leaves(label: "one name: home chosen, policy row, sites rewritten", days: 1, n: 54),
+    ],
+    [
+      leaf(label: "closure rewrite run and native-seven rerun", days: 3),
+    ],
+  ]),
+  decomposition(node: "compiler-closure-names-homed-and-types-merged", stages: [
+    [
+      leaves(label: "one name homed in the compiler closures", days: 1, n: 26),
+      leaves(label: "one dual std type merged on its own claims", days: 5, n: 8),
+    ],
+    [
+      leaf(label: "closures rewritten, self-host instrument rerun", days: 3),
+    ],
+  ]),
+  decomposition(node: "corpus-names-homed-and-collisions-discharged", stages: [
+    [
+      piece(label: "the generator oracle: bindings by occurrence identity before and after", stages: [
+        [
+          leaf(label: "dump bindings by occurrence identity, before", days: 3),
+          leaf(label: "dump bindings, after", days: 3),
+        ],
+        [
+          leaf(label: "diff refuses on any changed binding; planted change goes red", days: 4),
+        ],
+      ]),
+    ],
+    [
+      leaves(label: "one home-group of about ten names", days: 2, n: 43),
+    ],
+    [
+      leaf(label: "corpus-wide generator run", days: 5),
+      leaf(label: "per-module verification, automated over 5,910 modules", days: 5),
+    ],
+  ]),
+  decomposition(node: "import-grammar-and-lines-deleted", stages: [
+    [
+      leaf(label: "v2: import production removed, refusal claim", days: 3),
+      leaf(label: "v2: module-header production removed", days: 3),
+    ],
+    [
+      leaf(label: "seed parser mirrors both refusals", days: 5),
+    ],
+    [
+      leaf(label: "the landing", days: 2),
+    ],
+  ]),
+  decomposition(node: "namespace-unique-on-chain", stages: [
+    [
+      leaf(label: "project join", days: 0),
+    ],
+  ]),
+  decomposition(node: "literal-elaboration", stages: [
+    [
+      leaf(label: "receipt run on a fleet host and the acceptance event", days: 5),
+    ],
+  ]),
+  decomposition(node: "shared-check-lets-and-matches", stages: [
+    [
+      leaf(label: "receipt run (three claims, one mutation) and the acceptance event", days: 5),
+    ],
+  ]),
+  decomposition(node: "native-test-verdict-realization", stages: [
+    [
+      leaf(label: "feasibility receipt: v2-native CLI emits the N7 test closure", days: 5),
+    ],
+    [
+      piece(label: "product shape and per-test binding manifest", stages: [
+        [
+          leaf(label: "manifest row type: test to emitted fn", days: 3),
+        ],
+        [
+          leaf(label: "manifest emitted for the N7 closure", days: 4),
+        ],
+        [
+          leaf(label: "cargo test consumes the manifest", days: 3),
+        ],
+      ]),
+      leaf(label: "cargo test over the population", days: 5),
+    ],
+    [
+      leaf(label: "verdict adaptation gap closed", days: 5),
+      leaf(label: "second-process cache hit", days: 3),
+      leaf(label: "C and Swift typed-unavailable", days: 2),
+      leaf(label: "seed and interpreter absent", days: 3),
+    ],
+  ]),
+  decomposition(node: "native-seven", stages: [
+    [
+      leaves(label: "rerun at each parent landing", days: 1, n: 4),
+    ],
+    [
+      leaf(label: "final run and the acceptance event", days: 2),
+    ],
+  ]),
+  decomposition(node: "v2-emitter-direct-rust-door", stages: [
+    [
+      leaf(label: "bind the closing contract to the written route (GAP 1)", days: 3),
+    ],
+    [
+      leaves(label: "one grammar production emitted through the door, built, claims green", days: 2, n: 126),
+    ],
+    [
+      leaf(label: "planted missing rule refuses, not guesses", days: 3),
+      leaf(label: "proof the old generator was never called", days: 3),
+    ],
+  ]),
+  decomposition(node: "v2-emitter-production-compatible-corpus-module", stages: [
+    [
+      leaf(label: "smallest real single-declaration module through the door", days: 5),
+    ],
+    [
+      leaves(label: "one capability failing control (visibility, integer width, ...)", days: 3, n: 6),
+    ],
+    [
+      leaf(label: "build in the real crate and the behavioral table", days: 5),
+    ],
+  ]),
+  decomposition(node: "v2-emitter-first-behavioral-module", stages: [
+    [
+      leaf(label: "emit one low-dependency module", days: 3),
+    ],
+    [
+      leaf(label: "build", days: 3),
+      leaf(label: "its claims green", days: 3),
+    ],
+    [
+      leaf(label: "planted broken variant fails with v2 provenance", days: 3),
+    ],
+  ]),
+  decomposition(node: "v2-emitter-native-crate-partition", stages: [
+    [
+      leaf(label: "read the closure into the module-graph carrier", days: 5),
+    ],
+    [
+      piece(label: "derive the partition", stages: [
+        [
+          leaf(label: "partition rule: condensation of the module graph with a size bound", days: 5),
+        ],
+        [
+          leaf(label: "partition emitted for the N7 closure; pieces acyclic, claim green", days: 5),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "generated workspace", days: 5),
+    ],
+    [
+      leaf(label: "build and behavioral run", days: 5),
+      leaf(label: "broken cross-piece export fails", days: 3),
+      leaf(label: "leaf-edit rebuilds only its own piece", days: 3),
+    ],
+  ]),
+  decomposition(node: "second-generation", stages: [
+    [
+      leaf(label: "missing root exits 2; directory root walked", days: 3),
+    ],
+    [
+      leaf(label: "generation two builds", days: 5),
+    ],
+  ]),
+  decomposition(node: "v2-emitter-native-bootstrap", stages: [
+    [
+      leaf(label: "generation two over its own closure: refusals grouped by root cause", days: 5),
+    ],
+    [
+      placeholder(label: "one refusal root cause repaired", days: 3, assumed: 10),
+    ],
+    [
+      leaf(label: "discriminating run between generations", days: 5),
+      leaf(label: "seed-absent run or receipt", days: 5),
+    ],
+  ]),
+  decomposition(node: "emitted-contracts-held", stages: [
+    [
+      leaf(label: "one behavioral-equivalence receipt over the emitter roster", days: 5),
+    ],
+    [
+      leaf(label: "milestone read from it", days: 3),
+    ],
+  ]),
+  decomposition(node: "emitter-produces-main-rs", stages: [
+    [
+      leaf(label: "list the host bodies behind CliDispatchHost", days: 3),
+    ],
+    [
+      placeholder(label: "one host body behind an emitted boundary", days: 3, assumed: 8),
+    ],
+  ]),
+  decomposition(node: "v1-emitter-fixed-point", stages: [
+    [
+      leaf(label: "one PromotionOutcome over a named candidate", days: 5),
+    ],
+    [
+      placeholder(label: "one refusal repaired", days: 3, assumed: 6),
+    ],
+    [
+      leaf(label: "promoted receipt persisted", days: 3),
+    ],
+  ]),
+  decomposition(node: "native-frontier-required-lane", stages: [
+    [
+      leaf(label: "operator re-read under no-ratchets: plain refusal or retired", days: 1),
+    ],
+    [
+      leaf(label: "roster mint from one fleet run", days: 3),
+    ],
+    [
+      piece(label: "the step as a plain refusal over the two closures", stages: [
+        [
+          leaf(label: "step reads the roster", days: 3),
+        ],
+        [
+          leaf(label: "refuses on a missing closure member", days: 3),
+          leaf(label: "passes on the gate run, receipt", days: 4),
+        ],
+      ]),
+    ],
+  ]),
+  decomposition(node: "native-production-admission", stages: [
+    [
+      leaf(label: "the verdict type", days: 5),
+    ],
+    [
+      leaf(label: "computed once over the current route", days: 5),
+    ],
+    [
+      placeholder(label: "one divergence dispositioned", days: 2, assumed: 10),
+    ],
+    [
+      leaf(label: "NativeProductionAdmitted receipt", days: 3),
+    ],
+  ]),
+  decomposition(node: "demand-d13-dependency-demand", stages: [
+    [
+      leaf(label: "own the existing producer", days: 5),
+    ],
+    [
+      leaf(label: "census at this head", days: 5),
+      leaf(label: "clause refusals kept", days: 5),
+    ],
+    [
+      leaf(label: "receipt", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-rust-source-observation", stages: [
+    [
+      leaf(label: "read the tracked set live; refuse with a reason", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-honest-frontier", stages: [
+    [
+      leaves(label: "name the authority for one of the four questions", days: 3, n: 4),
+    ],
+    [
+      leaf(label: "delete or project the others", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-hand-queue-drain", stages: [
+    [
+      placeholder(label: "move one complete family and run it", days: 5, assumed: 6),
+    ],
+  ]),
+  decomposition(node: "v1-test-migration", stages: [
+    [
+      placeholder(label: "match one old test file to the checks covering it", days: 3, assumed: 10),
+    ],
+  ]),
+  decomposition(node: "v1-interpreter-primitive-dispatch-authority", stages: [
+    [
+      leaf(label: "generate the arm identity from the roster", days: 5),
+      leaf(label: "generate the spelling/form lookup", days: 5),
+    ],
+    [
+      leaf(label: "exhaustive handler; delete the hand-written arms", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-interpreter-quarantine", stages: [
+    [
+      piece(label: "build with the old runner left out", stages: [
+        [
+          leaf(label: "cfg that excludes the runner", days: 3),
+        ],
+        [
+          placeholder(label: "one build break repaired", days: 2, assumed: 5),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "run everything that has to work", days: 5),
+      leaf(label: "no-dependants check", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-emitter-quarantine", stages: [
+    [
+      piece(label: "make the old generator unavailable; show the build unchanged", stages: [
+        [
+          leaf(label: "cfg that excludes the generator", days: 3),
+        ],
+        [
+          placeholder(label: "one build break repaired", days: 2, assumed: 4),
+        ],
+        [
+          leaf(label: "byte-identical build receipt", days: 2),
+        ],
+      ]),
+    ],
+  ]),
+  decomposition(node: "v1-emitter-delete", stages: [
+    [
+      leaf(label: "delete", days: 5),
+    ],
+    [
+      leaf(label: "proof nothing was left behind", days: 5),
+      leaf(label: "build on what the new generator produced", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-interpreter-delete", stages: [
+    [
+      leaf(label: "delete it and the code that existed for it", days: 5),
+    ],
+    [
+      leaf(label: "products, build, cold and warm runs, no-dependants check", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-products-v1-free", stages: [
+    [
+      leaf(label: "build one product from a tree without the old directory and run it", days: 5),
+    ],
+    [
+      leaf(label: "every product; the kept-list", days: 5),
+    ],
+  ]),
+  decomposition(node: "v1-zero-hand-maintained-rust", stages: [
+    [
+      leaf(label: "derive the live list of hand-written files", days: 3),
+    ],
+    [
+      placeholder(label: "generate or delete one family", days: 3, assumed: 8),
+    ],
+  ]),
+  decomposition(node: "universe-ingest-replaces-file-acquisition", stages: [
+    [
+      piece(label: "the ingest step: bundle to universe, files discarded", stages: [
+        [
+          leaf(label: "bundle type", days: 2),
+          leaf(label: "universe type", days: 3),
+        ],
+        [
+          leaf(label: "ingest fold: parse each file, drop its path, claim green", days: 5),
+        ],
+      ]),
+      leaf(label: "the declaration-to-text mapping", days: 5),
+    ],
+    [
+      leaves(label: "one stage after ingest made file-free", days: 3, n: 6),
+      leaf(label: "duplicate path refuses at ingest", days: 3),
+    ],
+  ]),
+  decomposition(node: "one-declaration-identity-carrier", stages: [
+    [
+      piece(label: "the merged carrier and its laws as claims", stages: [
+        [
+          leaf(label: "merged DeclarationRef with the dotted path", days: 4),
+        ],
+        [
+          leaves(label: "one law as a claim: uniqueness, display, parse round-trip", days: 3, n: 3),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "the reference-marker grammar on dots", days: 3),
+      leaf(label: "the sweep on the merged carrier", days: 3),
+      leaf(label: "resolver output on the merged carrier", days: 5),
+    ],
+    [
+      leaf(label: "citations migrated to dots", days: 5),
+    ],
+  ]),
+  decomposition(node: "sealed-phases-and-the-checked-carrier", stages: [
+    [
+      leaf(label: "ParseTree sealed", days: 5),
+      leaf(label: "ResolvedProgram sealed", days: 5),
+    ],
+    [
+      piece(label: "CheckedProgram with its proving constructor", stages: [
+        [
+          leaf(label: "CheckedProgram type: fields are proofs", days: 3),
+        ],
+        [
+          leaf(label: "constructor: type check", days: 5),
+          leaf(label: "constructor: exhaustiveness", days: 4),
+          leaf(label: "constructor: descent", days: 4),
+        ],
+        [
+          leaf(label: "refuses on any failure; planted failure red", days: 3),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "the evaluator consumes only CheckedProgram", days: 5),
+      leaf(label: "the emitter consumes only CheckedProgram", days: 5),
+    ],
+  ]),
+  decomposition(node: "typed-refusals-own-control-flow", stages: [
+    [
+      leaves(label: "one production module moved from a reason symbol to a typed refusal", days: 1, n: 32),
+    ],
+  ]),
+  decomposition(node: "one-text-carrier", stages: [
+    [
+      piece(label: "the crossing executing on the native route", stages: [
+        [
+          leaf(label: "unfold on the native route", days: 5),
+        ],
+        [
+          leaf(label: "claim on a non-literal crossing", days: 3),
+          leaf(label: "refusal on an undeclared crossing", days: 2),
+        ],
+      ]),
+    ],
+    [
+      piece(label: "the second String declaration deleted in the native-seven closure", stages: [
+        [
+          leaf(label: "list the sites using the second String", days: 2),
+        ],
+        [
+          placeholder(label: "one site moved", days: 1, assumed: 10),
+        ],
+        [
+          leaf(label: "delete the declaration", days: 2),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "the rung drop retired by its trigger", days: 2),
+    ],
+  ]),
+  decomposition(node: "operations-are-declarations", stages: [
+    [
+      leaves(label: "one CanonicalOperation arm becomes a declared operation with target rows", days: 2, n: 10),
+    ],
+    [
+      leaf(label: "primitive contracts folded into declarations", days: 5),
+      leaf(label: "surface names folded", days: 5),
+      leaf(label: "projection rows folded", days: 5),
+    ],
+    [
+      leaf(label: "seed mirrors", days: 5),
+    ],
+  ]),
+  decomposition(node: "one-standard-library", stages: [
+    [
+      leaves(label: "one type pair classified and merged or renamed", days: 5, n: 12),
+    ],
+  ]),
+  decomposition(node: "external-specimen-compiles", stages: [
+    [
+      leaf(label: "choose the specimen and list its unselected constructs", days: 3),
+    ],
+    [
+      leaf(label: "native run receipt", days: 5),
+    ],
+  ]),
+  decomposition(node: "factory-attempt-execution-on-fabric-lease", stages: [
+    [
+      leaves(label: "audit one belt module: what execution needs, what fabric answers, what is deleted", days: 2, n: 8),
+    ],
+    [
+      leaf(label: "the realization-home decision (operator)", days: 1),
+    ],
+    [
+      leaves(label: "one belt module cut into fabric", days: 3, n: 8),
+    ],
+  ]),
+  decomposition(node: "dogfood-g1-shared-computation-record", stages: [
+    [
+      leaf(label: "immutable-subject and shared-computation records written by one attempt", days: 5),
+    ],
+    [
+      leaf(label: "the receipt reads them; SharedComputationAbsent typed", days: 5),
+    ],
+  ]),
+  decomposition(node: "dogfood-g5-isolated-execution-record", stages: [
+    [
+      leaf(label: "unit start/exit bound to grant and fence", days: 5),
+      leaf(label: "cleanup returns grant and fence", days: 5),
+    ],
+    [
+      leaf(label: "the receipt reads both; planted refusal", days: 3),
+    ],
+  ]),
+  decomposition(node: "factory-dogfood-route", stages: [
+    [
+      leaf(label: "acceptance function reads one complete attempt", days: 5),
+    ],
+    [
+      leaf(label: "the start receipt recorded once", days: 5),
+    ],
+  ]),
+  decomposition(node: "ci-executed-coverage-receipt", stages: [
+    [
+      leaf(label: "repoint the deleted carrier", days: 2),
+    ],
+    [
+      leaf(label: "executed population on the required check", days: 5),
+      leaf(label: "empty-population refusal", days: 3),
+      leaf(label: "distinct upstream-failure outcome", days: 3),
+    ],
+  ]),
+  decomposition(node: "fabric-worker-event-log", stages: [
+    [
+      leaf(label: "the payload kind", days: 3),
+    ],
+    [
+      leaf(label: "append path", days: 5),
+      leaf(label: "read path", days: 5),
+    ],
+    [
+      leaf(label: "order, gap and refusal receipts", days: 5),
+    ],
+  ]),
+  decomposition(node: "serve-held-open-response", stages: [
+    [
+      leaf(label: "the response kind and route", days: 5),
+    ],
+    [
+      leaf(label: "resume and disconnect receipts", days: 5),
+    ],
+  ]),
+  decomposition(node: "work-exec-0-identity-estimate-split", stages: [
+    [
+      leaf(label: "identity record", days: 3),
+      leaf(label: "estimate record", days: 3),
+    ],
+    [
+      leaf(label: "consumers moved to the split records", days: 4),
+    ],
+  ]),
+  decomposition(node: "work-exec-1-placement-backend-selection", stages: [
+    [
+      leaf(label: "criteria written", days: 2),
+    ],
+    [
+      leaves(label: "one backend evaluated against them", days: 3, n: 3),
+    ],
+    [
+      leaf(label: "the recorded choice", days: 2),
+    ],
+  ]),
+  decomposition(node: "work-exec-2-durable-route-first-consumer", stages: [
+    [
+      leaf(label: "the extdeps model", days: 5),
+      piece(label: "the controller", stages: [
+        [
+          leaf(label: "state machine type", days: 3),
+        ],
+        [
+          leaves(label: "one transition realized", days: 2, n: 4),
+        ],
+      ]),
+    ],
+    [
+      leaf(label: "executed matrix cases", days: 5),
+    ],
+  ]),
+  decomposition(node: "work-exec-3-automatic-sizing", stages: [
+    [
+      leaf(label: "read the evidence rows", days: 3),
+    ],
+    [
+      leaf(label: "derive the budget; refuse without evidence", days: 4),
+    ],
+    [
+      leaf(label: "claims green", days: 3),
+    ],
+  ]),
+  decomposition(node: "work-exec-4-local-work-cutover", stages: [
+    [
+      leaves(label: "one consumer moved to the durable route", days: 3, n: 3),
+    ],
+    [
+      leaf(label: "old launch routes deleted", days: 5),
+    ],
+  ]),
+  decomposition(node: "work-exec-5-ci-verdict-from-receipt", stages: [
+    [
+      leaf(label: "shadow comparison", days: 5),
+    ],
+    [
+      leaf(label: "switched verdict", days: 5),
+      leaf(label: "rollback rehearsal", days: 3),
+    ],
+    [
+      leaf(label: "runner slot state deleted", days: 5),
+    ],
+  ]),
+  decomposition(node: "work-exec-6-one-ledger-per-host", stages: [
+    [
+      leaf(label: "ledger carrier per host", days: 3),
+    ],
+    [
+      placeholder(label: "one consumer charged", days: 2, assumed: 5),
+    ],
+  ]),
+  decomposition(node: "factory", stages: [
+    [
+      leaf(label: "project join", days: 0),
+    ],
+  ]),
+  decomposition(node: "service-evidence-capture", stages: [
+    [
+      leaves(label: "one reader bound and its fields moved from owed to observed", days: 3, n: 7),
+    ],
+  ]),
+  decomposition(node: "debt-payoff", stages: [
+    [
+      leaves(label: "one obligation: authority transition with one witness", days: 5, n: 7),
+    ],
+  ]),
+]
