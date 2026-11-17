@@ -1308,7 +1308,7 @@ fn release_bins_retention_fetch_page(header: Node, answer: Node, n_text: String)
     left: get,
     right: bash_build_subshell_from_stmts(stmts: [
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
-      cmd(ws: [lit(t: "touch"), temp(file: release_bins_retention_incomplete_basename)]),
+      cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
       release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
     ]),
   )
@@ -1332,7 +1332,7 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
   let total_matches = test_words(ws: [var(n: "RELEASE_BINS_RETENTION_TOTAL_PAGE"), lit(t: "="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])
   let page_type_fail = bash_build_subshell_from_stmts(stmts: [
     cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
-    cmd(ws: [lit(t: "touch"), temp(file: release_bins_retention_incomplete_basename)]),
+    cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
     release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
   ])
   let append_plan = bash_build_with_redir_append_to_file(
@@ -1346,12 +1346,16 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
       // exits 2, which the trailing `|| :` would swallow. jq -e is 0 exactly
       // when the predicate is true and non-zero otherwise, and page 1's
       // answer has already admitted total_count as a number by here.
-      left: cmd(ws: [
-        lit(t: "jq"),
-        lit(t: "-e"),
-        lit(t: join([".total_count > ", gate_threshold], "")),
-        release_bins_retention_answer_rooted(),
-      ]),
+      left: bash_build_with_redir_to_file(
+        // The predicate's VALUE must not print: only its exit code is used.
+        inner: cmd(ws: [
+          lit(t: "jq"),
+          lit(t: "-e"),
+          lit(t: join([".total_count > ", gate_threshold], "")),
+          release_bins_retention_answer_rooted(),
+        ]),
+        path: lit(t: "/dev/null"),
+      ),
       right: bash_build_subshell_from_stmts(stmts: [
         // Invalidate this page's answer before its curl (F3, per page): ids
         // can only come from the curl that just ran.
@@ -1430,11 +1434,11 @@ fn release_bins_retention_delete(header: Node) -> Node {
 //   T4  answer present, ids ABSENT -> the plan itself was refused: the typed line `plan-failed`.
 //   T5  answer present, ids present but empty -> the honest empty: the typed line `nothing-due`.
 fn release_bins_retention_decide_statements() -> List<Node> {
-  let ids_file = temp(file: release_bins_retention_ids_basename)
+  let ids_file = rooted(file: release_bins_retention_ids_basename)
   let answer_operand = lit(t: release_bins_retention_answer_file())
   let answer_present = test_words(ws: [lit(t: "-s"), answer_operand])
   let ids_present = test_words(ws: [lit(t: "-s"), ids_file])
-  let union_present = test_words(ws: [lit(t: "-s"), temp(file: release_bins_retention_union_basename)])
+  let union_present = test_words(ws: [lit(t: "-s"), rooted(file: release_bins_retention_union_basename)])
   let ids_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), ids_file])
   let ids_exists = test_words(ws: [lit(t: "-e"), ids_file])
   let nothing_arm = cmdl(ls: ["true"])
@@ -1449,17 +1453,17 @@ fn release_bins_retention_decide_statements() -> List<Node> {
   // id; deletions run over the deduplicated set and the reported count counts
   // THAT set, not the raw lines.
   let delete_block = bash_build_subshell_from_stmts(stmts: [
-    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "sort"), lit(t: "-n"), lit(t: "-u"), ids_file]), path: temp(file: release_bins_retention_ids_dedup_basename)),
-    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), temp(file: release_bins_retention_ids_dedup_basename)]))),
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "sort"), lit(t: "-n"), lit(t: "-u"), ids_file]), path: rooted(file: release_bins_retention_ids_dedup_basename)),
+    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), rooted(file: release_bins_retention_ids_dedup_basename)]))),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: due="), var(n: "IDS")])]),
-    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), temp(file: release_bins_retention_ids_dedup_basename)]))),
+    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), rooted(file: release_bins_retention_ids_dedup_basename)]))),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
     release_bins_retention_delete(header: temp(file: release_bins_retention_delete_header_basename)),
     release_bins_retention_echo(word: "done"),
   ])
-  let flag_operand = temp(file: release_bins_retention_flag_basename)
+  let flag_operand = rooted(file: release_bins_retention_flag_basename)
   let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), flag_operand])
-  let incomplete_operand = temp(file: release_bins_retention_incomplete_basename)
+  let incomplete_operand = rooted(file: release_bins_retention_incomplete_basename)
   let incomplete_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), incomplete_operand])
   let incomplete_present = test_words(ws: [lit(t: "-s"), incomplete_operand])
   [
@@ -1485,12 +1489,15 @@ fn release_bins_retention_decide_statements() -> List<Node> {
       left: bash_build_and_then(
         // Same jq -e discipline as the page gates: no bracket-operator order
         // to get wrong, no exit-2 that a `|| :` could hide.
-        left: cmd(ws: [
-          lit(t: "jq"),
-          lit(t: "-e"),
-          lit(t: join([".total_count > ", release_bins_retention_max_total_text], "")),
-          release_bins_retention_answer_rooted(),
-        ]),
+        left: bash_build_with_redir_to_file(
+          inner: cmd(ws: [
+            lit(t: "jq"),
+            lit(t: "-e"),
+            lit(t: join([".total_count > ", release_bins_retention_max_total_text], "")),
+            release_bins_retention_answer_rooted(),
+          ]),
+          path: lit(t: "/dev/null"),
+        ),
         right: bash_build_subshell_from_stmts(stmts: [
           cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
           cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
@@ -1508,7 +1515,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
         right: bash_build_or_else(
           left: bash_build_with_redir_append_to_file(
             inner: cmd(ws: release_bins_retention_page1_words()),
-            path: temp(file: release_bins_retention_union_basename),
+            path: rooted(file: release_bins_retention_union_basename),
           ),
           right: bash_build_subshell_from_stmts(stmts: [
             cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
@@ -1521,10 +1528,10 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     // Fetch and admit EVERY required page before any plan runs (F4a, review
     // 96005): the old order planned right after page 1, so a 250-entry family
     // deleted 84 ids from page 1 only and never looked at pages 2-3.
-    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
     // no-answer fires only when this invocation never held an answer at all --
     // over-cap removed the answer deliberately and touched the flag to say so.
     bash_build_or_else(
@@ -1593,8 +1600,8 @@ fn release_bins_retention_statements() -> List<Node> {
       // anything earlier must never reach the plan -- only this invocation's
       // own curl answers.
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_flag_basename)]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_union_basename)]),
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_flag_basename)]),
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_union_basename)]),
       release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
     ],
     release_bins_retention_decide_statements(),
