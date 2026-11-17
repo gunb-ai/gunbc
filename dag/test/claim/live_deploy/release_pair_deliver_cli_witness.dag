@@ -13,7 +13,7 @@ import gunbc.live_deploy.release_binding {
   ReleaseMixed,
   ReleaseBindingUnobserved,
 }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled, release_pair_bins_unbuilt_reason, release_pair_pack_unverified_reason }
 import std.optional { Optional, Present, Absent }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.live_deploy.release_pair_delivery {
@@ -21,7 +21,7 @@ import gunbc.live_deploy.release_pair_delivery {
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
-  release_pair_deliver_serving,
+  release_pair_deliver_serving, release_pair_reason_is_benign_wait,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -148,5 +148,13 @@ test fn witness_serving_mixed_is_poison() -> Bool {
         RevisionBoundAtEmission { revision: _ } => false
       }
   }
+}
+
+// The keep-last-good exit classifier: only the not-built-yet reason is a benign CI wait; a refusal (build-key
+// refused, etc.) is not — the actuator must surface it, not exit green.
+test fn witness_benign_wait_only_when_bins_unbuilt() -> Bool {
+  let benign = release_pair_reason_is_benign_wait(reason: release_pair_bins_unbuilt_reason)
+  let refusal = release_pair_reason_is_benign_wait(reason: release_pair_pack_unverified_reason)
+  if benign { !refusal } else { false }
 }
 

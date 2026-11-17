@@ -27,6 +27,7 @@ import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
   RevisionNotInstalled,
+  release_pair_bins_unbuilt_reason,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
@@ -186,6 +187,12 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 // ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
 // that yield nothing are typed keep-last-good refusals, never a guess. Executed by the pair-delivery unit's own run
 // (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by release_pair_deliver_cli_witness.
+// A keep-last-good is a benign wait for CI ONLY when the release-bins pack for the head is not built yet; every
+// other keep-last-good names a refusal the operator must see (fail-closed default: anything else is not a no-op).
+fn release_pair_reason_is_benign_wait(reason: NonEmptyStr) -> Bool {
+  (reason as String) == (release_pair_bins_unbuilt_reason as String)
+}
+
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
   let head_outcome = run_shell_command_capture(
     command: gh_main_head_command(api_path: release_pair_main_head_api_path(slug: release_pair_deliver_repo_slug)),
@@ -336,7 +343,17 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
 fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> ProcessExit {
   match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit) {
-    PlanKeepsLastGood { kept: _, reason: _ } => ExitSuccess
+    // A timer tick keeps serving the last good pair for one of two reasons: the release-bins pack for the head is
+    // simply not built yet (a benign wait for CI — exit green), or the delivery was REFUSED for a real defect (gh
+    // head unobservable, no run, build-key refused, source/binary mismatch, missing placement). The latter must not
+    // look green: surface the reason and exit non-zero, so a broken delivery is a located diagnostic, not silence
+    // (fail_closed). The reason is never discarded.
+    PlanKeepsLastGood { kept: _, reason: reason } =>
+      if release_pair_reason_is_benign_wait(reason: reason) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["pair-deliver kept last good, not a no-op — ", reason as String], ""))
+      }
     PlanToInstall { place_binary: place, write_source_receipt: receipt, restart_command: restart, revision: _ } => {
       let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
       match filesystem_link_create_new(
