@@ -1,0 +1,45 @@
+module gunbc.machine_intake.bmc_read_policy
+
+import std.measure { Second, second }
+import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_or_seam }
+
+// ONE ROW, ONE STORY: the authenticated BMC read policy for the managed-credential lane — the retry
+// COUNT and the per-response timeout in SECONDS for every ipmitool command that authenticates. This is
+// a workflow fact, not an interface fact (gunbc.design_argument::interface_realization_policy): the
+// renderer in extdeps.bmc.ipmi spells the argv, the values live HERE, and every caller consumes this
+// row (review 94250, 2026-11-12 — the choice existed in the interface module once per authenticated
+// operation before it moved here). Why these values: each retry of an authenticating command is another
+// charge against the controller's lockout budget (Bad Password Threshold, srv15 ruling; the census
+// reads counted against it the same way), so the bound is one shot and one short wait — the retry cap
+// smart-crane-730 accepted for PXE on 2026-11-11. A structural witness pins that the bound is never
+// dropped from an authenticating argv, and the row below pins its shape: edit a zero in and the
+// witnesses go red — zero mints no carrier and no argv.
+// The ruling and review receipts named above are carried as data, not left to prose: see the
+// sighting on gunbc.integration_concern::authenticated_lanplus_retry_bound_pinned_only_in_declared_ops
+// (reviews 94250, 94264, 94277; the 2026-11-11 acceptance; review 94474, source_annotations).
+data bmc_ipmi_policy_retries: Nat = 1
+
+data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
+
+// THE ROW, CARRIED: the policy values minted through the interface module's sole checked door
+// (review 94277, 2026-11-12; guarantee_ladder: "a brand or Validated<T> is cosmetic until
+// construction enforces it"). Callers pass THIS to every authenticated operation; the operation's
+// transport splices the declared words into -R/-N, so there is no list slot a caller can drop or leave
+// empty (omission refuses as DeclaredInputUnbound; empty is a NonEmptyStr type error) - but the inputs
+// are words, not the carrier type: positivity is enforced by this door plus the witness-pinned rows,
+// not by the transport signature (see the rung statement in extdeps/bmc/ipmi.dag, filed as a typed
+// row in gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall; same rung as
+// IpmiCipherSuite). Zero retries or a non-positive timeout mints
+// nothing at the door, and the door refusing here is the loud failure (fail_closed: "A failure arm
+// refuses, never widens" — no silent widen, no escape hatch). The refusal arm is the record-shaped
+// Never of ipmi_retry_bound_or_seam (extdeps/bmc/ipmi.dag; review 95151, 2026-11-13, the compiler
+// floor: values inhabit declared types): every field of the refused carrier is filled by a typed
+// pure_dag_seam_unreachable seam, so the arm inhabits IpmiRetryBound instead of pushing a list into
+// a record-typed position, and no value of the carrier is fabricated (std/error_primitives; the
+// interpreter's free_call arm refuses with a typed error naming the seam). These rows are
+// compile-time constants the accepted door can only accept, which is what makes the seam arm a seam
+// and not an escape hatch: edit a zero in and the witnesses below go red at the door's own contract
+// before any authenticated read is spelled.
+fn bmc_ipmi_retry_bound() -> IpmiRetryBound {
+  ipmi_retry_bound_or_seam(retries: bmc_ipmi_policy_retries, response_timeout: bmc_ipmi_policy_response_timeout)
+}
