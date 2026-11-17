@@ -1,0 +1,73 @@
+module product.p4261.ranger_start_sequence
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.nvidia.ranger_tray { RangerPowerState, StandbyHostOff, JustAfterPowerOn, RunningIdle, RunningAtOwnerLimits, ranger_watts_at_most, ranger_power_board_feed_volts }
+import extdeps.nvidia.gracebmc_ranger { Script, ScriptAction, RangerSignal, script_run_power, script_standby, script_sets, signal_name, same_signal }
+
+// WHERE THIS BENCH STANDS AGAINST THE RANGER TRAY'S START SEQUENCE. The tray, its cables and its telemetry
+// are the tray's facts (extdeps.nvidia.ranger_tray); the lines and what the controller's scripts do with
+// them are the firmware's (extdeps.nvidia.gracebmc_ranger). This module holds only what is local or derived:
+// the states used to place a board, where the lot board held here stands, and the comparisons and estimates
+// this bench draws from the upstream figures. No row here is an upstream fact.
+
+// ── THE STATES, AND WHERE THIS BENCH'S BOARD IS NOT ─────────────────────────────────────────────────
+
+// The states the controller's scripts take a board through, in order. The names are this repository's
+// (the review of 2026-11-16), not NVIDIA's.
+type RangerState
+  = RangerBoardAbsentOrReset
+  | RangerStandbyRequested
+  | RangerStandbyPowerGood
+  | RangerFpgaReleased
+  | RangerFpgaReady
+  | RangerBmcReady
+  | RangerRunRequested
+  | RangerRunPowerGood
+  | RangerSystemResetReleased
+  | RangerHostRunning
+
+// A board's standing against that ladder. Forcing the hot-swap stage on by hand at Q300, with none of the
+// controller's lines driven, is not a state on it: the 48 V stage is up, and nothing says standby was
+// requested, the FPGA released, the controller ready or the system reset let go. The name says a module was
+// fitted and the board drew partial power; it does not say how much of that draw was the module's.
+type StartStanding
+  = OnRangerLadder { state: RangerState }
+  | ManualHotSwapForcedWithModulePartialPower { seen: NonEmptyStr }
+
+data lot_e1_218_standing: StartStanding = ManualHotSwapForcedWithModulePartialPower { seen: "S/N 1583323120218, 2026-11-15 and 2026-11-16: Q300's node pulled low by hand, the 48 V stage up, a cooled module fitted, a steady 0.33 A at 48 V (about 16 W), no console output" }
+
+fn is_on_ladder(s: StartStanding) -> Bool {
+  match s {
+    OnRangerLadder { state: _ } => true
+    ManualHotSwapForcedWithModulePartialPower { seen: _ } => false
+  }
+}
+
+// ── THIS BENCH'S DRAW AGAINST THE TRAY'S REPORTED FIGURES ───────────────────────────────────────────
+
+// The lot board's forced state: about 16 W, by 0.33 A at 48 V, read on the bench supply.
+data lot_e1_218_forced_watts: Nat = 16
+
+// Below the two channels' host-off total on the tray, so the forced state is not the tray's standby.
+fn below_ranger_standby(watts: Nat) -> Bool {
+  watts < ranger_watts_at_most(state: StandbyHostOff)
+}
+
+// AN ESTIMATE, NOT A REPORTED TOTAL: the two channels' figures added, each at its most, turned into
+// milliamps at the tray's feed voltage. The account gives the channels separately and does not say they
+// were read together, so this sizes a supply and its limit and is never quoted as the tray's draw.
+fn estimated_milliamps(state: RangerPowerState) -> Nat {
+  (ranger_watts_at_most(state: state) * 1000) / ranger_power_board_feed_volts
+}
+
+// ── WHAT A SEQUENCER HERE WOULD HAVE TO DRIVE ───────────────────────────────────────────────────────
+
+// The lines the run-power script sets that the standby script never sets: what is new at run power.
+fn lines_first_set_at_run_power() -> List<RangerSignal> {
+  filter(script_sets(s: script_run_power), x => !any(script_sets(s: script_standby), y => same_signal(a: x, b: y)))
+}
+
+fn line_names(xs: List<RangerSignal>) -> List<String> {
+  map(xs, x => signal_name(s: x))
+}

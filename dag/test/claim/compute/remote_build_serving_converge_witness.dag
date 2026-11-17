@@ -22,7 +22,8 @@ import gunbc.compute.remote_build_serving_setup {
   serving_store_dir_mode_octal,
 }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
+import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -303,7 +304,7 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
 // ── review 5b: write ordering + dedupe, and uid/gid-mismatch refusal ───────────────────────────────
 
 // A write list is ordered iff no element has a rank lower than the max seen so far. converge_plan
-// re-derives order by action KIND (groups, account, membership, dirs+ledger, ak, checkout, binary), so on
+// re-derives order by action KIND (groups, account, membership, dirs+ledger, ak, checkout, rustup, toolchain, binary), so on
 // a fresh host useradd always precedes the checkout / authorized_keys / store writes that depend on it —
 // instead of the reverse-deviation-order the fold's prepend produced.
 type WRankState { prev: Int, bad: Int }
@@ -359,56 +360,102 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
   )
 }
 
-// THE OTHER FRESH WORLD (side-chat review follow-up, clever-raven-401): a DELETED account with its
-// HOME left behind (userdel without -r) — the account's uid/gid rows are gone (so EnsureAccount and
-// the group writes are genuinely planned), but the cargo-bin rustup SURVIVED in the orphaned home.
-// The observe reads rustup independently of the account (test -x needs no account), so the toolchain
-// leg plans the pinned-channel install and every other fresh write rides along. This is the honest
-// world the plan-shape cells (order/dedupe, useradd shell, parents-before-installs, toolchain
-// between checkout and binary) need: on a TRULY fresh host the plan is ConvergeUnhandled (the cell
-// below), because without rustup the toolchain write is bound to fail and no bootstrap is modelled.
-fn fresh_with_rustup_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
-  serving_observed_from_reads(
-    elevation: est_elevation(),
-    account_name: d.account_name,
-    passwd: est_s(""),
-    group: est_s("root:x:0:\n"),
-    authorized_keys: est_s(""),
-    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
-    checkout: est_absent(), toolchain: est_absent(), rustup: est_ok(),
-    serve_binary_sha256: Absent, checkout_revision: Absent,
-    authorized_keys_mode: Absent, serve_binary_mode: Absent,
-    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+// A TRULY FRESH HOST (no account, so no rustup) plans the rustup bootstrap: the pinned rustup-init for
+// the target's own triple, its digest taken from the published release row (never from the download),
+// installed into the account's declared homes, ordered after the checkout and before the toolchain
+// install it enables. This is the real fresh-host observation srv3 and srv4 returned on 2026-11-17.
+fn rustup_write(ws: List<ConvergeAction>) -> ConvergeAction? {
+  first_where(ws, keep: a => match a {
+    EnsureRustup { installer_url: _, expected_sha256: _, as_user: _, rustup_home: _, cargo_home: _ } => true
+    _ => false
+  })
 }
 
-// UNHANDLED arm (side-chat review follow-up): a truly fresh host (no rustup anywhere) has a REAL
-// toolchain absence with NO runner — the plan classifies it unhandled with the cause naming the
-// account and the missing bootstrap, and carries NO writes at all (a write bound to fail is not
-// planned; curl | sh is not modelled). Paired with fresh_host_plans_the_pinned_toolchain (rustup
-// present -> EnsureToolchain planned): the two arms of the rustup gate.
-test fn fresh_host_without_rustup_is_unhandled_and_plans_no_writes() -> Bool {
+fn rank_of_rustup(ws: List<ConvergeAction>) -> Int {
+  match rustup_write(ws) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+test fn fresh_host_plans_the_verified_rustup_bootstrap() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
-    Present { value: d } => {
-      match d.forced_command_line {
-        Absent => false
-        Present { value: line } => {
-          let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
-          let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
-          match plan {
-            ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
-              && any(us, x => x == concat("toolchain: rustup not installed for ", concat(d.account_name, "; no bootstrap modelled")))
+    Present { value: d } => match rustup_init_release(version: serving_rustup_init_version, triple: "aarch64-unknown-linux-gnu") {
+      Absent => false
+      Present { value: r } => {
+        let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+        let ws = plan_writes(converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent()))
+        let carries = match rustup_write(ws) {
+          Absent => false
+          Present { value: w } => match w {
+            EnsureRustup { installer_url: u, expected_sha256: h, as_user: usr, rustup_home: rh, cargo_home: ch } =>
+              u == (rustup_init_url(r: r) as String) && string_contains(s: u, pattern: "/aarch64-unknown-linux-gnu/")
+                && h == (r.sha256 as String) && usr == d.account_name && rh == d.rustup_home && ch == d.cargo_home
             _ => false
           }
         }
+        carries
+          && rank_of_checkout(ws: ws) < rank_of_rustup(ws: ws)
+          && rank_of_rustup(ws: ws) < rank_of_toolchain(ws: ws)
+          && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name)
+          && writes_sorted_by_kind(ws)
       }
     }
   }
 }
 
-// ORDER + DEDUPE red control: a fresh host's writes are dirs(rank3) x2, checkout(rank5), binary(rank7) in
-// NON-DECREASING rank order (a reverse-fold order would set bad>0), and carry no duplicate identity.
+// RED: a machine with no published rustup-init triple is unhandled with no writes; the plan never
+// downloads an installer it holds no digest for. The executor is on the same machine, so the only
+// thing refusing is the missing triple.
+test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: "riscv64", local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(), account_name: d.account_name, passwd: est_s(""), group: est_s("root:x:0:\n"), authorized_keys: est_s(""),
+        store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+        checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
+        serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
+        target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
+      )
+      let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
+      match plan {
+        ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
+          && any(us, x => x == "toolchain: rustup absent and no rustup-init triple for machine riscv64")
+        _ => false
+      }
+    }
+  }
+}
+
+// An account that already HAS rustup and only lacks the pinned channel plans the toolchain install
+// and no bootstrap: the two arms of the rustup gate.
+test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(), account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()), authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
+      length(ws) == 1 && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name) && rank_of_rustup(ws: ws) == -1
+    }
+  }
+}
+
+// ORDER + DEDUPE red control: a fresh host's writes (groups, account, membership, dirs, authorized_keys,
+// checkout, rustup, toolchain, binary) are in NON-DECREASING rank order (a reverse-fold order would set bad>0), and carry no duplicate identity.
 test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
@@ -416,8 +463,8 @@ test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
   match d.forced_command_line {
     Absent => false
     Present { value: line } => {
-      let a = serving_assess(d: d, o: fresh_with_rustup_observed(line, d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
       let ws = plan_writes(plan)
       match first_duplicate_by_key(xs: ws, key: converge_action_key) {
         // A fresh host must get groupadd for the account's OWN group at account_gid AND for the ledger
@@ -702,8 +749,8 @@ test fn planned_useradd_carries_the_model_shell() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
       match account_write_shell(ws: plan_writes(plan)) {
         Absent => false
         Present { value: sh } => sh == d.account_shell
@@ -720,8 +767,8 @@ test fn planned_useradd_shell_is_the_model_value_not_empty() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
       d.account_shell != ""
         && match account_write_shell(ws: plan_writes(plan)) {
              Absent => false
@@ -825,8 +872,8 @@ test fn fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary() -> 
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
       let ws = plan_writes(plan)
       // Diverged-and-runnable, never Indeterminate, and it carries the toolchain write.
       length(ws) > 0
@@ -861,8 +908,8 @@ test fn fresh_host_plans_the_parents_before_the_installs_they_parent() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let a = serving_assess(d: d, o: fresh_with_rustup_observed(forced_line(d), d), pin: pin_ok())
-      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
       let ws = plan_writes(plan)
       // Both parents are planned with the DESIRED state's declared owner and mode — the octal string
       // the write carries is file_mode_octal of the declared FileMode, so a per-arm literal that

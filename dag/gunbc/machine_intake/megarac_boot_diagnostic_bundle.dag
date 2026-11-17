@@ -17,7 +17,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { FreeSemigroup, non_empty_to_list, non_empty_singleton, non_empty_append, trim }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
-import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -25,7 +25,7 @@ import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_t
 import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
-import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed, ipmitool_read_failure, IpmitoolReadDeadlineExpired, IpmitoolReadSessionFailed, IpmitoolReadFailedOtherwise, ipmitool_verbosity_argv, IpmitoolDefaultVerbosity }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -374,26 +374,37 @@ fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, s
 // D4h, and "Unable to establish IPMI v2" for a session that never came up) are declared there, not here.
 fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
   let detail = first_line(s: stderr)
-  if exit_code == coreutils_timeout_expired_exit_code {
-    BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
-  } else {
-    match bmc_ipmitool_session_cause(endpoint: endpoint, at: at, stderr: stderr) {
+  match ipmitool_read_failure(exit_code: exit_code, stderr: stderr) {
+    IpmitoolReadDeadlineExpired =>
+      BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
+    IpmitoolReadSessionFailed { failure: f } => match bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: detail) {
       Present { value: c } => c
       Absent => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
     }
+    IpmitoolReadFailedOtherwise => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
   }
 }
 
 // The session-setup half of that reading, which needs no exit code: a backgrounded collector
 // (gunbc.machine_intake.sol_hold) has no exit status the workflow can read, only the lines it wrote.
 fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: String) -> BmcReadCause? {
-  let detail = first_line(s: stderr)
   match ipmi_session_failure(output: stderr) {
-    Present { value: IpmiSessionAuthRefused } => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
-    Present { value: IpmiSessionUnestablished } => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
-    // Session up, credential accepted, command unknown: nothing about the SESSION to attribute.
-    Present { value: IpmiCommandNotServed } => none
+    Present { value: f } => bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: first_line(s: stderr))
     Absent => none
+  }
+}
+
+// THE ONE MAPPING from the session-failure classification to a read cause, exhaustive over
+// IpmiSessionFailure (no wildcard: a fourth kind of failure must be placed here before anything compiles).
+// IpmiCommandNotServed maps to NO session cause, as #16357 mapped it: the session came up and the
+// credential was accepted, so there is nothing about the session to attribute; a read that failed that
+// way is BmcReadFailed with its exit code (bmc_ipmitool_read_cause), and a backgrounded collector
+// records no session cause (bmc_ipmitool_session_cause).
+fn bmc_ipmi_session_failure_cause(endpoint: NonEmptyStr, at: NonEmptyStr, failure: IpmiSessionFailure, detail: String) -> BmcReadCause? {
+  match failure {
+    IpmiSessionAuthRefused => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
+    IpmiSessionUnestablished => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+    IpmiCommandNotServed => none
   }
 }
 
@@ -2868,7 +2879,9 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()),
   )
   bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -3479,7 +3492,9 @@ fn mtcollins1_boot_mc_info_retain(row: MegaRacBootRow, username: NonEmptyStr, pa
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()),
   )
   if r.success {
     let path = mtcollins1_boot_mc_info_path(row: row, run_attempt: run_attempt)

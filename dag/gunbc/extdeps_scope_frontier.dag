@@ -237,6 +237,12 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 // v2.lens.mandatory_tag region with its parse-grain reader -- and this drain does not claim it.
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/vendor/zt_systems.dag",
+  "dag/extdeps/bmc/aspeed_ast2600.dag",
+  "dag/extdeps/zt_systems/ranger_front_io_board.dag",
+  "dag/extdeps/nvidia/ranger_tray.dag",
+  "dag/extdeps/nvidia/gracebmc_ranger.dag",
+  "dag/extdeps/nvidia/p4261_k1_chassis.dag",
   "dag/extdeps/memory/renesas_tse2004gb2b0.dag",
   "dag/extdeps/firmware/ami_aptio_status_codes.dag",
   "dag/extdeps/firmware/supermicro_ami_aptio_v_post_codes_guide.dag",

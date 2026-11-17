@@ -1,0 +1,268 @@
+module extdeps.nvidia.ranger_tray
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, File }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.population { P4261Position, p4261_position }
+import extdeps.bmc.aspeed_ast2600 { AspeedAst2600CatalogRow, aspeed_ast2600 }
+import extdeps.zt_systems.ranger_front_io_board { RangerFrontIoBoard, ranger_front_io_board, FrontIoPosition, FioJ12, FioJ13, FioJ18, FioJ19, FioJ20, front_io_position_text, front_io_print_at }
+
+// NVIDIA'S "TS1C RANGER COMPUTE" TRAY, P/N 675-24265-2020-T1C, AS AN INTEGRATION: which boards it joins and
+// how. It carries a P4261 E1 baseboard, a ZT Systems front IO board whose DC-SCM slot holds the management
+// module that starts the baseboard, and a power board. No NVIDIA or ZT Systems document for the tray has
+// been read. Every row is cited to one owner's account of a running tray, November 2026, committed with
+// that owner's permission and without naming them (docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md).
+//
+// WHAT A ROW SAYS AND DOES NOT. A cable row says which baseboard position a factory cable joins to which
+// position of another board, and what the tray's label calls the link. It does not say what any contact
+// carries or at what voltage. The telemetry rows are what the baseboard's FPGA reports to the tray's
+// controller on that tray, two channels only, with no whole-tray input current (fans and the front IO
+// board are not in them); they are facts of that integration, and what a board held by this repository
+// draws is the observing layer's (product.p4261.ranger_start_sequence compares, and never copies them).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md"
+  }
+}
+
+data ranger_cited: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+type RangerTray {
+  manufacturer: Vendor<Hardware>
+  name: NonEmptyStr
+  part_number: NonEmptyStr
+  cable_map_label: NonEmptyStr
+  front_io_board: RangerFrontIoBoard
+  standing: CitedFigureStanding
+}
+
+data ranger_tray: RangerTray = RangerTray {
+  manufacturer: nvidia,
+  name: "TS1C RANGER COMPUTE",
+  part_number: "675-24265-2020-T1C",
+  cable_map_label: "H88-1516-001 REV X02",
+  front_io_board: ranger_front_io_board,
+  standing: ranger_cited,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.ranger_tray",
+      decl_name: "ranger_tray",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The tray's controller: a plug-in management module in the front IO board's DC-SCM slot, carrying an
+// AST2600. No part number was read on the module itself. The firmware it runs is its own upstream
+// (extdeps.nvidia.gracebmc_ranger).
+type RangerController {
+  slot: FrontIoPosition
+  processor: AspeedAst2600CatalogRow
+  standing: CitedFigureStanding
+}
+
+data ranger_controller: RangerController = RangerController {
+  slot: FioJ18,
+  processor: aspeed_ast2600,
+  standing: ranger_cited,
+}
+
+// Where a cable's far end lands. The power board is the tray's own; the account gives no part number for
+// it, only the socket.
+type RangerFarEnd
+  = OnFrontIoBoard { position: FrontIoPosition }
+  | OnPowerBoard { socket: NonEmptyStr }
+
+// What the tray's label calls a link, by kind.
+type RangerLinkKind
+  = HighSpeedLink
+  | ManagementLink
+  | PowerFeed
+
+type RangerCable {
+  part_number: NonEmptyStr
+  baseboard: P4261Position
+  far_end: RangerFarEnd
+  kind: RangerLinkKind
+  standing: CitedFigureStanding
+}
+
+fn ranger_cable(part_number: NonEmptyStr, baseboard: NonEmptyStr, far_end: RangerFarEnd, kind: RangerLinkKind) -> RangerCable {
+  RangerCable {
+    part_number: part_number,
+    baseboard: p4261_position(revision: p4261_e1, designator: baseboard),
+    far_end: far_end,
+    kind: kind,
+    standing: ranger_cited,
+  }
+}
+
+// The four cables between the front IO board and the baseboard.
+data ranger_management_cables: List<RangerCable> = [
+  ranger_cable(part_number: "CA-03379-001", baseboard: "J7", far_end: OnFrontIoBoard { position: FioJ12 }, kind: HighSpeedLink),
+  ranger_cable(part_number: "CA-03428-001", baseboard: "J8", far_end: OnFrontIoBoard { position: FioJ13 }, kind: HighSpeedLink),
+  ranger_cable(part_number: "CA-03429-001", baseboard: "J13", far_end: OnFrontIoBoard { position: FioJ20 }, kind: ManagementLink),
+  ranger_cable(part_number: "CA-03378-001", baseboard: "J14", far_end: OnFrontIoBoard { position: FioJ19 }, kind: ManagementLink),
+]
+
+// Power: the tray's power board, fed with 48 V by that owner, to the baseboard's input.
+data ranger_power_cable: RangerCable = ranger_cable(part_number: "CA-03382-001", baseboard: "J20", far_end: OnPowerBoard { socket: "J4" }, kind: PowerFeed)
+
+data ranger_power_board_feed_volts: Nat = 48
+
+fn ranger_far_end_text(e: RangerFarEnd) -> String {
+  match e {
+    OnFrontIoBoard { position } => join(["the front IO board's ", front_io_position_text(p: position), " (", front_io_print_at(p: position), ")"], "")
+    OnPowerBoard { socket } => join(["the power board's ", socket as String], "")
+  }
+}
+
+fn ranger_cable_text(c: RangerCable) -> String {
+  join(["cable ", c.part_number as String, " to ", ranger_far_end_text(e: c.far_end)], "")
+}
+
+fn is_high_speed_link(c: RangerCable) -> Bool {
+  match c.kind {
+    HighSpeedLink => true
+    ManagementLink => false
+    PowerFeed => false
+  }
+}
+
+// ── WHAT ELSE THE ACCOUNT GIVES TO CORROBORATE THE LABEL ────────────────────────────────────────────
+
+// Evidence beside the lid label, each of its own kind: a print read on the front board itself, or a cable
+// followed by hand from one socket to the other.
+type RangerCorroboration
+  = BoardPrintAgrees { position: FrontIoPosition }
+  | CableTracedByHand { baseboard: P4261Position, far: FrontIoPosition }
+
+data ranger_corroborations: List<RangerCorroboration> = [
+  BoardPrintAgrees { position: FioJ13 },
+  BoardPrintAgrees { position: FioJ20 },
+  CableTracedByHand { baseboard: p4261_position(revision: p4261_e1, designator: "J8"), far: FioJ13 },
+]
+
+// ── WHAT THE BASEBOARD REPORTS TO THE CONTROLLER ON THAT TRAY ───────────────────────────────────────
+
+// The baseboard's two hot-swap readings, as its FPGA reports them to the controller, which names them
+// "HSC 0" and "StandbyHSC 0". Which of the baseboard's two hot-swap controllers each is, is not said.
+type RangerPowerChannel
+  = Hsc0
+  | StandbyHsc0
+
+type RangerPowerState
+  = StandbyHostOff
+  | JustAfterPowerOn
+  | RunningIdle
+  | RunningAtOwnerLimits
+
+// A reported figure in watts: one value, a range, or a ceiling ("up to").
+type ReportedWatts
+  = WattsRead { watts: Nat }
+  | WattsBetween { low: Nat, high: Nat }
+  | WattsUpTo { ceiling: Nat }
+
+type RangerPowerReading {
+  channel: RangerPowerChannel
+  state: RangerPowerState
+  figure: ReportedWatts
+}
+
+// "Running: StandbyHSC 0 = 37 W" is given once for the running tray, so it stands for each running state.
+data ranger_power_readings: List<RangerPowerReading> = [
+  RangerPowerReading { channel: Hsc0, state: StandbyHostOff, figure: WattsRead { watts: 7 } },
+  RangerPowerReading { channel: StandbyHsc0, state: StandbyHostOff, figure: WattsRead { watts: 27 } },
+  RangerPowerReading { channel: Hsc0, state: JustAfterPowerOn, figure: WattsRead { watts: 162 } },
+  RangerPowerReading { channel: StandbyHsc0, state: JustAfterPowerOn, figure: WattsRead { watts: 37 } },
+  RangerPowerReading { channel: Hsc0, state: RunningIdle, figure: WattsBetween { low: 140, high: 150 } },
+  RangerPowerReading { channel: StandbyHsc0, state: RunningIdle, figure: WattsRead { watts: 37 } },
+  RangerPowerReading { channel: Hsc0, state: RunningAtOwnerLimits, figure: WattsUpTo { ceiling: 412 } },
+  RangerPowerReading { channel: StandbyHsc0, state: RunningAtOwnerLimits, figure: WattsRead { watts: 37 } },
+]
+
+// The conditions those readings were taken under.
+type RangerTelemetryConditions {
+  module_part_number: NonEmptyStr
+  owner_module_limit_watts: Nat
+  owner_gpu_limit_watts: Nat
+}
+
+data ranger_telemetry_conditions: RangerTelemetryConditions = RangerTelemetryConditions {
+  module_part_number: "699-2G530-0215-DV5",
+  owner_module_limit_watts: 450,
+  owner_gpu_limit_watts: 300,
+}
+
+fn power_state_index(s: RangerPowerState) -> Nat {
+  match s {
+    StandbyHostOff => 0
+    JustAfterPowerOn => 1
+    RunningIdle => 2
+    RunningAtOwnerLimits => 3
+  }
+}
+
+fn watts_at_most(f: ReportedWatts) -> Nat {
+  match f {
+    WattsRead { watts } => watts
+    WattsBetween { low: _, high } => high
+    WattsUpTo { ceiling } => ceiling
+  }
+}
+
+// The two channels' figures for a state added together, each at its most. The account gives the channels
+// separately and does not say they were read at the same moment, so a sum is the consumer's estimate, not a
+// reported total.
+fn ranger_watts_at_most(state: RangerPowerState) -> Nat {
+  fold(filter(ranger_power_readings, r => power_state_index(s: r.state) == power_state_index(s: state)), init: 0, f: (acc, r) => acc + watts_at_most(f: r.figure))
+}
+
+// ── WHAT THE ACCOUNT DID NOT SUPPLY ─────────────────────────────────────────────────────────────────
+
+// Kept as rows so a consumer that needs one of these finds it named as missing, not silently absent.
+type RangerSourceGap
+  = ManagementModulePartNumber
+  | BaseboardContactMap
+  | SignallingVoltage
+  | WholeTrayInputCurrent
+  | HscVoltageAndCurrent
+  | I2cRegistersAndBytes
+  | WhetherBusWorkIsNeeded
+  | PowerOffAndResetScriptFiles
+  | Photographs
+
+data ranger_source_gaps: List<RangerSourceGap> = [
+  ManagementModulePartNumber, BaseboardContactMap, SignallingVoltage, WholeTrayInputCurrent, HscVoltageAndCurrent,
+  I2cRegistersAndBytes, WhetherBusWorkIsNeeded, PowerOffAndResetScriptFiles, Photographs,
+]
+
+fn is_gap(g: RangerSourceGap, want: RangerSourceGap) -> Bool {
+  match g {
+    ManagementModulePartNumber => match want { ManagementModulePartNumber => true, _ => false }
+    BaseboardContactMap => match want { BaseboardContactMap => true, _ => false }
+    SignallingVoltage => match want { SignallingVoltage => true, _ => false }
+    WholeTrayInputCurrent => match want { WholeTrayInputCurrent => true, _ => false }
+    HscVoltageAndCurrent => match want { HscVoltageAndCurrent => true, _ => false }
+    I2cRegistersAndBytes => match want { I2cRegistersAndBytes => true, _ => false }
+    WhetherBusWorkIsNeeded => match want { WhetherBusWorkIsNeeded => true, _ => false }
+    PowerOffAndResetScriptFiles => match want { PowerOffAndResetScriptFiles => true, _ => false }
+    Photographs => match want { Photographs => true, _ => false }
+  }
+}
+
+fn ranger_gap_is_recorded(want: RangerSourceGap) -> Bool {
+  any(ranger_source_gaps, g => is_gap(g: g, want: want))
+}

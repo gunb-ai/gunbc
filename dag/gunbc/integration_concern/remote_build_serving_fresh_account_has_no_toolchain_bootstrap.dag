@@ -2,13 +2,16 @@ module gunbc.integration_concern.remote_build_serving_fresh_account_has_no_toolc
 
 // One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
 // there is no list to append to. Ported from main's block in gunbc.integration_concern
-// at merge 23: main 7f27f475982 (#16632).
+// at main `eac6bf371a7` (gunb-ai/gunbc#16649), this branch's twenty-fourth merge of main: the row's plan refs
+// gained `converge_ensure_rustup` and `converge_install_rustup`, its sighting became a `CitesHistorical` against
+// `remote_build_serving_converge_merge_revision`, its preserved obligation moved from `Absent` to `Present`, and
+// `climbs_when` now names the modelled bootstrap as the capability that closes it.
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
-import std.optional { Absent }
+import std.optional { Present }
 import gunbc.guarantee_stall { climbs_when }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision }
+import gunbc.integration_concern { CitesDeclaration, CitesHistorical, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision }
 
 data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_serving_fresh_account_has_no_toolchain_bootstrap",
@@ -23,7 +26,8 @@ data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationC
     head: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_ensure_toolchain"),
     tail: [
       decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan"),
-      decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_with_rustup_observed"),
+      decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_ensure_rustup"),
+      decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_rustup"),
     ],
   },
   question: "How does a fresh serving account get rustup, so the toolchain write has something to run? Either the bootstrap is modelled as its own write (rustup-init from a pinned, verified source), or the toolchain is provided by an existing converge route the serving account can use.",
@@ -32,7 +36,7 @@ data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationC
       revision: remote_build_serving_converge_merge_revision,
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_with_rustup_observed") }],
+        tail: [CitesHistorical { declaration: HistoricalDeclaration { at: remote_build_serving_converge_merge_revision, module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_with_rustup_observed" } }],
       },
       account: "Observed on main 2026-11-17 (fleet-converge remote_build_serving_observe runs 44046779069 and 44046782964): srv3 and srv4 have no serving account, so rustup is absent, and the converge plans ConvergeUnhandled with the cause 'toolchain: rustup not installed for <account>; no bootstrap modelled' and writes nothing. The plan-shape witnesses that check write order, dedupe and parents-before-installs therefore run on fresh_with_rustup_observed, a constructed fixture in which rustup survived a deleted account; no real fresh host is in that state.",
     },
@@ -43,10 +47,10 @@ data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationC
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan"),
-        control: Absent,
-        statement: "an account whose rustup is absent is never written toward a toolchain by a path that fetches and runs an unpinned installer (curl | sh); until a bootstrap is modelled the plan stays unhandled with zero writes",
+        control: Present { value: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_host_on_an_unpublished_machine_is_unhandled") },
+        statement: "an account whose rustup is absent is bootstrapped only by the pinned rustup-init for the target's triple, verified against the published digest the plan carries before it is executed; a machine or version with no release row stays unhandled with zero writes, never curl | sh",
       },
     ],
-    next: climbs_when(capability: "a fresh host's converge plan settles the toolchain without the fresh_with_rustup_observed fixture, and the plan-shape witnesses move onto the real fresh observation"),
+    next: climbs_when(capability: "the bootstrap is modelled (converge_ensure_rustup, converge_install_rustup) and the plan-shape witnesses run on the real fresh observation; this row closes as integrated when a fleet-converge apply on a fresh host (srv3 or srv4) re-observes settled"),
   },
 }
