@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_acceptance_evidence_witness
 
-// EXECUTING WITNESS for the acceptance law of the roadmap event log — the eleven claims this PR added, run
+// EXECUTING WITNESS for the acceptance law of the roadmap event log — the claims this witness adds, run
 // here rather than in test.claim.roadmap.roadmap_operator_close_retire_witness, and here is why in one
 // paragraph. Those claims were first written into the close/retire witness, whose twenty-six claims and
 // thirty-odd imports include three files the seed probe itself cannot resolve (`roadmap_authority`,

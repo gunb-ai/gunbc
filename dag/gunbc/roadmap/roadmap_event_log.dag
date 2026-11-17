@@ -2096,7 +2096,7 @@ fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
 
 // THE ONE-TIME MIGRATION'S CLOSED SET OF EVIDENCE-LESS ACCEPTANCES, and the only thing that admits one.
 // Seventeen receipts — every acceptance the hand-committed seed
-// (dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl, deleted by this PR) carried; its eighteenth
+// (dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl, was deleted before this PR) carried; its eighteenth
 // line is a revocation, which needs no pull request at all. Each entry is the receipt's canonical
 // identity, the same string roadmap_acceptance_migration_identity computes for the event the log stores,
 // so the test is over the receipt's own bytes: node, criteria digest, red control, handback, who
