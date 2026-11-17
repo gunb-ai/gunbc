@@ -38,7 +38,7 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.types { Bool, FilePath, Int, NonEmptyStr, String }
 import std.effect_grant { filesystem_position, position_under }
 import std.filesystem_path_grant { absolute_path_segments }
 import extdeps.git {
@@ -50,6 +50,12 @@ import extdeps.git {
 }
 import extdeps.shell
 import extdeps.shell.exec
+// EVERY FILESYSTEM QUESTION THIS FIXTURE ASKS ABOUT A PATH is answered by one tool's testimony — `ls -l -n -d`
+// under LC_ALL=C, whose command words extdeps.tools.ls owns — decoded through the folds
+// extdeps.filesystem.filesystem_io provides for it. See roadmap_carrier_observe_entry for why a `test` probe
+// may not answer them.
+import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_numeric_entries_command }
+import extdeps.filesystem.filesystem_io { FilesystemEntryAbsentByLookup, FilesystemEntryPresentByLookup, FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
@@ -142,11 +148,17 @@ fn roadmap_event_carrier_mutation_targets(instance: HostDashboardInstance) -> Li
   )
 }
 
+// THE SHAPE OF A SCRATCH THIS FIXTURE MAY OWN. Every question here is decidable from the path's own text plus
+// ONE listing of the path, and none of them is asked of `shell.Test.IsDirectory`: that primitive declares
+// `exit 1 => missing or not a directory` and the runner realizes that exit as a CLAIM FAILURE, so a witness
+// that asked it about a path it had just swept failed for proving the thing it meant to prove (measured
+// 2026-11-17 at this fixture's first wet run, and filed as node://adhoc-513fffd2-68f). Presence is answered
+// below, by the same testimony that answers absence.
 fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
   starts_with(s: root, prefix: "/tmp/")
     && string_length(s: root) > 5
     && all(absolute_path_segments(path: root), segment => segment != ".." && segment != ".")
-    && shell.Test.IsDirectory(path: root as FilePath)
+    && roadmap_carrier_path_is_present(path: root)
 }
 
 // A SCRATCH IS A CAPABILITY, NOT A STRING. `RoadmapEventCarrierScratch` exists only as the value
@@ -216,28 +228,67 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
   }
 }
 
-// Absence is probed through the EXEC route, where a non-zero exit is DATA (`exit_code`),
-// not through `shell.Test.IsDirectory`. Measured at the first wet run of this fixture
-// (2026-11-17): the sweep controls asserted `!is_directory(root)` on a path the sweep had
-// just removed, the transport logged `✗ shell.Test.IsDirectory failed: $ test -d … (exit=1)`
-// and the claim FAILed — the absence they wanted to prove is exactly what made them fail.
-// `shell.Exec.RunArgv` declares `exit { 0 => Unit; nonzero => Unit }` and carries
-// `exit_code: Int` as output, so the probe's verdict is data the caller reads: `test -d`
-// exits 1 when the path is missing or not a directory (2 would be a usage error, which is
-// not absence either — the probe requires 1 exactly, so a broken probe cannot read as a
-// swept scenario). dag/gunbc/hermetic_mock_fidelity.dag is the standing warning about
-// trusting an exit status nobody observed as data.
-fn roadmap_carrier_path_is_absent(path: String) -> Bool {
-  let probe = shell.Exec.RunArgv(program: "test" as NonEmptyStr, arguments: concat(["-d"], [path]))
-  probe.exit_code == 1
+// ONE OBSERVATION OF ONE PATH, DECODED TWICE. `ls -l -n -d --` on the path itself, bound to LC_ALL=C. The
+// command words come from @ref(extdeps.tools.ls::ls_long_numeric_entries_command) — that module owns ls's own
+// interface shape, and copying them into this file would be a second home for them
+// @ref(gunbc.design_argument::single_authority). The only words added here are the `env` wrapper and its locale
+// binding, which is this caller's share of the route: @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup)
+// assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
+// exactly", and the wrapper idiom is already executed in
+// @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
+// Both predicates below consume the SAME channel value through two pure decoders, so the presence reading and the
+// absence reading cannot disagree about what the host answered — the property
+// @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
+// Filesystem.List per listing, and both folds are pure decoders over that one channel value").
+type RoadmapCarrierEntryObservation { exit_code: Int, stdout: String, stderr: String }
+
+fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation {
+  let command = ls_long_numeric_entries_command(paths: [path])
+  let run = shell.Exec.RunArgv(program: "env" as NonEmptyStr, arguments: concat(["LC_ALL=C", command.program.invocation as String], command.arguments))
+  RoadmapCarrierEntryObservation { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
 }
 
-// The PRESENCE half of the same probe, for the checks that ask whether something is there. Both halves read the
-// status as data and require the exact code they mean: 0 is present, 1 is missing-or-not-a-directory, and 2 (a
-// usage error) is neither, so a broken probe cannot be read as either answer.
+// ABSENCE IS ESTABLISHED BY TESTIMONY, NOT BY A COLLAPSED EXIT. The first version of this predicate asked
+// `test -d` and read exit 1 as absence. @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup) rejects
+// that probe in as many words: "A `test -e` /
+// `test -L` probe cannot answer it either, and the first version of this route used one. `test` collapses EVERY
+// stat and lstat failure into exit 1 — no such file, an I/O error, an ACL or LSM denial on the entry itself —
+// so ... certify ABSENT for an entry that exists and merely could not be stat'ed." Measured in this container
+// on 2026-11-17, with the parent of a scratch directory chmod 000: `test -d <scratch>` exited 1 (this fixture
+// certified it ABSENT, payload and all) while `ls -l -n -d -- <scratch>` exited 2 saying "Permission denied".
+// The second answer is the honest one, and it arrives here as FilesystemEntryUnobservable — which, for a
+// teardown, is not clean. Only FilesystemEntryAbsentByLookup says gone, and every route to it passes through
+// ls_entry_query_missing_diagnostic's exact ENOENT/ENOTDIR lines.
+fn roadmap_carrier_path_is_absent(path: String) -> Bool {
+  let seen = roadmap_carrier_observe_entry(path: path)
+  match filesystem_entry_lookup_reading_of_exit(path: path, exit_code: seen.exit_code, stdout: seen.stdout, stderr: seen.stderr) {
+    FilesystemEntryAbsentByLookup { cause: _ } => true
+    FilesystemEntryPresentByLookup { path: _ } => false
+    FilesystemEntryUnobservable { cause: _ } => false
+  }
+}
+
+// PRESENCE IS THE SAFE HALF, because a `0` exit can only come from a host that looked and succeeded; the half I
+// got wrong was absence, which needs the host's REASON for failing and a collapsing probe throws that away. It is
+// still not satisfied by "listed" alone: it requires the entry to be listed AS A DIRECTORY, which is what the
+// mint actually creates (`shell.Mkdir.NewOwnerOnly`) and what the provenance door is really asking. A stray
+// regular FILE wearing the seal's name must not satisfy a door whose whole job is proving this fixture built the
+// tree. The kind comes from the same channel value, through @ref(extdeps.tools.ls::ls_entry_query_reading_of_output).
 fn roadmap_carrier_path_is_present(path: String) -> Bool {
-  let probe = shell.Exec.RunArgv(program: "test" as NonEmptyStr, arguments: concat(["-d"], [path]))
-  probe.exit_code == 0
+  let seen = roadmap_carrier_observe_entry(path: path)
+  match filesystem_entry_lookup_reading_of_exit(path: path, exit_code: seen.exit_code, stdout: seen.stdout, stderr: seen.stderr) {
+    FilesystemEntryPresentByLookup { path: _ } => match ls_entry_query_reading_of_output(path: path, exit_code: seen.exit_code, stdout: seen.stdout, stderr: seen.stderr) {
+      LsEntryQueryPresent { path: _, entry: LsLongEntryRead { name: _, directory: listed_as_directory, ownership: _, mode: _ } } => listed_as_directory
+      // ls printed the name but could not classify it — an unparseable mode, no numeric owner, or an alternate
+      // access method (+) that can grant more than the mode bits show. Not a directory this fixture made.
+      LsEntryQueryPresent { path: _, entry: LsLongEntryRefused { name: _, reason: _ } } => false
+      LsEntryQueryMissing { path: _, diagnostic: _ } => false
+      LsEntryQueryRefused { path: _, diagnostic: _ } => false
+      LsEntryQueryUnreadable { path: _, cause: _ } => false
+    }
+    FilesystemEntryAbsentByLookup { cause: _ } => false
+    FilesystemEntryUnobservable { cause: _ } => false
+  }
 }
 
 // THE SEAL, as two filesystem questions. Creating it is exclusive (`shell.Mkdir.NewOwnerOnly` fails when the name
@@ -327,9 +378,11 @@ fn roadmap_event_carrier_sweep(scratch: RoadmapEventCarrierScratch) -> RoadmapCa
 // The counterexample that forced this, found in review of the first seal design: a body that removes only the seal
 // directory and returns true. The sweep then finds no seal, refuses at provenance, and a predicate that counted
 // refusal as clean let the claim pass with the scenario still sitting in /tmp — a leak paid for by the very
-// authorization check that was added to stop leaks. Both arms go to the filesystem (`test -d`, exit code as data)
-// rather than trusting the delete's own report: a `rm -rf` that claims success and leaves the tree behind is not a
-// teardown either.
+// authorization check that was added to stop leaks. Both arms go to the filesystem — one `ls -l -n -d` on the
+// root, read by filesystem_entry_lookup_reading_of_exit — rather than trusting the delete's own report: a
+// `rm -rf` that claims success and leaves the tree behind is not a teardown either. And neither arm may be
+// satisfied by an unreadable root: "could not look" is not "looked and found nothing", which is the difference
+// between a teardown and a leak with better manners.
 fn roadmap_carrier_teardown_is_complete(scratch: RoadmapEventCarrierScratch, sweep: RoadmapCarrierSweep) -> Bool {
   match sweep {
     RoadmapCarrierSweepDone { path: gone } => roadmap_carrier_path_is_absent(path: gone)
@@ -438,6 +491,49 @@ fn roadmap_event_carrier_provision(instance: HostDashboardInstance, scratch: Roa
         RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
         RoadmapCarrierStepDone => RoadmapEventCarrierReady { instance: instance, layout: layout, scratch: scratch }
       }
+    }
+  }
+}
+
+// A DIRECTORY THIS FIXTURE CANNOT LOOK AT IS NOT A DIRECTORY IT HAS TAKEN BACK. This is the red control for the
+// fail-open the first version of this file shipped with, and it is the reason the two predicates above are no
+// longer `test` probes. The scenario is a scratch this fixture scaffolded with its own primitives — parent under
+// /tmp, scenario inside it, payload inside that, and the ownership seal planted by the same exclusive create the
+// mint uses — so the fixture genuinely holds the authority; then the PARENT is chmod 000, which is the cheapest
+// way to make the scenario exist and be unstat-able at once. `test -d` on it exits 1, the code the first version
+// read as absence, and the sweep's refusal was forgiven on the strength of that 1: teardown reported complete,
+// the claim passed, and the scenario sat in /tmp with its payload. Measured here on 2026-11-17: test -d exit 1,
+// `ls -l -n -d --` exit 2 saying Permission denied. The mode is restored before any cleanup so the sweep still
+// gets to do its job, and every step below is bound by a `let` rather than chained behind `&&`, because `&&`
+// short-circuits and a skipped restore would leave a 000 directory in /tmp for the next run to trip over.
+test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as FilePath)
+  let parent: String = made.path as String
+  if !made.success {
+    claim("the harness could not mint its own parent directory under /tmp/", false)
+  } else {
+    let root: String = concat(concat(parent, "/"), "scenario")
+    let scaffolded = shell.Mkdir.NewOwnerOnly(path: root as FilePath).success
+      && shell.Mkdir.NewOwnerOnly(path: concat(root, "/payload") as FilePath).success
+      && roadmap_carrier_seal_create(root: root)
+    if !scaffolded {
+      claim("the harness could not scaffold a scenario, its payload, and its seal inside the parent", false)
+    } else {
+      let scratch = RoadmapEventCarrierScratch { path: root, template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as String }
+      let hidden = shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["000", parent])
+      let blinded_absent = claim("an unreadable scenario must not be certified absent, because an unreadable entry is not a missing one", !roadmap_carrier_path_is_absent(path: root))
+      let blinded_sweep = roadmap_event_carrier_sweep(scratch: scratch)
+      let blinded_teardown = claim("a scenario the fixture cannot even look at is not a completed teardown, so its sweep must not be forgiven", !roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: blinded_sweep))
+      let restored = shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["700", parent])
+      let cleaned = roadmap_event_carrier_sweep(scratch: scratch)
+      let torn_back = roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: cleaned)
+      let parent_removed = shell.Remove.RecursiveForce(path: parent as FilePath).success
+      claim("chmod 000 on the parent succeeded, so the scenario really was unstat-able rather than merely missing", hidden.exit_code == 0)
+        && blinded_absent
+        && blinded_teardown
+        && claim("chmod 700 restored the parent, so the cleanup below ran against a readable tree", restored.exit_code == 0)
+        && claim("with the parent readable again the sweep takes the scenario back and the root is independently gone", torn_back)
+        && claim("the harness left nothing behind in /tmp/", parent_removed && roadmap_carrier_path_is_absent(path: parent))
     }
   }
 }
