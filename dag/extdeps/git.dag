@@ -1532,8 +1532,16 @@ fn git_local_fetch_upload_pack_command(grant: SafeDirectoryGrant) -> String {
   join(git_argv_of_args(args: ["-c", shell_quote(arg: join([git_safe_directory_key, "=", grant.path as String], "")), "upload-pack"]), " ")
 }
 
+// THE IN-REPO SET, WITHOUT THE PROGRAM WORD: the argv form below is the shape a spawner runs; this one is the
+// shape a CALLER that already names the program needs — a step row that carries {program, arguments}, or a
+// witness that runs the tool through the harness's own exec route. One spelling of the words, two dressings, so
+// no caller has to write `-C <repo> config --local` by hand and drift from the spawner's.
+fn shape_git_config_local_in_repo_args(repo: FilePath, key: String, value: String) -> List<String> {
+  ["-C", repo as String, "config", "--local", key, value]
+}
+
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
-  git_argv_of_args(args: ["-C", repo as String, "config", "--local", key, value])
+  git_argv_of_args(args: shape_git_config_local_in_repo_args(repo: repo, key: key, value: value))
 }
 
 // THE READBACK OF THE THREE POSTURE KEYS, as a command rather than as a service operation, so a
@@ -2382,6 +2390,15 @@ fn shape_git_commit_allow_empty_args(message: String) -> List<String> {
   ["commit", "-q", "--allow-empty", "-m", message]
 }
 
+// THE SAME COMMIT IN A NAMED REPOSITORY. The bare shape above is what the carrier runs, because its exec route
+// carries the working directory itself; a caller that runs the tool through a route which does NOT (the harness
+// exec route, where every wet witness runs) must name the repository on the command line, or the commit lands in
+// whatever repository happens to be the process's working directory — which is how a fixture meant to stand a
+// throwaway carrier up once committed into the tree it was run from.
+fn shape_git_commit_allow_empty_in_repo_args(message: String, repo: FilePath) -> List<String> {
+  concat(["-C", repo as String], shape_git_commit_allow_empty_args(message: message))
+}
+
 fn shape_git_add_path_args(path: String) -> List<String> {
   ["add", "--", path]
 }
@@ -2417,6 +2434,21 @@ fn shape_git_remote_get_url_argv(
   ["-C", repo as String, "remote", "get-url", remote as String]
 }
 
+// THE REMOTE ADD — the write-side counterpart of the read above, spelled once here. A repository is not a carrier
+// until the branch its snapshot publishes has somewhere to be pushed, and the caller that stands one up (a
+// deployment step, a wet fixture) names its own program, so these are the bare words plus the in-repo dressing.
+fn shape_git_remote_add_args(remote: NonEmptyStr, url: String) -> List<String> {
+  ["remote", "add", remote as String, url]
+}
+
+fn shape_git_remote_add_in_repo_args(
+  repo: FilePath,
+  remote: NonEmptyStr,
+  url: String,
+) -> List<String> {
+  concat(["-C", repo as String], shape_git_remote_add_args(remote: remote, url: url))
+}
+
 fn shape_git_fetch_unshallow_argv(
   repo: FilePath,
   remote: NonEmptyStr,
@@ -2428,8 +2460,15 @@ fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
   ["init", "--bare", path as String]
 }
 
+// THE IN-REPO `init -q`, WITHOUT THE PROGRAM WORD — the same reason as `shape_git_config_local_in_repo_args`:
+// a step row names its program itself, and must not re-spell these words. `git init` on an existing repository
+// is a no-op re-init rather than an error, which is what lets a caller stand a repository up idempotently.
+fn shape_git_init_in_repo_args(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "init", "-q"]
+}
+
 fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
-  git_argv_of_args(args: ["-C", repo as String, "init", "-q"])
+  git_argv_of_args(args: shape_git_init_in_repo_args(repo: repo))
 }
 
 fn shape_git_bare_fetch_argv(
