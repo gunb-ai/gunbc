@@ -859,20 +859,41 @@ fn roadmap_migration_roster_refusals(supplied: List<String>, model_roster: List<
   }
 }
 
+// THE WET HALF, AND ONLY IT. `roadmap_operator_close_history` is the single host act inside the verdict: it is
+// the log's own reader, and the nodes it says are closed are the fact the comparison below stands over. The read
+// is taken here and handed down as a value, so the decision itself is a fold over values. That seam is not
+// decoration: until now the branch that CERTIFIES could not be reached from a claim at all (the read refuses
+// before it), so the counts the operator is told — among them `retired_named` — were unexecuted code. A
+// declaration whose only route of execution is a production host is a declaration nobody has seen answer
+// (gunbc.design_argument::consumption); the claim holding this route open is
+// test.claim.roadmap.roadmap_acceptance_evidence_witness::the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_holds.
 fn roadmap_acceptance_migration_verdict(
   wanted: List<RoadmapAcceptanceEvent>, log_events: List<RoadmapAcceptanceEvent>,
   envelopes: List<RoadmapEventEnvelope>, layout: RoadmapEventCarrierLayout,
   retired_ids: List<RoadmapNodeId>, retired_roster: String
 ) -> RoadmapAcceptanceMigrationOutcome {
-  let held_ids = map(log_events, e => roadmap_acceptance_migration_identity(e: e))
   let history = roadmap_operator_close_history(layout: layout)
   // What the LOG's own reader says is closed: the nodes whose live receipt its fold establishes. The
   // manifest's own sequence is replayed separately, inside the comparison below — two folds over two
   // sources, so a lost acceptance or an un-applied revocation is a disagreement, never a silence.
-  let closed_nodes = map(
-    filter(log_events, e =>
-      roadmap_operator_node_closed(node: roadmap_acceptance_migration_event_node(e: e) as NonEmptyStr as RoadmapNodeId, history: history) == AcceptanceFound),
-    e => roadmap_acceptance_migration_event_node(e: e))
+  roadmap_acceptance_migration_decide(
+    wanted: wanted, log_events: log_events, envelopes: envelopes,
+    closed_nodes: map(
+      filter(log_events, e =>
+        roadmap_operator_node_closed(node: roadmap_acceptance_migration_event_node(e: e) as NonEmptyStr as RoadmapNodeId, history: history) == AcceptanceFound),
+      e => roadmap_acceptance_migration_event_node(e: e)),
+    retired_ids: retired_ids, retired_roster: retired_roster)
+}
+
+// THE DECISION, over values: the manifest's sequence, the log's folded events, the nodes the log's own reader
+// closed, the retirements the log carries, and the roster the operator's export supplied. Nothing here touches a
+// host, which is what makes the certified outcome constructible by a witness.
+fn roadmap_acceptance_migration_decide(
+  wanted: List<RoadmapAcceptanceEvent>, log_events: List<RoadmapAcceptanceEvent>,
+  envelopes: List<RoadmapEventEnvelope>, closed_nodes: List<String>,
+  retired_ids: List<RoadmapNodeId>, retired_roster: String
+) -> RoadmapAcceptanceMigrationOutcome {
+  let held_ids = map(log_events, e => roadmap_acceptance_migration_identity(e: e))
   // The file is checked against the model's roster and then set aside: everything below runs on `model_roster`,
   // so a file that drops, adds, repeats or reorders a name cannot move the retired read or the scope of the
   // comparison. The refusal is folded into `problems`, so it renders through the same MIGRATION REFUSED the
