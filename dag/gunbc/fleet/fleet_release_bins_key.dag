@@ -1579,10 +1579,16 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     // Page 1 admits itself into the union file; a refused admission is the
     // typed plan-failed (the plan cannot run without its first page) and takes
     // the answer with it, so the pages gated on TOTAL never half-run.
+    // The over-cap refusal above already typed its own verdict and left the
+    // answer in place; re-admitting it here would only add a spurious
+    // plan-failed beside over-cap (a 501-entry answer is by construction not
+    // the admitted shape), so the admission is skipped once the flag exists.
     bash_build_or_else(
       left: bash_build_and_then(
         left: answer_present,
-        right: bash_build_or_else(
+        right: bash_build_and_then(
+          left: flag_absent,
+          right: bash_build_or_else(
           left: bash_build_with_redir_append_to_file(
             inner: cmd(ws: release_bins_retention_page1_words()),
             path: rooted(file: release_bins_retention_union_basename),
@@ -1591,6 +1597,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
             cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
             release_bins_retention_echo(word: "plan-failed"),
           ]),
+        ),
         ),
       ),
       right: nothing_arm,
