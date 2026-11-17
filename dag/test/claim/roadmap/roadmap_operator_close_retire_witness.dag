@@ -249,6 +249,7 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear,
   launch_fixture_doc
 }
+import test.claim.roadmap.roadmap_event_carrier_fixture { roadmap_event_carrier_wet }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderCompleted
 }
@@ -838,13 +839,24 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
 // (DESIGN §4c/§5, review 91811). The DISCRIMINATING control is an OPEN node in the SAME instance whose
 // lineage the gate leaves alone (Absent), so the refusal is proven a retirement rule and not a blanket
 // launch veto that would pass even when nothing is retired.
+//
+// THE WORLD IT IS WITNESSED OVER IS A REAL EVENT LOG. The retire reaches the gate through
+// gunbc.roadmap.roadmap_issue_command.issue_command_apply over the carrier that
+// test.claim.roadmap.roadmap_event_carrier_fixture stood up, so the refusal is read off a COMMITTED event
+// tail — a git object in a repository the fixture provisioned — and not off a value handed to the fold.
+//
+// THE HISTORY THE GATE IS JUDGED OVER IS THE HISTORY THE GATE READS. belt_dispatch_node_for_instance_over is
+// the only production route to this seam, and it reads the acceptance history as
+// roadmap_operator_close_history over the SAME instance whose lineage it is judging; the claim judges over
+// that history too. A history read from some other carrier is a different gate: an unreadable acceptance
+// status makes EVERY node's terminality unreadable (roadmap_operator_node_closed answers ClosedStatusUnreadable),
+// so it refuses the open control as well and witnesses a blanket veto rather than a retirement rule. Where a
+// REFUSED carrier is the point, this file already says it — a_retired_node_is_not_open_to_the_belt_even_over_a_refused_carrier
+// and a_retired_nodes_lineage_is_terminal_to_the_belt both judge over one and expect the refusal.
 test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  if !directory.success { claim("the temp dir for the launch-gate row could not be made", false) }
-  else {
-    let instance = fabric_fixture_instance(root: directory.path as String)
+  roadmap_event_carrier_wet(fn_with: fn(instance) {
     let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    let gate_history = roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))
+    let gate_history = roadmap_operator_close_history(layout: layout)
     match issue_command_apply(layout: layout,
       command: RetireNode { subject: IssueCommandSubject {
         node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
@@ -868,7 +880,7 @@ test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -
       }
       _ => claim("the retire write law refused the seed event for the launch-gate row", false)
     }
-  }
+  })
 }
 
 // ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────
