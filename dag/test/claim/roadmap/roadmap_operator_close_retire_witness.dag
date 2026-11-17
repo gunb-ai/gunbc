@@ -35,7 +35,8 @@ import std.types {
   NonEmptyStr,
   List,
   EpochSecs,
-  Email
+  Email,
+  FilePath
 }
 
 import std.integer {
@@ -258,7 +259,8 @@ import test.claim.roadmap.roadmap_event_carrier_fixture {
   roadmap_event_carrier_sweep,
   roadmap_carrier_path_is_absent,
   roadmap_carrier_path_is_present,
-  roadmap_carrier_sweep_is_clean,
+  roadmap_carrier_seal_path,
+  roadmap_carrier_teardown_is_complete,
   RoadmapCarrierScopedMintRefused,
   RoadmapCarrierScopedRan,
   RoadmapCarrierSweepDone,
@@ -320,7 +322,7 @@ fn wet_owned(fn_with: fn(HostDashboardInstance, RoadmapEventCarrierScratch) -> B
       let _unjudged = claim("the wet scenario could not be minted: " + d, false)
       RoadmapWitnessWetRun { result: false, swept: true, root: "" }
     }
-    RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: root } => RoadmapWitnessWetRun { result: judged, swept: roadmap_carrier_sweep_is_clean(sweep: sweep), root: root }
+    RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: root, torn_down: torn_down } => RoadmapWitnessWetRun { result: judged, swept: torn_down, root: root }
   }
 }
 
@@ -1000,7 +1002,7 @@ fn carrier_ownership_refusal_witness(instance: HostDashboardInstance, scratch: R
         RoadmapEventCarrierReady { scratch: _ } => claim("the fixture stood a carrier up over an instance minted outside the scratch it was given", false)
       }
       let untouched = roadmap_carrier_path_is_absent(concat(foreign.path, "/source"))
-      let foreign_swept = roadmap_carrier_sweep_is_clean(sweep: roadmap_event_carrier_sweep(scratch: foreign))
+      let foreign_swept = roadmap_carrier_teardown_is_complete(scratch: foreign, sweep: roadmap_event_carrier_sweep(scratch: foreign))
       claim("the carrier the route must refuse was refused", verdict)
         && claim("the foreign tree the fixture had no right to touch was never created", untouched)
         && claim("the foreign scratch this claim minted was swept", foreign_swept)
@@ -1025,6 +1027,35 @@ test fn the_wet_carrier_refuses_an_instance_it_does_not_own_and_sweeps_its_scena
 // proof that writing it buys nothing. Both mutation doors have to refuse it, by name, and the unowned tree has to
 // be sitting there untouched afterwards — no carrier inside it, and still present — with the control doing its own
 // cleanup so it does not leave the leak it is testing for.
+// THE LEAK THE AUTHORITY CHECK COULD HAVE BOUGHT. The seal exists to stop the fixture deleting what it does not
+// own; the failure it nearly created is the mirror image — the fixture declining to delete what it DOES own. A body
+// that removes only the seal directory and returns true leaves the sweep with no seal to find, so the sweep refuses
+// at provenance, and any predicate that reads 'refused' as 'clean' passes a claim whose scenario is still sitting
+// in /tmp. That leak is paid for by the very check added to prevent leaks, which is the kind of progress worth
+// testing for rather than admiring: this claim mints a scratch legitimately through the scoped run, sabotages only
+// the seal, and demands that the run report the teardown INCOMPLETE, that the root is really still there, that the
+// sweep refused at provenance rather than claiming a delete it could not make, and that the control then cleans up
+// the leak it just proved — because a control that leaks while demonstrating a leak has proved nothing.
+test fn the_wet_carrier_does_not_call_a_leaked_scratch_clean() -> Bool {
+  match roadmap_event_carrier_run_scoped(template: "/tmp/gunbc_carrier_leaktest.XXXXXX" as NonEmptyStr, body: fn(scratch) { claim("the control removed the seal from the scratch the fixture minted", shell.Remove.RecursiveForce(path: roadmap_carrier_seal_path(root: scratch.path) as FilePath).success) }) {
+    RoadmapCarrierScopedMintRefused { detail: d } => claim("the fixture could not mint the leak-test scratch: " + d, false)
+    RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: root, torn_down: torn_down } => {
+      let refused_provenance = match sweep {
+        RoadmapCarrierSweepRefused { step: step, detail: _ } => claim("the sweep refused to tear down what it had minted, at " + step, step == "provenance")
+        RoadmapCarrierSweepDone { path: gone } => claim("the sweep claimed it deleted a scratch whose seal was gone: " + gone, false)
+        RoadmapCarrierSweepFailed { path: failed } => claim("the sweep's delete failed on the leak-test scratch: " + failed, false)
+      }
+      let still_there = roadmap_carrier_path_is_present(path: root)
+      let cleanup = shell.Remove.RecursiveForce(path: root as FilePath).success
+      claim("the body's judgement held, so only the teardown could fail the run", judged)
+        && claim("the scoped run did NOT report the teardown complete", !torn_down)
+        && claim("the minted root really was still there", still_there)
+        && refused_provenance
+        && claim("the control cleaned up the leak it proved", cleanup)
+    }
+  }
+}
+
 test fn the_wet_carrier_refuses_to_provision_or_sweep_a_tree_it_never_minted() -> Bool {
   let made = shell.Mktemp.Dir()
   let unowned: String = made.path as String

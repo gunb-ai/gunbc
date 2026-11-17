@@ -83,6 +83,13 @@ data roadmap_carrier_fixture_root_commit_message: String = "gunbc wet carrier fi
 // caller, and the ceiling is stated here rather than papered over. What is enforced is "this fixture created this
 // directory", checked against the filesystem at the moment of use — not "only this module can name the type". A
 // token naming a directory the fixture really did mint still deletes it, and that is the intended authority.
+// WHAT THIS GUARD IS, IN ONE LINE: it is an accidental-misuse guard, not a security credential. It stops a witness
+// author from pointing the fixture's authority at a directory they did not mint — a wrong path, a copy-pasted
+// scratch, a stale constant — which is the failure this fixture actually has to survive. It does not stop an
+// adversary who deliberately recreates the seal name inside someone else's tree, and nobody should read it as
+// capability-based access control: the name it checks is public, the type is public, and a determined caller can
+// plant it. A guard priced against misuse and described as one is worth more than the same guard described as a
+// credential.
 data roadmap_carrier_seal_name: String = ".gunbc-wet-carrier-seal-v1"
 
 fn roadmap_carrier_seal_path(root: String) -> String {
@@ -168,7 +175,7 @@ fn roadmap_carrier_mint_cleanup_words(cleaned: Bool) -> String {
 // so a caller can assert each — and none of the three is an input, so none of them can be forged into the run.
 type RoadmapCarrierScopedRun
   = RoadmapCarrierScopedMintRefused { detail: String }
-  | RoadmapCarrierScopedRan { judged: Bool, sweep: RoadmapCarrierSweep, root: String }
+  | RoadmapCarrierScopedRan { judged: Bool, sweep: RoadmapCarrierSweep, root: String, torn_down: Bool }
 
 // THE ONLY COMPOSITION, and the reason no caller has to remember to clean up. Mint, run and sweep are one operation
 // here rather than three calls a caller must sequence: a witness that forgets the sweep, or one that returns from
@@ -179,7 +186,8 @@ type RoadmapCarrierScopedRun
 // scratch they typed, because the token they were handed is the only one their run ever had.
 fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
   let judged = body(scratch)
-  RoadmapCarrierScopedRan { judged: judged, sweep: roadmap_event_carrier_sweep(scratch: scratch), root: scratch.path }
+  let sweep = roadmap_event_carrier_sweep(scratch: scratch)
+  RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: scratch.path, torn_down: roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: sweep) }
 }
 
 fn roadmap_event_carrier_run_scoped(template: NonEmptyStr, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
@@ -310,14 +318,23 @@ fn roadmap_event_carrier_sweep(scratch: RoadmapEventCarrierScratch) -> RoadmapCa
   }
 }
 
-// WHETHER A SWEEP LEAVES THE FIXTURE'S OBLIGATION MET. Success and refusal both do — a refusal means the directory
-// was never the fixture's to begin with, which is the contract holding, not failing. A FAILED delete does not:
-// that is a scenario left on disk for the next run to read, and it has to be able to fail a claim.
-fn roadmap_carrier_sweep_is_clean(sweep: RoadmapCarrierSweep) -> Bool {
+// WHETHER THE FIXTURE HAS ACTUALLY TAKEN BACK WHAT IT MINTED — the obligation on the SIDE OF THE LEDGER that owns
+// the directory. Do not read this as the mirror of the sweep's authorization question: a refusal is the RIGHT answer
+// when a caller hands the fixture someone else's tree (see the foreign-token witness), and it is the WRONG answer
+// when the directory came from this fixture's own mint. So refusal here is not clean; what is clean is a delete that
+// reports Done AND a root that is independently verifiably gone.
+//
+// The counterexample that forced this, found in review of the first seal design: a body that removes only the seal
+// directory and returns true. The sweep then finds no seal, refuses at provenance, and a predicate that counted
+// refusal as clean let the claim pass with the scenario still sitting in /tmp — a leak paid for by the very
+// authorization check that was added to stop leaks. Both arms go to the filesystem (`test -d`, exit code as data)
+// rather than trusting the delete's own report: a `rm -rf` that claims success and leaves the tree behind is not a
+// teardown either.
+fn roadmap_carrier_teardown_is_complete(scratch: RoadmapEventCarrierScratch, sweep: RoadmapCarrierSweep) -> Bool {
   match sweep {
-    RoadmapCarrierSweepDone { path: _ } => true
-    RoadmapCarrierSweepRefused { step: _, detail: _ } => true
+    RoadmapCarrierSweepDone { path: gone } => roadmap_carrier_path_is_absent(path: gone)
     RoadmapCarrierSweepFailed { path: _ } => false
+    RoadmapCarrierSweepRefused { step: _, detail: _ } => roadmap_carrier_path_is_absent(path: scratch.path)
   }
 }
 
