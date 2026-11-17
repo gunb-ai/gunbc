@@ -152,15 +152,28 @@ fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
         RunLookupNoneForHead
       } else {
         let parts = split(s: trim(s: t), delimiter: "\t")
-        if (last(l: parts) as String) == (first(l: parts) as String) || (last(l: parts) as String) == "" {
-          RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
-        } else {
-          RunLookupFound {
-            run: ReleasePairRunObservation {
-              run_id: first(l: parts) as NonEmptyStr,
-              head_sha: last(l: parts) as NonEmptyStr,
-            },
-          }
+        // first/last return String? — a cast does NOT eliminate the absence (the CI parse-only lane misses this;
+        // only the full resolve caught it). Match Present/Absent first, then compare and cast the UNWRAPPED Strings.
+        // Fail-closed (gunbc.design_argument::fail_closed): an absent end, an empty run/head field, or a run==head
+        // single-field line (no tab) is a NAMED malformed refusal — never a guessed run. Only a well-formed
+        // "<run-id>TAB<head-sha>" line with two DISTINCT non-empty fields is Found.
+        match first(l: parts) {
+          Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+          Present { value: run_field } =>
+            match last(l: parts) {
+              Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+              Present { value: head_field } =>
+                if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
+                  RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+                } else {
+                  RunLookupFound {
+                    run: ReleasePairRunObservation {
+                      run_id: run_field as NonEmptyStr,
+                      head_sha: head_field as NonEmptyStr,
+                    },
+                  }
+                }
+            }
         }
       }
     ProcessOutputAbsent => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
