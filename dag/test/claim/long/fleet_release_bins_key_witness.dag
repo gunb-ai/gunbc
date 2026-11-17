@@ -774,8 +774,17 @@ test fn release_bins_retention_parses_fractional_seconds() -> Bool {
   let r = run_script(script: script_retention_frac_shapes)
   r.ran
     && r.success
-    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
     && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1")
+    && !string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
+    && !string_contains(s: r.stdout, pattern: "due=10")
+    && !string_contains(s: r.stdout, pattern: "due=11")
+    && !string_contains(s: r.stdout, pattern: "due=12")
+    && !string_contains(s: r.stdout, pattern: "due=13")
+    && !string_contains(s: r.stdout, pattern: "due=14")
+    && !string_contains(s: r.stdout, pattern: "due=15")
+    && !string_contains(s: r.stdout, pattern: "due=16")
+    && !string_contains(s: r.stdout, pattern: "due=17")
     && !string_contains(s: r.stdout, pattern: "plan-failed")
 }
 
@@ -783,8 +792,17 @@ test fn release_bins_retention_orders_mixed_timestamp_shapes() -> Bool {
   let r = run_script(script: script_retention_mixed_shapes)
   r.ran
     && r.success
-    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
     && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1")
+    && !string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
+    && !string_contains(s: r.stdout, pattern: "due=10")
+    && !string_contains(s: r.stdout, pattern: "due=11")
+    && !string_contains(s: r.stdout, pattern: "due=12")
+    && !string_contains(s: r.stdout, pattern: "due=13")
+    && !string_contains(s: r.stdout, pattern: "due=14")
+    && !string_contains(s: r.stdout, pattern: "due=15")
+    && !string_contains(s: r.stdout, pattern: "due=16")
+    && !string_contains(s: r.stdout, pattern: "due=17")
     && !string_contains(s: r.stdout, pattern: "plan-failed")
 }
 
