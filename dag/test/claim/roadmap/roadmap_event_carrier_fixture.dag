@@ -47,10 +47,12 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  checked-in callers pass is a `/tmp` template, and none of them targets `/var/lib/gunbc`, a production partition,
 //  a srv1/srv2/srv3 realization, or a service instance. But the same create-before-admit order that leaks a
 //  `/var/tmp` directory applies to any template, so a caller who passed a production path would have a directory
-//  created there before the refusal arrived. Enforcing the ban inside `roadmap_event_carrier_mint_scratch` — reject
-//  the template before creating, or reclaim on refusal — is the job of the follow-up behaviour change that also
-//  fixes that leak; until that lands this paragraph states an obligation honoured by its callers and by review, not
-//  a check the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  created there before the refusal arrived. That ordering is a tracked failure class, not a note to self:
+//  @ref(gunbc.recurring_failure_mode.refused_admission_leaves_the_side_effect_it_ran_first::refused_admission_leaves_the_side_effect_it_ran_first)
+//  carries it, with this mint as its named specimen, its rung reading, and the capability that closes it — test the
+//  admission predicate against the caller-supplied path before any call that creates at that path. Until that row's
+//  trigger lands, this paragraph states an obligation honoured by the checked-in callers and by review, not a check
+//  the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
