@@ -44,7 +44,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_operator_acceptance {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
-  RoadmapAcceptanceEventHistoryLoadRefused,
+  RoadmapAcceptanceEventHistoryLoadRefused, roadmap_migration_roster_refusals,
 }
 // THE MIGRATED DECLARATIONS, from the module that exists only to hold them (review 94530). The
 // claims below import nothing else from gunbc.roadmap.roadmap_event_cli: if a cutover declaration
@@ -628,6 +628,63 @@ test fn a_document_that_is_not_a_precheck_report_is_refused_as_unreadable() -> B
   !gate_admits(gate: gate)
     && string_contains(s: gate_detail(gate: gate), pattern: "un-checked")
     && string_contains(s: gate_detail(gate: gate), pattern: "entry-graph-union-construction")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROSTER THE STEP-5 VERIFIER IS HANDED IS CHECKED, NOT CONSUMED.
+//
+// `roadmap_acceptance_migration_verdict` takes the retired roster as a String read from a file, and that roster
+// decides two things at once: which nodes the retired read interrogates, and — since the comparison is scoped to
+// the nodes the migration carried — which nodes the comparison has any standing over. A name quietly dropped
+// from the file therefore removes that node from BOTH, and a migration in which that retirement never arrived
+// would verify. So the file may not be the authority on its own contents: the model names the retirements
+// (`roadmap_migration_retirement_ids`), the verdict runs on the model's list, and the file is matched against it.
+// Whether two lists are the same roster is decided by the same predicate the migration gate above uses
+// (`roadmap_cutover_string_lists_agree`) — one meaning of "the same roster" (gunbc.design_argument::single_authority).
+
+test fn the_migration_verifier_refuses_a_retirement_dropped_from_the_supplied_roster() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let supplied = filter(model, n => n != "shell-dag-ci-heal-regen-invoke")
+  let refusals = roadmap_migration_roster_refusals(supplied: supplied, model_roster: model)
+  claim("a modeled retirement omitted from the supplied roster refuses, naming the omitted node",
+    count(refusals) == 1 &&
+      any(refusals, r => string_contains(s: r, pattern: "shell-dag-ci-heal-regen-invoke")))
+}
+
+test fn the_migration_verifier_refuses_a_roster_name_the_model_does_not_retire() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let refusals = roadmap_migration_roster_refusals(
+    supplied: concat(model, ["node-the-model-does-not-retire"]), model_roster: model)
+  claim("a roster carrying a name the model does not retire refuses, naming the invented node",
+    count(refusals) == 1 &&
+      any(refusals, r => string_contains(s: r, pattern: "node-the-model-does-not-retire")))
+}
+
+test fn the_migration_verifier_refuses_a_roster_name_repeated() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let head = match model.first() { Present { value: v } => v, Absent => "" }
+  let refusals = roadmap_migration_roster_refusals(supplied: concat(model, [head]), model_roster: model)
+  claim("a roster naming one node twice refuses, naming the repeat",
+    count(refusals) == 1 && any(refusals, r => string_contains(s: r, pattern: "twice")))
+}
+
+// The same names in another order are NOT the roster step 0 wrote: the decision here is the shared agreement
+// predicate's, and this is the case where naming offenders alone would have found nothing to refuse. Red if the
+// check is ever rewritten as "no omissions, no additions, no duplicates" over the lists it was handed.
+test fn the_migration_verifier_refuses_a_roster_that_is_the_models_reordered() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let head = match model.first() { Present { value: v } => v, Absent => "" }
+  let rotated = concat(filter(model, n => n != head), [head])
+  let refusals = roadmap_migration_roster_refusals(supplied: rotated, model_roster: model)
+  claim("the model's names in a different order are not the roster the model holds",
+    count(refusals) == 1 &&
+      any(refusals, r => string_contains(s: r, pattern: "not the roster the model holds")))
+}
+
+test fn the_migration_verifier_admits_the_roster_the_model_holds() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  claim("the model's own roster is admitted, so the refusals above are not a stub that always refuses",
+    count(roadmap_migration_roster_refusals(supplied: model, model_roster: model)) == 0)
 }
 
 // ---------------------------------------------------------------------------------------------
