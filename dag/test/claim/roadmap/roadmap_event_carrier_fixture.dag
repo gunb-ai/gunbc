@@ -159,10 +159,7 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 // swept scenario). dag/gunbc/hermetic_mock_fidelity.dag is the standing warning about
 // trusting an exit status nobody observed as data.
 fn roadmap_carrier_path_is_absent(path: String) -> Bool {
-  let probe = shell.Exec.RunArgv(
-    program: "test" as NonEmptyStr,
-    arguments: concat(["-d"], [path])
-  );
+  let probe = shell.Exec.RunArgv(program: "test" as NonEmptyStr, arguments: concat(["-d"], [path]))
   probe.exit_code == 1
 }
 
