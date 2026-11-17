@@ -95,15 +95,22 @@ fn cites(row: RecurringFailureMode, module_path: String, decl_name: String) -> B
   )
 }
 
-// The two references this lane READ before citing, as one identity rather than as two arguments each time:
-// the completeness claim below joins the row's evidence list against this identity in both directions.
+// The two references this lane READ before citing, as one identity the completeness claim below joins the
+// row's evidence list against, in both directions.
+// The join is stated over module-and-declaration NAMES, not over constructed DeclarationRef values: a claim
+// that calls std.decl_ref to build one loses its callee identity and dies at resolve -- which is exactly the
+// failure the parked entry named by this row suffers, and the reason the RED below tests names rather than
+// building a reference of its own.
+fn is_a_read_authority_name(module_path: String, decl_name: String) -> Bool {
+  (module_path == "gunbc.witness.witness_deferral_freeze") && (decl_name == "frozen_path_deferrals")
+    || (module_path == "std.decl_ref") && (decl_name == "CitationIndexCoverage")
+}
+
 fn is_a_read_authority(ref: DeclarationRef) -> Bool {
-  decl_ref_names(ref: ref, module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals")
-    || decl_ref_names(ref: ref, module_path: "std.decl_ref", decl_name: "CitationIndexCoverage")
+  is_a_read_authority_name(module_path: ref.module_path, decl_name: ref.decl_name)
 }
 
 // The other direction of that join: every reference the row carries has to be one of the read authorities.
-// Written over a list rather than over the row, so the RED below can hand it a list the row does not carry.
 fn every_reference_is_a_read_authority(refs: List<DeclarationRef>) -> Bool {
   fold_list(
     xs: refs,
@@ -197,19 +204,16 @@ test fn the_row_cites_both_read_authorities_and_nothing_else() -> Bool {
     )
 }
 
-// DISCRIMINATING PAIR: a list that carries the two read authorities plus one the lane never read fails the
-// join, so the completeness claim bites from the direction a count could not cover.
+// DISCRIMINATING PAIR on the join's other direction: the three names this branch wrote and then repaired are
+// outside the read-authority identity, so a row that carried one of them would close the join in neither
+// direction. Also the reason the predicate takes names: constructing a DeclarationRef inside a claim is what
+// loses the callee identity described above.
 test fn an_evidence_reference_that_was_never_read_refuses_the_join() -> Bool {
-  let with_an_unread_reference = [
-    decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
-    decl_ref(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage"),
-    decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"),
-  ]
-  every_reference_is_a_read_authority(refs: [
-    decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
-    decl_ref(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage"),
-  ])
-    && !(every_reference_is_a_read_authority(refs: with_an_unread_reference))
+  is_a_read_authority_name(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals")
+    && is_a_read_authority_name(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage")
+    && !(is_a_read_authority_name(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"))
+    && !(is_a_read_authority_name(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding"))
+    && !(is_a_read_authority_name(module_path: "extdeps.bmc.supermicro_aten_ast2600_board_profile", decl_name: "supermicro_aten_ast2600_profile"))
 }
 
 // A name this branch wrote into a carrier and then repaired must never become evidence for the row that
