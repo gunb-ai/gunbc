@@ -209,6 +209,21 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
 // shared temporary directory is safe to allocate in at all. It is a different question from the
 // mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
+  // THE `test` PREDICATES ANSWER ONE KIND QUESTION EACH; NONE OF THEM IS THE AUTHORITY FOR ABSENCE.
+  // Each `is_*`/`executable`/`nonempty`/`sticky`/`writable` below is a Bool `from "exit_success"`
+  // (== `exit == 0`), and its declared `exit { ... }` rows NAME what the exit codes mean but are
+  // INERT FOR THE RETURN VALUE: the shell dispatch never consults those rows and never raises on a
+  // nonzero exit (dag/extdeps/git.dag:766); the `✗ ... (exit=N)` trace line is diagnostic only and
+  // does not gate a claim. A declared `1 => "missing or not a directory"` therefore READS like a
+  // per-exit value it is not. Worse, these `test` predicates collapse "absent" together with
+  // "present but not the kind asked about" (and `test -e`/`-f`/`-d` collapse "couldn't stat" -- an
+  // I/O or ACL denial -- into the same exit 1), so `!is_directory` / `!is_file` cannot certify that a
+  // path is GONE. Presence and absence are owned by ONE authority:
+  // gunbc.filesystem_file_observe::filesystem_entry_presence_of_path, which returns the typed
+  // extdeps.filesystem.filesystem_io::FilesystemEntryPresence and answers only from a testimony the
+  // host can actually give -- FilesystemEntryAbsent for a genuine missing entry, and a separate
+  // Indeterminate/SubjectRefused arm when the host could not look. Do not reach for a `test`
+  // predicate to prove a path is absent; reach for filesystem_entry_presence_of_path.
   operation IsExecutable {
     requires none
     input { path: FilePath }
@@ -245,6 +260,17 @@ service shell.Test {
     }
   }
 
+  // `is_directory` answers exactly one question: is this a directory. It is NOT this primitive's
+  // testimony that a path is absent. The `exit { ... }` rows below -- especially
+  // `1 => "Path is missing or not a directory"` -- NAME the exit meanings but are inert for the
+  // return value: dispatch never raises on a nonzero exit and never surfaces a declared exit as
+  // per-code data (dag/extdeps/git.dag:766); the `✗ ... (exit=N)` trace is diagnostic only and does
+  // not gate a claim. Because `test -d` exits 1 for a missing path, for a present non-directory, and
+  // for an entry it could not stat, a bare `!is_directory` cannot certify "gone." Presence and
+  // absence belong to gunbc.filesystem_file_observe::filesystem_entry_presence_of_path
+  // (extdeps.filesystem.filesystem_io::FilesystemEntryPresence), which answers Absent only from a
+  // testimony the host can give and says Indeterminate when it could not look. Assert absence there,
+  // not by reaching for this Bool.
   operation IsDirectory {
     requires none
     input { path: FilePath }

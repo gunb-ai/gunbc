@@ -1,0 +1,136 @@
+module test.claim.shell_isdirectory_absence_witness
+
+// ABSENCE IS ASSERTED THROUGH THE MODELLED AUTHORITY, NOT A `test` PROBE.
+//
+// shell.Test.IsDirectory models `test -d`, whose Bool collapses a genuinely-missing path with a
+// present non-directory and with an entry the probe could not stat -- so `!is_directory` cannot
+// certify "gone" (dag/gunbc/recurring_failure_mode/absent_reads_identically_to_never_looked.dag;
+// and extdeps.filesystem.filesystem_io.dag rejects `test -e`/`-d` for this very reason). Presence
+// and absence are owned by ONE authority:
+// gunbc.filesystem_file_observe::filesystem_entry_presence_of_path, which returns the typed
+// extdeps.filesystem.filesystem_io::FilesystemEntryPresence and answers Absent only from a testimony
+// the host can give (ENOENT under a searchable parent), with a separate Indeterminate/SubjectRefused
+// arm when it could not look. These claims mint, sweep, and assert through that authority -- and the
+// controls prove the assertions are not vacuous.
+
+import std.types { String, Bool, Int, FilePath, NonEmptyStr }
+import extdeps.shell
+import extdeps.shell.exec
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
+import extdeps.filesystem.filesystem_io {
+  FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
+}
+
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+// PRIMARY: a freshly swept scenario root is ABSENT, established by the single authority.
+test fn swept_scenario_root_reads_absent_through_the_authority() -> Bool {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    return claim("mktemp failed: the witness cannot mint a scenario", false)
+  }
+  let root = mk.path
+  let sweep = shell.Remove.RecursiveForce(path: root)
+  if !sweep.success {
+    return claim("sweep failed: the scenario root persists", false)
+  }
+  match filesystem_entry_presence_of_path(path: root as String) {
+    FilesystemEntryAbsent(_) =>
+      claim("a freshly swept root is FilesystemEntryAbsent via filesystem_entry_presence_of_path", true)
+    FilesystemEntryListed { directory: _, name: _ } =>
+      claim("the swept root still reads Listed; absence was not established", false)
+    FilesystemEntryPresenceIndeterminate { cause: _ } =>
+      claim("the swept root reads Indeterminate, not Absent", false)
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } =>
+      claim("the swept root reads SubjectRefused, not Absent", false)
+  }
+}
+
+// VACUITY CONTROL (the sweep must be what does the work): plant a directory and DELIBERATELY do NOT
+// sweep it; it must NOT read Absent. If this passed with the directory present, the swept claim above
+// would be green whether or not the delete ran and would prove nothing about the sweep.
+test fn a_directory_that_was_not_swept_does_not_read_absent() -> Bool {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    return claim("mktemp failed: the witness cannot mint a scenario", false)
+  }
+  let root = mk.path
+  let verdict = match filesystem_entry_presence_of_path(path: root as String) {
+    FilesystemEntryAbsent(_) =>
+      claim("an un-swept directory read Absent -- the authority is wrong, or nothing here is real", false)
+    FilesystemEntryListed { directory: _, name: _ } =>
+      claim("an un-swept directory reads Listed (NOT absent): the sweep is what establishes absence", true)
+    FilesystemEntryPresenceIndeterminate { cause: _ } =>
+      claim("an un-swept directory reads Indeterminate; the presence test is not discriminating here", false)
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } =>
+      claim("an un-swept directory reads SubjectRefused; the presence test is not discriminating here", false)
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: root)
+  claim("un-swept directory is not Absent", verdict)
+}
+
+// KIND-PROBE VS ABSENCE-PROBE, SHOWN TO DISAGREE WHERE IT MATTERS: a regular FILE at a path is
+// NOT absent (the authority reads it present) even though the `test -d` kind-probe calls it
+// "not a directory". This is the pair `test -d` conflates; only the authority tells them apart.
+test fn a_regular_file_is_present_though_isdirectory_says_not_a_directory() -> Bool {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    return claim("mktemp failed: the witness cannot mint a scenario", false)
+  }
+  let root = mk.path
+  let file_path = concat(root, "/occupied")
+  let touch = shell.Exec.RunArgv(program: "touch", arguments: [file_path])
+  if touch.exit_code != 0 {
+    let _c = shell.Remove.RecursiveForce(path: root)
+    return claim("touch failed: the witness cannot plant a regular file", false)
+  }
+  let di = shell.Test.IsDirectory(path: file_path as FilePath)
+  let present = match filesystem_entry_presence_of_path(path: file_path) {
+    FilesystemEntryAbsent(_) =>
+      claim("a regular file read Absent by the authority -- wrong, the file is there", false)
+    FilesystemEntryListed { directory: _, name: _ } =>
+      di.is_directory == false
+    FilesystemEntryPresenceIndeterminate { cause: _ } =>
+      claim("the regular file read Indeterminate; the probe is not discriminating here", false)
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } =>
+      claim("the regular file read SubjectRefused; the probe is not discriminating here", false)
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: root)
+  claim(
+    "the authority says the regular file is present while IsDirectory says not-a-directory: the two probes disagree, and only the authority establishes absence",
+    present
+  )
+}
+
+// A swept subtree root (the foreign-carrier `.../source` shape from the wet run) is gone and reads
+// Absent through the same authority.
+test fn swept_subtree_root_reads_absent_through_the_authority() -> Bool {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    return claim("mktemp failed: the witness cannot mint a scenario", false)
+  }
+  let root = mk.path
+  let sub = concat(root, "/source")
+  let mkdir = shell.Mkdir.Parents(path: sub as FilePath)
+  if !mkdir.success {
+    return claim("mkdir failed: the subtree cannot be made", false)
+  }
+  let sweep = shell.Remove.RecursiveForce(path: root)
+  if !sweep.success {
+    return claim("sweep failed: the subtree root persists", false)
+  }
+  match filesystem_entry_presence_of_path(path: sub) {
+    FilesystemEntryAbsent(_) =>
+      claim("a swept subtree root is FilesystemEntryAbsent via the authority", true)
+    FilesystemEntryListed { directory: _, name: _ } =>
+      claim("the swept subtree root still reads Listed; absence was not established", false)
+    FilesystemEntryPresenceIndeterminate { cause: _ } =>
+      claim("the swept subtree root reads Indeterminate, not Absent", false)
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } =>
+      claim("the swept subtree root reads SubjectRefused, not Absent", false)
+  }
+}
