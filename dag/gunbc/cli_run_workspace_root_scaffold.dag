@@ -43,6 +43,15 @@ data release_locus_tree_receipt_name: String = ".gunbc-tree-receipt"
 data release_locus_tree_receipt_revision_key: String = "candidate_revision"
 data release_locus_tree_receipt_digest_key: String = "installed_digest"
 
+// The receipt body, one `key=value` line each, rendered from the key rows above so the writer and
+// gunbc.live_deploy.release_locus::tree_receipt_field agree by construction (single_authority). Consumed by the
+// pair-delivery actuator (gunbc.live_deploy.release_pair_deliver_cli::release_pair_deliver_actuate) when it writes
+// the per-revision tree receipt after placing the pair.
+fn release_locus_tree_receipt_body(revision_hex: String, installed_digest: String) -> String {
+  join([release_locus_tree_receipt_revision_key, "=", revision_hex, "\n",
+        release_locus_tree_receipt_digest_key, "=", installed_digest, "\n"], "")
+}
+
 data cli_run_workspace_root_spawn_test_discriminator_authority: String = "spawn_root_is_authority_and_the_walk_is_not_consulted"
 
 data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_root_without_receipt_refuses_instead_of_walking"

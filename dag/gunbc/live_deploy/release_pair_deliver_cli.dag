@@ -34,15 +34,30 @@ import gunbc.live_deploy.release_binding {
   ReleaseMixed,
   ReleaseSurfaceMixed,
   ReleaseBindingUnobserved,
+  LabServePairVerdict,
+  PairBoundToServe,
+  PairServeRefused,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
-  DeliveryPlan, PlanKeepsLastGood,
+  DeliveryPlan, PlanKeepsLastGood, PlanToInstall,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
   release_pair_verify_dispatch, release_pair_install_plan,
   release_pair_release_bins_artifact_name,
 }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_link_create_new, filesystem_create_new,
+  FilesystemLinked, FilesystemCreated,
+}
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_body }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
+}
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_pair_serve_gate }
 
 // THE SINGLE AUTHORITY for where the incoming pack lands (dir + serve member) is release_pair_delivery's
 // release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
@@ -242,4 +257,103 @@ fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ReleaseRevis
     ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => RevisionNotInstalled
     ReleaseBindingUnobserved { cause: _ } => RevisionNotInstalled
   }
+}
+
+// ── the unit's own operator entry (zero-arg `function:` target) ──────────────────────────────────────────────
+// Config that is the UNIT'S OWN static identity (where the release locus lives, which serve unit to restart, the repo
+// root that locates the dashboard instance) may come from the environment. What keep-last-good PROTECTS — the served
+// revision — is NEVER from env: it is OBSERVED through the pair serve gate (belt_pair_serve_gate -> the deployed-tree
+// observation at the sealed locus), so a caller cannot claim a serving binding and have last-good protect a fiction.
+// An unobservable/mixed pair at the gate is a typed refusal (the gate's own not-bound arm handles the first deploy);
+// the actuator delivers nothing and exits non-zero rather than trust a hand-written head.
+data release_pair_deliver_base_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_BASE_ROOT"
+data release_pair_deliver_serve_unit_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_SERVE_UNIT"
+data release_pair_deliver_repo_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_REPO_ROOT"
+
+fn release_pair_deliver_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: release_pair_deliver_base_root_env).value {
+    Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_BASE_ROOT not set — the release locus root is the unit's own identity (fail-closed)")
+    Present { value: base_root } =>
+      if trim(s: base_root) == "" {
+        exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_BASE_ROOT is empty (fail-closed)")
+      } else match shell.Env.Get(name: release_pair_deliver_serve_unit_env).value {
+        Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_SERVE_UNIT not set (fail-closed)")
+        Present { value: serve_unit_name } =>
+          if trim(s: serve_unit_name) == "" {
+            exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_SERVE_UNIT is empty (fail-closed)")
+          } else match shell.Env.Get(name: release_pair_deliver_repo_root_env).value {
+            Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_REPO_ROOT not set (fail-closed)")
+            Present { value: repo_root } =>
+              if trim(s: repo_root) == "" {
+                exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_REPO_ROOT is empty (fail-closed)")
+              } else match dashboard_instance_for_repo_root(repo_root: repo_root) {
+                DashboardInstanceRootUnknown { repo_root: _ } =>
+                  exit_failure(reason: "pair-deliver: the repo root resolves to no dashboard instance — the served pair cannot be located (fail-closed)")
+                DashboardInstanceResolved { instance: instance } =>
+                  match belt_pair_serve_gate(instance: instance) {
+                    PairServeRefused { binding: _, reason: why } =>
+                      exit_failure(reason: join(["pair-deliver: the serve gate refused (", why, ") — keep serving, deliver nothing (fail-closed)"], ""))
+                    PairBoundToServe { binding: binding } =>
+                      release_pair_deliver_actuate(
+                        base_root: base_root,
+                        serving: release_pair_deliver_serving(binding: binding),
+                        serve_unit: serve_unit_name as NonEmptyStr,
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// Run the staged wet pipeline and PERFORM its observed effects: place the fetched serve member at the per-revision
+// locus (create-only hard link), write the per-revision tree receipt naming the placed revision + its digest, then
+// restart the serve unit through the plan's OWN command. Every step is a real effect; if any fails the rest is NOT
+// performed (fail-closed: never restart onto a half-placed pair). Keep-last-good performs NO effect and exits success —
+// the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
+fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> ProcessExit {
+  match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit) {
+    PlanKeepsLastGood { kept: _, reason: _ } => ExitSuccess
+    PlanToInstall { place_binary: place, write_source_receipt: receipt, restart_command: restart, revision: _ } =>
+      let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
+      match filesystem_link_create_new(
+        source: place.source, path: place.destination,
+        success: link.success, error: link.error, error_kind: link.error_kind,
+      ) {
+        FilesystemLinked { path: _ } =>
+          let body = release_locus_tree_receipt_body(
+            revision_hex: release_pair_revision_hex(b: receipt.revision),
+            installed_digest: release_pair_installed_digest(member_path: place.destination),
+          )
+          let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
+          match filesystem_create_new(
+            path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,
+          ) {
+            FilesystemCreated { path: _ } =>
+              match run_shell_command_capture(command: posix_sh_program_command(script: restart), transport: LocalExec) {
+                ProcessRefused { exit_code: _, stderr: _ } =>
+                  exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
+                _ => ExitSuccess
+              }
+            _ => exit_failure(reason: "pair-deliver: the tree receipt could not be created (fail-closed: do not restart a half-placed pair)")
+          }
+        _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
+      }
+  }
+}
+
+// The installed revision hex for the receipt, from the plan's bound revision arm. An unbound arm never reaches the
+// install (the fold only plans an install for a bound pair), so the empty fallback is a fail-closed never-path.
+fn release_pair_revision_hex(b: ReleaseRevisionBinding) -> String {
+  match b {
+    RevisionBoundAtEmission { revision: c } => c as String
+    RevisionNotInstalled => ""
+  }
+}
+
+// The digest the install stage named the placed member with: release_pair_install_plan builds the member path as
+// release_locus_member_path(..., name: binaries_sha256), so the final path segment IS the placed binary's sha256.
+// Reading it back recovers the plan's own binding for the receipt (not a second decider).
+fn release_pair_installed_digest(member_path: String) -> String {
+  fold(split(s: member_path, delimiter: "/"), init: "", f: (acc, seg) => if trim(s: seg) == "" { acc } else { seg })
 }
