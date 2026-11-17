@@ -16,7 +16,7 @@ module gunbc.compute.remote_build_serving_converge
 // does: the host arrives in FLEET_CONVERGE_EXPECTED_HOST and an unset name refuses rather
 // than fanning a read across the fleet from an empty variable.
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -44,6 +44,13 @@ import std.algebra { Cons, Empty }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.tools.gnu_coreutils { true_command, cat_command }
+import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.git { git_rev_parse_head_command }
+import extdeps.tools.uname { uname_machine_command }
 import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -85,7 +92,7 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // This single leg is what the 'test'-based legs take as their precondition, so a drifted sudo grant can never
 // be misread as "the file is absent" (see serving_observed_from_reads; review 95915).
 fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "true"]) {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: true_command()))) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: true }
@@ -104,24 +111,24 @@ fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionC
   }
 }
 
-// A `test <predicate> <path>` leg: exit 0 -> established PRESENT, exit 1 -> established
+// A `test` leg (the probe is an extdeps.posix.test_utility row, elevated by extdeps.sudo.elevation): exit 0 -> established PRESENT, exit 1 -> established
 // ABSENT (a confirmed not-present the apply may create), any other exit or a refused leg ->
-// unobservable (a ServingUnknown), never a proven absence. The elevation precondition
-// short-circuits it: when 'sudo -n true' was refused the leg never runs (a sudo refusal shares
-// the exit 1 this leg would read as "absent", review 95915), and it is ObservationRefused.
-fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, predicate: String, path: String) -> ObservationAttempt<Bool, ServingLegFailure> {
+// unobservable (a ServingUnknown), never a proven absence. The elevation precondition short-circuits
+// it: when 'sudo -n true' was refused the leg never runs (a sudo refusal shares the exit 1 this leg
+// would read as "absent", review 95915), so it is ObservationRefused.
+fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, probe: ArgvCommand) -> ObservationAttempt<Bool, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", predicate, path]) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-      true => ObservationEstablished { observed: true }
-      false => match r.exit_code == 1 {
-        true => ObservationEstablished { observed: false }
-        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+      TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+        true => ObservationEstablished { observed: true }
+        false => match r.exit_code == 1 {
+          true => ObservationEstablished { observed: false }
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
+        }
       }
     }
-  }
   }
 }
 
@@ -134,20 +141,20 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
 fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sudo", "-n", "test", "-f", path]) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-    TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-      true => ObservationEstablished { observed: "" }
-      false => match t.exit_code == 0 {
-        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-        true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
+        true => ObservationEstablished { observed: "" }
+        false => match t.exit_code == 0 {
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
+          true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
+        }
       }
     }
   }
-  }
 }
 
-fn serving_cat_sudo(path: String) -> List<String> { ["sudo", "-n", "cat", path] }
+fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: argv_words(command: cat_command(path: path))) }
 
 // The first whitespace-delimited field of a command's stdout, after trimming. `sha256sum` prints
 // "<hex>  <path>", `git rev-parse HEAD` a lone hash, `uname -m` a lone arch — this reads the value
@@ -172,18 +179,18 @@ fn serving_leg_first_token(item: String, target: SshTarget, context: FleetSshExe
 }
 
 fn serving_leg_sha256(item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
-  serving_leg_first_token(item: item, target: target, context: context, argv: ["sudo", "-n", "sha256sum", "--", path])
+  serving_leg_first_token(item: item, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: sha256sum_file_command(path: path))))
 }
 
 // The checkout's revision, read AS ITS OWNER so git does not refuse a repo owned by another user
 // (the checkout is gunbc-build's; the administrator principal is not). Runs via `sudo -u`, so no
 // `safe.directory` '*' word is needed — and '*' is not a portable remote word anyway.
 fn serving_leg_checkout_revision(item: String, target: SshTarget, context: FleetSshExecutionContext, dir: String, owner: String) -> ObservationAttempt<String, ServingLegFailure> {
-  serving_leg_first_token(item: item, target: target, context: context, argv: ["sudo", "-n", "-u", owner, "git", "-C", dir, "rev-parse", "HEAD"])
+  serving_leg_first_token(item: item, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: owner as NonEmptyStr, command: argv_words(command: git_rev_parse_head_command(repository_dir: dir)))))
 }
 
 fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<String, ServingLegFailure> {
-  serving_leg_first_token(item: item, target: target, context: context, argv: ["uname", "-m"])
+  serving_leg_first_token(item: item, target: target, context: context, argv: argv_words(command: uname_machine_command()))
 }
 
 // ONE stat leg over the fleet SSH edge. The '%' format words (%U/%G/%a) are refused by the plain
@@ -194,7 +201,7 @@ fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionC
 // areas are group-writable with the other bits cleared, so the administrator principal cannot stat
 // them without elevation.
 fn serving_leg_stat(item: String, target: SshTarget, context: FleetSshExecutionContext, stat_argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: concat(["sudo", "-n"], stat_argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: stat_argv)) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: trim(s: r.stdout) }
@@ -288,15 +295,15 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   let passwd = serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd"))
   let group = serving_leg_read(item: "group.members", target: target, context: context, argv: serving_cat_sudo("/etc/group"))
   let authorized_keys = serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path)
-  let store_root = serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, predicate: "-d", path: d.store_root)
-  let store_staging = serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, predicate: "-d", path: d.store_staging)
+  let store_root = serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, probe: test_directory_command(path: d.store_root))
+  let store_staging = serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, probe: test_directory_command(path: d.store_staging))
   // The store dirs' octal modes, read alongside their presence: a drifted mode on a present directory
   // is a proved deviation, not a presence-check pass (review 95935). The stat legs stand on their own.
   let store_root_mode = serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root))
   let store_staging_mode = serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging))
-  let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, predicate: "-x", path: d.serve_binary)
-  let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, predicate: "-d", path: d.checkout_dir)
-  let toolchain = serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, predicate: "-d", path: d.rustup_home)
+  let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, probe: test_executable_command(path: d.serve_binary))
+  let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
+  let toolchain = serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, probe: test_directory_command(path: d.rustup_home))
   // THE DEPENDENT READS (finding A1, side-chat review of 2026-11-16): each value leg runs only under a
   // subject its presence leg CONFIRMED PRESENT — a confirmed-absent subject (a fresh host: no serve
   // binary, no checkout, no account to sudo -u) has nothing to read, so the leg is not attempted and
