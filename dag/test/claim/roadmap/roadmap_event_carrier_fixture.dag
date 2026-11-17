@@ -30,10 +30,34 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  construction. What is shared with it is the SEQUENCE, which is a fact about the route, not an interface.
 //
 //  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the witnesses that use it,
-//  because a fixture a gated witness may not import is not a fixture. Every path it touches hangs off the
-//  throwaway instance root its caller was given (a mktemp under /tmp): it takes no /var/lib/gunbc, no production
-//  partition, no srv1/srv2/srv3 realization, no service instance, and it writes only into the instance it was
-//  handed. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  because a fixture a gated witness may not import is not a fixture. The carrier paths hang off the throwaway
+//  instance root its caller was given (a mktemp under /tmp). The two controls further down in this file additionally
+//  mktemp their own parents under /tmp, outside that instance root, because a control has to be able to damage a
+//  tree without damaging anybody else's. What holds is narrower than "every path": every template the checked-in
+//  callers pass is a `/tmp` template — the witness mints `/tmp/gunbc_carrier_foreign.XXXXXX`, the two controls mint
+//  their own parents. The instance roots the wet routes use are throwaway /tmp directories too — the witness mints
+//  them with `shell.Mktemp.Dir` — though that is a convention rather than a property the fixture may rely on, since
+//  at least one claim hands a root that does not exist at all in order to watch a refusal happen. The template
+//  parameter is not restricted, and the order matters: `roadmap_event_carrier_mint_scratch` hands whatever template it is given straight
+//  to `shell.Mktemp.DirWithTemplate` BEFORE the `/tmp` shape check runs, and when that check refuses it returns
+//  `RoadmapEventCarrierMintRefused` without removing the directory mktemp just created — so a caller who passed
+//  `/var/tmp/...` would leave a directory on disk. Reclaim is therefore attempted, not guaranteed: the
+//  seal-planting arm does remove what it made, and if that removal itself fails the detail says so. Confinement to
+//  scratch space is the rule this file is written to, not one the exported mint enforces yet: every template the
+//  checked-in callers pass is a `/tmp` template, and none of them targets `/var/lib/gunbc`, a production partition,
+//  a srv1/srv2/srv3 realization, or a service instance. But the same create-before-admit order that leaks a
+//  `/var/tmp` directory applies to any template, so a caller who passed a production path would have a directory
+//  created there before the refusal arrived. That ordering is a tracked failure class, not a note to self:
+//  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
+//  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and with the
+//  capability that closes this instance — which splits in two, because this file's own gate
+//  `roadmap_carrier_root_is_minted_scratch` ends with `roadmap_carrier_path_is_present` and can therefore speak only
+//  about a path that already exists. BEFORE creation: admit the template and its location, a predicate over the
+//  requested path that needs nothing on disk. AFTER creation: verify the minted directory and reclaim on any later
+//  refusal. The two are not equivalent — pre-create rejection enforces the production boundary, because nothing
+//  unauthorized ever comes into existence, while reclaiming after the refusal closes only the leak. Until that row's
+//  trigger lands, this paragraph states an obligation honoured by the checked-in callers and by review, not a check
+//  the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,10 +221,22 @@ type RoadmapCarrierScopedRun
 // THE ONLY COMPOSITION, and the reason no caller has to remember to clean up. Mint, run and sweep are one operation
 // here rather than three calls a caller must sequence: a witness that forgets the sweep, or one that returns from
 // its body before reaching it, leaves a scenario on disk that the NEXT run reads as its own history — the failure
-// mode this fixture exists to prevent, in this fixture. `body` receives the scratch (the only way a caller ever
-// gets one) and the sweep runs whatever the body decided, including a body that refused. Consumers get the report,
-// not the parts: they cannot skip the sweep, hand the sweep someone else's directory, or provision against a
-// scratch they typed, because the token they were handed is the only one their run ever had.
+// mode this fixture exists to prevent, in this fixture. `body` receives the scratch and the sweep runs whatever the
+// body decided, including a body that refused.
+//
+// It is the only COMPOSITION, not the only route, and the distinction is not cosmetic: the parts are individually
+// importable and are imported. The two controls in this file mktemp their own parent and call the sweep themselves
+// — neither touches the composition, because a control whose whole
+// job is to damage a tree and then reclaim it cannot hand that tree to a wrapper that cleans up on its behalf;
+// roadmap_operator_close_retire_witness.dag mints a foreign scratch itself, because a witness proving that a foreign
+// tree is refused has to be able to build one. So a caller CAN skip this composition. What protects the filesystem
+// is not exclusivity — it is that no part trusts the caller either: the sweep re-proves ownership and provenance
+// from the filesystem before it deletes. That is an accidental-misuse guard, exactly as this file's own text on the
+// seal says, and no more: `roadmap_carrier_seal_name` is a public constant, `RoadmapEventCarrierScratch` is a
+// public record this language cannot keep unexported, and the seal prose states plainly that a determined caller can
+// plant the name. So the re-checks stop a witness author from pointing the fixture's authority at the wrong
+// directory, and they reject a foreign tree that does not carry the seal. They are not a capability no caller can
+// forge, and nothing here should be read as capability-based access control.
 fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
   let judged = body(scratch)
   let sweep = roadmap_event_carrier_sweep(scratch: scratch)
@@ -241,10 +277,15 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 // assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
 // exactly", and the wrapper idiom is already executed in
 // @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
-// Both predicates below consume the SAME channel value through two pure decoders, so the presence reading and the
-// absence reading cannot disagree about what the host answered — the property
+// Each predicate makes ONE observation of the path and reads that one value through the fold or folds it needs:
+// the absence predicate consults the lookup fold alone, the presence predicate consults the lookup fold and then the
+// entry fold over the SAME listing, which is the property
 // @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
-// Filesystem.List per listing, and both folds are pure decoders over that one channel value").
+// Filesystem.List per listing, and both folds are pure decoders over that one channel value"). What the two
+// predicates do NOT share is one sampling. Each runs its own `ls` when it is called, and they are called at
+// different moments by design — presence is asked before a delete and absence after it, so a single shared listing
+// would describe neither moment. Nothing in the fix depends on the two agreeing about an instant: what makes the
+// teardown refuse rather than report clean is that neither predicate may answer from a listing it could not read.
 type RoadmapCarrierEntryObservation { exit_code: Int, stdout: String, stderr: String }
 
 fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation {
@@ -316,9 +357,16 @@ fn roadmap_carrier_path_is_proven_inside(root: String, path: String) -> Bool {
     && all(absolute_path_segments(path: path), segment => segment != ".." && segment != ".")
 }
 
-// EVERY PATH THE MUTATION WILL TOUCH, proven in order, stopping at the first that is not inside — reported under
-// the step name `ownership`, so a caller can always tell "this fixture was never allowed to stand anything up"
-// from "the carrier refused", which is the confusion this whole file exists to prevent.
+// EVERY PATH THE MUTATION WILL TOUCH, taken in order, with three properties worth stating exactly because the first
+// draft of this comment got all three wrong. (1) The refusal reported is the FIRST path that is not inside: once the
+// accumulator holds a Refused, that arm passes it straight through, so no later path can replace it. (2) The later
+// elements are still traversed but they are NOT checked — the Refused arm never calls the predicate again, so this
+// is short-circuit in effort and first-wins in reporting at the same time. (3) The fold performs no filesystem
+// listing at all: `roadmap_carrier_path_is_proven_inside` is pure path arithmetic — `absolute_path_segments`,
+// `position_under`, and a rejection of `.` and `..` — so no `ls` is run anywhere in here and nothing in this
+// function can fail because a directory could not be read. Reported under the step name `ownership`, so a caller
+// can always tell "this fixture was never allowed to stand anything up" from "the carrier refused", which is the
+// confusion this whole file exists to prevent.
 fn roadmap_event_carrier_admit_ownership(root: String, paths: List<FilePath>) -> RoadmapCarrierStep {
   fold(
     paths,
