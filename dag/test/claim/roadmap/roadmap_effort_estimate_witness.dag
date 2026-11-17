@@ -1,0 +1,41 @@
+module test.claim.roadmap.roadmap_effort_estimate_witness
+
+import std.types { Bool }
+import std.optional { Present, Absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_effort_estimate {
+  roadmap_effort_estimates, estimates_all_have_nodes, estimates_are_ordered, estimates_for, latest_estimate, overdue, estimate, d, estimate_has_node,
+}
+
+test fn every_estimate_names_a_declared_node() -> Bool {
+  estimates_all_have_nodes()
+}
+
+test fn an_estimate_for_an_undeclared_node_is_refused() -> Bool {
+  !estimate_has_node(e: estimate(subject: "no-such-node-2026-11-17", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2026, m: 12, day: 1), pessimistic: d(y: 2026, m: 12, day: 31), basis: "planted"))
+}
+
+test fn every_estimate_is_ordered_made_start_done_pessimistic() -> Bool {
+  estimates_are_ordered()
+}
+
+test fn the_latest_estimate_is_the_last_appended() -> Bool {
+  match latest_estimate(subject: nid(s: "native-seven")) {
+    Present { value: e } => e.done.year == 2027 && e.done.month == 1
+    Absent => false
+  }
+}
+
+test fn a_subject_with_no_estimate_is_never_overdue() -> Bool {
+  !overdue(subject: nid(s: "v2-compiler-live"), today: d(y: 2030, m: 1, day: 1), accepted: false)
+}
+
+test fn an_accepted_subject_is_never_overdue() -> Bool {
+  !overdue(subject: nid(s: "native-seven"), today: d(y: 2030, m: 1, day: 1), accepted: true)
+}
+
+test fn a_passed_realistic_date_without_acceptance_is_overdue() -> Bool {
+  overdue(subject: nid(s: "native-seven"), today: d(y: 2027, m: 2, day: 1), accepted: false)
+    && !overdue(subject: nid(s: "native-seven"), today: d(y: 2026, m: 12, day: 1), accepted: false)
+}
