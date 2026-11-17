@@ -1466,10 +1466,12 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     release_bins_retention_echo(word: "done"),
   ])
   let flag_operand = rooted(file: release_bins_retention_flag_basename)
-  let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), flag_operand])
+  // FLAGS are tested by EXISTENCE (-e), not size: they are created with
+  // touch, so a size test would never see them (matrix, page2fail case).
+  let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), flag_operand])
   let incomplete_operand = rooted(file: release_bins_retention_incomplete_basename)
-  let incomplete_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), incomplete_operand])
-  let incomplete_present = test_words(ws: [lit(t: "-s"), incomplete_operand])
+  let incomplete_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), incomplete_operand])
+  let incomplete_present = test_words(ws: [lit(t: "-e"), incomplete_operand])
   [
     // TOTAL comes first: it gates the over-cap declaration and every later
     // page. An absent or non-numeric total leaves the variable empty, every
