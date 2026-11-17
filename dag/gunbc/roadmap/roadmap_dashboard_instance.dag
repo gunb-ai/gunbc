@@ -3787,9 +3787,10 @@ fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> Le
 // THE CLOSING-MARKER WRITER, PER INSTANCE, in the same shape as the identity fence above -- and BUILT FROM THE
 // DERIVATION, not typed by hand: `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
 // `belt_instance_obligation_unit_name(instance_id, kind)` as the unit it starts, and the row builder here comes
-// from gunbc.roadmap.roadmap_metering_closing_provision, whose unit-name formula is asserted EQUAL to that call
-// by the closing-cutover witness (review 89888 (1)) -- the fence names exactly the unit the obligation runner
-// launches, and the import graph stays acyclic (the belt module is not reachable from this one).
+// from gunbc.roadmap.roadmap_metering_closing_provision -- the ONE definition of that name, which
+// gunbc.roadmap.roadmap_belt_obligation's own belt_instance_obligation_unit_name derives its metering
+// branch from (review 96140). The fence therefore names exactly the unit the obligation runner launches,
+// and the import graph stays acyclic (the belt module is not reachable from this one).
 // Only the DIRECT writer is fenced: the metering obligation unit's ExecStart is what reaches
 // `metering_roster_seal` (the symbol trace is in gunbc.roadmap.roadmap_metering_closing_cutover), and masking
 // that unit closes the enqueue path too, because the enqueue starts that same unit. The transient per-attempt
