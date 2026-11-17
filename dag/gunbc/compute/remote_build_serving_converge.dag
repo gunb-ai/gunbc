@@ -66,7 +66,7 @@ data gunbc_ci_remote_build_serving_observe_receipt_path: String = "target/remote
 data remote_build_serving_converge_attempt_raw: String = "remote-build-serving-converge-ci"
 // Repo-relative like the observe receipt; the converge workflow step cats "$ROOT/<this>". This is
 // BOTH the pre-GO refuse-path receipt and the post-apply settle receipt (the re-observe is the gate).
-data gunbc_ci_remote_build_serving_plan_receipt_path: String = "target/remote-build-serving-apply-receipt.txt"
+data gunbc_ci_remote_build_serving_apply_receipt_path: String = "target/remote-build-serving-apply-receipt.txt"
 
 // Only the desired/observation PAIR is needed downstream; carried together so the entry
 // computes the plan once and renders and decides from the same result.
@@ -1125,7 +1125,7 @@ fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d
 // there is no arch arm). Write the plan receipt and fail; mutate NOTHING.
 fn converge_wet_refusal(host_name: String, context_receipt: String, assessment: ServingAssessment) -> ProcessExit {
   let refuse_body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
-  let rw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: refuse_body)
+  let rw = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: refuse_body)
   if rw.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: plan receipt write failed: ", rw.error, "\n", refuse_body], ""))
   } else {
@@ -1136,7 +1136,7 @@ fn converge_wet_refusal(host_name: String, context_receipt: String, assessment: 
 // The host is already settled: nothing to mutate, but the settled receipt is still owed.
 fn converge_wet_settled(host_name: String, context_receipt: String, assessment: ServingAssessment) -> ProcessExit {
   let settled_body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
-  let sw = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: settled_body)
+  let sw = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: settled_body)
   if sw.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: settled receipt write failed: ", sw.error, "\n", settled_body], ""))
   } else {
@@ -1157,7 +1157,7 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
   // B3: the receipt names the writes the failed prerequisite made us SKIP, never attempted.
   let skiplist = if length(skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(skipped, "; "), "\n"], "") }
   let body_with_skips = join([body, skiplist], "")
-  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: body_with_skips)
+  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: body_with_skips)
   if w.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body_with_skips], ""))
   } else {

@@ -23,7 +23,7 @@ import gunbc.runner.runner_host_withdraw {
   gunbc_ci_runner_host_withdraw_receipt_path,
 }
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
-import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path, gunbc_ci_remote_build_serving_plan_receipt_path }
+import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path, gunbc_ci_remote_build_serving_apply_receipt_path }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
@@ -99,7 +99,7 @@ fn gunbc_ci_remote_build_serving_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     target: gunbc_ci_remote_build_serving_converge_target,
     claim_run: false,
-    receipt_rel: gunbc_ci_remote_build_serving_plan_receipt_path
+    receipt_rel: gunbc_ci_remote_build_serving_apply_receipt_path
   )
 }
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
