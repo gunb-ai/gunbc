@@ -3500,7 +3500,11 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
   redfish_get_status_read_fork,
-  deploy_readers_must_order_after_tree_converger]
+  deploy_readers_must_order_after_tree_converger,
+  remote_build_serving_fresh_account_has_no_toolchain_bootstrap,
+  remote_build_serving_checkout_pin_has_no_declared_owner,
+  remote_build_converge_action_is_not_the_whole_write,
+  group_membership_append_spelled_by_two_tools]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -3829,4 +3833,154 @@ data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConce
     tail: [],
   },
   disposition: Open,
+}
+
+// ---------------------------------------------------------------------------------------------
+// REMOTE-BUILD SERVING (gunbc.compute.remote_build_serving_converge), carried from PR 5(b) #16583 at its
+// merge. Review 96107 on that PR named these as the debt the converge ships with; they are recorded here so
+// they outlive the session that merged it, and each is owed before 5(c) admits more hosts to the roster.
+
+data remote_build_serving_converge_merge_revision: CommitSha = "e8aeb06037b88a5b1fd93dcd453f22ed24cd2504"
+
+data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_serving_fresh_account_has_no_toolchain_bootstrap",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_ensure_toolchain"),
+    requirement: "a fresh serving account, with no rustup installed, converges to the pinned toolchain channel",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_ensure_toolchain"),
+    tail: [
+      decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan"),
+      decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_with_rustup_observed"),
+    ],
+  },
+  question: "How does a fresh serving account get rustup, so the toolchain write has something to run? Either the bootstrap is modelled as its own write (rustup-init from a pinned, verified source), or the toolchain is provided by an existing converge route the serving account can use.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "fresh_with_rustup_observed") }],
+      },
+      account: "Observed on main 2026-11-17 (fleet-converge remote_build_serving_observe runs 44046779069 and 44046782964): srv3 and srv4 have no serving account, so rustup is absent, and the converge plans ConvergeUnhandled with the cause 'toolchain: rustup not installed for <account>; no bootstrap modelled' and writes nothing. The plan-shape witnesses that check write order, dedupe and parents-before-installs therefore run on fresh_with_rustup_observed, a constructed fixture in which rustup survived a deleted account; no real fresh host is in that state.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan"),
+        control: Absent,
+        statement: "an account whose rustup is absent is never written toward a toolchain by a path that fetches and runs an unpinned installer (curl | sh); until a bootstrap is modelled the plan stays unhandled with zero writes",
+      },
+    ],
+    next: climbs_when(capability: "a fresh host's converge plan settles the toolchain without the fresh_with_rustup_observed fixture, and the plan-shape witnesses move onto the real fresh observation"),
+  },
+}
+
+data remote_build_serving_checkout_pin_has_no_declared_owner: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_serving_checkout_pin_has_no_declared_owner",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision"),
+    requirement: "the serving checkout's desired revision is a declared fact with an owner, so a serving host's settled state does not change when an unrelated commit lands on main",
+    standing: RequirementUnestablished { decided_by: "whether serving is meant to follow main (then the drift after each merge is expected and the converge must be cheap to re-run), or to hold a declared serving revision that moves only by its own change" },
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_plan")],
+  },
+  question: "Who owns the revision a serving host's checkout is converged to: the commit the converge happens to be dispatched from, or a declared serving revision?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_field_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "ServingPlanInput", field_name: "dispatched_revision") },
+        tail: [],
+      },
+      account: "srv1 was observed drifted on checkout.revision on 2026-11-17 because the desired revision is the dispatch commit; the first real apply (fleet-converge run 44123158118) moved it to e8aeb06037b and re-observed it settled. The next merge to main makes srv1 drift again with nothing about serving having changed.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data remote_build_converge_action_is_not_the_whole_write: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_converge_action_is_not_the_whole_write",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction"),
+    requirement: "every byte a write uses is carried by the planned ConvergeAction, so the plan the receipt renders is the whole of what the apply writes",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction")],
+  },
+  question: "Can converge_run_write take only the ConvergeAction, with the facts it reads from the desired state today moved onto the action, and the action fields that only witnesses read either consumed by the executor or dropped?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write") },
+        tail: [],
+      },
+      account: "converge_run_write takes the desired state beside the action and reads the account group name, the authorized_keys and serve-binary modes, the rustup home and the account home at execution time; the planner also carries literal staging paths. Review findings on PR 5(b) repeatedly found the apply deciding a fact the plan did not carry (reviews 95935, the B2 parent directories, 96039), each fixed at the site that prompted it. EnsureAccount.primary_group and EnsureGroupMembership.group_gid are read only by witnesses.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write"),
+        control: Absent,
+        statement: "a write that does not land fails with its key and cause, and the run stops at the first failed write; the re-observe, not any write's exit, decides settled",
+      },
+    ],
+    next: climbs_when(capability: "converge_run_write's signature takes only the action, so no write can read a fact the plan did not carry"),
+  },
+}
+
+data group_membership_append_spelled_by_two_tools: IntegrationConcern = IntegrationConcern {
+  identity: "group_membership_append_spelled_by_two_tools",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv"),
+      second: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
+    tail: [decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv")],
+  },
+  question: "Appending one login to one group is spelled usermod -aG GROUP LOGIN by the shadow-suite builder (consumed by the runner-account and remote-build serving routes) and gpasswd -a LOGIN GROUP by the custody readers route. Is that one operation with one builder, and which tool does it use?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv") }],
+      },
+      account: "Review 96118 on PR 5(b) consolidated groupadd, useradd and usermod into extdeps.shadow.account_creation. The custody route's gpasswd -a was left in place, because moving it would change the tool a live route runs, and that belongs in its own change with its own witness.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
+        control: Absent,
+        statement: "the custody readers converge only ever appends a member; it never replaces the group's member list",
+      },
+    ],
+    next: climbs_when(capability: "the custody readers leg builds its membership append through extdeps.shadow.account_creation, and custody_group_add_member_argv is deleted"),
+  },
 }
