@@ -104,6 +104,11 @@ data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
 // each call site (single_authority). Consumed by @ref(gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source).
 data release_pair_incoming_serve_member_name: NonEmptyStr = "gunbc_serve"
 
+// THE ONE name of the release-bins ARTIFACT the fleet-converge run publishes. ONE row (single_authority), consumed by
+// release_pair_fetch_argv (the emitted fetch) and by the wet entry's gh_run_download_command, so the artifact name is
+// never spelled twice across the dry plan and the wet fetch.
+data release_pair_release_bins_artifact_name: NonEmptyStr = "release-bins"
+
 // THE SINGLE AUTHORITY for where the incoming pack lands: base_root + the owned incoming dir name. The fetch argv,
 // the plan witness, and the fold witness all derive from this ONE row instead of each spelling the directory
 // (review 96073: an unconsumed constant plus a free fetch_argv pack_dir was a second authority for this one fact).
@@ -121,7 +126,7 @@ fn release_pair_incoming_serve_source(base_root: String) -> String {
 // verification, verification is downstream of the fetch observation.
 fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String) -> List<String> {
   gh_run_download_argv(
-    run_id: run_id, repo: repo, artifact: "release-bins", dir: release_pair_incoming_pack_dir(base_root: base_root),
+    run_id: run_id, repo: repo, artifact: release_pair_release_bins_artifact_name as String, dir: release_pair_incoming_pack_dir(base_root: base_root),
   )
 }
 

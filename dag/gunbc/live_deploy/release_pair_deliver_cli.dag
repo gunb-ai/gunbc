@@ -1,24 +1,35 @@
 module gunbc.live_deploy.release_pair_deliver_cli
 // THE EXECUTING CONSUMER of the staged wet plan (PR-2a). This module turns the lab's release pair into a real,
-// observed delivery: it OBSERVES the head, DISCOVERS the release-bins run for that exact head, FETCHES the pack,
-// OBSERVES its digest and build-key verdict ON the fetched pack, and only then feeds those OBSERVED results through
-// release_pair_install_plan -> deliver_release_pair. No stage takes a predecessor's result as an input it did not
-// observe. The raw effectful entry (which runs the argv through the admissible command seam) is a later step; THIS
-// step establishes the argv builders and the PURE decode fns that turn a ProcessOutcome into a typed observation, so
-// the fail-closed decoding is witnessable by execution independently of the wet runtime.
+// observed delivery: release_pair_deliver_run OBSERVES origin/main's head (what to deploy), DISCOVERS the release-bins
+// run for that exact head, FETCHES its pack, OBSERVES the fetched serve member's digest and the consumer build-key
+// verdict ON the fetched pack, and only then feeds those OBSERVED results through release_pair_install_plan ->
+// deliver_release_pair. No stage takes a predecessor's result as an input it did not observe. Discovery and command
+// minting stay gh-only through extdeps.tools.gh's admitted builders (git is not in the sealed program census); the
+// digest is admitted through extdeps.crypto.hash::sha256sum_line_digest.
 //
-// RUNG: the decode fns are total pure functions over ProcessOutcome and are witnessed green by execution; the
-// command-seam composition that produces those ProcessOutcomes lives in the (pending) effectful entry and is
-// exercised by the unit's own run at deploy, not by the claim. Frontier (executing trigger): roadmap work item
-// `lab-converges-release-pair`.
+// RUNG: the decode fns are total pure functions over ProcessOutcome and are witnessed green by execution
+// (release_pair_deliver_cli_witness); the effectful entry release_pair_deliver_run composes those legs through the
+// admissible command seam and is executed by the pair-delivery unit's own run — its consumer/trigger frontier is the
+// PR3b unit registered under roadmap item `lab-converges-release-pair`. It typechecks in the same claim closure as
+// the witnessed decode fns; its wet behaviour is proven at the paired deploy, not by a hand step.
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
-import extdeps.crypto.hash { sha256sum_line_digest }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.gh {
+  gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
+}
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  DeliveryPlan, PlanKeepsLastGood,
+  release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
+  release_pair_verify_dispatch, release_pair_install_plan,
+  release_pair_release_bins_artifact_name,
 }
 
 // THE SINGLE AUTHORITY for where the incoming pack lands (dir + serve member) is release_pair_delivery's
@@ -37,6 +48,13 @@ data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack dow
 data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's sha256 could not be observed on the executing host"
 // Why the pair keeps serving when the build-key verdict did not admit the fetched pack (consumed by pack_verify).
 data release_pair_verdict_refused_reason: NonEmptyStr = "the consumer build-key check did not admit the fetched release-bins pack on the executing host"
+// The gh api path that OBSERVES origin/main's head (the head TO DEPLOY). ONE row (single_authority), consumed by the
+// entry's call to gh_main_head_command; the gh builder takes the path whole so the repo slug is not re-joined there.
+data release_pair_main_head_api_path: NonEmptyStr = "repos/gunb-ai/gunbc/commits/main"
+// Why the pair keeps serving when origin/main's head could not be observed (consumed by the entry's head leg).
+data release_pair_no_head_reason: NonEmptyStr = "origin/main's head could not be observed on the executing host"
+// Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run leg).
+data release_pair_no_run_for_head_reason: NonEmptyStr = "the bound head has no successful release-bins run to fetch"
 
 // ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
 // The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
@@ -122,5 +140,78 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
     ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
     ProcessOutputAbsent => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
     ProcessRefused { exit_code: _, stderr: _ } => Refused { reason: release_pair_verdict_refused_reason }
+  }
+}
+
+// ── the effectful entry: THE executing consumer of the dry plan ──────────────────────────────────────────────────
+// The consumer the fold's plan was written for. It OBSERVES every stage through the admitted command seam and hands
+// each OBSERVED ProcessOutcome to the decode fns above — no stage is handed its predecessor's result as an input it
+// did not observe. It (1) observes origin/main's head (what to DEPLOY) via the cataloged gh program, (2) discovers the
+// fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
+// (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
+// ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
+// that yield nothing are typed keep-last-good refusals, never a guess. Executed by the pair-delivery unit's own run
+// (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by release_pair_deliver_cli_witness.
+fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
+  let head_outcome = run_shell_command_capture(
+    command: gh_main_head_command(api_path: release_pair_main_head_api_path as String),
+    transport: LocalExec,
+  )
+  match release_pair_decode_head(outcome: head_outcome) {
+    none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_head_reason }
+    Present { value: main_head } =>
+      let run_outcome = run_shell_command_capture(
+        command: gh_release_bins_run_list_command(
+          repo: release_pair_deliver_repo_slug as String,
+          workflow: release_pair_release_bins_workflow as String,
+          commit: main_head as String,
+        ),
+        transport: LocalExec,
+      )
+      match release_pair_decode_run(outcome: run_outcome) {
+        none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_run_for_head_reason }
+        Present { value: run_id } =>
+          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root)
+          let member_src = release_pair_incoming_serve_source(base_root: base_root)
+          let fetch_outcome = run_shell_command_capture(
+            command: gh_run_download_command(
+              run_id: run_id as String,
+              repo: release_pair_deliver_repo_slug as String,
+              artifact: release_pair_release_bins_artifact_name as String,
+              dir: pack_dir,
+            ),
+            transport: LocalExec,
+          )
+          let digest_outcome = run_shell_command_capture(
+            command: sha256sum_file_command(path: member_src),
+            transport: LocalExec,
+          )
+          let fetch = release_pair_pack_fetch(
+            fetch_outcome: fetch_outcome,
+            digest_outcome: digest_outcome,
+            pack_dir: pack_dir,
+            member_src: member_src,
+          )
+          let verify = match release_pair_verify_dispatch(fetch: fetch) {
+            Present { value: script } =>
+              release_pair_pack_verify(
+                verify_outcome: run_shell_command_capture(
+                  command: posix_sh_program_command(script: script),
+                  transport: LocalExec,
+                ),
+                pack_dir: pack_dir,
+              )
+            none => Refused { reason: release_pair_verdict_refused_reason }
+          }
+          release_pair_install_plan(
+            base_root: base_root,
+            serving: serving,
+            main_head: main_head as CommitSha,
+            source_head: main_head as CommitSha,
+            fetch: fetch,
+            verify: verify,
+            serve_unit: serve_unit,
+          )
+      }
   }
 }
