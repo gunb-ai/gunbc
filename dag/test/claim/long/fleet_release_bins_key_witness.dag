@@ -514,9 +514,9 @@ test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() 
 // a foreign-family member (cargo-ci prefix, id 500, oldest of all -- it must never be due).
 data retention_current_key: String = "release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-data retention_over_cap_body: String = "{\"total_count\":19,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\"},{\"id\":1010,\"key\":\"release-bins-10aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T10:00:00Z\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\"}]}"
+data retention_over_cap_body: String = "{\"total_count\":19,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1010,\"key\":\"release-bins-10aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T10:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\",\"ref\":\"refs/heads/main\"}]}"
 
-data retention_at_cap_body: String = "{\"total_count\":18,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\"}]}"
+data retention_at_cap_body: String = "{\"total_count\":18,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\",\"ref\":\"refs/heads/main\"}]}"
 
 data part_retention_exports: Outcome<String> = exports(["GH_TOKEN=fixture-token","GITHUB_API_URL=http://127.0.0.1:1","GITHUB_REPOSITORY_OWNER=gunb-ai","GITHUB_REPOSITORY_NAME=gunbc",join(["RELEASE_BINS_KEY=", retention_current_key], "")])
 
@@ -565,6 +565,12 @@ test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_
   !string_contains(s: release_bins_retention_page1_program(), pattern: "and .key != $ENV.RELEASE_BINS_KEY")
     && !string_contains(s: release_bins_retention_page_program(n: 2), pattern: "and .key != $ENV.RELEASE_BINS_KEY")
     && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY))")
+    // THE WINDOW IS OVER THE CONSUMABLE POPULATION (review 96127): the keep-window slice runs
+    // over the ref==refs/heads/main population -- the only entries the lookup can consume --
+    // BEFORE the current-key exclusion. If the slice ever moves back in front of the ref filter,
+    // a PR-ref crowd can evict main's entries and this assertion goes red with them.
+    && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.ref == \"refs/heads/main\")) | sort_by(.created_at)")
+    && string_contains(s: release_bins_retention_union_program(), pattern: ".ref | type) == \"string\"")
 }
 
 // F2 (side chat 2026-11-17): every retention network call is bounded -- a `timeout` prefix and
@@ -573,6 +579,8 @@ test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_
 test fn release_bins_retention_network_calls_are_bounded() -> Bool {
   let text = release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_retention_statements()))
   string_contains(s: text, pattern: "--max-time")
+    // every failure word is a job annotation, not a bare echo (review 96127: countable degradations)
+    && string_contains(s: text, pattern: "::warning title=release-bins retention::")
     && string_contains(s: text, pattern: "'timeout'")
     && string_contains(s: text, pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY)) | reverse | .[0: ")
 }
@@ -686,7 +694,7 @@ fn retention_family_entry_text(i: Int) -> String {
   join([
     "{\"id\": ", int_to_decimal_string(i),
     ", \"key\": \"release-bins-r", int_to_decimal_string(i),
-    ", \"created_at\": \"2026-11-", int_to_decimal_string(i), "\"}",
+    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"2026-11-", int_to_decimal_string(i), "\"}",
   ], "")
 }
 
@@ -789,6 +797,51 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
 // had worked. These two inputs discriminate: the real census MUST admit, and a broken one MUST
 // refuse loudly. Red either way: if someone restores a fabricated default, the broken-census test
 // goes red; if the gate wrongly refuses, the admit test goes red.
+// REVIEW 96127 F1, EXECUTED: the keep window must be computed over the CONSUMABLE population
+// only. 210 entries: 170 refs/heads/main (2026 dates) and 40 refs/pull/4321/head entries that
+// are the NEWEST (2027 dates). A window computed over the whole union would keep the 16 newest
+// -- all PR-ref, consumable by nobody -- and declare 170 main entries due (deleting=170). The
+// consumer ref's window keeps main's 16 newest and names exactly 170-16 = 154 due. The wrong
+// grouping cannot print this number; both buggy groupings (all-union window: 170; no window at
+// all: 169) print something else.
+fn retention_prref_entry_text(i: Int) -> String {
+  join([
+    "{\"id\": ", int_to_decimal_string(i),
+    ", \"key\": \"release-bins-p", int_to_decimal_string(i),
+    "\", \"ref\": \"refs/pull/4321/head\", \"created_at\": \"2027-01-", int_to_decimal_string(i), "\"}",
+  ], "")
+}
+
+fn retention_prref_page_body(start: Int, end: Int, total: Int, pr: Bool) -> String {
+  join(["{\"total_count\": ", int_to_decimal_string(total), ", \"actions_caches\": ["], "")
+    + join(map(retention_int_range(start, end), i => if pr { retention_prref_entry_text(i: i) } else { retention_family_entry_text(i: i) }), ", ")
+    + "]}"
+}
+
+data retention_prref_body1: String = retention_prref_page_body(start: 1, end: 70, total: 210, pr: false)
+data retention_prref_body2: String = retention_prref_page_body(start: 71, end: 170, total: 210, pr: false)
+data retention_prref_body3: String = retention_prref_page_body(start: 90001, end: 90040, total: 210, pr: true)
+
+data script_retention_prref: TransportScript? = release_bins_transport(
+  parts: [
+    part_fixture_env,
+    part_retention_exports,
+    retention_answer_part(body: retention_prref_body1),
+    fake_curl_pages(body1: retention_prref_body1, body2: retention_prref_body2, body3: retention_prref_body3),
+    e(statements: release_bins_retention_statements()),
+  ]
+)
+
+test fn release_bins_retention_window_spares_pr_ref_entries() -> Bool {
+  let r = run_script(script: script_retention_prref)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=154 keep=16")
+    && !string_contains(s: r.stdout, pattern: "deleting=170")
+    && !string_contains(s: r.stdout, pattern: "deleting=194")
+    && !string_contains(s: r.stdout, pattern: "page-failed")
+}
+
 test fn release_bins_retention_census_admits_the_computed_keep() -> Bool {
   match fleet_converge_release_bins_retention_census_refusal() {
     Absent => true

@@ -1244,12 +1244,19 @@ fn release_bins_retention_page1_program() -> String {
 }
 
 // THE UNION PLAN: reads every page's appended family array, flattens, admits
-// only {id, key, created_at} objects, sorts the WHOLE union by created_at --
-// one sort, one recency key -- and the keep window falls out of the union
-// order: the 16 newest survive, everything older is due.
+// only {id, key, created_at, ref} objects, and -- THE POPULATION THE WINDOW IS COMPUTED OVER IS
+// THE CONSUMABLE ONE (review 96127; gunbc.design_argument::demand_before_materialization: a
+// provider's retention must "span the obligated lifetime" of what it provides) -- the reuse
+// lookup consumes ONLY entries whose ref is refs/heads/main (release_bins_lookup_program pairs
+// key == RELEASE_BINS_KEY with .ref == that ref). Deleting by age across all refs would let a
+// crowd of PR-ref entries (visible to nobody but their own PR, per GitHub's cache-ref rule) push
+// the one entry a main dispatch can consume out of the keep window -- the guardian would evict
+// exactly what the consumer reads. So: filter to the producer ref FIRST, then one sort over that
+// population, keep its newest KEEP, everything older in it is due, minus this run's own key,
+// oldest-first, capped. PR-ref entries are simply not this chore's population.
 fn release_bins_retention_union_program() -> String {
   join([
-    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | sort_by(.created_at) | .[0: (if length > ",
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | sort_by(.created_at) | .[0: (if length > ",
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
@@ -1405,6 +1412,16 @@ fn release_bins_retention_echo(word: String) -> Node {
   cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins retention: ", word], ""))])
 }
 
+// FAILURE words ride out as job annotations, not just stdout (review 96127: "a retention guard
+// that never deletes anything looks the same in the job summary as one that works" --
+// gunbc.design_argument::fail_closed demands every degradation be TYPED, LOCATED AND COUNTABLE).
+// The message keeps the plain "release-bins retention: <word>" substring inside the annotation so
+// the witness assertions and the executed-step matrix keep matching the same words. Success lines
+// (done, keep=N, nothing-due) stay plain echoes: annotations are for degradations, not noise.
+fn release_bins_retention_warning(word: String) -> Node {
+  cmd(ws: [lit(t: "echo"), lit(t: join(["::warning title=release-bins retention::release-bins retention: ", word], ""))])
+}
+
 // Fetch and delete each own their bearer header file, removed on both outcomes immediately after
 // their own only consumer -- the same rule the lookup fetch follows (credential_argv_exposure).
 fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
@@ -1430,11 +1447,11 @@ fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
         right: bash_build_subshell_from_stmts(stmts: [
           remove_header,
           cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
-          release_bins_retention_echo(word: "lookup-failed"),
+          release_bins_retention_warning(word: "lookup-failed"),
         ]),
       ),
     ]),
-    right: release_bins_retention_echo(word: "lookup-failed"),
+    right: release_bins_retention_warning(word: "lookup-failed"),
   )
 }
 
@@ -1453,7 +1470,7 @@ fn release_bins_retention_fetch_page(header: Node, answer: Node, n_text: String)
     right: bash_build_subshell_from_stmts(stmts: [
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
       cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
-      release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
+      release_bins_retention_warning(word: join(["page-failed=", n_text], "")),
     ]),
   )
 }
@@ -1477,7 +1494,7 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
   let page_type_fail = bash_build_subshell_from_stmts(stmts: [
     cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
     cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
-    release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
+    release_bins_retention_warning(word: join(["page-failed=", n_text], "")),
   ])
   let append_plan = bash_build_with_redir_append_to_file(
     inner: cmd(ws: release_bins_retention_page_words(n: n)),
@@ -1560,10 +1577,10 @@ fn release_bins_retention_delete(header: Node) -> Node {
       gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
       bash_build_or_else(
         left: bash_build_and_then(left: delete_pipe, right: remove_header),
-        right: bash_build_subshell_from_stmts(stmts: [remove_header, release_bins_retention_echo(word: "delete-failed")]),
+        right: bash_build_subshell_from_stmts(stmts: [remove_header, release_bins_retention_warning(word: "delete-failed")]),
       ),
     ]),
-    right: release_bins_retention_echo(word: "delete-failed"),
+    right: release_bins_retention_warning(word: "delete-failed"),
   )
 }
 
@@ -1656,7 +1673,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
           path: lit(t: "/dev/null"),
         ),
         right: bash_build_subshell_from_stmts(stmts: [
-          cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
+          cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "::warning title=release-bins retention::release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
           cmd(ws: [lit(t: "touch"), flag_operand]),
         ]),
       ),
@@ -1681,7 +1698,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
           ),
           right: bash_build_subshell_from_stmts(stmts: [
             cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
-            release_bins_retention_echo(word: "plan-failed"),
+            release_bins_retention_warning(word: "plan-failed"),
           ]),
         ),
         ),
@@ -1727,7 +1744,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
             left: flag_absent,
             right: bash_build_or_else(
               left: release_bins_retention_duplicate_present(),
-              right: release_bins_retention_echo(word: "duplicate-ids"),
+              right: release_bins_retention_warning(word: "duplicate-ids"),
             ),
           ),
         ),
@@ -1742,7 +1759,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     bash_build_or_else(
       left: bash_build_or_else(
         left: bash_build_and_then(left: answer_present, right: nothing_arm),
-        right: bash_build_and_then(left: flag_absent, right: release_bins_retention_echo(word: "no-answer")),
+        right: bash_build_and_then(left: flag_absent, right: release_bins_retention_warning(word: "no-answer")),
       ),
       right: cmd(ws: [lit(t: ":")]),
     ),
@@ -1772,7 +1789,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     // The single admission for "a required page failed": the plan and the
     // deletions above were gated on it, and this line names the refusal.
     bash_build_or_else(
-      left: bash_build_and_then(left: incomplete_present, right: release_bins_retention_echo(word: "pages-incomplete")),
+      left: bash_build_and_then(left: incomplete_present, right: release_bins_retention_warning(word: "pages-incomplete")),
       right: nothing_arm,
     ),
     bash_build_or_else(
@@ -1782,7 +1799,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
           left: incomplete_absent,
           right: bash_build_and_then(
             left: flag_absent,
-            right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed"))),
+            right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_warning(word: "plan-failed"))),
           ),
         ),
       ),
@@ -1837,7 +1854,7 @@ fn release_bins_retention_statements() -> List<Node> {
         bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_incomplete_basename)]), right: true_arm),
         release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
       ], release_bins_retention_decide_statements())),
-      right: release_bins_retention_echo(word: "chore-failed"),
+      right: release_bins_retention_warning(word: "chore-failed"),
     ),
   ]
 }
