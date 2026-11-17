@@ -22,11 +22,14 @@ import gunbc.live_deploy.release_pair_delivery {
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
   release_pair_deliver_serving, release_pair_reason_is_benign_wait, release_pair_no_run_for_head_reason,
+  release_pair_serving_at_head, release_pair_already_at_head_reason,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
+// A DIFFERENT valid 40-hex revision, for the red control: a placed tree sitting on it is NOT converged with head_hex.
+data other_head_hex: NonEmptyStr = "9923456789abcdef0123456789abcdef01234567"
 data sha_hex: NonEmptyStr = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 // The real shape `sha256sum <path>` prints on stdout: "<64hex>  <path>". The digest binding must take the first field,
 // not the whole line, so the fold's member path built from the digest is the bare hex, not a path-bearing string.
@@ -194,3 +197,40 @@ test fn witness_decode_run_splits_run_id_and_head_sha() -> Bool {
   if ok { no_tab } else { false }
 }
 
+
+// STEADY-STATE SHORT-CIRCUIT (review 96219): a tick on an ALREADY-CONVERGED pair is a benign no-op that performs NO
+// fetch. The serving binding is supplied the way the entry receives it — release_pair_deliver_serving over the serve
+// gate's observed DeployedReleaseBinding (the real producer, through the GitObjectId->hex authority) — with the head
+// equal to the placed revision. The ROUTE claim: release_pair_serving_at_head is true, so the entry takes
+// PlanKeepsLastGood { reason: already_at_head } BEFORE the run discovery and the fetch (the fetch legs are not
+// reached), and that reason is a benign wait — the timer exits green without touching the network. Mutating the
+// predicate to always-false reddens this claim (the tick would re-fetch the same revision).
+test fn witness_converged_pair_short_circuits_before_fetch() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() })
+      let converged = release_pair_serving_at_head(serving: serving, head: head_hex)
+      let benign = release_pair_reason_is_benign_wait(reason: release_pair_already_at_head_reason)
+      converged && benign
+  }
+}
+
+// RED CONTROL for the short-circuit: it must not swallow the ticks that DO need to deliver. A placed tree on a
+// DIFFERENT revision than the head, and a not-installed tree, both return false — the fetch body runs. Widen the
+// predicate to always-true and delivery silently stops tracking main forever; this reddens that mutation.
+test fn witness_diverged_or_uninstalled_pair_must_fetch() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: a } =>
+      match git_object_id_from_untagged_hex(hex: other_head_hex as String) {
+        Absent => false
+        Present { value: b } =>
+          // Observed tree sits on b, the head to deploy is head_hex: NOT converged, so the fetch must run.
+          let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: b, surface: srv_surface() })
+          let diverged_fetches = !release_pair_serving_at_head(serving: serving, head: head_hex)
+          let uninstalled_fetches = !release_pair_serving_at_head(serving: RevisionNotInstalled, head: head_hex)
+          diverged_fetches && uninstalled_fetches
+      }
+  }
+}

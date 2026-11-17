@@ -234,6 +234,24 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 fn release_pair_reason_is_benign_wait(reason: NonEmptyStr) -> Bool {
   (reason as String) == (release_pair_bins_unbuilt_reason as String)
     || (reason as String) == (release_pair_no_run_for_head_reason as String)
+    // Steady state (review 96219): a tick whose observed serving pair already EQUALS the head to deploy has nothing
+    // to deliver; the short-circuit below returns this reason BEFORE any fetch, so the timer neither re-downloads the
+    // same pack nor reds on the existing hard link. It is a no-op, not a defect.
+    || (reason as String) == (release_pair_already_at_head_reason as String)
+}
+
+// THE STEADY-STATE SHORT-CIRCUIT (review 96219): is the observed serving binding ALREADY the head to deploy? A bound
+// tree whose revision hex equals the observed main head means this tick would re-download and re-link the same
+// revision — and the create-only hard link at the existing locus destination would fail the unit red on a healthy
+// pair. RevisionNotInstalled is never "already at head": the first deploy must never be short-circuited, so an
+// unobserved/uninstalled binding always proceeds to the fetch. Consumed by the entry's head arm, BEFORE the run
+// discovery and the fetch; its witness supplies the binding the real producer (release_pair_deliver_serving, from
+// the serve gate's observed DeployedReleaseBinding) emits, and asserts the ROUTE: true means no fetch is reached.
+fn release_pair_serving_at_head(serving: ReleaseRevisionBinding, head: NonEmptyStr) -> Bool {
+  match serving {
+    RevisionBoundAtEmission { revision: r } => (r as String) == (head as String)
+    RevisionNotInstalled => false
+  }
 }
 
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
@@ -244,6 +262,15 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
   match release_pair_decode_head(outcome: head_outcome) {
     none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_head_reason }
     Present { value: main_head } =>
+      // STEADY-STATE SHORT-CIRCUIT BEFORE THE FETCH (review 96219): if the OBSERVED serving pair is already the head
+      // to deploy, this tick is a benign no-op — it must not re-download the same pack or re-link the same revision
+      // (the create-only link would fail red on a healthy pair). The decision reads the serving binding the caller
+      // observed at the serve gate and the head it just observed; it fabricates nothing and is checked against the
+      // fold again below (short-circuiting a healthy pair cannot mask a real mismatch — the fold still refuses any
+      // source/binary drift on the ticks that DO fetch).
+      if release_pair_serving_at_head(serving: serving, head: main_head) {
+        PlanKeepsLastGood { kept: serving, reason: release_pair_already_at_head_reason }
+      } else {
       let run_outcome = run_shell_command_capture(
         command: gh_release_bins_run_list_command(
           repo: release_pair_deliver_repo_slug as String,
@@ -303,6 +330,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             verify: verify,
             serve_unit: serve_unit,
           )
+      }
       }
   }
 }
