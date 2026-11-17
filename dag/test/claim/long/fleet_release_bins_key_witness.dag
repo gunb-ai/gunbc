@@ -514,9 +514,9 @@ test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() 
 // a foreign-family member (cargo-ci prefix, id 500, oldest of all -- it must never be due).
 data retention_current_key: String = "release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-data retention_over_cap_body: String = "{\"total_count\":19,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1010,\"key\":\"release-bins-10aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T10:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\",\"ref\":\"refs/heads/main\"}]}"
+data retention_over_cap_body: String = "{\"total_count\":19,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1010,\"key\":\"release-bins-10aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T10:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:10:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:20:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:30:00Z\",\"ref\":\"refs/heads/main\"}]}"
 
-data retention_at_cap_body: String = "{\"total_count\":18,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T24:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T25:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T26:00:00Z\",\"ref\":\"refs/heads/main\"}]}"
+data retention_at_cap_body: String = "{\"total_count\":18,\"actions_caches\":[{\"id\":500,\"key\":\"cargo-ci-x86_64-mainsha\",\"created_at\":\"2019-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":999,\"key\":\"release-bins-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"created_at\":\"2020-01-01T00:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1011,\"key\":\"release-bins-11aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T11:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1012,\"key\":\"release-bins-12aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T12:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1013,\"key\":\"release-bins-13aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T13:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1014,\"key\":\"release-bins-14aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T14:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1015,\"key\":\"release-bins-15aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T15:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1016,\"key\":\"release-bins-16aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T16:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1017,\"key\":\"release-bins-17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T17:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1018,\"key\":\"release-bins-18aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T18:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1019,\"key\":\"release-bins-19aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T19:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1020,\"key\":\"release-bins-20aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T20:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1021,\"key\":\"release-bins-21aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T21:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1022,\"key\":\"release-bins-22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T22:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1023,\"key\":\"release-bins-23aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:00:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1024,\"key\":\"release-bins-24aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:10:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1025,\"key\":\"release-bins-25aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:20:00Z\",\"ref\":\"refs/heads/main\"},{\"id\":1026,\"key\":\"release-bins-26aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"created_at\":\"2026-11-01T23:30:00Z\",\"ref\":\"refs/heads/main\"}]}"
 
 data part_retention_exports: Outcome<String> = exports(["GH_TOKEN=fixture-token","GITHUB_API_URL=http://127.0.0.1:1","GITHUB_REPOSITORY_OWNER=gunb-ai","GITHUB_REPOSITORY_NAME=gunbc",join(["RELEASE_BINS_KEY=", retention_current_key], "")])
 
@@ -569,7 +569,10 @@ test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_
     // over the ref==refs/heads/main population -- the only entries the lookup can consume --
     // BEFORE the current-key exclusion. If the slice ever moves back in front of the ref filter,
     // a PR-ref crowd can evict main's entries and this assertion goes red with them.
-    && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.ref == \"refs/heads/main\")) | sort_by(.created_at)")
+    && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.ref == \"refs/heads/main\"))")
+    // recency is REAL time, not string order (2026-11-100 would sort before 2026-11-2 lexically)
+    && string_contains(s: release_bins_retention_union_program(), pattern: "strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime")
+    && string_contains(s: release_bins_retention_union_program(), pattern: "sort_by(._retention_epoch)")
     && string_contains(s: release_bins_retention_union_program(), pattern: ".ref | type) == \"string\"")
 }
 
@@ -582,7 +585,7 @@ test fn release_bins_retention_network_calls_are_bounded() -> Bool {
     // every failure word is a job annotation, not a bare echo (review 96127: countable degradations)
     && string_contains(s: text, pattern: "::warning title=release-bins retention::")
     && string_contains(s: text, pattern: "'timeout'")
-    && string_contains(s: text, pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY)) | reverse | .[0: ")
+    && string_contains(s: text, pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY)) | .[0: ")
 }
 
 // F1 REVISED (review 96095, superseding the 2026-11-16 side-chat shape): the step's script must
@@ -690,11 +693,22 @@ fn retention_int_range(from: Int, to: Int) -> List<Int> {
   }
 }
 
+
+// i div 28 for fixture calendar fields (month/day split); divisors are constants, so the Err
+// arm is totalization only -- 0 can never order a fixture page out of monotonicity unnoticed,
+// and a wrong calendar field makes strptime refuse the whole plan (fail-closed).
+fn retention_div28(i: Int) -> Int {
+  match int_div_result(i, 28) {
+    Ok { value: q } => q
+    Err { value: _ } => 0
+  }
+}
+
 fn retention_family_entry_text(i: Int) -> String {
   join([
     "{\"id\": ", int_to_decimal_string(i),
     ", \"key\": \"release-bins-r", int_to_decimal_string(i),
-    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"2026-11-", int_to_decimal_string(i), "\"}",
+    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"2026-", int_to_decimal_string(int_add(retention_div28(i), 1)), "-", int_to_decimal_string(int_add(int_sub(i, int_mul(retention_div28(i), 28)), 1)), "T00:00:00Z\"}",
   ], "")
 }
 
@@ -784,7 +798,7 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
   let r = run_script(script: script_retention_paged_delete)
   r.ran
     && r.success
-    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=234 keep=16")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=16 keep=16")
     && string_contains(s: r.stdout, pattern: "due=1 ")
     && string_contains(s: r.stdout, pattern: " 234")
     && !string_contains(s: r.stdout, pattern: " 235")
@@ -798,29 +812,30 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
 // refuse loudly. Red either way: if someone restores a fabricated default, the broken-census test
 // goes red; if the gate wrongly refuses, the admit test goes red.
 // REVIEW 96127 F1, EXECUTED: the keep window must be computed over the CONSUMABLE population
-// only. 210 entries: 170 refs/heads/main (2026 dates) and 40 refs/pull/4321/head entries that
-// are the NEWEST (2027 dates). A window computed over the whole union would keep the 16 newest
-// -- all PR-ref, consumable by nobody -- and declare 170 main entries due (deleting=170). The
-// consumer ref's window keeps main's 16 newest and names exactly 170-16 = 154 due. The wrong
-// grouping cannot print this number; both buggy groupings (all-union window: 170; no window at
-// all: 169) print something else.
+// only. 50 entries: 30 refs/heads/main (2026 dates) and 20 refs/pull/4321/head that are the
+// NEWEST (2027 dates). The consumer ref's window keeps main's 16 newest: due = 30-16 = 14,
+// deleting=14. A window computed over the whole union would keep the 16 newest -- all PR-ref,
+// consumable by nobody -- and declare 34 due, of which all 30 main entries are candidates:
+// the cap turns that into deleting=16. 14 vs 16: the wrong grouping cannot print 14.
 fn retention_prref_entry_text(i: Int) -> String {
   join([
     "{\"id\": ", int_to_decimal_string(i),
     ", \"key\": \"release-bins-p", int_to_decimal_string(i),
-    "\", \"ref\": \"refs/pull/4321/head\", \"created_at\": \"2027-01-", int_to_decimal_string(i), "\"}",
+    "\", \"ref\": \"refs/pull/4321/head\", \"created_at\": \"2027-", int_to_decimal_string(int_add(retention_div28(int_sub(i, 90000)), 1)), "-", int_to_decimal_string(int_add(int_sub(int_sub(i, 90000), int_mul(retention_div28(int_sub(i, 90000)), 28)), 1)), "T00:00:00Z\"}",
   ], "")
 }
 
-fn retention_prref_page_body(start: Int, end: Int, total: Int, pr: Bool) -> String {
+fn retention_prref_page_body2(start: Int, end: Int, main_start: Int, main_end: Int, total: Int) -> String {
   join(["{\"total_count\": ", int_to_decimal_string(total), ", \"actions_caches\": ["], "")
-    + join(map(retention_int_range(start, end), i => if pr { retention_prref_entry_text(i: i) } else { retention_family_entry_text(i: i) }), ", ")
+    + join(map(retention_int_range(start, end), i => retention_prref_entry_text(i: i)), ", ")
+    + ", "
+    + join(map(retention_int_range(main_start, main_end), i => retention_family_entry_text(i: i)), ", ")
     + "]}"
 }
 
-data retention_prref_body1: String = retention_prref_page_body(start: 1, end: 70, total: 210, pr: false)
-data retention_prref_body2: String = retention_prref_page_body(start: 71, end: 170, total: 210, pr: false)
-data retention_prref_body3: String = retention_prref_page_body(start: 90001, end: 90040, total: 210, pr: true)
+data retention_prref_body1: String = retention_prref_page_body2(start: 90001, end: 90020, main_start: 1, main_end: 30, total: 50)
+data retention_prref_body2: String = retention_prref_body1
+data retention_prref_body3: String = retention_prref_body1
 
 data script_retention_prref: TransportScript? = release_bins_transport(
   parts: [
@@ -836,9 +851,9 @@ test fn release_bins_retention_window_spares_pr_ref_entries() -> Bool {
   let r = run_script(script: script_retention_prref)
   r.ran
     && r.success
-    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=154 keep=16")
-    && !string_contains(s: r.stdout, pattern: "deleting=170")
-    && !string_contains(s: r.stdout, pattern: "deleting=194")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=14 keep=16")
+    && !string_contains(s: r.stdout, pattern: "deleting=16 ")
+    && !string_contains(s: r.stdout, pattern: "deleting=30")
     && !string_contains(s: r.stdout, pattern: "page-failed")
 }
 
