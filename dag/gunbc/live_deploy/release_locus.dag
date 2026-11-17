@@ -1,7 +1,7 @@
 module gunbc.live_deploy.release_locus
 
 import std.types { String, List, NonEmptyStr, CommitSha, Bool }
-import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name, release_locus_tree_receipt_revision_key, release_locus_tree_receipt_digest_key }
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
 // THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
@@ -206,8 +206,8 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
   if !success {
     TreeReceiptUnreadable { detail: error }
   } else {
-    let rev = tree_receipt_field(text: body, key: release_locus_tree_receipt_revision_key)
-    let dig = tree_receipt_field(text: body, key: release_locus_tree_receipt_digest_key)
+    let rev = tree_receipt_field(text: body, key: "candidate_revision")
+    let dig = tree_receipt_field(text: body, key: "installed_digest")
     if rev == "" {
       TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
     } else if dig == "" {
