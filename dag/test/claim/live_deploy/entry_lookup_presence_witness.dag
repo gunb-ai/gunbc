@@ -44,7 +44,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, OnTheHostItself,
-  OverTransport, BareListing, entry_presence_in_parent,
+  OverTransport, BareListing, entry_presence_in_parent, entry_presence,
 }
 import gunbc.host.host_effect { LocalShell }
 
@@ -357,4 +357,66 @@ test fn an_arm_that_cannot_be_carried_is_refused_and_never_answered_by_the_host(
     EntryAbsent => false
   }
   presence_is_indeterminate(refused) && carries_the_refusal
+}
+
+// (10) THE PRODUCTION FOLD ITSELF -- `entry_presence`, the ancestor walk -- on the shape the live
+// deployment stopped on: a name under a directory the observing principal may search but not read. The
+// fold must answer Absent for the name that is not there and Present for the one that is, with no
+// listing anywhere. This is `/home/briansrls/.local/share/gunbc-srv2-deploy` reproduced at a smaller
+// scale, through the route the fold actually takes.
+test fn the_production_walk_answers_under_a_directory_no_one_may_read() -> Bool {
+  let made = shell.Mktemp.Dir()
+  if made.success == false {
+    false
+  } else {
+    let root = made.path as String
+    let parent = join([root, "/share"], "")
+    let staged = run_shell_command_observe_outcome(command: mkdir_parents_command(path: parent), transport: LocalExec)
+    match staged {
+      ProcessNotSpawned { program: _, cause: _ } => false
+      ProcessRan { observation: s } =>
+        if s.exit_code != 0 {
+          false
+        } else {
+          let mode = shell.Chmod.SearchableNotListableByEveryPrincipal(path: parent as FilePath)
+          let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
+          let missing = entry_presence(arm: OnTheHostItself, path: join([parent, "/gunbc-no-such-entry"], ""))
+          let there = entry_presence(arm: OnTheHostItself, path: join([parent, "/gunbc-entry"], ""))
+          mode.success && created.success && presence_is_absent(missing) && presence_is_present(there)
+        }
+    }
+  }
+}
+
+// (11) AND WHEN AN ANCESTOR REFUSES, THE WALK CARRIES THE REFUSAL. `entry_presence` walks upward: the
+// leaf's parent is not searchable, so the level below is unobservable; the walk climbs to the
+// mktemp root, which IS present, and answers with the cause it read below. The claim requires that
+// cause to be the host's own refusal -- the walk turning a refused ancestor into an absence is the
+// failure this whole route was written to prevent, and it is what `Absent releases a cell` makes
+// expensive.
+test fn the_walk_carries_an_unsearchable_ancestors_refusal() -> Bool {
+  let made = shell.Mktemp.Dir()
+  if made.success == false {
+    false
+  } else {
+    let root = made.path as String
+    let parent = join([root, "/locked"], "")
+    let staged = run_shell_command_observe_outcome(command: mkdir_parents_command(path: parent), transport: LocalExec)
+    match staged {
+      ProcessNotSpawned { program: _, cause: _ } => false
+      ProcessRan { observation: s } =>
+        if s.exit_code != 0 {
+          false
+        } else {
+          let mode = shell.Chmod.NotSearchableDirectory(path: parent as FilePath)
+          let answer = entry_presence(arm: OnTheHostItself, path: join([parent, "/gunbc-no-such-entry"], ""))
+          let carries = match answer {
+            EntryPresenceIndeterminate { cause: cause } => string_contains(s: cause, pattern: "Permission denied")
+            EntryPresent => false
+            EntryAbsent => false
+          }
+          mode.success && presence_is_indeterminate(answer) && carries
+        }
+    }
+  }
 }
