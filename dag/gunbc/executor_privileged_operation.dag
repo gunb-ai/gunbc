@@ -28,6 +28,7 @@ import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_a
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.sha256sum { sha256sum_binary_path }
 import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.shadow.account_creation { usermod_append_group_argv }
 import extdeps.tools.env { env_prefixed_argv }
 import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
@@ -207,12 +208,7 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       sh,
       l
     ]
-    EnsureSupplementaryGroupMembership { login: l, group: g } => [
-      ci_runner_sudo_binary_path(b: SudoUsermod),
-      "-aG" as NonEmptyStr,
-      g,
-      l
-    ]
+    EnsureSupplementaryGroupMembership { login: l, group: g } => usermod_append_group_argv(login: l, group: g)
     InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
       ci_runner_sudo_binary_path(b: SudoInstall),
       "-m" as NonEmptyStr,
