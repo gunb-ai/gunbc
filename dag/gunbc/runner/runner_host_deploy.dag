@@ -37,6 +37,10 @@ import gunbc.runner.runner_slot_allocation {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.fleet.fleet_intent_network { host_lan_address }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enrollments, first_contact_lan_keys }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.hostname_allocation { fleet_machine_registry, allocated_canonical_hostname }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_posix_accounts {
   DeployRunnerPrincipal,
   fleet_posix_root_user,
@@ -344,17 +348,58 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // them). It is a fn, not a datum, precisely so it can REFUSE (Absent) when the fleet records no LAN address
 // for the host, rather than silently borrowing a literal (fail_closed). Its listener is the new gunbc-runner
 // account from the start; creating that OS account on the host is B3b/B3d (the named consumers).
+// BUTCH'S SSH TARGET IS THE TAILNET ANCHOR, NOT AN ADDRESS. The anchor is the row fleet_host_key_enrollments
+// gains when srv14 JOINS (its name is DERIVED from the machine allocation through fleet_tailnet_name --
+// never a literal). Until then the host has exactly one other modeled reach: the FIRST-CONTACT HOP --
+// the pinned key at its DHCP lease address -- and only the two join-making modes may dial it
+// (fleet_known_hosts_anchor::first_contact_admitted_mode_wires; witnesses there). Once the tailnet row
+// exists the anchored branch wins for EVERY mode and the lease is never dialled again; retiring the hop
+// rows is the flip's PR. With neither -- no anchor, no pinned hop key -- srv14 is unmodeled and its spec
+// is Absent, so every consumer refuses it closed.
 fn srv14_runner_host_spec() -> RunnerHostSpec? {
-  match host_lan_address(host: operator_host_srv14) {
+  match srv14_anchored_ssh_host() {
+    Present { value: host } => Present { value: srv14_runner_spec(ssh_target_host: host) }
+    Absent => match host_lan_address(host: operator_host_srv14) {
+      Absent => Absent
+      Present { value: address } =>
+        match filter(
+          first_contact_lan_keys,
+          k => (k.host as String) == (operator_host_srv14 as String),
+        ).first() {
+          Absent => Absent
+          Present { value: _ } => Present { value: srv14_runner_spec(ssh_target_host: address as String) }
+        }
+    }
+  }
+}
+
+fn srv14_runner_spec(ssh_target_host: String) -> RunnerHostSpec {
+  RunnerHostSpec {
+    host_label: "srv14",
+    ssh_target: join(["ubuntu@", ssh_target_host], "") as NonEmptyStr,
+    runner_user: "ubuntu",
+    unit_user: gunbc_runner_listener_principal.unit_user,
+    job_user: gunbc_runner_listener_principal.job_user,
+    app: gunbc_ci_github_app,
+  }
+}
+
+// The tailnet row, if srv14 has joined: a fleet_host_key_enrollments row for srv14 whose host is exactly
+// <allocated name>.<tailnet domain> -- both parts DERIVED (hostname_allocation, fleet_tailnet).
+fn srv14_anchored_ssh_host() -> String? {
+  match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (operator_host_srv14 as String)).first() {
     Absent => Absent
-    Present { value: address } => Present { value: RunnerHostSpec {
-      host_label: "srv14",
-      ssh_target: join(["ubuntu@", address as String], "") as NonEmptyStr,
-      runner_user: "ubuntu",
-      unit_user: gunbc_runner_listener_principal.unit_user,
-      job_user: gunbc_runner_listener_principal.job_user,
-      app: gunbc_ci_github_app,
-    } }
+    Present { value: machine } =>
+      match filter(
+        fleet_host_key_enrollments,
+        row =>
+          (row.host as String) == (operator_host_srv14 as String)
+            && (known_hosts_host_field(address: row.address) as String)
+              == (join([allocated_canonical_hostname(allocation: machine) as String, ".", fleet_tailnet_domain as String], "") as String),
+      ).first() {
+        Absent => Absent
+        Present { value: row } => Present { value: known_hosts_host_field(address: row.address) as String }
+      }
   }
 }
 

@@ -23,7 +23,7 @@ import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows }
 import gunbc.fleet.fleet_known_hosts_anchor {
   portable_remote_words, anchored_host_key_row, SshTargetResolution, SshTargetResolved,
-  SshTargetRefused, ssh_target_wire, ssh_target_refusal_text
+  SshTargetRefused, TargetAnchorRowAbsent, ssh_target_wire, ssh_target_refusal_text
 }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
@@ -2334,14 +2334,21 @@ test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_no
 // srv14 (anchor at the modeled LAN IP yields the IP target), srv1 (hostname-keyed
 // anchor yields the hostname target), and a host no anchor row names (refusal).
 
-// srv14's administrator target is the IP its anchor row carries, never the bare
-// identity the probe layer would hand back (the failed run 43333208673 symptom).
-test fn anchored_ip_yields_the_administrator_target_ip_srv14() -> Bool {
+// srv14 (butch) has NO anchor row until it joins the tailnet -- its lease is a DHCP OBSERVATION and
+// the key at it is the FIRST-CONTACT hop, which ONLY hostname_converge and tailscale_join_converge may
+// dial (gunbc.fleet.fleet_known_hosts_anchor::first_contact_admitted_mode_wires; custody witness
+// custody_refuses_the_pre_anchor_host_on_its_own_mode_wire). So the RUNNER converge, an anchored mode,
+// REFUSES srv14 pre-join -- no actuation can reach a host whose only reach is the lease. When the flip
+// PR adds srv14's tailnet row, THIS claim goes red on purpose and is updated to expect the tailnet
+// target (name derived, never a literal) -- that is the post-join flip, not a regression.
+test fn the_pre_join_host_refuses_the_administrator_target_srv14() -> Bool {
   match administrator_ssh_target(host: operator_host_srv14) {
-    SshTargetResolved { target: t } =>
-      ssh_target_wire(target: t) as String == "192.168.1.205"
-        && t.principal as String == "ubuntu"
-    SshTargetRefused { endpoint: _, refusal: _ } => false
+    SshTargetResolved { target: _ } => false
+    SshTargetRefused { endpoint: _, refusal: refusal } => match refusal {
+      TargetAnchorRowAbsent { host: _ } => true
+      TargetEndpointUnparseable { reason: _ } => false
+      FirstContactModeNotAdmitted { mode: _, host: _ } => false
+    }
   }
 }
 

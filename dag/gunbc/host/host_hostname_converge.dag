@@ -666,6 +666,44 @@ fn hostname_converge_bind_transport(
   host: ComputeHost,
   context: FleetSshExecutionContext,
 ) -> HostnameConvergeResolution {
+  // FIRST the first-contact hop (hostname_converge is one of the two modes the hop admits -- it is the
+  // mode that MAKES a host joinable, so it must reach a host that has no anchor yet); the probe route
+  // only for hosts with no hop. srv1-srv4 have no hop data: their route is byte-for-byte unchanged.
+  match first_contact_ssh_target(host: target, principal: host_identity_operator_principal_name(), mode_wire: hostname_converge_mode) {
+    SshTargetResolved { target: ssh_target } =>
+      PairResolved {
+        request: hostname_converge_request(
+          target: target,
+          peer: peer,
+          direction: direction,
+          base: base,
+          desired: desired,
+          host: host,
+          ssh_target: ssh_target,
+        ),
+        context: context,
+      }
+    SshTargetRefused { endpoint: _, refusal: _ } => hostname_converge_bind_probe_route(
+      target: target,
+      peer: peer,
+      direction: direction,
+      base: base,
+      desired: desired,
+      host: host,
+      context: context,
+    )
+  }
+}
+
+fn hostname_converge_bind_probe_route(
+  target: HostIdentity,
+  peer: HostIdentity,
+  direction: HostnameConvergeDirection,
+  base: DeployedIntentV0,
+  desired: DeployedIntentV1,
+  host: ComputeHost,
+  context: FleetSshExecutionContext,
+) -> HostnameConvergeResolution {
   let endpoint = fleet_probe_endpoint_for(host: target as String)
   match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: host_identity_operator_principal_name()) {
     SshTargetRefused { endpoint: _, refusal: _ } =>
