@@ -10,6 +10,7 @@ import extdeps.git {
   shape_git_add_path_args,
   git_checkout_revision_args,
   shape_git_status_porcelain_nul_args,
+  git_command_config_inert_args,
 }
 import gunbc.git_argv_route_wall {
   GitArgvRoute,
@@ -137,4 +138,40 @@ test fn admission_decision_refuses_the_mis_join_and_admits_the_pairings() -> Boo
        route: GitWorkdirFree,
        argv: git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"),
      )
+}
+
+// (RED -- fail-closed: an allowlist, not a denylist) A bare verb that is neither a known mutating
+// verb NOR on the closed read-only allowlist -- a git subcommand the wall has not enumerated -- is
+// REFUSED at a workdir-free route. `pull` merges into the working tree, `revert` commits, `fetch`
+// writes refs, `commit-tree` writes objects: each writes the repository wherever it runs, and any
+// unclassified verb might. A denylist that admits whatever is merely ABSENT from its list would let
+// all four through -- the exact fail-OPEN hole this closes. So the workdir-free arm admits only
+// in-repo-dressed argv and allowlisted read-only verbs, and refuses the rest.
+//
+// RED control (its own): restore the workdir-free arm to "refuse only the known-mutating denylist,
+// admit everything else" and THIS claim alone goes red -- none of `pull`/`revert`/`fetch`/`commit-tree`
+// is on the mutating list, so a denylist admits them -- while claims 1-7 stay green. That isolates the
+// fail-closed default as the load-bearing part, not decoration.
+test fn unrecognised_bare_verb_is_refused_at_workdir_free_route() -> Bool {
+     refused_bare_mutating_free(["pull"])
+  && refused_bare_mutating_free(["revert", "HEAD"])
+  && refused_bare_mutating_free(["fetch", "origin"])
+  && refused_bare_mutating_free(["commit-tree", "HEAD", "-p", "HEAD"])
+}
+
+// (GREEN -- the step-over admits a legitimate read-only verb behind git global options) The same
+// classifier that finds the mutation in the RED case above must find the READ-ONLY verb when the
+// command is legitimate: a `status` inspection preceded by `-c k=v` global config options still only
+// inspects, so at a workdir-free route it is admitted. Shape-built (config-inert globals + the status
+// shape), so the admitted argv is real `extdeps/git.dag` output, not a hand spelling. RED control:
+// break the classifier's step-over of the value-taking globals (handle only `-C`) and the leading
+// token it returns is "-c", not "status" -- so `git_subcommand_is_safe_read_only` is false, the
+// command is refused, and THIS claim alone goes red while the refusal claims stay green. That is the
+// step-over being load-bearing on the allowlist head (it protects legitimate read-only commands, not
+// the refusals -- those hold whether or not the verb is extracted, because an unrecognised token is
+// refused by the closed allowlist anyway).
+test fn read_only_verb_behind_global_options_is_admitted_at_workdir_free_route() -> Bool {
+  let argv = concat(git_command_config_inert_args(), shape_git_status_porcelain_nul_args())
+  git_argv_leading_subcommand(argv: argv) == "status"
+    && admitted(route: GitWorkdirFree, argv: argv)
 }

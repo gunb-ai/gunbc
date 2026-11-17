@@ -28,8 +28,12 @@ import std.optional { Present, Absent }
 //
 //   * a route that CARRIES a working directory may take a bare mutating argv, because git then runs
 //     exactly where the route says, and
-//   * a route that names NO working directory admits ONLY the in-repo dressing, so the in-repo shape
-//     is the only way to reach it and a bare mutating argv cannot be mis-joined to it.
+//   * a route that names NO working directory admits ONLY an argv that names where it acts: the
+//     in-repo dressing (`-C`/`--git-dir`/`--work-tree`), or a bare argv whose leading subcommand is on
+//     a CLOSED allowlist of read-only inspection verbs. Everything else -- a bare mutating argv, and
+//     fail-closed any verb the allowlist has not earned -- is refused. So the in-repo dressing is the
+//     only mutating way to reach such a route, and an unconsidered verb is refused rather than
+//     admitted: the failure direction is a route that fails loudly, never an ambient-tree write.
 //
 // `admit_git_argv_on_route` is the single decision a route branches on before spawning:
 // GitArgvAdmitted, or the distinct GitArgvRefused variant -- a typed,
@@ -74,6 +78,42 @@ fn git_subcommand_is_mutating(subcommand: String) -> Bool {
   || subcommand == "symbolic-ref"
   || subcommand == "filter-branch"
   || subcommand == "replace"
+}
+
+// A git subcommand that only ever READS -- an inspection verb that cannot write the repository or the
+// working tree, whatever its arguments. This is the CLOSED allowlist a workdir-free route admits in
+// place of the in-repo dressing: the workdir-free decision admits ONLY an argv that names its
+// repository (`-C`/`--git-dir`/`--work-tree`) or whose leading subcommand appears HERE, and refuses
+// everything else. The burden is inverted from a denylist: a verb nobody enumerated -- `pull`,
+// `revert`, `commit-tree`, `notes`, `submodule`, a future git verb -- is REFUSED, so the gap surfaces
+// as someone's route failing loudly, never as a silent write into the ambient tree (fail_closed: the
+// wrong state is unwritable, not caught).
+//
+// Only UNAMBIGUOUSLY read-only verbs belong here. A verb whose write-ness is argument-dependent is
+// NOT safe at a route that names no place to run, so it stays out and is refused: `config <k> <v>`
+// writes while `config <k>` reads; `branch`/`tag` create by default; `remote add/remove` write;
+// `stash`, `clean`, `bisect` mutate state. Reaching one of those at a workdir-free route means
+// re-dressing it (`-C <repo> ...`) or taking a directory-carrying route -- never admitting an
+// unconsidered verb by default.
+fn git_subcommand_is_safe_read_only(subcommand: String) -> Bool {
+     subcommand == "status"
+  || subcommand == "log"
+  || subcommand == "show"
+  || subcommand == "diff"
+  || subcommand == "cat-file"
+  || subcommand == "rev-parse"
+  || subcommand == "rev-list"
+  || subcommand == "ls-files"
+  || subcommand == "ls-tree"
+  || subcommand == "ls-remote"
+  || subcommand == "describe"
+  || subcommand == "name-rev"
+  || subcommand == "merge-base"
+  || subcommand == "blame"
+  || subcommand == "shortlog"
+  || subcommand == "whatchanged"
+  || subcommand == "grep"
+  || subcommand == "reflog"
 }
 
 // The in-repo dressing: git's global `-C <repo>` option in first position with a non-empty
@@ -152,10 +192,13 @@ fn git_argv_is_bare_mutating(argv: List<String>) -> Bool {
 // The decision a route branches on before spawning: Admitted, or a distinct Refused variant. There
 // is no admissible-but-warned state, no admitted-by-default and no string label a typo could turn
 // into "admitted" -- fail_closed, a wrong answer is a located, typed variant, not an invisible
-// default. There is exactly one way to be refused (the bare-mutating mis-join at a workdir-free
-// route), so `GitArgvRefused` is a nullary variant rather than a reason sum with one inhabitant; the
-// "carrying route names no directory" half never needs a reason because `workdir: NonEmptyStr` makes
-// that route unconstructable.
+// default. There is exactly one Refused VARIANT, but it now covers every bare argv at a workdir-free
+// route that neither names a repository (`-C`/`--git-dir`/`--work-tree`) nor is a safe read-only verb
+// -- the bare-mutating mis-join AND any unrecognised verb the closed allowlist has not earned. So
+// `GitArgvRefused` stays a nullary variant rather than a reason sum: the refusal is located (this
+// route, this argv) and the model does not pretend to a finer reason taxonomy it has not enumerated;
+// the "carrying route names no directory" half never needs a reason because `workdir: NonEmptyStr`
+// makes that route unconstructable.
 type GitArgvRouteAdmission
   = GitArgvAdmitted
   | GitArgvRefused
@@ -167,13 +210,20 @@ fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRo
     // route says. The route cannot advertise a directory and name nowhere -- `workdir: NonEmptyStr`
     // makes that value unconstructable -- so there is nothing left to refuse on this arm.
     GitWorkdirCarrying => GitArgvAdmitted
-    // Names no directory: only the in-repo dressing reaches it, so a bare mutating argv -- which
-    // would mutate whatever repository the process happens to sit in -- is refused outright.
+    // Names no directory: admit ONLY an argv that carries its own place to act -- the in-repo
+    // dressing (`-C`/`--git-dir`/`--work-tree`, the short-circuit below) or a bare argv whose leading
+    // subcommand is a safe read-only inspection verb. Everything else is REFUSED: a bare mutating
+    // argv (it would mutate whatever tree the process sits in) and, fail-closed, any UNRECOGNISED
+    // verb -- one not on the read-only allowlist -- because a git subcommand nobody enumerated may
+    // write the ambient tree just as `commit` does. The default is refusal, so the allowlist can
+    // never be silently incomplete in the dangerous direction.
     GitWorkdirFree =>
-      if git_argv_is_bare_mutating(argv) {
-        GitArgvRefused
-      } else {
+      if git_argv_is_in_repo_dressed(argv) {
         GitArgvAdmitted
+      } else if git_subcommand_is_safe_read_only(git_argv_leading_subcommand(argv)) {
+        GitArgvAdmitted
+      } else {
+        GitArgvRefused
       }
   }
 }
