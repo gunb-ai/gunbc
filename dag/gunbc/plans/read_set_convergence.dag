@@ -117,3 +117,17 @@ data read_set_convergence_plan: Plan = Plan {
   body: read_set_convergence_body(),
   retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every live consumer in section 3 (A1 fast lane, A2 parse-verdict reuse, A3 partition guard, heal's products) decides validity through the read-set authority, and the retired mechanisms are deleted: B1, B2, B4, C2, C3, C4, C6, D1-D5, C1's touched-path wrappers and suffix matcher, and C5's three dead functions (C5's `import_closure_live_paths` stays with its consumer, and B3 follows the frozen compiler-closure emitter's own migration); the authority's home is then cited by gunbc.plans.demand_engine_program section 2.3 and this plan deletes.") }
 }
+
+// P6(b) fast-lane MECHANICS state, 2026-11-17 (this comment is plan data only; it is a
+// regression probe for the lane AND the record of the mechanics that make (b) reliable,
+// each landed with its own receipt): the unit is published at the native-CLI boundary
+// before the parse walk (#16559, squash c57e8ab8228); the locator looks back thirty
+// first-parent ancestors, sized over the observed 15-merges-in-6-minutes stampede that
+// starved twelve ancestors and cost seven PRs the full lane on 2026-11-15 (#16565,
+// squash a613c70cb41); every decision prints one structured `fast lane: classify --
+// <category>` line (reuse | miss_none | full_own | full_stale_unit | full_integrity), so
+// the hit rate is countable from logs without re-deriving causes; and the release-bins
+// family is retained bounded (keep newest 16, oldest-first capped deletes, complete-
+// listing refusals), so fast-lane units are never evicted under the 10 GiB repo budget
+// (#16596, squash 3b210eff50b). Controls owed by this lane: a plan-only PR shows reuse
+// under 5 minutes, and a one-line compiler-input edit still gets a full run.
