@@ -25014,20 +25014,19 @@ mod nfr_tests {
     #[test]
     fn nfr_live_union_is_populated_unique_and_tripled() {
         let entries = super::non_fold_residue_roster_entries().expect("live frontier union");
-        // Sanity FLOOR (discovery is wired and populated), NOT a cap on how much
-        // debt may be paid off. The DP-M4 closed-matches-total payoff retires
-        // single-wildcard-over-closed-coproduct rows (each wildcard named out and
-        // its co-located row deleted), so the live union shrinks as debt is paid.
-        // The remaining frontier is still large (order ~90+); a healthy tree sits
-        // well above this bound, while a broken discovery walk (glob misses dag/ or
-        // src/v2/, parser stops early) would collapse toward 0 and trip it. The
-        // per-entry uniqueness and identity-join tripling assertions below are the
-        // real structural guards; this only refuses a near-empty discovery.
-        assert!(
-            entries.len() >= 64,
-            "live host union must stay populated (got {})",
-            entries.len()
-        );
+        // Semantic discovery floor: every rostered row resolves to a declaration the
+        // module it names actually declares, AND every file under the two roots that
+        // declares the frontier contributes its rows to the union. Replaces the former
+        // count floor (entries.len() >= 64) which passed while a subtree was missing.
+        //
+        // Red control: drop src/v2/compiler carriers → 70 remain (passes old >= 64),
+        // carrier completeness catches it. Rename a target → resolution catches it.
+        let root = process_workspace_root();
+        super::nfr_entries_all_resolve(entries, &root)
+            .expect("every rostered row resolves to its declaration");
+        super::nfr_carrier_completeness(entries, &root)
+            .expect("every frontier-declaring carrier contributed rows");
+
         let mut seen = std::collections::BTreeSet::new();
         for path in entries {
             assert!(!path.is_empty(), "live union path must be nonempty");

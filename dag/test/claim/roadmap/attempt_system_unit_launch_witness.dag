@@ -8,6 +8,10 @@ import std.algebra { skip }
 import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
 import extdeps.exec.command { argv_words, ArgvCommand }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
+import extdeps.filesystem.filesystem_io {
+  filesystem_exact_read,
+  filesystem_read_outcome,
+}
 import extdeps.systemd {
   systemd_service_unit_name, systemd_unit_name_wire,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
@@ -85,6 +89,9 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
+  attempt_system_unit_answer_from_exact,
+  attempt_system_unit_claimed_body_from_outcome,
+  AttemptSystemUnitClaimedBodyRefused, AttemptSystemUnitClaimedBodyRead,
   attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
   attempt_system_unit_launch_gunbc_argv_at,
   AttemptSystemUnitLaunchArgv, AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused, attempt_system_unit_launch_argv_refused_detail,
@@ -1350,5 +1357,28 @@ fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) ->
   match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
     Present { value: d } => d
     Absent => "<the spool declares no directory for this role>"
+  }
+}
+
+// --- DP-M5b: could-not-look claims for the attempt-spool read family ---
+
+test fn an_unreadable_answer_read_is_not_absent() -> Bool {
+  let reading = attempt_system_unit_answer_from_exact(
+    exact: filesystem_exact_read(path: "/answers/e", content: "", success: false, error: "EACCES", error_kind: "permission_denied"),
+    request_body: "body",
+  )
+  match reading {
+    AttemptSystemUnitAnswerUnreadable { detail } => detail == "EACCES"
+    _ => false
+  }
+}
+
+test fn a_claimed_body_refusal_carries_the_read_error() -> Bool {
+  let body = attempt_system_unit_claimed_body_from_outcome(
+    outcome: filesystem_read_outcome(content: "", success: false, error: "EACCES: permission denied"),
+  )
+  match body {
+    AttemptSystemUnitClaimedBodyRefused { reason } => string_contains(s: reason, pattern: "EACCES")
+    _ => false
   }
 }

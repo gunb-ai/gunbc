@@ -74,6 +74,7 @@ import extdeps.posix.test_utility {
   test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
+  path_existence_reading_of_exit,
   entry_existence_reading,
   test_executable_command,
   PathExistenceReading,
@@ -9391,20 +9392,17 @@ fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<
   )
 }
 
-// PURE: the test status as a reading. Exit 0 present, 1 absent-or-unstattable, anything else (or a
-// refused transport) unreadable.
+// PURE: the test status as a reading. The 0/1/other law is NOT spelled out here -- it is
+// extdeps.posix.test_utility's path_existence_reading_of_exit, the one reader of what a `test` status
+// means, so this fold and this module's own path_existence_reading cannot drift from each other.
+// A transport that refused is unreadable with the transport's own words, which no exit-code mapping can
+// carry.
 fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
-      if o.exit_code == 0 {
-        PathPresent
-      } else if o.exit_code == 1 {
-        PathAbsentOrUnstattable
-      } else {
-        PathExistenceUnreadable { reason: join(["`test` on ", path, " exited ", to_string(o.exit_code), ": ", o.stderr], "") as NonEmptyStr }
-      }
+      path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
   }
 }
 

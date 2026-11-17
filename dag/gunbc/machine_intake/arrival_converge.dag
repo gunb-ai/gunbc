@@ -155,6 +155,8 @@ import gunbc.machine_intake.prior_life_boundary {
   forced_write_preserves_archive_inference,
   PostWriteEntryStanding,
   dry_archive_prior_life_across_forced_write,
+  LivePriorLifeFacts,
+  live_archive_prior_life,
   prior_life_receipt_key,
   prior_life_receipt_consumed_identity,
 }
@@ -730,6 +732,10 @@ type ArrivalStepRefusal
   | ReadOnlyPhaseSatisfiedWithoutEvidence { phase: ArrivalPhase }
   | PriorLifeIdentityForAnotherInstance { identity: StepInstanceKey }
   | PriorLifeBoundaryRefused { cause: PriorLifeRefusal }
+  // The live archive arm carries no sealed pre-write standing, so a run taking the
+  // ForcedFirstRotationPrecedesPriorLife row cannot ground the inference that the LIVE archive
+  // preceded the forced rotation. Refuse rather than borrow the dry world's standing.
+  | PriorLiveArchiveForcedWriteNotAdmitted { platform: DeclarationRef }
   | BmcSecureIdentityForAnotherInstance { identity: StepInstanceKey }
   | BmcSecureAuthorizationUndischarged
   | BmcSecurePhaseDomainRefused
@@ -970,6 +976,32 @@ fn prior_life_boundary(key: StepInstanceKey, identity: IdentityBoundProvisional,
       // is never established, so fleet admission reports PriorLifeBoundary missing and the unit stays out of
       // the fleet, and the verdict travels with the operator decision it needs.
       PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } => StepIncomplete { key: key, cause: ForcedWritePriorLifeIndeterminate { verdict: v } }
+    }
+  }
+}
+
+// THE PRIOR-LIFE STEP takes either input arm. The dry arm runs the supplied world exactly as before
+// (witnesses and the dry producers keep it). The live arm archives the sealed live captures through
+// gunbc.machine_intake.prior_life_boundary::live_archive_prior_life — same policy row, same classifier,
+// same write-then-read-back discipline, same sealed establishment. A live run on the forced-first-
+// rotation row is refused: the live mint grounds no pre-write standing (see the refusal arm's comment).
+fn arrival_prior_life_step(key: StepInstanceKey, identity: IdentityBoundProvisional, inputs: PriorLifeInputs, across: PriorLifeForcedWriteContext?) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  if (identity.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: PriorLifeIdentityForAnotherInstance { identity: identity.key } }
+  } else {
+    match inputs {
+      DryWorld { platform: platform, world: world } =>
+        prior_life_boundary(key: key, identity: identity, platform: platform, world: world, across: across)
+      LiveCaptures { platform: platform, facts: facts } => match across {
+        Absent =>
+          match live_archive_prior_life(key: key, consumed_identity: identity.key, subject: identity.subject, platform: platform, facts: facts, forced_inference: none) {
+            PriorLifeArchiveEstablished { receipt: r } => StepEstablished { receipt: PriorLifeBoundaryReceipt { receipt: r } }
+            PriorLifeArchiveRefused { cause: c } => StepRefused { key: key, cause: PriorLifeBoundaryRefused { cause: c } }
+            PriorLifeArchiveIncomplete { cause: i } => StepIncomplete { key: key, cause: PriorLifeBoundaryIncomplete { cause: i } }
+            PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } => StepIncomplete { key: key, cause: ForcedWritePriorLifeIndeterminate { verdict: v } }
+          }
+        Present { value: _ } => StepRefused { key: key, cause: PriorLiveArchiveForcedWriteNotAdmitted { platform: platform } }
+      }
     }
   }
 }
@@ -1308,12 +1340,14 @@ type ArrivalPrefixVerdict
   | ArrivalForcedRowNotAdmitted { key: BmcCredentialPolicyKey }
   | ArrivalRunFolded { verdict: ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> }
 
-// THE PRIOR-LIFE INPUTS: the unit's platform (which selects its policy row) and the dry world the
-// archive reads and writes.
-type PriorLifeInputs {
-  platform: DeclarationRef
-  world: DryPriorLifeWorld
-}
+// THE PRIOR-LIFE INPUTS: the unit's platform (which selects its policy row) and the world the archive
+// reads and writes. The DRY arm is the supplied witness world; the LIVE arm (PXE 1d-c) carries the
+// carrier captures sealed by gunbc.machine_intake.prior_life_capture_live — minted only from bytes the
+// evidence store read back, so no door can steer the fold with door-selected bytes. Exactly one arm:
+// a boundary is either archived from the supplied world or from the controller's own records.
+type PriorLifeInputs
+  = DryWorld { platform: DeclarationRef, world: DryPriorLifeWorld }
+  | LiveCaptures { platform: DeclarationRef, facts: LivePriorLifeFacts }
 
 // The domain executes its steps in the admitted order, each consuming only the receipt its
 // precondition produced in this run; a step whose precondition did not establish is not executed and
@@ -1333,7 +1367,7 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
             Present { value: ir } =>
               match ir {
                 IdentityBindReceipt { receipt: i } =>
-                  [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world, across: across)]
+                  [access, identity, arrival_prior_life_step(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, inputs: prior_life, across: across)]
                 AccessDiscoverReceipt { receipt: _ } => [access, identity]
                 PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
                 BmcSecureReceipt { receipt: _ } => [access, identity]
@@ -1538,7 +1572,7 @@ fn converge_arrival_unit_prefix(run: ConvergenceRunId, row: ArrivalUnitCaptureRo
     subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
-    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+    prior_life: DryWorld { platform: row.platform, world: prior_life },
     locked: none,
   )
 }
@@ -1564,7 +1598,7 @@ fn converge_arrival_unit_through_bmc_secure(run: ConvergenceRunId, row: ArrivalU
     subject: row.subject_key,
     read: read_unit_manager_capture(row: row),
     inputs: unit_identity_bind_inputs(row: row),
-    prior_life: PriorLifeInputs { platform: row.platform, world: prior_life },
+    prior_life: DryWorld { platform: row.platform, world: prior_life },
     bmc: bmc,
     locked: none,
   )
