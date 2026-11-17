@@ -15,7 +15,7 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 // recording after the head moved, that a claimed second retirement really refuses, that a refusal really
 // wrote nothing) needs a real throwaway Git remote and lives in the repo's manual-driver idiom:
 // `test.manual.issue_command_wet issue_command_acceptance_wet`, whose header documents the fixture and
-// whose executed receipt this PR carries. The close route's claims stayed where they were, with the reader
+// whose executed receipt #16189 carried. The close route's claims stayed where they were, with the reader
 // they assert on (`roadmap_operator_close_history`).
 //
 // What they prove by RUNNING:
@@ -207,7 +207,7 @@ fn opr_principal() -> EventPrincipalAuthenticated {
 // is answered by its own recording after the head moved, that a claimed second retirement really refuses,
 // that a refusal really wrote nothing — is the manual driver's job, because answering it needs a real
 // throwaway Git remote: `test.manual.issue_command_wet issue_command_acceptance_wet`, whose header
-// documents the fixture and whose executed receipt this PR carries. Splitting the two this way is what the
+// documents the fixture and whose executed receipt #16189 carried. Splitting the two this way is what the
 // repo already does for every route that touches Git (see `test.manual.snapshot_census_wet`), and it is
 // what makes these claims runnable at all: no lane executes wet claim rows
 // (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci), while a pure claim is checked by the
