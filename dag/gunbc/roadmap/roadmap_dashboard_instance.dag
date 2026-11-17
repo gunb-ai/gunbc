@@ -26,7 +26,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit, legacy_writer_fence_for }
-import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name }
+import gunbc.roadmap.roadmap_metering_closing_provision { metering_closing_writer_fence_row }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
@@ -3786,38 +3786,21 @@ fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> Le
 
 // THE CLOSING-MARKER WRITER, PER INSTANCE, in the same shape as the identity fence above -- and BUILT FROM THE
 // DERIVATION, not typed by hand: `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
-// `belt_instance_obligation_unit_name(instance_id, kind)` as the unit it starts, so the unit named here IS the
-// unit the obligation runner launches and the two cannot drift apart. Only the DIRECT writer is fenced: the
-// metering obligation unit's ExecStart is what reaches `metering_roster_seal` (the symbol trace is in
-// gunbc.roadmap.roadmap_metering_closing_cutover), and masking that unit closes the enqueue path too, because
-// the enqueue starts that same unit. The transient per-attempt obligation units that ENQUEUE it are named in
-// the cutover's activation step (`metering_closing_activation_step`), not here: one per attempt, and none of
-// them writes the marker itself. Instances with no systemd (macbook_local) have no unit that can write the
-// marker, so they carry no row -- and the plan adds no gate op for them, which is what the cutover witness's
-// census claim pins.
+// `belt_instance_obligation_unit_name(instance_id, kind)` as the unit it starts, and the row builder here comes
+// from gunbc.roadmap.roadmap_metering_closing_provision, whose unit-name formula is asserted EQUAL to that call
+// by the closing-cutover witness (review 89888 (1)) -- the fence names exactly the unit the obligation runner
+// launches, and the import graph stays acyclic (the belt module is not reachable from this one).
+// Only the DIRECT writer is fenced: the metering obligation unit's ExecStart is what reaches
+// `metering_roster_seal` (the symbol trace is in gunbc.roadmap.roadmap_metering_closing_cutover), and masking
+// that unit closes the enqueue path too, because the enqueue starts that same unit. The transient per-attempt
+// obligation units that ENQUEUE it are named in the cutover's activation step
+// (`metering_closing_activation_step`), not here: one per attempt, and none of them writes the marker itself.
+// Instances with no systemd (macbook_local) have no unit that can write the marker, so they carry no row --
+// and the plan adds no gate op for them, which is what the cutover witness's census claim pins.
 data metering_closing_writer_fences: List<LegacyWriterFenceRow> = [
   metering_closing_writer_fence_row(instance_id: srv1_dashboard_lab_id),
   metering_closing_writer_fence_row(instance_id: srv2_dashboard_lab_id),
 ]
-
-fn metering_closing_writer_fence_row(instance_id: NonEmptyStr) -> LegacyWriterFenceRow {
-  LegacyWriterFenceRow {
-    instance_id: instance_id,
-    fence: LegacyWriterUnits {
-      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
-      // The obligation unit is TRANSIENT: the belt creates it through the manager, so its definition
-      // lives under /run/systemd/system, not /etc -- and nothing here deletes or rolls back a fragment
-      // (the closing gate observes exclusion and masks; retirement of this unit is a later change).
-      // LegacyWriterUnits grew etc_fragment and rollback_store on main; the /run spelling states where
-      // this unit's file actually is rather than inventing an /etc path that does not exist.
-      units: [LegacyWriterUnit {
-        name: belt_instance_obligation_unit_name(instance_id: instance_id as String, kind: MeteringObligation),
-        etc_fragment: join(["/run/systemd/system/", belt_instance_obligation_unit_name(instance_id: instance_id as String, kind: MeteringObligation)], "") as NonEmptyStr,
-      }],
-      rollback_store: "/run/systemd/system" as NonEmptyStr,
-    },
-  }
-}
 
 fn dashboard_instance_metering_closing_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
   legacy_writer_fence_for(rows: metering_closing_writer_fences, instance_id: instance.instance_id)

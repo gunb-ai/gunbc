@@ -88,7 +88,7 @@ import extdeps.systemd.systemctl {
 data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.roster_closing_basename
 
 // THE FENCE ITSELF IS DECLARED WHERE THE OTHER LEGACY-WRITER FENCES ARE --
-// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences`, beside #15413's
+// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences (rows built by gunbc.roadmap.roadmap_metering_closing_provision)`, beside #15413's
 // `legacy_writer_fences` -- because the route that acts on a cutover is the instance's own apply route, and a
 // fence that lives anywhere else is a fact no route reads. What lives HERE is the answer the route asks that
 // fence for: given the units the fence names, what states were observed for them, and what plain markers are on

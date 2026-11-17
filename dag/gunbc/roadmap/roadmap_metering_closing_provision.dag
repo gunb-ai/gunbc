@@ -1,0 +1,38 @@
+module gunbc.roadmap.roadmap_metering_closing_provision
+
+import std.types { String, NonEmptyStr }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit }
+
+// WHY THIS MODULE EXISTS (import-acyclicity ruling, jolly-hawk-60, 2026-11-17). The metering-closing
+// provision rows in gunbc.roadmap.roadmap_dashboard_instance must name the obligation unit the belt
+// starts, but importing gunbc.roadmap.roadmap_belt_obligation from the dashboard closes an import
+// cycle on main's own tangle (roadmap_belt_obligation -> live_deploy.slice_bounds ->
+// runner.runner_slot_desired -> roadmap_dashboard_instance), and the acyclicity of the import graph
+// is the one law. So the unit-name FORMULA lives here, in a leaf both sides can reach, and the
+// equality against the real authority -- belt_instance_obligation_unit_name(instance_id, MeteringObligation)
+// in gunbc.roadmap.roadmap_belt_obligation -- is asserted by the closing-cutover witness (review 89888 (1):
+// fx_unit claims), which imports the belt module directly. If the formula ever drifts from the belt's
+// derivation, that claim goes RED; nothing here is a hand-typed second authority.
+
+fn metering_closing_writer_unit_name(instance_id: String) -> NonEmptyStr {
+  join(["gunbc-obligation-", instance_id, "-metering.service"], "") as NonEmptyStr
+}
+
+fn metering_closing_writer_fence_row(instance_id: NonEmptyStr) -> LegacyWriterFenceRow {
+  LegacyWriterFenceRow {
+    instance_id: instance_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      // The obligation unit is TRANSIENT: the belt creates it through the manager, so its definition
+      // lives under /run/systemd/system, not /etc -- and nothing here deletes or rolls back a fragment
+      // (the closing gate observes exclusion and masks; retirement of this unit is a later change).
+      // LegacyWriterUnits grew etc_fragment and rollback_store on main; the /run spelling states where
+      // this unit's file actually is rather than inventing an /etc path that does not exist.
+      units: [LegacyWriterUnit {
+        name: metering_closing_writer_unit_name(instance_id: instance_id as String),
+        etc_fragment: join(["/run/systemd/system/", metering_closing_writer_unit_name(instance_id: instance_id as String)], "") as NonEmptyStr,
+      }],
+      rollback_store: "/run/systemd/system" as NonEmptyStr,
+    },
+  }
+}
