@@ -569,7 +569,11 @@ pub(crate) fn nfr_carrier_completeness(entries: &[String], root: &Path) -> Resul
     for carrier_rel in dag_files {
         let content = std::fs::read_to_string(root.join(&carrier_rel))
             .map_err(|e| format!("nfr carrier completeness: cannot read {carrier_rel}: {e}"))?;
-        if !content.contains("data non_fold_residue_frontier") {
+        // A carrier has a top-level `data non_fold_residue_frontier` declaration (column 0).
+        if !content
+            .lines()
+            .any(|l| l.starts_with("data non_fold_residue_frontier"))
+        {
             continue;
         }
 
