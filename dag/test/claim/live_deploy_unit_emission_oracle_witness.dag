@@ -783,7 +783,11 @@ test fn the_pair_delivery_timer_starts_the_delivery_unit_on_its_cadence() -> Boo
 test fn the_pair_delivery_oneshot_runs_the_wet_delivery_cli() -> Bool {
   let spec = live_spec()
   let unit = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_unit_file(spec: spec))
-  any(unit, l => string_contains(s: l, pattern: "--function release_pair_deliver_once_cli"))
+  any(unit, l => string_contains(s: l, pattern: "--entry dag/gunbc/live_deploy/release_pair_deliver_cli.dag"))
+    && any(unit, l => string_contains(s: l, pattern: "--function release_pair_deliver_once_cli"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_BASE_ROOT=/opt/gunbc/releases"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_SERVE_UNIT=gunbc-"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_REPO_ROOT="))
     && !any(unit, l => string_contains(s: l, pattern: "belt_observe_once_cli"))
     && !any(unit, l => starts_with(s: l, prefix: "WantedBy="))
 }

@@ -47,6 +47,11 @@ import gunbc.live_deploy.release_pair_delivery {
   release_pair_release_bins_artifact_name,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.live_deploy.spec {
+  release_pair_deliver_base_root_env,
+  release_pair_deliver_serve_unit_env,
+  release_pair_deliver_repo_root_env,
+}
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_link_create_new, filesystem_create_new,
@@ -268,9 +273,7 @@ fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ReleaseRevis
 // observation at the sealed locus), so a caller cannot claim a serving binding and have last-good protect a fiction.
 // An unobservable/mixed pair at the gate is a typed refusal (the gate's own not-bound arm handles the first deploy);
 // the actuator delivers nothing and exits non-zero rather than trust a hand-written head.
-data release_pair_deliver_base_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_BASE_ROOT"
-data release_pair_deliver_serve_unit_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_SERVE_UNIT"
-data release_pair_deliver_repo_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_REPO_ROOT"
+// (The three env-var NAME rows live in gunbc.live_deploy.spec, shared with the emitted unit that sets them.)
 
 fn release_pair_deliver_once_cli() -> ProcessExit {
   match shell.Env.Get(name: release_pair_deliver_base_root_env).value {
