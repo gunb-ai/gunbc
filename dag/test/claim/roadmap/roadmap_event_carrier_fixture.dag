@@ -30,10 +30,12 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  construction. What is shared with it is the SEQUENCE, which is a fact about the route, not an interface.
 //
 //  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the witnesses that use it,
-//  because a fixture a gated witness may not import is not a fixture. Every path it touches hangs off the
-//  throwaway instance root its caller was given (a mktemp under /tmp): it takes no /var/lib/gunbc, no production
-//  partition, no srv1/srv2/srv3 realization, no service instance, and it writes only into the instance it was
-//  handed. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  because a fixture a gated witness may not import is not a fixture. The carrier paths hang off the throwaway
+//  instance root its caller was given (a mktemp under /tmp). The two controls further down in this file additionally
+//  mktemp their own parents under /tmp, outside that instance root, because a control has to be able to damage a
+//  tree without damaging anybody else's — so the honest statement is that every path this file writes is throwaway
+//  /tmp scratch that it reclaims, whether it came from the caller's instance or from the file's own mktemp. Neither
+//  kind takes /var/lib/gunbc, a production partition, a srv1/srv2/srv3 realization, or a service instance. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,10 +243,15 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 // assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
 // exactly", and the wrapper idiom is already executed in
 // @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
-// Both predicates below consume the SAME channel value through two pure decoders, so the presence reading and the
-// absence reading cannot disagree about what the host answered — the property
+// Each predicate makes ONE observation of the path and reads that one value through the fold or folds it needs:
+// the absence predicate consults the lookup fold alone, the presence predicate consults the lookup fold and then the
+// entry fold over the SAME listing, which is the property
 // @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
-// Filesystem.List per listing, and both folds are pure decoders over that one channel value").
+// Filesystem.List per listing, and both folds are pure decoders over that one channel value"). What the two
+// predicates do NOT share is one sampling. Each runs its own `ls` when it is called, and they are called at
+// different moments by design — presence is asked before a delete and absence after it, so a single shared listing
+// would describe neither moment. Nothing in the fix depends on the two agreeing about an instant: what makes the
+// teardown refuse rather than report clean is that neither predicate may answer from a listing it could not read.
 type RoadmapCarrierEntryObservation { exit_code: Int, stdout: String, stderr: String }
 
 fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation {
