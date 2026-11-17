@@ -108,13 +108,16 @@ type PathExistenceReading
   | PathAbsentOrUnstattable
   | PathExistenceUnreadable { reason: NonEmptyStr }
 
-// THE ONE READER OF WHAT A `test` STATUS MEANS. Every consumer that obtains the status from some
+// THE ONE READER OF WHAT A `test` STATUS MEANS. Every consumer that obtains a `test` status from some
 // transport -- a ProcessOutcome here, a run-argv outcome in gunbc.host.host_effect_realize's removal
-// read-back, a typed transport leg in gunbc.live_deploy.member_observe -- maps it to a
-// PathExistenceReading through THIS, so the 0/1/other law lives in exactly one place: 0 is present; 1
-// is absent-or-unstattable, which containment then decides; any other status is the host failing to
-// answer and stays unreadable. A consumer that re-implements this mapping is a second reader of the
-// same status, and the two drift.
+// read-back -- maps it to a PathExistenceReading through THIS, so the 0/1/other law lives in exactly
+// one place: 0 is present; 1 is absent-or-unstattable, which containment then decides; any other
+// status is the host failing to answer and stays unreadable. A consumer that re-implements this
+// mapping is a second reader of the same status, and the two drift.
+//
+// It reads `test` statuses and nothing else. Whether ONE NAMED ENTRY is in a directory is a different
+// question, asked without `test` so the host's reason survives: extdeps.filesystem.filesystem_io's
+// filesystem_entry_lookup_reading_of_exit owns that one.
 fn path_existence_reading_of_exit(path: String, exit_code: Int, stderr: String) -> PathExistenceReading {
   if exit_code == 0 {
     PathPresent
