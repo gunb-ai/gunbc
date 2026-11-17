@@ -39,6 +39,8 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 // ─────────────────────────────────────────────────────────────────────────────
 
 import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.effect_grant { filesystem_position, position_under }
+import std.filesystem_path_grant { absolute_path_segments }
 import extdeps.git {
   shape_git_commit_allow_empty_in_repo_args,
   shape_git_config_local_in_repo_args,
@@ -83,6 +85,88 @@ type RoadmapCarrierStep
 fn roadmap_event_carrier_provision_directories(instance: HostDashboardInstance) -> List<FilePath> {
   [instance.repo_root, owned_directory_path(t: roadmap_event_carrier_directory(instance: instance))]
 }
+
+// ── THE OWNERSHIP CONTRACT ───────────────────────────────────────────────────────────────────────
+//
+// Provisioning is a MUTATION: it creates directories, runs `git init`, writes a repository's local config and
+// commits into it. A function that takes an instance and does that is safe only if the caller can show it OWNS
+// every path the mutation will touch — and by convention that is invisible: the only caller today passes a minted
+// scenario, and nothing in the signature or the body would stop a caller handing over a live instance, whose real
+// repository a witness would then rewrite. So provisioning is BOUND TO A SCRATCH ROOT MINTED FOR THIS INVOCATION
+// — the directory `fabric_wet_scenario` mkdtemps — and admission proves, BEFORE ANY MUTATION, that the instance
+// root, the origin, the repository the snapshot runs in and the carrier's worktree all lie strictly inside it.
+//
+// Containment is the model's own path relation (`std.effect_grant.position_under` over the segment lists
+// `std.filesystem_path_grant.absolute_path_segments` parses), never a string prefix: `"/tmp/root"` is a prefix of
+// `"/tmp/rootless"` and a prefix test would call the second directory inside the first. And because a segment list
+// admits `".."` as just another segment — `position_under` would cheerfully call `["tmp","root","..","elsewhere"]`
+// a descendant of `["tmp","root"]` — admission also refuses any path carrying a `"."` or `".."` segment, which is
+// the escape review 39707 named for this repository. The root itself must be an absolute `/tmp/<name>` that
+// exists: "minted for this invocation" is a claim about the filesystem, so it is checked against the filesystem.
+fn roadmap_event_carrier_ownership_paths(instance: HostDashboardInstance) -> List<FilePath> {
+  concat(
+    [instance.instance_root, instance.local_origin_root],
+    roadmap_event_carrier_provision_directories(instance: instance)
+  )
+}
+
+fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
+  starts_with(s: root, prefix: "/tmp/")
+    && string_length(s: root) > 5
+    && all(absolute_path_segments(path: root), segment => segment != ".." && segment != ".")
+    && shell.Test.IsDirectory(path: root as FilePath)
+}
+
+fn roadmap_carrier_path_is_proven_inside(root: String, path: String) -> Bool {
+  position_under(
+    target: filesystem_position(path: absolute_path_segments(path: path)),
+    root: filesystem_position(path: absolute_path_segments(path: root))
+  ) && path != root
+    && all(absolute_path_segments(path: path), segment => segment != ".." && segment != ".")
+}
+
+// EVERY PATH THE MUTATION WILL TOUCH, proven in order, stopping at the first that is not inside — reported under
+// the step name `ownership`, so a caller can always tell "this fixture was never allowed to stand anything up"
+// from "the carrier refused", which is the confusion this whole file exists to prevent.
+fn roadmap_event_carrier_admit_ownership(root: String, paths: List<FilePath>) -> RoadmapCarrierStep {
+  fold(
+    paths,
+    init: RoadmapCarrierStepDone,
+    f: (acc, path) => match acc {
+      RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapCarrierStepRefused { step: failed, detail: cause }
+      RoadmapCarrierStepDone =>
+        if roadmap_carrier_path_is_proven_inside(root: root, path: path as String) {
+          RoadmapCarrierStepDone
+        } else {
+          RoadmapCarrierStepRefused { step: "ownership", detail: concat(concat(concat(path as String, " is not inside the scratch root this invocation minted ("), root), ")") }
+        }
+    }
+  )
+}
+
+// THE GATE, run before any mutation. A root that was not minted by a mktemp under /tmp is refused outright, and a
+// root that was minted but does not exist was never minted at all.
+fn roadmap_event_carrier_admission(root: String, instance: HostDashboardInstance) -> RoadmapCarrierStep {
+  if !roadmap_carrier_root_is_minted_scratch(root: root) {
+    RoadmapCarrierStepRefused { step: "ownership", detail: concat(concat(root, " is not a scratch root this invocation minted: it must be a created directory under /tmp/ with no '.' or '..' segment ("), instance.instance_root as String), ")") }
+  } else {
+    roadmap_event_carrier_admit_ownership(root: root, paths: roadmap_event_carrier_ownership_paths(instance: instance))
+  }
+}
+
+// THE SWEEP, and the only place this fixture deletes anything. A scenario that was minted for this invocation is
+// this fixture's to remove; one that was not is nobody's, and the guard is the same predicate admission uses — so
+// there is one authority for "this path is mine to touch", used both before a mutation and before a delete, rather
+// than a second list of rules that could drift from the first. The caller that minted the scenario runs it on
+// every arm, success and refusal alike: a witness that leaves its scratch behind is a witness the next run reads.
+fn roadmap_event_carrier_sweep(root: String) -> Bool {
+  if roadmap_carrier_root_is_minted_scratch(root: root) {
+    shell.Remove.RecursiveForce(path: root as FilePath).success
+  } else {
+    true
+  }
+}
+
 
 // THE PROVISIONING, in the order the route needs it. The repository the snapshot runs in must exist and carry a
 // `HEAD` — the snapshot is `git worktree add ... HEAD`, which has nothing to resolve on an unborn branch — and
@@ -155,20 +239,24 @@ fn roadmap_event_carrier_make_directories(paths: List<FilePath>) -> RoadmapCarri
 // the same instance through the production reader, never one assembled by hand — so a caller cannot append over
 // a carrier other than the one that was provisioned.
 type RoadmapEventCarrierProvision
-  = RoadmapEventCarrierReady { instance: HostDashboardInstance, layout: RoadmapEventCarrierLayout }
+  = RoadmapEventCarrierReady { instance: HostDashboardInstance, layout: RoadmapEventCarrierLayout, root: NonEmptyStr }
   | RoadmapEventCarrierRefused { step: String, detail: String }
 
 // STAND THE CARRIER UP OVER AN INSTANCE THE CALLER ALREADY OWNS — the seam for any wet route that has its own
 // scenario (every claim file's `wet` helper, which composes the fabric scenario and store its own way).
 // Directories first, then argv: each phase refuses with the step that failed, and nothing after a refusal is
 // attempted.
-fn roadmap_event_carrier_provision(instance: HostDashboardInstance) -> RoadmapEventCarrierProvision {
+fn roadmap_event_carrier_provision(instance: HostDashboardInstance, minted_root: NonEmptyStr) -> RoadmapEventCarrierProvision {
+  let root: String = minted_root as String
   let layout: RoadmapEventCarrierLayout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  match roadmap_event_carrier_make_directories(roadmap_event_carrier_provision_directories(instance: instance)) {
+  match roadmap_event_carrier_admission(root: root, instance: instance) {
     RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
-    RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(program: layout.git_program, steps: roadmap_event_carrier_provision_steps(instance: instance, layout: layout)) {
+    RoadmapCarrierStepDone => match roadmap_event_carrier_make_directories(roadmap_event_carrier_provision_directories(instance: instance)) {
       RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
-      RoadmapCarrierStepDone => RoadmapEventCarrierReady { instance: instance, layout: layout }
+      RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(program: layout.git_program, steps: roadmap_event_carrier_provision_steps(instance: instance, layout: layout)) {
+        RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
+        RoadmapCarrierStepDone => RoadmapEventCarrierReady { instance: instance, layout: layout, root: minted_root }
+      }
     }
   }
 }
