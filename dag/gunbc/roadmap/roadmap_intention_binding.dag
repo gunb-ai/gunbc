@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_intention_binding
 import std.types { String, Int, Bool, List }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode }
-import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
 // WHICH INTENTION A WORK ITEM SERVES, AND AT WHICH LAYER, AS DATA RATHER THAN PROSE (operator,
 // 2026-11-17: "move planning to more of a code based approach - a lot of the issues you refer to would
@@ -35,6 +35,8 @@ fn serves(node: String, module_path: String, plan: String, layer: Int) -> Intent
 data names_without_imports_intention: String = "gunbc.plans.names_without_imports"
 data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
+data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
+data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.names_without_imports, section 3.
@@ -53,12 +55,65 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-ambiguity-discharge", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "namespace-v2-import-completion", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "import-grammar-and-lines-deleted", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
+  serves(node: "namespace-unique-on-chain", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
+  // gunbc.plans.v2_self_host: layers run FORWARD like every other intention (1 = the frontier, 4 = the deletions and the
+  // self-host goal, 5 = the vision separations, 6 = the external specimen); derived from edge depth on 2026-11-17 so a
+  // parent is never at a higher layer than its child, which the witness holds.
+  serves(node: "declaration-provider-outcomes", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "demand-d13-dependency-demand", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "emitter-produces-main-rs", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "literal-elaboration", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "namespace-reference-derived-producer-bounded", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "namespace-unique-on-chain", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "native-frontier-required-lane", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "native-seven-names-homed", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "native-test-verdict-realization", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "shared-check-lets-and-matches", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "v1-rust-source-observation", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "v1-test-migration", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 1),
+  serves(node: "declaration-identity-switchover", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "namespace-reference-derived-closure", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "native-seven", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "v1-honest-frontier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "v1-interpreter-primitive-dispatch-authority", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "v2-emitter-direct-rust-door", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
+  serves(node: "compiler-closure-names-homed-and-types-merged", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "names-bind-to-the-unique-declaration", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "namespace-ambiguity-discharge", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "namespace-v2-import-completion", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "v1-hand-queue-drain", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "v2-emitter-production-compatible-corpus-module", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
+  serves(node: "corpus-names-homed-and-collisions-discharged", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "emitted-contracts-held", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "import-grammar-and-lines-deleted", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "native-production-admission", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "second-generation", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-emitter-delete", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-emitter-fixed-point", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-emitter-quarantine", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-interpreter-delete", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-interpreter-quarantine", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-products-v1-free", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v1-zero-hand-maintained-rust", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v2-emitter-first-behavioral-module", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v2-emitter-native-bootstrap", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "v2-emitter-native-crate-partition", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  serves(node: "one-declaration-identity-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "one-standard-library", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "one-text-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "operations-are-declarations", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "sealed-phases-and-the-checked-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "typed-refusals-own-control-flow", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "universe-ingest-replaces-file-acquisition", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "external-specimen-compiles", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 6),
   // gunbc.plans.factory_dogfood, section 3.
   serves(node: "factory-attempt-execution-on-fabric-lease", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 1),
   serves(node: "dogfood-g1-shared-computation-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
   serves(node: "dogfood-g5-isolated-execution-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
   serves(node: "factory-dogfood-route", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
-  serves(node: "service-evidence-capture", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "factory", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  // gunbc.plans.first_customer_service, section 2.
+  serves(node: "service-evidence-capture", module_path: first_customer_service_intention, plan: "first_customer_service_plan", layer: 1),
   serves(node: "fabric-worker-event-log", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
   serves(node: "serve-held-open-response", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
   serves(node: "work-exec-0-identity-estimate-split", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
@@ -68,26 +123,58 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "work-exec-4-local-work-cutover", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
   serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
   serves(node: "work-exec-6-one-ledger-per-host", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
-  serves(node: "ci-executed-coverage-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
-  // gunbc.plans.v2_self_host, section 2: the layers are the backward structure's numbered items, goal downward.
-  serves(node: "emitted-contracts-held", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
-  serves(node: "native-frontier-required-lane", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
-  serves(node: "v1-emitter-fixed-point", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
-  serves(node: "emitter-produces-main-rs", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
-  serves(node: "v2-emitter-native-bootstrap", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
-  serves(node: "second-generation", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
-  serves(node: "native-seven", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
-  serves(node: "v2-emitter-producer-provenance", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
-  // gunbc.plans.v2_self_host, the vision-realized milestone: layer 5, after self-hosting.
-  serves(node: "universe-ingest-replaces-file-acquisition", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "one-declaration-identity-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "sealed-phases-and-the-checked-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "typed-refusals-own-control-flow", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "one-text-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "operations-are-declarations", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "one-standard-library", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
-  serves(node: "external-specimen-compiles", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "debt-payoff", module_path: debt_payoff_intention, plan: "debt_payoff_plan", layer: 1),
+  serves(node: "ci-executed-coverage-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
 ]
+
+// EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
+// node must be reachable by parent edges (the full-path property the operator asked for on 2026-11-17).
+// namespace-legacy-choice-retirement is a terminal of its own: its seed-mirror row dies with the interpreter
+// (edge from v1-interpreter-delete), so the import cut must not wait on it, or the graph cycles.
+type IntentionTerminals {
+  intention: DeclarationRef
+  terminals: List<RoadmapNodeId>
+}
+
+data intention_terminals: List<IntentionTerminals> = [
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-zero-hand-maintained-rust")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture")] },
+]
+
+fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {
+  fold(intention_terminals, init: [], f: fn(acc, t) { if declaration_ref_display_key(ref: t.intention) == declaration_ref_display_key(ref: intention) { concat(acc, t.terminals) } else { acc } })
+}
+
+fn edges_parents_of(node: RoadmapNodeId) -> List<RoadmapNodeId> {
+  declared_roadmap_edges() |> filter(e => e.child == node) |> map(e => e.parent)
+}
+
+// A terminal reaches the node walking parent edges, bounded by the node count so the walk terminates.
+fn reaches_from(start: RoadmapNodeId, target: RoadmapNodeId, budget: Int) -> Bool {
+  if budget <= 0 { false } else {
+    if start == target { true } else {
+      any(edges_parents_of(node: start), p => reaches_from(start: p, target: target, budget: budget - 1))
+    }
+  }
+}
+
+fn binding_on_a_path(b: IntentionBinding) -> Bool {
+  any(terminals_of(intention: b.intention), t => reaches_from(start: t, target: b.node, budget: count(declared_roadmap_nodes())))
+}
+
+fn bindings_all_on_a_path() -> Bool {
+  all(roadmap_intention_bindings, b => binding_on_a_path(b: b))
+}
+
+// Layer order: a bound parent is never at a higher layer than its bound child of the same intention.
+fn binding_layer_order_holds() -> Bool {
+  all(roadmap_intention_bindings, b =>
+    all(edges_parents_of(node: b.node), p =>
+      all(filter(roadmap_intention_bindings, o => o.node == p && intention_key(b: o) == intention_key(b: b)), o => o.layer <= b.layer)))
+}
 
 fn binding_has_node(b: IntentionBinding) -> Bool {
   count(filter(declared_roadmap_nodes(), n => n.node == b.node)) == 1

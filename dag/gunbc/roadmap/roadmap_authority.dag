@@ -981,6 +981,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       execution: bound(contract: namespace_reference_derived_closure_execution_contract()),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Dependencies derived from resolved references are what make a file's closure independent of which unrelated files are loaded."),
+      centering: plan(text: "One module only, in the native-seven closure: derive its dependency set from the declarations its qualified references resolve to, compare it to the set its import list produced, and hand back the two sets and their difference with a reason per differing module. The six-arm acceptance witness stays red; this slice establishes one arm (pool independence) on one real module."),
     ),
     roadmap_node(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
@@ -1049,6 +1050,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         )),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 0 of gunbc.plans.names_without_imports: the one rule that replaces the ambient tables and is the semantics import deletion needs."),
+      centering: plan(text: "Seed loader slice only, on a fleet host under the memory envelope: run gunbc run --dry-run --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/test/claim/lexical_scope.dag unchanged (29 claims), then with the entry's import member lists stripped, then with its import lines deleted and its references spelled by path. Hand back the three verdict sets and nothing else; the ruling on the seed loader is the operator's from those three. Change no production source."),
     ),
     roadmap_node(
       identity: "rn_9PXMHJ474EV2TEQ6MKEG198ZDJ",
@@ -1066,6 +1068,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         )),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 1 of gunbc.plans.names_without_imports: the 54 names and one ambiguity between native-seven and its typed endpoint."),
+      centering: plan(text: "First six names only (starts_with, first, split, replace, to_string, code_point): declare each at its ruled home (std.host_text for host-text operations, std.algebra for lists) with a roster_head_rows policy row where the signature differs from the builtin's, rewrite their sites in the 161-module native-seven closure to the qualified path through roster_import_sweep, add no import anywhere, and rerun gunbc test //v2/test/claim/parse/expression_bodied_fn_decl_parse:all before and after. Hand back the first stop before and after, per name. A surprising stop is a valid handback, never a reason to touch a seventh name."),
     ),
     roadmap_node(
       identity: "rn_T8N6SCYHTV6MAJQDQW7KVNG5G3",
@@ -1526,6 +1529,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: picking the module takes judgment.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "A v2-emitted module passing its own discriminating tests is the first behavior receipt the promotion needs."),
+      centering: plan(text: "One module only, the smallest low-dependency module the compatible-corpus row's output names: emit it through the v2 door, build it in the real crate, run its own claims, then plant one broken variant and show the planted break fails with provenance naming the v2 generator. Hand back the receipt and the module's name; a module that will not build is the handback, not a reason to pick another."),
     ),
     roadmap_node(
       identity: "rn_1J8QK4XTB6PM09VZDR3HNW5CEY",
@@ -2984,6 +2988,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The two records written by one real attempt on the route, the receipt reading them, and the stage no longer owed."
         )),
       parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the one dogfood stage whose record was attempted and lost to a stacked base."),
+      centering: plan(text: "One real attempt only, after factory-attempt-execution-on-fabric-lease: verification through the materialization provider over the bounded store, the shared-computation record written by that run, DogfoodRouteReceipt reading it, SharedComputationAbsent typed on an attempt without one. Lands alone against main; never as a stack. Hand back the records and the receipt's reading."),
     ),
     roadmap_node(
       identity: "rn_X05JQFPT0MQG81ASDVDNMXTXAF",
@@ -3000,6 +3005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The binding and cleanup records of one real attempt, the receipt reading them, and the stage no longer owed."
         )),
       parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the dogfood stage that had no record and no node."),
+      centering: plan(text: "One real attempt only, on srv2's capped-unit route: bind the unit's observed start and exit to its placement grant and fence in one record, have DogfoodRouteReceipt read it, and plant a record naming another attempt's grant to show the refusal. Hand back the record, the receipt's reading, and the planted refusal."),
     ),
     roadmap_node(
       identity: "rn_TCZ82BX9PRSBAW1Z4WVSFQT023",
@@ -5094,7 +5100,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
     edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
 
     edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
     edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
@@ -5134,7 +5139,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-install-owned"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
@@ -5176,6 +5180,21 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fabric-worker-event-log", parent: "factory-attempt-execution-on-fabric-lease"),
     edge(child: "service-evidence-capture", parent: "factory-dogfood-route"),
     edge(child: "factory-dogfood-route", parent: "ci-executed-coverage-receipt"),
+    edge(child: "factory", parent: "factory-dogfood-route"),
+    edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
+    edge(child: "factory", parent: "serve-held-open-response"),
+    edge(child: "fabric-worker-event-log", parent: "factory-dogfood-route"),
+    edge(child: "external-specimen-compiles", parent: "universe-ingest-replaces-file-acquisition"),
+    edge(child: "external-specimen-compiles", parent: "one-declaration-identity-carrier"),
+    edge(child: "external-specimen-compiles", parent: "sealed-phases-and-the-checked-carrier"),
+    edge(child: "external-specimen-compiles", parent: "typed-refusals-own-control-flow"),
+    edge(child: "external-specimen-compiles", parent: "one-text-carrier"),
+    edge(child: "external-specimen-compiles", parent: "operations-are-declarations"),
+    edge(child: "external-specimen-compiles", parent: "one-standard-library"),
+    edge(child: "external-specimen-compiles", parent: "v1-products-v1-free"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-reference-derived-producer-bounded"),
+    edge(child: "compiler-closure-names-homed-and-types-merged", parent: "declaration-identity-switchover"),
+    edge(child: "corpus-names-homed-and-collisions-discharged", parent: "namespace-v2-import-completion"),
     edge(child: "demand-m1c", parent: "demand-m1b"),
     edge(child: "demand-m2", parent: "demand-m1c"),
     edge(child: "demand-m3b", parent: "demand-m2"),
