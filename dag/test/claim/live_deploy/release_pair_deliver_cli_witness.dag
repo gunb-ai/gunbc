@@ -21,7 +21,7 @@ import gunbc.live_deploy.release_pair_delivery {
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
-  release_pair_deliver_serving, release_pair_reason_is_benign_wait,
+  release_pair_deliver_serving, release_pair_reason_is_benign_wait, release_pair_no_run_for_head_reason,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -152,10 +152,14 @@ test fn witness_serving_mixed_is_poison() -> Bool {
 
 // The keep-last-good exit classifier: only the not-built-yet reason is a benign CI wait; a refusal (build-key
 // refused, etc.) is not — the actuator must surface it, not exit green.
-test fn witness_benign_wait_only_when_bins_unbuilt() -> Bool {
-  let benign = release_pair_reason_is_benign_wait(reason: release_pair_bins_unbuilt_reason)
-  let refusal = release_pair_reason_is_benign_wait(reason: release_pair_pack_unverified_reason)
-  if benign { !refusal } else { false }
+test fn witness_benign_wait_is_the_ci_not_ready_cases() -> Bool {
+  // Both "pack artifact absent" and "no successful run yet for the head" (CI building / run not successful) are
+  // benign waits: the timer keeps serving last-good and retries, it does not fail every tick (review 96214).
+  let unbuilt_benign = release_pair_reason_is_benign_wait(reason: release_pair_bins_unbuilt_reason)
+  let no_run_benign = release_pair_reason_is_benign_wait(reason: release_pair_no_run_for_head_reason)
+  // A refused/unverified pack is NOT a benign wait — it names a refusal the operator must see.
+  let unverified_refusal = !release_pair_reason_is_benign_wait(reason: release_pair_pack_unverified_reason)
+  unbuilt_benign && no_run_benign && unverified_refusal
 }
 
 // The run-list decode reads BOTH sides off the run metadata: the run id (download target) and the run's head_sha

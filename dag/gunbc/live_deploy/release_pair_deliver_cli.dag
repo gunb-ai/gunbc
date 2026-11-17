@@ -206,10 +206,14 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 // ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
 // that yield nothing are typed keep-last-good refusals, never a guess. Executed by the pair-delivery unit's own run
 // (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by release_pair_deliver_cli_witness.
-// A keep-last-good is a benign wait for CI ONLY when the release-bins pack for the head is not built yet; every
-// other keep-last-good names a refusal the operator must see (fail-closed default: anything else is not a no-op).
+// A keep-last-good is a benign wait whenever the pack is simply NOT READY YET — either no successful release-bins
+// run exists for the bound head (CI still building, or its run not yet successful: the --status success lookup
+// returns nothing for both) or the run exists but its pack artifact is absent. Both mean "nothing to deliver this
+// tick, keep serving last-good, retry next tick" — a timer must not fail on them (review 96214). Every OTHER
+// keep-last-good names a refusal the operator must see (fail-closed default: anything else is not a no-op).
 fn release_pair_reason_is_benign_wait(reason: NonEmptyStr) -> Bool {
   (reason as String) == (release_pair_bins_unbuilt_reason as String)
+    || (reason as String) == (release_pair_no_run_for_head_reason as String)
 }
 
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
