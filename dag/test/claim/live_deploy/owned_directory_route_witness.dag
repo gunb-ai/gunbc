@@ -274,12 +274,19 @@ test fn the_existing_lab_subtree_is_planned_by_the_provider_and_nothing_outside_
 // FLATTEN A TYPED PLAN TO THE TEXT the bash fragment used to render: every step name, every argv word,
 // and each install payload -- so a substring check that once ran over pipeline_steps_text now runs over
 // the typed legs' own content. Empty for a refused or empty plan.
+fn source_bytes_text(src: FileSource) -> String {
+  match src {
+    Payload { bytes: p } => p
+    Staged { source: s } => s
+  }
+}
+
 fn deploy_apply_legs_text(legs: List<DeployApplyLeg>) -> String {
   join(
     flat_map(legs, leg => match leg {
-      ApplyLegCommand { step: st, command: c, systemctl_action: _, systemctl_unit: _ } => concat([st], c.arguments)
-      ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => concat([st], c.arguments)
-      ApplyLegInstallFile { step: st, command: c, payload: p } => concat([st, p], c.arguments)
+      ApplyLegCommand { step: st, command: c } => concat([st], c.arguments)
+      ApplyLegDiagnosedCommand { step: st, command: c, diagnosis: _ } => concat([st], c.arguments)
+      ApplyLegInstallFile { step: st, command: c, dest: d, source: src } => concat([st, d, source_bytes_text(src)], c.arguments)
       ApplyLegEnsureDirectory { target } => [owned_directory_path(t: target) as String]
       _ => []
     }),

@@ -21,6 +21,7 @@ import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, apply_systemctl_leg, systemctl_action_argv,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
   deploy_artifact_closure_gate,
@@ -181,7 +182,7 @@ test fn the_deploy_refuses_when_the_tree_sync_publication_is_not_brought_up() ->
   let spec = deployment_spec_srv1()
   let without = filter(xs: full_legs(spec: spec), predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u != (spec.names.tree_sync_unit_name as String)
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u != (spec.names.tree_sync_unit_name as String)
       _ => true
     }
   })
@@ -192,9 +193,10 @@ test fn the_deploy_refuses_when_the_tree_sync_publication_is_not_brought_up() ->
 }
 
 // THE PUBLICATION RENAMED: a plan whose tree-sync publication leg carries a DIFFERENT step string but the
-// SAME typed systemctl fields (action=Restart, unit=tree_sync_unit_name) is still COVERED -- the gate
-// matches on the typed fields the leg builder sets, never on step strings (review 95930). The fold renames
-// the publication leg in one pass (preserving command/diagnosis/typed fields); the control proves the rename
+// SAME typed systemctl pair (action=Restart, unit=tree_sync_unit_name) is still COVERED -- the gate
+// matches on the typed pair, the leg's only authority, never on step strings (review 95930; the command
+// is derived from the pair at render, review 96024). The fold renames
+// the publication leg in one pass; the control proves the rename
 // actually happened (old step gone, new step present) AND the gate still proceeds.
 fn rename_tree_sync_publication_leg(legs: List<DeployApplyLeg>, tree_sync_unit: String) -> List<DeployApplyLeg> {
   fold_list(
@@ -202,9 +204,9 @@ fn rename_tree_sync_publication_leg(legs: List<DeployApplyLeg>, tree_sync_unit: 
     empty: [],
     cons: fn(acc, l) {
       match l {
-        ApplyLegDiagnosedCommand { step: s, command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } =>
+        ApplyLegDiagnosedSystemctl { step: s, action: a, unit: u } =>
           if (s == "tree-sync-restart" && u == tree_sync_unit) {
-            list_append(left: acc, right: [ApplyLegDiagnosedCommand { step: "totally-renamed-publication", command: c, diagnosis: d, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } }])
+            list_append(left: acc, right: [ApplyLegDiagnosedSystemctl { step: "totally-renamed-publication", action: a, unit: u }])
           } else {
             list_append(left: acc, right: [l])
           }
@@ -234,10 +236,33 @@ test fn the_tree_sync_publication_leg_carries_its_typed_systemctl_fields() -> Bo
   let legs = full_legs(spec: spec)
   any(xs: legs, predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == tree_sync_unit
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u == tree_sync_unit
       _ => false
     }
   })
+}
+
+// THE RENDERED COMMAND IS THE TYPED PAIR (review 96024): for EACH SystemctlAction, the leg built by
+// apply_systemctl_leg renders exactly that action's verb against exactly that unit -- what the gate
+// inspects (action, unit) and what the host would run are ONE fact, so a leg typed Restart on A can
+// never run 'systemctl enable B'. RED if any action renders the wrong verb or the wrong unit.
+test fn the_systemctl_leg_renders_exactly_its_typed_action_and_unit() -> Bool {
+  let unit = "gunbc-serve-test.service"
+  let restart_argv = systemctl_action_argv(action: Restart, unit: unit as NonEmptyStr)
+  let enable_argv = systemctl_action_argv(action: Enable, unit: unit as NonEmptyStr)
+  let reload_argv = systemctl_action_argv(action: Reload, unit: unit as NonEmptyStr)
+  match apply_systemctl_leg(step: "t-restart", action: Restart, unit: unit) {
+    ApplyLegSystemctl { step: _, action: Restart, unit: u } =>
+      any(xs: restart_argv, predicate: fn(w) { w == "restart" })
+        && any(xs: restart_argv, predicate: fn(w) { w == unit })
+        && any(xs: enable_argv, predicate: fn(w) { w == "enable" })
+        && !any(xs: enable_argv, predicate: fn(w) { w == "restart" })
+        && any(xs: enable_argv, predicate: fn(w) { w == unit })
+        && any(xs: reload_argv, predicate: fn(w) { w == "reload-or-restart" })
+        && any(xs: reload_argv, predicate: fn(w) { w == unit })
+        && u == unit
+    _ => false
+  }
 }
 
 // RED CONTROL (the Codex scenario): a plan that has tree-remote-restart but NO tree-sync publication leg
@@ -246,13 +271,13 @@ test fn the_deploy_refuses_when_tree_remote_restarts_without_tree_sync_publicati
   let spec = deployment_spec_srv1()
   let without_tree_sync = filter(xs: full_legs(spec: spec), predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u != (spec.names.tree_sync_unit_name as String)
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u != (spec.names.tree_sync_unit_name as String)
       _ => true
     }
   })
   let has_tree_remote = any(xs: without_tree_sync, predicate: fn(l) {
     match l {
-      ApplyLegCommand { step: _, command: _, systemctl_action: Present { value: Restart }, systemctl_unit: Present { value: u } } => u == (deployment_tree_remote_unit_name(names: spec.names) as String)
+      ApplyLegSystemctl { step: _, action: Restart, unit: u } => u == (deployment_tree_remote_unit_name(names: spec.names) as String)
       _ => false
     }
   })
@@ -413,9 +438,9 @@ fn command_within_grants(c: ArgvCommand) -> Bool {
 
 fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
   match leg {
-    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => command_within_grants(c: c)
+    ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
     ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => command_within_grants(c: c)
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g, systemctl_action: _, systemctl_unit: _ } => command_within_grants(c: c) && command_within_grants(c: g)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
     ApplyLegEnsureDirectory { target: _ } => true
@@ -602,9 +627,9 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
       match h {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
-        ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => env_binary(legs: rest)
+        ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
         ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => env_binary(legs: rest)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => env_binary(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => env_binary(legs: rest)
@@ -763,9 +788,9 @@ test fn the_git_worker_subtree_premise_leg_follows_the_convergence_readback_imme
 test fn the_git_worker_subtree_ensures_the_children_as_owned_directory_legs() -> Bool {
   let legs = subtree_legs_for(spec: lab_spec())
   let n_ensure = count_ensure_legs(legs: legs)
-  let premise_is_diagnosed = any(legs, leg => match leg { ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => st == "git-worker-subtree-premise"  _ => false })
+  let premise_is_diagnosed = any(legs, leg => match leg { ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st == "git-worker-subtree-premise"  _ => false })
   let regroup_names_shared_group = any(legs, leg => match leg {
-    ApplyLegCommand { step: st, command: c, systemctl_action: _, systemctl_unit: _ } => string_contains(s: join(concat([st], c.arguments), " "), pattern: "gunbc-attempt")
+    ApplyLegCommand { step: st, command: c } => string_contains(s: join(concat([st], c.arguments), " "), pattern: "gunbc-attempt")
     _ => false
   })
   premise_is_diagnosed
@@ -881,9 +906,9 @@ fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> 
 
 fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
-    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
+    ApplyLegCommand { step: _, command: c } => argv_words(command: c)
     ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegEnsureDirectory { target: _ } => []
@@ -902,8 +927,8 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
 fn leg_payload(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegInstallFile { step: _, command: _, dest: _, source: src } => match src { Payload { bytes: p } => p, Staged { source: _ } => "" }
-    ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => ""
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => ""
+    ApplyLegCommand { step: _, command: _ } => ""
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
     ApplyLegRepairDirectoryEntries { command: _ } => ""
     ApplyLegReport { step: _, line: _ } => ""
     ApplyLegEnsureDirectory { target: _ } => ""
@@ -1173,9 +1198,9 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
             HelperSnapshotRetireSuperseded => launcher_snapshot_owner(legs: rest)
             HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
-        ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => launcher_snapshot_owner(legs: rest)

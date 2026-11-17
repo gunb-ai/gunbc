@@ -30,6 +30,7 @@ import extdeps.sudo.elevation { sudo_elevate_command }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, systemctl_leg_render_command,
   deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
   ApplyLegRootHelperSnapshot, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
   ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
@@ -104,9 +105,9 @@ fn retract_ports() -> DeployRetractPorts {
 // family left the instance apply on 2026-10-30).
 fn supplied_plan() -> DeployApplyPlan {
   ApplyPlanReady { legs: [
-    ApplyLegInstallFile { step: "fixture-install", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), payload: "fixture\n" },
-    ApplyLegCommand { step: "fixture-reload", command: sudo_elevate_command(command: ["systemctl", "daemon-reload"]), systemctl_action: Absent, systemctl_unit: Absent },
-    ApplyLegCommand { step: "fixture-after", command: sudo_elevate_command(command: ["true"]), systemctl_action: Absent, systemctl_unit: Absent },
+    ApplyLegInstallFile { step: "fixture-install", command: sudo_elevate_command(command: ["install", "-m", "0644", "/dev/stdin", "/etc/fixture.conf"]), dest: "/etc/fixture.conf", source: Payload { bytes: "fixture\n" } },
+    ApplyLegCommand { step: "fixture-reload", command: sudo_elevate_command(command: ["systemctl", "daemon-reload"]) },
+    ApplyLegCommand { step: "fixture-after", command: sudo_elevate_command(command: ["true"]) },
   ] }
 }
 
@@ -343,8 +344,9 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
     ApplyPlanReady { legs: Cons { head: first, tail: _ } } =>
       match first {
         ApplyLegDigestVerify { step: _, path: p, digest: d } => p == "/src/target/release/gunbc" && digest_hex_eq(a: d, b: deploy_witness_full_install_plan(spec: spec).target.executable)
-        ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => false
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => false
+        ApplyLegCommand { step: _, command: _ } => false
+        ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => false
+        ApplyLegInstallDirectory { step: _, command: _, dest: _ } => false
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
@@ -356,7 +358,9 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
         ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => false
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
+        ApplyLegSystemctl { step: _, action: _, unit: _ } => false
+        ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
     ApplyPlanRefused { step: _, reason: _ } => false
@@ -495,9 +499,10 @@ test fn the_digest_env_is_written_from_the_installed_binarys_digest_and_no_other
 
 fn leg_words(leg: DeployApplyLeg) -> List<String> {
   match leg {
-    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
-    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
-    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => argv_words(command: c)
+    ApplyLegCommand { step: _, command: c } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: _ } => argv_words(command: c)
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => argv_words(command: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
     ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegEnsureDirectory { target: _ } => []
@@ -510,6 +515,10 @@ fn leg_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
     ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
+    // systemctl legs name themselves through the typed pair; their words are the rendered command
+    // (systemctl_leg_render_command), so what a leg NAMES is exactly what it would RUN (review 96024).
+    ApplyLegSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
   }
 }
 

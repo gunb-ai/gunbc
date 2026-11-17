@@ -1258,7 +1258,7 @@ test fn the_witnessed_spool_roles_are_declared_for_live_deploy_unit_emission_ora
 // confined unit (its own witness). Every declared role has exactly ONE directory, so no reader can drop one.
 fn spool_leg_mentions(legs: List<DeployApplyLeg>, dir: String) -> Bool {
   any(legs, l => match l {
-    ApplyLegCommand { step: _, command: c, systemctl_action: _, systemctl_unit: _ } => any(c.arguments, a => a == dir)
+    ApplyLegCommand { step: _, command: c } => any(c.arguments, a => a == dir)
     _ => false
   })
 }

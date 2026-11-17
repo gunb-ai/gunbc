@@ -214,7 +214,7 @@ type SystemctlAction = Restart | Enable | Reload
 type DeployApplyLeg
   = ApplyLegEnsureDirectory { target: OwnedDirectoryTarget }
   | ApplyLegRepairDirectoryEntries { command: ArgvCommand }
-  | ApplyLegCommand { step: String, command: ArgvCommand, systemctl_action: SystemctlAction?, systemctl_unit: String? }
+  | ApplyLegCommand { step: String, command: ArgvCommand }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, dest: String, source: FileSource }
   // A directory install whose created directory is TYPED on the leg (not hidden in argv). The gate owns its
   // EXISTENCE (DirectoryExists) — what a .path unit's watched spool/queue directory needs from the deploy.
@@ -224,7 +224,15 @@ type DeployApplyLeg
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
-  | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand, systemctl_action: SystemctlAction?, systemctl_unit: String? }
+  | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
+  // A SYSTEMCTL LEG: the typed (action, unit) pair is the ONLY authority; the wire command is RENDERED
+  // from it (systemctl_action_argv) by the builder and at realization -- one fact, never a separately
+  // spelled argv that could disagree with what the gate inspects (review 96024: a leg typed Restart on A
+  // must not be able to run 'systemctl enable B'). The diagnosed form derives its diagnosis too
+  // (systemctl status over the SAME unit). The gate's systemctl coverage matches ONLY these arms -- a
+  // generic command leg cannot claim systemctl coverage at all.
+  | ApplyLegSystemctl { step: String, action: SystemctlAction, unit: String }
+  | ApplyLegDiagnosedSystemctl { step: String, action: SystemctlAction, unit: String }
   | ApplyLegBrokerStateDirectories { revision: ReleaseRevisionBinding }
   | ApplyLegRootHelperSnapshot { locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction }
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
@@ -253,13 +261,15 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
   match leg {
     ApplyLegEnsureDirectory { target: _ } => "ensure-owned-directory"
     ApplyLegRepairDirectoryEntries { command: _ } => "repair-directory-entries"
-    ApplyLegCommand { step: st, command: _, systemctl_action: _, systemctl_unit: _ } => st
+    ApplyLegCommand { step: st, command: _ } => st
     ApplyLegInstallFile { step: st, command: _, dest: _, source: _ } => st
     ApplyLegInstallDirectory { step: st, command: _, dest: _ } => st
     ApplyLegReport { step: st, line: _ } => st
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
-    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => st
+    ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
+    ApplyLegSystemctl { step: st, action: _, unit: _ } => st
+    ApplyLegDiagnosedSystemctl { step: st, action: _, unit: _ } => st
     ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } => match a {
       HelperSnapshotInstall => join([l.step_stem as String, "-helper-snapshot"], "")
@@ -288,13 +298,15 @@ fn leg_installed_paths(leg: DeployApplyLeg, broker_base_root: String) -> List<Ow
   match leg {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
-    ApplyLegCommand { step: _, command: _, systemctl_action: _, systemctl_unit: _ } => []
+    ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, dest: dest, source: _ } => [OwnedArtifact { path: dest, kind: FileContent }]
     ApplyLegInstallDirectory { step: _, command: _, dest: dest } => [OwnedArtifact { path: dest, kind: DirectoryExists }]
     ApplyLegReport { step: _, line: _ } => []
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
-    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: _, systemctl_unit: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
+    ApplyLegSystemctl { step: _, action: _, unit: _ } => []
+    ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: locus, spine: _, revision: revision, action: a } =>
       // The install arm lays a snapshot at helper_locus_dir(locus, revision); the retire/verify arms write
@@ -442,7 +454,7 @@ fn git_worker_subtree_sweep_legs(plan: ReleaseEffectPlan, instance: HostDashboar
             left: legs,
             right: map(
               dashboard_git_worker_subtree_child_migration(instance: instance, child: child, group: fleet_posix_worker_shared_group_name),
-              argv => ApplyLegCommand { step: join(["git-worker-subtree-regroup-", child as String], ""), command: argv, systemctl_action: Absent, systemctl_unit: Absent },
+              argv => ApplyLegCommand { step: join(["git-worker-subtree-regroup-", child as String], ""), command: argv },
             ),
           ),
         )
@@ -456,7 +468,7 @@ fn git_worker_subtree_posture_legs(remaining: List<ArgvCommand>, n: Int, legs: L
   match remaining {
     Empty => legs
     Cons { head: argv, tail: rest } =>
-      git_worker_subtree_posture_legs(remaining: rest, n: n + 1, legs: list_append(left: legs, right: [ApplyLegCommand { step: join(["repository-shared-posture-", to_string(n)], ""), command: argv, systemctl_action: Absent, systemctl_unit: Absent }]))
+      git_worker_subtree_posture_legs(remaining: rest, n: n + 1, legs: list_append(left: legs, right: [ApplyLegCommand { step: join(["repository-shared-posture-", to_string(n)], ""), command: argv }]))
   }
 }
 
@@ -523,8 +535,6 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
     // The diagnosis reads the path the premise refused: owner, group and mode of <repo>/.git as they
     // stand, which is exactly the fact a refused premise needs on the record.
     diagnosis: stat_default_report_command(path: join([repo as String, "/.git"], "")),
-    systemctl_action: Absent,
-    systemctl_unit: Absent,
   }
   let install_plan = deploy_apply_directories_plan_from(
     targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t => git_worker_subtree_demand_claimed(spec: spec, plan: plan, t: t)),
@@ -538,7 +548,7 @@ fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffe
           apply_belt_unit_leg(step: "git-maintenance-service-unit", dest: dashboard_git_maintenance_service_unit_path(instance: instance), file: dashboard_git_maintenance_service_unit_file(instance: instance)),
           apply_belt_unit_leg(step: "git-maintenance-timer-unit", dest: dashboard_git_maintenance_timer_unit_path(instance: instance), file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
           apply_root_leg(step: "git-maintenance-daemon-reload", argv: systemctl_daemon_reload_argv()),
-          apply_systemctl_leg(step: "git-maintenance-timer-enable", action: Enable, unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as String, argv: systemctl_enable_argv(unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr)),
+          apply_systemctl_leg(step: "git-maintenance-timer-enable", action: Enable, unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as String),
         ],
       )
     } else {
@@ -599,21 +609,47 @@ fn deploy_apply_object_source_plan() -> DeployApplyPlan {
 // path on the host, so a leg carries the bytes it writes. The checkout's own paths are absolute under
 // the apply's source root (the root the object-source leg observes), where the script read `$PWD`.
 fn apply_root_leg(step: String, argv: List<String>) -> DeployApplyLeg {
-  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv), systemctl_action: Absent, systemctl_unit: Absent }
+  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv) }
 }
 
-// THE SYSTEMCTL LEG BUILDER: a root command that acts ON A SYSTEMD UNIT. The gate matches on its typed
-// action and unit fields, never on step strings. The argv is the rendered command the wet path executes;
-// action and unit are what the deploy-artifact gate inspects for coverage.
-fn apply_systemctl_leg(step: String, action: SystemctlAction, unit: String, argv: List<String>) -> DeployApplyLeg {
-  ApplyLegCommand { step: step, command: sudo_elevate_command(command: argv), systemctl_action: Present { value: action }, systemctl_unit: Present { value: unit } }
+// THE ONE SYSTEMCTL ARGV FUNCTION: the wire command rendered from the typed (action, unit) pair, built on
+// the extdeps/systemd/systemctl builders. Reload keeps its current call-site behaviour (reload-or-restart).
+fn systemctl_action_argv(action: SystemctlAction, unit: NonEmptyStr) -> List<String> {
+  match action {
+    Restart => systemctl_restart_argv(unit: unit)
+    Enable => systemctl_enable_argv(unit: unit)
+    Reload => systemctl_reload_or_restart_argv(unit: unit)
+  }
+}
+
+// The renderings the model and the wet realization SHARE (one source of the wire fact, review 96024).
+fn systemctl_leg_render_command(action: SystemctlAction, unit: String) -> ArgvCommand {
+  sudo_elevate_command(command: systemctl_action_argv(action: action, unit: unit as NonEmptyStr))
+}
+
+fn systemctl_leg_render_diagnosis(unit: String) -> ArgvCommand {
+  sudo_elevate_command(command: systemctl_status_argv(unit: unit as NonEmptyStr))
+}
+
+// THE SYSTEMCTL LEG BUILDER: a root command that acts ON A SYSTEMD UNIT. The typed (action, unit) pair is
+// the ONLY input and the ONLY authority -- the command is its rendering, never a separately spelled argv.
+// The gate matches on these arms, never on step strings (review 96024).
+fn apply_systemctl_leg(step: String, action: SystemctlAction, unit: String) -> DeployApplyLeg {
+  ApplyLegSystemctl { step: step, action: action, unit: unit }
+}
+
+// The diagnosed form: command, diagnosis and the gate-facing (action, unit) all come from the ONE pair --
+// the diagnosis is systemctl status over the SAME unit, derived at render.
+fn apply_systemctl_leg_diagnosed(step: String, action: SystemctlAction, unit: String) -> DeployApplyLeg {
+  ApplyLegDiagnosedSystemctl { step: step, action: action, unit: unit }
 }
 
 // A root directory install carried as a TYPED leg: the created directory is `dest` (gate-owned as
-// DirectoryExists); its command is rendered from `dest` by the same sudo_elevate_command the opaque command
-// leg used. dest is the authority, argv its wire encoding (one fact).
-fn apply_root_directory_leg_typed(step: String, argv: List<String>, dest: String) -> DeployApplyLeg {
-  ApplyLegInstallDirectory { step: step, command: sudo_elevate_command(command: argv), dest: dest }
+// DirectoryExists); the command is RENDERED inside the builder from dest/mode/owner/group by the one
+// coreutils builder, as install_file_command does -- dest is the only authority, there is no separate
+// argv input that could disagree with it (review 96024, same family as the systemctl legs).
+fn apply_root_directory_leg_typed(step: String, dest: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr) -> DeployApplyLeg {
+  ApplyLegInstallDirectory { step: step, command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: dest)), dest: dest }
 }
 
 // ONE argv function: render the install command from the leg's typed `dest` and its content `source`.
@@ -637,8 +673,7 @@ fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyL
 }
 
 fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
-  apply_root_directory_leg_typed(step: step, argv: coreutils_install_directory_owned_argv(
-    mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user, path: path), dest: path)
+  apply_root_directory_leg_typed(step: step, dest: path, mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user)
 }
 
 fn apply_unit_text(file_text: String) -> String {
@@ -693,14 +728,8 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
                   working_directory: source_root,
                 )),
               apply_root_leg(step: "tree-sync-reload", argv: systemctl_daemon_reload_argv()),
-              ApplyLegDiagnosedCommand {
-                step: "tree-sync-restart",
-                command: sudo_elevate_command(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name)),
-                diagnosis: sudo_elevate_command(command: systemctl_status_argv(unit: spec.names.tree_sync_unit_name)),
-                systemctl_action: Present { value: Restart },
-                systemctl_unit: Present { value: spec.names.tree_sync_unit_name as String },
-              },
-              ApplyLegCommand { step: "convergence-readback", command: readback, systemctl_action: Absent, systemctl_unit: Absent },
+              apply_systemctl_leg_diagnosed(step: "tree-sync-restart", action: Restart, unit: spec.names.tree_sync_unit_name as String),
+              ApplyLegCommand { step: "convergence-readback", command: readback },
             ] }
         }
     }
@@ -735,7 +764,7 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
 // unit whose OIDC readback was refused refuses the plan: the script emitted nothing for that member and
 // the run converged without a unit, which read an unknown as nothing to do.
 fn apply_install_directory_leg(step: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> DeployApplyLeg {
-  apply_root_directory_leg_typed(step: step, argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path), dest: path)
+  apply_root_directory_leg_typed(step: step, dest: path, mode: mode, owner: owner, group: group)
 }
 
 fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: String) -> DeployApplyLeg {
@@ -875,7 +904,7 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
             concat(deploy_apply_attempt_spool_legs(spec: spec), credstore_copy_legs(instance: instance)),
             [
               ApplyLegRetract { step: "attempt-unit-sudo-route-retire", leg: retract_remove_files(head: h as NonEmptyStr, rest: map(rest, p => p as NonEmptyStr)) },
-              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers"), systemctl_action: Absent, systemctl_unit: Absent },
+              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers") },
               ApplyLegRootHelperSnapshot {
                 locus: attempt_system_unit_launcher_locus(instance: instance),
                 spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
@@ -1039,12 +1068,12 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
     left: if plan_reloads_manager(plan: plan) { [apply_root_leg(step: "unit-daemon-reload", argv: systemctl_daemon_reload_argv())] } else { [] },
     right: if !plan_restarts_process(plan: plan) { [] } else { list_append(
       left: [
-        apply_systemctl_leg(step: "serve-enable", action: Enable, unit: plan.target.unit as String, argv: systemctl_enable_argv(unit: plan.target.unit)),
-        apply_systemctl_leg(step: "serve-restart", action: Restart, unit: plan.target.unit as String, argv: systemctl_restart_argv(unit: plan.target.unit)),
+        apply_systemctl_leg(step: "serve-enable", action: Enable, unit: plan.target.unit as String),
+        apply_systemctl_leg(step: "serve-restart", action: Restart, unit: plan.target.unit as String),
       ],
       right: if deployment_owns_the_host_approval_broker(spec: spec) { [
-        apply_systemctl_leg(step: "approval-broker-enable", action: Enable, unit: gunbc_approval_broker_unit_name as String, argv: systemctl_enable_argv(unit: gunbc_approval_broker_unit_name)),
-        apply_systemctl_leg(step: "approval-broker-restart", action: Restart, unit: gunbc_approval_broker_unit_name as String, argv: systemctl_restart_argv(unit: gunbc_approval_broker_unit_name)),
+        apply_systemctl_leg(step: "approval-broker-enable", action: Enable, unit: gunbc_approval_broker_unit_name as String),
+        apply_systemctl_leg(step: "approval-broker-restart", action: Restart, unit: gunbc_approval_broker_unit_name as String),
       ] } else { [] },
     ) },
   )
@@ -1105,8 +1134,8 @@ fn board_function_converge_install_plan(host: HostIdentity, revision: ReleaseRev
       ]
       let run = [
         apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
-        apply_systemctl_leg(step: "board-function-converge-enable", action: Enable, unit: board_function_converge_unit_name as String, argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
-        apply_systemctl_leg(step: "board-function-converge-run", action: Reload, unit: board_function_converge_unit_name as String, argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
+        apply_systemctl_leg(step: "board-function-converge-enable", action: Enable, unit: board_function_converge_unit_name as String),
+        apply_systemctl_leg(step: "board-function-converge-run", action: Reload, unit: board_function_converge_unit_name as String),
       ]
       let retire_superseded = [ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded }]
       match stage {
@@ -1155,7 +1184,7 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
           ApplyPlanReady { legs: concat(gpu_cap_report_legs(admissions: admissions), [
             apply_staged_leg(step: "gpu-power-cap-unit", dest: srv1_gpu_power_cap_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
             apply_root_leg(step: "gpu-power-cap-reload", argv: systemctl_daemon_reload_argv()),
-            apply_systemctl_leg(step: "gpu-power-cap-enable", action: Enable, unit: srv1_gpu_power_cap_unit_name as String, argv: systemctl_enable_argv(unit: srv1_gpu_power_cap_unit_name)),
+            apply_systemctl_leg(step: "gpu-power-cap-enable", action: Enable, unit: srv1_gpu_power_cap_unit_name as String),
           ]) }
       }
     }
@@ -1196,7 +1225,7 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
       })
       // (2) Enable the two replica boot instances, derived from the roster. `systemctl enable` (no --now): arms
       // the next boot, never starts the running engine.
-      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_systemctl_leg(step: join(["serving-replica-enable-", name as String], "") as String, action: Enable, unit: name as String, argv: systemctl_enable_argv(unit: name)))
+      let enable_replicas = map(srv1_boot_outcome_units(outcome: boot), name => apply_systemctl_leg(step: join(["serving-replica-enable-", name as String], "") as String, action: Enable, unit: name as String))
       ApplyPlanReady { legs: concat(concat(retire, [
         apply_root_leg(step: "serving-engine-reload", argv: systemctl_daemon_reload_argv()),
       ]), enable_replicas) }
@@ -1310,8 +1339,8 @@ fn apply_leftover_timer_legs(step: String, unit: NonEmptyStr, path: NonEmptyStr)
 
 fn apply_enable_restart_legs(step: String, unit: NonEmptyStr) -> List<DeployApplyLeg> {
   [
-    apply_systemctl_leg(step: join([step, "-enable"], ""), action: Enable, unit: unit as String, argv: systemctl_enable_argv(unit: unit)),
-    apply_systemctl_leg(step: join([step, "-restart"], ""), action: Restart, unit: unit as String, argv: systemctl_restart_argv(unit: unit)),
+    apply_systemctl_leg(step: join([step, "-enable"], ""), action: Enable, unit: unit as String),
+    apply_systemctl_leg(step: join([step, "-restart"], ""), action: Restart, unit: unit as String),
   ]
 }
 
@@ -1364,7 +1393,7 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
-      apply_systemctl_leg(step: "belt-exit-drain-enable", action: Enable, unit: deployment_belt_exit_drain_service_unit_name(names: n) as String, argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
+      apply_systemctl_leg(step: "belt-exit-drain-enable", action: Enable, unit: deployment_belt_exit_drain_service_unit_name(names: n) as String),
       ],
     ),
     concat(
@@ -1385,7 +1414,7 @@ fn deploy_apply_tree_remote_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
   [
     apply_staged_leg(step: "tree-remote-unit", dest: path as String, payload: render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol)),
     apply_root_leg(step: "tree-remote-reload", argv: systemctl_daemon_reload_argv()),
-    apply_systemctl_leg(step: "tree-remote-restart", action: Restart, unit: deployment_tree_remote_unit_name(names: spec.names) as String, argv: systemctl_restart_argv(unit: deployment_tree_remote_unit_name(names: spec.names))),
+    apply_systemctl_leg(step: "tree-remote-restart", action: Restart, unit: deployment_tree_remote_unit_name(names: spec.names) as String),
   ]
 }
 
@@ -1731,10 +1760,8 @@ type ConvergerUnitKind =
 fn leg_systemctl_action_present(legs: List<DeployApplyLeg>, action: SystemctlAction, unit: String) -> Bool {
   match first_where(xs: legs, keep: fn(l) {
     match l {
-      ApplyLegCommand { step: _, command: _, systemctl_action: a, systemctl_unit: u } =>
-        match a { Present { value: av } => av == action && u == Present { value: unit } Absent => false }
-      ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _, systemctl_action: a, systemctl_unit: u } =>
-        match a { Present { value: av } => av == action && u == Present { value: unit } Absent => false }
+      ApplyLegSystemctl { step: _, action: a, unit: u } => a == action && u == unit
+      ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => a == action && u == unit
       _ => false
     }
   }) {

@@ -19,7 +19,7 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
 
 import std.types { CommitSha, NonEmptyStr }
-import std.algebra { fold_list, list_map, non_empty, string_contains }
+import std.algebra { fold_list, list_append, list_map, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
 import gunbc.live_deploy.deploy_artifact_closure {
   ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled,
@@ -52,11 +52,11 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
 import gunbc.live_deploy.unit_standing {
-  watched_paths_of_unit_file
+  watched_paths_of_unit_file, argv0_of_command
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, SystemdServiceMode,
-  ExecStart, WorkingDirectory, ServiceType, Restart, SimpleMode, OneshotMode, NotInstallable,
+  ExecStart, WorkingDirectory, ServiceType, Restart, SimpleMode, OneshotMode, NotInstallable, Environment,
 }
 import gunbc.live_deploy.apply_legs {
   converger_kind_of, ConvergerUnitKind, ConvergerKindKnown, ConvergerKindMissingUnitFile, Oneshot, LongRunning,
@@ -361,6 +361,14 @@ test fn the_tailscale_filesystem_backend_is_a_declared_read_of_the_target() -> B
   file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
 }
 
+// A PATH-SHAPED BACKEND WITH '://' STILL INSIDE IT IS A FILESYSTEM TARGET, NOT a proxy and not
+// unclassifiable: the classifier tests the leading '/' BEFORE '://' (the #16538 fix in
+// tailscale_serve_backend_target). Through the real adapter and the gate: exactly this target as a
+// FileContent read, Halt naming it when uninstalled, Proceed when installed.
+test fn the_tailscale_backend_with_scheme_marker_is_still_a_filesystem_target() -> Bool {
+  file_backend_is_declared_read(backend: "/srv/gunbc/a://b" as NonEmptyStr)
+}
+
 // AN UNCLASSIFIABLE BACKEND HALTS, IT IS NEVER A SILENT NO-READ (fail_closed: the no-read cannot survive the
 // classifier unable to place the backend; a /srv/gunbc/a://b-shaped word must not slip through as an
 // EndpointDependency with no halt cause — side-chat F1 counterexample). RED unless the read set is
@@ -598,6 +606,52 @@ fn installed_serve_binary() -> String {
   }
 }
 
+// THE WHOLE-DIRECTIVE CHECK MUST ACTUALLY SEE DIRECTIVES (side-chat F2 discriminating check). One side of
+// an agreeing pair loses one Environment directive (the OIDC Environment directives are the reason wholly
+// matters); unit_files_agree_wholly must answer FALSE. With the corrected extractor (the declared
+// ServiceUnitFile { unit, service, install } coproduct variant, side default for non-service files) the
+// comparison reads the service list, so a dropped directive is a disagreement. If this ever answers true,
+// the directive comparison is vacuous.
+type EnvDropAcc {
+  dropped: Int,
+  kept: List<SystemdServiceDirective>,
+}
+
+fn drop_first_environment(ds: List<SystemdServiceDirective>) -> List<SystemdServiceDirective> {
+  let acc = fold_list(xs: ds, empty: EnvDropAcc { dropped: 0, kept: [] }, cons: fn(a, d) {
+    match d {
+      Environment { assignment: _ } => match a.dropped {
+        0 => EnvDropAcc { dropped: 1, kept: a.kept }
+        _ => EnvDropAcc { dropped: 1, kept: list_append(left: a.kept, right: [d]) }
+      }
+      _ => EnvDropAcc { dropped: a.dropped, kept: list_append(left: a.kept, right: [d]) }
+    }
+  })
+  acc.kept
+}
+
+fn door_emitted_with_one_environment_dropped() -> Bool {
+  let spec = srv1_spec()
+  let emitted = live_deploy_tailnet_door_unit_file(spec: spec, revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: spec))
+  match emitted {
+    LiveDeployTailnetDoorUnitEmitted { file: f } => match f {
+      ServiceUnitFile { unit: u, service: ds, install: i } =>
+        match first_where(xs: ds, keep: fn(d) { match d { Environment { assignment: _ } => true, _ => false } }) {
+          Present { value: _ } =>
+            let minus_one = ServiceUnitFile { unit: u, service: drop_first_environment(ds), install: i }
+            unit_files_agree_wholly(a: f, b: minus_one) == false
+          Absent => false
+        }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn unit_files_agree_wholly_discriminates_a_missing_environment_directive() -> Bool {
+  door_emitted_with_one_environment_dropped()
+}
+
 // TWO INDEPENDENT ACCESSORS (moved OUT of gunbc.live_deploy.unit_standing per side-chat F2: production
 // functions with only witness consumers; the move into the test oracle resolved #16535 review 95797). The
 // closure WITNESS cross-checks the read set against the raw emitted unit WITHOUT calling the same derivation
@@ -645,7 +699,10 @@ fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
 }
 
 fn unit_service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
-  match f { SystemdUnitFile { unit: ServiceUnitFile { directives: ds, }, } => ds }
+  match f {
+    ServiceUnitFile { unit: _, service: ds, install: _ } => ds
+    _ => []
+  }
 }
 
 // WHOLE-DIRECTIVE AGREEMENT (#16535, side-chat F2): accessor and emitter must agree on the COMPLETE
