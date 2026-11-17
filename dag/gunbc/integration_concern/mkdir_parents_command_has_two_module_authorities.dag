@@ -8,7 +8,7 @@ module gunbc.integration_concern.mkdir_parents_command_has_two_module_authoritie
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Open, SuspectedFork, mkdir_parents_command_has_two_module_authorities_authorities }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, mkdir_parents_command_has_two_module_authorities_authorities }
 
 data mkdir_parents_command_has_two_module_authorities: IntegrationConcern = IntegrationConcern {
   identity: "mkdir_parents_command_has_two_module_authorities",

@@ -7,7 +7,8 @@ module gunbc.integration_concern.fleet_converge_roster_vs_closed_sum
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Open, SuspectedFork, fleet_converge_roster_vs_closed_sum_authorities }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, fleet_converge_roster_vs_closed_sum_authorities }
+import std.types { CommitSha }
 
 data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcern {
   identity: "fleet_converge_roster_vs_closed_sum",

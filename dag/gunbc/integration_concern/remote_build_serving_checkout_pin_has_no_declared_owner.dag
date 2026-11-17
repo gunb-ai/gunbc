@@ -5,8 +5,8 @@ module gunbc.integration_concern.remote_build_serving_checkout_pin_has_no_declar
 // at merge 23: main 7f27f475982 (#16632).
 
 import std.algebra { FreeSemigroup }
-import std.decl_ref { decl_ref }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, remote_build_serving_converge_merge_revision, remote_build_serving_converge_merge_revision }
+import std.decl_ref { decl_field_ref, decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, remote_build_serving_converge_merge_revision }
 
 data remote_build_serving_checkout_pin_has_no_declared_owner: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_serving_checkout_pin_has_no_declared_owner",

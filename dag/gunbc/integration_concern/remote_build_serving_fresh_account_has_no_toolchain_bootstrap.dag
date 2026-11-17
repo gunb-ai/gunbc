@@ -8,7 +8,7 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision, remote_build_serving_converge_merge_revision }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision }
 
 data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_serving_fresh_account_has_no_toolchain_bootstrap",

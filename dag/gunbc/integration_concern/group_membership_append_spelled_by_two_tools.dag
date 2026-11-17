@@ -10,7 +10,7 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, group_membership_append_spelled_by_two_tools_authorities, remote_build_serving_converge_merge_revision, remote_build_serving_converge_merge_revision }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, group_membership_append_spelled_by_two_tools_authorities, remote_build_serving_converge_merge_revision }
 
 data group_membership_append_spelled_by_two_tools: IntegrationConcern = IntegrationConcern {
   identity: "group_membership_append_spelled_by_two_tools",

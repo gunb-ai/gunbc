@@ -9,7 +9,7 @@ module gunbc.integration_concern.redfish_get_status_read_fork
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.guarantee_stall { climbs_when }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, redfish_get_status_read_fork_authorities, redfish_get_status_read_fork_revision, redfish_get_status_read_fork_revision }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, redfish_get_status_read_fork_authorities, redfish_get_status_read_fork_revision }
 
 data redfish_get_status_read_fork: IntegrationConcern = IntegrationConcern {
   identity: "redfish_get_status_read_fork",

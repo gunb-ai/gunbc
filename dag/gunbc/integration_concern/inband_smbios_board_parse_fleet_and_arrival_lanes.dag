@@ -13,7 +13,8 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.decl_ref { decl_ref }
 import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
-import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, inband_smbios_board_parse_fleet_and_arrival_lanes_authorities }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, IntegrationEvidence, PreservedObligation, RetainedExecutionResult, SuspectedFork, Triaged, inband_smbios_board_parse_fleet_and_arrival_lanes_authorities }
+import std.types { CommitSha }
 
 data inband_smbios_board_parse_fleet_and_arrival_lanes: IntegrationConcern = IntegrationConcern {
   identity: "inband_smbios_board_parse_fleet_and_arrival_lanes",
