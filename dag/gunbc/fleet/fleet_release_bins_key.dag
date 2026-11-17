@@ -1130,12 +1130,34 @@ fn release_bins_retention_page1_program() -> String {
 // order: the 16 newest survive, everything older is due.
 fn release_bins_retention_union_program() -> String {
   join([
-    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\")) then $union | sort_by(.created_at) | .[0: (if length > ",
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | sort_by(.created_at) | .[0: (if length > ",
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
-    " else 0 end)] | .[] | .id | tostring else error(\"union entries are not the admitted family objects\") end",
+    " else 0 end)] | .[] | .id | tostring else error(\"duplicate ids across pages: the listing is incomplete, deletions refused\") end else error(\"union entries are not the admitted family objects\") end",
   ], "")
+}
+
+// A repeated id across pages means something else was SKIPPED -- the listing
+// is incomplete and no deletion may ride on it (side chat, #16596 review 2).
+// This is the countable admission: jq -e is 0 exactly when a duplicate is
+// present, and its boolean stays out of the log (/dev/null).
+fn release_bins_retention_duplicate_program() -> String {
+  join([
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $u | ((($u | map(.id)) | length) != (($u | map(.id)) | unique | length))",
+  ], "")
+}
+
+fn release_bins_retention_duplicate_present() -> Node {
+  bash_build_with_redir_to_file(
+    inner: cmd(ws: [
+      lit(t: "jq"),
+      lit(t: "-e"),
+      lit(t: release_bins_retention_duplicate_program()),
+      rooted(file: release_bins_retention_union_basename),
+    ]),
+    path: lit(t: "/dev/null"),
+  )
 }
 
 
@@ -1538,6 +1560,42 @@ fn release_bins_retention_decide_statements() -> List<Node> {
     release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
     release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
     release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    // Duplicate ids across pages mean the listing is INCOMPLETE (something was
+  // skipped), so the pages-incomplete flag is touched and every later gate --
+  // plan, delete -- refuses on it (side chat, #16596 review 2; preferred fix).
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_or_else(
+              left: release_bins_retention_duplicate_present(),
+              right: cmd(ws: [lit(t: "touch"), incomplete_operand]),
+            ),
+          ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // The typed reason for that refusal, separate from the generic pages line.
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_present,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_and_then(
+              left: release_bins_retention_duplicate_present(),
+              right: release_bins_retention_echo(word: "duplicate-ids"),
+            ),
+          ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
     // no-answer fires only when this invocation never held an answer at all --
     // over-cap removed the answer deliberately and touched the flag to say so.
     bash_build_or_else(
@@ -1608,6 +1666,12 @@ fn release_bins_retention_statements() -> List<Node> {
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_flag_basename)]),
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_union_basename)]),
+      // Every attempt-scoped scratch file is invalidated up front (F6, side
+      // chat #16596 review 2): a second invocation whose fetch fails must find
+      // no ids to delete and no stale flag to block a good run.
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_basename)]),
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_dedup_basename)]),
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_incomplete_basename)]),
       release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
     ],
     release_bins_retention_decide_statements(),
