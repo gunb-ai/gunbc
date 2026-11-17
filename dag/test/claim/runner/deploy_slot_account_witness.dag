@@ -387,7 +387,7 @@ test fn the_existence_read_answers_from_listing_content_and_refusals_are_never_a
 // typed -- no build under a live unit. A read that did not complete is unreadable, never a guessed
 // absence; a tree that EXISTS is instantiated whatever the unit read says.
 fn reading_with(active: SystemdUnitActiveState) -> SlotReadOutcome {
-  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: Absent, active: active } }
+  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: Absent, active: active, result: ServiceResultSuccess, main_pid: NoMainProcess } }
 }
 
 test fn butch_s_exact_state_takes_the_first_install_route_and_an_active_treeless_slot_refuses() -> Bool {
