@@ -161,14 +161,19 @@ fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
     && roadmap_carrier_path_is_present(path: root)
 }
 
-// A SCRATCH IS A CAPABILITY, NOT A STRING. `RoadmapEventCarrierScratch` exists only as the value
-// `roadmap_event_carrier_mint_scratch` returns when `shell.Mktemp.DirWithTemplate` reports success on a template
-// this file owns, and it is the ONLY thing `roadmap_event_carrier_sweep` accepts and the only thing provisioning
-// admits. Text is a description of a directory, not a claim to it: a `sweep(root: String)` would delete any
-// `/tmp/...` a caller could name, including a directory another job minted five seconds ago. The fields are
-// re-checked at both ends rather than trusted, because this language has no private constructor — what the token
-// buys is not obscurity but the fact that authority is re-proven from the filesystem at the moment it is used,
-// so no value that does not describe a scratch this run actually minted can get a mutation or a delete through.
+// A SCRATCH IS A CAPABILITY, NOT A STRING — and the capability is the filesystem re-check, not the type. A normal
+// scoped caller obtains a `RoadmapEventCarrierScratch` only as the value `roadmap_event_carrier_mint_scratch`
+// returns when `shell.Mktemp.DirWithTemplate` reports success on a template this file owns, and it is the only type
+// `roadmap_event_carrier_sweep` accepts and the only one provisioning admits. It is NOT unconstructible: this
+// language has no private constructor, and both controls below build one by hand: each mktemp's its own parent,
+// scaffolds the scenario inside it with this file's own primitives, and then wraps the path in the type, because the
+// control has to be able to name the directory it is about to torture. Holding the type therefore establishes nothing
+// on its own. What keeps a hand-built token from being a skeleton key is that admission and sweep each re-prove the
+// claim from the filesystem — roadmap_carrier_root_is_minted_scratch and the seal probe — at the moment the authority
+// is used, rather than reading the fields back. Text is a description of a directory,
+// not a claim to it: a `sweep(root: String)` would delete any `/tmp/...` a caller could name, including a directory
+// another job minted five seconds ago — and a hand-built token would do the same to a tree it never minted if those
+// re-checks trusted the value instead of looking.
 type RoadmapEventCarrierScratch { path: String, template: String }
 
 type RoadmapEventCarrierMint
@@ -349,9 +354,13 @@ fn roadmap_event_carrier_admission(scratch: RoadmapEventCarrierScratch, instance
   }
 }
 
-// THE SWEEP, and the only place this fixture deletes anything. It takes the SCRATCH, not a path: a String names a
-// directory, it does not prove anyone minted it, and a recursive delete must never be handed one — `sweep(root)`
-// taking text would have deleted `/tmp/another-job` on a caller's say-so. The same predicate admission uses is
+// THE SWEEP: THE PROVENANCE-GATED DELETION OF THE NORMAL SCRATCH. It is not the only deletion in this file — the
+// failed-mint cleanup above removes what the mint made before a token could be handed back, the parent salvage below
+// removes a control-owned parent, and one control deliberately removes its own seal in order to force a refusal. It
+// is the only deletion that takes a scratch token, which makes it the only one a scoped caller reaches for when it
+// wants its scenario back. It takes the SCRATCH, not a path: a String names a directory, it does not prove anyone
+// minted it, and a recursive delete must never be handed one — `sweep(root)` taking text would have deleted
+// `/tmp/another-job` on a caller's say-so. The same predicate admission uses is
 // re-checked at delete time, so even a hand-built token gains no authority over a directory it did not mint. The
 // caller that minted the scenario runs it on every arm, success and refusal alike, and USES THE RESULT: a witness
 // that leaves its scratch behind is a witness the next run reads, and a sweep that failed silently is the same
@@ -378,9 +387,11 @@ fn roadmap_event_carrier_sweep(scratch: RoadmapEventCarrierScratch) -> RoadmapCa
 // The counterexample that forced this, found in review of the first seal design: a body that removes only the seal
 // directory and returns true. The sweep then finds no seal, refuses at provenance, and a predicate that counted
 // refusal as clean let the claim pass with the scenario still sitting in /tmp — a leak paid for by the very
-// authorization check that was added to stop leaks. Both arms go to the filesystem — one `ls -l -n -d` on the
-// root, read by filesystem_entry_lookup_reading_of_exit — rather than trusting the delete's own report: a
-// `rm -rf` that claims success and leaves the tree behind is not a teardown either. And neither arm may be
+// authorization check that was added to stop leaks. The two arms that can be satisfied, Done and Refused, both go
+// to the filesystem — one `ls -l -n -d` on the root, read by filesystem_entry_lookup_reading_of_exit — rather than
+// trusting the delete's own report: a `rm -rf` that claims success and leaves the tree behind is not a teardown
+// either, and a refusal is not a take-back, which is why Refused asks that same question of the scratch the caller
+// handed it instead of being believed. Failed answers false without looking. And neither of those two arms may be
 // satisfied by an unreadable root: "could not look" is not "looked and found nothing", which is the difference
 // between a teardown and a leak with better manners.
 fn roadmap_carrier_teardown_is_complete(scratch: RoadmapEventCarrierScratch, sweep: RoadmapCarrierSweep) -> Bool {
@@ -468,8 +479,10 @@ type RoadmapEventCarrierProvision
   | RoadmapEventCarrierRefused { step: String, detail: String }
 
 // WHAT A SWEEP REPORTS. Three answers, not one Bool, because "it is gone", "I refused to touch it" and "I tried to
-// delete it and the delete failed" are three different obligations on the caller: the first two leave nothing of
-// the fixture's behind and may pass a claim, the third is a leak and must fail one. A Bool would have to fold
+// delete it and the delete failed" are three different obligations on the caller — and no report is taken as the
+// answer on its own. Done still has to show an absent root; Refused still has to show an absent root, because a
+// refusal proves nobody deleted anything, so it cannot be the arm that proves nothing is left; Failed is false
+// without being asked. A Bool would have to fold
 // refusal and success together (which is how the first version read `swept`), and then a control could not tell a
 // refused foreign tree from a deleted one — which is the exact distinction the ownership contract is about.
 type RoadmapCarrierSweep
