@@ -27,19 +27,31 @@ fn admitted(a: GpuBoardAdmission) -> Bool {
 }
 
 // srv1 HOLDS BOTH PRO 6000s (the Workstation card and, since 2026-11-07, the Max-Q); srv4 HOLDS THE TWO
-// RTX 2000 Ada cards (read 2026-11-07); srv14/butch HOLDS THE FOUR A2 CARDS (read on butch 2026-11-10);
-// BOTH R9700s ARE IN host-6ce85c (h11-a16) SINCE 2026-11-12 (operator; only gpu_board_02 enumerates, which
-// gunbc.fleet.gpu_device_observation keeps apart from residence). No card is contained twice: a card in two hosts
-// is a residence contradiction.
+// RTX 2000 Ada cards (read 2026-11-07); BOTH R9700s ARE IN host-6ce85c (h11-a16) SINCE 2026-11-12 (operator;
+// only gpu_board_02 enumerates, which gunbc.fleet.gpu_device_observation keeps apart from residence). No card
+// is contained twice: a card in two hosts is a residence contradiction.
+// srv14/butch HELD THE FOUR A2 CARDS (read on butch 2026-11-10) AND NO LONGER DOES: all four were physically
+// removed from butch on 2026-11-17 to be sold, per the operator report of 2026-11-17, corroborated by the
+// operator's session read at 2026-11-16T22:36Z (no NVIDIA driver loaded, a2-power-cap.service FAILED,
+// strata-pool@a/@b inactive). They stay IN INVENTORY -- owned identities, unseated, in no host -- which is
+// what the two halves below assert: the six seated cards are seated, and the four A2s are in no host while
+// still being assets. A re-added containment row reds the first claim; deleting an A2 identity reds the second.
 test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s() -> Bool {
   hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_01 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_04 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: gpu_board_05 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: gpu_board_06 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_07 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_08 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_09 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_10 as String)
+    // The four A2s are in NO host, and specifically not in srv14: removed from butch 2026-11-17 for sale.
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_07 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_08 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_09 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_10 as String)
+    && !installed_gpu_board_containments.any(c => match c {
+      HostContainsComponent { host: _, component: k } =>
+        (k as String) == (gpu_board_07 as String) || (k as String) == (gpu_board_08 as String)
+          || (k as String) == (gpu_board_09 as String) || (k as String) == (gpu_board_10 as String)
+      _ => false
+    })
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_02 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_03 as String)
     && gpu_board_assets.all(a => installed_gpu_board_containments.filter(c => match c {
@@ -52,6 +64,19 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s()
       || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
       || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
       || a.identity == gpu_board_09 || a.identity == gpu_board_10)
+}
+
+// THE FOUR SOLD A2s ARE STILL ASSETS. They left butch on 2026-11-17 and are pending sale, so their residence
+// is gone but their IDENTITY IS NOT: "pending sale" is a holding standing, not a disposal, and gunbc.fleet.
+// fleet_asset_identity keeps them (fleet_asset_identity.dag:35-36 -- a card moves between hosts and where it
+// sits is only ever a containment row here). This claim reds if anyone retires the retirement too far and
+// deletes an A2 identity or its asset row while the cards still exist; the sale itself is a separate,
+// later, operator-owned act.
+test fn witness_the_sold_a2s_remain_assets_though_seated_nowhere() -> Bool {
+  gpu_board_assets.any(a => a.identity == gpu_board_07)
+    && gpu_board_assets.any(a => a.identity == gpu_board_08)
+    && gpu_board_assets.any(a => a.identity == gpu_board_09)
+    && gpu_board_assets.any(a => a.identity == gpu_board_10)
 }
 
 // EVERY CARD IN INVENTORY BINDS A BOARD ROW THAT EXISTS, and the R9700 board row is admitted.

@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
 import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_6ce85c }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -157,62 +157,23 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
   },
-  // srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 over ssh (nvidia-smi -q -d POWER, driver
-  // 595.91.07; 15356 MiB each). THIS IS WHERE THE A2's SETTABLE POWER-LIMIT RANGE LIVES: the 595.91.07
-  // driver reports min 35 / default 60 / max 60 W, and the operator has capped each at exactly 35 W via
-  // butch's a2-power-cap.service (systemctl cat a2-power-cap.service, 2026-11-10: ExecStart runs
-  // `nvidia-smi -pm 1` then `nvidia-smi -pl 35`; enabled+active). This 35 W floor is a DEVICE fact and is
-  // SEPARATE from the 40-60 W product-page TDP envelope in extdeps.gpu.nvidia_a2 (a thermal-design number,
-  // not a settable range); the cap-admission path gunbc.serving.gpu_power_state_policy admit_gpu_cap_against
-  // reads THESE power_limit_* fields, so the 35 W cap below is admitted by the observation, not the catalog.
-  GpuDeviceEnumerated {
-    host: operator_host_srv14,
-    board: gpu_board_07,
-    gpu_uuid: Present { value: "GPU-c7080fc0-73f7-5c2d-0412-c5041edd95f4" as NonEmptyStr },
-    pci_address: "0000:01:00.0" as PciAddress,
-    power_limit_minimum: watt(count: 35),
-    power_limit_maximum: watt(count: 60),
-    power_limit_current: watt(count: 35),
-    power_limit_default: Present { value: watt(count: 60) },
-    power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
-  },
-  GpuDeviceEnumerated {
-    host: operator_host_srv14,
-    board: gpu_board_08,
-    gpu_uuid: Present { value: "GPU-d6551356-b835-59e5-8ea9-542098216e6f" as NonEmptyStr },
-    pci_address: "0001:01:00.0" as PciAddress,
-    power_limit_minimum: watt(count: 35),
-    power_limit_maximum: watt(count: 60),
-    power_limit_current: watt(count: 35),
-    power_limit_default: Present { value: watt(count: 60) },
-    power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
-  },
-  GpuDeviceEnumerated {
-    host: operator_host_srv14,
-    board: gpu_board_09,
-    gpu_uuid: Present { value: "GPU-63e42447-95fe-67cb-afde-3e2e80e4e389" as NonEmptyStr },
-    pci_address: "0004:01:00.0" as PciAddress,
-    power_limit_minimum: watt(count: 35),
-    power_limit_maximum: watt(count: 60),
-    power_limit_current: watt(count: 35),
-    power_limit_default: Present { value: watt(count: 60) },
-    power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
-  },
-  GpuDeviceEnumerated {
-    host: operator_host_srv14,
-    board: gpu_board_10,
-    gpu_uuid: Present { value: "GPU-b44c2926-091a-b3ac-3d11-bda9613c67fb" as NonEmptyStr },
-    pci_address: "0004:02:00.0" as PciAddress,
-    power_limit_minimum: watt(count: 35),
-    power_limit_maximum: watt(count: 60),
-    power_limit_current: watt(count: 35),
-    power_limit_default: Present { value: watt(count: 60) },
-    power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
-  },
+  // srv14/butch had FOUR GpuDeviceEnumerated rows here (gpu_board_07..10, read on butch 2026-11-10 over ssh,
+  // nvidia-smi -q -d POWER, driver 595.91.07, 15356 MiB each, min 35 / current 35 / max 60 / default 60 W,
+  // NvidiaSmiPowerLimit). They are RETIRED: the operator's 2026-11-17 report says all four A2 cards were
+  // physically removed from butch to be sold and that butch is CI only, no serving; the operator's session
+  // read at 2026-11-16T22:36Z corroborated it (no NVIDIA driver loaded, a2-power-cap.service FAILED,
+  // strata-pool@a/@b inactive). WHY THEY LEAVE RATHER THAN STAY: every consumer of this list reads it as
+  // CURRENT state -- current_gpu_device_observations_of, current_gpu_device_for_host in
+  // gunbc.serving.gpu_power_state_policy (which admit_gpu_cap_against uses to admit a cap), and the converge
+  // and boot-state paths in gunbc.fleet.gpu_power_cap_converge and gunbc.fleet.gpu_power_cap_boot_state. A
+  // kept row would therefore assert that butch enumerates four A2s today, and would keep a cap-admission
+  // path open against cards that are no longer in the box. Dated history is not this list's job; the module's
+  // own STANDING note sends a retired reading to the inventory annotation, and it is transcribed there in
+  // full (UUID, PCI function, range, read_on) above gpu_board_07_asset in gunbc.fleet.fleet_physical_inventory.
+  // DO NOT "FIX" THIS BY ADDING GpuDeviceNotEnumerated ROWS FOR srv14. Not-enumerated is the state of a card
+  // that IS seated and fails to show up; these cards are not seated anywhere, so the honest state is no row at
+  // all -- absence of the device, not a device with a fault. (The A2's settable range survives independently in
+  // extdeps.gpu.nvidia_a2, so this retirement costs the model no capability figure.)
   // host-6ce85c (h11-a16)'s Radeon AI PRO R9700, read 2026-11-12T16:31Z by read_r9700_device.sh
   // (artifacts/host-observations/h11-r9700-2026-11-12/r9700_device_reading.txt, pinned in that directory's
   // SHA256SUMS): PCI 1002:7551, subsystem 1458:242f (Gigabyte), VBIOS 113-R9700AT-F50, 34208743424 bytes of VRAM,
