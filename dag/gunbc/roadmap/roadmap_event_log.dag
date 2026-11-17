@@ -167,10 +167,10 @@ type RoadmapEventKind
   // acceptance still the one its own criteria demand" without a second carrier to consult. The pull
   // request it was earned by is ONE FACT of the event, named by its own type (AcceptancePrEvidence):
   // either the acceptance was earned by a review thread, carrying that thread with its merge time and
-  // head, or there was no pull request at all. The second case is what the record actually is for the 18
+  // head, or there was no pull request at all. The second case is what the record actually is for the
   // acceptances the operator recorded before this log became the authority (the hand-committed JSONL
-  // seed, whose latest day is 2026-10-11) — no such fact was ever recorded, and the migration that moves
-  // them here must not invent one to satisfy a field. Half a pull request is not a value of the type, so
+  // seed, whose latest day is 2026-10-11) — no such fact was ever recorded, and the migration that moved
+  // them here did not invent one to satisfy a field. Half a pull request is not a value of the type, so
   // it cannot be built, written, folded or verified; and the no-pull-request door is a CLOSED SET —
   // roadmap_migration_acceptance_identities, matched against the receipt's own canonical bytes — not a date
   // the author of a receipt can choose, and not a date at all: the dated rule that used to admit it is deleted.
@@ -333,7 +333,7 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
     // THE ONE GRAMMAR. The receipt is written NESTED, under "receipt" / "exact_prior_receipt", with the
     // member names and variant words the acceptance line has always used (see
     // gunbc.roadmap.roadmap_operator_acceptance roadmap_operator_acceptance_receipt_line and the eighteen
-    // lines of the deleted seed, which the migration replays): a receipt is one fact, so it has one
+    // lines of the deleted seed, which the migration replayed): a receipt is one fact, so it has one
     // spelling in the log and on the line, and a line the operator dictates parses into the same bytes the
     // fold reads back. The nesting is not style: the event object already carries "node", and
     // json_object_unique_member REFUSES a duplicated member, so a flattened receipt -- whose first member is
@@ -2072,14 +2072,17 @@ fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<
 // acceptance-evidence law (gunbc.roadmap.roadmap_issue_command) admits an acceptance with no pull request
 // only for a receipt whose canonical identity, spelled here, is a member of the closed set.
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE CANONICAL FACT, WHOLE. A migration is certified against the event's COMPLETE evidence, spelled by
-// the same member law that writes the event's canonical bytes (gunbc.roadmap.roadmap_event_log
+// THE CANONICAL FACT, WHOLE. A receipt's canonical identity is spelled over the event's COMPLETE evidence,
+// by the same member law that writes the event's canonical bytes (gunbc.roadmap.roadmap_event_log
 // roadmap_acceptance_receipt_members): the node, the criteria digest, the red-control variant with its
 // witness module, fn and executed day, the handback variant with its first and further artifacts, the
 // accepting principal and day — and for a revocation its disposition, its reason, its revoker and its
-// day too. Comparing node and criteria digest alone would certify a migrated acceptance whose
+// day too. Comparing node and criteria digest alone would admit into the closed set a receipt whose
 // red-control witness, handback artifact, accepting principal or day had been swapped: the standing
-// still folds the same way, and the receipt is no longer the one the operator wrote. Witnessed by the
+// still folds the same way, and the receipt is no longer the one the operator wrote — so the closedness
+// the live acceptance-evidence law relies on is measured against the whole fact, never a projection. (It
+// is also why the now-retired migration verifier compared the complete fact rather than the two fields
+// that happen to decide a standing.) Witnessed by the
 // closedness claims in test.claim.roadmap.roadmap_acceptance_evidence_witness, which check that the
 // identity a receipt earns is admitted exactly when it is a member of the closed set.
 fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {

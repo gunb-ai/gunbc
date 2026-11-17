@@ -4,11 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim, string_contains }
-// The modeled file write, as every other producer of a document on disk uses it (gunbc.auth.branch_run_grant
-// writes its grant output the same way). The read-back's whole point is that the readers' answer becomes an
-// artifact the PR can quote, so it is written, not printed: a ProcessExit has no stdout.
-import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, ClaimGrain }
 import std.content_hash { serialize_content_hash, Fnv1a64, content_hash_atom }
@@ -383,15 +379,15 @@ fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
   }
 }
 
-// THE READ-BACK DOORS, for the live migration's verification and rollback steps. `gunbc run` refuses
+// THE REPORT DOORS: permanent, fail-closed report entries over the event-log readers. `gunbc run` refuses
 // an entry whose function does not return ProcessExit (src/v1/stage0/src/cli_run.rs: "function
-// returned `X`, not ProcessExit"), and the three facts the cutover is gated on are DATA, not exits —
+// returned `X`, not ProcessExit"), and the facts these entries report are DATA, not exits —
 // their authorities return them to the page (`roadmap_retired_node_ids_load`,
 // `roadmap_acceptance_event_history_load`), and narrowing a
 // production authority to an exit shape to make it runnable would bend the reader to the runner.
 // So these entries stand beside them and add NOTHING to what is decided: each asks the SAME reader
-// production asks, through the same pinned instance, and turns its verdict into the exit the runbook
-// gates on. They decide by MATCHING the coproduct each reader returns — never by searching the words that
+// production asks, through the same pinned instance, and turns its verdict into a ProcessExit. They decide
+// by MATCHING the coproduct each reader returns — never by searching the words that
 // rendering happens to use (review 93664 on gunb-ai/gunbc#16189; gunbc.design_argument::fail_closed:
 // "a typecheck and a `.contains()` grep are not consumers"). A ProcessExit has no stdout to name a fact
 // in, so — the convention every wet entry here already follows — exit 0 says the fact is admitted as

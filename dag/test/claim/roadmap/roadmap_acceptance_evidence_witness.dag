@@ -311,10 +311,10 @@ test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
 // THE SEED, PINNED. The seventeen acceptance lines the hand-committed
 // dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl carried (its eighteenth line is a revocation,
 // which needs no pull request and is not part of this law). They are pinned here VERBATIM — copied from
-// the file at its last commit, 7e57510bb504, before this PR deleted it — because they are what the
-// migration feeds the route, and what the model's closed set is checked against. A roster entry copied
+// the file at its last commit, 7e57510bb504, before it was deleted — because they are what the migration
+// fed the route, and what the model's closed set is still checked against. A roster entry copied
 // wrong, dropped, invented or duplicated goes red in the claim below rather than quietly admitting the
-// wrong receipt, or refusing the one-time migration.
+// wrong receipt, or refusing one of the historical receipts the closed set must admit.
 fn seed_acceptance_lines() -> List<String> {
   [
     "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-git-upstream-model\",\"criteria_digest\":\"b3747b95baf099cc\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.git_upstream_model_execution\",\"witness_fn\":\"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/git/object_store.dag\",\"further_artifacts\":[\"dag/test/claim/git_upstream_model_witness.dag\",\"dag/test/manual/git_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
@@ -652,7 +652,7 @@ test fn an_acceptance_revocation_reads_back_naming_the_receipt_it_revokes() -> B
 
 // THE ONE GRAMMAR, CHECKED AGAINST THE TRUSTED LAW. The receipt the log nests, wrapped in the acceptance
 // line's envelope, must parse under the carrier's own parser — the native seed law that read the eighteen
-// lines and that the migration replays. This is the row that fails if the log and the line ever spell the
+// lines and that the migration replayed. This is the row that fails if the log and the line ever spell the
 // same fact differently: the variant words, the nesting, the digest and the member order are the parser's,
 // because the parser is the law and the log is its newest reader, not a second authority beside it.
 test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Bool {
