@@ -1160,11 +1160,12 @@ fn release_bins_retention_union_program() -> String {
 
 // A repeated id across pages means something else was SKIPPED -- the listing
 // is incomplete and no deletion may ride on it (side chat, #16596 review 2).
-// This is the countable admission: jq -e is 0 exactly when a duplicate is
-// present, and its boolean stays out of the log (/dev/null).
+// This is the countable admission: the program is TRUE exactly when the union
+// is duplicate-free, so `jq -e ... || <touch|echo>` runs its right arm exactly
+// when a duplicate is present; the boolean stays out of the log (/dev/null).
 fn release_bins_retention_duplicate_program() -> String {
   join([
-    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $u | ((($u | map(.id)) | length) != (($u | map(.id)) | unique | length))",
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $u | ((($u | map(.id)) | length) == (($u | map(.id)) | unique | length))",
   ], "")
 }
 
@@ -1615,11 +1616,15 @@ fn release_bins_retention_decide_statements() -> List<Node> {
       ),
       right: nothing_arm,
     ),
-    // no-answer fires only when this invocation never held an answer at all --
-    // over-cap removed the answer deliberately and touched the flag to say so.
+    // no-answer fires only when this invocation never held an answer at all AND
+    // never typed a refusal -- a deliberate over-cap refusal also clears the
+    // answer, so the right arm must be total over the flag, never fatal (set -e).
     bash_build_or_else(
       left: bash_build_and_then(left: answer_present, right: nothing_arm),
-      right: bash_build_and_then(left: flag_absent, right: release_bins_retention_echo(word: "no-answer")),
+      right: bash_build_or_else(
+        left: bash_build_and_then(left: flag_absent, right: release_bins_retention_echo(word: "no-answer")),
+        right: cmd(ws: [lit(t: ":"), lit(t: "refused-with-flag")]),
+      ),
     ),
     // ONE plan, over the union of all admitted pages, only when every page
     // this invocation needed admitted cleanly and the total is under the cap.
