@@ -1,0 +1,42 @@
+module test.claim.roadmap.roadmap_intention_binding_witness
+
+import std.types { Bool, Int, String }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap.roadmap_intention_binding {
+  roadmap_intention_bindings, bindings_all_have_nodes, binding_nodes_unique, binding_layers_nonnegative,
+  nodes_serving, bindings_at_layer, serves, binding_has_node,
+}
+
+// A binding whose node id is not a declared roadmap node is the undefined variable this carrier exists
+// to refuse. The positive control is the live roster; the RED is a supplied binding naming a node that
+// does not exist, which must read as unbound rather than as a row.
+test fn every_binding_names_a_declared_node() -> Bool {
+  bindings_all_have_nodes()
+}
+
+test fn a_binding_to_an_undeclared_node_is_refused() -> Bool {
+  !binding_has_node(b: serves(node: "no-such-node-2026-11-17", module_path: "gunbc.plans.v2_self_host", plan: "v2_self_host_plan", layer: 0))
+}
+
+test fn no_node_is_bound_twice() -> Bool {
+  binding_nodes_unique()
+}
+
+test fn layers_are_nonnegative() -> Bool {
+  binding_layers_nonnegative()
+}
+
+test fn the_namespace_intention_has_a_layer_zero_and_a_layer_three() -> Bool {
+  let i = decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan")
+  count(bindings_at_layer(intention: i, layer: 0)) >= 1 && count(bindings_at_layer(intention: i, layer: 3)) >= 1
+}
+
+test fn nodes_serving_is_in_layer_order() -> Bool {
+  let i = decl_ref(module_path: "gunbc.plans.factory_first_customer", decl_name: "factory_first_customer_plan")
+  let rows = nodes_serving(intention: i)
+  fold(rows, init: 0, f: fn(acc, b) { if acc < 0 { acc } else { if b.layer >= acc { b.layer } else { 0 - 1 } } }) >= 0
+}
+
+test fn an_unknown_intention_serves_nothing() -> Bool {
+  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "no_such_plan"))) == 0
+}
