@@ -2410,7 +2410,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-unique-on-chain",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: updated(t: level_fields(
+      line: ticket(t: updated(t: updated(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
           approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
