@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.integer { int_to_decimal_string }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
@@ -20,6 +21,7 @@ import extdeps.tools.jq {
 import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
+  bash_build_comment,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
@@ -963,7 +965,11 @@ fn release_bins_key_statements(product: ReleaseBinsProduct) -> List<Node> {
 // nonzero, which refuses as LookupAnswerUnusable and is never absence. Of the admitted rows, exactly
 // one with key == the requested key and ref == the admitted ref is a candidate (its id, ref, version
 // and creation time are the receipt's producer identity); none is absence; two is refused.
-data release_bins_lookup_page_size: String = "100"
+// One authority for the cache-API page size: the number. Every textual use --
+// the per_page query parameter and every jq comparison -- is emitted from this
+// datum (review 96043: the re-spelled "100" was a second authority).
+data release_bins_lookup_page_size_int: Int = 100
+data release_bins_lookup_page_size: String = int_to_decimal_string(value: release_bins_lookup_page_size_int)
 
 fn release_bins_lookup_program(ref_expression: String) -> String {
   join([
@@ -1030,6 +1036,16 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
 // this ships: it is not in this family and the filter names that exclusion.
 // ============================================================================================
 data fleet_converge_release_bins_retention_keep: Int = 16
+// The hand-shell gate (ctrl review policy, review 96043): the listing, plan
+// and deletion below are carried as a bash sequence built through the
+// bash_build grammar (curl page ladder, jq plan invocations, xargs deletes).
+// The grammar builds the MEDIUM; the ORCHESTRATION -- fetch every required
+// page, admit completeness, plan once over the union, delete only from an
+// admitted plan -- is interim bash until the bash-emit capability tracked as
+// issue #5828 gives gunbc a modeled loop/condition node in
+// v2.extdeps.languages.bash_build. This row is the on-carrier dissolution
+// trigger for that interim.
+data release_bins_retention_guard_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: release_bins_retention_statements -- the retention guard's page-fetch loop, page gates, union plan and delete block are carried as a bash sequence built from bash_build grammar nodes; DISSOLVES WHEN the bash-emit capability of issue #5828 models loop and condition nodes in v2.extdeps.languages.bash_build, so the orchestration is emitted as Nodes and this hand-assembled sequence retires. The jq filter text remains a single typed program string passed as an argument -- jq is neither shell nor YAML syntax, so it is not a string medium (ctrl review policy; api-review 96036).")
 // Pagination bound for the retention lookup. The cache API page size is 100
 // (release_bins_lookup_page_size); five pages admit a release-bins family of
 // 500. Derivation: the last census counted 59-61 family entries, and steady
@@ -1039,8 +1055,12 @@ data fleet_converge_release_bins_retention_keep: Int = 16
 // guardian degrades visibly rather than guessing from a partial listing
 // (gunbc.design_argument::fail_closed: typed, located, countable).
 data fleet_converge_release_bins_retention_max_pages: Int = 5
-data release_bins_retention_max_total_text: String = "500"
-data release_bins_retention_page_size_text: String = "100"
+// Both bounds are DERIVED from their authorities -- the page size datum and
+// the page-count datum -- never re-spelled (review 96043).
+fn release_bins_retention_max_total_text() -> String {
+  int_to_decimal_string(value: release_bins_lookup_page_size_int * fleet_converge_release_bins_retention_max_pages)
+}
+fn release_bins_retention_page_size_text() -> String { release_bins_lookup_page_size }
 data release_bins_retention_prefix: String = "release-bins-"
 data fleet_converge_release_bins_retention_excluded_prefixes: List<String> = [
   "fast-lane", "parse-verdict", "cargo-ci", "gunbc-materialization",
@@ -1108,13 +1128,13 @@ fn release_bins_retention_excluded_fragment(p: String) -> String {
 fn release_bins_retention_page1_program() -> String {
   join([
     ". as $answer | [inputs] | if length != 0 then error(\"the cache-API answer is not exactly one JSON document\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
-    release_bins_retention_max_total_text,
+    release_bins_retention_max_total_text(),
     " and ((.total_count <= ",
-    release_bins_retention_page_size_text,
+    release_bins_retention_page_size_text(),
     " and .total_count == (.actions_caches | length)) or (.total_count > ",
-    release_bins_retention_page_size_text,
+    release_bins_retention_page_size_text(),
     " and (.actions_caches | length) == ",
-    release_bins_retention_page_size_text,
+    release_bins_retention_page_size_text(),
     "))",
     " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
     release_bins_retention_prefix,
@@ -1229,15 +1249,15 @@ fn release_bins_retention_page_program(n: Int) -> String {
   // arithmetic demands is a broken or mid-stream answer; it is refused here
   // (typed plan-failed at the append) rather than silently truncating the
   // union the keep window is decided over.
-  let lo = int_to_decimal_string(100 * (n - 1))
-  let hi = int_to_decimal_string(100 * (n - 1) + 100)
+  let lo = int_to_decimal_string(release_bins_lookup_page_size_int * (n - 1))
+  let hi = int_to_decimal_string(release_bins_lookup_page_size_int * (n - 1) + release_bins_lookup_page_size_int)
   join([
     ". as $answer | [inputs] | if length != 0 then error(\"multiple JSON documents\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
-    release_bins_retention_max_total_text,
+    release_bins_retention_max_total_text(),
     " and (.actions_caches | length) == (if .total_count >= ",
     hi,
     " then ",
-    release_bins_retention_page_size_text,
+    release_bins_retention_page_size_text(),
     " elif .total_count <= ",
     lo,
     " then 0 else (.total_count - ",
@@ -1521,7 +1541,7 @@ fn release_bins_retention_decide_statements() -> List<Node> {
           inner: cmd(ws: [
             lit(t: "jq"),
             lit(t: "-e"),
-            lit(t: join([".total_count > ", release_bins_retention_max_total_text], "")),
+            lit(t: join([".total_count > ", release_bins_retention_max_total_text()], "")),
             release_bins_retention_answer_rooted(),
           ]),
           path: lit(t: "/dev/null"),
@@ -1657,6 +1677,9 @@ fn release_bins_retention_statements() -> List<Node> {
   let header = temp(file: release_bins_retention_header_basename)
   concat(
     [
+      // On-carrier marker: the hand-shell gate asks every interim bash carrier
+      // to name what retires it (ctrl review policy; review 96043).
+      bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")),
       root_statement(),
       release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
       // Invalidate before fetching: a leftover answer (or over-cap flag) from
