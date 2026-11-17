@@ -88,8 +88,13 @@ fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
 }
 // Why the pair keeps serving when origin/main's head could not be observed (consumed by the entry's head leg).
 data release_pair_no_head_reason: NonEmptyStr = "origin/main's head could not be observed on the executing host"
-// Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run leg).
+// Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run
+// leg). A BENIGN CI wait: the pack is not ready yet (still building / run not yet successful), keep last-good, retry.
 data release_pair_no_run_for_head_reason: NonEmptyStr = "the bound head has no successful release-bins run to fetch"
+// Why the pair keeps serving when the run DISCOVERY command itself could not run (auth expired, network, rate limit,
+// wrong workflow name). NOT a CI wait — the delivery could not OBSERVE whether a pack exists, so it is a refusal the
+// timer must surface (fail_closed), never a green tick that silently stops tracking main (review 96216).
+data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins run discovery (gh run list) could not be executed on the host (auth, network, rate limit, or workflow name); this is a delivery refusal, not a CI wait"
 
 // ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
 // The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
@@ -127,26 +132,34 @@ type ReleasePairRunObservation {
   head_sha: NonEmptyStr
 }
 
-fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunObservation? {
+// The run-list decode is a declared three-way sum, NOT an option collapsed onto none (review 96216): "a successful
+// run exists for the head", "no successful run for the head yet (benign CI wait)" and "discovery itself refused"
+// are three distinct outcomes that must not be conflated — only the middle one is a benign wait.
+data ReleasePairRunLookup =
+    RunLookupFound { run: ReleasePairRunObservation }
+  | RunLookupNoneForHead
+  | RunLookupDiscoveryRefused { reason: NonEmptyStr }
+
+fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
   match outcome {
     ProcessOutputPresent { text: t } =>
       if (trim(s: t) as String) == "" {
-        none
+        RunLookupNoneForHead
       } else {
         let parts = split(s: trim(s: t), delimiter: "\t")
         if (last(l: parts) as String) == (first(l: parts) as String) || (last(l: parts) as String) == "" {
-          none
+          RunLookupNoneForHead
         } else {
-          Present {
-            value: ReleasePairRunObservation {
+          RunLookupFound {
+            run: ReleasePairRunObservation {
               run_id: first(l: parts) as NonEmptyStr,
               head_sha: last(l: parts) as NonEmptyStr,
             },
           }
         }
       }
-    ProcessOutputAbsent => none
-    ProcessRefused { exit_code: _, stderr: _ } => none
+    ProcessOutputAbsent => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
+    ProcessRefused { exit_code: _, stderr: _ } => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
   }
 }
 
@@ -233,8 +246,9 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
         transport: LocalExec,
       )
       match release_pair_decode_run(outcome: run_outcome) {
-        none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_run_for_head_reason }
-        Present { value: run } =>
+        RunLookupDiscoveryRefused { reason } => PlanKeepsLastGood { kept: serving, reason: reason }
+        RunLookupNoneForHead => PlanKeepsLastGood { kept: serving, reason: release_pair_no_run_for_head_reason }
+        RunLookupFound { run } =>
           let pack_dir = release_pair_incoming_pack_dir(base_root: base_root)
           let member_src = release_pair_incoming_serve_source(base_root: base_root)
           let fetch_outcome = run_shell_command_capture(
