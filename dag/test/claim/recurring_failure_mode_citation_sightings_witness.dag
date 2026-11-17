@@ -1,0 +1,180 @@
+module test.claim.recurring_failure_mode_citation_sightings_witness
+
+// WITNESSES FOR THE TWO SIGHTINGS ADDED TO THE DECLARATION-REFERENCE CITATION ROW (2026-11-17).
+//
+// WHAT THIS ENTRY CAN HOLD, AND WHY IT LOOKS LIKE PROSE MATCHING. The row's two new sightings are
+// receipts, and a receipt is authored prose by design (gunbc.recurring_failure_mode authored reads
+// them as the row's text). So the checks below are of two kinds, and the split is deliberate. The
+// TYPED kind asks questions a compiler can answer: is the row still below its ceiling, does the
+// resolver entry stay frozen at function grain, does the row cite exactly the two declarations it
+// claims to have read and refuse the authorities it once cited wrong. The PROSE kind asks only that
+// a sighting keep naming the facts that made it a receipt rather than an assertion -- the tree and
+// the binary an execution ran on, the denominators a count was taken against, the repair path by
+// name. It is not a substitute for resolving the references: nothing in this tree can do that on a
+// required path, which is the defect the row records, and this entry would be the wrong place to
+// pretend otherwise. When the disposition roster and the construction-time refusal land, the prose
+// kind should be replaced by a resolver call, not extended.
+import std.algebra { fold_list, length, string_contains }
+import std.decl_ref { DeclarationRef }
+import gunbc.recurring_failure_mode { AtCeiling, BelowCeiling, RecurringFailureMode, RungRead, RungStanding, authored }
+import gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved { declaration_reference_cites_a_declaration_nothing_resolved }
+import gunbc.witness.witness_deferral_freeze { frozen_path_deferrals }
+
+// HOW MANY FUNCTIONS THE FREEZE CARRIES FOR AN ENTRY PATH, at the grain the freeze itself keeps
+// (entry, function). Comparing the whole path rather than a fragment is the point: the claim is about
+// this file being frozen, and a fragment match would still pass if the file moved.
+fn frozen_function_count_for(entry: String) -> Int {
+  fold_list(
+    xs: frozen_path_deferrals,
+    empty: 0,
+    cons: (acc, deferral) =>
+      if deferral.entry == entry { acc + length(xs: deferral.functions) } else { acc },
+  )
+}
+
+fn decl_ref_names(ref: DeclarationRef, module_path: String, decl_name: String) -> Bool {
+  (ref.module_path == module_path) && (ref.decl_name == decl_name)
+}
+
+fn cites(row: RecurringFailureMode, module_path: String, decl_name: String) -> Bool {
+  fold_list(
+    xs: row.evidence,
+    empty: false,
+    cons: (acc, ref) => acc || decl_ref_names(ref: ref, module_path: module_path, decl_name: decl_name),
+  )
+}
+
+fn is_below_ceiling(standing: RungStanding) -> Bool {
+  match standing {
+    BelowCeiling { blocker: _ } => true
+    AtCeiling { rung: _, ceiling_reason: _ } => false
+  }
+}
+
+// A receipt that says an instrument was RUN is only a receipt if it can be attributed. The two tokens
+// are the shape, not the values: the sibling claim pins the values, and this one only refuses a
+// sighting that names a run while leaving the tree and the binary out.
+fn claims_an_execution(receipt: String) -> Bool {
+  string_contains(s: receipt, pattern: "dispatched by hand")
+}
+
+fn names_a_tree_and_a_binary(receipt: String) -> Bool {
+  string_contains(s: receipt, pattern: "tree ") && string_contains(s: receipt, pattern: "sha256 ")
+}
+
+fn unattributed_execution_claims(row: RecurringFailureMode) -> Int {
+  fold_list(
+    xs: row.receipts,
+    empty: 0,
+    cons: (acc, receipt) =>
+      if claims_an_execution(receipt: receipt) && !(names_a_tree_and_a_binary(receipt: receipt)) {
+        acc + 1
+      } else {
+        acc
+      },
+  )
+}
+
+// The reading is a count, so it is worth nothing without the set it counted over and the pass that
+// could not judge part of it. Each token below is a clause of the receipt, not the whole sentence.
+fn states_its_denominators(sighting: String) -> Bool {
+  string_contains(s: sighting, pattern: "7 of the 47")
+    && string_contains(s: sighting, pattern: "4 of the 68")
+    && string_contains(s: sighting, pattern: "686")
+    && string_contains(s: sighting, pattern: "122")
+    && string_contains(s: sighting, pattern: "not an instrument the repo runs")
+}
+
+test fn the_row_is_still_below_its_ceiling() -> Bool {
+  match declaration_reference_cites_a_declaration_nothing_resolved.rung {
+    RungRead { found_at: _, standing: standing } => is_below_ceiling(standing: standing)
+    RungUnread { cause: _ } => false
+  }
+}
+
+// THE INSTRUMENT THE SIGHTING NAMES IS STILL FROZEN, at function grain: six functions, the exact
+// count the sighting says were dispatched and refused. If the freeze is ever lifted for this entry,
+// this claim goes red and the sighting has to be rewritten against a run that actually has a cadence.
+test fn the_resolver_entry_is_frozen_at_all_six_functions() -> Bool {
+  frozen_function_count_for(entry: "dag/test/claim/long/decl_ref_resolution_witness.dag") == 6
+}
+
+// DISCRIMINATING PAIR. The same search over a path no freeze carries must return zero, or the claim
+// above would pass on a fold that never matches anything.
+test fn a_frozen_entry_that_is_not_filed_counts_no_functions() -> Bool {
+  frozen_function_count_for(entry: "dag/test/claim/long/decl_ref_resolution_witness_not_filed.dag") == 0
+}
+
+// THE ROW STANDS ON TWO CITATIONS AND NO MORE, both of them declarations outside any test module, so
+// both are inside the index a future resolver reads: the freeze roster that carries the dead resolver,
+// and the carrier that distinguishes "does not resolve" from "sits outside the index".
+test fn the_row_cites_the_two_declarations_it_read() -> Bool {
+  cites(
+    row: declaration_reference_cites_a_declaration_nothing_resolved,
+    module_path: "gunbc.witness.witness_deferral_freeze",
+    decl_name: "frozen_path_deferrals",
+  )
+    && cites(
+      row: declaration_reference_cites_a_declaration_nothing_resolved,
+      module_path: "std.decl_ref",
+      decl_name: "CitationIndexCoverage",
+    )
+    && length(xs: declaration_reference_cites_a_declaration_nothing_resolved.evidence) == 2
+}
+
+// THE ROW MUST NOT CITE AS EVIDENCE ONE OF THE AUTHORITIES IT GOT WRONG. allocate_unique_hostname is
+// the declaration this branch wrote into a carrier and then repaired to hostname_allocation_admission;
+// keeping the false one out of `evidence` is what makes the sighting a correction rather than a record
+// of a citation that still points at nothing.
+test fn the_row_does_not_cite_an_authority_it_once_invented() -> Bool {
+  !(cites(
+    row: declaration_reference_cites_a_declaration_nothing_resolved,
+    module_path: "gunbc.hostname_allocation",
+    decl_name: "allocate_unique_hostname",
+  ))
+}
+
+test fn every_execution_claim_in_the_row_names_its_tree_and_its_binary() -> Bool {
+  unattributed_execution_claims(row: declaration_reference_cites_a_declaration_nothing_resolved) == 0
+}
+
+// DISCRIMINATING PAIR for the claim above: a sighting that names a run without a tree or a binary
+// refuses, so the wall is the predicate and not the sample.
+test fn an_execution_claim_without_a_tree_or_a_binary_refuses() -> Bool {
+  let unattributed = "The resolver was dispatched by hand and all six fns refused."
+  claims_an_execution(receipt: unattributed) && !(names_a_tree_and_a_binary(receipt: unattributed))
+}
+
+// The pinned values behind the shape claim: the tree the resolver was run at, the binary it was run
+// with (full 64-hex digest, so a truncated digest cannot quietly stand in), and the diagnostic text
+// the run printed.
+test fn the_frozen_instrument_sighting_names_the_tree_binary_and_diagnostic() -> Bool {
+  let sighting = authored(r: declaration_reference_cites_a_declaration_nothing_resolved)
+  string_contains(s: sighting, pattern: "tree 898378e1133c")
+    && string_contains(
+      s: sighting,
+      pattern: "sha256 c29788a12a335ab04d1d56aed901074b707afb09872339a88762a7f590521dae",
+    )
+    && string_contains(s: sighting, pattern: "has no established callee identity")
+    && string_contains(s: sighting, pattern: "ALL 6 fns FAIL at resolve")
+}
+
+test fn the_reading_sighting_states_its_denominators() -> Bool {
+  states_its_denominators(sighting: authored(r: declaration_reference_cites_a_declaration_nothing_resolved))
+}
+
+// DISCRIMINATING PAIR: the same predicate over a sighting that kept its claim and lost its set. A
+// count in a failure-mode ledger without the set it counted over is the shape this refuses.
+test fn a_reading_that_lost_its_denominators_refuses() -> Bool {
+  let thinned = "RECEIPT, one branch wrote false citations and every per-PR witness stayed green."
+  !(states_its_denominators(sighting: thinned))
+}
+
+// The repair path is named by the thing that decides what a citation may point at, by the open PR that
+// extends the census to the constructor shape, and by the rule for a stale reference.
+test fn the_row_names_the_repair_path() -> Bool {
+  let sighting = authored(r: declaration_reference_cites_a_declaration_nothing_resolved)
+  string_contains(s: sighting, pattern: "v2.compiler.decl_ref_disposition_roster")
+    && string_contains(s: sighting, pattern: "gunbc#15273")
+    && string_contains(s: sighting, pattern: "a stale reference is repaired or deleted")
+}
