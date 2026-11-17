@@ -124,18 +124,20 @@ test fn witness_standings_undeclared_log_node_is_listed_after_declared_and_marke
 }
 
 test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> Bool {
-  let doc = match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") {
-    Present { value: oid } => roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), identity: ServedReleaseIdentity { revision: oid, surface: Fnv1a64Structural { digest: "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9" as NonEmptyStr } })
-    Absent => "{}"
+  match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") {
+    Present { value: oid } => {
+      let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), identity: ServedReleaseIdentity { revision: oid, surface: Fnv1a64Structural { digest: "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9" as NonEmptyStr } })
+      string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
+        && string_member_is(v: doc, key: "observed_at", want: "2026-11-11T23:00:00Z")
+        && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
+        && (match member(v: doc, key: "standings") {
+          Present { value: JsonArray { elements } } => count(elements) == 3
+            && (match elements.first() { Present { value: first } => (match member(v: first, key: "issue_page") { Present { value: JsonBool { value } } => value  _ => false })  Absent => false })
+          _ => false
+        })
+    }
+    Absent => false
   }
-  string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
-    && string_member_is(v: doc, key: "observed_at", want: "2026-11-11T23:00:00Z")
-    && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
-    && (match member(v: doc, key: "standings") {
-      Present { value: JsonArray { elements } } => count(elements) == 3
-        && (match elements.first() { Present { value: first } => (match member(v: first, key: "issue_page") { Present { value: JsonBool { value } } => value  _ => false })  Absent => false })
-      _ => false
-    })
 }
 
 // THE PRE-RENDERED BODY CARRIES THE PAIR THAT PRODUCED IT. This is the readback the delivery leg owes: the
