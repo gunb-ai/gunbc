@@ -199,10 +199,17 @@ type RoadmapCarrierScopedRun
 // THE ONLY COMPOSITION, and the reason no caller has to remember to clean up. Mint, run and sweep are one operation
 // here rather than three calls a caller must sequence: a witness that forgets the sweep, or one that returns from
 // its body before reaching it, leaves a scenario on disk that the NEXT run reads as its own history — the failure
-// mode this fixture exists to prevent, in this fixture. `body` receives the scratch (the only way a caller ever
-// gets one) and the sweep runs whatever the body decided, including a body that refused. Consumers get the report,
-// not the parts: they cannot skip the sweep, hand the sweep someone else's directory, or provision against a
-// scratch they typed, because the token they were handed is the only one their run ever had.
+// mode this fixture exists to prevent, in this fixture. `body` receives the scratch and the sweep runs whatever the
+// body decided, including a body that refused.
+//
+// It is the only COMPOSITION, not the only route, and the distinction is not cosmetic: the parts are individually
+// importable and are imported. The two controls in this file mktemp their own parent and call the sweep themselves
+// — neither touches the composition, because a control whose whole
+// job is to damage a tree and then reclaim it cannot hand that tree to a wrapper that cleans up on its behalf;
+// roadmap_operator_close_retire_witness.dag mints a foreign scratch itself, because a witness proving that a foreign
+// tree is refused has to be able to build one. So a caller CAN skip this composition. What protects the filesystem
+// is not exclusivity — it is that no part trusts the caller either: the sweep re-proves ownership and provenance
+// from the filesystem, so a token obtained by any route still cannot delete a directory this file did not mint.
 fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
   let judged = body(scratch)
   let sweep = roadmap_event_carrier_sweep(scratch: scratch)
@@ -323,9 +330,12 @@ fn roadmap_carrier_path_is_proven_inside(root: String, path: String) -> Bool {
     && all(absolute_path_segments(path: path), segment => segment != ".." && segment != ".")
 }
 
-// EVERY PATH THE MUTATION WILL TOUCH, proven in order, stopping at the first that is not inside — reported under
-// the step name `ownership`, so a caller can always tell "this fixture was never allowed to stand anything up"
-// from "the carrier refused", which is the confusion this whole file exists to prevent.
+// EVERY PATH THE MUTATION WILL TOUCH, proven in order, and the refusal you are told about is the FIRST path that is
+// not inside — the fold carries that refusal forward and never lets a later path replace it. The walk does not halt
+// there: the remaining paths are still each tested, so the number of listings is the number of paths and only the
+// REPORTED refusal is first-wins. Reported under the step name `ownership`, so a caller can always tell "this
+// fixture was never allowed to stand anything up" from "the carrier refused", which is the confusion this whole file
+// exists to prevent.
 fn roadmap_event_carrier_admit_ownership(root: String, paths: List<FilePath>) -> RoadmapCarrierStep {
   fold(
     paths,
