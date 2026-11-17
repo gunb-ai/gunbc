@@ -11,6 +11,13 @@ module test.claim.recurring_failure_mode_citation_sightings_witness
 // alphabet, and those are properties of those encodings, not of this file. (4) The row's own typed fields,
 // read against each other -- its rung standing, its evidence references.
 //
+// ONE MORE REFERENT, ADDED WITH THE RESTORED-INSTRUMENT RECORD (gunbc#16641 landed): the PAIR of run records
+// the row now carries. Their entry path and function grain are joined against the freeze ledger like the first
+// record's, and the pair claim checks that both records name one entry, one binary and two different trees --
+// which is what makes the before/after a one-line difference rather than two unrelated measurements. Be clear
+// about what that pair claim cannot do: it cannot tell whether either run happened, and it cannot tell whether
+// the trees named are real. It refuses drift between the two records only; the runs themselves live in logs.
+//
 // WHAT THIS ENTRY DELIBERATELY DOES NOT CLAIM. The receipt counts (how many citations a branch added, how
 // many printed unresolved) and the run's wall-clock, diagnostic text and outcome have no referent left in
 // this tree: they belong to one hand dispatch at one tree that nothing here can re-read. A string_contains
@@ -30,8 +37,10 @@ import gunbc.recurring_failure_mode {
   RungUnread,
 }
 import gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved {
+  FrozenResolverRunSighting,
   declaration_reference_cites_a_declaration_nothing_resolved,
   declaration_reference_cites_a_declaration_nothing_resolved_frozen_run,
+  declaration_reference_cites_a_declaration_nothing_resolved_restored_run,
 }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 import gunbc.witness.witness_deferral_freeze { frozen_path_deferrals }
@@ -231,4 +240,96 @@ test fn the_row_does_not_cite_an_authority_it_once_invented() -> Bool {
     module_path: "gunbc.hostname_allocation",
     decl_name: "allocate_unique_hostname",
   ))
+}
+
+// THE AFTER SIDE OF THE INSTRUMENT FACT (gunbc#16641 landed: one import added to the parked entry). Same
+// referent as the frozen pair above -- the freeze ledger, not this file -- and the same both-directions join.
+test fn the_restored_run_sighting_claims_exactly_the_functions_the_freeze_lists() -> Bool {
+  lists_agree(
+    left: declaration_reference_cites_a_declaration_nothing_resolved_restored_run.functions,
+    right: frozen_functions_for(entry_file: declaration_reference_cites_a_declaration_nothing_resolved_restored_run.entry_file),
+  )
+}
+
+// DISCRIMINATING PAIR on that join, written as data rather than by editing the ledger: an entry path no
+// deferral carries has an empty function list, so the same carrier joined against it must refuse. Without
+// this, a join over an empty right-hand side would pass and the claim above would mean nothing.
+test fn a_run_record_for_an_entry_no_deferral_carries_refuses_the_join() -> Bool {
+  frozen_functions_for(entry_file: "dag/test/claim/long/an_entry_no_freeze_names.dag") == []
+    && !(lists_agree(
+      left: declaration_reference_cites_a_declaration_nothing_resolved_restored_run.functions,
+      right: frozen_functions_for(entry_file: "dag/test/claim/long/an_entry_no_freeze_names.dag"),
+    ))
+}
+
+// THE PAIR RELATION between the two run records: before and after must describe one instrument, measured by
+// one binary, at two different trees. Stated as a predicate over two records so the RED below can hand it a
+// mutated record rather than trusting a constant. What it refuses: a record that drifts into prose (a tree
+// that is not a tree token, a digest that is not a digest), a rebuilt binary on one side (which would make the
+// comparison one of instruments rather than of trees), the same tree claimed twice (which would make the
+// before/after a difference without a change), and two different function grains.
+// The pair relation split into the three things it actually asserts, so the RED below can show WHICH one each
+// mutation breaks. A single opaque predicate would let a mutation refuse for the wrong reason and still look
+// like a control -- review 96205 caught exactly that in the first version of this claim.
+fn one_instrument_one_binary(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  before.entry_file == after.entry_file && before.binary_digest == after.binary_digest
+}
+
+fn run_records_are_well_shaped(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  is_sha256_digest(digest: before.binary_digest)
+    && is_sha256_digest(digest: after.binary_digest)
+    && is_short_tree_token(text_token: before.tree)
+    && is_short_tree_token(text_token: after.tree)
+}
+
+fn pair_holds(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  one_instrument_one_binary(before: before, after: after)
+    && run_records_are_well_shaped(before: before, after: after)
+    && before.tree != after.tree
+    && lists_agree(left: before.functions, right: after.functions)
+}
+
+test fn the_two_run_sightings_name_one_instrument_on_one_binary_at_two_trees() -> Bool {
+  pair_holds(
+    before: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run,
+    after: declaration_reference_cites_a_declaration_nothing_resolved_restored_run,
+  )
+}
+
+// DISCRIMINATING TRIPLE, one refusal reason each, and the other two components asserted to PASS for that
+// same mutation -- so removing any one component of pair_holds turns one of these three lines red.
+//   rebuilt binary: a DIFFERENT but well-shaped 64-hex digest (the first version of this claim used a 32-hex
+//     token, which the shape check refused first and so tested nothing about the equality -- review 96205);
+//   repeated tree: the after record claims the before record's tree, a difference without a change;
+//   prose tree: a tree written as words, the shape the ledger forbids.
+test fn the_pair_predicate_refuses_a_rebuilt_binary_a_repeated_tree_and_prose() -> Bool {
+  let before = declaration_reference_cites_a_declaration_nothing_resolved_frozen_run
+  let after = declaration_reference_cites_a_declaration_nothing_resolved_restored_run
+  let rebuilt_binary = FrozenResolverRunSighting {
+    entry_file: after.entry_file,
+    functions: after.functions,
+    tree: after.tree,
+    binary_digest: "326f41a37958bb5cbf8ef5197bd3e358f3d3a4bea70f30719190619647ac5ce2",
+  }
+  let same_tree = FrozenResolverRunSighting {
+    entry_file: after.entry_file,
+    functions: after.functions,
+    tree: before.tree,
+    binary_digest: after.binary_digest,
+  }
+  let prose_tree = FrozenResolverRunSighting {
+    entry_file: after.entry_file,
+    functions: after.functions,
+    tree: "the tree of the run on main",
+    binary_digest: after.binary_digest,
+  }
+  !pair_holds(before: before, after: rebuilt_binary)
+    && run_records_are_well_shaped(before: before, after: rebuilt_binary)
+    && !one_instrument_one_binary(before: before, after: rebuilt_binary)
+    && !pair_holds(before: before, after: same_tree)
+    && one_instrument_one_binary(before: before, after: same_tree)
+    && run_records_are_well_shaped(before: before, after: same_tree)
+    && !pair_holds(before: before, after: prose_tree)
+    && one_instrument_one_binary(before: before, after: prose_tree)
+    && !run_records_are_well_shaped(before: before, after: prose_tree)
 }
