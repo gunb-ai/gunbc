@@ -78,6 +78,15 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "second-generation", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 3),
   serves(node: "native-seven", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
   serves(node: "v2-emitter-producer-provenance", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 4),
+  // gunbc.plans.v2_self_host, the vision-realized milestone: layer 5, after self-hosting.
+  serves(node: "universe-ingest-replaces-file-acquisition", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "one-declaration-identity-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "sealed-phases-and-the-checked-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "typed-refusals-own-control-flow", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "one-text-carrier", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "operations-are-declarations", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "one-standard-library", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
+  serves(node: "external-specimen-compiles", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 5),
 ]
 
 fn binding_has_node(b: IntentionBinding) -> Bool {
