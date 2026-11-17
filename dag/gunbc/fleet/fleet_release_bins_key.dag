@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_release_bins_key
 import std.types { String, List, Bool, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result }
+import std.measure { Second, second, second_count, measure_add, minutes_per_hour, seconds_per_minute }
 import std.error_primitives { Ok, Err }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
@@ -1008,37 +1009,27 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
   }
 }
 
-// =======================================================================================
-// THE CACHE BUDGET GUARDIAN -- admitted by @ref(gunbc.design_ruling::release_bins_retention_admitted)
-// (operator RULED option A via escalation msg_66b5d26e, 2026-11-16: an in-job retention step on the
-// fleet-converge build job, never a separate janitor job).
-// The Actions cache has a 10 GiB repo quota; the release-bins family measured 5.23 GiB over 59
-// entries on 2026-11-16 -- the majority of the budget -- while fast-lane units (5 MB each) sit
-// behind it and eviction has not reached them only by luck. This step retains the newest
-// `fleet_converge_release_bins_retention_keep` entries of the release-bins family and deletes
-// strictly older members, and NOTHING ELSE: the jq filter itself requires the `release-bins-`
-// family prefix, excludes the key the current run is using (env.RELEASE_BINS_KEY), and names the
-// foreign families (fast-lane, parse-verdict, cargo-ci, gunbc-materialization) as explicitly
-// excluded, so a construction error cannot reach them. Deletion never fails the job's real work:
-// every failure path prints a typed `release-bins retention: <word>` line and the step continues.
-// The ACTIONS scope is granted on the build job only, for exactly this step.
 //
 // DERIVATION OF KEEP (the operator's constraint: grounded, not guessed). The census figures are
 // TYPED DATA below and the value is COMPUTED from them, so no deletion can depend on a comment:
 // deleting these lines breaks the build, not the policy. Measured 2026-11-16 (census GET
 // /repos/gunb-ai/gunbc/actions/caches?key=release-bins- plus gh run-list over main-branch
-// fleet-converge runs): creation peaked at 15 entries in one day (>=4x the ~3.6-3.8/day mean);
-// longest observed consumption lag 15.9 h, rounded up to 16 h (a deploy-only retry reuses a
-// plan's bins 3.9 h later today; a plan stays live across its approval window); largest observed
-// approval lag 4 h. Raw need = entries created in the horizon (ceil(15/24 x (16 + 4)) =
-// ceil(12.5) = 13) + 1 for the oldest in-horizon entry's own boundary = 14, rounded up to whole
-// groups of 4 to absorb a burst -> 16. A review that contradicts a datum may change the datum;
-// a review that offers no measurement may not change the number.
-// =======================================================================================
-data release_bins_retention_census_peak_entries_per_day: Int = 15
-data release_bins_retention_census_hours_per_day: Int = 24
-data release_bins_retention_census_observed_lag_hours: Int = 16
-data release_bins_retention_census_approval_margin_hours: Int = 4
+// fleet-converge runs): creation peaked at 15 entries in one day (>=4x the ~3.6-3.8/day mean) --
+// carried below in its exact reduced form, 5 entries per 8 hours, so both arms of the rate are
+// exact Nat carriers; longest observed consumption lag 15.9 h, rounded up to 16 h (a deploy-only
+// retry reuses a plan's bins 3.9 h later today; a plan stays live across its approval window);
+// largest observed approval lag 4 h. Durations ride std.measure carriers (Second), built from the
+// std hour-to-second conversion chain (minutes_per_hour x seconds_per_minute) -- there is no
+// hand-spelled 24, 60 or 3600 anywhere here (review 96090: std.measure is the single authority
+// for time). Raw need = ceil(peak_rate x horizon) = ceil(5 x 72000 / 28800) = ceil(12.5) = 13
+// (horizon summed through measure_add, read off with second_count) + 1 for the oldest
+// in-horizon entry's own boundary = 14, rounded up to whole groups of 4 to absorb a burst -> 16.
+// A review that contradicts a datum may change the datum; a review that offers no measurement may
+// not change the number.
+data release_bins_retention_census_peak_window_entries: Int = 5
+data release_bins_retention_census_peak_window: Second = second(count: 8 * minutes_per_hour() * seconds_per_minute())
+data release_bins_retention_census_observed_lag: Second = second(count: 16 * minutes_per_hour() * seconds_per_minute())
+data release_bins_retention_census_approval_margin: Second = second(count: 4 * minutes_per_hour() * seconds_per_minute())
 data release_bins_retention_census_group_size: Int = 4
 data release_bins_retention_census_spare_entries: Int = 1
 
@@ -1052,11 +1043,12 @@ fn release_bins_retention_ceil_div(a: Int, b: Int) -> Int {
 }
 
 fn release_bins_retention_keep_computed() -> Int {
-  let horizon: Int = int_add(release_bins_retention_census_observed_lag_hours, release_bins_retention_census_approval_margin_hours)
-  let raw: Int = int_add(release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_entries_per_day, horizon), release_bins_retention_census_hours_per_day), release_bins_retention_census_spare_entries)
+  let horizon = measure_add(a: release_bins_retention_census_observed_lag, b: release_bins_retention_census_approval_margin)
+  let horizon_secs: Int = second_count(s: horizon)
+  let window_secs: Int = second_count(s: release_bins_retention_census_peak_window)
+  let raw: Int = int_add(release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_window_entries, horizon_secs), window_secs), release_bins_retention_census_spare_entries)
   int_mul(release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size), release_bins_retention_census_group_size)
 }
-
 data fleet_converge_release_bins_retention_keep: Int = release_bins_retention_keep_computed()
 // The hand-shell gate (ctrl review policy, review 96043): the listing, plan
 // and deletion below are carried as a bash sequence built through the
