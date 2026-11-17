@@ -4881,6 +4881,40 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
+    roadmap_node(
+      identity: "rn_A0SYP0J1P3JE8W8OBX6M3BD777",
+      id: "roadmap-operator-attested-acceptance",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_operator_acceptance.dag"),
+      line: ticket(t: fields(
+        headline: "The operator can accept a node on a written attestation, kept visibly apart from executed work",
+        boundary: "Operator acceptance today (roadmap_acceptance_record_cli in gunbc.roadmap.roadmap_event_cli, the law in gunbc.roadmap.roadmap_operator_acceptance) closes a node only on an EXECUTED red control and a DELIVERED handback, so an old or prose-only node with neither can only be Retired (kind=retire, gunbc.design_ruling::operator_may_arbitrarily_retire_any_work_item) and never accepted. Give the operator a typed attestation arm beside the executed arm -- e.g. OperatorAttested { note: NonEmptyStr, author } -- admitted in place of an executed red control, written only by the operator's principal. Every consumer of the receipt must render it as ATTESTED and never as executed: gunbc.roadmap.roadmap_model (the RoadmapAcceptanceReceipt schema, receipt_evidence_complete, receipt_matches_node), gunbc.roadmap.roadmap_operator_acceptance (roadmap_operator_acceptance_receipt_line, roadmap_operator_acceptance_receipt_is_closable), gunbc.roadmap.roadmap_event_log (roadmap_acceptance_receipt_members and the standing projection), gunbc.roadmap.roadmap_verification_receipt (the native receipt parser), gunbc.roadmap.roadmap_issue_command (issue_command_acceptance_evidence_law), gunbc.roadmap.roadmap_event_cli (roadmap_acceptance_record_cli), and the readers gunbc.roadmap.roadmap_presentation (issue_standing_text, standing_chip_nodes) and gunbc.roadmap.roadmap_page (the closing page). A manager or worker principal that attempts to write an attestation is refused with a typed reason; a non-operator must not be able to make a manual acceptance read as tested work.",
+        displaced_cost: "Today a node whose evidence no longer exists -- or that never had an executed control -- has no honest closing except Retired, which loses the operator's judgement that it was actually done. Either the operator retires real work or leaves it dangling; there is no way to record a considered manual acceptance without it being mistaken for a tested one.",
+        first_slice: "Add the typed attestation arm to the acceptance receipt beside the executed arm -- a distinct variant, never coerced into executed -- gated on the operator's principal, and carry that kind through the standing so it is labeled ATTESTED at every reader.",
+        red_control: "A witness admits an attested acceptance carrying a non-empty note and the operator author; a planted empty note refuses; a manager or worker principal attempting to write the attestation refuses with a typed reason; a witness shows standings, the closing page and every reader carry the attested kind distinctly as ATTESTED and never as executed -- a coercion of an attested receipt into the executed arm reds.",
+        out_of_scope: "Do NOT coerce the attestation into the executed arm, do NOT weaken the executed red-control/handback requirement for the executed path, and do NOT edit any pinned oracle: widening issue_command_acceptance_evidence_law's closed set to admit an attested arm needs its own design ruling quoting the operator (\"i think manual acceptance should be allowed with a note\", 2026-11-17) and is not taken here.",
+        handback: "Return the attested receipt arm with its note and operator author, the typed non-operator refusal, the standing/closing-page rendering that keeps ATTESTED distinct from executed, and the witnesses named above."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The factory's closing half is how work is accepted; the operator needs an honest, distinguishable way to close old or prose-only nodes without pretending they were executed."),
+    ),
+    roadmap_node(
+      identity: "rn_T9WMSXR8TINTG2USDRXH82NQKJ",
+      id: "roadmap-criteria-digest-validated-at-write",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
+      line: ticket(t: fields(
+        headline: "A mistyped criteria digest is refused when the acceptance is written, not when the page closes",
+        boundary: "roadmap_acceptance_record_cli (gunbc.roadmap.roadmap_event_cli) admits an acceptance receipt whose criteria_digest does not equal node_criteria_digest (gunbc.roadmap.roadmap_model, roadmap_criteria_digest) of the node on the declared plan; only the closing page-join live_receipts_join_declared_nodes (gunbc.roadmap.roadmap_model, via receipt_matches_node) enforces the digest, so a mistyped digest is admitted at write and fails later -- a fail-closed gap. Refuse, at write time, a receipt whose criteria_digest does not equal the node's plan digest, with a typed located diagnostic. Also give a runnable way to print a node's plan digest: none exists today, so the last recorder had to write a throwaway module.",
+        displaced_cost: "Every recorder re-derives the digest by hand or writes a throwaway module to obtain it, and a single mistyped character is admitted silently at write and surfaces only as a page-join failure much later, far from the mistake that caused it.",
+        first_slice: "At the write route, compare the receipt's criteria_digest against node_criteria_digest of the node on the declared plan and refuse a mismatch with a typed located diagnostic; add a runnable command that prints a named node's plan digest.",
+        red_control: "A receipt whose criteria_digest differs from the declared node's plan digest refuses at write with the located diagnostic; a receipt carrying the matching digest is admitted; the runnable print command reproduces node_criteria_digest for a named node, so a recorder needs no throwaway module.",
+        out_of_scope: "Keep live_receipts_join_declared_nodes as the closing backstop -- this moves the check earlier, it does not remove it; and do not change what the digest is computed over (the node's criteria rows via roadmap_criteria_digest).",
+        handback: "Return the write-time refusal with its typed located diagnostic, the admitted-on-match case, and the runnable plan-digest print command."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
+    ),
   ], guarantee_ladder_nodes())
 }
 

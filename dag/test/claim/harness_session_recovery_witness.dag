@@ -9,7 +9,7 @@ import extdeps.http.header_dump { HeaderDumpRead }
 import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_response, harness_request_pending_cause, harness_route_is_fleet_engine }
 import gunbc.harness.harness_transport_retry_policy { harness_transport_retry_policy_now, transport_retry_next_delivery_at }
 import gunbc.harness.harness_session_recovery {
-  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryRequestPending,
+  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecoveryUnreadable, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryRequestPending,
   RequestPendingCause, PendingNoCardServing, PendingCardUnanswered, PendingUpstreamBusy, PendingNoResponse, request_pending_cause_wire, request_pending_cause_of_wire,
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
@@ -191,6 +191,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
           SessionRecoveryNone => false
           SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => false
           SessionRecoveryMalformed { mismatch: _ } => false
+          SessionRecoveryUnreadable { detail: _ } => false
         })
   }
 }

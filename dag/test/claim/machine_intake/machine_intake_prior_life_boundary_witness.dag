@@ -41,7 +41,7 @@ import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeStep, PriorLifeArchiveOutcome,
   classify_prior_life_policy, dry_archive_prior_life, prior_life_carriers_all, prior_life_carrier_eq,
   mt_collins_platform_ref, mt_jade_platform_ref,
-  prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization,
+  prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization, prior_life_realization_display,
   prior_life_archive_digest, prior_life_archive_body, baseline_cursor_sel_final_record, baseline_cursor_archive, baseline_cursor_log_services,
   dry_archive_prior_life_across_forced_write, PriorLifeForcedWriteContext,
   EntriesPresentNoneBeforeWrite, NoPriorLifeEntries,
@@ -322,7 +322,7 @@ test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> 
         LogsArchivedWithBaselineCursor { cursor: c } =>
           (match baseline_cursor_sel_final_record(c: c) { Present { value: id } => id == "2"  Absent => false })
             && content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: r)))
-            && ((prior_life_receipt_realization(r: r) as NonEmptyStr) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+            && (prior_life_realization_display(r: prior_life_receipt_realization(r: r)) as String) == "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
       }
     _ => false
   }

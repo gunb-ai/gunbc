@@ -20,7 +20,7 @@ import std.algebra { string_contains }
 import std.types { String }
 import std.optional { Present }
 
-type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished
+type IpmiSessionFailure = IpmiSessionAuthRefused | IpmiSessionUnestablished | IpmiCommandNotServed
 
 // Which way an authenticated read failed, from the vendor lines ipmitool prints -- its source, as the
 // boot-diagnostic classifier names them: "RAKP 2 HMAC is invalid" and "Unauthorized name" come from the RAKP
@@ -35,6 +35,12 @@ fn ipmi_session_failure(output: String) -> IpmiSessionFailure? {
     Present { value: IpmiSessionAuthRefused }
   } else if string_contains(s: output, pattern: "Unable to establish IPMI v2") {
     Present { value: IpmiSessionUnestablished }
+  } else if string_contains(s: output, pattern: "Unknown command") || string_contains(s: output, pattern: "Invalid command") {
+    // The session came up and the credential was accepted; the COMMAND is not implemented by this
+    // firmware (ipmitool prints "Unknown command (0x..)" / "Invalid command" for completion codes
+    // C1h/C1-like). That says nothing about the credential — it is served-nothing, and the prior-life
+    // policy row, not this module, decides whether the gap refuses.
+    Present { value: IpmiCommandNotServed }
   } else {
     none
   }
