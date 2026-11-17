@@ -54,15 +54,14 @@ fn count_equal_to(items: List<String>, item: String) -> Int {
   count_equal(xs: items, item: item, eq: strings_match)
 }
 
-// Both directions, plus the length: a carrier that names a subset of the freeze's list would otherwise pass
-// one-way membership while silently dropping a function that is parked.
+// Membership in BOTH directions, which is the identity join: one-way membership would let a carrier name a
+// subset of the freeze's list and silently drop a function that is parked. No count is compared to a count.
 fn lists_agree(left: List<String>, right: List<String>) -> Bool {
-  length(xs: left) == length(xs: right)
-    && fold_list(
-      xs: left,
-      empty: true,
-      cons: (acc, item) => acc && (count_equal_to(items: right, item: item) > 0),
-    )
+  fold_list(
+    xs: left,
+    empty: true,
+    cons: (acc, item) => acc && (count_equal_to(items: right, item: item) > 0),
+  )
     && fold_list(
       xs: right,
       empty: true,
@@ -93,6 +92,23 @@ fn cites(row: RecurringFailureMode, module_path: String, decl_name: String) -> B
     xs: row.evidence,
     empty: false,
     cons: (acc, ref) => acc || decl_ref_names(ref: ref, module_path: module_path, decl_name: decl_name),
+  )
+}
+
+// The two references this lane READ before citing, as one identity rather than as two arguments each time:
+// the completeness claim below joins the row's evidence list against this identity in both directions.
+fn is_a_read_authority(ref: DeclarationRef) -> Bool {
+  decl_ref_names(ref: ref, module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals")
+    || decl_ref_names(ref: ref, module_path: "std.decl_ref", decl_name: "CitationIndexCoverage")
+}
+
+// The other direction of that join: every reference the row carries has to be one of the read authorities.
+// Written over a list rather than over the row, so the RED below can hand it a list the row does not carry.
+fn every_reference_is_a_read_authority(refs: List<DeclarationRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: true,
+    cons: (acc, ref) => acc && is_a_read_authority(ref: ref),
   )
 }
 
@@ -142,7 +158,11 @@ test fn a_function_the_freeze_does_not_list_refuses_that_sighting() -> Bool {
     "decl_ref_refuses_named_field_absent",
     "decl_ref_refuses_a_name_that_was_never_written",
   ]
-  length(xs: invented) == 7 && !(lists_agree(left: invented, right: frozen_functions_for(entry_file: "dag/test/claim/long/decl_ref_resolution_witness.dag")))
+  lists_agree(
+    left: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.functions,
+    right: frozen_functions_for(entry_file: "dag/test/claim/long/decl_ref_resolution_witness.dag"),
+  )
+    && !(lists_agree(left: invented, right: frozen_functions_for(entry_file: "dag/test/claim/long/decl_ref_resolution_witness.dag")))
 }
 
 test fn the_pinned_tree_and_digest_have_the_shapes_they_claim() -> Bool {
@@ -158,20 +178,38 @@ test fn a_token_outside_the_digest_shape_refuses() -> Bool {
   !(is_sha256_digest(digest: truncated)) && !(is_short_tree_token(text_token: shortened))
 }
 
-// Both citations were read in this tree before being cited; the claim keeps the list at that size so a third
-// unverified reference cannot join it quietly.
-test fn the_row_carries_exactly_two_evidence_references() -> Bool {
-  length(xs: declaration_reference_cites_a_declaration_nothing_resolved.evidence) == 2
-    && cites(
-      row: declaration_reference_cites_a_declaration_nothing_resolved,
-      module_path: "gunbc.witness.witness_deferral_freeze",
-      decl_name: "frozen_path_deferrals",
-    )
+// COMPLETENESS AS AN IDENTITY JOIN, not a length: both read authorities have to be cited, and every
+// reference the row carries has to be one of them -- so an unverified third reference closes the join rather
+// than bumping a number a future reader would have to trust.
+test fn the_row_cites_both_read_authorities_and_nothing_else() -> Bool {
+  cites(
+    row: declaration_reference_cites_a_declaration_nothing_resolved,
+    module_path: "gunbc.witness.witness_deferral_freeze",
+    decl_name: "frozen_path_deferrals",
+  )
     && cites(
       row: declaration_reference_cites_a_declaration_nothing_resolved,
       module_path: "std.decl_ref",
       decl_name: "CitationIndexCoverage",
     )
+    && every_reference_is_a_read_authority(
+      refs: declaration_reference_cites_a_declaration_nothing_resolved.evidence,
+    )
+}
+
+// DISCRIMINATING PAIR: a list that carries the two read authorities plus one the lane never read fails the
+// join, so the completeness claim bites from the direction a count could not cover.
+test fn an_evidence_reference_that_was_never_read_refuses_the_join() -> Bool {
+  let with_an_unread_reference = [
+    decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
+    decl_ref(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage"),
+    decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"),
+  ]
+  every_reference_is_a_read_authority(refs: [
+    decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
+    decl_ref(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage"),
+  ])
+    && !(every_reference_is_a_read_authority(refs: with_an_unread_reference))
 }
 
 // A name this branch wrote into a carrier and then repaired must never become evidence for the row that

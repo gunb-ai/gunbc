@@ -1,6 +1,6 @@
 module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved
 
-import std.types { Int, List, NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
@@ -62,15 +62,15 @@ data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailur
 // check: the entry path and the function grain are compared against
 // gunbc.witness.witness_deferral_freeze frozen_path_deferrals as that ledger stands in this tree, and the
 // tree and binary tokens are checked for the shape a short commit tree and a sha256 digest have (length,
-// and characters drawn from the hex alphabet). The wall-clock, the diagnostic text and the outcome stay
-// in the receipt prose above on purpose: their referent is one hand dispatch at one tree, which nothing in
-// this tree can re-read, so a claim over them could only detect an edit to this file.
+// and characters drawn from the hex alphabet). The wall-clock, the diagnostic text and the outcome are NOT
+// carried: they belong to one hand dispatch at one tree, nothing here can re-read them, and a field nothing
+// reads would be a dangling declaration -- gunbc.design_argument::consumption -- while a seconds-count in an
+// Int would also invent a unit concept that std.measure already owns.
 type FrozenResolverRunSighting {
   entry_file: String,
   functions: List<String>,
   tree: String,
   binary_digest: String,
-  wall_seconds: Int,
 }
 
 data declaration_reference_cites_a_declaration_nothing_resolved_frozen_run: FrozenResolverRunSighting = FrozenResolverRunSighting {
@@ -85,5 +85,4 @@ data declaration_reference_cites_a_declaration_nothing_resolved_frozen_run: Froz
   ],
   tree: "898378e1133c",
   binary_digest: "c29788a12a335ab04d1d56aed901074b707afb09872339a88762a7f590521dae",
-  wall_seconds: 385,
 }
