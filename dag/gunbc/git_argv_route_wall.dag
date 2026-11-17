@@ -1,0 +1,150 @@
+module gunbc.git_argv_route_wall
+
+import std.types { String, List, Bool }
+import std.algebra { list_at_optional }
+import std.optional { Present, Absent }
+
+// git argv is written in two dressings (`extdeps/git.dag`):
+//
+//   * a BARE word-list whose leading token is the git subcommand --
+//     `["commit","-q","--allow-empty","-m",msg]` -- for a route that carries the working
+//     directory itself, and
+//   * an IN-REPO list that names the repository up front -- `["-C",repo,"commit","-m",msg]` --
+//     for a route that carries none.
+//
+// A bare word-list carries no place to run. Handed to a route that names no working directory,
+// git acts on whatever repository the process happens to sit in, so a bare MUTATING argv can
+// commit into a tree its caller does not own -- under whatever identity the ambient config names
+// -- and report only a boolean. Where that tree is a gate tree the damage is silent: `git checkout
+// -f` does not remove untracked files, so a stray commit or file survives into the next head's
+// gate and changes what was gated.
+//
+// This module is the consumer-side WALL over that pairing. Policy stays with the consumer and
+// `extdeps/git.dag` stays anemic: every fn here is a decidable predicate over argv WORDS -- no
+// command builder, no spawn, no grounding. It is the general form of the answer `belt_commit_git`
+// already gives: belt_commit_git refuses to spawn at all until the worktree's own gitfile is
+// verified, so no caller reaches the tool without naming where the tool runs. Here the same
+// refusal is stated for every route:
+//
+//   * a route that CARRIES a working directory may take a bare mutating argv, because git then runs
+//     exactly where the route says, and
+//   * a route that names NO working directory admits ONLY the in-repo dressing, so the in-repo shape
+//     is the only way to reach it and a bare mutating argv cannot be mis-joined to it.
+//
+// `git_argv_route_refusal_label` is the refusal: "" admits the argv on the route and a non-empty
+// constant names why it is refused. It is total and spawns nothing -- naming where the tool runs,
+// and deciding whether the run is wet, stay the route's own obligations. The discriminating
+// consumer that keeps this wall green by execution is
+// `test.claim.git_bare_mutating_route_wall_witness`.
+
+// The two route kinds, told apart by whether the route names where git runs. There is no third
+// kind: a route either carries a directory or it does not, and the admissible argv follows.
+type GitArgvRoute
+  = GitWorkdirCarrying { workdir: String }
+  | GitWorkdirFree
+
+// A git subcommand that WRITES the repository / working tree wherever it runs -- the damage class
+// this wall exists to stop. Through a bare argv on a workdir-free route such a subcommand mutates
+// the tree the process happens to occupy. The set is git's local-write plumbing, closed here; the
+// leading token is matched against it. Read-only inspection (status, log, diff, rev-parse, ...) is
+// deliberately NOT mutating: it is not the silent-gate-poisoning hazard, and refusing it would
+// refuse a legal pairing rather than guard against the defect.
+fn git_subcommand_is_mutating(subcommand: String) -> Bool {
+     subcommand == "commit"
+  || subcommand == "add"
+  || subcommand == "checkout"
+  || subcommand == "reset"
+  || subcommand == "clean"
+  || subcommand == "rm"
+  || subcommand == "mv"
+  || subcommand == "merge"
+  || subcommand == "rebase"
+  || subcommand == "cherry-pick"
+  || subcommand == "restore"
+  || subcommand == "switch"
+  || subcommand == "apply"
+  || subcommand == "stash"
+  || subcommand == "am"
+  || subcommand == "worktree"
+  || subcommand == "update-ref"
+  || subcommand == "symbolic-ref"
+  || subcommand == "filter-branch"
+  || subcommand == "replace"
+}
+
+// The in-repo dressing: git's global `-C <repo>` option in first position with a non-empty
+// repository operand. It is the ONLY dressing that names the repository to a route that carries no
+// working directory, and the dressing the admissible workdir-free pairing (the carrier/belt in-repo
+// shapes) supplies. It is admitted, never refused.
+fn git_argv_is_in_repo_dressed(argv: List<String>) -> Bool {
+  match list_at_optional(xs: argv, index: 0) {
+    Present { value: head } =>
+      if head == "-C" {
+        match list_at_optional(xs: argv, index: 1) {
+          Present { value: repo } => repo != ""
+          Absent => false
+        }
+      } else {
+        false
+      }
+    Absent => false
+  }
+}
+
+// The leading subcommand, stepping over an in-repo `-C <repo>` dressing when present. An argv too
+// short to carry a subcommand yields "" and so classifies as neither mutating nor a command.
+fn git_argv_leading_subcommand(argv: List<String>) -> String {
+  match list_at_optional(xs: argv, index: 0) {
+    Absent => ""
+    Present { value: head } =>
+      if head == "-C" {
+        match list_at_optional(xs: argv, index: 2) {
+          Present { value: verb } => verb
+          Absent => ""
+        }
+      } else {
+        head
+      }
+  }
+}
+
+// A BARE mutating argv: not in-repo-dressed, and its leading subcommand writes the tree. This is
+// precisely the shape that must never reach a route that carries no working directory.
+fn git_argv_is_bare_mutating(argv: List<String>) -> Bool {
+  !git_argv_is_in_repo_dressed(argv) && git_subcommand_is_mutating(git_argv_leading_subcommand(argv))
+}
+
+// THE WALL. "" admits the argv on the route; a non-empty constant is the refusal label naming the
+// mis-join. The two clauses are the two halves of the safe pairing.
+fn git_argv_route_refusal_label(route: GitArgvRoute, argv: List<String>) -> String {
+  match route {
+    // The route carries the directory: a bare argv is legitimate, but only when the route in fact
+    // names a non-empty place -- a workdir-carrying route with no directory names nowhere to run
+    // and is refused for the same reason belt_commit_git refuses until the gitfile is verified.
+    GitWorkdirCarrying { workdir } =>
+      if workdir == "" {
+        "workdir_carrying_route_names_no_directory"
+      } else {
+        ""
+      }
+    // The route names no directory: only the in-repo dressing reaches it, so a bare mutating argv
+    // -- which would mutate whatever repository the process sits in -- is refused outright.
+    GitWorkdirFree =>
+      if git_argv_is_bare_mutating(argv) {
+        "bare_mutating_git_argv_at_workdir_free_route"
+      } else {
+        ""
+      }
+  }
+}
+
+// The refusal as a typed decision a route would branch on before spawning: Admitted, or Refused
+// with the label. The primitive is the label; this wraps it into the branch shape.
+type GitArgvRouteAdmission
+  = GitArgvAdmitted
+  | GitArgvRefused { label: String }
+
+fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRouteAdmission {
+  let label = git_argv_route_refusal_label(route: route, argv: argv)
+  if label == "" { GitArgvAdmitted } else { GitArgvRefused { label: label } }
+}
