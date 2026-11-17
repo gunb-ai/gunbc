@@ -1398,6 +1398,12 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
   )
   bash_build_or_else(
     left: bash_build_and_then(
+      // Once the over-cap refusal typed its verdict the listing is decided:
+      // fetching pages 2..5 would be pointless GETs past the cap, and their
+      // failures would bury `over-cap` under spurious page-failed and
+      // pages-incomplete lines. The refusal flag short-circuits the ladder.
+      left: test_words(ws: [lit(t: "!"), lit(t: "-e"), rooted(file: release_bins_retention_flag_basename)]),
+      right: bash_build_and_then(
       // Numeric gate by jq on page 1's own answer file, not `test -gt`: a
       // bracket test needs its operator between operands and any misspelling
       // exits 2, which the trailing `|| :` would swallow. jq -e is 0 exactly
@@ -1437,6 +1443,7 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
           right: page_type_fail,
         ),
       ]),
+      ),
     ),
     right: cmdl(ls: ["true"]),
   )
