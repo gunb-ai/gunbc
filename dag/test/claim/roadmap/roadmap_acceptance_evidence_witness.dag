@@ -42,9 +42,13 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_same_command }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_same_command, RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance,
+  CarrierClosed, EventAppended, EventAppendRefused, RoadmapEventEnvelope,
+}
 import gunbc.roadmap.roadmap_issue_command {
   AcceptNode, IssueCommandSubject, issue_command_event, issue_command_acceptance_evidence_law,
+  issue_command_apply,
 }
 import gunbc.roadmap.roadmap_event_cli {
   roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
@@ -65,14 +69,25 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_decode, roadmap_acceptance_receipt_members,
   roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
   roadmap_acceptance_migration_identity,
+  roadmap_migration_retirement_ids,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   parse_roadmap_acceptance_event_history_carrier, RoadmapAcceptanceEventHistoryParsed,
   RoadmapAcceptanceEventHistoryParseRefused,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
-import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_acceptance_receipt_line, roadmap_acceptance_migration_verdict,
+  RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused,
+  roadmap_acceptance_migration_refusal_report,
+}
 import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_store, FabricWetStoreReady, FabricWetStoreUnready,
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready,
+}
 
 // THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
 // module deliberately does not import the close route (gunbc.roadmap.roadmap_operator_acceptance) — its
@@ -798,4 +813,94 @@ test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Boo
         _ => false
       }
   }
+}
+
+// ── THE VERDICT ITSELF, END TO END, GREEN BY EXECUTION ───────────────────────────────────────────
+//
+// Everything above reaches the COMPARISON (`roadmap_acceptance_migration_problems`), which is the pure half.
+// Nothing had entered `roadmap_acceptance_migration_verdict` — the function step 5 calls, the one that owns the
+// roster check, the closedness fold over a real carrier, and the `MigrationVerified` the operator is shown. A
+// seed over the file cannot catch a broken body either: it refuses at function lookup without ever checking a
+// body, which is how `retired_named: count(roster)` survived in a module where nothing binds `roster`
+// (gunbc.design_argument::fail_closed — "Done means a real consumer green by execution").
+//
+// The fixture is the one production uses: a scenario the wet harness makes, acceptances appended through
+// `issue_command_apply` — the only writer — and closedness read back through `roadmap_operator_close_history`
+// INSIDE the verdict rather than handed to it. Three of the model's roster nodes carry acceptances; the other
+// fifteen are retirements the manifest carries nothing for, the shape of the real migration. So the certified
+// count must be the model's eighteen — not the three that were accepted, and not whatever the file listed.
+// Red at the head whose `retired_named` counted a name that was no longer bound, and it cannot be satisfied by
+// the supplied roster: the roster here is built from the model, and a roster with a name dropped is refused by
+// `the_migration_verifier_refuses_a_retirement_dropped_from_the_supplied_roster` in
+// test.claim.roadmap.roadmap_cutover_witness.
+
+fn migration_wet(fn_with: fn(HostDashboardInstance) -> Bool) -> Bool {
+  match fabric_wet_scenario(template: "/tmp/gunbc_migration_verifier_witness.XXXXXX" as NonEmptyStr) {
+    FabricWetScenarioUnready { detail: d } => claim("the wet scenario could not be made: " + d, false)
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
+        FabricWetStoreUnready { area: a, detail: d } =>
+          claim("the fabric store is not ready at " + (a as String) + ": " + d, false)
+        FabricWetStoreReady { store: _ } => fn_with(instance)
+      }
+  }
+}
+
+fn migration_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr,
+    subject: "sub-migration-verifier-witness" as NonEmptyStr,
+  } }
+}
+
+fn migration_evidence() -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: "https://github.com/briansrls/gunbc/pull/94291" as NonEmptyStr,
+    merged_at: "2026-11-03T04:15:00Z" as NonEmptyStr,
+    head_sha: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
+  }
+}
+
+// The first three names of the roster, taken from the roster itself so the claim cannot drift from it.
+fn migration_carried(model: List<String>) -> List<String> {
+  fold(model, init: [] as List<String>,
+    f: (acc, n) => if count(acc) < 3 { concat(acc, [n]) } else { acc })
+}
+
+test fn the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_holds() -> Bool {
+  migration_wet(fn_with: fn(instance) {
+    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+    let model = roadmap_migration_retirement_ids()
+    let carried = migration_carried(model)
+    let appended = map(carried, n => issue_command_apply(layout: layout,
+      command: AcceptNode {
+        subject: IssueCommandSubject {
+          node: n as NonEmptyStr as RoadmapNodeId,
+          author: migration_principal(),
+          operation: ("t6-migration-success-" + n) as NonEmptyStr,
+          expected: none,
+        },
+        receipt: sample_receipt(n),
+        evidence: migration_evidence(),
+      },
+      recorded_at: "2026-11-04T08:00:00Z"))
+    let wrote_all = count(filter(appended, r => match r {
+      CarrierClosed { result: EventAppended { id: _ }, close: _ } => true
+      CarrierClosed { result: EventAppendRefused { id: _, step: _, reason: _ }, close: _ } => false
+      _ => false
+    })) == count(carried)
+    let wanted = map(carried, n => AcceptanceRecorded { receipt: sample_receipt(n) }) as List<RoadmapAcceptanceEvent>
+    let retired = map(model, n => n as NonEmptyStr as RoadmapNodeId)
+    match roadmap_acceptance_migration_verdict(
+      wanted: wanted, log_events: wanted, envelopes: [] as List<RoadmapEventEnvelope>,
+      layout: layout, retired_ids: retired, retired_roster: join(model, ",")) {
+      MigrationVerified {
+        manifest_events: m, retired_named: rn, held_events: h, event_lines: _, report_path: _,
+      } => claim("the verdict certifies the migration it was handed, and names the model's roster as retired",
+        wrote_all && rn == count(model) && m == count(carried) && h == count(carried))
+      MigrationRefused { cause: cause } => claim(join([
+        "the verdict refused a migration whose facts the carrier holds: ",
+        roadmap_acceptance_migration_refusal_report(cause: cause)], ""), false)
+    }
+  })
 }

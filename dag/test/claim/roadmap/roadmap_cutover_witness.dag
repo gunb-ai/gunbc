@@ -727,6 +727,28 @@ test fn the_migration_verifier_admits_the_roster_the_model_holds() -> Bool {
   count(roadmap_migration_roster_refusals(supplied: model, model_roster: model)) == 0
 }
 
+fn roster_with_a_blank_after_the_first_name(model: List<String>) -> List<String> {
+  match model.first() {
+    Absent => model
+    Present { value: head } => concat(concat([head], [""]), filter(model, n => n != head))
+  }
+}
+
+// An empty entry is not a roster entry, and it used to be invisible. `retired_roster` reaches the verifier as ONE
+// comma-joined String written from a file, and the first shape of this check dropped empty components before
+// comparing — so "a,,b" stood in for the model's "a,b" and was admitted, certifying a roster the file never
+// held. The split is raw now and a blank refuses, naming how many of how many entries are empty. The control is
+// the claim above: the identical list without the blank is admitted, so this cannot be a check that refuses
+// everything.
+test fn the_migration_verifier_refuses_a_retired_roster_with_an_empty_entry() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let refusals = roadmap_migration_roster_refusals(
+    supplied: roster_with_a_blank_after_the_first_name(model), model_roster: model)
+  count(refusals) == 1
+    && string_contains(s: refusals_text(refusals), pattern: "empty of")
+    && string_contains(s: refusals_text(refusals), pattern: "blank name is not a roster entry")
+}
+
 // ---------------------------------------------------------------------------------------------
 // THE MIGRATION-ONLY DECLARATIONS ARE MARKED AS THE SCAFFOLD THEY ARE (review 94530)
 //
