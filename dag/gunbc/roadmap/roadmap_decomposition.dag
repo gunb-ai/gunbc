@@ -1265,4 +1265,110 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       reading_family(label: "one obligation: authority transition with one witness", days: 5, members: 7, on: "2026-11-17", basis: "the seven obligations of the 2026 batch", owner: "debt-payoff"),
     ],
   ]),
+  // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17): one
+  // leaf per unit, so every unit is one PR a worker takes whole; the day counts are SIMULATION INPUTS
+  // -- realized values from gunbc.roadmap.roadmap_event_log replace them as they arrive, and the
+  // schedule reports which it used. The two Decision pieces are open questions the operator rules on;
+  // they are carried here, not answered here. No leaf is minted as a node: a leaf has no identity
+  // until it is claimed.
+  decomposition(node: "roadmap-schedule-leaf-expansion", waits_on: [
+  ], stages: [
+    [
+      leaf(label: "expand one decomposition with a FindingsOf family and two stages into leaf occurrences with their edges, through the carrier's own well-formedness claim", days: 4),
+    ],
+  ]),
+  decomposition(node: "roadmap-schedule-list-scheduling", waits_on: [
+    waits(item: "roadmap-schedule-leaf-expansion", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "longest-remaining-path list schedule answering start, finish, lanes, in-flight per day and the critical path, computed from the carriers and the log, cacheable and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read)), with the two-worker and one-worker controls", days: 4),
+    ],
+  ]),
+  decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
+    waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "bind the schedule's days to the read date over five working days a week, kept out of the scheduler", days: 1),
+    ],
+  ]),
+  decomposition(node: "roadmap-claim-names-leaf", waits_on: [
+  ], stages: [
+    [
+      leaf(label: "the Claimed payload names the leaf path as the decomposition spells it, and a path it does not have refuses at append (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing))", days: 2),
+    ],
+  ]),
+  decomposition(node: "roadmap-leaf-in-flight-set", waits_on: [
+    waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "the in-flight leaf set derived from the log alone, with the claimed-then-released control", days: 2),
+    ],
+  ]),
+  decomposition(node: "roadmap-leaf-realized-duration", waits_on: [
+    waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "claimed-to-accepted working days read from the log, taken where they exist, with the used-value reported", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-schedule-from-now", waits_on: [
+    waits(item: "roadmap-schedule-calendar-binding", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "in-flight leaves pinned at their claim day with their remaining days, the unclaimed scheduled around them", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-schedule-bottlenecks-and-offer", waits_on: [
+    waits(item: "roadmap-schedule-from-now", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "bottlenecks on the critical path and the offer as its longest unclaimed startable leaf, with the off-path control", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-spawn-frontier-leaf-grain", waits_on: [
+    waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "a leaf is ready when its dependency leaves are accepted and its item is dispatchable, the item predicate still the gate", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-dispatch-carries-leaf", waits_on: [
+    waits(item: "roadmap-schedule-bottlenecks-and-offer", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-spawn-frontier-leaf-grain", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "the live dispatch row carries the leaf path beside its node id, one dispatch per leaf, the capacity bound kept, the offered leaf the belt starts by (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read))", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-typed-handback", waits_on: [
+    waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "Close, Split on a branch, ReEstimate and Findings, accepted by the claim's return_to principal, a Split accepted as any work item is (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)), the carrier moved only by an accepted handback", days: 4),
+    ],
+  ]),
+  decomposition(node: "roadmap-work-item-projection", waits_on: [
+    waits(item: "roadmap-schedule-bottlenecks-and-offer", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "one JSON row per work item served at projection.json beside standings.json, in the shape the ticket declares, in-flight leaves read from the derived set and past events read from the log", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-timeline-page", waits_on: [
+    waits(item: "roadmap-work-item-projection", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "the timeline in gunbc.roadmap.roadmap_page rendering the projection row alone", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-return-to-principal-records-acceptance", waits_on: [
+    waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "the claim's return_to principal authors AcceptanceRecorded for that claim's node under the same receipt law, with the wrong-author refusal", days: 2),
+    ],
+  ]),
 ]

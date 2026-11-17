@@ -5199,6 +5199,251 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
     ),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // the schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
+    // binds its days, claims that name a leaf, the in-flight set and the realized durations derived
+    // from the log, the schedule from now, its bottlenecks and its offer, the leaf-grain frontier and
+    // the dispatch that carries a leaf, the typed handback, the projection every reader reads and the
+    // page that renders it. DECLARATION ONLY: the rows are the units, each one PR, each with its red
+    // control in its own ticket. No leaf is a node here: a leaf has no identity until it is claimed.
+    roadmap_node(
+      identity: "rn_01M7NPVR8MY69FQRA0RE37AHAB",
+      id: "roadmap-schedule-leaf-expansion",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A decomposition reads as leaf occurrences with the edges between them",
+        boundary: "roadmap_decompositions expands into leaf OCCURRENCES: one per leaf, a FindingsOf family at its declared assumed count carried as a simulation input, and dependency edges between occurrences -- stage k on stage k-1, and each waits_on row aimed into the child's stage. The expansion writes nothing; every schedule and every readiness below reads it.",
+        displaced_cost: "Without it a schedule can only count items, so an item with three parallel leaves holds the critical path for one leaf's days and the offer keeps naming work that cannot start. Every unit below reads this expansion.",
+        first_slice: "Expand one decomposition that has a FindingsOf family and two stages into its occurrences, with the occurrence edges, at a declared count.",
+        red_control: "A planted waits_on naming a stage the parent's decomposition does not have refuses by CONSUMING THE CARRIER'S EXISTING CLAIM: gunbc.roadmap.roadmap_decomposition's own well-formedness witness is what refuses, and the expansion calls it rather than re-checking a row the carrier has already admitted.",
+        out_of_scope: "No scheduling, no calendar, no in-flight set, no dispatch. No leaf is minted as a node in gunbc.roadmap.roadmap_authority: a leaf has no identity until it is claimed.",
+        handback: "The occurrence list for one decomposition at a declared count, the refusal output for the planted stage, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8N43DQ0V7XT2EZKX04",
+      id: "roadmap-schedule-list-scheduling",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "List scheduling that answers in days, lanes and a critical path",
+        boundary: "Over the expansion: longest remaining path first, a worker count taken as an INPUT, and a zero-day Join placed without a worker. It answers, per leaf, its start and finish day; the lane it sits in; how many leaves are in flight each day; and the critical path. Days stay abstract until the calendar unit binds them. The answer is COMPUTED from the decomposition carriers and the item event log; it MAY be cached, and a cache is derived and never authoritative, so every read recomputes it (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), which narrows @ref(gunbc.design_ruling::planning_scheduling_is_cut)). No schedule type, time-period record, forecast state or synchronized today list is written as such, and the worker count stays an input shown as an input. Its consumers are the bottleneck-and-offer row and the projection.",
+        displaced_cost: "Without it the days a decomposition carries are an input nobody can test against reality, and there is no critical path to define a bottleneck or an offer. Every later schedule unit reads this answer.",
+        first_slice: "Schedule two chains and one family at a declared count, under two worker counts, and print the two answers side by side.",
+        red_control: "A two-leaf chain under one worker finishes at the SUM of the two days; two independent leaves under two workers finish at the MAX of the two. Both answers come from one run.",
+        out_of_scope: "No calendar, no claimed leaves, no decision about who works. The worker count is shown as an input and never becomes a fact.",
+        handback: "The schedule output for both fixtures (start and finish per leaf, lanes, in-flight count per day, critical path), the two refusal outputs, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8PQK11YFYV0QV0SM74",
+      id: "roadmap-schedule-calendar-binding",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Day zero is the read date, and a week has five working days",
+        boundary: "The schedule's abstract days become dates: day 0 is the date the read was taken, and a week has five working days. The binding is kept out of the scheduler so the scheduler stays testable on days alone and the calendar is read separately. No date here is a dependency or a gate -- the dependency reading is the edges -- and no date is authoritative between reads: a cached date is derived and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)), and the dated clock stays @ref(gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc).",
+        displaced_cost: "Without it the days in the answer are not the days anyone will see: an item finishing on day 0 of a read taken on a Friday would read as a Friday finish.",
+        first_slice: "Bind one schedule answer to a read date and print the start and finish dates along its critical path.",
+        red_control: "A leaf finishing on a non-working day reads as the NEXT working day, never as the weekend; the same schedule read one week later moves every date by seven days and changes nothing else.",
+        out_of_scope: "No scheduling policy change: the order and the worker count come from the scheduler unit unchanged.",
+        handback: "The dated output for one read, the weekend output and the one-week-later output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8QQ2EYRW11GZWGRFTB",
+      id: "roadmap-claim-names-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "A claim names the leaf it claims, in the decomposition's own spelling",
+        boundary: "The Claimed payload names the LEAF PATH -- item, stage index, piece index, and the member index for a family at its declared count -- spelled as the decomposition spells it, the same three indexes the carrier's well-formedness check reads. A path the decomposition does not have refuses at append.",
+        displaced_cost: "Without it the in-flight set, the realized durations and the offer can only be spoken of per item, which is where the belt stops today: two workers cannot take one item's leaves side by side. A claim that names only its item is refused at append, from the first landing (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)); what the refusal leaves outstanding is tracked and prioritized rather than admitted.",
+        first_slice: "Append one Claimed naming a leaf path the decomposition has and one naming a path it does not, and show both outputs.",
+        red_control: "A planted Claimed whose path is not in the decomposition refuses AT APPEND, by consuming the carrier's existing claim rather than re-checking the spelling here.",
+        out_of_scope: "The ruled shape is not reopened here (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)): no migration arm is built, and a live item-level claim that predates the landing is re-recorded against its leaf or released -- the set of such claims is a work item of its own. No leaf becomes a node.",
+        handback: "The accepted append, the refused append output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8R27QGW6MFE9WB6G4F",
+      id: "roadmap-leaf-in-flight-set",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "Which leaves are in flight, derived and never written",
+        boundary: "The in-flight leaves are those with a Claimed and nothing after it: no Released, no HandedBack, no Retired, no acceptance. The set is DERIVED from the log and never written down, so it cannot go stale.",
+        displaced_cost: "Without it in flight is a list somebody maintains, and the first missed release makes it wrong: the offer and the highlight would both point at leaves nobody holds.",
+        first_slice: "Derive the in-flight set for one item over a planted log of claims, releases and acceptances.",
+        red_control: "A leaf claimed and then released is NOT in flight; the same log replayed without the release puts it back.",
+        out_of_scope: "No in-flight record is ever written; what a claim carries belongs to roadmap-claim-names-leaf.",
+        handback: "The derived set for the planted log with and without the release, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8S3EY06Q6JCZA2F57G",
+      id: "roadmap-leaf-realized-duration",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A completed leaf's realized duration, read from the log, replaces its prior",
+        boundary: "A leaf's claimed-to-accepted working days are read from the log. Where a realized value exists the schedule takes it and REPORTS WHICH VALUE IT USED; otherwise it takes the prior. Realized values replace the declared priors as they accumulate: the priors are simulation inputs.",
+        displaced_cost: "Without it the plan keeps quoting the day counts it started with, the estimates never meet the work, and the next round of estimates has no source.",
+        first_slice: "Fold one item's completed leaves into its schedule and print, per leaf, whether the realized value or the prior was used.",
+        red_control: "An accepted leaf with NO claim has no realized duration and the fold SAYS SO in its output -- it does not read as zero days and does not fall back to the prior silently.",
+        out_of_scope: "No change to the scheduler's order; no estimate is re-issued here, which is gunbc.roadmap.roadmap_effort_estimate's work.",
+        handback: "The fold output for a leaf with a realized duration and for an accepted leaf with no claim, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
+      id: "roadmap-schedule-from-now",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "The schedule read from today: in-flight leaves pinned, the rest scheduled around them",
+        boundary: "In-flight leaves are pinned at their claim day with their REMAINING days; only unclaimed leaves are scheduled around them, under the same policy and worker count. The answer is the schedule as of the read. A claimed leaf's day comes from the item event log, so the pin rests on a realized fact and not on a forecast; the rest is recomputed at the read, and any cache of it is derived and never authoritative (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)).",
+        displaced_cost: "Without it the schedule restarts every leaf at today and loses the week already spent: work in flight is scheduled a second time and everything behind it slips by the days already worked.",
+        first_slice: "Schedule one item with two in-flight leaves and four unclaimed leaves, and print the pinned rows apart from the scheduled ones.",
+        red_control: "A leaf claimed three days ago with five days of work finishes at DAY TWO of the read; a leaf whose remaining days cannot be worked out is refused rather than pinned at zero.",
+        out_of_scope: "No new scheduling policy; no bottlenecks and no offer, which is the next row's answer.",
+        handback: "The from-now output for the fixture with the pinned rows named, the day-two control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8VN1APM29K9AV9YE29",
+      id: "roadmap-schedule-bottlenecks-and-offer",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Bottlenecks and the offer, from the schedule as of today",
+        boundary: "A bottleneck is an item with an in-flight or startable leaf ON THE CRITICAL PATH. The offer is the unclaimed startable leaf with the longest remaining path, excluding items the belt withholds. Both are computed from the carriers and the log, may be cached as derived data that is never authoritative, and are recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)). The offer is shown on the projection beside the bottlenecks, so what is planned from the critical path stays visible to the operator.",
+        displaced_cost: "Without them the schedule is a picture nobody acts on: what to start next, and what is holding the line, are the two questions the projection and the page exist to answer.",
+        first_slice: "Compute bottlenecks and the offer for one fixture whose critical path runs through two items, and show both answers.",
+        red_control: "With the critical path through X and Y the offer is X's startable leaf, NOT an off-path leaf that happens to start the same day; an item the belt withholds is never offered.",
+        out_of_scope: "No dispatch and no capacity arithmetic: the dispatch row reads this offer.",
+        handback: "The bottleneck list and the offer for the fixture, the off-path control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
+      id: "roadmap-spawn-frontier-leaf-grain",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_readiness.dag"),
+      line: ticket(t: fields(
+        headline: "The spawn frontier at leaf grain, with the item predicate still as the gate",
+        boundary: "A leaf is ready when every leaf it depends on is ACCEPTED and its item is dispatchable by today's readiness (gunbc.roadmap.roadmap_readiness). The item predicate STAYS the gate: nothing starts a leaf whose item may not start.",
+        displaced_cost: "Without it the frontier is item-grain, so only the first leaf of an item is visible to the belt and the leaves waiting on a stage-1 sibling stay invisible until the whole item moves.",
+        first_slice: "Compute the leaf frontier for one item with two stages and print, per leaf, which dependency leaf is not yet accepted.",
+        red_control: "A leaf whose stage-1 sibling is unaccepted is NOT ready even when its item is dispatchable; a leaf whose item is not dispatchable is not ready even when every dependency leaf is accepted.",
+        out_of_scope: "No dispatch; the item readiness predicate itself does not change.",
+        handback: "The frontier output for the two planted cases, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8XJ9DVYGSNMZKP8WKJ",
+      id: "roadmap-dispatch-carries-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag"),
+      line: ticket(t: fields(
+        headline: "A dispatch names the leaf it dispatches, and one leaf has one dispatch",
+        boundary: "The live dispatch row carries the leaf path beside its node_id, and one leaf has one dispatch: two dispatches on one leaf refuse; two leaves of one item are admitted, each in its own dispatch. This is what makes a leaf addressable. The belt takes its desired members from the offered leaf, bounded by BeltCapacity, with the readiness predicate still the gate on what may start at all. That the offer is the belt's selection basis is the INTERPRETATION recorded in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read) -- the operator's \"the planning we did now is relevant\" read onto this unit's done-when -- an interpretation, not operator words, and correctable by the operator.",
+        displaced_cost: "Without it the belt cannot put two workers on one item's leaves at all: the item is the only addressable thing, and every schedule above this row stays a picture.",
+        first_slice: "Dispatch two leaves of one item in two dispatches, then a second dispatch on a leaf already dispatched, and show all three outputs.",
+        red_control: "Two dispatches on one leaf refuse; two leaves of one item in two dispatches are admitted -- both in the same run.",
+        out_of_scope: "No new dispatch machinery: the leaf path travels beside the node id it already carries. BeltCapacity's meaning does not change. Whether the offer is the belt's selection basis is not this row's call: it stands as the labelled INTERPRETATION in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), and the operator corrects it.",
+        handback: "The three outputs, the capacity bound as observed, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8Y40BD0A4SBDMW0J60",
+      id: "roadmap-typed-handback",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "The handback is typed, and only an accepted handback moves the carrier",
+        boundary: "The handback is typed: Close with its acceptance evidence; Split with a replacement decomposition, carried as an edit to the carrier on a branch; ReEstimate with its days; Findings with its members, for a probe leaf. It is accepted by the claim's return_to principal, and the carrier changes only through an accepted handback. A Split is accepted the way any work item is (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager), on @ref(gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation)), and no operator gate stands on a split that lengthens the critical path -- the view flags the moved path so the operator sees it rather than approves it.",
+        displaced_cost: "Without it the four things a handback can mean are one undifferentiated message, and any handback can rewrite a decomposition on the way past. The authority law says a carrier changes through an accepted change, and the handback is where that is enforced.",
+        first_slice: "Accept a Close and a Findings on two planted leaves, and refuse a Findings on a leaf whose evidence is a Builds.",
+        red_control: "A Findings handback from a leaf whose evidence is Builds refuses; a handback offered by a principal that is not the claim's return_to principal refuses; the carrier is unchanged after either refusal.",
+        out_of_scope: "No operator gate on a Split that lengthens the critical path (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)): it is accepted as any work item is, and this row's view only has to flag the moved path. A Split stays an edit on a branch, never an in-place rewrite.",
+        handback: "The accepted and refused handback outputs, the carrier unchanged on the refusals, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8ZNA89SDC0ZXCHA2DS",
+      id: "roadmap-work-item-projection",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "One projection row per work item, served as JSON from the daily workspace",
+        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per work item as JSON from the daily workspace, at the path projection.json beside standings.json -- the path a consumer fetches to find the projection, declared here because a reader detects the projection by fetching it. The row's shape is declared here, because it is what a consumer of the projection is built against: node, intention, layer, item_state; leaves -- one entry per leaf occurrence, each with its leaf path as the decomposition spells it, its start day and finish day from the schedule answer, and on_critical_path; in_flight -- the derived set, each entry with its leaf path, its claim's assignee and its claim's return_to; latest_event; acceptance_evidence; events -- the item's past events with the timestamp each one was recorded at (claimed, released, acceptance recorded, retired), read from the event log at the read and kept in no store of this row's own, so a consumer can draw the progress already made and not only the plan ahead; and read_on, the date the document was read, together with the inputs that read used (worker_count, the day priors, the assumed findings counts), each shown as an input and not as a fact. It IS planning_consolidation section 1's projection; every consumer reads this row and keeps no state of its own, and a field this row does not serve is not part of the projection.",
+        displaced_cost: "Without it each reader folds the log itself, and the readers are where the drift lives; there is no one place to read what is true about an item on the day of the read.",
+        first_slice: "Serve the projection for one item with leaves in flight, then the same item after a planted release, and show both rows against the shape above, field for field.",
+        red_control: "A row's in-flight leaves are the derived set and never a stored list, and a served row that omits a declared field of the shape above -- a leaf without its on_critical_path, an in-flight entry without its claim's assignee or return_to, an event without the timestamp it was recorded at, a row without read_on and its inputs -- is not the projection; the events a row carries are the event log's own rows at that read, never a copy this row keeps; a planted binding of this row to an intention that does not exist refuses at load, by the binding carrier's own check.",
+        out_of_scope: "No rendering; no operator to-do list on the row -- section 1's projection states, it does not nag. No reader outside this repository is named or bound here.",
+        handback: "The two JSON rows, the planted-binding refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR90N2HGC2XA1WMQFRFK",
+      id: "roadmap-timeline-page",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_page.dag"),
+      line: ticket(t: fields(
+        headline: "The timeline, rendered from the projection alone",
+        boundary: "gunbc.roadmap.roadmap_page carries the timeline: one row per item ordered by first start, leaves stacked where they run parallel, the in-flight strip, a read-day line at today, in-flight rows highlighted, bottlenecks in red, and the offer at the top. It renders the roadmap-work-item-projection row and nothing else -- no reader state, no second fold of the log.",
+        displaced_cost: "Without it the schedule is a dump nobody supervises a week of work with; a projection with no renderer is a file.",
+        first_slice: "Render the timeline for one read with two items, one of them in flight, and show the page apart from the JSON it came from.",
+        red_control: "Every mark on a row is explained by its projection row: the page reads the projection and nothing else, and a planted value that exists only in the page refuses.",
+        out_of_scope: "No schedule, in-flight set or offer is derived here; no consumer outside this repository is bound here.",
+        handback: "The rendered page for the fixture read, the planted-value refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR91VNF088PHY2G7X5PK",
+      id: "roadmap-return-to-principal-records-acceptance",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_operator_acceptance.dag"),
+      line: ticket(t: fields(
+        headline: "The claim's return_to principal may record the acceptance of that claim's own node",
+        boundary: "Acceptances keep being recorded under the operator's principal for now, and the later route gets its own row: the principal a claim carries in its return_to may author AcceptanceRecorded FOR THAT CLAIM'S NODE, under the same receipt law gunbc.roadmap.roadmap_operator_acceptance states. It is gated on the acceptance-guidance carrier planning_consolidation section 7 layer 4 names. This row is the return_to arm of rn_A0SYP0J1P3JE8W8OBX6M3BD777 (roadmap-operator-attested-acceptance) -- one receipt law, two admissible authors -- and it waits on that row.",
+        displaced_cost: "Without it every acceptance runs through one principal, so the principal a claim is returned to cannot attest to the work it accepted, and the operator stays in the path of every handback.",
+        first_slice: "Let a claim's return_to principal author AcceptanceRecorded for that claim's node under the same receipt, and show the accepted append.",
+        red_control: "An AcceptanceRecorded authored by a principal that is neither the operator nor the claim's return_to principal refuses AT APPEND, and the log is unchanged after the refusal.",
+        out_of_scope: "The operator's own attestation path does not change; no new claim type appears; acceptances recorded under the operator's principal stay the route until the guidance carrier says otherwise.",
+        handback: "The accepted append, the refused append output with the log unchanged, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -5220,6 +5465,29 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // child depends on parent, the direction the witness reads. roadmap-return-to-principal-records-acceptance
+    // is the return_to arm of roadmap-operator-attested-acceptance (rn_A0SYP0J1P3JE8W8OBX6M3BD777), so it
+    // waits on that row: the edge names it by NAME, because the graph's endpoint law reads the node field
+    // (id_exists compares e.parent against n.node), not the rn_ identity string.
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-operator-attested-acceptance"),
+    edge(child: "roadmap-schedule-list-scheduling", parent: "roadmap-schedule-leaf-expansion"),
+    edge(child: "roadmap-schedule-calendar-binding", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-leaf-in-flight-set", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),
+    edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),
+    edge(child: "roadmap-typed-handback", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-timeline-page", parent: "roadmap-work-item-projection"),
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-claim-names-leaf"),
+
     edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
     edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
     edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),

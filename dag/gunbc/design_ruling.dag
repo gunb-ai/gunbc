@@ -1092,6 +1092,13 @@ data a_split_handback_is_accepted_by_the_manager: DesignRuling = DesignRuling {
   provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked who accepts a Split handback (a worker's replacement decomposition for the leaf it held, which edits gunbc.roadmap.roadmap_decomposition and can move the critical path). Operator words, verbatim: \"yeah the manager canown it\". RULED, in those words: the manager of the owning session accepts a Split, as it accepts any work item (gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation). INTERPRETATION (not operator words): no operator gate on splits that lengthen the critical path; the view flags a split that moved the critical path so the operator sees it rather than approves it."
 }
 
+data schedule_answers_are_computed_cached_and_re_read: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "schedule_answers_are_computed_cached_and_re_read"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-18, answering whether a schedule answer computed at the read -- start and finish per leaf, the lanes, the critical path and the next-leaf offer -- is inside gunbc.design_ruling::planning_scheduling_is_cut, which cut scheduling on 2026-11-11. Operator words, verbatim: \"yeah we cut the schedulinga nd are redoing it now - but yes, you should compute it/cache it/re-read it - the planning we did now is relevant\". RULED, in those words: the schedule is COMPUTED from the carriers and the item event log; it MAY be cached; a cache is derived and NEVER authoritative, so no cached answer is a schedule type, a time-period record, forecast state or a synchronized today list; and the answer is RECOMPUTED ON READ. This narrows gunbc.design_ruling::planning_scheduling_is_cut, whose target was the stored schedule and the operator's own consumption of it, not an answer derived at the read; and it stands beside gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc, which made a dated estimate with a basis the clock. INTERPRETATION (not operator words): \"the planning we did now is relevant\" affirms the brief this lane was given, whose done-when is that the next-leaf offer is accepted by the belt as its spawn input -- so the offer is the belt's selection basis among leaves the readiness predicate already admits, bounded by BeltCapacity, and the readiness predicate stays the gate on what may start at all. Correctable by the operator."
+}
+
 data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_ctrl_dashboard_renders_the_planning_page"),
   decided: "2026-11-18",
@@ -1108,6 +1115,7 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    schedule_answers_are_computed_cached_and_re_read,
     claims_name_their_leaf_from_the_first_landing,
     a_split_handback_is_accepted_by_the_manager,
     the_ctrl_dashboard_renders_the_planning_page,
