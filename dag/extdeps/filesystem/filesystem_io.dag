@@ -769,7 +769,7 @@ fn filesystem_entry_lookup_reading_of_exit(path: String, exit_code: Int, stdout:
     // it has to be able to say what it stopped on.
     FilesystemEntryUnobservable { path: path, cause: trim(s: stderr) }
   } else {
-    FilesystemEntryUnobservable { path: path, cause: join(["the lookup for ", path, " failed with exit ", show_int(exit_code), " and said nothing"], "") }
+    FilesystemEntryUnobservable { path: path, cause: join(["the lookup for ", path, " failed with exit ", to_string(value: exit_code), " and said nothing"], "") }
   }
 }
 
