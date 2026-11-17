@@ -670,19 +670,38 @@ service shell.Chmod {
     }
   }
 
-  // SEARCHABLE, NOT LISTABLE -- the shape a private directory publishes to a principal that may NAME
-  // entries inside it but may not enumerate them: srv1's ~/.local/share, granted to the deployment's
-  // observing principal as `u:ghrunner:--x`. The presence route must ANSWER here where the listing
-  // route refuses, so this is the mode the presence witness stages. Five digits, per
+  // SEARCHABLE, NOT LISTABLE, FOR EVERY PRINCIPAL -- the shape a private directory publishes to a
+  // principal that may NAME entries inside it but may not enumerate them: srv1's ~/.local/share,
+  // granted to the deployment's observing principal as `u:ghrunner:--x`. The presence route must ANSWER
+  // here where the listing route refuses, so this is the mode the presence witness stages -- and it
+  // denies read to the OWNER TOO, because the witness that stages this directory is also the principal
+  // that observes it: a mode that left the owner readable (00710) would let that witness prove the
+  // shape by listing it, and the claim would pass on a directory that was never unlistable for the
+  // observer at all. Owner -wx, group --x, other --x. Five digits, per
   // extdeps.tools.gnu_coreutils coreutils_directory_mode_operand.
-  operation SearchableNotListableDirectory {
+  operation SearchableNotListableByEveryPrincipal {
     requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
-    transport shell { argv: ["chmod", "00710", "{path}"] }
+    transport shell { argv: ["chmod", "00311", "{path}"] }
     exit {
       0 => Unit
-      nonzero => String "chmod 00710 failed"
+      nonzero => String "chmod 00311 failed"
+    }
+  }
+
+  // NOT SEARCHABLE AT ALL: no principal may resolve a name through it, so an entry inside it can be
+  // neither found nor said to be missing. The presence route must answer UNOBSERVABLE here -- a refusal
+  // on the way to an entry says nothing about the entry -- and a witness that could certify absence
+  // against this mode would be the invented absence the route exists to forbid.
+  operation NotSearchableDirectory {
+    requires none
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "00000", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 00000 failed"
     }
   }
 

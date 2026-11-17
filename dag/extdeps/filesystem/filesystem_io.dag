@@ -3,12 +3,9 @@ module extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
-import std.algebra { collection_join_shape }
+import std.algebra { collection_join_shape, string_contains, trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.posix.test_utility {
-  PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
-  entry_existence_reading, contained_existence, ContainedPresent, ContainedAbsent, ContainedUnreadable,
-}
+import std.optional { Present, Absent }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -690,81 +687,89 @@ fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPres
   filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
 }
 
-// THE SAME QUESTION, ASKED OF THE HOST BY NAME. `listed_entry_presence` answers "does this name appear
-// in that directory", which is the right question for a CENSUS and the wrong one for a single named
-// entry: a census must enumerate, and enumeration needs READ on the directory. Presence of one named
-// entry needs only SEARCH on its ancestors -- the traversal right -- so a parent published drwx--x---
-// (searchable, not listable) ANSWERS the lookup and REFUSES the listing. That is not a corner case: it
-// is the published shape of a directory whose contents are private to its owner, and the deployment's
-// own observer runs as a principal deliberately granted `--x` and not `r-x`. Measured, not argued: the
-// srv1 fold refused with "the directory /home/briansrls/.local/share could not be listed, so the absence
-// of gunbc-srv2-deploy is not established" while every ancestor was traversable -- a listing the model
-// did not need, demanded of a directory this repository itself publishes as unlistable
-// (gunbc.roadmap.roadmap_dashboard_instance: ".local/share is drwx--x---" and opening it "would expose
-// every instance"). Listing stays where ENUMERATION is what is asked (filesystem_listing_observation,
-// filesystem_listing_absence); absence of a NAMED entry is a lookup.
+// THE PRESENCE OF ONE NAMED ENTRY inside a directory is a LOOKUP, not a listing, and the lookup must
+// keep the host's reason for failing. Two boundaries, both POSIX's, both measured here rather than
+// argued: a directory's READ permission governs enumerating the names it holds, and its SEARCH
+// permission governs resolving a name THROUGH it -- so a parent published drwx--x--- answers "is
+// `gunbc-srv2-deploy` in there?" and refuses "what is in there?". The deployment's own observer runs as
+// a principal granted `--x` and not `r-x`, and the live fold refused exactly there: "the directory
+// /home/briansrls/.local/share could not be listed, so the absence of gunbc-srv2-deploy is not
+// established -- unobserved is not absent", with every ancestor traversable. This repository publishes
+// that directory as unlistable itself (gunbc.roadmap.roadmap_dashboard_instance: ".local/share is
+// drwx--x---", opening it "would expose every instance"), so a route that decides the one-entry question
+// with an enumeration cannot answer it, and says so as an absence it cannot establish. Listing stays
+// where ENUMERATION is what is asked -- `listed_entry_presence` and `filesystem_listing_absence` above
+// are untouched and the census folds still bind them.
 //
-// NO NEW EFFECT, AND NO NEW READER OF EXIT CODES. The readings are the ones
-// extdeps.posix.test_utility already owns (PathExistenceReading, entry_existence_reading,
-// contained_existence) -- the same authority gunbc.host.host_effect_realize's removal read-back
-// consumes -- so `test`'s status is interpreted in exactly ONE place. This region adds only the
-// presence-shaped result over those readings, kept BESIDE the listing-shaped result rather than widened
-// into it: FilesystemEntryListed and FilesystemEstablishedAbsence name the LISTING that carried the
-// fact, and putting a lookup in them would attribute the fact to a listing that never happened.
+// A `test -e` / `test -L` probe cannot answer it either, and the first version of this route used one.
+// `test` collapses EVERY stat and lstat failure into exit 1 -- no such file, an I/O error, an ACL or LSM
+// denial on the entry itself -- so `test -L`=1, `test -e`=1 and a search-permitted parent certify ABSENT
+// for an entry that exists and merely could not be stat'ed. That is the conflation
+// extdeps.posix.test_utility already refuses for a containment decision ("the worst possible"), and here
+// the two answers have opposite consequences: Absent releases a cell, Unobservable stops a deployment
+// (gunbc.design_argument::fail_closed: a wrong answer must be "a loud, typed, located error, never a
+// warning or a plausible fabrication"). So absence is admitted only from an observation that carries the
+// host's own reason, for exactly the two statuses below, and nothing else.
 //
-// FAIL-CLOSED, AND WHERE IT CLOSES. `test -e` exits 1 both for "absent" and for "I could not stat it",
-// and the two have opposite consequences -- Absent releases a cell, Unobservable stops the deployment --
-// so a false is never trusted alone (extdeps.posix.test_utility states exactly this). Absence is granted
-// only when the PARENT's search bit answered yes: search, never read. Any other status, a refused
-// transport, or a parent that cannot answer is Unobservable, and Unobservable never folds into Absent.
+// THE OBSERVATION is `ls -l -n -d -- <path>` under `LC_ALL=C`: `-d` makes it describe the ENTRY rather
+// than its contents, so it needs only the parent's search bit; `-n` keeps name-service lookups out of
+// it; and its failure text is the errno, which is the whole point. ENOENT ("No such file or directory")
+// under a searchable parent, and ENOTDIR ("Not a directory") from a component above it, are the two that
+// say the name cannot be there. Every other failure -- EACCES from an ACL, an LSM, or a parent refusing
+// search, EIO, ENOMEM -- is unobservable WITH THE HOST'S WORDS as the cause. The words themselves come
+// from extdeps.tools.ls, whose own comment commits to this exact shape ("one entry's metadata with no
+// format word", because the `%` a `stat -c` needs is refused by the fleet SSH edge's portable-word
+// re-parse: gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed). The ROUTE --
+// transport, elevation, the `LC_ALL=C` binding -- is the caller's (gunbc.live_deploy.member_observe
+// builds one leg per arm and rides its own transport); the MEANING is decided here, once.
+
 type FilesystemEntryLookup
   = FilesystemEntryPresentByLookup { path: String }
-  | FilesystemEntryAbsentByLookup { path: String, parent: String }
+  | FilesystemEntryAbsentByLookup { path: String, cause: String }
   | FilesystemEntryUnobservable { path: String, cause: String }
 
-// PURE: the readings as one presence answer. `link` is `test -L` and `follow` is `test -e` on the
-// ENTRY, folded by entry_existence_reading so a symlink counts as the entry it IS -- dangling, pointing
-// into an unsearchable directory, or looping on itself, all of which `test -e` alone reads as false
-// while the entry is nevertheless there. `parent_search` is `test -x` on the PARENT. It is demanded
-// only when both entry readings are false (filesystem_entry_lookup_needs_parent_search says when, so a
-// consumer that asks the question never re-reads the readings), and absence is granted only when it
-// answered yes -- which makes it evidence about the parent's SEARCH bit, never an opinion about the
-// entry. Omitting it where it is needed answers Unobservable rather than guessing.
-fn filesystem_entry_lookup(
-  path: String,
-  parent: String,
-  link: PathExistenceReading,
-  follow: PathExistenceReading,
-  parent_search: Optional<PathExistenceReading>,
-) -> FilesystemEntryLookup {
-  match entry_existence_reading(link: link, follow: follow) {
-    PathPresent => FilesystemEntryPresentByLookup { path: path }
-    PathExistenceUnreadable { reason: r } => FilesystemEntryUnobservable { path: path, cause: r as String }
-    PathAbsentOrUnstattable =>
-      match parent_search {
-        Absent => FilesystemEntryUnobservable {
-          path: path,
-          cause: join(["neither lookup of ", path, " resolved and the parent's search bit was never asked; absence of a named entry is established only under a parent that answered searchable"], ""),
-        }
-        Present { value: ps } =>
-          match contained_existence(path: path, parent: parent, parent_reading: ps, child_reading: PathAbsentOrUnstattable) {
-            ContainedPresent => FilesystemEntryPresentByLookup { path: path }
-            ContainedAbsent => FilesystemEntryAbsentByLookup { path: path, parent: parent }
-            ContainedUnreadable { reason: r } => FilesystemEntryUnobservable { path: path, cause: r as String }
-          }
-      }
-  }
+// The two errno texts that let the host testify that a name is not there. Both must arrive attached to
+// the path that was asked about -- the utility quotes it -- because a message about some other path says
+// nothing about this one. `ls(1)` emits them on exit 2 and `stat(1)` on exit 1; neither code is trusted
+// on its own, only as far as this roster allows.
+fn filesystem_entry_lookup_absent_strerror(text: String, path: String) -> Bool {
+  string_contains(s: text, pattern: join(["'", path, "'"], ""))
+    && (ends_with(s: text, suffix: ": No such file or directory")
+      || ends_with(s: text, suffix: ": Not a directory"))
 }
 
-// WHEN THE PARENT'S SEARCH LEG IS NEEDED -- the owner's own predicate, so a consumer can stay lazy (the
-// leg is a real host call) WITHOUT becoming a second reader of the readings. True exactly when neither
-// entry lookup resolved: the two that resolved already answered, and an unreadable entry answer cannot
-// be rescued by any parent reading.
-fn filesystem_entry_lookup_needs_parent_search(link: PathExistenceReading, follow: PathExistenceReading) -> Bool {
-  match entry_existence_reading(link: link, follow: follow) {
-    PathPresent => false
-    PathExistenceUnreadable { reason: _ } => false
-    PathAbsentOrUnstattable => true
+// Did the successful observation describe the name we asked about? `ls -l -n -d` prints mode, link
+// count, numeric uid, numeric gid, size, date, then the name -- and for a symbolic link prints
+// `name -> target` after it, so the name is a field either way. A success that printed no such field is
+// not an answer about this name and is not reported as one.
+fn filesystem_entry_lookup_line_names_path(line: String, path: String) -> Bool {
+  any(split(s: line, delimiter: " "), field => field == path)
+}
+
+// THE ONE READER: the utility's status and words, as one answer about one name. All three inputs reach
+// it, because the answer depends on all three; a reader that drops the words is where an invented
+// absence would come from.
+fn filesystem_entry_lookup_reading_of_exit(path: String, exit_code: Int, stdout: String, stderr: String) -> FilesystemEntryLookup {
+  if exit_code == 0 {
+    let lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
+    match get(xs: lines, index: 0) {
+      Present { value: line } =>
+        if count(lines) == 1 && filesystem_entry_lookup_line_names_path(line: line, path: path) {
+          FilesystemEntryPresentByLookup { path: path }
+        } else {
+          FilesystemEntryUnobservable { path: path, cause: join(["the lookup succeeded without printing one entry for ", path, "; a successful observation of something else is not an answer about this name"], "") }
+        }
+      Absent => FilesystemEntryUnobservable { path: path, cause: join(["the lookup succeeded but printed nothing for ", path], "") }
+    }
+  } else if (exit_code == 1 || exit_code == 2) && filesystem_entry_lookup_absent_strerror(text: trim(s: stderr), path: path) {
+    FilesystemEntryAbsentByLookup { path: path, cause: trim(s: stderr) }
+  } else if stderr != "" {
+    // The host refused, or failed, and said why: EACCES (an ACL, an LSM, a parent that will not search),
+    // EIO, a usage error. The words are carried because the cause is the point -- the fold that stops on
+    // it has to be able to say what it stopped on.
+    FilesystemEntryUnobservable { path: path, cause: trim(s: stderr) }
+  } else {
+    FilesystemEntryUnobservable { path: path, cause: join(["the lookup for ", path, " failed with exit ", show_int(exit_code), " and said nothing"], "") }
   }
 }
 

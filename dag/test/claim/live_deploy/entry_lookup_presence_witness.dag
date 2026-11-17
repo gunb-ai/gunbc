@@ -1,36 +1,40 @@
-// WITNESS: presence of ONE NAMED ENTRY decided by LOOKUP (extdeps.filesystem.filesystem_io
-// filesystem_entry_lookup, consumed by gunbc.live_deploy.member_observe's entry_presence_in_parent).
+// WITNESS: presence of ONE NAMED ENTRY is decided by a lookup that KEEPS THE HOST'S REASON FOR FAILING
+// (extdeps.filesystem.filesystem_io's filesystem_entry_lookup_reading_of_exit, consumed by
+// gunbc.live_deploy.member_observe's entry_presence_in_parent on both arms).
 //
-// WHY THIS EXISTS. The route before it asked a directory to ENUMERATE itself to answer a question about
-// one name, so a parent published drwx--x--- -- searchable, deliberately not listable -- refused: the
-// live_deploy fold on srv1 stopped with "the directory /home/briansrls/.local/share could not be listed,
-// so the absence of gunbc-srv2-deploy is not established", while every ancestor was traversable and the
-// answer was knowable by name. A lookup needs the search bit; a listing needs the read bit. The claims
-// below are the discriminators between those two rights, and they are the reason the route could not
-// have been "just" the listing with a wider grant: claims (2) and (5) stay RED for any route that
-// concludes Absent from an unreadable parent, and claim (6) is the real-host reproduction of the srv1
-// shape, run through the production functions.
+// WHY THIS EXISTS. Two routes to this answer were wrong in two different directions, and each direction
+// has a claim here that goes red for it. (a) The route before it asked a directory to ENUMERATE itself to
+// answer a question about one name, so a parent published drwx--x--- -- searchable, deliberately not
+// listable -- refused: the live_deploy fold on srv1 stopped with "the directory
+// /home/briansrls/.local/share could not be listed, so the absence of gunbc-srv2-deploy is not
+// established", while every ancestor was traversable and the answer was knowable by name. A lookup needs
+// the search bit; a listing needs the read bit. Claims (5) and (7) hold that line, and claim (5) also
+// pins the cause: the listing must be REFUSED, permission_denied, on the very directory the lookup
+// answers for -- a claim that passes on a listable directory is worthless here. (b) The first rewrite
+// asked `test -L`, `test -e` and `test -x` instead, and `test` collapses EVERY stat and lstat failure
+// into exit 1: no such file, an I/O error, an ACL or LSM denial on the entry. So `-L`=1, `-e`=1 and a
+// searchable parent certify ABSENT for an entry that exists and merely could not be stat'ed -- and here
+// the two answers have opposite consequences, because Absent releases a cell and Unobservable stops a
+// deployment (gunbc.design_argument::fail_closed). Claims (1)-(4) hold that line: exactly two errno texts
+// certify absence, everything else is unobservable WITH THE HOST'S WORDS, and a success only counts when
+// it described the name that was asked about.
 //
-// gunbc.design_argument::single_authority WITNESS RULE: the five discriminating claims supply the
-// readings at the pure fold's interface -- no operation, no filesystem -- exactly as
-// dag/test/claim/host/host_remove_on_host_witness.dag supplies statuses at host_remove_verdict's. What
-// is NOT supplied is the interpretation of a status: the readings are built only from
-// extdeps.posix.test_utility's own constructors, whose 0/1/other law is path_existence_reading_of_exit.
-// The last two claims execute: the production legs, the production fold, real paths, real modes.
+// gunbc.design_argument::single_authority WITNESS RULE: the pure claims SUPPLY the statuses at the
+// reader's interface -- exit code, standard output, standard error, as
+// dag/test/claim/host/host_remove_on_host_witness.dag supplies statuses at host_remove_verdict's -- and
+// never supply a verdict. What is not supplied anywhere is the host's own interpretation: no claim
+// constructs a listing observation or a path reading by hand. The last four claims execute: the
+// production route, the production fold, real directories, real modes, real errno.
 module test.claim.live_deploy.entry_lookup_presence_witness
 
 import std.types { String, Bool }
-import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import extdeps.posix.test_utility {
-  PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
-}
 import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
-  FilesystemEntryUnobservable, filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
-  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
-  FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate,
-  FilesystemEntrySubjectRefused,
+  Filesystem, FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
+  FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit,
+  filesystem_entry_lookup_absent_strerror, filesystem_entry_lookup_line_names_path,
+  listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
@@ -41,141 +45,184 @@ import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, host_entry_presence_in_parent,
 }
 
-// (1) THE CASE THE FOLD DIED ON: the entry does not resolve and the parent is searchable but NOT
-// listable. Absence is established. This is the answer the listing route could not give.
-test fn a_searchable_not_listable_parent_establishes_absence_by_lookup() -> Bool {
-  match filesystem_entry_lookup(
-    path: "/home/briansrls/.local/share/gunbc-srv2-deploy",
-    parent: "/home/briansrls/.local/share",
-    link: PathAbsentOrUnstattable,
-    follow: PathAbsentOrUnstattable,
-    parent_search: Present { value: PathPresent },
-  ) {
-    FilesystemEntryAbsentByLookup { path: p, parent: d } =>
-      p == "/home/briansrls/.local/share/gunbc-srv2-deploy" && d == "/home/briansrls/.local/share"
-    FilesystemEntryPresentByLookup { path: _ } => false
-    FilesystemEntryUnobservable { path: _, cause: _ } => false
-  }
-}
-
-// (2) A PARENT THAT CANNOT BE SEARCHED IS NOT AN ABSENT CHILD. `test -e` exits 1 for both, and the two
-// have opposite consequences -- Absent releases a cell, Unobservable stops the deployment -- so the
-// parent's own answer is what decides, and it answers false here. Red for any route that trusts a bare
-// false, and red for one that widens Unobservable into Absent.
-test fn an_unsearchable_parent_leaves_the_answer_indeterminate() -> Bool {
-  match filesystem_entry_lookup(
-    path: "/root/.config/gunbc/entry",
-    parent: "/root/.config",
-    link: PathAbsentOrUnstattable,
-    follow: PathAbsentOrUnstattable,
-    parent_search: Present { value: PathAbsentOrUnstattable },
-  ) {
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => false
-    FilesystemEntryPresentByLookup { path: _ } => false
-    FilesystemEntryUnobservable { path: p, cause: _ } => p == "/root/.config/gunbc/entry"
-  }
-}
-
-// (3) THE ENTRY IS THERE: the lookup resolves it, and no parent reading can argue with that. The parent
-// leg is not even asked, and passing Absent for it must not change the answer.
-test fn a_resolved_entry_is_present_whatever_the_parent_says() -> Bool {
-  let present = filesystem_entry_lookup(
-    path: "/opt/gunbc/bin/gunbc",
-    parent: "/opt/gunbc/bin",
-    link: PathAbsentOrUnstattable,
-    follow: PathPresent,
-    parent_search: Absent,
-  )
-  match present {
-    FilesystemEntryPresentByLookup { path: p } => p == "/opt/gunbc/bin/gunbc"
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => false
-    FilesystemEntryUnobservable { path: _, cause: _ } => false
-  }
-}
-
-// (4) A SYMLINK IS AN ENTRY, EVEN WHEN ITS REFERENT IS GONE. `test -e` alone reads a dangling link, a
-// link into an unsearchable directory and a self-loop as false; a route built on the referent question
-// reports all three as absent and the deployment then believes a cell is free. Red for any route that
-// asks only -e.
-test fn a_dangling_symlink_is_an_entry_and_not_an_absence() -> Bool {
-  let link_only = filesystem_entry_lookup(
-    path: "/var/lib/gunbc/dangling",
-    parent: "/var/lib/gunbc",
-    link: PathPresent,
-    follow: PathAbsentOrUnstattable,
-    parent_search: Present { value: PathAbsentOrUnstattable },
-  )
-  match link_only {
-    FilesystemEntryPresentByLookup { path: p } => p == "/var/lib/gunbc/dangling"
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => false
-    FilesystemEntryUnobservable { path: _, cause: _ } => false
-  }
-}
-
-// (5) AN UNREADABLE ENTRY READING IS NEVER ABSENCE, AND THE PARENT'S ANSWER CANNOT RESCUE IT. A host
-// that would not answer about the entry has not said it is missing; asking its parent is a waste of a
-// host call, so the owner's own predicate says not to ask.
-test fn an_unreadable_entry_reading_stays_unobservable_and_needs_no_parent_leg() -> Bool {
-  let answer = filesystem_entry_lookup(
-    path: "/var/lib/gunbc/secret/entry",
-    parent: "/var/lib/gunbc/secret",
-    link: PathExistenceUnreadable { reason: "`test` on /var/lib/gunbc/secret/entry was refused: transport refused" },
-    follow: PathExistenceUnreadable { reason: "`test` on /var/lib/gunbc/secret/entry was refused: transport refused" },
-    parent_search: Absent,
-  )
-  let typed = match answer {
-    FilesystemEntryUnobservable { path: p, cause: _ } => p == "/var/lib/gunbc/secret/entry"
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => false
-    FilesystemEntryPresentByLookup { path: _ } => false
-  }
-  let no_leg_asked = filesystem_entry_lookup_needs_parent_search(
-    link: PathExistenceUnreadable { reason: "refused" },
-    follow: PathExistenceUnreadable { reason: "refused" },
-  ) == false
-  let resolved_needs_none = filesystem_entry_lookup_needs_parent_search(link: PathAbsentOrUnstattable, follow: PathPresent) == false
-  let open_needs_it = filesystem_entry_lookup_needs_parent_search(link: PathAbsentOrUnstattable, follow: PathAbsentOrUnstattable) == true
-  typed && no_leg_asked && resolved_needs_none && open_needs_it
-}
-
-// (5b) AND WHEN THE PARENT LEG IS DEMANDED AND NEVER ASKED, THE ANSWER IS INDETERMINATE, NOT ABSENT.
-// A consumer that skips the leg to save a host call loses the conclusion, which is the point.
-test fn an_unasked_parent_leg_when_demanded_is_never_read_as_absence() -> Bool {
-  match filesystem_entry_lookup(
-    path: "/srv/gunbc/staging/entry",
-    parent: "/srv/gunbc/staging",
-    link: PathAbsentOrUnstattable,
-    follow: PathAbsentOrUnstattable,
-    parent_search: Absent,
-  ) {
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => false
-    FilesystemEntryPresentByLookup { path: _ } => false
-    FilesystemEntryUnobservable { path: p, cause: c } => p == "/srv/gunbc/staging/entry" && string_contains(s: c, pattern: "search bit")
-  }
-}
-
-// The three arms spelled out, so a claim cannot pass on a wildcard that silently adopts a new arm.
-fn presence_is_absent(p: EntryPresence) -> Bool {
-  match p {
-    EntryPresent => false
+// The three arms of this module's presence answer, spelled rather than wildcarded: a claim that ends in
+// `_ => false` cannot tell an invented absence from a refused observation, and the difference between
+// those two is the whole subject.
+fn presence_is_absent(presence: EntryPresence) -> Bool {
+  match presence {
     EntryAbsent => true
+    EntryPresent => false
     EntryPresenceIndeterminate { cause: _ } => false
   }
 }
 
-fn presence_is_present(p: EntryPresence) -> Bool {
-  match p {
+fn presence_is_present(presence: EntryPresence) -> Bool {
+  match presence {
     EntryPresent => true
     EntryAbsent => false
     EntryPresenceIndeterminate { cause: _ } => false
   }
 }
 
-// (6) THE REAL-HOST CONTROL, THROUGH THE PRODUCTION FUNCTIONS. A directory the observing principal can
-// search but cannot list -- the srv1 shape, staged at 00710 -- makes the LISTING route refuse and the
-// LOOKUP route answer: absent while the name does not resolve, present once it does. Red before the
-// route change (the listing arm of the same module answered Indeterminate here and the fold died), green
-// now; the second half is what stops the route being satisfied by absence alone.
-test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by_listing() -> Bool {
+fn presence_is_indeterminate(presence: EntryPresence) -> Bool {
+  match presence {
+    EntryPresenceIndeterminate { cause: _ } => true
+    EntryPresent => false
+    EntryAbsent => false
+  }
+}
+
+fn lookup_is_absent(lookup: FilesystemEntryLookup) -> Bool {
+  match lookup {
+    FilesystemEntryAbsentByLookup { path: _, cause: _ } => true
+    FilesystemEntryPresentByLookup { path: _ } => false
+    FilesystemEntryUnobservable { path: _, cause: _ } => false
+  }
+}
+
+fn lookup_is_present(lookup: FilesystemEntryLookup) -> Bool {
+  match lookup {
+    FilesystemEntryPresentByLookup { path: _ } => true
+    FilesystemEntryAbsentByLookup { path: _, cause: _ } => false
+    FilesystemEntryUnobservable { path: _, cause: _ } => false
+  }
+}
+
+fn lookup_is_unobservable(lookup: FilesystemEntryLookup) -> Bool {
+  match lookup {
+    FilesystemEntryUnobservable { path: _, cause: _ } => true
+    FilesystemEntryPresentByLookup { path: _ } => false
+    FilesystemEntryAbsentByLookup { path: _, cause: _ } => false
+  }
+}
+
+fn lookup_cause(lookup: FilesystemEntryLookup) -> String {
+  match lookup {
+    FilesystemEntryUnobservable { path: _, cause: cause } => cause
+    FilesystemEntryAbsentByLookup { path: _, cause: cause } => cause
+    FilesystemEntryPresentByLookup { path: _ } => ""
+  }
+}
+
+// (1) THE ONLY ABSENCES THE READER ADMITS: the name resolved to nothing (ENOENT) under a searchable
+// parent, or a component above it is not a directory (ENOTDIR), so the name cannot be there. Both must
+// arrive attached to the path that was asked about.
+test fn absence_is_admitted_only_from_the_two_errno_texts() -> Bool {
+  let missing = filesystem_entry_lookup_reading_of_exit(
+    path: "/home/briansrls/.local/share/gunbc-srv2-deploy",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/home/briansrls/.local/share/gunbc-srv2-deploy': No such file or directory",
+  )
+  let under_a_file = filesystem_entry_lookup_reading_of_exit(
+    path: "/var/lib/gunbc/printer-starts/marker",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/var/lib/gunbc/printer-starts/marker': Not a directory",
+  )
+  let missing_named = match missing {
+    FilesystemEntryAbsentByLookup { path: p, cause: c } =>
+      p == "/home/briansrls/.local/share/gunbc-srv2-deploy" && string_contains(s: c, pattern: "No such file or directory")
+    FilesystemEntryPresentByLookup { path: _ } => false
+    FilesystemEntryUnobservable { path: _, cause: _ } => false
+  }
+  let under_a_file_named = match under_a_file {
+    FilesystemEntryAbsentByLookup { path: p, cause: c } =>
+      p == "/var/lib/gunbc/printer-starts/marker" && string_contains(s: c, pattern: "Not a directory")
+    FilesystemEntryPresentByLookup { path: _ } => false
+    FilesystemEntryUnobservable { path: _, cause: _ } => false
+  }
+  missing_named && under_a_file_named
+}
+
+// (2) THE REFUSALS, WHICH ARE NOT ABSENCES. This is the claim the `test`-based route could not pass: an
+// ACL, an LSM, a parent that will not search, a disk error, or a file system gone stale all reach the
+// utility as a failed observation, and every one of them must come back unobservable with the host's own
+// words as the cause. Read EACCES as absence and the fold releases a cell that is occupied.
+test fn a_refused_or_failed_observation_is_never_read_as_absence() -> Bool {
+  let eacces = filesystem_entry_lookup_reading_of_exit(
+    path: "/home/briansrls/.cache/private/marker",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/home/briansrls/.cache/private/marker': Permission denied",
+  )
+  let eio = filesystem_entry_lookup_reading_of_exit(
+    path: "/mnt/disk/marker",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/mnt/disk/marker': Input/output error",
+  )
+  let estale = filesystem_entry_lookup_reading_of_exit(
+    path: "/mnt/nfs/marker",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/mnt/nfs/marker': Stale file handle",
+  )
+  let silent = filesystem_entry_lookup_reading_of_exit(path: "/srv/marker", exit_code: 2, stdout: "", stderr: "")
+  let outside_the_roster = filesystem_entry_lookup_reading_of_exit(
+    path: "/srv/marker",
+    exit_code: 3,
+    stdout: "",
+    stderr: "ls: cannot access '/srv/marker': No such file or directory",
+  )
+  let refused_keeps_the_words = string_contains(s: lookup_cause(eacces), pattern: "Permission denied")
+    && string_contains(s: lookup_cause(eio), pattern: "Input/output error")
+    && string_contains(s: lookup_cause(estale), pattern: "Stale file handle")
+    && string_contains(s: lookup_cause(silent), pattern: "exit 2")
+  lookup_is_unobservable(eacces) && lookup_is_unobservable(eio) && lookup_is_unobservable(estale)
+    && lookup_is_unobservable(silent) && lookup_is_unobservable(outside_the_roster)
+    && refused_keeps_the_words
+}
+
+// (3) A SUCCESS ONLY COUNTS WHEN IT DESCRIBED THE NAME THAT WAS ASKED ABOUT. `ls -l -n -d` prints one
+// line for the entry, mode first and the name as a field (a symbolic link prints `name -> target` after
+// it, so the name is still a field). Anything else that came back through a successful exit is not an
+// answer about this name.
+test fn a_success_counts_only_when_it_names_the_queried_entry() -> Bool {
+  let ours = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/marker",
+    exit_code: 0,
+    stdout: "-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker",
+    stderr: "")
+  let link = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/link",
+    exit_code: 0,
+    stdout: "lrwxrwxrwx 1 1000 1000 34 Nov 16 23:59 /etc/gunbc-roadmap/link -> /opt/gunbc/releases/23523235",
+    stderr: "")
+  let someone_else = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/marker",
+    exit_code: 0,
+    stdout: "-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/other",
+    stderr: "")
+  let nothing = filesystem_entry_lookup_reading_of_exit(path: "/etc/gunbc-roadmap/marker", exit_code: 0, stdout: "\n", stderr: "")
+  let two_entries = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/marker",
+    exit_code: 0,
+    stdout: "-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker\n-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/second",
+    stderr: "")
+  lookup_is_present(ours) && lookup_is_present(link) && lookup_is_unobservable(someone_else)
+    && lookup_is_unobservable(nothing) && lookup_is_unobservable(two_entries)
+}
+
+// (4) THE STRERROR ROSTER, AS ITS OWN PREDICATE: the two texts, attached to the queried path, and
+// nothing else. A message about some OTHER path says nothing about this one -- including if someone
+// leaves a file named after the message.
+test fn only_the_queried_paths_errnos_certify_absence() -> Bool {
+  let enoent = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': No such file or directory", path: "/a/b")
+  let enotdir = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': Not a directory", path: "/a/b")
+  let eacces = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': Permission denied", path: "/a/b")
+  let other_path = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/c': No such file or directory", path: "/a/b")
+  let lookalike = filesystem_entry_lookup_absent_strerror(text: "total 0", path: "/a/b")
+  enoent && enotdir && !eacces && !other_path && !lookalike
+}
+
+// (5) THE SHAPE THE FOLD DIED ON, STAGED AND OBSERVED ON A REAL HOST. A directory the observing
+// principal can traverse and write into but CANNOT READ. The listing route is asserted REFUSED, with the
+// host's own permission-denied reason, on the very directory the lookup then answers for -- before the
+// question is asked, so this claim cannot pass on a directory that was listable after all. Then: the old
+// rule (ask the directory to enumerate) gives up, and the lookup answers Absent for a name that is not
+// there and Present once it is.
+test fn a_searchable_not_listable_directory_answers_by_lookup_and_refuses_by_listing() -> Bool {
   let made = shell.Mktemp.Dir()
   if made.success == false {
     false
@@ -189,30 +236,17 @@ test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by
         if s.exit_code != 0 {
           false
         } else {
-          let chmodded = shell.Chmod.SearchableNotListableDirectory(path: parent as FilePath)
-          if chmodded.success == false {
+          let mode = shell.Chmod.SearchableNotListableByEveryPrincipal(path: parent as FilePath)
+          if mode.success == false {
             false
           } else {
-            // The enumeration the old route demanded, asked of the same directory by the same principal.
+            // THE CAUSE, ASSERTED FIRST: listing this directory must be refused for the reason the fold
+            // stopped on -- not because of a router policy, not because the path was wrong.
             let listed = Filesystem.List(path: parent)
-            let listing_refused = match filesystem_listing_observation(
-              directory: parent,
-              success: listed.success,
-              entries: listed.entries,
-              error: listed.error,
-            ) {
-              FilesystemDirectorySubjectRefused { directory: _, cause: _ } => true
-              FilesystemDirectoryListingRefused { directory: _, error: _ } => false
-              FilesystemDirectoryListed(_) => false
-            }
-            // The one-name question, through the production host arm.
-            let absent = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
-            let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
-            let present = host_entry_presence_in_parent(parent: parent, name: "gunbc-entry")
-            // THE BEFORE, EXECUTED: the rule the route used until this change -- ask the directory to
-            // enumerate -- on the SAME directory, the SAME principal, the SAME name. It gives up, in the
-            // model's own words ("could not be listed, so the absence of ... is not established"), which
-            // is verbatim what the srv1 fold stopped on. Red before, green after, in one claim.
+            let listing_refused_for_permission = listed.success == false
+              && listed.error_kind == "permission_denied"
+              && string_contains(s: listed.error, pattern: "Permission denied")
+            // THE OLD RULE, ON THE SAME DIRECTORY AND NAME: it can only give up.
             let old_rule = listed_entry_presence(directory: parent, name: "gunbc-no-such-entry")
             let old_rule_gives_up = match old_rule {
               FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => true
@@ -220,23 +254,84 @@ test fn a_searchable_not_listable_directory_is_answered_by_lookup_and_refused_by
               FilesystemEntryListed { directory: _, name: _ } => false
               FilesystemEntryAbsent(_) => false
             }
-            let wrote = created.success
-            let is_absent = presence_is_absent(absent)
-            let is_present = presence_is_present(present)
-            listing_refused && old_rule_gives_up && wrote && is_absent && is_present
+            // THE LOOKUP, THROUGH THE PRODUCTION HOST ARM.
+            let absent = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
+            let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
+            let present = host_entry_presence_in_parent(parent: parent, name: "gunbc-entry")
+            listing_refused_for_permission && old_rule_gives_up && created.success
+              && presence_is_absent(absent) && presence_is_present(present)
           }
         }
     }
   }
 }
 
-// (7) A REAL PRESENT FILE AND A REAL ABSENT NAME, through the same production host arm, with no staging:
-// the route answers both, on a directory the observing principal can read. A route that only ever
-// returned Indeterminate would fail this, and so would one that invented absence.
+// (6) A DIRECTORY NO ONE MAY SEARCH: a name inside it can be neither found nor said to be missing. The
+// route must answer with the host's refusal, and a claim that let this read Absent would be the invented
+// absence the whole design exists to refuse -- Absent releases a cell, and this is a directory whose
+// contents are simply unknown.
+test fn an_unsearchable_directory_is_never_read_as_absent() -> Bool {
+  let made = shell.Mktemp.Dir()
+  if made.success == false {
+    false
+  } else {
+    let root = made.path as String
+    let parent = join([root, "/locked"], "")
+    let staged = run_shell_command_observe_outcome(command: mkdir_parents_command(path: parent), transport: LocalExec)
+    match staged {
+      ProcessNotSpawned { program: _, cause: _ } => false
+      ProcessRan { observation: s } =>
+        if s.exit_code != 0 {
+          false
+        } else {
+          let mode = shell.Chmod.NotSearchableDirectory(path: parent as FilePath)
+          if mode.success == false {
+            false
+          } else {
+            let answer = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
+            let refusal = match answer {
+              EntryPresenceIndeterminate { cause: cause } => string_contains(s: cause, pattern: "Permission denied")
+              EntryPresent => false
+              EntryAbsent => false
+            }
+            presence_is_indeterminate(answer) && refusal
+          }
+        }
+    }
+  }
+}
+
+// (7) A SYMBOLIC LINK IS AN ENTRY OF THE DIRECTORY THAT HOLDS IT, even one that points at nothing: the
+// lookup describes the name, never its target. A route that resolved the target would report this
+// directory's own entry as an absence.
+test fn a_dangling_symbolic_link_is_an_entry_and_not_an_absence() -> Bool {
+  let made = shell.Mktemp.Dir()
+  if made.success == false {
+    false
+  } else {
+    let root = made.path as String
+    let parent = join([root, "/links"], "")
+    let staged = run_shell_command_observe_outcome(command: mkdir_parents_command(path: parent), transport: LocalExec)
+    match staged {
+      ProcessNotSpawned { program: _, cause: _ } => false
+      ProcessRan { observation: s } =>
+        if s.exit_code != 0 {
+          false
+        } else {
+          let mode = shell.Chmod.SearchableNotListableByEveryPrincipal(path: parent as FilePath)
+          let link = Filesystem.LinkCreateNew(source: "/nonexistent-target-4c0f", path: join([parent, "/dangling"], ""))
+          let answer = host_entry_presence_in_parent(parent: parent, name: "dangling")
+          mode.success && link.success && presence_is_present(answer)
+        }
+    }
+  }
+}
+
+// (8) THE PRODUCTION HOST ARM, WITH NO STAGING AT ALL: a real present file and a real absent name, on a
+// directory every principal can read. A route that only ever returned Indeterminate would fail this, and
+// so would one that invented absence.
 test fn the_production_host_arm_answers_for_real_paths() -> Bool {
   let there = host_entry_presence_in_parent(parent: "/usr/bin", name: "test")
   let not_there = host_entry_presence_in_parent(parent: "/usr/bin", name: "gunbc-no-such-binary-4c0f")
-  let is_there = presence_is_present(there)
-  let is_not = presence_is_absent(not_there)
-  is_there && is_not
+  presence_is_present(there) && presence_is_absent(not_there)
 }

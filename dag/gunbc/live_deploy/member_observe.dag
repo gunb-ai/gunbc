@@ -3,7 +3,7 @@ module gunbc.live_deploy.member_observe
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
 import std.measure { Second }
-import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
@@ -18,11 +18,10 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
   FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup, FilesystemEntryUnobservable,
-  filesystem_entry_lookup, filesystem_entry_lookup_needs_parent_search,
+  filesystem_entry_lookup_reading_of_exit,
 }
-import extdeps.posix.test_utility {
-  PathExistenceReading, PathExistenceUnreadable, path_existence_reading_of_exit, test_exists_command, test_symbolic_link_command, test_executable_command,
-}
+import extdeps.tools.ls { ls_long_numeric_entries_command }
+import std.env_binding { EnvSet }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -33,7 +32,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ListDirectoryEntries, ReadDirectoryIdentity, executor_privileged_operation_elevated_command, executor_privileged_operation_elevated_argv }
 import gunbc.command_runner { run_shell_command_observe_outcome }
-import extdeps.exec.command { LocalExec, ArgvCommand, argv_words }
+import extdeps.exec.command { LocalExec, ArgvCommand, argv_words, env_prefixed_command }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -241,101 +240,64 @@ fn unit_document_leg_argv(path: String, privilege: ListingPrivilege) -> List<Str
   elevated_leg_argv(privilege: privilege, argv: ["cat", "--", path])
 }
 
-// THE LOOKUP LEGS OF AN ARM. `test -L` and `test -e` on the entry, `test -x` on its parent -- the
-// traversal right, never the read right. Each rides the arm's own transport and the arm's own
-// elevation: the peer arm keeps the wrapper the listing arm had, and the host arm stays unprivileged,
-// because what presence needs from it is the search bit the observing principal already holds, not a
-// read it was deliberately denied. Statuses are read by ONE reader --
-// extdeps.posix.test_utility's path_existence_reading_of_exit -- on both arms.
-fn entry_link_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
-  elevated_leg_argv(privilege: privilege, argv: argv_words(command: test_symbolic_link_command(path: path)))
+// THE ONE LOOKUP LEG AN ARM RIDES: `ls -l -n -d -- <path>` under `LC_ALL=C`. The words are the
+// utility's own (extdeps.tools.ls, whose comment commits to this shape: one entry's metadata with no
+// format word, because the `%` a `stat -c` needs is refused at the fleet SSH edge), the binding is the
+// modelled one so the failure text is the errno the reader admits, and the leg rides the arm's own
+// transport and the arm's own elevation -- the same wrapper the listing arm has, so a lookup of a
+// root-owned directory answers for an elevated arm exactly as its listing does. ONE leg, because ONE
+// question is asked. The `test -L` / `test -e` / `test -x` trio this replaced asked three questions and
+// still could not answer the one: `test`'s exit 1 does not distinguish an entry that is absent from one
+// that could not be stat'ed, and a probe of the parent's search bit cannot recover what the entry's own
+// observation threw away -- it only adds a window in which the parent's mode can change between legs.
+
+fn entry_lookup_command(path: String) -> ArgvCommand {
+  env_prefixed_command(bindings: [EnvSet { name: "LC_ALL", value: "C" }], command: ls_long_numeric_entries_command(paths: [path]))
 }
 
-fn entry_exists_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
-  elevated_leg_argv(privilege: privilege, argv: argv_words(command: test_exists_command(path: path)))
+fn entry_lookup_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: argv_words(command: entry_lookup_command(path: path)))
 }
 
-fn parent_search_leg_argv(parent: String, privilege: ListingPrivilege) -> List<String> {
-  elevated_leg_argv(privilege: privilege, argv: argv_words(command: test_executable_command(path: parent)))
+// ONE LEG ON THE HOST ARM: run locally, with the spawn kept as a value -- a utility that could not be
+// spawned is an unreadable answer, not a status, and certainly not a false.
+fn host_entry_lookup_reading(path: String) -> FilesystemEntryLookup {
+  match run_shell_command_observe_outcome(command: entry_lookup_command(path: path), transport: LocalExec) {
+    ProcessRan { observation: observation } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: observation.exit_code, stdout: observation.stdout, stderr: observation.stderr)
+    ProcessNotSpawned { program: program, cause: cause } => FilesystemEntryUnobservable { path: path, cause: join([program, " did not spawn: ", cause], "") }
+  }
 }
 
 // ONE LEG ON THE PEER ARM, as every other peer leg goes: through the typed argv transport. A transport
 // that could not carry the leg is an unreadable answer, never a false -- no process ran, and an exit
 // status for it would be a fabricated observation (gunbc.design_argument::fail_closed).
-fn peer_entry_lookup_reading(transport: HostEffectTransport, argv: List<String>, leg: String, path: String) -> PathExistenceReading {
-  match run_typed_argv_transport(argv: argv, transport: transport) {
-    TypedArgvExecRefused { reason: reason } => PathExistenceUnreadable { reason: join([leg, ": ", reason], "") as NonEmptyStr }
-    o => path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
+fn peer_entry_lookup_reading(transport: HostEffectTransport, path: String, privilege: ListingPrivilege) -> FilesystemEntryLookup {
+  match run_typed_argv_transport(argv: entry_lookup_leg_argv(path: path, privilege: privilege), transport: transport) {
+    TypedArgvExecRefused { reason: reason } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", reason], "") }
+    TypedArgvExecConverged { result: result } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr)
   }
 }
 
-// ONE LEG ON THE HOST ARM: the same invocation, run locally, with the spawn kept as a value -- a
-// missing `test` spawned nothing and is unreadable, not absent.
-fn host_entry_lookup_reading(command: ArgvCommand, leg: String, path: String) -> PathExistenceReading {
-  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
-    ProcessNotSpawned { program: program, cause: cause } =>
-      PathExistenceUnreadable { reason: join([leg, " (", program as String, "): ", cause as String], "") as NonEmptyStr }
-    ProcessRan { observation: o } => path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
-  }
-}
-
-// PRESENCE OF ONE NAMED ENTRY inside a directory. THE DECISION IS NOT HERE: it is
-// extdeps.filesystem.filesystem_io's filesystem_entry_lookup, the one owner of the question, reading the
-// three statuses built below. This module supplies legs, which is all it has ever done; what changed is
-// the ROUTE the legs carry. The listing route asked a directory published SEARCHABLE-NOT-LISTABLE
-// (drwx--x---) to enumerate itself, and a principal granted `--x` on it can answer a lookup of one named
-// entry and cannot answer that enumeration -- so the fold refused to observe a host whose ancestors were
-// all traversable. Enumeration stays where ENUMERATION is the question (gunbc.runner
-// .runner_host_file_converge, gunbc.fleet.host_credential_custody_converge, and extdeps.filesystem's own
-// census folds), and a parent that is genuinely not searchable still answers Indeterminate: this route
-// answers more, never less.
-//
-// The parent's search leg is a real host call, so it is asked only when the owner's own predicate says
-// the entry readings left the question open -- laziness without a second reader of the readings.
 fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
-  match arm {
-    OnTheHostItself => host_entry_presence_in_parent(parent: parent, name: name)
-    OverTransport { transport: transport, listing: listing } =>
-      peer_entry_presence_in_parent(transport: transport, privilege: listing, parent: parent, name: name)
+  let entry = join([parent, "/", name], "")
+  match observation_arm(transport: arm.transport) {
+    LocalHost => host_entry_presence_in_parent(parent: parent, name: name)
+    RemotePeer => peer_entry_presence_in_parent(transport: arm.transport, privilege: arm.privilege, parent: parent, name: name)
   }
 }
 
+// THE HOST ARM ASKS THE HOST. Unprivileged, on purpose: what presence needs from the observing
+// principal is the search bit it already holds on the parent, never a read it was deliberately denied,
+// and asking for more here would be the widening this whole route exists to avoid.
 fn host_entry_presence_in_parent(parent: String, name: String) -> EntryPresence {
-  let entry = join([parent, "/", name], "")
-  let link = host_entry_lookup_reading(command: test_symbolic_link_command(path: entry), leg: join(["lookup -L ", entry], ""), path: entry)
-  let follow = host_entry_lookup_reading(command: test_exists_command(path: entry), leg: join(["lookup -e ", entry], ""), path: entry)
-  let search = if filesystem_entry_lookup_needs_parent_search(link: link, follow: follow) {
-    optional_present(host_entry_lookup_reading(command: test_executable_command(path: parent), leg: join(["lookup -x ", parent], ""), path: parent))
-  } else {
-    optional_absent()
-  }
-  entry_lookup_to_presence(
-    lookup: filesystem_entry_lookup(path: entry, parent: parent, link: link, follow: follow, parent_search: search),
-  )
+  entry_lookup_to_presence(lookup: host_entry_lookup_reading(path: join([parent, "/", name], "")))
 }
 
+// THE PEER ARM ASKS THE PEER, through the typed argv transport every other peer leg rides and under the
+// same elevation, so both arms answer the same question about the same name by the same route and any
+// asymmetry between them is a real difference on the hosts rather than an artifact of the model.
 fn peer_entry_presence_in_parent(transport: HostEffectTransport, privilege: ListingPrivilege, parent: String, name: String) -> EntryPresence {
-  let entry = join([parent, "/", name], "")
-  let link = peer_entry_lookup_reading(
-    transport: transport,
-    argv: entry_link_leg_argv(path: entry, privilege: privilege),
-    leg: join(["lookup -L ", entry], ""),
-    path: entry,
-  )
-  let follow = peer_entry_lookup_reading(
-    transport: transport,
-    argv: entry_exists_leg_argv(path: entry, privilege: privilege),
-    leg: join(["lookup -e ", entry], ""),
-    path: entry,
-  )
-  let search = if filesystem_entry_lookup_needs_parent_search(link: link, follow: follow) {
-    optional_present(peer_entry_lookup_reading(transport: transport, argv: parent_search_leg_argv(parent: parent, privilege: privilege), leg: join(["lookup -x ", parent], ""), path: parent))
-  } else {
-    optional_absent()
-  }
-  entry_lookup_to_presence(
-    lookup: filesystem_entry_lookup(path: entry, parent: parent, link: link, follow: follow, parent_search: search),
-  )
+  entry_lookup_to_presence(lookup: peer_entry_lookup_reading(transport: transport, path: join([parent, "/", name], ""), privilege: privilege))
 }
 
 // The owner's answer in this module's vocabulary: one arm per carrier, and the cause of an unobservable
@@ -343,7 +305,7 @@ fn peer_entry_presence_in_parent(transport: HostEffectTransport, privilege: List
 fn entry_lookup_to_presence(lookup: FilesystemEntryLookup) -> EntryPresence {
   match lookup {
     FilesystemEntryPresentByLookup { path: _ } => EntryPresent
-    FilesystemEntryAbsentByLookup { path: _, parent: _ } => EntryAbsent
+    FilesystemEntryAbsentByLookup { path: _, cause: _ } => EntryAbsent
     FilesystemEntryUnobservable { path: _, cause: cause } => EntryPresenceIndeterminate { cause: cause }
   }
 }
