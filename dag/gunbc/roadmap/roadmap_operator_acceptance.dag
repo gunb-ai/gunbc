@@ -70,8 +70,8 @@ import gunbc.roadmap.roadmap_event_log {
   RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members,
   roadmap_acceptance_migration_identity, roadmap_acceptance_migration_event_node,
   roadmap_acceptance_migration_problems, roadmap_migration_retirement_ids,
+  roadmap_cutover_string_lists_agree,
 }
-import gunbc.roadmap.roadmap_cutover_cli { roadmap_cutover_string_lists_agree }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {

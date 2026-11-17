@@ -41,6 +41,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
   roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
   roadmap_migration_acceptance_identities, roadmap_acceptance_migration_identity,
+  roadmap_cutover_string_lists_agree,
 }
 import gunbc.roadmap.roadmap_operator_acceptance {
   RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
@@ -55,7 +56,7 @@ import gunbc.roadmap.roadmap_cutover_cli {
   roadmap_cutover_precheck_decide, roadmap_cutover_precheck_document,
   RoadmapCutoverMigrationGate, GateAdmitted, GateRefused,
   roadmap_cutover_migration_gate_decide_retirement, roadmap_cutover_migration_gate_decide_acceptance,
-  roadmap_cutover_string_lists_agree, roadmap_cutover_roster_lines_are_a_roster,
+  roadmap_cutover_roster_lines_are_a_roster,
   RoadmapCutoverReportVerdict, ReportVerdictAdmitted, ReportVerdictRefused, ReportVerdictUnreadable,
   roadmap_cutover_verdict_token, roadmap_cutover_precheck_verdict_line,
   roadmap_cutover_precheck_report_verdict_parse,
