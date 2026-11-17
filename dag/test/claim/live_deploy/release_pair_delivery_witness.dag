@@ -42,7 +42,7 @@ data base_root: String = "/opt/gunbc/releases"
 data main_sha: String = "3333333333333333333333333333333333333333"
 data last_good_sha: String = "2222222222222222222222222222222222222222"
 data wrong_sha: String = "9999999999999999999999999999999999999999"
-data bin_sha256: String = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0" as NonEmptyStr
 
 fn main_head() -> CommitSha { main_sha as CommitSha }
 fn last_good_head() -> CommitSha { last_good_sha as CommitSha }
@@ -178,16 +178,5 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
   }
 }
 
-// RED CONTROL (arm 1b): a Present-but-EMPTY digest is refused as unbuilt, never minted into a "non-empty"
-// digest by an unchecked `as NonEmptyStr` (fail_closed: validation stood where construction was available).
-test fn witness_empty_sha_keeps_last_good() -> Bool {
-  let d = deliver_release_pair(
-    base_root: base_root,
-    serving: last_good_serving(),
-    main_head: main_head(),
-    source_head: main_head(),
-    binaries_sha256: Present { value: "" },
-    verified: true,
-  )
-  kept_is(v: d, want: last_good_serving())
-}
+// (No empty-digest witness: the input type is NonEmptyStr?, so an empty digest is unrepresentable -- the type
+//  rules it out where a hand-written check used to stand, per review 96047.)

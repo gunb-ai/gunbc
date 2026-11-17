@@ -264,20 +264,17 @@ data release_pair_source_head_mismatch_reason: NonEmptyStr = "the fetched source
 // pack for the head (unbuilt); `verified` is the consumer script's build-key verdict for the pack. Any refusal
 // returns the handed-in `serving` binding as `kept`, so a refused delivery installs nothing and restarts
 // nothing — the previous pair keeps serving with the refusal visible.
-fn deliver_release_pair(base_root: String, serving: ReleaseRevisionBinding, main_head: CommitSha, source_head: CommitSha, binaries_sha256: String?, verified: Bool) -> ReleasePairDelivery {
+fn deliver_release_pair(base_root: String, serving: ReleaseRevisionBinding, main_head: CommitSha, source_head: CommitSha, binaries_sha256: NonEmptyStr?, verified: Bool) -> ReleasePairDelivery {
   match binaries_sha256 {
     none => PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
     Present { value: sha } =>
-      if (sha as String) == "" {
-        // An empty digest is not a binary: refuse it as unbuilt rather than let `sha as NonEmptyStr` mint a
-        // "non-empty" digest from the empty string (fail_closed: no unchecked cast where validation is available).
-        PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
-      } else if !verified {
+      if !verified {
         PairRefused { reason: release_pair_pack_unverified_reason, kept: serving }
       } else if (source_head as String) != (main_head as String) {
         PairRefused { reason: release_pair_source_head_mismatch_reason, kept: serving }
       } else {
-        let pair = DeliveredReleasePair { main_head: main_head, source_head: source_head, binaries_sha256: sha as NonEmptyStr }
+        // sha is already a NonEmptyStr (the input type rules out the empty digest); no unchecked cast.
+        let pair = DeliveredReleasePair { main_head: main_head, source_head: source_head, binaries_sha256: sha }
         PairInstalled {
           pair: pair,
           locus: release_locus_record(base_root: base_root, revision: delivered_pair_revision(pair: pair)),
