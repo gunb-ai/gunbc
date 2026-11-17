@@ -1365,15 +1365,19 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
           left: bash_build_and_then(left: answer_present_n, right: total_n_assign),
           right: page_type_fail,
         ),
+        // AND-THEN, not OR-ELSE: the check/appends run WHEN the answer IS
+        // THERE. An OR-ELSE runs its right arm when the left TEST fails, so
+        // 'answer present || append' appended only when the answer was
+        // missing -- the success path contributed nothing (matrix, fam250).
         bash_build_or_else(
-          left: answer_present_n,
-          right: bash_build_or_else(left: total_matches, right: page_type_fail),
+          left: bash_build_and_then(left: answer_present_n, right: total_matches),
+          right: page_type_fail,
         ),
         // A page whose own admission jq refuses is a failed REQUIRED page: it
         // must not silently contribute nothing (F4d).
         bash_build_or_else(
-          left: answer_present_n,
-          right: bash_build_or_else(left: append_plan, right: page_type_fail),
+          left: bash_build_and_then(left: answer_present_n, right: append_plan),
+          right: page_type_fail,
         ),
       ]),
     ),
