@@ -8,11 +8,13 @@ import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerR
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, ipmitool_mc_info_firmware_text }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, IpmitoolDefaultVerbosity, IpmitoolVerboseOnce }
 import std.measure { second_count }
+import std.nat { Nat }
 import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmitool_lanplus_timing {
-  IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_seconds,
-  ipmitool_mc_info_slowest_answered_seconds, ipmitool_lanplus_message_survives_drops,
+  IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_wait,
+  ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_message_survives_drops,
 }
+import std.measure { Second, second, measure_add, measure_le }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline }
 import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdReportedSent, McResetColdExitedNonzero, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_of }
@@ -317,8 +319,10 @@ fn attempts_of_row(bound: IpmiRetryBound) -> IpmitoolLanplusAttempts? {
   ipmitool_lanplus_attempts_of_argv(argv: ["-R", ipmi_retry_bound_retries_word(bound: bound) as String, "-N", ipmi_retry_bound_timeout_word(bound: bound) as String])
 }
 
+fn wait_is(w: Second, count: Nat) -> Bool { second_count(s: w) == count }
+
 test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retries_one_dropped_datagram() -> Bool {
-  let deadline = second_count(s: mtcollins1_boot_ipmi_read_deadline)
+  let deadline = mtcollins1_boot_ipmi_read_deadline
   let ipmitool_default = ipmitool_lanplus_attempts_of_argv(argv: [])
   match attempts_of_row(bound: bmc_ipmi_watch_poll_retry_bound()) {
     Absent => false
@@ -327,22 +331,23 @@ test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retr
       Present { value: policy } => match ipmitool_default {
         Absent => false
         Present { value: four } =>
-          deadline == 20
-            && watch.attempts == 2 && watch.response_timeout_seconds == 1
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: false) == 3
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: true) == 6
-            && deadline - ipmitool_lanplus_unanswered_message_seconds(attempts: watch, refused: true) >= 14
-            && ipmitool_mc_info_slowest_answered_seconds(attempts: watch) == 30
-            && ipmitool_mc_info_slowest_answered_seconds(attempts: watch) >= deadline
+          wait_is(w: deadline, count: 20)
+            && watch.attempts == 2 && wait_is(w: watch.response_timeout, count: 1)
+            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: false), count: 3)
+            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: true), count: 6)
+            // 14 s of margin inside the deadline, with refusals.
+            && measure_le(a: measure_add(a: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: true), b: second(count: 14)), b: deadline)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: watch), count: 30)
+            && measure_le(a: deadline, b: ipmitool_mc_info_slowest_answered_wait(attempts: watch))
             && ipmitool_lanplus_message_survives_drops(attempts: watch, dropped: 1)
             && four.attempts == 4
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: false) == 10
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: true) == 20
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: four, refused: true) >= deadline
-            && ipmitool_mc_info_slowest_answered_seconds(attempts: four) == 72
+            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: false), count: 10)
+            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: true), count: 20)
+            && measure_le(a: deadline, b: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: true))
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: four), count: 72)
             && policy.attempts == 1
-            && ipmitool_lanplus_unanswered_message_seconds(attempts: policy, refused: true) == 2
-            && ipmitool_mc_info_slowest_answered_seconds(attempts: policy) == 18
+            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: policy, refused: true), count: 2)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: policy), count: 18)
             && !ipmitool_lanplus_message_survives_drops(attempts: policy, dropped: 1)
             // "-R 0" is not zero retries: ipmitool falls back to its default of four attempts.
             && match ipmitool_lanplus_attempts_of_argv(argv: ["-R", "0", "-N", "1"]) { Present { value: z } => z.attempts == 4  Absent => false }

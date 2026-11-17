@@ -18,7 +18,8 @@ import v2.std.witness_evaluation {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after, bmc_mc_info_answer, bmc_call_lanplus_clock, bmc_controller_silent, bmc_controller_unanswered, bmc_call_verbose }
-import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_seconds, ipmitool_lanplus_message_survives_drops }
+import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_message_survives_drops }
+import std.measure { measure_le }
 import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
@@ -2247,7 +2248,7 @@ fn matrix_cold_reset_mc_info_slow_in_window(world: BmcWorld, call: OperationCall
     match bmc_call_lanplus_clock(call: call) {
       Absent => BmcReplyFault { reason: "an mc info poll whose argv carries no readable deadline or attempt count" as NonEmptyStr }
       Present { value: clock } =>
-        if ipmitool_mc_info_slowest_answered_seconds(attempts: clock.attempts) < clock.deadline_seconds { bmc_mc_info_answer(world: world) } else { BmcRefused { exit_code: 124, stderr: "", world: world } }
+        if !measure_le(a: clock.deadline, b: ipmitool_mc_info_slowest_answered_wait(attempts: clock.attempts)) { bmc_mc_info_answer(world: world) } else { BmcRefused { exit_code: 124, stderr: "", world: world } }
     }
   } else {
     bmc_mc_info_reply(world: world, call: call)

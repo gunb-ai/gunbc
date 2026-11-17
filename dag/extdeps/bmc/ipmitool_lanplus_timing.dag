@@ -1,6 +1,9 @@
 module extdeps.bmc.ipmitool_lanplus_timing
 
 import std.types { Bool, Int, List, String }
+import std.nat { Nat }
+import std.measure { Second, second, second_count, measure_add }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent, Optional }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -52,18 +55,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// lanplus.h IPMI_LAN_RETRY and IPMI_LAN_TIMEOUT: the values an unset (or zero) -R / -N falls back to.
-data ipmitool_lan_retry_default: Int = 4
-data ipmitool_lan_timeout_default_seconds: Int = 1
+// lanplus.h IPMI_LAN_RETRY and IPMI_LAN_TIMEOUT: the attempt count and per-attempt timeout an unset (or zero) -R / -N
+// falls back to.
+data ipmitool_lan_retry_default: Nat = 4
+data ipmitool_lan_timeout_default: Second = second(count: 1)
 
 // The session-open stages sent once per outer try: open session, RAKP 1, RAKP 3.
-data ipmitool_lanplus_open_stages: Int = 3
+data ipmitool_lanplus_open_stages: Nat = 3
 
 // The R-attempt messages of one `mc info` with -C given, at the least (an HPM.2 board adds one).
-data ipmitool_mc_info_lanplus_messages: Int = 6
+data ipmitool_mc_info_lanplus_messages: Nat = 6
 
-// THE ATTEMPT COUNT AND THE PER-ATTEMPT TIMEOUT ONE INVOCATION RUNS WITH, after ipmitool's own defaulting.
-type IpmitoolLanplusAttempts { attempts: Int, response_timeout_seconds: Int }
+// THE ATTEMPT COUNT AND THE PER-ATTEMPT TIMEOUT ONE INVOCATION RUNS WITH, after ipmitool's own defaulting. The
+// timeout is a duration (std.measure Second); the attempt count is a count.
+type IpmitoolLanplusAttempts { attempts: Nat, response_timeout: Second }
 
 // The word that follows `flag` in an argv, the way getopt reads a separated option argument.
 fn ipmitool_argv_word_after(argv: List<String>, flag: String) -> String? {
@@ -72,13 +77,17 @@ fn ipmitool_argv_word_after(argv: List<String>, flag: String) -> String? {
 }
 
 // A -R / -N word as ipmi_main.c applies it: absent or zero falls back to the default; a word that is not a whole
-// number is refused by ipmitool before any session, so it reads as nothing here.
-fn ipmitool_lanplus_option_value(argv: List<String>, flag: String, fallback: Int) -> Int? {
+// number, or is negative, is refused by ipmitool before any session, so it reads as nothing here. This is the one
+// place the argv's digits are read; everything past it is a count or a Second.
+fn ipmitool_lanplus_option_value(argv: List<String>, flag: String, fallback: Nat) -> Nat? {
   match ipmitool_argv_word_after(argv: argv, flag: flag) {
     Absent => Present { value: fallback }
     Present { value: w } => match parse_int(s: w) {
       Absent => none
-      Present { value: n } => if n < 0 { none } else if n == 0 { Present { value: fallback } } else { Present { value: n } }
+      Present { value: n } => match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: v } => if v == 0 { Present { value: fallback } } else { Present { value: v } }
+      }
     }
   }
 }
@@ -87,34 +96,38 @@ fn ipmitool_lanplus_option_value(argv: List<String>, flag: String, fallback: Int
 fn ipmitool_lanplus_attempts_of_argv(argv: List<String>) -> IpmitoolLanplusAttempts? {
   match ipmitool_lanplus_option_value(argv: argv, flag: "-R", fallback: ipmitool_lan_retry_default) {
     Absent => none
-    Present { value: r } => match ipmitool_lanplus_option_value(argv: argv, flag: "-N", fallback: ipmitool_lan_timeout_default_seconds) {
+    Present { value: r } => match ipmitool_lanplus_option_value(argv: argv, flag: "-N", fallback: second_count(s: ipmitool_lan_timeout_default)) {
       Absent => none
-      Present { value: n } => Present { value: IpmitoolLanplusAttempts { attempts: r, response_timeout_seconds: n } }
+      Present { value: n } => Present { value: IpmitoolLanplusAttempts { attempts: r, response_timeout: second(count: n) } }
     }
   }
 }
 
-// ONE MESSAGE NEVER ANSWERED: R·N + R(R−1)/2 seconds, doubled when each attempt is refused.
-fn ipmitool_lanplus_unanswered_message_seconds(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Int {
+// ONE MESSAGE NEVER ANSWERED: R·N + R(R−1)/2, doubled when each attempt is refused. The waits are N, N+1, ...,
+// N+R−1 seconds (session->timeout grows by one second per retransmit), so the sum is taken over the attempts,
+// in Seconds; the attempt count is at least one (ipmitool_lanplus_option_value never yields zero).
+fn ipmitool_lanplus_unanswered_message_wait(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Second {
   let r = attempts.attempts
-  let once = r * attempts.response_timeout_seconds + (r * (r - 1)) / 2
-  if refused { 2 * once } else { once }
+  let once = second(count: r * second_count(s: attempts.response_timeout) + (r * (r - 1)) / 2)
+  if refused { measure_add(a: once, b: once) } else { once }
 }
 
 // THE SESSION OPEN AT ITS WORST: every stage of every outer try waits the full session timeout.
-fn ipmitool_lanplus_open_worst_seconds(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Int {
-  let once = ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * attempts.response_timeout_seconds
-  if refused { 2 * once } else { once }
+fn ipmitool_lanplus_open_worst_wait(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Second {
+  let once = second(count: ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * second_count(s: attempts.response_timeout))
+  if refused { measure_add(a: once, b: once) } else { once }
 }
 
 // A CONTROLLER THAT ANSWERS EVERY MESSAGE ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, and the session open at its
 // worst: the longest an `mc info` that does succeed can take.
-fn ipmitool_mc_info_slowest_answered_seconds(attempts: IpmitoolLanplusAttempts) -> Int {
-  ipmitool_mc_info_lanplus_messages * ipmitool_lanplus_unanswered_message_seconds(attempts: attempts, refused: false)
-    + ipmitool_lanplus_open_worst_seconds(attempts: attempts, refused: false)
+fn ipmitool_mc_info_slowest_answered_wait(attempts: IpmitoolLanplusAttempts) -> Second {
+  measure_add(
+    a: second(count: ipmitool_mc_info_lanplus_messages * second_count(s: ipmitool_lanplus_unanswered_message_wait(attempts: attempts, refused: false))),
+    b: ipmitool_lanplus_open_worst_wait(attempts: attempts, refused: false),
+  )
 }
 
 // A MESSAGE WHOSE FIRST `dropped` DATAGRAMS ARE LOST is still answered iff an attempt is left after them.
-fn ipmitool_lanplus_message_survives_drops(attempts: IpmitoolLanplusAttempts, dropped: Int) -> Bool {
+fn ipmitool_lanplus_message_survives_drops(attempts: IpmitoolLanplusAttempts, dropped: Nat) -> Bool {
   dropped < attempts.attempts
 }

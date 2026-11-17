@@ -40,7 +40,9 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
-import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_seconds }
+import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_wait }
+import std.measure { measure_le }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, ipmitool_lanplus_get_auth_caps_no_reply_line, ipmitool_lanplus_get_channel_auth_caps_issuing_line, ipmitool_verbosity_argv, IpmitoolVerboseOnce }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
@@ -112,7 +114,7 @@ fn bmc_controller_unanswered(world: BmcWorld, verbose: Bool) -> BmcReply {
 // and the attempts ipmitool runs with after its own defaulting (extdeps.bmc.ipmitool_lanplus_timing). A dry
 // controller that does not answer uses it to answer in the time the client would have spent: a silent controller's
 // stage line comes back only if the client finished waiting before the deadline killed it.
-type BmcLanplusCallClock { attempts: IpmitoolLanplusAttempts, deadline_seconds: Int }
+type BmcLanplusCallClock { attempts: IpmitoolLanplusAttempts, deadline: Second }
 
 fn bmc_call_argv(call: OperationCall) -> List<String>? {
   match shell_materialize_operation_argv(call.invocation.at.path, call.invocation.at.service, call.invocation.at.operation, call.invocation.bindings) {
@@ -122,12 +124,19 @@ fn bmc_call_argv(call: OperationCall) -> List<String>? {
 }
 
 // `timeout --kill-after <k> <duration> ...`: the duration is the fourth word, in seconds with an optional "s" suffix
-// (extdeps.tools.gnu_coreutils coreutils_duration_operand renders "<n>s").
-fn bmc_argv_timeout_deadline_seconds(argv: List<String>) -> Int? {
+// (extdeps.tools.gnu_coreutils coreutils_duration_operand renders "<n>s"). The digits are read here, at the argv, and
+// leave as a Second.
+fn bmc_argv_timeout_deadline(argv: List<String>) -> Second? {
   if argv.take(n: 2) == ["timeout", "--kill-after"] {
     match argv.skip(n: 3).first() {
       Absent => none
-      Present { value: d } => parse_int(s: replace(s: d, from: "s", to: ""))
+      Present { value: d } => match parse_int(s: replace(s: d, from: "s", to: "")) {
+        Absent => none
+        Present { value: n } => match checked_int_to_nat(n: n) {
+          Absent => none
+          Present { value: count } => Present { value: second(count: count) }
+        }
+      }
     }
   } else {
     none
@@ -139,9 +148,9 @@ fn bmc_call_lanplus_clock(call: OperationCall) -> BmcLanplusCallClock? {
     Absent => none
     Present { value: argv } => match ipmitool_lanplus_attempts_of_argv(argv: argv) {
       Absent => none
-      Present { value: a } => match bmc_argv_timeout_deadline_seconds(argv: argv) {
+      Present { value: a } => match bmc_argv_timeout_deadline(argv: argv) {
         Absent => none
-        Present { value: d } => Present { value: BmcLanplusCallClock { attempts: a, deadline_seconds: d } }
+        Present { value: d } => Present { value: BmcLanplusCallClock { attempts: a, deadline: d } }
       }
     }
   }
@@ -156,7 +165,7 @@ fn bmc_controller_silent(world: BmcWorld, call: OperationCall, refused: Bool) ->
   match bmc_call_lanplus_clock(call: call) {
     Absent => BmcReplyFault { reason: "an unanswered ipmitool call whose argv carries no readable deadline or attempt count" as NonEmptyStr }
     Present { value: clock } =>
-      if ipmitool_lanplus_unanswered_message_seconds(attempts: clock.attempts, refused: refused) < clock.deadline_seconds {
+      if !measure_le(a: clock.deadline, b: ipmitool_lanplus_unanswered_message_wait(attempts: clock.attempts, refused: refused)) {
         bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
       } else {
         BmcRefused { exit_code: 124, stderr: "", world: world }
