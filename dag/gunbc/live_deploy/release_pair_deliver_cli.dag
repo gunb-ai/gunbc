@@ -118,13 +118,32 @@ fn release_pair_decode_head(outcome: ProcessOutcome) -> NonEmptyStr? {
 
 // The release-bins run for the head: Present only when the discovery printed a run id; none on absent (no success run
 // for the head — a typed refusal the entry turns into keep-last-good) or on a refusal (gh itself failed).
-fn release_pair_decode_run(outcome: ProcessOutcome) -> NonEmptyStr? {
+// The run-list observation, both sides read from the run metadata the gh call returned: the run id (to download
+// its pack) and the run's head_sha — the BINARY side of the pair, decoded and checked, not assumed from the query
+// filter. head_sha is the binary-side observation the fold compares against the observed source head; it is
+// threaded into the fold when the source-side placement lands (node://lab-converges-release-pair, git-census Hold).
+type ReleasePairRunObservation {
+  run_id: NonEmptyStr
+  head_sha: NonEmptyStr
+}
+
+fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunObservation? {
   match outcome {
     ProcessOutputPresent { text: t } =>
       if (trim(s: t) as String) == "" {
         none
       } else {
-        Present { value: trim(s: t) as NonEmptyStr }
+        let parts = split(s: trim(s: t), delimiter: "\t")
+        if (last(l: parts) as String) == (first(l: parts) as String) || (last(l: parts) as String) == "" {
+          none
+        } else {
+          Present {
+            value: ReleasePairRunObservation {
+              run_id: first(l: parts) as NonEmptyStr,
+              head_sha: last(l: parts) as NonEmptyStr,
+            },
+          }
+        }
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
@@ -211,12 +230,12 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
       )
       match release_pair_decode_run(outcome: run_outcome) {
         none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_run_for_head_reason }
-        Present { value: run_id } =>
+        Present { value: run } =>
           let pack_dir = release_pair_incoming_pack_dir(base_root: base_root)
           let member_src = release_pair_incoming_serve_source(base_root: base_root)
           let fetch_outcome = run_shell_command_capture(
             command: gh_run_download_command(
-              run_id: run_id as String,
+              run_id: run.run_id as String,
               repo: release_pair_deliver_repo_slug as String,
               artifact: release_pair_release_bins_artifact_name as String,
               dir: pack_dir,

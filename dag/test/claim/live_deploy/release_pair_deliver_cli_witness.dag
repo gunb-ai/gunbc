@@ -158,3 +158,15 @@ test fn witness_benign_wait_only_when_bins_unbuilt() -> Bool {
   if benign { !refusal } else { false }
 }
 
+// The run-list decode reads BOTH sides off the run metadata: the run id (download target) and the run's head_sha
+// (the binary-side observation). A line without the tab separator is malformed and decodes to none (fail-closed).
+test fn witness_decode_run_splits_run_id_and_head_sha() -> Bool {
+  let ok = match release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678\t1234567890abcdef1234567890abcdef12345678" }) {
+    Present { value: r } =>
+      (r.run_id as String) == "44015305678" && (r.head_sha as String) == "1234567890abcdef1234567890abcdef12345678"
+    none => false
+  }
+  let no_tab = release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678" }) == none
+  if ok { no_tab } else { false }
+}
+

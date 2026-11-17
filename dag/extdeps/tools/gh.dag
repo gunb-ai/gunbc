@@ -63,7 +63,8 @@ fn gh_release_bins_run_list_argv(repo: String, workflow: String, commit: String)
   [
     gh_program().invocation as String,
     "run", "list", "--repo", repo, "--workflow", workflow, "--commit", commit,
-    "--status", "success", "--json", "databaseId", "--jq", "[.[]][0].databaseId // empty",
+    "--status", "success", "--json", "databaseId,headSha", "--jq",
+    "[.[]][0] // empty | \"\\(.databaseId)\\t\\(.headSha)\"",
   ]
 }
 
