@@ -521,9 +521,9 @@ fn ci_release_bins_outcome_step() -> Step {
 }
 
 // The cache budget guardian (option A, escalation msg_66b5d26e; derivation in
-// gunbc.fleet.fleet_release_bins_key above release_bins_retention_statements). It runs in the
-// build job AFTER the release-bins upload, before the job-end cache publish of the current key,
-// so the key this run restores or publishes can never be a deletion target even by accident.
+// gunbc.fleet.fleet_release_bins_key above release_bins_retention_statements). It LEADS the
+// release-bins outcome step of the build job, so both the build and the reuse path pay it before
+// the outcome decides; the current run's own key is excluded from deletion by the filter itself.
 fn ci_release_bins_pack_step() -> Step {
   RunStep {
     name: Present { value: "Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)" },

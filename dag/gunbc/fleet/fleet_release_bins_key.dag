@@ -1011,7 +1011,12 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
 }
 
 //
-// DERIVATION OF KEEP (the operator's constraint: grounded, not guessed). The census figures are
+// DERIVATION OF KEEP (the admitted constraint: grounded, not guessed -- escalation msg_66b5d26e,
+// recommended option A approved by default 2026-11-16; the constraints originate in
+// bright-ibex-807's brief, not an operator ruling. No new CI job is admitted, so
+// gunbc.design_ruling::job_roster_closed_to_growth is the ruling that governs this step, and the
+// step conforms to it: retention runs inside the existing fleet-converge build job). The census
+// figures are
 // TYPED DATA below and the value is COMPUTED from them, so no deletion can depend on a comment:
 // deleting these lines breaks the build, not the policy. Measured 2026-11-16 (census GET
 // /repos/gunb-ai/gunbc/actions/caches?key=release-bins- plus gh run-list over main-branch
@@ -2181,7 +2186,8 @@ fn release_bins_outcome_with_retention_statements(product: ReleaseBinsProduct) -
   // the build runs are exactly the ones that ADD cache entries, the runs retention exists for.
   // A tail chore would therefore never run there. Leading makes both the build and the reuse
   // path pay the bookkeeping; every retention outcome is typed and none can stop the step, so
-  // "Deletion never fails the job's real work" (gunbc.design_ruling::release_bins_retention_admitted)
+  // "Deletion never fails the job's real work" (constraint from bright-ibex-807's brief, carried
+  // through escalation msg_66b5d26e's default-approved option A)
   // holds on both paths.
   concat(release_bins_retention_statements(), release_bins_outcome_statements(product: product))
 }
