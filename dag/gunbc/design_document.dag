@@ -41,6 +41,7 @@ import gunbc.design_ruling {
   project_documentation_projections_are_not_checkout_artifacts,
   machine_width_composition_has_an_intersection_carrier,
 }
+import gunbc.product_names { product_names_reference_blocks }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   v1_maintenance_standing_ref,
@@ -602,6 +603,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     changing_blocks(),
     self_hosting_blocks(),
     conformance_reference_blocks(),
+    product_names_reference_blocks(),
     ci_contract_blocks(),
   ], bs => bs)
 }
