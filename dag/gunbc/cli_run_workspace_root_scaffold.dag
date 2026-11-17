@@ -35,6 +35,24 @@ data gunbc_workspace_root_env_name: String = "GUNBC_WORKSPACE_ROOT"
 
 data release_locus_tree_receipt_name: String = ".gunbc-tree-receipt"
 
+// THE release-tree receipt's OWNED body format, defined ONCE here beside the receipt's name so the reader
+// (gunbc.live_deploy.release_locus::observe_release_tree_receipt, via tree_receipt_field) and the delivery writer
+// (gunbc.live_deploy.release_pair_deliver_cli) key off one spelling — the reader admits a receipt only when both
+// key=value lines are present, and release_locus_tree_receipt_body below is the ONLY writer of them. This is the
+// single authority for what a tree-receipt file contains (gunbc.design_argument::single_authority); it is not forked
+// into release_locus or the actuator.
+data release_locus_tree_receipt_revision_key: String = "candidate_revision"
+data release_locus_tree_receipt_digest_key: String = "installed_digest"
+
+// Render a release-tree receipt body. tree_receipt_field parses "<key>=<value>" per line, so the separator is '=', and
+// the reader refuses a body missing either line — this renderer always writes both, in the reader's key order.
+fn release_locus_tree_receipt_body(revision_hex: String, installed_digest: String) -> String {
+  join([
+    release_locus_tree_receipt_revision_key, "=", revision_hex, "\n",
+    release_locus_tree_receipt_digest_key, "=", installed_digest, "\n",
+  ], "")
+}
+
 data cli_run_workspace_root_spawn_test_discriminator_authority: String = "spawn_root_is_authority_and_the_walk_is_not_consulted"
 
 data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_root_without_receipt_refuses_instead_of_walking"
