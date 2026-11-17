@@ -350,7 +350,7 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     account_name: d.account_name,
     passwd: est_s(""),
     group: est_s("root:x:0:\n"),
-    authorized_keys: est_absent(),
+    authorized_keys: est_s(""),
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
     checkout: est_absent(), toolchain: est_absent(),
     serve_binary_sha256: Absent, checkout_revision: Absent,
