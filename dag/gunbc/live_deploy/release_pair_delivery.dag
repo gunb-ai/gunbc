@@ -1,0 +1,174 @@
+module gunbc.live_deploy.release_pair_delivery
+
+// THE STAGED WET DELIVERY LEG: FETCH THE PACK -> VERIFY ITS BUILD KEY ON THAT FETCHED PACK -> PLACE THE PAIR.
+// This is the leg that makes a paired deploy happen BY ITSELF, so a node merged to main reaches the lab's served
+// standings with no person at a terminal (the hand redeploy is where a mixed pair is born). It is built as THREE
+// STAGES that each consume the PRECEDING stage's OBSERVATION, so no stage can take a result its predecessor never
+// observed (review 96044: the plan must not assume `verified` — verification happens AFTER the fetch, on the pack
+// the fetch actually produced, and its observed verdict is what feeds the fold).
+//
+// STAGE 1 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_fetch_argv) emits the typed argv that fetches
+// the head's release-bins pack (reusing @ref(extdeps.tools.gh::gh_run_download_argv) — no hand-spelled gh command
+// line). Running it yields a PackFetch OBSERVATION (@ref(gunbc.live_deploy.release_pair_delivery::PackFetch)):
+// the pack is present — with its observed digest and the path of the file it produced — or absent (the head was
+// never built).
+//
+// STAGE 2 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_verify_dispatch) is a function OF that
+// observation: it emits the consumer build-key verify dispatch (@ref(gunbc.fleet.fleet_release_bins_key::release_bins_consumer_key_check_script),
+// the same --verify-build-artifacts script the fleet consumer runs) ONLY for a pack observed present. For a pack
+// never fetched there is NO dispatch to run — you cannot verify what you did not fetch. Running the dispatch yields
+// a PackVerify OBSERVATION (@ref(gunbc.live_deploy.release_pair_delivery::PackVerify)) that NAMES the pack_dir it
+// was run on.
+//
+// STAGE 3 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan) consumes BOTH observations and
+// the single delivery decision @ref(gunbc.live_deploy.release_locus::deliver_release_pair). By this point the fetch
+// and verify EFFECTS have already run, so the plan carries ONLY the ordered INSTALL steps — the fetch argv and
+// verify dispatch are not re-emitted here (review 96059: re-emitting them let a second input decide the pack
+// directory). The digest and the placement SOURCE both come from the FETCH observation via the fold, and the fold's
+// `verified` is true ONLY when the verify observation names the SAME pack_dir the fetch observed. So a verdict for
+// a different or absent pack cannot install, and the placed file is provably the fetched file — the cross-stage and
+// placement bindings are typed facts, not conventions. A bound pair yields a PlanToInstall that copies the fetched
+// file into the bound-pair locus (reusing @ref(gunbc.live_deploy.release_locus::release_locus_member_path)), writes
+// the bound source receipt (reusing @ref(gunbc.live_deploy.release_locus::release_locus_tree_receipt_path)), and
+// restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command)); any refusal yields
+// PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
+//
+// THE EXECUTING CONSUMER is a NAMED, TRACKED later change, not prose: roadmap work item `lab-converges-release-pair`
+// (PR3b) — the lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service, its trigger the sibling
+// .timer on OnUnitActiveSec=600 s (to be emitted in emit.dag, named in spec.dag, registered in apply_legs.dag). It
+// runs stage 1's argv, observes the fetch, runs stage 2's dispatch when present, observes the verdict, builds the
+// stage-3 plan from the observations, and runs the plan's effects. Until that unit lands these three stages are
+// that tracked item's declared frontier with its trigger, not dangling.
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import extdeps.tools.gh { gh_run_download_argv }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  ReleasePairDelivery, PairInstalled, PairRefused,
+  deliver_release_pair, delivered_pair_revision,
+  release_locus_member_path, release_locus_tree_receipt_path,
+}
+import gunbc.live_deploy.operations { systemctl_restart_command }
+
+// THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
+// observation and never a free boolean. PackAbsent is the unbuilt head (gh handed off no release-bins pack for it);
+// PackPresent carries the pack's OBSERVED digest, the directory it landed in, and the path of the file it produced.
+// The digest is what the fold pairs the source with; the pack_dir is what the verify verdict must name; the
+// binary_source is the placement source, so the file installed is the file fetched (no path left for the unit).
+type PackFetch
+  = PackPresent { sha256: NonEmptyStr, pack_dir: NonEmptyStr, binary_source: NonEmptyStr }
+  | PackAbsent { reason: NonEmptyStr }
+
+// THE OBSERVED OUTCOME OF THE BUILD-KEY VERIFY STAGE. Produced ONLY by running the verify dispatch on a pack
+// observed present, and it NAMES the pack_dir it was run on. VerifiedOn names that pack; Refused names why the
+// pack's build key was not trusted. There is no way to assert a verdict for a pack that was never fetched, because
+// the install stage accepts VerifiedOn only when it names the pack_dir the fetch observed.
+type PackVerify
+  = VerifiedOn { pack_dir: NonEmptyStr }
+  | Refused { reason: NonEmptyStr }
+
+// ONE ORDERED FILE PLACEMENT: copy the file the fetch OBSERVED (its source) into the bound-pair locus location its
+// digest names (its destination). Both sides are values derived from the observations — the source never re-derived
+// from a parameter (review 96059) — so the install effect has a modeled source.
+type FilePlacement {
+  source: NonEmptyStr
+  destination: String
+}
+
+// THE BOUND SOURCE RECEIPT WRITE: records the ONE bound revision at the locus receipt path. Its content is the
+// revision the fold bound (not an independent copy), so the source half of the pair is named by the same authority.
+type SourceReceiptWrite {
+  destination: String
+  revision: ReleaseRevisionBinding
+}
+
+// THE ORDERED TYPED INSTALL the delivery unit runs once the fetch and verify have been OBSERVED: place the fetched
+// binary -> write the bound source receipt -> restart serve. It collapses to PlanKeepsLastGood (naming the refusal
+// and the last-good binding that keeps serving) on every refusal, so the serve unit is never restarted onto a half
+// pair. It deliberately does NOT carry the fetch argv or verify dispatch — those effects already ran (stage 1/2).
+type DeliveryPlan
+  = PlanToInstall {
+    place_binary: FilePlacement,
+    write_source_receipt: SourceReceiptWrite,
+    restart_command: String,
+    revision: ReleaseRevisionBinding,
+  }
+  | PlanKeepsLastGood { kept: ReleaseRevisionBinding, reason: NonEmptyStr }
+
+// THE PACK THE UNIT FETCHES INTO IS A DIRECTORY IT OWNS, never a checked-out deploy source — the lab's serve tree
+// must not be polluted by the incoming pack, so the fetch writes here and the placement steps read from it.
+data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
+
+// STAGE 1 (fetch, DRY): the argv to fetch the head's release-bins pack, built from the one gh-download authority.
+// The executing unit runs this argv FIRST and only then asks what to verify — the fetch is not a precondition of
+// verification, verification is downstream of the fetch observation.
+fn release_pair_fetch_argv(run_id: String, repo: String, pack_dir: String) -> List<String> {
+  gh_run_download_argv(run_id: run_id, repo: repo, artifact: "release-bins", dir: pack_dir)
+}
+
+// STAGE 2 (build-key verify, DRY), a FUNCTION OF THE OBSERVED FETCH: the consumer verify dispatch exists only for
+// a pack observed present; for an absent pack there is nothing to verify, so no dispatch exists. This is the shape
+// that makes "verify before fetch" unrepresentable — the dispatch is downstream of the fetch observation.
+fn release_pair_verify_dispatch(fetch: PackFetch) -> String? {
+  match fetch {
+    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => Present { value: release_bins_consumer_key_check_script() }
+    PackAbsent { reason: _ } => none
+  }
+}
+
+// STAGE 3 (install plan, DRY): consumes both observations and the fold's single decision, and emits ONLY the ordered
+// install. The digest AND the placement source are taken from the FETCH observation (via the fold's pair), so the
+// placed file is the fetched file and there is no second input deciding the pack directory. The fold's `verified` is
+// true ONLY when the verify observation names the SAME pack_dir the fetch observed present — a verdict for a
+// different or absent pack leaves the fold to refuse. A bound pair becomes the ordered install; any refusal becomes
+// PlanKeepsLastGood with the refusal and the kept binding visible.
+fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding, main_head: CommitSha, source_head: CommitSha, fetch: PackFetch, verify: PackVerify, serve_unit: NonEmptyStr) -> DeliveryPlan {
+  // The digest and the fetched file BOTH come from the same fetch observation — one authority for what was fetched.
+  let binaries_sha256 = match fetch {
+    PackPresent { sha256: sha, pack_dir: _, binary_source: _ } => Present { value: sha }
+    PackAbsent { reason: _ } => none
+  }
+  let binary_source = match fetch {
+    PackPresent { sha256: _, pack_dir: _, binary_source: src } => Present { value: src }
+    PackAbsent { reason: _ } => none
+  }
+  // The verdict counts ONLY when it names the pack the fetch actually observed present — the cross-stage fact that
+  // forbids verifying a pack that was never fetched.
+  let verified = match fetch {
+    PackPresent { sha256: _, pack_dir: fetched_dir, binary_source: _ } =>
+      match verify {
+        VerifiedOn { pack_dir: verified_dir } => (fetched_dir as String) == (verified_dir as String)
+        Refused { reason: _ } => false
+      }
+    PackAbsent { reason: _ } => false
+  }
+  let decision = deliver_release_pair(
+    base_root: base_root,
+    serving: serving,
+    main_head: main_head,
+    source_head: source_head,
+    binaries_sha256: binaries_sha256,
+    binary_source: binary_source,
+    verified: verified,
+  )
+  match decision {
+    PairInstalled { pair: p, locus: _ } =>
+      // The placement source is the pair's OWN observed fetched file (not a re-derived path); the destination is the
+      // locus member its digest names. The receipt records the same bound revision. All three read from one authority.
+      let rev = delivered_pair_revision(pair: p)
+      PlanToInstall {
+        place_binary: FilePlacement {
+          source: p.binary_source,
+          destination: release_locus_member_path(root: base_root, revision: rev, name: p.binaries_sha256 as String),
+        },
+        write_source_receipt: SourceReceiptWrite {
+          destination: release_locus_tree_receipt_path(root: base_root, revision: rev),
+          revision: rev,
+        },
+        restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
+        revision: rev,
+      }
+    PairRefused { reason: reason, kept: kept } => PlanKeepsLastGood { kept: kept, reason: reason }
+  }
+}

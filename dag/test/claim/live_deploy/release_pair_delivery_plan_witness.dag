@@ -1,0 +1,189 @@
+module test.claim.live_deploy.release_pair_delivery_plan_witness
+
+// THE STAGED WET LEG PLANS AN ORDERED INSTALL, AND REFUSES UNLESS THE VERDICT WAS OBSERVED ON THE FETCHED PACK.
+// This witnesses the one authority the wet leg owns
+// (gunbc.live_deploy.release_pair_delivery::release_pair_install_plan and its two feeder stages): it turns a
+// pack-fetch OBSERVATION and a build-key-verify OBSERVATION into an ORDERED TYPED INSTALL (copy the fetched binary
+// into the bound-pair locus -> write the bound source receipt -> restart serve), and it collapses to
+// PlanKeepsLastGood on every refusal — including when the verify verdict was NOT observed on the pack the fetch
+// actually produced. By stage 3 the fetch and verify have already run, so the plan carries ONLY the install steps;
+// the binary placement names its SOURCE from the fetch observation (review 96059), so no file is placed from nowhere.
+//
+// ── WHY IT IS RED ON BASE ──────────────────────────────────────────────────────────────────────────────────
+// On base the delivery leg does not exist — neither the stages nor their result types — so no plan is built and no
+// refusal is representable. On head a good head whose pack was fetched AND verified on THAT pack yields a
+// PlanToInstall whose binary placement copies the OBSERVED fetched file to the digest-named locus path, whose source
+// receipt names the bound revision, and which restarts serve; while every bad head — pack unbuilt, pack unverified,
+// source head mismatch, and the discriminating control a verify verdict for a DIFFERENT pack than the one fetched —
+// yields PlanKeepsLastGood. That last control is what makes "verify before fetch" (review 96044) red: a verdict not
+// observed on the fetched pack cannot install.
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import std.algebra { fold_list }
+import extdeps.tools.gh { gh_run_download_argv }
+import gunbc.live_deploy.release_pair_delivery {
+  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  DeliveryPlan, PlanToInstall, PlanKeepsLastGood, FilePlacement, SourceReceiptWrite,
+  release_pair_fetch_argv, release_pair_verify_dispatch, release_pair_install_plan,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding, RevisionBoundAtEmission,
+  release_locus_member_path, release_locus_tree_receipt_path,
+}
+import gunbc.live_deploy.operations { systemctl_restart_command }
+
+// ── fixtures (hermetic; substrate inputs only, no live host) ───────────────────────────────────────────────
+data base_root: String = "/opt/gunbc/releases"
+data main_sha: String = "3333333333333333333333333333333333333333"
+data last_good_sha: String = "2222222222222222222222222222222222222222"
+data wrong_sha: String = "9999999999999999999999999999999999999999"
+data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+data fetched_src: NonEmptyStr = "/opt/gunbc/releases/incoming-release-bins/gunbc_serve"
+data run_id: String = "43968177413"
+data repo_slug: String = "gunb-ai/gunbc"
+data pack_dir: NonEmptyStr = "/opt/gunbc/releases/incoming-release-bins"
+data other_pack_dir: NonEmptyStr = "/opt/gunbc/releases/some-other-head"
+data serve_unit_text: String = "gunbc-srv1-lab-codex-feedback-v0.service"
+
+fn main_head() -> CommitSha { main_sha as CommitSha }
+fn wrong_head() -> CommitSha { wrong_sha as CommitSha }
+fn last_good_serving() -> ReleaseRevisionBinding { RevisionBoundAtEmission { revision: last_good_sha as CommitSha } }
+fn serve_unit() -> NonEmptyStr { serve_unit_text as NonEmptyStr }
+
+// the fetch the head actually produced: a present pack, its observed digest, the dir it landed in, and the file it
+// produced (the placement source).
+fn fetched_pack() -> PackFetch {
+  PackPresent { sha256: bin_sha256, pack_dir: pack_dir, binary_source: fetched_src }
+}
+// the verify verdict observed on THAT pack (names the same dir the fetch observed).
+fn verified_on_fetched() -> PackVerify { VerifiedOn { pack_dir: pack_dir } }
+
+// join a List<String> into one String with fold_list, so the fetch argv is compared as a value without relying on
+// list-equality (the claim batch is a pure subset; joining is the safe comparison).
+fn join_argv(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { join([acc, " ", x], "") } })
+}
+
+// ── STAGE 1: the fetch argv is the one gh-download authority's argv, unchanged ──────────────────────────────
+// This witnesses that the fetch stage REUSES gh_run_download_argv (no hand-spelled gh command line): the argv it
+// emits equals the download authority's argv for (run_id, repo, "release-bins", pack_dir), element for element.
+test fn witness_stage1_fetch_argv_reuses_gh_download_authority() -> Bool {
+  let got = release_pair_fetch_argv(run_id: run_id, repo: repo_slug, pack_dir: pack_dir as String)
+  let want = gh_run_download_argv(run_id: run_id, repo: repo_slug, artifact: "release-bins", dir: pack_dir as String)
+  join_argv(xs: got) == join_argv(xs: want)
+}
+
+// ── STAGE 2 IS DOWNSTREAM OF THE FETCH: a dispatch exists ONLY for a pack observed present ───────────────────
+// The verify dispatch is a function OF the fetch observation. An absent pack yields no dispatch — nothing to verify
+// — and a present pack yields one. The executor cannot ask "is it verified?" before asking "did the fetch produce
+// a pack?".
+test fn witness_verify_dispatch_exists_only_for_a_fetched_pack() -> Bool {
+  let present_dispatch = release_pair_verify_dispatch(fetch: fetched_pack())
+  let absent_dispatch = release_pair_verify_dispatch(fetch: PackAbsent { reason: "no pack" as NonEmptyStr })
+  match present_dispatch {
+    Present { value: _ } => match absent_dispatch { none => true, Present { value: _ } => false }
+    none => false
+  }
+}
+
+// ── the good head: the install copies the OBSERVED fetched file into the bound locus, then restarts serve ────
+// WITNESS: a verified head whose pack was fetched and verified on THAT pack builds a PlanToInstall whose binary
+// placement SOURCE is the fetched file the observation named (review 96059: not re-derived from a parameter) and
+// whose DESTINATION is the digest-named locus member path; whose source receipt names the bound revision; and which
+// restarts serve. Every value equals the recomputed typed value for the bound pair.
+test fn witness_plan_good_head_builds_bound_install() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    fetch: fetched_pack(),
+    verify: verified_on_fetched(),
+    serve_unit: serve_unit(),
+  )
+  let want_rev = RevisionBoundAtEmission { revision: main_head() }
+  match plan {
+    PlanToInstall { place_binary: FilePlacement { source: src, destination: dst }, write_source_receipt: SourceReceiptWrite { destination: rdst, revision: rrev }, restart_command: rc, revision: _ } =>
+      ((src as String) == (fetched_src as String)) &&
+        (dst == release_locus_member_path(root: base_root, revision: want_rev, name: bin_sha256 as String)) &&
+        (rdst == release_locus_tree_receipt_path(root: base_root, revision: want_rev)) &&
+        (rc == systemctl_restart_command(unit: serve_unit(), privileged: true)) &&
+        (match rrev { RevisionBoundAtEmission { revision: r } => (r as String) == main_sha, _ => false })
+    PlanKeepsLastGood { kept: _, reason: _ } => false
+  }
+}
+
+// ── RED CONTROL (arm 1): a head whose release bins were never fetched installs nothing ──────────────────────
+// The fetch observed no pack, so there is no digest and no fetched file to place; even a would-be verify verdict
+// cannot rescue it (the fold refuses on the unbuilt digest). The last-good pair keeps serving.
+test fn witness_plan_pack_not_fetched_keeps_last_good() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    fetch: PackAbsent { reason: "gh handed off no release-bins pack for the head" as NonEmptyStr },
+    verify: Refused { reason: "not run — no pack was fetched" as NonEmptyStr },
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}
+
+// ── RED CONTROL (arm 2): a pack that fails build-key verification installs nothing ──────────────────────────
+// The pack was fetched but the consumer's --verify-build-artifacts refused it against the build key, so its
+// binaries are not trusted. The last-good pair keeps serving.
+test fn witness_plan_pack_unverified_keeps_last_good() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    fetch: fetched_pack(),
+    verify: Refused { reason: "--verify-build-artifacts refused the pack" as NonEmptyStr },
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}
+
+// ── RED CONTROL (arm 3, THE CROSS-STAGE CONTROL): a verify verdict for a pack that was NOT the one fetched ────
+// The fetch observed a pack in pack_dir, but the verify observation names a DIFFERENT pack_dir. The verdict was
+// never observed on the fetched pack, so it cannot authorize the install: the fold sees verified=false and refuses.
+// This is the exact defect review 96044 named — verify must consume the fetch's observation, not run independently.
+test fn witness_plan_verify_on_wrong_pack_keeps_last_good() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    fetch: fetched_pack(),
+    verify: VerifiedOn { pack_dir: other_pack_dir },
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}
+
+// ── RED CONTROL (arm 4): a source head that is not the head delivered for installs nothing ─────────────────
+test fn witness_plan_source_head_mismatch_keeps_last_good() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: wrong_head(),
+    fetch: fetched_pack(),
+    verify: verified_on_fetched(),
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}

@@ -42,7 +42,9 @@ data base_root: String = "/opt/gunbc/releases"
 data main_sha: String = "3333333333333333333333333333333333333333"
 data last_good_sha: String = "2222222222222222222222222222222222222222"
 data wrong_sha: String = "9999999999999999999999999999999999999999"
-data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0" as NonEmptyStr
+data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+// the file the fetch OBSERVED producing the pack — the placement source the fold must carry (review 96059)
+data fetched_src: NonEmptyStr = "/opt/gunbc/releases/incoming-release-bins/gunbc_serve"
 
 fn main_head() -> CommitSha { main_sha as CommitSha }
 fn last_good_head() -> CommitSha { last_good_sha as CommitSha }
@@ -89,13 +91,13 @@ test fn witness_good_head_installs_bound_pair() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
     verified: true,
   )
   match d {
     PairInstalled { pair: p, locus: l } =>
       let want_dir = release_locus_dir(root: base_root, revision: delivered_pair_revision(pair: p))
-      (p.main_head as String) == main_sha &&
-        (p.source_head as String) == main_sha &&
+      (p.head as String) == main_sha &&
         (p.binaries_sha256 as String) == bin_sha256 &&
         l.locus == want_dir &&
         want_dir == release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head() })
@@ -114,6 +116,7 @@ test fn witness_bins_not_built_keeps_last_good() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     binaries_sha256: none,
+    binary_source: none,
     verified: true,
   )
   kept_is(v: d, want: last_good_serving())
@@ -129,6 +132,7 @@ test fn witness_pack_unverified_keeps_last_good() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
     verified: false,
   )
   kept_is(v: d, want: last_good_serving())
@@ -145,6 +149,24 @@ test fn witness_source_head_mismatch_keeps_last_good() -> Bool {
     main_head: main_head(),
     source_head: wrong_head(),
     binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: true,
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── RED CONTROL (arm 4, review 96059): a digest reported with no fetched file must NOT install ───────────────
+// A caller reporting a binary digest but no observed fetched file would give the install a placement source from
+// nowhere — the hand step this leg exists to remove. The fold refuses it as its own named degradation (fail_closed)
+// rather than binding a pair whose source is unknown, and keeps the last good pair serving.
+test fn witness_source_missing_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: none,
     verified: true,
   )
   kept_is(v: d, want: last_good_serving())
@@ -163,6 +185,7 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
     verified: true,
   )
   match d {
