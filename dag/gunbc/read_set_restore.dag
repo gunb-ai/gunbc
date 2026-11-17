@@ -17,7 +17,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_exit_status,
   bash_build_with_redir_to_file, bash_build_with_redir_from_file,
   bash_build_with_redir, bash_build_with_redir_stdout_append_file, bash_build_assign_lit,
-  bash_build_function_def,
+  bash_build_function_def, bash_build_brace_group_from_stmts,
 }
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.tools.jq {
