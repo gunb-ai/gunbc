@@ -298,11 +298,17 @@ test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
 }
 
 // Through fleet_intent_offers, with no supplied offer: enrolling the host is what moved its committed width
-// off WidthComputeOfferAbsent. The figure is the one mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots
-// derives from supplied values; this is its pairing inhabitance claim over the production route.
+// off WidthComputeOfferAbsent. This is its pairing inhabitance claim over the production route, and the honest
+// committed width is FOUR slots, not five. The fold is
+//   committed_width = min(by_cpu=13, floor(envelope / gunbc_runner_slot_memory_max_bytes))
+//   envelope = MemAvailable - MemTotal/16  (usable - overhead - oomd_actuation_floor; session/control_plane/served_deployment = 0)
+// read from census capture run 39010930690 (MemTotal 131177152 kB, MemAvailable 129094344 kB), MemoryMax = 26843545600 (25 GiB):
+// floor((129094344kB - 131177152kB/16) / 25GiB) = 4; a fifth slot needs ~9.8 GiB more MemAvailable than the host reports.
+// Introduced at #15335 asserting 5, but 5 was never derivable from the census (the model and capture predate it) -- corrected to
+// the derived value with its derivation shown, not patched to hide a model defect.
 test fn mtcollins1_production_committed_width_is_derived_through_the_enrolled_offer() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
-    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthDerived { slots: n } => n == 4
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -344,10 +350,15 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
   }
 }
 
-test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots() -> Bool {
+// The width over the enrolled offer's CPU and the census RAM, taken from the REAL host facts: FOUR slots.
+// min(by_cpu=13, floor((MemAvailable - MemTotal/16) / 25 GiB)) = min(13, floor((129094344kB - 131177152kB/16) / 25GiB)) = 4,
+// from census capture run 39010930690 (MemTotal 131177152 kB, MemAvailable 129094344 kB), MemoryMax = 26843545600 (25 GiB).
+// Introduced at #15335 as *_is_five_slots asserting 5; 5 was never derivable from the census. Renamed to _is_four_slots and
+// corrected to the derived value -- the honest number, not a value patched to match a model bug.
+test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_four_slots() -> Bool {
   let real = host_width_facts(host: operator_host_mtcollins1)
   match committed_width_of(f: mtcollins1_supplied_facts(ram: real.usable_ram, overhead: real.fixed_overhead)) {
-    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthDerived { slots: n } => n == 4
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -473,10 +484,13 @@ test fn an_unenrolled_host_still_refuses_as_not_enrolled() -> Bool {
   }
 }
 
-// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host.
+// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host. Its runner_count is the committed
+// width (host_standing_with_session_slice -> committed_width_of; no authored runner_count row for mtcollins1) = FOUR slots:
+// floor((MemAvailable - MemTotal/16) / 25 GiB) from census capture run 39010930690 (MemAvailable 129094344 kB, MemTotal
+// 131177152 kB), MemoryMax 26843545600. Introduced at #15335 at 5; corrected to the derived value.
 test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
   match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
-    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 5
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 4
     _ => false
   }
 }

@@ -27,9 +27,11 @@ import gunbc.runner.runner_service_slot_controller {
 import gunbc.live_deploy.release_locus { observe_release_tree_receipt }
 import std.algebra { string_contains }
 import extdeps.github.actions_runner { actions_runner_jitconfig_env_name, actions_runner_base_dir }
+import gunbc.fleet.host_credential_custody_roster {
+  HostCredentialCustodyRow, host_credential_custody_row, ServiceSlotAppKey, FabricStateWriterKey
+}
 import gunbc.fleet.host_credential_custody_converge {
-  HostCredentialCustodyRow, HostCredentialCustodyRow, host_credential_custody_row, ServiceSlotAppKey, FabricStateWriterKey,
-  CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathWrongMedium, CustodyPathWrongOwner,
+  CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathWrongMedium, CustodyPathWrongOwner
 }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_pass_root, HostUnitSlot }
 import gunbc.runner.runner_service_slot_controller {

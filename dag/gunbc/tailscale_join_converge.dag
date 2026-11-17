@@ -147,16 +147,19 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLeg,
   ElevatedLegRan,
   ElevatedLegRefused,
-  HostCustodyCredential,
-  TailscaleFleetAuthKey,
   custody_action_wire,
   custody_host,
   custody_placement_refusal_wire,
   custody_row_placement,
   custody_run_settled,
   converge_host_credential_custody,
-  host_credential_custody_row,
   run_elevated_leg,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  HostCustodyCredential,
+  TailscaleFleetAuthKey,
+  host_credential_custody_row,
 }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.secret_provision { Secret }

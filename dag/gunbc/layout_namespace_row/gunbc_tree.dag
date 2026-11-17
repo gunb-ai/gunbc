@@ -241,6 +241,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "extdeps.wycheproof",
     "extdeps.xcodegen",
     "extdeps.zhipu",
+    "extdeps.zt_systems",
     "gunbc",
     "gunbc.accelerator_demo",
     "gunbc.assimilate",

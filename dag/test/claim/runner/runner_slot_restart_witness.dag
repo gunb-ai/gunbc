@@ -8,6 +8,7 @@ import extdeps.systemd { UnitLoadError, Failed }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, NoMainProcess, MainProcessUnread, StartObserved, StartUnread, ProcessAbsoluteStart }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import std.measure { second }
 import gunbc.runner.runner_slot_actuation {
@@ -24,9 +25,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data slot_u: NonEmptyStr = "actions-runner@srv3-18.service" as NonEmptyStr
 
 fn reading(load: String, file: String, active: String) -> SlotActuationReading {
-  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active) {
+  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active, result_raw: "success", main_pid_raw: "0") {
     SlotReadingTyped { reading: r } => r
-    SlotReadingUnknownWord { property: _, raw: _ } => SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed }
+    SlotReadingUnknownWord { property: _, raw: _ } => SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed, result: ServiceResultSuccess, main_pid: NoMainProcess }
   }
 }
 

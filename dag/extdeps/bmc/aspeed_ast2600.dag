@@ -1,0 +1,89 @@
+module extdeps.bmc.aspeed_ast2600
+
+import std.types { NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.aspeed { aspeed }
+
+// ASPEED's AST2600, the management processor on the Ranger tray's controller module
+// (extdeps.nvidia.ranger_tray). Cited from ASPEED's product page as the part. Its datasheet has not been
+// read here, so this module models only what its consumers need and ASPEED's own naming gives: a GPIO pin
+// is named by a port letter and a bit within the port, eight bits to a port. Which ball a pin is on, and how
+// a firmware numbers its lines, are facts of the pin table that states them (extdeps.nvidia.gracebmc_ranger),
+// not of this module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.aspeedtech.com/server_ast2600/"
+  }
+}
+
+type AspeedAst2600CatalogRow {
+  ordering_part_number: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+}
+
+data aspeed_ast2600: AspeedAst2600CatalogRow = AspeedAst2600CatalogRow {
+  ordering_part_number: "AST2600",
+  manufacturer: aspeed,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.aspeed_ast2600",
+      decl_name: "aspeed_ast2600",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The single-letter GPIO ports. The part has ports beyond Z; none is modelled until a consumer names one.
+type Ast2600GpioPort
+  = PortA | PortB | PortC | PortD | PortE | PortF | PortG | PortH | PortI | PortJ | PortK | PortL | PortM
+  | PortN | PortO | PortP | PortQ | PortR | PortS | PortT | PortU | PortV | PortW | PortX | PortY | PortZ
+
+data ast2600_bits_per_port: Nat = 8
+
+// A port's place in the alphabet, port A first at 0.
+fn ast2600_port_index(p: Ast2600GpioPort) -> Nat {
+  match p {
+    PortA => 0, PortB => 1, PortC => 2, PortD => 3, PortE => 4, PortF => 5, PortG => 6, PortH => 7, PortI => 8,
+    PortJ => 9, PortK => 10, PortL => 11, PortM => 12, PortN => 13, PortO => 14, PortP => 15, PortQ => 16,
+    PortR => 17, PortS => 18, PortT => 19, PortU => 20, PortV => 21, PortW => 22, PortX => 23, PortY => 24,
+    PortZ => 25,
+  }
+}
+
+fn ast2600_port_letter(p: Ast2600GpioPort) -> String {
+  match p {
+    PortA => "A", PortB => "B", PortC => "C", PortD => "D", PortE => "E", PortF => "F", PortG => "G", PortH => "H",
+    PortI => "I", PortJ => "J", PortK => "K", PortL => "L", PortM => "M", PortN => "N", PortO => "O", PortP => "P",
+    PortQ => "Q", PortR => "R", PortS => "S", PortT => "T", PortU => "U", PortV => "V", PortW => "W", PortX => "X",
+    PortY => "Y", PortZ => "Z",
+  }
+}
+
+// One GPIO pin: a port and a bit, 0 to 7.
+type Ast2600GpioPin {
+  port: Ast2600GpioPort
+  bit: Nat
+}
+
+fn ast2600_pin(port: Ast2600GpioPort, bit: Nat) -> Ast2600GpioPin {
+  Ast2600GpioPin { port: port, bit: bit }
+}
+
+fn ast2600_pin_bit_in_range(p: Ast2600GpioPin) -> Bool {
+  p.bit < ast2600_bits_per_port
+}
+
+fn ast2600_pin_text(p: Ast2600GpioPin) -> String {
+  join([ast2600_port_letter(p: p.port), to_string(p.bit)], "")
+}
