@@ -1,6 +1,7 @@
 module test.claim.long.fleet_release_bins_key_witness
 
 import std.types { String, List, Bool }
+import std.integer { int_to_decimal_string }
 import v2.std.node { Node }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
