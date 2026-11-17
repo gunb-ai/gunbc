@@ -1937,27 +1937,58 @@ fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
   }
 }
 
+// The node an acceptance event is about — the receipt's own field, never a second naming of it. It lives
+// here, beside the canonical fact that reads the same two variants, because the verifier below needs it to
+// scope a comparison and the operator-close module used to keep its own copy: two namings of one field is a
+// fork (gunbc.design_argument::single_authority), so that copy is deleted and this is the only one.
+fn roadmap_acceptance_migration_event_node(e: RoadmapAcceptanceEvent) -> String {
+  match e {
+    AcceptanceRecorded { receipt } => receipt.node as String
+    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      exact_prior_receipt.node as String
+  }
+}
+
 // THE COMPARISON, PURE: the verifier's refusal logic in one function nobody can skip, so every refusal
-// is witnessed directly over constructed lists rather than only through a live carrier. Three
-// independent failures, each reported with the fact that failed:
+// is witnessed directly over constructed lists rather than only through a live carrier. Four
+// independent decisions, each reported with the fact that failed:
 //   1. THE FACTS, AS A MULTISET — not by membership. `any` cannot see that a manifest naming one
 //      acceptance twice met a log holding it once, so each side's COUNT of each distinct fact must
 //      agree: a lost event, a duplicated event and an altered event all refuse, with both counts and the
 //      fact named.
-//   2. CLOSEDNESS, BOTH WAYS. An acceptance the manifest leaves closed on a live receipt that the log's
-//      own reader does not confirm refuses — and so does a node the log calls closed that the manifest
-//      never accepted, because the migration may not invent a closed node either. And a manifest that
-//      does not replay is itself a refusal: it is not evidence of nothing, and reading it as an empty
-//      expectation would certify whatever the log happened to hold.
+//   2. CLOSEDNESS, BOTH WAYS, OVER THE MIGRATION'S OWN NODES. An acceptance the manifest leaves closed on
+//      a live receipt that the log's own reader does not confirm refuses — and so does a node the log
+//      calls closed that the manifest never accepted, because the migration may not invent a closed node
+//      either. And a manifest that does not replay is itself a refusal: it is not evidence of nothing, and
+//      reading it as an empty expectation would certify whatever the log happened to hold.
 //   3. THE RETIRED ROSTER: a node the runbook claims retired that the log does not hold retired.
+//   4. THE SCOPE OF THE MANIFEST'S SPEECH. Both comparisons above run over the log RESTRICTED to the nodes
+//      the migration carried: the nodes its acceptance events name, plus the roster it retires. On every
+//      other node the manifest is SILENT, and silence is not a negation — the same rule this repo applies
+//      to what it cannot observe ("unobserved is not absent", gunbc.design_argument::fail_closed). Before
+//      this rule the verifier read its own silence as "no other node may be closed", so any event another
+//      lane appended afterwards through the very same modeled route refused a migration that had in fact
+//      arrived whole — which is what an append-only shared log exists to allow. A foreign event naming a
+//      node the migration DID carry still refuses on both counts: that is the case the direction was
+//      written for, and it stays witnessed.
 fn roadmap_acceptance_migration_problems(
   wanted: List<RoadmapAcceptanceEvent>,
   held: List<RoadmapAcceptanceEvent>,
   closed_nodes: List<String>,
   not_retired: List<String>,
+  migration_roster: List<String>,
 ) -> List<String> {
   let wanted_facts = map(wanted, e => roadmap_acceptance_migration_identity(e: e))
-  let held_facts = map(held, e => roadmap_acceptance_migration_identity(e: e))
+  // The nodes the migration spoke about: named by one of its acceptance events, or named by the roster it
+  // retires. Everything else in the log belongs to another lane's planning and is out of this verdict.
+  let spoken = fold(
+    concat(map(wanted, e => roadmap_acceptance_migration_event_node(e: e)), migration_roster),
+    init: [] as List<String>,
+    f: (acc, n) => if any(acc, a => a == n) { acc } else { concat(acc, [n]) })
+  let held_in_scope = filter(
+    held, e => any(spoken, n => n == roadmap_acceptance_migration_event_node(e: e)))
+  let closed_in_scope = filter(closed_nodes, cn => any(spoken, n => n == cn))
+  let held_facts = map(held_in_scope, e => roadmap_acceptance_migration_identity(e: e))
   let facts = fold(concat(wanted_facts, held_facts), init: [] as List<String>, f: (acc, x) =>
     if any(acc, a => a == x) { acc } else { concat(acc, [x]) })
   let count_problems = filter(
@@ -1980,7 +2011,7 @@ fn roadmap_acceptance_migration_problems(
       concat(
         map(filter(expected_closed, n => !any(closed_nodes, cn => cn == n)),
           n => join(["the manifest leaves ", n, " closed on a live receipt; the log does not say so", ""], "")),
-        map(filter(closed_nodes, cn => !any(expected_closed, n => n == cn)),
+        map(filter(closed_in_scope, cn => !any(expected_closed, n => n == cn)),
           cn => join(["the log calls ", cn, " closed on a live receipt the exported manifest never accepted", ""], "")))
     }
     // The manifest IS the evidence. An acceptance history that cannot be put in order — a revocation or

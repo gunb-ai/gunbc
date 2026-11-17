@@ -68,7 +68,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds,
   RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members,
-  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_problems,
+  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_event_node,
+  roadmap_acceptance_migration_problems,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
@@ -829,7 +830,8 @@ fn roadmap_acceptance_migration_verdict(
   let roster = filter(split(s: retired_roster, delimiter: ","), n => count(n) > 0)
   let not_retired = filter(roster, n => !roadmap_node_ids_contain(ids: retired_ids, node: n as NonEmptyStr as RoadmapNodeId))
   let problems = roadmap_acceptance_migration_problems(
-    wanted: wanted, held: log_events, closed_nodes: closed_nodes, not_retired: not_retired)
+    wanted: wanted, held: log_events, closed_nodes: closed_nodes, not_retired: not_retired,
+    migration_roster: roster)
   let event_lines = map(
     filter(envelopes, env => match env.event.kind {
       AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
@@ -892,14 +894,5 @@ fn roadmap_acceptance_migration_refusal_report(cause: RoadmapMigrationRefusal) -
         "MIGRATION REFUSED: ", to_string(value: wanted), " manifest events, ",
         to_string(value: held), " held, ", to_string(value: count(problems)), " disagreement(s):"], "")],
         concat(map(problems, pr => join(["  ", pr], "")), event_lines)), "\n")
-  }
-}
-
-// The node an acceptance event is about — the receipt's own field, never a second naming of it.
-fn roadmap_acceptance_migration_event_node(e: RoadmapAcceptanceEvent) -> String {
-  match e {
-    AcceptanceRecorded { receipt } => receipt.node as String
-    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-      exact_prior_receipt.node as String
   }
 }
