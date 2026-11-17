@@ -8,8 +8,10 @@ import std.optional { Absent, Present }
 import std.algebra { fold_list, length, list_map }
 import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import std.measure { Second, second }
-import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_policy_retries, bmc_ipmi_policy_response_timeout, bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
+import extdeps.bmc.ipmi { IpmiRetryBound }
 import extdeps.bmc.ipmi { ipmi_retry_bound }
+import extdeps.bmc.ipmi_session { ipmitool_verbosity_argv, IpmitoolDefaultVerbosity, IpmitoolVerboseOnce }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
@@ -43,22 +45,26 @@ fn mtcollins1_row_suite() -> IpmiCipherSuite? {
 }
 
 // The corpus materializer binds what the declaration carries. Every ipmi.dag operation declares
-// cipher_suite_argv, so the suite binding is unconditional; the retry bound rides ONLY rows that
+// cipher_suite_argv, so the suite binding is unconditional; each retry word rides ONLY rows that
 // declare it (an unauthenticated row must materialize with no retry binding at all -- binding one it
 // never declared would be refused, and the mains-on-both-routes claims pin the unauthenticated argv
-// byte for byte).
+// byte for byte; McResetCold declares the timeout and not the attempt count, which is its own literal).
+// The bound is the authenticated-read row unless a claim names another (the cold-reset watch poll).
 fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?) -> List<String> {
+  materialize_with_bound(operation: operation, bindings: bindings, suite: suite, bound: bmc_ipmi_retry_bound())
+}
+
+fn materialize_with_bound(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?, bound: IpmiRetryBound) -> List<String> {
   let row_opt = first(filter(xs: shell_transport_operation_rows(), predicate: fn(row) { ipmi_row_at(row: row, path: ipmi_path, service: ipmi_service, operation: operation) }))
-  let retry_binds = match row_opt {
-    Present { value: row } =>
-      if ipmi_row_declares(row: row, name: "retry_bound_retries") {
-        let bound = bmc_ipmi_retry_bound()
-        [operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()) as String), operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()) as String)]
-      } else {
-        []
-      }
+  let retries_bind = match row_opt {
+    Present { value: row } => if ipmi_row_declares(row: row, name: "retry_bound_retries") { [operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bound) as String)] } else { [] }
     Absent => []
   }
+  let timeout_bind = match row_opt {
+    Present { value: row } => if ipmi_row_declares(row: row, name: "retry_bound_timeout") { [operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bound) as String)] } else { [] }
+    Absent => []
+  }
+  let retry_binds = retries_bind + timeout_bind
   operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
     ipmi_path,
     ipmi_service,
@@ -415,6 +421,7 @@ fn bindings_mc_info() -> List<OperationInputBinding> {
     operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
     operation_argv_bind_text(name: "deadline", text: "20s"),
     operation_argv_bind_text(name: "kill_after", text: "5s"),
+    operation_argv_bind_text_list(name: "verbosity_argv", items: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity)),
   ]
 }
 
@@ -423,6 +430,49 @@ data main_argv_mc_info: List<String> = ["timeout", "--kill-after", "5s", "20s", 
 test fn mc_info_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
   materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_observation_suite()) == main_argv_mc_info
     && materialize(operation: "McInfo", bindings: bindings_mc_info(), suite: mtcollins1_row_suite()) == main_argv_mc_info
+}
+
+// THE COLD-RESET WATCH POLL (gunbc.machine_intake.mtcollins1_bmc_cold_reset): the same argv with one -v as ipmitool's
+// own option, before the interface options, and the watch-poll row's bound (gunbc.machine_intake.bmc_read_policy
+// bmc_ipmi_watch_poll_retry_bound, two attempts) in place of the authenticated-read row's; nothing else moves.
+fn bindings_mc_info_verbose() -> List<OperationInputBinding> {
+  filter(bindings_mc_info(), b => b.name != "verbosity_argv") + [operation_argv_bind_text_list(name: "verbosity_argv", items: ipmitool_verbosity_argv(verbosity: IpmitoolVerboseOnce))]
+}
+
+test fn the_cold_reset_watch_poll_argv_is_mains_with_one_verbose_flag() -> Bool {
+  materialize_with_bound(operation: "McInfo", bindings: bindings_mc_info_verbose(), suite: none, bound: bmc_ipmi_watch_poll_retry_bound())
+    == ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-v", "-H", "192.168.1.228", "-I", "lanplus", "-R", "2", "-N", "1", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "info"]
+}
+
+// THE COLD RESET'S MATERIALIZED ARGV (extdeps.bmc.ipmi McResetCold). It carries "-R", "1" -- one attempt per request,
+// which is all -R governs: not ipmitool's own second auth-caps request, not its fixed IPMI_LAN_RETRY session-open loop
+// -- exactly once, before -U, whatever bound the caller holds: materialized with the watch-poll row (two attempts) it is
+// byte-identical to the authenticated-read row's, because the operation takes only the timeout. Binding an attempt
+// count is refused, since the operation declares none. (A literal "-R 0" would not be zero retries: ipmitool falls back
+// to four attempts, extdeps.bmc.ipmitool_lanplus_timing; the attempt-count door ipmi_retry_bound refuses zero for the
+// same reason, a_zero_retries_or_timeout_mints_no_bound above.)
+fn bindings_mc_reset_cold() -> List<OperationInputBinding> {
+  [
+    host(),
+    operation_argv_bind_text(name: "username", text: "admin"),
+    operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
+    operation_argv_bind_text(name: "deadline", text: "20s"),
+    operation_argv_bind_text(name: "kill_after", text: "5s"),
+  ]
+}
+
+data main_argv_mc_reset_cold: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-R", "1", "-N", "1", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "reset", "cold"]
+
+test fn the_cold_reset_argv_pins_one_attempt_per_request_whatever_bound_the_caller_holds() -> Bool {
+  let with_policy = materialize(operation: "McResetCold", bindings: bindings_mc_reset_cold(), suite: none)
+  let with_watch = materialize_with_bound(operation: "McResetCold", bindings: bindings_mc_reset_cold(), suite: none, bound: bmc_ipmi_watch_poll_retry_bound())
+  let attempts_bound = operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(ipmi_path, ipmi_service, "McResetCold",
+    bindings_mc_reset_cold() + [operation_argv_bind_text_list(name: "cipher_suite_argv", items: []), operation_argv_bind_text(name: "retry_bound_timeout", text: "1"), operation_argv_bind_text(name: "retry_bound_retries", text: "2")]))
+  with_policy == main_argv_mc_reset_cold
+    && with_watch == main_argv_mc_reset_cold
+    && length(xs: filter(xs: with_policy, predicate: fn(w) { w == "-R" })) == 1
+    && attempts_bound != main_argv_mc_reset_cold
+    && !any(xs: attempts_bound, predicate: fn(w) { w == "2" })
 }
 
 // ── The suite each route supplies, and the renderer ─────────────────────────────────────────────
@@ -684,6 +734,14 @@ fn ipmi_row_declares_retry_parameter(row: ShellTransportOperationRow) -> Bool {
   ipmi_row_declares(row: row, name: "retry_bound_retries")
 }
 
+// A credential-bearing row declares a retry bound when it declares the attempt count, or -- the single-attempt form
+// McResetCold takes -- only the per-response timeout, with its attempt count a literal of the operation. Either way the
+// materialized check below is what decides: every -U must follow "-R", "1", "-N", "1" under the policy row, so a literal
+// attempt count other than one, or none at all, is still a violation.
+fn ipmi_row_declares_a_retry_bound(row: ShellTransportOperationRow) -> Bool {
+  ipmi_row_declares_retry_parameter(row: row) || ipmi_row_declares(row: row, name: "retry_bound_timeout")
+}
+
 // The violations of the rule over the module's declared operations, on both levels (see the header).
 // Empty is the claim. A refusal to materialize counts as a violation too -- the rule must be readable
 // from every declaration, so a row the materializer cannot render is not exempt.
@@ -693,8 +751,8 @@ fn ipmi_retry_bound_violations() -> List<String> {
     empty: [],
     cons: fn(acc, row) {
       if ipmi_row_is_credential_bearing(row) {
-        if !ipmi_row_declares_retry_parameter(row) {
-          concat(acc, [join([ipmi_retry_bound_row_label(row), " => credential-bearing row declares no retry_bound_retries"], "")])
+        if !ipmi_row_declares_a_retry_bound(row) {
+          concat(acc, [join([ipmi_retry_bound_row_label(row), " => credential-bearing row declares no retry bound"], "")])
         } else {
           let argv = ipmi_retry_bound_tokens(row)
           if length(xs: argv) == 0 {
@@ -707,7 +765,7 @@ fn ipmi_retry_bound_violations() -> List<String> {
         }
       } else {
         let argv = ipmi_retry_bound_tokens(row)
-        if ipmi_row_declares_retry_parameter(row) {
+        if ipmi_row_declares_a_retry_bound(row) {
           concat(acc, [join([ipmi_retry_bound_row_label(row), " => unauthenticated row carries the retry parameter"], "")])
         } else if length(xs: argv) > 0 && ipmi_argv_has_retry_flag(argv) {
           concat(acc, [join([ipmi_retry_bound_row_label(row), " => unauthenticated row carries -R/-N"], "")])
@@ -754,7 +812,7 @@ test fn the_retry_bound_claim_rejects_an_unpinned_authenticated_template() -> Bo
   let pinned_argv = ipmi_probe_argv_of(rows: probe_rows, name: "AuthenticatedPinned")
   let unspliced_argv = ipmi_probe_argv_of(rows: probe_rows, name: "AuthenticatedUnspliced")
   let unparameterized_is_red = match ipmi_probe_row_of(rows: probe_rows, name: "AuthenticatedUnparameterized") {
-    Present { value: row } => ipmi_row_is_credential_bearing(row: row) && !ipmi_row_declares_retry_parameter(row: row)
+    Present { value: row } => ipmi_row_is_credential_bearing(row: row) && !ipmi_row_declares_a_retry_bound(row: row)
     Absent => false
   }
   ipmi_argv_has_dash_u(pinned_argv) && ipmi_argv_has_dash_u(unspliced_argv)

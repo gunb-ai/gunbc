@@ -104,3 +104,12 @@ test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool {
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_boot_param5") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_boot_chassis_power") >= 1
 }
+
+// THE CONTROLLER COLD RESET'S HELD SEQUENCE AND ITS ONE WRITE REFUSE EVERY CALLER BUT THEIR ROOTS (side chat on
+// gunbc#16529, F3): reaching mtcollins1_bmc_cold_reset_held with a forged proof, or the write directly, is refused at
+// compile time, so no call path reaches McResetCold without the hold the wet entry acquires.
+test fn the_cold_reset_cannot_be_reached_without_acquiring_the_hold() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_held") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_send") >= 1
+}
