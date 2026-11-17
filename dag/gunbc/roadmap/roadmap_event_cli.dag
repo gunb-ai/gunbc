@@ -29,9 +29,6 @@ import gunbc.roadmap.roadmap_decomposition {
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, IssueCommandSubject, issue_command_apply }
 import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_acceptance_parse_tail, RoadmapAcceptanceTailOk, RoadmapAcceptanceTailBad,
-  roadmap_acceptance_migration_verify, roadmap_acceptance_migration_report,
-  roadmap_acceptance_migration_refusal_report,
-  RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused, RoadmapMigrationRefusal,
 }
 // THE TWO LOADERS LIVE IN THE AUTHORITY, not in the carriers they read: they are the folds that resolve the
 // one log through the same pinned instance every other production roadmap read names
@@ -390,7 +387,7 @@ fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
 // an entry whose function does not return ProcessExit (src/v1/stage0/src/cli_run.rs: "function
 // returned `X`, not ProcessExit"), and the three facts the cutover is gated on are DATA, not exits —
 // their authorities return them to the page (`roadmap_retired_node_ids_load`,
-// `roadmap_acceptance_event_history_load`, `roadmap_acceptance_migration_verify`), and narrowing a
+// `roadmap_acceptance_event_history_load`), and narrowing a
 // production authority to an exit shape to make it runnable would bend the reader to the runner.
 // So these entries stand beside them and add NOTHING to what is decided: each asks the SAME reader
 // production asks, through the same pinned instance, and turns its verdict into the exit the runbook
@@ -404,51 +401,6 @@ fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
 //     --function roadmap_event_log_retired_report_cli
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag \
 //     --function roadmap_event_log_acceptance_report_cli
-//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag \
-//     --function roadmap_acceptance_migration_verify_cli --arg repo_root=<instance repo> \
-//     --arg expected_manifest="$(cat $D/manifest.jsonl)" --arg retired_roster="$(cat $D/retired.jsonl)"
-
-// WHY A READ-BACK IS NOT ADMITTED, AS DATA. Review 93664 on gunb-ai/gunbc#16189 took out the doors that
-// decided by searching their own wording ("a typecheck and a `.contains()` grep are not consumers" —
-// gunbc.design_argument::fail_closed); what remains decides by MATCHING the sums the readers already
-// return, once each, here. The answer is the list of readers that refused, each named by the reason it
-// itself gave. The empty list is the only admitted answer, so a reader that cannot answer is never
-// silently missing from the list (gunbc.design_argument::fail_closed: "a failure arm refuses, never
-// widens"). roadmap_acceptance_migration_verify_cli and roadmap_event_log_read_back_cli exit 0 exactly
-// when this is empty, and the claim population in
-// dag/test/claim/roadmap/roadmap_receipt_continuity_acceptance.dag holds one arm at a time.
-fn roadmap_read_back_refusals(
-  migration: RoadmapAcceptanceMigrationOutcome, retired: RoadmapRetiredNodeIds,
-  history: RoadmapAcceptanceEventHistoryLoad, wrote: Bool
-) -> List<String> {
-  concat(
-    match migration {
-      MigrationVerified {
-        manifest_events: _, accepted_events: _, revoked_events: _,
-        retired_named: _, held_events: _, event_lines: _
-      } => []
-      MigrationRefused { cause } => [join(["migration verifier: ",
-        roadmap_acceptance_migration_refusal_report(cause: cause)], "")]
-    },
-    concat(
-      match retired {
-        RetiredNodeIdsLoaded { ids: _ } => []
-        RetiredNodeIdsRefused { detail } => [join([
-          "retired read: the one event log refused its retired set — ", detail as String,
-          "; an unreadable log is never an empty retired set"], "")]
-      },
-      concat(
-        match history {
-          RoadmapAcceptanceEventHistoryLoaded { events: _ } => []
-          RoadmapAcceptanceEventHistoryLoadRefused { detail } => [join([
-            "acceptance history: the one event log refused its acceptance history — ", detail,
-            "; the page that stands on this reader would be serving no accepted work at all"], "")]
-        },
-        if wrote { [] } else { ["read-back document: the write to the report path did not succeed"] }
-      )
-    )
-  )
-}
 
 fn roadmap_event_log_retired_report_cli() -> ProcessExit {
   match roadmap_retired_node_ids_load() {
@@ -474,72 +426,3 @@ fn roadmap_event_log_acceptance_report_cli() -> ProcessExit {
   }
 }
 
-fn roadmap_acceptance_migration_verify_cli(
-  repo_root: String, expected_manifest: String, retired_roster: String
-) -> ProcessExit {
-  match roadmap_acceptance_migration_verify(
-    repo_root: repo_root, expected_manifest: expected_manifest, retired_roster: retired_roster) {
-    MigrationVerified {
-      manifest_events: _, accepted_events: _, revoked_events: _,
-      retired_named: _, held_events: _, event_lines: _
-    } => ExitSuccess
-    MigrationRefused { cause } => ExitFailure {
-      code: 1,
-      reason: join(["roadmap_acceptance_migration_verify_cli: ",
-        roadmap_acceptance_migration_refusal_report(cause: cause)], "") }
-  }
-}
-
-// ALL THREE FACTS AT ONCE, WRITTEN WHERE THE PR CAN QUOTE IT. A ProcessExit carries no stdout, so an exit
-// code alone cannot be a read-back RECEIPT (protocol: read back through the reader production uses and SHOW
-// the result). This entry asks the same three readers the page asks — the migration verifier, the fail-closed
-// retired read, the acceptance-history reader — plus the per-node standing sentence for each name in the
-// retired roster, composes what they said into one document, writes it through the modeled
-// Filesystem.Write, and exits 0 only when every part was admitted AND the document was actually written. A
-// refusal exits 1 carrying the whole document in its reason, so the failing read-back is still legible.
-// Nothing here decides anything: each part is the reader's own answer, the four matches that turn an answer
-// into a refusal live in roadmap_read_back_refusals (one per reader, once), and the composition is claimed
-// (dag/test/claim/roadmap/roadmap_receipt_continuity_acceptance.dag) to refuse when any single part refuses.
-//
-//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_event_cli.dag \
-//     --function roadmap_event_log_read_back_cli --arg repo_root=/opt/gunbc/gunbc \
-//     --arg expected_manifest="$MANIFEST" --arg retired_roster=<a>,<b> --arg report_path=$D/read-back.out
-fn roadmap_event_log_read_back_cli(
-  repo_root: String, expected_manifest: String, retired_roster: String, report_path: String
-) -> ProcessExit {
-  let verdict = roadmap_acceptance_migration_verify(
-    repo_root: repo_root, expected_manifest: expected_manifest, retired_roster: retired_roster)
-  let retired = roadmap_retired_node_ids_load()
-  let history = roadmap_acceptance_event_history_load()
-  let standings = map(
-    filter(split(s: retired_roster, delimiter: ","), n => trim(n) != ""),
-    n => roadmap_event_standing_report(repo_root: repo_root, node: trim(n)))
-  let document = join([
-    "READ-BACK for repo_root ", repo_root, " (the readers production itself asks)\n",
-    // The verdict reaches the document through its RENDERING only; the exit above is decided by matching the
-    // outcome. Same words the runbook quotes, and rewording them could not change which read-backs are admitted.
-    "MIGRATION VERDICT:\n", roadmap_acceptance_migration_report(outcome: verdict), "\n",
-    "RETIRED SET: ", match retired {
-      RetiredNodeIdsLoaded { ids: _ } => "admitted by the fail-closed retired read",
-      RetiredNodeIdsRefused { detail } => join(["REFUSED — ", detail as String, " (a refusal, never an empty set)"], "") }, "\n",
-    "ACCEPTANCE HISTORY: ", match history {
-      RoadmapAcceptanceEventHistoryLoaded { events: _ } => "admitted by the one decoder of the one home",
-      RoadmapAcceptanceEventHistoryLoadRefused { detail } => join(["REFUSED — ", detail], "") }, "\n",
-    "STANDINGS (one sentence per retired node, as the log's standing renders it):\n",
-    join(standings, "\n"), "\n"], "")
-  let wrote = Filesystem.Write(path: report_path, content: document)
-  let refusals = roadmap_read_back_refusals(
-    migration: verdict, retired: retired, history: history, wrote: wrote.success)
-  if count(refusals) == 0 {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: 1,
-      reason: join([
-        "roadmap_event_log_read_back_cli: the read-back REFUSED at ", report_path,
-        " — ", to_string(value: count(refusals)), " reader(s) refused:",
-        join(map(refusals, r => join(["\n  ", r], "")), ""),
-        " (write error: ", wrote.error,
-        "); the document below is what the readers answered — a partial read is never quoted as a migration that completed:\n", document], "") }
-  }
-}

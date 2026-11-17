@@ -515,7 +515,7 @@ fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
 // integrity wrappers it called: they read the PRIOR acceptance history out of the deleted
 // observation carrier, revision-addressed through git. The event log has no such prior — a
 // chain's parent is an event id in the same log — so the honest replacement is the log's own fold
-// law plus roadmap_acceptance_migration_verify, not a live git witness of a carrier that is gone.
+// law, not a live git witness of a carrier that is gone.
 
 // SHELL→DAG MIGRATION BATCH 1 execution contracts. The ten shell-dag-* nodes were authored
 // without contracts, so launch admission refused them execution_contract_missing; these ten rows

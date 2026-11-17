@@ -2065,12 +2065,12 @@ fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE MIGRATION COMPARISON LIVES HERE, NEXT TO THE MEMBER LAW THAT SPELLS ITS FACTS. The one-time
-// migration of the operator's recorded acceptances (gunbc.roadmap.roadmap_operator_acceptance
-// roadmap_acceptance_migration_verify) is its only caller, but the comparison is pure and belongs where
+// THE CANONICAL ACCEPTANCE IDENTITY, SPOOLED NEXT TO THE MEMBER LAW THAT SPELLS ITS FACTS. The identity
+// this function returns is the single canonical spelling of an acceptance fact, and it belongs where
 // the canonical spelling of an acceptance fact is defined: ONE module decides what the complete fact IS,
-// and the verifier measures against that same law — there is no second grammar to drift. Keeping it here
-// also keeps the operator-close module's closure out of the claim module that witnesses it.
+// and every consumer measures against that same law — there is no second grammar to drift. The live
+// acceptance-evidence law (gunbc.roadmap.roadmap_issue_command) admits an acceptance with no pull request
+// only for a receipt whose canonical identity, spelled here, is a member of the closed set.
 // ──────────────────────────────────────────────────────────────────────────────────────────────
 // THE CANONICAL FACT, WHOLE. A migration is certified against the event's COMPLETE evidence, spelled by
 // the same member law that writes the event's canonical bytes (gunbc.roadmap.roadmap_event_log
@@ -2079,11 +2079,9 @@ fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<
 // accepting principal and day — and for a revocation its disposition, its reason, its revoker and its
 // day too. Comparing node and criteria digest alone would certify a migrated acceptance whose
 // red-control witness, handback artifact, accepting principal or day had been swapped: the standing
-// still folds the same way, and the receipt is no longer the one the operator wrote. Witnessed facet by
-// facet — agreement, swapped evidence refusing on both sides, the multiset count, a lost acceptance with
-// its closedness, a closedness the manifest never accepted, a manifest that does not replay, and the
-// retired roster — by the seven `a_migration_verifier_*` claims in
-// test.claim.roadmap.roadmap_acceptance_evidence_witness.
+// still folds the same way, and the receipt is no longer the one the operator wrote. Witnessed by the
+// closedness claims in test.claim.roadmap.roadmap_acceptance_evidence_witness, which check that the
+// identity a receipt earns is admitted exactly when it is a member of the closed set.
 fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
   match e {
     AcceptanceRecorded { receipt } =>
@@ -2094,157 +2092,6 @@ fn roadmap_acceptance_migration_identity(e: RoadmapAcceptanceEvent) -> String {
             "|", reason, "|", revoked_by, "|", revoked_on, "|",
             serialize_json(v: json_object(roadmap_acceptance_receipt_members(r: exact_prior_receipt)))], "")
   }
-}
-
-// The node an acceptance event is about — the receipt's own field, never a second naming of it. It lives
-// here, beside the canonical fact that reads the same two variants, because the verifier below needs it to
-// scope a comparison and the operator-close module used to keep its own copy: two namings of one field is a
-// fork (gunbc.design_argument::single_authority), so that copy is deleted and this is the only one.
-fn roadmap_acceptance_migration_event_node(e: RoadmapAcceptanceEvent) -> String {
-  match e {
-    AcceptanceRecorded { receipt } => receipt.node as String
-    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-      exact_prior_receipt.node as String
-  }
-}
-
-// Two lists agree when they are the same LENGTH and the same LINES IN THE SAME ORDER. This used to be
-// `count(left) == count(right)` plus a nested membership fold, which was quadratic and wrong in the same
-// breath: it accepted ["a","a"] against ["a","b"] — equal counts, the same two names, a duplicate on one
-// side and a missing node on the other — and it accepted a reorder, while the book retires in roster order
-// and the report is read line for line. Review 94530's second finding; sorting both sides would have kept
-// the cost linear and kept that answer, because order is not irrelevant here. `zip_eq` is positional and
-// fails when either list is left holding an item, so one pass covers length and order both.
-// Discriminated by test.claim.roadmap.roadmap_cutover_witness::roster_agreement_is_line_for_line.
-//
-// ITS HOME, and why it is not in `roadmap_cutover_cli` beside the rest of the migration's own declarations:
-// two callers ask this one question — the pre-write migration gate, and the step-5 verifier that checks the
-// roster FILE against the roster the MODEL holds — and `roadmap_cutover_cli` sits ABOVE
-// `roadmap_operator_acceptance` in the import graph (cutover_cli -> roadmap_event_cli ->
-// roadmap_operator_acceptance), so an import from that verifier back into cutover_cli closes a loop, against
-// the one structural law the import graph has (gunbc.design_argument::single_authority: acyclicity). It
-// lives here, beside the roster it agrees about (`roadmap_migration_retirement_ids`), which both callers
-// already reach. Still migration-time code: the dissolution deletes it exactly as it deletes the scaffold.
-fn roadmap_cutover_string_lists_agree(left: List<String>, right: List<String>) -> Bool {
-  zip_eq(a: left, b: right, eq: fn(l, r) { l == r })
-}
-
-// THE COMPARISON, PURE: the verifier's refusal logic in one function nobody can skip, so every refusal
-// is witnessed directly over constructed lists rather than only through a live carrier. Four
-// independent decisions, each reported with the fact that failed:
-//   1. THE FACTS, AS A MULTISET — not by membership. `any` cannot see that a manifest naming one
-//      acceptance twice met a log holding it once, so each side's COUNT of each distinct fact must
-//      agree: a lost event, a duplicated event and an altered event all refuse, with both counts and the
-//      fact named.
-//   2. CLOSEDNESS, BOTH WAYS, OVER THE MIGRATION'S OWN NODES. An acceptance the manifest leaves closed on
-//      a live receipt that the log's own reader does not confirm refuses — and so does a node the log
-//      calls closed that the manifest never accepted, because the migration may not invent a closed node
-//      either. And a manifest that does not replay is itself a refusal: it is not evidence of nothing, and
-//      reading it as an empty expectation would certify whatever the log happened to hold.
-//   3. THE RETIRED ROSTER: a node the runbook claims retired that the log does not hold retired.
-//   4. THE SCOPE OF THE MANIFEST'S SPEECH. Both comparisons above run over the log RESTRICTED to the nodes
-//      the migration carried: the nodes its acceptance events name, plus the roster it retires. On every
-//      other node the manifest is SILENT, and silence is not a negation — the same rule this repo applies
-//      to what it cannot observe ("unobserved is not absent", gunbc.design_argument::fail_closed). Before
-//      this rule the verifier read its own silence as "no other node may be closed", so any event another
-//      lane appended afterwards through the very same modeled route refused a migration that had in fact
-//      arrived whole — which is what an append-only shared log exists to allow. A foreign event naming a
-//      node the migration DID carry still refuses on both counts: that is the case the direction was
-//      written for, and it stays witnessed.
-fn roadmap_acceptance_migration_problems(
-  wanted: List<RoadmapAcceptanceEvent>,
-  held: List<RoadmapAcceptanceEvent>,
-  closed_nodes: List<String>,
-  not_retired: List<String>,
-  migration_roster: List<String>,
-) -> List<String> {
-  let wanted_facts = map(wanted, e => roadmap_acceptance_migration_identity(e: e))
-  // The nodes the migration spoke about: named by one of its acceptance events, or named by the roster it
-  // retires. Everything else in the log belongs to another lane's planning and is out of this verdict.
-  let spoken = fold(
-    concat(map(wanted, e => roadmap_acceptance_migration_event_node(e: e)), migration_roster),
-    init: [] as List<String>,
-    f: (acc, n) => if any(acc, a => a == n) { acc } else { concat(acc, [n]) })
-  let held_in_scope = filter(
-    held, e => any(spoken, n => n == roadmap_acceptance_migration_event_node(e: e)))
-  let closed_in_scope = filter(closed_nodes, cn => any(spoken, n => n == cn))
-  let held_facts = map(held_in_scope, e => roadmap_acceptance_migration_identity(e: e))
-  let facts = fold(concat(wanted_facts, held_facts), init: [] as List<String>, f: (acc, x) =>
-    if any(acc, a => a == x) { acc } else { concat(acc, [x]) })
-  let count_problems = filter(
-    map(facts, fct => {
-      let want_count = count(filter(wanted_facts, w => w == fct))
-      let have_count = count(filter(held_facts, h => h == fct))
-      if have_count == want_count { "" }
-      else {
-        join(["the log does not hold the manifest's fact in the same number: expected ",
-          to_string(value: want_count), ", the log holds ", to_string(value: have_count), ", for ", fct], "")
-      }
-    }),
-    pr => pr != "")
-  let replay_problems = match replay_acceptance_history(events: wanted) {
-    Present { value: state } => {
-      let expected_closed = map(state.live, r => r.node as String)
-      // `filter` is the two-argument list method; the sentence is a `map` over what it keeps. Written as
-      // one three-argument call it compiles and silently returns the bare node ids, so a runbook operator
-      // would read "node-multiset" with no sentence around it.
-      concat(
-        map(filter(expected_closed, n => !any(closed_nodes, cn => cn == n)),
-          n => join(["the manifest leaves ", n, " closed on a live receipt; the log does not say so", ""], "")),
-        map(filter(closed_in_scope, cn => !any(expected_closed, n => n == cn)),
-          cn => join(["the log calls ", cn, " closed on a live receipt the exported manifest never accepted", ""], "")))
-    }
-    // The manifest IS the evidence. An acceptance history that cannot be put in order — a revocation or
-    // an acceptance whose live receipt the events before it never established — is not evidence that
-    // nothing was closed; treating it as an empty expectation would certify whatever the log held.
-    Absent => ["the exported manifest does not replay as an acceptance history; nothing can be certified from it"]
-  }
-  let retired_problems = map(not_retired, n => join(["the log does not hold ", n, " retired", ""], ""))
-  concat(concat(count_problems, replay_problems), retired_problems)
-}
-
-// THE MIGRATION ROSTER — the one home for the nodes the 2026-11 planning cutover must retire through the
-// modeled route (gunbc.roadmap.roadmap_event_cli, kind "retire"). It exists because a plan row used to be able
-// to spell itself closed: the hand-editable SupersededLine arm of RoadmapItem said "this work is gone, by this
-// authority", and this line of work deletes that arm. A row rewritten as a PlainLine carries NO retirement —
-// gunbc.roadmap.roadmap_status item_is_done answers false for a plain line where it answered true for a
-// superseded one — so such a node is ACTIVE on the frontier and the page until the LOG says otherwise. That is
-// why dropping a retirement spelling without appending the event is a defect and not a cleanup, and why the
-// runbook's verify step refuses to finish while any id here lacks a Retired event
-// (docs/runbooks/roadmap-event-log-cutover.md, steps 4 and 5).
-// Declared scaffold, per gunbc.design_argument::self_hosting: reason above, trigger = every id here carries a
-// Retired event in the live log and the runbook's verify has read each one back; then this list, its authority
-// below, and the claims that pin them retire together.
-fn roadmap_migration_retirement_ids() -> List<String> {
-  [
-    "entry-graph-union-construction",
-    "shell-dag-floor-peak-calibration-rows",
-    "shell-dag-ci-fmt-gate-line",
-    "shell-dag-ci-deploy-invoke-prelude",
-    "shell-dag-ci-heal-regen-invoke"
-  ]
-}
-
-// WHO retired it, which is the citation the Retired event must carry. An id missing here answers none rather
-// than a default, so the claim can name the roster bug instead of a fabricated authority
-// (gunbc.design_argument::fail_closed).
-fn roadmap_migration_retirement_authority(node: String) -> NonEmptyStr? {
-  if node == "entry-graph-union-construction" {
-    Present { value: "gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08" as NonEmptyStr }
-  }
-  else if node == "shell-dag-floor-peak-calibration-rows" {
-    Present { value: "gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08" as NonEmptyStr }
-  }
-  else if node == "shell-dag-ci-fmt-gate-line" {
-    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
-  }
-  else if node == "shell-dag-ci-deploy-invoke-prelude" {
-    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
-  }
-  else if node == "shell-dag-ci-heal-regen-invoke" {
-    Present { value: "gunbc.plans.closure_consolidation P1" as NonEmptyStr }
-  }
-  else { none }
 }
 
 // THE ONE-TIME MIGRATION'S CLOSED SET OF EVIDENCE-LESS ACCEPTANCES, and the only thing that admits one.
