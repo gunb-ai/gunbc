@@ -1,11 +1,4 @@
-module gunbc.live_deploy.release_pair_deliver_cli {
-  #identity "fnv1a64:release-pair-deliver-cli-step1"
-  #provenance "warm-deer-42; lab-converges-release-pair PR-2a (WIP draft, step 1: argv builders + pure observation-decode fns)."
-  #tags "live_deploy,release_pair,wet_delivery,consumer"
-  #meta @path "type:consumer"
-  #meta @claim "the fetch/verify observations are DECODED from the executing host's own process results, never taken as an input the unit was handed"
-}
-
+module gunbc.live_deploy.release_pair_deliver_cli
 // THE EXECUTING CONSUMER of the staged wet plan (PR-2a). This module turns the lab's release pair into a real,
 // observed delivery: it OBSERVES the head, DISCOVERS the release-bins run for that exact head, FETCHES the pack,
 // OBSERVES its digest and build-key verdict ON the fetched pack, and only then feeds those OBSERVED results through

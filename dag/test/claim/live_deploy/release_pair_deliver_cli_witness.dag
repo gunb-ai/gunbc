@@ -1,11 +1,4 @@
-module gunbc.test.claim.live_deploy.release_pair_deliver_cli_witness {
-  #identity "fnv1a64:release-pair-deliver-cli-witness-step1"
-  #provenance "warm-deer-42; lab-converges-release-pair PR-2a witness (step 1: decode fns)."
-  #tags "live_deploy,release_pair,wet_delivery,claim"
-  #meta @path "type:claim"
-  #meta @claim "each release-pair CLI observation is decoded ONLY from the executing host's own ProcessOutcome; absent/refused never becomes an authorization"
-}
-
+module test.claim.live_deploy.release_pair_deliver_cli_witness
 // WITNESS for the PR-2a decode fns. Each injects a ProcessOutcome (the shape the admissible command seam,
 // run_shell_command_capture over LocalExec, produces) and asserts the typed observation it decodes to. These are the
 // fail-closed guarantees: a refusal or an empty observation NEVER becomes a head, a run, a fetched pack, or a verdict.
