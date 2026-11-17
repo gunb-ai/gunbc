@@ -173,11 +173,19 @@ fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarg
 // reservation opens the store. Renaming a member of the chain moves the mint and these rows together;
 // nothing else spells the path.
 fn compute_capacity_directories_carrier(home: HostCapacityHome) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_posture(home: home, sharing: compute_ledger_sharing_carrier(home: home))
+}
+
+// THE ONE LIST OF LEDGER ROWS, under a GIVEN area posture. The roster gate supplies the posture for a
+// host it knows (compute_capacity_directories_carrier); a candidate's serving desired state supplies the
+// shared posture directly (compute_capacity_directories_admitted). Root, areas and paths are spelled
+// here once, so the two selectors cannot disagree about anything but the posture.
+fn compute_capacity_directories_posture(home: HostCapacityHome, sharing: ComputeLedgerSharing) -> List<OwnedDirectoryTarget> {
   let areas = fabric_store_area_paths_root(members: compute_capacity_slots, root: home.instance_root)
   [
     host_capacity_shared_directory(home: home, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
-    compute_capacity_area_carrier(home: home, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
-    compute_capacity_area_carrier(home: home, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
+    compute_capacity_area_posture(home: home, sharing: sharing, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
+    compute_capacity_area_posture(home: home, sharing: sharing, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
   ]
 }
 
@@ -185,18 +193,11 @@ fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDi
   compute_capacity_directories_carrier(home: host_capacity_carrier_of(instance: instance))
 }
 
-// THE LEDGER ROWS A HOST GETS ONCE ADMITTED, spelled from the same parts as
-// compute_capacity_directories_carrier — the two area rows read compute_capacity_area_shared (the ONE
-// shared-posture spelling), never a copied literal. The roster gate decides the posture for hosts the
-// roster already knows; this function is what the serving desired state asks for a CANDIDATE (not-yet-
-// rostered) host, so admission is not a desired-state change (side-chat review of 2026-11-16, A2).
+// THE LEDGER ROWS A HOST GETS ONCE ADMITTED: the one row list under the shared posture. This is what the
+// serving desired state asks for a CANDIDATE (not-yet-rostered) host, so admission is not a desired-state
+// change (side-chat review of 2026-11-16, A2).
 fn compute_capacity_directories_admitted(home: HostCapacityHome) -> List<OwnedDirectoryTarget> {
-  let areas = fabric_store_area_paths_root(members: compute_capacity_slots, root: home.instance_root)
-  [
-    host_capacity_shared_directory(home: home, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
-    compute_capacity_area_shared(home: home, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
-    compute_capacity_area_shared(home: home, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
-  ]
+  compute_capacity_directories_posture(home: home, sharing: ComputeLedgerSharedWithRemoteBuild)
 }
 
 // A LEDGER AREA IS SHARED WHEN ITS HOST SERVES REMOTE BUILDS, and only the ledger the host resolves to:
@@ -243,26 +244,12 @@ fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerShari
   compute_ledger_sharing_carrier(home: host_capacity_carrier_of(instance: instance))
 }
 
-// THE POST-ADMISSION LEDGER-AREA POSTURE, SPELLED ONCE. A host joins the roster (is admitted) by
-// operator decision, so EVERY consumer of a candidate's serving posture needs the areas AS THEY
-// WILL BE once that decision lands: the roster gate (compute_ledger_sharing_carrier) selects this
-// function for a serving host, and gunbc.compute.remote_build_serving_setup remote_build_serving_desired
-// calls it directly for a CANDIDATE host (a host not yet on the roster) — asking the roster-gated path
-// for a candidate would hand it the service-only posture, so a pre-admission 'settled' receipt would
-// describe a ledger the admission itself then changes (side-chat review of 2026-11-16, finding A2).
-// One spelling, two selectors: nobody re-declares the group, the mode, or the adoption.
-fn compute_capacity_area_shared(home: HostCapacityHome, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
-  OwnedDirectoryDeclared {
-    member: member,
-    path: path,
-    owner: PosixOwnerNames { user: home.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
-    mode: DirectoryOwnerGroupWritableSetgidSticky,
-    group_adoption: SameUserRegroupToDeclaredGroup,
-  }
-}
-
-fn compute_capacity_area_carrier(home: HostCapacityHome, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
-  match compute_ledger_sharing_carrier(home: home) {
+// ONE AREA ROW UNDER A GIVEN POSTURE. The posture is chosen by the caller: the roster gate
+// (compute_ledger_sharing_carrier) for a rostered host, the shared arm directly for a candidate's
+// admitted posture (side-chat review of 2026-11-16, finding A2), so the group, mode and adoption of
+// each posture are spelled once.
+fn compute_capacity_area_posture(home: HostCapacityHome, sharing: ComputeLedgerSharing, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  match sharing {
     ComputeLedgerServiceOnly => OwnedDirectoryDeclared {
       member: member,
       path: path,
@@ -270,8 +257,18 @@ fn compute_capacity_area_carrier(home: HostCapacityHome, member: NonEmptyStr, pa
       mode: DirectoryOwnerAllEveryoneTraverse,
       group_adoption: ForeignOwnershipRefuses,
     }
-    ComputeLedgerSharedWithRemoteBuild => compute_capacity_area_shared(home: home, member: member, path: path)
+    ComputeLedgerSharedWithRemoteBuild => OwnedDirectoryDeclared {
+      member: member,
+      path: path,
+      owner: PosixOwnerNames { user: home.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
+      mode: DirectoryOwnerGroupWritableSetgidSticky,
+      group_adoption: SameUserRegroupToDeclaredGroup,
+    }
   }
+}
+
+fn compute_capacity_area_carrier(home: HostCapacityHome, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  compute_capacity_area_posture(home: home, sharing: compute_ledger_sharing_carrier(home: home), member: member, path: path)
 }
 
 fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
