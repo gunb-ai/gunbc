@@ -13,7 +13,7 @@ import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_re
 import extdeps.bmc.ipmitool_lanplus_timing {
   IpmitoolLanplusInvocation, ipmitool_lanplus_invocation_of_argv, ipmitool_lanplus_unanswered_request_wait,
   ipmitool_lanplus_auth_caps_unanswered_wait, ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops,
-  ipmitool_get_channel_auth_caps_requests,
+  ipmitool_get_channel_auth_caps_requests, ipmitool_lanplus_open_worst_wait, ipmitool_lanplus_open_first_success_wait,
 }
 import std.measure { Second, second, measure_add, measure_le }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
@@ -341,17 +341,20 @@ test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retr
             && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), count: 12)
             // 8 s of margin inside the deadline, with refusals, before process start-up and exit.
             && measure_le(a: measure_add(a: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), b: second(count: 8)), b: deadline)
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: watch), count: 33)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: watch), count: 24)
             && measure_le(a: deadline, b: ipmitool_mc_info_slowest_answered_wait(invocation: watch))
             && ipmitool_lanplus_request_survives_drops(invocation: watch, dropped: 1)
             && four.attempts == 4
             && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false), count: 20)
             && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: true), count: 40)
             && measure_le(a: deadline, b: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false))
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: four), count: 82)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: four), count: 73)
             && policy.attempts == 1
             && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: policy, refused: true), count: 4)
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: policy), count: 19)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: policy), count: 10)
+            // The open's worst case stays an upper bound: four outer iterations of three stages.
+            && wait_is(w: ipmitool_lanplus_open_worst_wait(invocation: watch, refused: false), count: 12)
+            && wait_is(w: ipmitool_lanplus_open_first_success_wait(invocation: watch), count: 3)
             && !ipmitool_lanplus_request_survives_drops(invocation: policy, dropped: 1)
             // The auth-caps exchange asks twice, so one lost datagram there is absorbed even at one attempt per request.
             && ipmitool_get_channel_auth_caps_requests * policy.attempts > 1

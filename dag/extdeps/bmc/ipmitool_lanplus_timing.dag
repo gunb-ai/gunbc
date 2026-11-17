@@ -36,7 +36,8 @@ import extdeps.uri { Uri, Https }
 //   sends Get Channel Cipher Suites (ipmi_get_channel_cipher_suites) once per 16-byte set of the controller's list
 //   until a short reply: at least one more request, how many more being the controller's fact.
 // - THE SESSION OPEN. The open-session request, RAKP 1 and RAKP 3 are sent once each at the session timeout, inside
-//   an outer loop of the constant IPMI_LAN_RETRY that -R does not govern: at most 4 × 3 × N seconds.
+//   an outer loop of the constant IPMI_LAN_RETRY that -R does not govern. A RAKP 3 that succeeds leaves that loop, so
+//   an open that succeeds on its first iteration waits at most 3 × N seconds, and the loop at its worst 4 × 3 × N.
 // - ONE `mc info` makes at least six requests besides discovery: Get Channel Authentication Capabilities before the
 //   open; Set Session Privilege Level after it; hpm2_detect_max_payload_size (one, two on an HPM.2 board);
 //   ipmi_get_oem's Get Device ID; the mc info Get Device ID; and Close Session.
@@ -133,10 +134,17 @@ fn ipmitool_lanplus_auth_caps_unanswered_wait(invocation: IpmitoolLanplusInvocat
   ipmitool_wait_times(w: ipmitool_lanplus_unanswered_request_wait(invocation: invocation, refused: refused), k: ipmitool_get_channel_auth_caps_requests)
 }
 
-// THE SESSION OPEN AT ITS WORST: every stage of every outer try waits the full session timeout.
+// THE SESSION OPEN AT ITS WORST, an upper bound: every stage of every outer try waits the full session timeout.
 fn ipmitool_lanplus_open_worst_wait(invocation: IpmitoolLanplusInvocation, refused: Bool) -> Second {
   let once = second(count: ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * second_count(s: invocation.response_timeout))
   if refused { measure_add(a: once, b: once) } else { once }
+}
+
+// AN OPEN THAT SUCCEEDS ON ITS FIRST ITERATION, answered only at the end of each stage's wait: 3 × N. A successful
+// RAKP 3 leaves ipmi_lanplus_open's IPMI_LAN_RETRY loop, so this is what an answering controller costs at the least
+// for its slowest answers.
+fn ipmitool_lanplus_open_first_success_wait(invocation: IpmitoolLanplusInvocation) -> Second {
+  ipmitool_wait_times(w: invocation.response_timeout, k: ipmitool_lanplus_open_stages)
 }
 
 // The requests one `mc info` makes, at the least: six, and the discovery requests when it runs without -C.
@@ -144,13 +152,15 @@ fn ipmitool_mc_info_requests_at_least(invocation: IpmitoolLanplusInvocation) -> 
   if invocation.cipher_suite_discovery { ipmitool_mc_info_lanplus_requests + ipmitool_cipher_suite_discovery_requests_at_least } else { ipmitool_mc_info_lanplus_requests }
 }
 
-// A CONTROLLER THAT ANSWERS EVERY REQUEST ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, with the session open at its
-// worst. Auth caps answered on the first request's last attempt is asked once. A lower bound on how long such an `mc
-// info` takes (the discovery count is), so "past the deadline" here is past it for every list length.
+// A CONTROLLER THAT ANSWERS EVERY REQUEST ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, and its session open on the first
+// iteration at the end of each stage's wait. Auth caps answered on the first request's last attempt is asked once. A
+// LOWER bound on how long such an `mc info` takes -- the discovery count and the open are both at their least -- so
+// "past the deadline" here is past it for every list length and every open; the open's upper bound is
+// ipmitool_lanplus_open_worst_wait.
 fn ipmitool_mc_info_slowest_answered_wait(invocation: IpmitoolLanplusInvocation) -> Second {
   measure_add(
     a: ipmitool_wait_times(w: ipmitool_lanplus_unanswered_request_wait(invocation: invocation, refused: false), k: ipmitool_mc_info_requests_at_least(invocation: invocation)),
-    b: ipmitool_lanplus_open_worst_wait(invocation: invocation, refused: false),
+    b: ipmitool_lanplus_open_first_success_wait(invocation: invocation),
   )
 }
 

@@ -2246,8 +2246,10 @@ fn matrix_cold_reset_mc_info_dropping_one_datagram_in_window(world: BmcWorld, ca
   }
 }
 
-// Inside the window the controller answers every message only at the end of ipmitool's last attempt. If that mc info
-// would finish before the deadline it reads available; otherwise coreutils kills it with nothing printed (exit 124).
+// Inside the window the controller answers every request only at the end of ipmitool's last attempt, and its session
+// open on the first iteration (extdeps.bmc.ipmitool_lanplus_timing ipmitool_mc_info_slowest_answered_wait, a lower
+// bound). If that mc info would finish before the deadline it reads available; otherwise coreutils kills it with nothing
+// printed (exit 124).
 fn matrix_cold_reset_mc_info_slow_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
     match bmc_call_lanplus_clock(call: call) {
@@ -2292,8 +2294,8 @@ test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_
 
 // A SLOW CONTROLLER THAT NEVER RESET CANNOT REACH AN ACCEPTED RECOVERY: ipmitool reports sending, the controller keeps
 // its service, and the first poll after the attempt -- answered message by message at the end of each last attempt --
-// runs past the 20 s deadline (at least 33 s under the watch-poll row, with the cipher-suite discovery a call without -C
-// makes) and is killed with nothing printed. That -v poll is a
+// runs past the 20 s deadline (at least 24 s under the watch-poll row: the cipher-suite discovery a call without -C
+// makes, and a session open that succeeds on its first iteration) and is killed with nothing printed. That -v poll is a
 // failed probe, so the next poll answering available is no recovery: the route polls to its loss bound and refuses.
 // Read as a missing response (the rule before X), it would be a loss, the next answer a recovery, and with power
 // agreeing an accepted reset that never happened.
