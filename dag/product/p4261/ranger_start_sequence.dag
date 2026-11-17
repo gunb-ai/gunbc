@@ -1,0 +1,220 @@
+module product.p4261.ranger_start_sequence
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+
+// HOW A RANGER TRAY STARTS ITS P4261, AS ONE OWNER REPORTED IT. On 2026-11-16 an owner of a running Ranger
+// tray (NVIDIA's "TS1C RANGER COMPUTE", P/N 675-24265-2020-T1C; not named, recorded with permission) gave
+// the names and the order of the lines the tray's controller works with: an ASPEED AST2600 management module
+// in the front IO board's DC-SCM slot, running NVIDIA's OpenBMC build GraceBMC-23.06-2-rc1, machine "ranger".
+// They were read from that controller's own start-up scripts and pin table. They are names, directions,
+// logic levels at the controller and order. They are not measurements at the carrier's sockets: which
+// contact of J13 or J14 carries which line, and at what voltage, is not known to that owner or to this
+// bench (product.p4261.interface_registry keeps the four cables' sockets as reported).
+//
+// Everything here is that account, typed so its parts can be asked questions: which lines the controller
+// drives, which the board answers, what has to be true before run power, and which lines differ between
+// standby and running. It is not a reading of any board held here, and it is one firmware build on one tray.
+
+data ranger_sequence_source: NonEmptyStr = "an owner of a running Ranger tray, 2026-11-16, from the controller's start-up scripts and pin table (GraceBMC-23.06-2-rc1)"
+
+type LineDirection
+  = ControllerDrives
+  | BoardAnswers
+
+type RangerLine {
+  name: NonEmptyStr
+  direction: LineDirection
+}
+
+fn drives(name: NonEmptyStr) -> RangerLine {
+  RangerLine { name: name, direction: ControllerDrives }
+}
+
+fn answers(name: NonEmptyStr) -> RangerLine {
+  RangerLine { name: name, direction: BoardAnswers }
+}
+
+// The lines named in the account. LOCAL_RUN_PWR_EN is, by the scripts, the tray's own run power; whether it
+// reaches the carrier at all is not said (see the discrepancy below).
+data ranger_lines: List<RangerLine> = [
+  drives(name: "BMC_READY"), drives(name: "RUN_POWER_EN"), drives(name: "LOCAL_RUN_PWR_EN"), drives(name: "IOM_PWR_EN"),
+  drives(name: "EROT_FPGA_RST_L"), drives(name: "FPGA_RST_L"), drives(name: "BMC_EP_PERST_EN"), drives(name: "PWR_BRAKE_L"),
+  drives(name: "SHDN_REQ_L"), drives(name: "SHDN_FORCE_L"), drives(name: "SYS_RST_IN_L"), drives(name: "GLOBAL_WP"),
+  drives(name: "STBY_POWER_EN"), drives(name: "BMC_EROT_FPGA_SPI_MUX_SEL"), drives(name: "FPGA_EROT_RECOVERY_L"),
+  answers(name: "BB_PRSNT_L"), answers(name: "STBY_POWER_PG"), answers(name: "FPGA_READY"), answers(name: "RUN_POWER_PG"),
+  answers(name: "SYS_RST_OUT_L"), answers(name: "SHDN_OK_L"), answers(name: "RUN_POWER_FAULT_L"), answers(name: "THERM_BB_OVERT_L"),
+  answers(name: "THERM_FPGA_OVERT_L"), answers(name: "THERM_BB_WARN_L"), answers(name: "FPGA_EROT_FATAL_ERROR_L"),
+]
+
+type SequencePhase
+  = ControllerBoot
+  | Standby
+  | RunPower
+
+// One step: the controller sets a line, or waits until a line the board answers reads a level. limit_seconds
+// is the wait's limit where the account gave one, 0 where it gave none.
+type SequenceStep {
+  phase: SequencePhase
+  line: NonEmptyStr
+  level: Nat
+  waits: Bool
+  limit_seconds: Nat
+}
+
+fn set(phase: SequencePhase, line: NonEmptyStr, level: Nat) -> SequenceStep {
+  SequenceStep { phase: phase, line: line, level: level, waits: false, limit_seconds: 0 }
+}
+
+fn wait(phase: SequencePhase, line: NonEmptyStr, level: Nat, limit_seconds: Nat) -> SequenceStep {
+  SequenceStep { phase: phase, line: line, level: level, waits: true, limit_seconds: limit_seconds }
+}
+
+// The order as given. Left out, as the account left them out: the PCIe reset toward the FPGA being released
+// and "a few I2C messages" to the board, both between FPGA_READY and BMC_READY; BMC_EROT_FPGA_SPI_MUX_SEL is
+// set to 1 "then released", kept here as its set.
+data ranger_start_steps: List<SequenceStep> = [
+  set(phase: ControllerBoot, line: "BMC_READY", level: 0), set(phase: ControllerBoot, line: "RUN_POWER_EN", level: 0),
+  set(phase: ControllerBoot, line: "LOCAL_RUN_PWR_EN", level: 0), set(phase: ControllerBoot, line: "IOM_PWR_EN", level: 0),
+  set(phase: ControllerBoot, line: "EROT_FPGA_RST_L", level: 0), set(phase: ControllerBoot, line: "FPGA_RST_L", level: 0),
+  set(phase: ControllerBoot, line: "BMC_EP_PERST_EN", level: 0), set(phase: ControllerBoot, line: "PWR_BRAKE_L", level: 0),
+  set(phase: ControllerBoot, line: "SHDN_REQ_L", level: 0), set(phase: ControllerBoot, line: "SHDN_FORCE_L", level: 0),
+  set(phase: ControllerBoot, line: "SYS_RST_IN_L", level: 0), set(phase: ControllerBoot, line: "GLOBAL_WP", level: 0),
+  wait(phase: ControllerBoot, line: "BB_PRSNT_L", level: 0, limit_seconds: 0),
+  set(phase: Standby, line: "STBY_POWER_EN", level: 1),
+  wait(phase: Standby, line: "STBY_POWER_PG", level: 1, limit_seconds: 20),
+  set(phase: Standby, line: "BMC_EROT_FPGA_SPI_MUX_SEL", level: 1), set(phase: Standby, line: "FPGA_EROT_RECOVERY_L", level: 1),
+  set(phase: Standby, line: "PWR_BRAKE_L", level: 1), set(phase: Standby, line: "SHDN_REQ_L", level: 1), set(phase: Standby, line: "SHDN_FORCE_L", level: 1),
+  set(phase: Standby, line: "EROT_FPGA_RST_L", level: 1), set(phase: Standby, line: "FPGA_RST_L", level: 1),
+  wait(phase: Standby, line: "FPGA_READY", level: 1, limit_seconds: 60),
+  set(phase: Standby, line: "BMC_READY", level: 1),
+  set(phase: RunPower, line: "BMC_EP_PERST_EN", level: 1),
+  set(phase: RunPower, line: "LOCAL_RUN_PWR_EN", level: 1),
+  set(phase: RunPower, line: "RUN_POWER_EN", level: 1),
+  wait(phase: RunPower, line: "RUN_POWER_PG", level: 1, limit_seconds: 20),
+  set(phase: RunPower, line: "SYS_RST_IN_L", level: 1),
+  wait(phase: RunPower, line: "SYS_RST_OUT_L", level: 1, limit_seconds: 0),
+]
+
+fn is_run_phase(p: SequencePhase) -> Bool {
+  match p {
+    ControllerBoot => false
+    Standby => false
+    RunPower => true
+  }
+}
+
+// A line's level once a list of steps has run: the last level a step gave it, or 2 where no step named it.
+data level_not_given: Nat = 2
+
+fn level_after(steps: List<SequenceStep>, line: NonEmptyStr) -> Nat {
+  fold(filter(steps, s => s.line == line), init: level_not_given, f: (acc, s) => s.level)
+}
+
+fn steps_through_standby(steps: List<SequenceStep>) -> List<SequenceStep> {
+  filter(steps, s => !is_run_phase(p: s.phase))
+}
+
+// The lines whose level differs between the end of standby and the end of run power, derived from the steps.
+fn lines_changing_for_run(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<RangerLine> {
+  filter(lines, l => level_after(steps: steps_through_standby(steps: steps), line: l.name) != level_after(steps: steps, line: l.name))
+}
+
+// THE ACCOUNT'S OWN SUMMARY, AND WHERE THE STEPS DISAGREE WITH IT. The owner summed up: "between standby and
+// running five of these lines change: RUN_POWER_EN, BMC_EP_PERST_EN and SYS_RST_IN_L from the controller;
+// RUN_POWER_PG and SYS_RST_OUT_L from the board." The steps as given also raise LOCAL_RUN_PWR_EN. The likely
+// reading is that LOCAL_RUN_PWR_EN stays on the tray's own boards and never reaches the carrier, which is an
+// inference and is owed as a question to that owner (the review of 2026-11-16).
+data reported_lines_changing_for_run: List<NonEmptyStr> = ["RUN_POWER_EN", "BMC_EP_PERST_EN", "SYS_RST_IN_L", "RUN_POWER_PG", "SYS_RST_OUT_L"]
+
+fn changing_but_not_in_the_summary(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<RangerLine> {
+  filter(lines_changing_for_run(lines: lines, steps: steps), l => !any(reported_lines_changing_for_run, n => n == l.name))
+}
+
+fn steps_naming_no_listed_line(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<SequenceStep> {
+  filter(steps, s => !any(lines, l => l.name == s.line))
+}
+
+// ── THE STATES, AND WHERE THIS BENCH'S BOARD IS NOT ─────────────────────────────────────────────────
+
+// The states the sequence passes through, in order (the review of 2026-11-16).
+type RangerState
+  = RangerBoardAbsentOrReset
+  | RangerStandbyRequested
+  | RangerStandbyPowerGood
+  | RangerFpgaReleased
+  | RangerFpgaReady
+  | RangerBmcReady
+  | RangerRunRequested
+  | RangerRunPowerGood
+  | RangerSystemResetReleased
+  | RangerHostRunning
+
+// A board's state against that ladder. Forcing the hot-swap stage on by hand at Q300, with none of the
+// controller's lines driven, is not a state on it: the 48 V stage is up, and nothing says standby was
+// requested, the FPGA released, the controller ready or the system reset let go.
+type StartStanding
+  = OnRangerLadder { state: RangerState }
+  | ManualHotSwapForcedWithModulePartialPower { seen: NonEmptyStr }
+
+data lot_e1_218_standing: StartStanding = ManualHotSwapForcedWithModulePartialPower { seen: "S/N 1583323120218, 2026-11-15 and 2026-11-16: Q300's node pulled low by hand, the 48 V stage up, a cooled module fitted, a steady 0.33 A at 48 V (about 16 W), no console output" }
+
+fn is_on_ladder(s: StartStanding) -> Bool {
+  match s {
+    OnRangerLadder { state: _ } => true
+    ManualHotSwapForcedWithModulePartialPower { seen: _ } => false
+  }
+}
+
+// ── THE POWER THAT TRAY REPORTS ─────────────────────────────────────────────────────────────────────
+
+// The carrier's two hot-swap readings as its FPGA reports them to that controller, in watts, with a
+// 699-2G530-0215-DV5 module. Which of the carrier's two LM5066I parts is which is not established.
+type ReportedPower {
+  state: NonEmptyStr
+  hsc_watts: Nat
+  standby_hsc_watts: Nat
+}
+
+data ranger_power_host_off: ReportedPower = ReportedPower { state: "standby, host off", hsc_watts: 7, standby_hsc_watts: 27 }
+
+data ranger_power_at_start: ReportedPower = ReportedPower { state: "just after power-on", hsc_watts: 162, standby_hsc_watts: 37 }
+
+data ranger_power_idle_high: ReportedPower = ReportedPower { state: "idle, upper figure", hsc_watts: 150, standby_hsc_watts: 37 }
+
+data ranger_power_at_owner_limit: ReportedPower = ReportedPower { state: "under load with that owner's limits (module 450 W, GPU 300 W)", hsc_watts: 412, standby_hsc_watts: 37 }
+
+fn total_watts(p: ReportedPower) -> Nat {
+  p.hsc_watts + p.standby_hsc_watts
+}
+
+// This bench's forced state against that tray's standby: about 16 W here, by 0.33 A at 48 V.
+data lot_e1_218_forced_watts: Nat = 16
+
+fn below_ranger_standby(watts: Nat) -> Bool {
+  watts < total_watts(p: ranger_power_host_off)
+}
+
+// Milliamps at 48 V for a reported state, for sizing a supply's limit.
+fn milliamps_at_48_volts(p: ReportedPower) -> Nat {
+  (total_watts(p: p) * 1000) / 48
+}
+
+// ── WHAT IT PRINTS ──────────────────────────────────────────────────────────────────────────────────
+
+fn phase_text(p: SequencePhase) -> String {
+  match p {
+    ControllerBoot => "controller boot"
+    Standby => "standby"
+    RunPower => "run power"
+  }
+}
+
+fn step_line(s: SequenceStep) -> String {
+  join([phase_text(p: s.phase), ": ", if s.waits { "wait for " } else { "set " }, s.line as String, " = ", to_string(s.level), if s.waits && s.limit_seconds > 0 { join([" (limit ", to_string(s.limit_seconds), " s)"], "") } else { "" }], "")
+}
+
+fn start_sequence_lines() -> List<String> {
+  map(ranger_start_steps, s => step_line(s: s))
+}
