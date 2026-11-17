@@ -1008,13 +1008,6 @@ data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRulin
   provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
 }
 
-data fast_lane_wait_step_lands_dormant: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fast_lane_wait_step_lands_dormant"),
-  decided: "2026-11-16",
-  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
-  provenance: "Manager bright-ibex-807 to session cool-lynx-59, 2026-11-16 (msg_b196bf0f), on the wait-for-base step of the fast lane (gunbc.read_set_restore, PR gunbc#16568). Offered the step's two budget-relevant halves, the manager ruled: the claim-enrollment half (a) is DROPPED with the operator -- it adds floor runtime, a budget decision nobody made -- and only (b), the wait's runner occupancy, stands. The manager's ruling admits the step to land ONLY DORMANT, with four conditions, all implemented: (1) never wait and then build anyway when knowable up front -- the estimate created + FL_TYPICAL - now declines with 'wait -- too-far' before any waiting; (2) stop at once on a failed or cancelled run ('wait -- failed'); (3) countable net effect -- the decision prints reuse_after_wait and full_after_wait|<reason> so the wait's conversions are countable; (4) honest worst case -- the job timeout stays at its committed value and the occupancy added by the wait is bounded by a hard-deadlined cap of 12 minutes (720 s). WHAT THIS ROW DOES NOT AUTHORIZE: the positive cap itself. Flipping data fast_lane_wait_cap_secs from second(count: 0) to any positive value increases CI time occupancy and is an increase under the ci_job_budgets_closed_to_growth ruling; it requires the operator's EXPLICIT sign-off -- a default-decided escalation is not sign-off (the escalation msg_926f150f was closed defaulted and is explicitly not approval). Until that operator decision exists, every PR run of the step prints 'fast lane: wait -- disabled' and exits before any API call, and the poll loop below the guard is inert scaffolding this row records as awaiting it. The missing decision, when made, is recorded as a further DesignRuling row naming the cap value; the step's dissolution trigger cites this row."
-}
-
 fn design_rulings() -> List<DesignRuling> {
   [
     no_ci_claim_execution_until_native_frontier_clears,
@@ -1135,7 +1128,6 @@ fn design_rulings() -> List<DesignRuling> {
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
-    fast_lane_wait_step_lands_dormant,
   ]
 }
 
