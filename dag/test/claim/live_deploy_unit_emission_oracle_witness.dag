@@ -776,7 +776,7 @@ test fn the_pair_delivery_timer_starts_the_delivery_unit_on_its_cadence() -> Boo
   let unit = deployment_pair_delivery_unit_name(names: spec.names) as String
   let timer = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_timer_unit_file(spec: spec))
   any(timer, l => l == join(["Unit=", unit], ""))
-    && any(timer, l => l == join(["OnUnitActiveSec=", systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) as String], ""))
+    && any(timer, l => l == join(["OnUnitInactiveSec=", systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) as String], ""))
     && any(timer, l => l == "WantedBy=timers.target")
 }
 

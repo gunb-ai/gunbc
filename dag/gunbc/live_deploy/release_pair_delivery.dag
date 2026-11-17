@@ -33,12 +33,12 @@ module gunbc.live_deploy.release_pair_delivery
 // restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command)); any refusal yields
 // PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
 //
-// THE EXECUTING CONSUMER is a NAMED, TRACKED later change, not prose: roadmap work item `lab-converges-release-pair`
-// (PR3b) — the lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service, its trigger the sibling
-// .timer on OnUnitActiveSec=600 s (to be emitted in emit.dag, named in spec.dag, registered in apply_legs.dag). It
-// runs stage 1's argv, observes the fetch, runs stage 2's dispatch when present, observes the verdict, builds the
-// stage-3 plan from the observations, and runs the plan's effects. Until that unit lands these three stages are
-// that tracked item's declared frontier with its trigger, not dangling.
+// THE EXECUTING CONSUMER is real and wired: the lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery
+// .service (emit.dag::live_deploy_belt_pair_delivery_unit_file), its trigger the sibling .timer on
+// OnUnitInactiveSec=600 s (live_deploy_belt_pair_delivery_timer_unit_file), named in spec.dag and registered in
+// apply_legs.dag. Its ExecStart runs release_pair_deliver_once_cli, which runs stage 1's argv, observes the fetch,
+// runs stage 2's dispatch when present, observes the verdict, builds the stage-3 plan from those observations, and
+// runs the plan's effects. The three stages are consumed by that executing route, not dangling.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import extdeps.tools.gh { gh_run_download_argv }

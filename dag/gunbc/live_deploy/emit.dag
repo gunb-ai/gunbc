@@ -1346,7 +1346,7 @@ fn live_deploy_belt_pair_delivery_timer_unit_file(spec: DeploymentSpec) -> Syste
     timer: [
       TimerUnit { target: deployment_pair_delivery_unit_name(names: spec.names) },
       OnBootSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
-      OnUnitActiveSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
       AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
