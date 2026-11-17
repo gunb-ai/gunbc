@@ -19,7 +19,7 @@ import extdeps.github.actions {
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
-  fleet_converge_srv15_read_wif_auth_step, fleet_converge_srv15_bmc_secret_versions_read_step, fleet_converge_srv15_versions_read_wif_step_id,
+  fleet_converge_srv15_read_wif_auth_step, fleet_converge_srv15_bmc_secret_versions_read_step, fleet_converge_srv15_versions_read_wif_step_id, fleet_converge_gcp_iam_converge_job_on,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   Srv1RootMutation, fleet_converge_approval_broker_dark_install_step_if,
@@ -760,6 +760,11 @@ fn step_env_text(step: Step) -> String {
         Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
         Absent => ""
       }
+    // step_env_text renders only run-step env: token bindings in this fleet are WIF_ACCESS_TOKEN
+    // env entries on run-steps, and UsesStep carries uses/with maps (path, name, retention-days)
+    // with no env bindings. Rendering uses-env through yaml_scalar_text cost 100M+ eval steps and
+    // 23GB of RSS for zero discrimination (killed at the 24GB cgroup ceiling), so this arm stays
+    // "" and the sole-consumer scan is scoped to run-step env accordingly.
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
   }
 }
@@ -949,4 +954,13 @@ test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
     _ => false
   }
     && string_contains(s: yml, pattern: "steps.wif_auth_srv15_read.outputs.access_token")
+    // review 96099 / review 96142: "sole consumer" must be checked, not just named. GitHub scopes the
+    // `steps` context to its own job, so scanning this job's steps is complete coverage for the
+    // history-chosen-fallback class the no-'||' ruling (msg_dacad7be) rejected: a second binding of
+    // this token anywhere else in the workflow is either here (caught below, in run-step env —
+    // step_env_text renders exactly the run-step bindings where a token could flow) or dead text
+    // (job-scoped).
+    && count(fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr).steps, st =>
+         step_id_text(step: st) != (fleet_converge_srv15_versions_read_wif_step_id as String)
+           && string_contains(s: step_env_text(step: st), pattern: "steps.wif_auth_srv15_read.outputs.access_token")) == 0
 }
