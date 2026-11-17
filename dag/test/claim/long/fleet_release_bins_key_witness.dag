@@ -787,10 +787,6 @@ data script_retention_page2_fail: TransportScript? = release_bins_transport(
 // is incomplete, the typed lines are duplicate-ids and pages-incomplete, and
 // nothing is deleted -- not even the 233 ids a naive keep-16 over the raw
 // union would name.
-fn retention_dup_page(start: Int, end: Int, extra: Int) -> String {
-  join(["{\"total_count\": 250, \"actions_caches\": [\"\"], \"_\": 0}") // unused; see below
-}
-
 fn fake_curl_pages_dup(body1: String, body2: String, body3: String) -> Outcome<String> {
   e(statements: fake_tool(
     name: "curl",
