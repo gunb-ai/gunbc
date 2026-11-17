@@ -16,6 +16,9 @@ module gunbc.live_deploy.release_pair_deliver_cli
 import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gh {
@@ -220,6 +223,25 @@ fn release_pair_pack_fetch(
 // ran clean (exit 0); Refused with a named reason otherwise. The pack_dir named here is the SAME directory the entry
 // observed the fetch wrote into; release_pair_install_plan then refuses unless verify and fetch name the same pack
 // (the typed same-pack_dir comparison), so a verdict for a different directory cannot authorize an install.
+// THE CONSUMER KEY CHECK IS A MULTI-STATEMENT POSIX PROGRAM, not a single argv (review 96241 finding 2).
+// release_pair_verify_dispatch yields the fleet pack's consumer key-check PROGRAM — `[ -n "$RELEASE_BINS_KEY" ]`,
+// a `-f` guard per downloaded member, a digest compute-and-compare, and a `grep -qxF` source-closure check — built
+// from a typed shell AST in gunbc.fleet.fleet_release_bins_key and rendered by release_bins_script_text. It is a
+// genuine multi-statement program with control flow and shell variables, so it CANNOT collapse to one sealed
+// ArgvCommand (a program plus a fixed argv): the medium must be a shell. The restart was the case where systemctl
+// already modelled the effect as an argv and running it via sh was wrong; THIS is the reviewer's declared-scaffold
+// case — kept as a declared row (below), not a bare comment, so the debt is on the ledger with a dissolution trigger.
+data release_pair_verify_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.release_pair_delivery",
+    decl_name: "release_pair_verify_dispatch",
+    field: WholeDeclaration
+  }
+}
+
+data release_pair_verify_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: release_pair_verify_dispatch ships the fleet consumer key-check as a rendered sh -c program; the CLI runs it via posix_sh_program_command. It stays a genuine multi-statement shell program today (test guards, a digest compute-and-compare, a grep -qxF closure check, shell variables). DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), so no hand-authored medium-as-string program remains in the pair-delivery verify path and the dispatch yields a typed program rather than a script String.")
+
 fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) -> PackVerify {
   match verify_outcome {
     ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
@@ -298,6 +320,9 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             member_src: member_src,
           )
           let verify = match release_pair_verify_dispatch(fetch: fetch) {
+            // The consumer key-check is a genuine multi-statement sh program (test guards + digest compare + grep -qxF
+            // closure check), so it runs under posix_sh; that is a DECLARED scaffold with a dissolution trigger, not
+            // an ad-hoc shell — see release_pair_verify_shell_scaffold / release_pair_verify_shell_dissolution_trigger.
             Present { value: script } =>
               release_pair_pack_verify(
                 verify_outcome: run_shell_command_capture(
@@ -445,7 +470,9 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
             path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,
           ) {
             FilesystemCreated { path: _ } =>
-              match run_shell_command_capture(command: posix_sh_program_command(script: restart), transport: LocalExec) {
+              // The restart is the sealed ArgvCommand the fold carries (extdeps.systemd.systemctl::systemctl_restart_command);
+              // the runtime dispatch routes it straight at the exec seam — no posix shell re-parsing it (review 96241 finding 2).
+              match run_shell_command_capture(command: restart, transport: LocalExec) {
                 ProcessRefused { exit_code: _, stderr: _ } =>
                   exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
                 _ => ExitSuccess

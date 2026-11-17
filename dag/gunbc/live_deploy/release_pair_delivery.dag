@@ -30,7 +30,7 @@ module gunbc.live_deploy.release_pair_delivery
 // placement bindings are typed facts, not conventions. A bound pair yields a PlanToInstall that copies the fetched
 // file into the bound-pair locus (reusing @ref(gunbc.live_deploy.release_locus::release_locus_member_path)), writes
 // the bound source receipt (reusing @ref(gunbc.live_deploy.release_locus::release_locus_tree_receipt_path)), and
-// restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command)); any refusal yields
+// restarts serve (reusing @ref(extdeps.systemd.systemctl::systemctl_restart_command), the sealed ArgvCommand mint); any refusal yields
 // PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
 //
 // THE EXECUTING CONSUMER is DECLARED but its install legs are NOT in this PR (declared frontier, review 96234): the
@@ -52,7 +52,8 @@ import gunbc.live_deploy.release_locus {
   deliver_release_pair, delivered_pair_revision, VerifiedPack,
   release_locus_member_path, release_locus_tree_receipt_path,
 }
-import gunbc.live_deploy.operations { systemctl_restart_command }
+import extdeps.systemd.systemctl { systemctl_restart_command }
+import extdeps.exec.command { ArgvCommand }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -101,7 +102,10 @@ type DeliveryPlan
   = PlanToInstall {
     place_binary: FilePlacement,
     write_source_receipt: SourceReceiptWrite,
-    restart_command: String,
+    // The serve-unit restart as a SEALED ArgvCommand (review 96241 finding 2): built by the admitted
+    // extdeps.systemd.systemctl::systemctl_restart_command mint (the sibling of start/enable/daemon-reload), so the
+    // privileged restart the runtime dispatches is a typed argv, never a rendered string a posix shell re-parses.
+    restart_command: ArgvCommand,
     revision: ReleaseRevisionBinding,
   }
   | PlanKeepsLastGood { kept: ReleaseRevisionBinding, reason: NonEmptyStr }
@@ -238,7 +242,7 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
           revision: source_head,
           digest: p.binaries_sha256,
         },
-        restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
+        restart_command: systemctl_restart_command(unit: serve_unit),
         revision: rev,
       }
     // EVERY PairRefused is a REFUSAL (red) — there is no benign arm here. A head whose release bins are simply NOT
