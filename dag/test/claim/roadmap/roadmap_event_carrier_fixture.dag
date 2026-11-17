@@ -557,8 +557,8 @@ test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
 // this file. Each step is the condition of the `if` that follows it, so the order is demanded rather than hoped for.
 //
 // One definition of the reclaim, called by both controls directly on the arms where they clean up after themselves
-// and by all three arms of roadmap_carrier_statcheck_teardown, so a cleanup written in four places cannot drift in
-// one of them.
+// and by all three arms of roadmap_carrier_statcheck_teardown, so the cleanup is one definition rather than one per
+// arm.
 //
 // EVERY ARM RECLAIMS THE PARENT, INCLUDING THE ARMS THAT FAIL. The first version of this helper removed the parent
 // only on the success path, so a refused sweep — a seal gone between the scaffold and the sweep, say — or a failed
