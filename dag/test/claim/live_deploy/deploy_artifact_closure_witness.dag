@@ -29,7 +29,7 @@ import gunbc.live_deploy.deploy_artifact_closure {
   deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, InstalledArtifactRow, UnclosedRow
 }
 import gunbc.live_deploy.spec {
-  DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+  DeploymentSpec, DeploymentNames, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
   BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, OidcConfigArtifact,
   deployment_owned_steps, deployment_oidc_config_steps
@@ -37,7 +37,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.deploy_artifact_read_sets {
   deployment_artifact_read_rows, deployment_artifact_read_set
 }
-import gunbc.tailscale_serve_scope { tailscale_serve_mapping_reads_installed_artifact, tailscale_serve_service }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_backend_target, ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file,
@@ -52,7 +52,7 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
 import gunbc.live_deploy.unit_standing {
-  exec_start_binary_of_unit_file, working_directory_of_unit_file, watched_paths_of_unit_file
+  watched_paths_of_unit_file
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, SystemdServiceMode,
@@ -69,7 +69,7 @@ import gunbc.auth.tracker_web_oauth_client { tracker_web_test_oauth_client_secre
 import gunbc.live_deploy.deploy_artifact_closure { render_deploy_halt_causes }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, selected_deployment_spec, DesiredDeployment }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir, attempt_system_unit_launcher_helpers_root }
@@ -306,22 +306,113 @@ test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
   }
 }
 
-// The tailscale no-read is DERIVED from the modeled service, not hand-tagged: the owner's total match says the
-// ServeCli service reads no installed artifact, and the real adapter turns exactly that into a NoReadRow over
-// the srv1 roster. The build-time guard is that adding a unit-backed TailscaleServeService variant makes
-// tailscale_serve_mapping_reads_installed_artifact's match non-exhaustive (compile error) -- the allow cannot
-// survive a lying realization (fail_closed). This control pins both halves of the derivation.
-test fn the_tailscale_no_read_is_derived_from_the_serve_service() -> Bool {
-  let reads_installed = tailscale_serve_mapping_reads_installed_artifact(service: tailscale_serve_service())
-  reads_installed == false
-    && match first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } }) {
-         Present { value: ts } =>
-           match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
-             NoReadRow { located: _ } => true
-             _ => false
-           }
-         Absent => false
-       }
+// ── the tailscale serve mapping (the gate's one honest no-read) ──
+
+// THE TAILSCALE SERVE MAPPING IS HONESTLY A NO-READ because its declared endpoint's BACKEND is a PROXY.
+// RED if the backend-derived classifier (extdeps.tailscale.serve tailscale_serve_backend_target, over the
+// endpoint named by spec.names.tailscale_serve_endpoint) says a file/directory target or cannot classify: the
+// adapter must agree the mapping reads NOTHING of the deployment. Single authority: no hand-written path
+// list, and ServeCli (the CLI surface that CONFIGURES a mapping) is no longer the decision (side-chat F1 —
+// the #16538 rule, restored).
+test fn the_tailscale_no_read_is_derived_from_the_declared_backend() -> Bool {
+  let proxy_declared = match tailscale_serve_backend_target(endpoint: srv1_spec().names.tailscale_serve_endpoint) {
+    ServeBackendProxyTarget => true
+    _ => false
+  }
+  match mapping_step_of(steps: srv1_steps()) {
+    Present { value: ts } => match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+      NoReadRow { located: _ } => proxy_declared
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// A FILESYSTEM BACKEND IS A DECLARED READ, AND THE GATE ENFORCES IT. RED any way: the classifier not calling
+// a file/directory backend a filesystem target; the adapter not DECLARING exactly that target as the mapping's
+// read (a second no-read, an extra read); or the gate Halting without naming the target when it is NOT
+// installed, or Halting at all when it IS (a declared read the gate does not enforce). Discriminating: the ONLY
+// deltas are the backend word and the installed set. (Side-chat F1: main's file-target negative control,
+// adapted to deploy_gate — it must Halt.)
+fn file_backend_is_declared_read(backend: NonEmptyStr) -> Bool {
+  let variant = srv1_over_backend(backend: backend)
+  match mapping_step_of(steps: variant.steps) {
+    Present { value: ts } =>
+      match deployment_artifact_read_set(step: ts, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+        Declared { reads } =>
+          let only_target = list_cover(held: paths_of(reads), expected: [backend as String], eq: eq_str) && list_cover(held: [backend as String], expected: paths_of(reads), eq: eq_str)
+          let row = ReadRow { located: ts.path as String, reads: Declared { reads: reads } }
+          let halts_names_target = match deploy_gate(rows: [row], installed: ownb([])) {
+            Halt { causes: cs } => any(cs, fn(c) { match c { MissingArtifact { located: _, artifact: a, kind: _ } => a == (backend as String), _ => false } })
+            _ => false
+          }
+          let proceeds_when_installed = match deploy_gate(rows: [row], installed: ownb([backend as String])) {
+            Proceed => true
+            _ => false
+          }
+          only_target && halts_names_target && proceeds_when_installed
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn the_tailscale_filesystem_backend_is_a_declared_read_of_the_target() -> Bool {
+  file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
+}
+
+// AN UNCLASSIFIABLE BACKEND HALTS, IT IS NEVER A SILENT NO-READ (fail_closed: the no-read cannot survive the
+// classifier unable to place the backend; a /srv/gunbc/a://b-shaped word must not slip through as an
+// EndpointDependency with no halt cause — side-chat F1 counterexample). RED unless the read set is
+// NotYetModeled with a non-empty reason. (Main's unclassifiable-target control, adapted to deploy_gate.)
+test fn the_tailscale_unclassifiable_backend_is_not_yet_modeled() -> Bool {
+  let variant = srv1_over_backend(backend: "static" as NonEmptyStr)
+  match mapping_step_of(steps: variant.steps) {
+    Present { value: ts } => match deployment_artifact_read_set(step: ts, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+      NotYetModeled { reason: r } => r != ""
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// srv1 with its tailscale serve endpoint's backend word OVERRIDDEN, everything else identical. The step is
+// rebuilt through the population authority itself (deployment_owned_steps) so only the backend differs.
+fn srv1_over_backend(backend: NonEmptyStr) -> ServeBackendVariant {
+  let base = srv1_production_desired_deployment()
+  let names = base.names
+  let endpoint = TailscaleServeEndpoint {
+    https_port: names.tailscale_serve_endpoint.https_port,
+    mount: names.tailscale_serve_endpoint.mount,
+    backend: backend,
+  }
+  let variant = DesiredDeployment {
+    instance: base.instance,
+    target: base.target,
+    names: DeploymentNames {
+      unit_name: names.unit_name,
+      tailscale_serve_endpoint: endpoint,
+      tree_sync_unit_name: names.tree_sync_unit_name,
+      tree_sync_env_path: names.tree_sync_env_path,
+      publication_principal: names.publication_principal,
+    },
+    selected_identity: base.selected_identity,
+    admitted_branch: base.admitted_branch,
+  }
+  let spec = selected_deployment_spec(variant)
+  ServeBackendVariant {
+    spec: spec,
+    steps: deployment_owned_steps(instance: variant.instance, names: variant.names, holding: spec.role_singletons, lab_plan: variant.target.lab_plan),
+  }
+}
+
+type ServeBackendVariant {
+  spec: DeploymentSpec,
+  steps: List<DeploymentArtifactStep>,
+}
+
+fn mapping_step_of(steps: List<DeploymentArtifactStep>) -> DeploymentArtifactStep? {
+  first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
 }
 
 // The tree-remote unit's closure read is the SAME argv[0]/WorkingDirectory the deploy writes to the host. Both
@@ -507,6 +598,33 @@ fn installed_serve_binary() -> String {
   }
 }
 
+// TWO INDEPENDENT ACCESSORS (moved OUT of gunbc.live_deploy.unit_standing per side-chat F2: production
+// functions with only witness consumers; the move into the test oracle resolved #16535 review 95797). The
+// closure WITNESS cross-checks the read set against the raw emitted unit WITHOUT calling the same derivation
+// the gate uses (an oracle must not reuse its subject). The read SET itself derives from
+// service_directive_required_reads, NOT from these. Each reads the unit's OWN [Service] directives directly.
+fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { ExecStart { command: _ } => true, _ => false } }) {
+        Present { value: ExecStart { command: cmd } } => argv0_of_command(command: cmd as String)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { WorkingDirectory { path: _ } => true, _ => false } }) {
+        Present { value: WorkingDirectory { path: p } } => Present { value: p as String }
+        _ => none
+      }
+    _ => none
+  }
+}
+
 fn unit_argv0(f: SystemdUnitFile) -> String {
   match exec_start_binary_of_unit_file(f) { Present { value: b } => b, Absent => "" }
 }
@@ -524,6 +642,18 @@ fn unit_env() -> String {
 
 fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
   unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
+}
+
+fn unit_service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
+  match f { SystemdUnitFile { unit: ServiceUnitFile { directives: ds, }, } => ds }
+}
+
+// WHOLE-DIRECTIVE AGREEMENT (#16535, side-chat F2): accessor and emitter must agree on the COMPLETE
+// [Service] directive list -- ExecStart, WorkingDirectory, Environment (the OIDC pair), EnvironmentFile,
+// User/Group and every other directive -- not just the read-bearing subset. This is the door units'
+// contract; the broker's accessor feeds only an Environment directive difference, so it keeps agree_on_reads.
+fn unit_files_agree_wholly(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
+  unit_files_agree_on_reads(a: a, b: b) && unit_service_directives(a) == unit_service_directives(b)
 }
 
 // THE SERVE UNIT reads the installed serve binary (its own argv[0]). RED if its ExecStart names a
@@ -565,9 +695,12 @@ test fn the_broker_closure_accessor_equals_the_emitted_file_reads() -> Bool {
   unit_files_agree_on_reads(a: accessor, b: emitted)
 }
 
-// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE. The expectation is tied to the ROSTER (the
-// enable authority): a tailnet door the roster enables MUST be admitted by the emitter and compared on
-// argv[0]/WorkingDirectory — a fixture that stops admitting (NotDeployed/Refused) while the roster still
+// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE, ON EVERY DIRECTIVE (side-chat F2: the
+// weakening to argv[0]/WorkingDirectory is reversed — the OIDC Environment directives are part of the
+// contract). The expectation is tied to the ROSTER (the
+// enable authority): a tailnet door the roster enables MUST be admitted by the emitter and compared WHOLLY
+// (unit_files_agree_wholly: ExecStart, WorkingDirectory, the OIDC Environment pair, everything) — a fixture
+// that stops admitting (NotDeployed/Refused) while the roster still
 // enables the door is a fixture defect and goes RED, it is never a silent pass. Only when the roster does
 // NOT enable the door may the emitter be NotDeployed, and then the accessor must be absent too (they share
 // the socket gate). A Present/Emitted disagreement is red.
@@ -577,7 +710,7 @@ test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   let accessor = live_deploy_tailnet_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
     LiveDeployTailnetDoorUnitEmitted { file: e } => match accessor {
-      Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
+      Present { value: a } => unit_files_agree_wholly(a: e, b: a)
       Absent => false
     }
     LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }
@@ -585,14 +718,15 @@ test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   }
 }
 
-// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE. Same roster-tied contract as the tailnet door.
+// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE, ON EVERY DIRECTIVE (side-chat F2). Same
+// roster-tied contract as the tailnet door.
 test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   let roster_enables = any(xs: srv1_steps(), predicate: fn(s) { kind_is_agent_door(s) })
   let emitted = live_deploy_agent_door_unit_file(spec: srv1_spec(), revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: srv1_spec()))
   let accessor = live_deploy_agent_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
   match emitted {
     LiveDeployTailnetDoorUnitEmitted { file: e } => match accessor {
-      Present { value: a } => unit_files_agree_on_reads(a: e, b: a)
+      Present { value: a } => unit_files_agree_wholly(a: e, b: a)
       Absent => false
     }
     LiveDeployTailnetDoorUnitNotDeployed => !roster_enables && match accessor { Absent => true, Present { value: _ } => false }

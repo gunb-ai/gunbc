@@ -667,30 +667,3 @@ fn service_has_exec_start(file: SystemdUnitFile) -> Bool {
     _ => false
   }
 }
-
-// Two independent accessors the closure WITNESS uses to cross-check the read set against the raw
-// emitted unit text WITHOUT calling the same derivation the gate uses (an oracle must not reuse its
-// subject). The read SET itself derives from service_directive_required_reads, NOT from these. Each reads
-// the unit's OWN [Service] directives directly -- ExecStart= argv[0] and WorkingDirectory= -- so they never
-// route through the read-set classifier. Total over SystemdUnitFile: a non-service unit yields no read.
-fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
-  match file {
-    ServiceUnitFile { unit: _, service: ds, install: _ } =>
-      match first_where(xs: ds, keep: fn(d) { match d { ExecStart { command: _ } => true, _ => false } }) {
-        Present { value: ExecStart { command: cmd } } => argv0_of_command(command: cmd as String)
-        _ => none
-      }
-    _ => none
-  }
-}
-
-fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
-  match file {
-    ServiceUnitFile { unit: _, service: ds, install: _ } =>
-      match first_where(xs: ds, keep: fn(d) { match d { WorkingDirectory { path: _ } => true, _ => false } }) {
-        Present { value: WorkingDirectory { path: p } } => Present { value: p as String }
-        _ => none
-      }
-    _ => none
-  }
-}

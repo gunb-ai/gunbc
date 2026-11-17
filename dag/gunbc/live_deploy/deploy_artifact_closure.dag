@@ -22,14 +22,14 @@ import std.list { list_member }
 //   closure status. It is GENERIC over enable rows, so any enable authority can feed
 //   it; it knows nothing about the deploy model or the fleet.
 //
-//   NAMED CONSUMER (frontier, under Consumption): the next PR in this node's series
-//   adds a closure-VERIFY leg to the apply chain (gunbc.live_deploy.apply_legs) that
-//   calls deploy_closure_halts and REFUSES before any enable step runs.
-//   Today this primitive is consumed by its own witness controls only; no apply leg
-//   calls it yet, so "the refusal is produced, never skipped" is a property OF THE
-//   PRIMITIVE (the only route through it computes a verdict; there is no skip arm),
-//   NOT yet a property of a live deploy. The PR does not claim a live deploy refuses
-//   today. The apply_legs wiring is the named follow-up.
+//   NAMED CONSUMER (landed, #16587): gunbc.live_deploy.apply_legs deploy_artifact_closure_gate
+//   feeds this closure from the apply chain — it resolves the plan's steps through
+//   deployment_artifact_read_set, folds this run's writes, the release plan's KEPT members and
+//   the fleet custody roster's declared reads into the covered population, and REFUSES
+//   (ApplyPlanRefused) before any enable leg runs. So "the refusal is produced, never skipped"
+//   is now a property of a live deploy: the srv1 full-plan witness control drives the real
+//   apply route through this closure. The primitive stays check-first and non-mutating (no
+//   install, no write, no unit state change).
 //
 //   GENERICS (single_authority, minimize_redundancy): the roster is not a second unit
 //   list kept here. The live-deploy enable authority is gunbc.live_deploy.spec
