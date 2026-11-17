@@ -193,9 +193,9 @@ test fn the_real_register_answers_a_scoped_reading_by_identity() -> Bool {
 // module, or the converger-brought-up module each makes it relevant, and a module outside them does not --
 // relevance compares whole module paths and never walks namespace ancestry.
 test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and_converger() -> Bool {
-  names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.live_deploy.deploy_artifact_read_sets"]), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.emit"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.apply_legs"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.print_converge"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
+  names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.live_deploy.deploy_artifact_read_sets"]), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.emit"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.apply_legs"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.print_converge"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
 }
