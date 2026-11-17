@@ -1,15 +1,28 @@
 module extdeps.communication.numerical_fidelity
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { DecodeFidelity }
 import std.numerical_contract { FloatApproximate, NumericalContract }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#floating-point"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.communication.numerical_fidelity",
+      decl_name: "LoweringRefusalReason",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type LoweringRefusalReason

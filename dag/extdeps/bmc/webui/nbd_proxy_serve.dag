@@ -1,7 +1,7 @@
 module extdeps.bmc.webui.nbd_proxy_serve
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.virtual_media { NbdProxyWebsocatParams, VirtualMediaIntent, virtual_media_source_iso }
 import extdeps.bmc.webui.nbd_proxy { NbdServer, nbd_proxy_role_assignment }
@@ -10,12 +10,25 @@ import extdeps.tools.socat { socat_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import std.disposition { Disposition, Terminal }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/openbmc/jsnbd"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.webui.nbd_proxy_serve",
+      decl_name: "NbdProxyServeTransportIntent",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr

@@ -499,6 +499,24 @@ data h11ssl_unit3_edge_gate_refusal_revision: CommitSha = "2db279ccba934a5740483
 data h11ssl_unit3_edge_live_read_revision: CommitSha = "23523235c601a102e79a753294ea9f7c9c3a36d7"
 data h11ssl_unit3_intake_sighting_revision: CommitSha = "22649d22d2fd15332770e4c344fecc8c388b89f6"
 
+
+data authenticated_lanplus_retry_bound_receipts_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
+
+// The revision at which the three string-built ipmitool script builders were sighted bound-free, alongside
+// the pinning of the declared ops (the sighting text describes that tree).
+
+data authenticated_lanplus_retry_bound_sighting_revision: CommitSha = "84eb9683a379e5500fe57216089405cd4ff6a2db"
+
+
+data string_duration_transport_surface_revision: CommitSha = "27529a9a416b84ad94dfae8576c7661d5687bc39"
+
+
+data string_duration_transport_surface_receipts_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
+
+
+data redfish_get_status_read_fork_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
+
+
 // ---------------------------------------------------------------------------------------------
 // THE READING PATH MOVED TO `gunbc.integration_concern.reading`, which imports the derived roster:
 // the entry point cannot sit here, because the roster imports this module for the row type. What
@@ -595,6 +613,11 @@ data approval_submit_deadline_restated_per_caller_authorities: DistinctAuthoriti
 }
 
 // byte_sequence_search_reimplemented_per_module: the two authorities the SuspectedFork row cites.
+data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix"),
+  second: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script"),
+  rest: [decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script")],
+}
 data byte_sequence_search_reimplemented_per_module_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
   second: decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of"),
@@ -685,6 +708,11 @@ data operator_route_unit_chosen_by_hand_authorities: DistinctAuthorities = Disti
 }
 
 // roadmap_utc_instant_reader_beside_the_shared_parse: the two authorities the SuspectedFork row cites.
+data redfish_get_status_read_fork_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPath"),
+  second: decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPathWithStatus"),
+  rest: [],
+}
 data roadmap_utc_instant_reader_beside_the_shared_parse_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant"),
   second: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds"),

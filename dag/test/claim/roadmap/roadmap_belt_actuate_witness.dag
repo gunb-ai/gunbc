@@ -13,8 +13,8 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   attempt_slots_cutover_record_mint,
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
-import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation, filesystem_exact_read }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone, SessionRecoveryUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
@@ -104,7 +104,7 @@ import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMembe
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
-import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal, belt_review_round_of_head, belt_review_round_advance, ReviewRoundRead, ReviewRoundUnreadable, ReviewRoundAdvanced, ReviewRoundAdvanceRefused, belt_prior_attempt_recovery_from_exact, belt_commit_git_trust_gitfile_check, BeltCommitGitUntrusted }
 import gunbc.roadmap.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
@@ -232,7 +232,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, RetryExhausted, RetryLedgerUnreadable, BranchAbsent,
+  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, RetryExhausted, RetryLedgerUnreadable, BranchAbsent, RecoveryRecordUnreadable, continuation_from_absent_capture,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -3507,4 +3507,42 @@ test fn belt_review_round_unreadable_store_never_reads_as_round_zero_and_never_f
       ReviewRoundAdvanceRefused { reason: _ } => true
       ReviewRoundAdvanced { round: _ } => false
     }
+}
+
+// --- DP-M5b: could-not-look claims for the attempt-spool read family ---
+
+test fn an_unreadable_attempt_log_is_not_none() -> Bool {
+  let recovery = belt_prior_attempt_recovery_from_exact(
+    exact: filesystem_exact_read(path: "/log/worker-events.jsonl", content: "", success: false, error: "EIO", error_kind: "other"),
+  )
+  match recovery {
+    SessionRecoveryUnreadable { detail } => detail == "EIO"
+    _ => false
+  }
+}
+
+test fn a_git_pointer_read_failure_names_the_error() -> Bool {
+  match belt_commit_git_trust_gitfile_check(
+    outcome: filesystem_read_outcome(content: "", success: false, error: "EACCES: permission denied"),
+    expected_git_dir: "/wt/.git",
+  ) {
+    Present { value: BeltCommitGitUntrusted { cause } } => string_contains(s: cause, pattern: "EACCES")
+    _ => false
+  }
+}
+
+test fn the_continuation_cause_for_an_unreadable_log_is_unreadable_not_malformed() -> Bool {
+  let prior = PriorExecutionObservation {
+    attempt_key: "abc123", branch: "dispatch/n-a.abc123", worker_terminal: true,
+    standing: WorktreeStands { path: "/wt/x", capture: CaptureAbsent, recovery: SessionRecoveryNone },
+    prior_run_host_liveness: HolderLivenessUnobservable { cause: "test" as NonEmptyStr },
+    operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] },
+    verification: none, review: none, goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly, review_retry: RefusedRetryOperatorOnly, now: none,
+  }
+  match continuation_from_absent_capture(prior: prior, recovery: SessionRecoveryUnreadable { detail: "EIO" }) {
+    Refuse { cause: RecoveryRecordUnreadable { detail }, reason: _ } => detail == "EIO"
+    _ => false
+  }
 }

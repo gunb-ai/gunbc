@@ -2,7 +2,7 @@
 // Cloudflare R2 objects for a fleet dispatch. They live beside gunbc.cloudflare because their only
 // domain knowledge is Cloudflare R2 (the bucket, the object, the minted token) and the receipt paths
 // they stamp are the R2 domain's own. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation
-// P2) verbatim; the roster gunbc.ci.ci_spec.gunbc_run_step_targets still lists their targets.
+// P2) verbatim; the roster gunbc.instruments.ci_run_step_roster.gunbc_run_step_targets still lists their targets.
 module gunbc.cloudflare.r2_ci_step
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }

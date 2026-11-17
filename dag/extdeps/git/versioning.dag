@@ -5,15 +5,28 @@ import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, semver_numeric_field, SemVerNumericField }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.host_text { chars }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "git-scm.com/docs/BreakingChanges.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.git.versioning",
+      decl_name: "GitReleaseVersion",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type GitReleaseVersion {

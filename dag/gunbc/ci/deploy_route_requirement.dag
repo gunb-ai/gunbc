@@ -7,7 +7,7 @@ import gunbc.auth.authorization_pattern_selection { MintedCredentialReach, Mints
 // Removing the whole-binary sudo grants from the job user does not remove root reach while a pull
 // request job and a dispatched deploy run share one uid on one host: slot units run as root with
 // PrivateTmp=no, ProtectSystem=no and no namespace directives, jobs run as ghrunner, and the in-run
-// ssh-agent socket (gunbc.ci.ci_spec) is reachable by any same-uid job (host-observed 2026-10-19;
+// ssh-agent socket (gunbc.fleet.fleet_key_agent) is reachable by any same-uid job (host-observed 2026-10-19;
 // socket use in a live run is implied, not exercised). Pattern selection is per effect and cannot
 // see a co-tenant, so the fact is a requirement on the ROUTE, stated here, not a pattern.
 // gunbc.plans.srv1_deploy_principal_split (deleted 2026-11-08) section 5, D3.

@@ -1,0 +1,53 @@
+module gunbc.integration_concern.string_duration_transport_surface
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 21: main 00ef60b1a4c (#16357).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, string_duration_transport_surface_receipts_revision, string_duration_transport_surface_revision }
+
+data string_duration_transport_surface: IntegrationConcern = IntegrationConcern {
+  identity: "string_duration_transport_surface",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
+    requirement: "a duration that reaches a transport is a std.measure carrier whose render at the boundary is checked, so no caller can arm a zero (curl --max-time 0 means NO timeout) or an unbounded wait by spelling a string; the extdeps.bmc.http status-observing GET shows the shape (Second rows mint a sole_constructor carrier through a checked constructor; zero mints nothing and the send is refused) while the ipmitool surface still takes deadline/kill_after AND the retry-bound words as strings (that bypass's own stall row: gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall), and GetResourceByPath still spells its connect timeout as an argv literal",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "interface_realization_policy") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
+    tail: [
+      decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPath"),
+      decl_ref(module_path: "extdeps.bmc.http", decl_name: "http_bmc_checked_budget_pair"),
+    ],
+  },
+  question: "Do the string-shaped durations on these transport operations retire onto std.measure inputs with a checked boundary render, owned by the extdeps owners, now that the arrival lane has shown the shape the boundary needs? PXE 1d-c typed only its own budgets (its ops' deadline strings are fed from live_redfish_read_budget-style Second rows through one renderer) rather than rewriting 16 pre-existing input lines that the boot, SOL and census witnesses byte-pin.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: string_duration_transport_surface_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPathWithStatus") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.prior_life_capture_live", decl_name: "live_redfish_read_budget") },
+        ],
+      },
+      account: "review 94173 asked PXE 1d-c to type the read budgets as std.measure durations with a checked nonzero render at the transport boundary. The lane did that for its own surface (Second rows in gunbc.machine_intake.prior_life_capture_live; http_bmc_checked_budget_pair in extdeps.bmc.http is the checked constructor behind the boundary: a positive Second mints the sole_constructor duration carrier, a zero mints NOTHING and the send is refused with a typed outcome naming which budget ran out -- curl arms NO timeout on --max-time 0, so an empty budget must never reach it and nothing is substituted for it). The same ask against the 16 pre-existing string deadlines on the ipmitool Tool ops would rewrite input lines byte-pinned by the boot, SOL and census witnesses across other lanes' owners -- filed here so those owners pick it up.",
+    },
+    tail: [ConcernSighting {
+      revision: string_duration_transport_surface_receipts_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.http", decl_name: "bmc_positive_seconds_of") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.http", decl_name: "http_bmc_checked_budget_pair") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.http", decl_name: "GetResourceByPathWithStatus") },
+        ],
+      },
+      account: "RECEIPTS, carried as data rather than comment (review 94474): reviews 94173 and 94204 asked the arrival lane to type its read budgets as std.measure durations with a checked nonzero render at the boundary, because curl reads --max-time 0 and ipmitool reads -N 0 as NO timeout -- admissible range and transport sentinel behavior are obligations the unit alone does not establish (DESIGN's Google worked example, the JWKS budget). The lane's reads now mint BmcPositiveSeconds only through bmc_positive_seconds_of, and http_bmc_checked_budget_pair refuses an empty pair BEFORE any send. The string-shaped surfaces named in kind.requirement remain open for their owners; this receipt covers what the arrival lane closed.",
+    },],
+  },
+  disposition: Open,
+}

@@ -35,10 +35,15 @@ import v2.workflow.floor_grandfathered_roster {
   GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
   RosterChangeVerdict, RosterChangeAdmitted, RosterAdditionRefused, RosterRemovalWithoutDisposition,
   roster_change_verdict, roster_change_admitted, removal_identity,
+  first_addition, first_undisposed_removal,
   floor_grandfathered_holds, grandfathered_cut_holds, floor_grandfathered_cut_size,
-  floor_grandfathered_removals,
+  floor_grandfathered_cut, floor_grandfathered_removals,
+  floor_grandfathered_chunk_000, floor_grandfathered_chunk_001, floor_grandfathered_chunk_002,
+  floor_grandfathered_chunk_003, floor_grandfathered_chunk_004, floor_grandfathered_chunk_005,
+  floor_grandfathered_chunk_006, floor_grandfathered_chunk_007,
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_flat_map }
+import std.optional { Optional, Absent, Present }
 
 // THE REQUIRED FLOOR'S CLAIM CEILING IS TWO-TIER, GATES ON EVAL STEPS, AND ITS CPU READING IS
 // OBSERVED ONLY (operator ruling via fierce-lark-661, 2026-09-12 and 2026-09-13). This module is
@@ -626,3 +631,171 @@ test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
   floor_eval_step_cost_drop_has_duplicate() == false
 }
 
+
+// ── THE FOLD, CALLED ON THE LIVE ROSTER ──────────────────────────────────────────────
+//
+// (debt-grandfathered-fold-enrolled.) The fixture pair above establishes that the fold answers
+// correctly. It does not establish that anything RUNS it against the roster the floor consults --
+// `v2.workflow.floor_grandfathered_roster` says so itself, where it calls the corpus scale a
+// declared frontier. This section calls the SAME fold, `roster_change_verdict` and its
+// `first_undisposed_removal` arm and no checker written beside them, against the live roster's own
+// rows and the live disposition rows.
+//
+// EVERY STEP COUNT BELOW IS A MEASUREMENT, NOT A FIGURE OF SPEECH: `claim_batch --source-root dag
+// --source-root src/v2 --entry dag/test/claim/floor_eval_step_budget_witness.dag --functions
+// <these four>`, run against the CI-built release binary; the invocation, the raw PASS lines, the
+// binary's sha256 and the head they ran on are posted at gunbc#16610. They are read against the
+// ceiling this module installs (a new identity pays 72,300 eval steps; one non-member question
+// against the live 3,795-row cut costs the roster's own descent 43,583). An ADDITION question
+// terminates at the first proposed row, so the WHOLE live cut goes through the verdict: 22,700 eval
+// steps for the three struck identities, 60,902 for the same claim on a cold corpus, 20,303 for one
+// identity alone. The UNDISPOSED-REMOVAL arm scans all of `current`, and the roster's list form --
+// the cut minus its 449 disposition rows -- materializes at millions of steps: the one corpus-wide
+// live claim this module already carries, `every_declared_removal_names_a_cut_row_and_has_left_the_roster`,
+// measures 6,483,308 eval steps and 23s of wall. So that arm runs against eight live chunks, 200
+// live rows, at 8,618 eval steps. Corpus scale for it stays the frontier the roster module declares,
+// and the corpus-wide sweep over the departure dispositions already runs through
+// `floor_grandfathered_holds` in that same claim.
+
+// WHICH ROUTE EXECUTES THEM, STATED HONESTLY. The run above was IN-SESSION, at the head of
+// gunbc#16610, and that run is these claims' executing consumer: the PR carries it as a run link
+// (invocation, raw PASS lines, binary sha256, the head it ran on). Nothing in CI executes them. The
+// required lane IS `.github/workflows/witnesses.yml` -- its run 43986394322, job `v2-bootstrap`, is
+// the check that ran on that PR -- and that file fires on `pull_request`, on `merge_group` and on
+// `push` to main with no path filter, while containing no `claim_batch` invocation anywhere in it
+// (grep for `claim_batch`: no match). Its steps build the compiler, typecheck the v1 unit-test
+// population ("no codegen, no link, no assertion runs here"), check layout and marked references,
+// and walk the PARSE population. So on no event does a CI route carry a live-roster claim, and that
+// is recorded here, where the verdict is declared, rather than answered with a schedule row invented
+// to look like one.
+
+// THREE LIVE IDENTITIES THE FROZEN CUT HAS NEVER HELD. The roster module names them where it
+// records the strike: the generating floor run was taken part-way through the lane that ADDED
+// them, so they entered the discovered population as this change's own new witnesses and were
+// struck from the chunks rather than kept. They are live claims -- two of them are in this very
+// module -- and the roster holds no row and no disposition for any of them. Each is therefore
+// exactly the state the addition arm exists for: a hold in the exempted population with no row and
+// no removal behind it. If a regeneration ever re-admits one, this claim goes red; that is the
+// gate, and it is the state every check on main passes through today.
+fn struck_live_identities() -> List<String> {
+  Cons {
+    head: "test.claim.floor_eval_step_budget_witness.the_cpu_observation_is_still_carried_when_another_limit_fires",
+    tail: Cons {
+      head: "test.claim.floor_eval_step_budget_witness.the_eval_step_standing_carries_both_figures_in_its_refusing_arm",
+      tail: Cons {
+        head: "test.claim.floor_eval_step_calibration_specimen.calibration_specimen_performs_its_declared_work",
+        tail: Empty {},
+      },
+    },
+  }
+}
+
+fn every_identity_refused_as_an_addition(xs: List<String>) -> Bool {
+  match xs {
+    Empty {} => true
+    Cons { head: name, tail: rest } =>
+      let verdict = roster_change_verdict(
+        current: floor_grandfathered_cut(),
+        proposed: Cons { head: name, tail: Empty {} },
+        removals: floor_grandfathered_removals,
+      )
+      match verdict {
+        RosterAdditionRefused { added: a } =>
+          (a == name) && (roster_change_admitted(verdict: verdict) == false) && every_identity_refused_as_an_addition(xs: rest)
+        RosterChangeAdmitted => false
+        RosterRemovalWithoutDisposition { removed: _ } => false
+      }
+  }
+}
+
+test fn the_live_roster_refuses_a_live_identity_its_cut_never_held() -> Bool {
+  every_identity_refused_as_an_addition(xs: struck_live_identities())
+}
+
+// THE PAIR'S OTHER HALF, AND THE REASON THE REFUSAL ABOVE IS NOT A CONSTANT. The same fold, over
+// the same live cut, does NOT call a retired row an addition: the row is in the cut the roster
+// froze, which is why its disposition is a disposition at all. Nothing but the name decides the
+// two answers.
+//
+// THE IDENTITY IS PINNED, AND IT HAS TO BE. Deriving it from the first live disposition row was
+// tried, and the red control caught it: delete that row and the claim re-anchors to the next one
+// and stays green, which is the drift it exists to refuse. A gate over a stored list has to name
+// the row it guards. The name below is the first live disposition row as measured, not a fixture:
+// the claim refuses the moment the roster stops holding a disposition for it.
+fn retired_live_identity() -> String {
+  "v2.test.claim.cross_tree_import_model.witness_closure_denied_on_less_fundamental_holds"
+}
+
+// The live disposition rows with ONE row withheld -- taken out of the live list by identity, not
+// replaced by a planted list. This is the state under test, not a fixture standing in for it.
+fn live_disposition_rows_except(name: String) -> List<GrandfatheredRemoval> {
+  filter(
+    xs: floor_grandfathered_removals,
+    predicate: fn(r) { removal_identity(removal: r) != name },
+  )
+}
+
+test fn the_live_roster_does_not_refuse_a_row_its_cut_holds() -> Bool {
+  match first_addition(
+    current: floor_grandfathered_cut(),
+    proposed: Cons { head: retired_live_identity(), tail: Empty {} },
+  ) {
+    Present { value: _ } => false
+    Absent {} => true
+  }
+}
+
+// THE DISPOSITION ARM OVER LIVE ROWS: the live identity, the live roster's own stored rows, and the
+// live disposition rows with THIS row's disposition withheld. The fold names the row -- a departure
+// nobody typed is not a shrink, it is a row going quietly missing -- and with the live rows intact
+// the same call admits it. The second claim is the one that gates drift: delete a declared
+// disposition from the roster file and it is the claim that says so.
+fn eight_live_chunks_of_the_roster() -> List<String> {
+  list_flat_map(
+    xs: Cons {
+      head: floor_grandfathered_chunk_000(),
+      tail: Cons {
+        head: floor_grandfathered_chunk_001(),
+        tail: Cons {
+          head: floor_grandfathered_chunk_002(),
+          tail: Cons {
+            head: floor_grandfathered_chunk_003(),
+            tail: Cons {
+              head: floor_grandfathered_chunk_004(),
+              tail: Cons {
+                head: floor_grandfathered_chunk_005(),
+                tail: Cons {
+                  head: floor_grandfathered_chunk_006(),
+                  tail: Cons { head: floor_grandfathered_chunk_007(), tail: Empty {} },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    f: fn(chunk) { chunk },
+  )
+}
+
+test fn a_live_row_that_left_the_roster_with_its_disposition_withheld_refuses_the_fold() -> Bool {
+  match first_undisposed_removal(
+    current: Cons { head: retired_live_identity(), tail: Empty {} },
+    proposed: eight_live_chunks_of_the_roster(),
+    removals: live_disposition_rows_except(name: retired_live_identity()),
+  ) {
+    Present { value: name } => name == retired_live_identity()
+    Absent {} => false
+  }
+}
+
+test fn the_live_disposition_rows_dispose_the_live_row_they_name() -> Bool {
+  match first_undisposed_removal(
+    current: Cons { head: retired_live_identity(), tail: Empty {} },
+    proposed: eight_live_chunks_of_the_roster(),
+    removals: floor_grandfathered_removals,
+  ) {
+    Present { value: _ } => false
+    Absent {} => true
+  }
+}

@@ -168,3 +168,38 @@ fn release_binding_line(binding: DeployedReleaseBinding) -> String {
       join(["release-binding UNOBSERVED -- ", c], "")
   }
 }
+
+// --------------------------------------------------------------------------- lab pairing fold
+//
+// lab_pair_serve_verdict is the single decision point that asks, for the srv1 lab's
+// standing-serve refresh, whether the running binary and the deployed source tree form
+// a bound pair. It composes deployed_release_binding + release_binding_holds into a
+// serve-gate verdict: bound means serve proceeds, refused means last good pair keeps
+// serving and the refusal names the binding arm that rejected.
+//
+// The refusal is visible through the existing ReleaseMixed and ReleaseBindingUnobserved
+// arms -- no new refusal vocabulary, only a consumer of the existing one.
+
+type LabServePairVerdict
+  = PairBoundToServe { binding: DeployedReleaseBinding }
+  | PairServeRefused { binding: DeployedReleaseBinding, reason: String }
+
+fn lab_pair_serve_verdict(
+  observation: DeployedTreeObservation,
+  identity: RunningReleaseIdentity,
+  expected_surface: Fnv1a64Structural,
+) -> LabServePairVerdict {
+  let binding = deployed_release_binding(
+    observation: observation,
+    identity: identity,
+    expected_surface: expected_surface,
+  )
+  if release_binding_holds(binding: binding) {
+    PairBoundToServe { binding: binding }
+  } else {
+    PairServeRefused {
+      binding: binding,
+      reason: release_binding_line(binding: binding),
+    }
+  }
+}

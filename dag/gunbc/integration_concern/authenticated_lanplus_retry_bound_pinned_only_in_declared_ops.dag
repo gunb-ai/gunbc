@@ -1,0 +1,49 @@
+module gunbc.integration_concern.authenticated_lanplus_retry_bound_pinned_only_in_declared_ops
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 21: main 00ef60b1a4c (#16357).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities, authenticated_lanplus_retry_bound_receipts_revision, authenticated_lanplus_retry_bound_sighting_revision }
+
+data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops: IntegrationConcern = IntegrationConcern {
+  identity: "authenticated_lanplus_retry_bound_pinned_only_in_declared_ops",
+  kind: SuspectedFork {
+    authorities: authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool"),
+    tail: [],
+  },
+  question: "Is the authenticated-lanplus retry bound one rule with the declared operations as its only authority, or does every string-built ipmitool invocation carry its own? The declared ops now pin '-R','1','-N','1' (at most 2 failed authentications per invocation against a lockout-budgeted controller); these three script builders splice the cipher-suite fragment but no retry bound, so their sessions run ipmitool(1)'s default (-R 4) and one bad credential can cost up to 5 failed attempts per invocation on their hosts.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: authenticated_lanplus_retry_bound_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.sol_hold", decl_name: "sol_hold_activate_script") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "diagnostic.ipmi.Tool") },
+        ],
+      },
+      account: "smart-crane-730's budget ruling for the srv15 arrival door (stop on the first authentication refusal; the gate compares the worst case of 1 failed attempt per invocation times the transport's retries against the served lockout threshold) is enforced for declared ops by the pin in their templates plus the structural claim in test.claim.bmc.ipmi_cipher_suite_argv_witness. mtcollins_firmware_converge ipmitool_prefix, serial_console sol_console_send_script and sol_hold sol_hold_activate_script build 'ipmitool -I lanplus ... -U ...' text themselves (the last with -E) and bound nothing, so an authenticated invocation through any of them can spend ipmitool(1)'s default 4 retries -- up to 5 failed authentications -- before refusing. They are outside the arrival roster and their script text is byte-pinned by the boot, SOL and firmware-converge witnesses, so PXE 1d-c files the sighting instead of pinning them.",
+    },
+    tail: [ConcernSighting {
+      revision: authenticated_lanplus_retry_bound_receipts_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.bmc_read_policy", decl_name: "bmc_ipmi_retry_bound") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.bmc.ipmi", decl_name: "ipmi_retry_bound") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.bmc.ipmi_cipher_suite_argv_witness", decl_name: "a_zero_retries_or_timeout_mints_no_bound") },
+        ],
+      },
+      account: "RECEIPTS AND RULING, carried as data rather than comment (review 94474): review 94250 asked for the retry policy as ONE row with its reason, which is why bmc_ipmi_policy_retries and bmc_ipmi_policy_response_timeout live in gunbc.machine_intake.bmc_read_policy and nowhere else; review 94264 asked that an invalid row refuse loudly rather than drop the bound; review 94277 asked that the bound be an undroppable checked carrier rather than a droppable argv list, which is why ipmi_retry_bound is the sole door (zero retries or a non-positive timeout mints nothing) and omission of a declared word refuses as DeclaredInputUnbound. Operator ruling (smart-crane-730, 2026-11-11, srv15 lockout budget): retries stay at 1 with a 1s response timeout -- worst case two failed authentications per authenticated invocation, counted against the controller's Bad Password Threshold the same way the census reads were. The rung is stated in extdeps.bmc.ipmi's header and stays honest there: positivity is enforced by this door plus the witness-pinned rows, not by the transport signature; the named gap is the typed row gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall, beside this module's string_duration_transport_surface row.",
+    },],
+  },
+  disposition: Open,
+}

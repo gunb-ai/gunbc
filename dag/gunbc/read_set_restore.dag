@@ -69,7 +69,6 @@ import gunbc.parse_verdict_restore {
   parse_verdict_cache_restore_step,
   parse_verdict_restore_if,
   parse_verdict_tee_append,
-  pull_request_base_sha_expr,
 }
 
 // THE PULL-REQUEST SIDE OF THE PLANNING FAST LANE (gunbc.read_set_publish is the main side; the operator
@@ -241,7 +240,6 @@ data fast_lane_layout_check_step_name: String = "Check the layout with the resto
 data fast_lane_reference_check_step_name: String = "Check marked references with the restored native CLI (fast lane)"
 data fast_lane_decision_unemittable_marker: String = "__GUNBC_FAST_LANE_DECISION_UNEMITTABLE__"
 data fast_lane_ancestor_env: String = "FAST_LANE_ANCESTOR"
-data fast_lane_base_sha_env: String = "BASE_SHA"
 // ONE STRUCTURED CLASSIFICATION LINE per pull-request decision, so the reuse rate is countable from logs
 // without re-deriving it (grep key: a timestamped line starting `fast lane: classify -- <category>`).
 // Every category except `reuse` is a full run; a full run is never skipped. `full_stale_unit` names the
@@ -367,19 +365,39 @@ fn fl_decline_listing(cond: Node, reason: String, listing: Node, category: Strin
 // labeling aid and nothing else, so it is strictly non-fatal: `pr-own.ok` is written only when `git diff`
 // answered, and a failure to compute it leaves the marker absent so the decline labels `full_indeterminate`
 // rather than guessing. It must never be able to turn a reuse into a full run, so it sits on a `|| true`.
+//
+// THE FORK POINT, NOT THE EVENT BASE. A pull_request run judges the merge ref (HEAD is main merged into the
+// branch), and the event's base.sha is the base branch tip from when the PR was OPENED -- it goes stale as
+// main advances. `BASE_SHA...HEAD` against that stale sha therefore diffs main's own commits in, and a
+// stale-unit decline on a plan-only PR that merely predates main churn gets labeled `full_own` (run 43826192352
+// of PR 16574, a roadmap-only change, was labeled full_own for dag/gunbc/parse_verdict_schema.dag -- a commit
+// main gained after the PR opened). The honest own-set is what the branch contributed over its fork point:
+// `git merge-base HEAD origin/main` to HEAD, where origin/main is the freshly fetched base branch. If git
+// cannot answer, or answers with no fork point, the marker stays absent and the label is `full_indeterminate`.
 fn fl_compute_pr_own(pr_own: Node, pr_own_ok: Node) -> Node {
   bash_build_or_else(
     left: bash_build_and_then(
-      left: bash_build_with_redir_to_file(
-        inner: fl_cmd(
-          ws: [
-            fl_lit(t: "git"), fl_lit(t: "diff"), fl_lit(t: "--name-only"), fl_lit(t: "--no-renames"),
-            bash_build_word_concat_from_nodes(parts: [fl_var(n: fast_lane_base_sha_env), fl_lit(t: "...HEAD")])
-          ]
+      left: bash_build_and_then(
+        left: bash_build_assign(
+          name: "FAST_LANE_FORK",
+          value: bash_build_word_cmdsubst(body: fl_cmd(ws: [
+            fl_lit(t: "git"), fl_lit(t: "merge-base"), fl_lit(t: "HEAD"), fl_lit(t: "origin/main")
+          ]))
         ),
-        path: pr_own
+        right: fl_cmd(ws: [fl_lit(t: "test"), fl_lit(t: "-n"), fl_var(n: "FAST_LANE_FORK")])
       ),
-      right: bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "ok")]), path: pr_own_ok)
+      right: bash_build_and_then(
+        left: bash_build_with_redir_to_file(
+          inner: fl_cmd(
+            ws: [
+              fl_lit(t: "git"), fl_lit(t: "diff"), fl_lit(t: "--name-only"), fl_lit(t: "--no-renames"),
+              fl_var(n: "FAST_LANE_FORK"), fl_lit(t: "HEAD")
+            ]
+          ),
+          path: pr_own
+        ),
+        right: bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "ok")]), path: pr_own_ok)
+      )
     ),
     right: fl_cmd(ws: [fl_lit(t: ":")])
   )
@@ -611,7 +629,6 @@ fn fast_lane_decision_step() -> Step {
     shell: none,
     env: Present { value: [
       kv(key: fast_lane_ancestor_env, value: yaml_string(s: fast_lane_restored_ancestor_template())),
-      kv(key: fast_lane_base_sha_env, value: yaml_string(s: pull_request_base_sha_expr()))
     ] },
     working_directory: none,
     if_condition: Present { value: parse_verdict_restore_if() },
