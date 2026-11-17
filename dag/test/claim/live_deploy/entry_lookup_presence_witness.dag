@@ -44,7 +44,8 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, OnTheHostItself,
-  OverTransport, BareListing, entry_presence_in_parent, entry_presence,
+  OverTransport, BareListing, ElevatedListing, entry_presence_in_parent, entry_presence,
+  entry_lookup_leg_argv,
 }
 import gunbc.host.host_effect { LocalShell }
 
@@ -419,4 +420,20 @@ test fn the_walk_carries_an_unsearchable_ancestors_refusal() -> Bool {
         }
     }
   }
+}
+
+// (12) THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface), for BOTH
+// privileges of the ONE leg an arm now rides. This is the surviving form of the srv14 pair (review
+// 94925): the privileged parent-LISTING leg that pair pinned asked a question that is no longer asked
+// that way, so it is deleted with the arm it served (gunbc.design_argument::consumption: a declaration
+// with no consumer over an executing route is dangling, and a witness alone does not feed it). The
+// elevation survives where production still needs it -- gunbc.runner.runner_host_file_converge builds
+// observation_arm_elevated_listing over FleetSsh for its artifact and file presence reads, and they
+// arrive here. Delete the ElevatedListing arm and the sudo words vanish: red by execution, on the route
+// production runs.
+test fn the_lookup_leg_routes_each_privilege_by_its_own_type() -> Bool {
+  entry_lookup_leg_argv(path: "/etc/sudoers.d/gunbc-ghrunner", privilege: ElevatedListing)
+    == ["/usr/bin/sudo", "-n", "env", "LC_ALL=C", "ls", "-l", "-n", "-d", "--", "/etc/sudoers.d/gunbc-ghrunner"]
+    && entry_lookup_leg_argv(path: "/etc/gunbc-roadmap/marker", privilege: BareListing)
+    == ["env", "LC_ALL=C", "ls", "-l", "-n", "-d", "--", "/etc/gunbc-roadmap/marker"]
 }
