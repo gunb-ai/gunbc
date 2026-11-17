@@ -370,8 +370,8 @@ test fn the_tailscale_backend_with_scheme_marker_is_still_a_filesystem_target() 
 }
 
 // AN UNCLASSIFIABLE BACKEND HALTS, IT IS NEVER A SILENT NO-READ (fail_closed: the no-read cannot survive the
-// classifier unable to place the backend; a /srv/gunbc/a://b-shaped word must not slip through as an
-// EndpointDependency with no halt cause — side-chat F1 counterexample). RED unless the read set is
+// classifier unable to place the backend; a bare word like 'static' -- neither an absolute path nor a
+// URL -- must not slip through as an EndpointDependency with no halt cause — side-chat F1 counterexample). RED unless the read set is
 // NotYetModeled with a non-empty reason. (Main's unclassifiable-target control, adapted to deploy_gate.)
 test fn the_tailscale_unclassifiable_backend_is_not_yet_modeled() -> Bool {
   let variant = srv1_over_backend(backend: "static" as NonEmptyStr)

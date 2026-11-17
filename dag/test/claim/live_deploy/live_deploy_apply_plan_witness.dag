@@ -182,7 +182,7 @@ test fn the_deploy_refuses_when_the_tree_sync_publication_is_not_brought_up() ->
   let spec = deployment_spec_srv1()
   let without = filter(xs: full_legs(spec: spec), predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u != (spec.names.tree_sync_unit_name as String)
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => (u as String) != (spec.names.tree_sync_unit_name as String)
       _ => true
     }
   })
@@ -205,7 +205,7 @@ fn rename_tree_sync_publication_leg(legs: List<DeployApplyLeg>, tree_sync_unit: 
     cons: fn(acc, l) {
       match l {
         ApplyLegDiagnosedSystemctl { step: s, action: a, unit: u } =>
-          if (s == "tree-sync-restart" && u == tree_sync_unit) {
+          if (s == "tree-sync-restart" && (u as String) == tree_sync_unit) {
             list_append(left: acc, right: [ApplyLegDiagnosedSystemctl { step: "totally-renamed-publication", action: a, unit: u }])
           } else {
             list_append(left: acc, right: [l])
@@ -236,7 +236,7 @@ test fn the_tree_sync_publication_leg_carries_its_typed_systemctl_fields() -> Bo
   let legs = full_legs(spec: spec)
   any(xs: legs, predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u == tree_sync_unit
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => (u as String) == tree_sync_unit
       _ => false
     }
   })
@@ -251,7 +251,7 @@ test fn the_systemctl_leg_renders_exactly_its_typed_action_and_unit() -> Bool {
   let restart_argv = systemctl_action_argv(action: Restart, unit: unit as NonEmptyStr)
   let enable_argv = systemctl_action_argv(action: Enable, unit: unit as NonEmptyStr)
   let reload_argv = systemctl_action_argv(action: Reload, unit: unit as NonEmptyStr)
-  match apply_systemctl_leg(step: "t-restart", action: Restart, unit: unit) {
+  match apply_systemctl_leg(step: "t-restart", action: Restart, unit: unit as NonEmptyStr) {
     ApplyLegSystemctl { step: _, action: Restart, unit: u } =>
       any(xs: restart_argv, predicate: fn(w) { w == "restart" })
         && any(xs: restart_argv, predicate: fn(w) { w == unit })
@@ -271,13 +271,13 @@ test fn the_deploy_refuses_when_tree_remote_restarts_without_tree_sync_publicati
   let spec = deployment_spec_srv1()
   let without_tree_sync = filter(xs: full_legs(spec: spec), predicate: fn(l) {
     match l {
-      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => u != (spec.names.tree_sync_unit_name as String)
+      ApplyLegDiagnosedSystemctl { step: _, action: Restart, unit: u } => (u as String) != (spec.names.tree_sync_unit_name as String)
       _ => true
     }
   })
   let has_tree_remote = any(xs: without_tree_sync, predicate: fn(l) {
     match l {
-      ApplyLegSystemctl { step: _, action: Restart, unit: u } => u == (deployment_tree_remote_unit_name(names: spec.names) as String)
+      ApplyLegSystemctl { step: _, action: Restart, unit: u } => (u as String) == (deployment_tree_remote_unit_name(names: spec.names) as String)
       _ => false
     }
   })
