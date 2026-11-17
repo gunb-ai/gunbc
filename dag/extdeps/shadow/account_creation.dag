@@ -1,44 +1,44 @@
 module extdeps.shadow.account_creation
 
-// useradd(8), groupadd(8) and usermod(8) -- account and group CREATION in the shadow suite, the
-// creation-side counterpart of extdeps.shadow.account_deletion. gunbc.executor_privileged_operation
-// already owns the RUNNER-account shapes (useradd --system, no uid pinning, membership through
-// usermod -aG measured idempotent); this module fills the CREATION gaps that model does not carry,
-// which the remote-build serving contract needs: groupadd(8) with a DECLARED gid, useradd(8) with
-// declared uid/gid/home/shell plus supplementary groups, and the membership add itself. The
-// consumers are the EnsureGroup / EnsureAccount / EnsureGroupMembership arms of
-// gunbc.compute.remote_build_serving_converge, and each arm runs ONLY after the observe has PROVEN
-// the subject absent: groupadd WITHOUT -f is deliberate -- a group that appeared between observe
-// and write fails the write loudly (exit 9) rather than silently re-pointing the declared gid at a
-// squatter. Membership uses usermod -aG, the corpus tool for that operation (measured to exit 0 on
-// an existing membership, so a re-run after a failed converge is swallowed by the tool, not by us).
+// groupadd(8), useradd(8) and usermod(8) -- account and group CREATION in the shadow suite, the
+// creation-side counterpart of extdeps.shadow.account_deletion, and the one home of these tools'
+// binary paths and argv shapes. gunbc.fleet.fleet_posix_accounts (the runner sudoers roster),
+// gunbc.executor_privileged_operation (runner-account membership), gunbc.fleet.host_credential_custody_converge
+// (the custody readers group) and gunbc.compute.remote_build_serving_converge (the remote-build serving
+// account) all build their argv here. Two groupadd shapes exist because two contracts exist, not two
+// spellings of one: an idempotent ensure (-f, the gid left to login.defs) and a create with a DECLARED
+// gid that must fail if the name is taken.
 
 import std.types { String, Int, List, NonEmptyStr }
 
-data groupadd_binary_path: String = "/usr/sbin/groupadd"
-data useradd_binary_path: String = "/usr/sbin/useradd"
-data usermod_binary_path: String = "/usr/sbin/usermod"
+data groupadd_binary_path: NonEmptyStr = "/usr/sbin/groupadd"
+data useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
+data usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
-// groupadd(8) -g: create GROUP with the DECLARED gid (the plan carries the roster's gid; letting
-// login.defs pick one would put a different gid on every host and break the cross-host ledger
-// contract, which keys group membership by gid).
-fn groupadd_argv(name: NonEmptyStr, gid: Int) -> List<String>
-{
-  [groupadd_binary_path, "-g", to_string(gid), name as String]
+// groupadd(8) -f: "This option causes the command to simply exit with success status if the specified
+// group already exists" -- creation idempotent by the tool's own contract, the gid chosen by the host.
+fn groupadd_ensure_argv(group: NonEmptyStr) -> List<String> {
+  [groupadd_binary_path as String, "-f", "--", group as String]
 }
 
-// useradd(8) -m -u -g -s -d [-G]: create ACCOUNT with the declared uid, primary GID, shell and
-// HOME (-m seeds it from /etc/skel -- the serving contract then owns ~/.ssh and ~/.rustup inside
-// it), plus the declared SUPPLEMENTARY groups as one comma list (useradd takes -G once).
-fn useradd_argv(name: NonEmptyStr, uid: Int, gid: Int, shell: NonEmptyStr, home: NonEmptyStr, supplementary: List<String>) -> List<String>
-{
+// groupadd(8) -g WITHOUT -f: create GROUP with the DECLARED gid. -f is withheld on purpose: with -g,
+// -f "turns off -g" when the gid is taken, so a squatted gid would be silently replaced by a fresh one.
+// Without it, a name or gid that appeared since the caller proved it absent fails the command (exit 4
+// for a non-unique gid, 9 for a taken name), and the caller reports that cause.
+fn groupadd_with_gid_argv(name: NonEmptyStr, gid: Int) -> List<String> {
+  [groupadd_binary_path as String, "-g", to_string(gid), "--", name as String]
+}
+
+// useradd(8) -m -u -g -s -d [-G]: create ACCOUNT with the declared uid, primary gid, shell and HOME
+// (-m seeds it from /etc/skel), plus the declared SUPPLEMENTARY groups as one comma list (useradd
+// takes -G once).
+fn useradd_declared_account_argv(name: NonEmptyStr, uid: Int, gid: Int, shell: NonEmptyStr, home: NonEmptyStr, supplementary: List<NonEmptyStr>) -> List<String> {
   let extras = if length(supplementary) == 0 { [] } else { ["-G", join(map(supplementary, g => g as String), ",")] }
-  concat([useradd_binary_path, "-m", "-u", to_string(uid), "-g", to_string(gid), "-s", shell as String, "-d", home as String], concat(extras, [name as String]))
+  concat([useradd_binary_path as String, "-m", "-u", to_string(uid), "-g", to_string(gid), "-s", shell as String, "-d", home as String], concat(extras, ["--", name as String]))
 }
 
-// usermod(8) -aG GROUP LOGIN: append one supplementary membership (the corpus tool, matching
-// EnsureSupplementaryGroupMembership; -a keeps the rest of the member's groups intact).
-fn usermod_append_group_argv(login: NonEmptyStr, group: NonEmptyStr) -> List<String>
-{
-  [usermod_binary_path, "-aG", group as String, login as String]
+// usermod(8) -aG GROUP LOGIN: append one supplementary membership; -a keeps the member's other groups.
+// It exits 0 on a membership that already exists, so a re-run is a no-op by the tool's contract.
+fn usermod_append_group_argv(login: NonEmptyStr, group: NonEmptyStr) -> List<NonEmptyStr> {
+  [usermod_binary_path, "-aG" as NonEmptyStr, group, login]
 }

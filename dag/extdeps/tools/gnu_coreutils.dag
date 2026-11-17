@@ -682,25 +682,3 @@ fn cat_file_command(path: String) -> ArgvCommand {
 fn date_utc_epoch_seconds_command() -> ArgvCommand {
   argv_command(program: date_program(), arguments: ["-u", "+%s"])
 }
-
-// install(1) file/dir with the mode as the DECLARED octal STRING and owner/group as NAMES -- the
-// shape the serving desired state carries (host_capacity octal strings and account/group names,
-// no uid/gid resolution on this path; the owned variants above take FileMode/uid/gid numbers).
-fn coreutils_install_file_owned_names_argv(mode: NonEmptyStr, owner: NonEmptyStr, group: NonEmptyStr, source: NonEmptyStr, destination: NonEmptyStr) -> List<String>
-{
-  [coreutils_install_binary_name as String, "-m", mode as String, "-o", owner as String, "-g", group as String, source as String, destination as String]
-}
-
-fn coreutils_install_directory_owned_names_argv(mode: NonEmptyStr, owner: NonEmptyStr, group: NonEmptyStr, destination: NonEmptyStr) -> List<String>
-{
-  [coreutils_install_binary_name as String, "-d", "-m", mode as String, "-o", owner as String, "-g", group as String, destination as String]
-}
-
-// mktemp(1) -d: create a PRIVATE (0700, caller-owned) temporary DIRECTORY. The serving converge
-// stages uploads in one before the privileged install, so the staging path is unpredictable and
-// unreadable by other locals (a fixed /tmp path is TOCTOU-open).
-data mktemp_binary_path: String = "/usr/bin/mktemp"
-
-fn coreutils_mktemp_tempdir_argv() -> List<String> {
-  [mktemp_binary_path, "-d"]
-}

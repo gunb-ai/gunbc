@@ -31,14 +31,13 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
   serving_observed_from_reads, serving_assess, ServingAssessment, ServingDeviation, serving_deviation_item,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
-  ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item, serving_ledger_declared_mode_octal,
-  serving_store_dir_mode_octal,
+  ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item,
   serving_passwd_uid, serving_gate_and, serving_account_presence_gate,
 }
-import extdeps.access.posix { file_mode_octal }
+import extdeps.access.posix { FileMode, file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import std.list { first_where, list_member, distinct_by_key }
 import std.algebra { Cons, Empty }
 import std.env_binding { EnvSet }
@@ -47,8 +46,8 @@ import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
-import extdeps.shadow.account_creation { groupadd_argv, useradd_argv, usermod_append_group_argv }
-import extdeps.tools.gnu_coreutils {true_command, cat_command, coreutils_mktemp_tempdir_argv, coreutils_install_file_owned_names_argv, coreutils_install_directory_owned_names_argv }
+import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
+import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
@@ -491,7 +490,7 @@ type ConvergeAction =
     EnsureGroup { name: String, gid: Int }
   | EnsureAccount { name: String, uid: Int, gid: Int, primary_group: String, home: String, shell: String, supplementary: List<NonEmptyStr> }
   | EnsureGroupMembership { group_name: String, group_gid: Int, member: String }
-  | EnsureDirectory { path: String, owner_user: String, owner_group: String, mode: String }
+  | EnsureDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
   | EnsureAuthorizedKeys { path: String, owner_user: String, content: String }
   | EnsureCheckout { dir: String, clone_url: String, revision: String, as_user: String }
   // B1 (side-chat review of 2026-11-16): the PINNED toolchain, rustup-installed AS THE BUILD
@@ -501,7 +500,7 @@ type ConvergeAction =
   // toolchain_channel, which until now was never read.
   | EnsureToolchain { channel: String, as_user: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
-  | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: String }
+  | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
 
 // The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
 // review 95928; gunbc.design_argument::fail_closed — "stronger than catching a wrong state is making it
@@ -575,7 +574,7 @@ fn converge_store_directories(acc: ConvergeDraft, path: String, d: RemoteBuildSe
   // which is what srv1 carries on the serving account's directories — NOT the ledger group (a supplementary
   // group) and NOT the account name (useradd ran with -g <gid>, so it created no private group named after
   // the account). d.account_group_name exists (GroupAbsent→EnsureGroup, or already present per the observe).
-  ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: serving_store_dir_mode_octal(d: d) }], acc.writes), unhandled: acc.unhandled }
+  ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: d.store_dir_mode }], acc.writes), unhandled: acc.unhandled }
 }
 
 // The authorized_keys write carries the single forced-command line. It is only ever a
@@ -591,7 +590,7 @@ fn converge_ssh_parent_dir(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> 
       path: d.account_ssh_dir,
       owner_user: d.account_name,
       owner_group: d.account_group_name,
-      mode: file_mode_octal(mode: d.account_ssh_dir_mode),
+      mode: d.account_ssh_dir_mode,
     }], acc.writes),
     unhandled: acc.unhandled,
   }
@@ -647,7 +646,7 @@ fn converge_bin_parent_dir(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> 
       path: d.serve_binary_dir,
       owner_user: d.serve_binary_dir_owner_user,
       owner_group: d.serve_binary_dir_owner_group,
-      mode: file_mode_octal(mode: d.serve_binary_dir_mode),
+      mode: d.serve_binary_dir_mode,
     }], acc.writes),
     unhandled: acc.unhandled,
   }
@@ -667,7 +666,12 @@ fn converge_ledger_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired, p
   match first_where(d.ledger_dirs, keep: t => (owned_directory_path(t: t) as String) == path) {
     Present { value: t } => {
       let o = owned_directory_owner(t: t)
-      ConvergeDraft { writes: concat([EnsureLedgerDirectory { path: path, owner_user: o.user as String, owner_group: o.group as String, mode: serving_ledger_declared_mode_octal(t: t) }], acc.writes), unhandled: acc.unhandled }
+      // The row's declared FileMode, typed to the install; a mode the row cannot resolve is unhandled,
+      // never written as a fabricated empty mode (fail_closed).
+      match owned_directory_mode(t: t) {
+        OwnedDirectoryModeResolved { mode } => ConvergeDraft { writes: concat([EnsureLedgerDirectory { path: path, owner_user: o.user as String, owner_group: o.group as String, mode: mode }], acc.writes), unhandled: acc.unhandled }
+        OwnedDirectoryModeRefused { reason } => converge_draft_unhandled(acc, join([path, ": declared mode unresolvable: ", reason as String], ""))
+      }
     }
     Absent => converge_draft_unhandled(acc, path)
   }
@@ -928,8 +932,10 @@ type ConvergeStage =
 // mode 0700 and owned by that user, so no other local user can pre-create or swap the file we install
 // via sudo. The world-writable, predictable /tmp paths it replaces were TOCTOU-open. A host that could
 // not create it fails the write with mktemp's own cause, never settles, and the wet apply refuses.
+data converge_stage_dir_template: NonEmptyStr = "/tmp/gunbc-serving-stage.XXXXXXXXXX"
+
 fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> ConvergeStage {
-  let outcome = typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: coreutils_mktemp_tempdir_argv())
+  let outcome = typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template)))
   match converge_exec_step(outcome: outcome) {
     StepFailed { cause: c } => StageFailed { cause: concat("mktemp -d (private staging dir): ", c) }
     StepDone => match outcome {
@@ -954,7 +960,7 @@ fn converge_readback_step(what: String, read: ObservationAttempt<String, Serving
 // 0700 mktemp dir (not a fixed /tmp path — review 5b #5), then READ THE INSTALLED FILE BACK through the
 // same observer the settle gate uses and require equality: a successful install is not proof the intended
 // bytes landed. Each step that fails names its own cause.
-fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext, staging_local: String, path: String, owner: String, group: String, mode: String, content: String) -> ConvergeStep {
+fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext, staging_local: String, path: String, owner: String, group: String, mode: FileMode, content: String) -> ConvergeStep {
   let local_write = Filesystem.Write(path: staging_local, content: content)
   if local_write.success == false {
     StepFailed { cause: join(["local staging write of ", staging_local, " failed: ", local_write.error], "") }
@@ -965,7 +971,7 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
         let remote_staging = concat(stage, "/ak.upload")
         match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
           StepFailed { cause: c } => StepFailed { cause: c }
-          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging as NonEmptyStr, destination: path as NonEmptyStr))) {
+          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging, dest: path))) {
             StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
             // Readback of the file we JUST sudo-installed — elevation is established (the install above
             // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
@@ -981,14 +987,14 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
 // account, then READ BACK its sha256 and require it to equal the pin. A binary that does not read back
 // to the pin's sha is a failed step (the re-observe agrees). It takes the install's own fields, so no
 // other action kind can reach it.
-fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: String, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
+fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
   match converge_private_stage_dir(target: target, context: context) {
     StageFailed { cause: c } => StepFailed { cause: c }
     StageReady { dir: stage } => {
       let remote_path = concat(stage, "/serve.upload")
       match converge_upload(target: target, context: context, local_path: upload_path as NonEmptyStr, remote_path: remote_path as NonEmptyStr) {
         StepFailed { cause: c } => StepFailed { cause: c }
-        StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path as NonEmptyStr, destination: install_path as NonEmptyStr))) {
+        StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path, dest: install_path))) {
           StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
           StepDone => converge_readback_step(what: "serve binary sha256", read: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path), want: expected_sha256)
         }
@@ -1020,12 +1026,12 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly — its exit code and stderr
     // (e.g. exit 4, "GID '1006' already exists") are the cause the receipt names — and the wet apply
     // refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_argv(name: n as NonEmptyStr, gid: g)))
+    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_with_gid_argv(name: n as NonEmptyStr, gid: g)))
     EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } =>
-      converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr)))
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr)))
-    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c)
+      converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_declared_account_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: map(usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr), w => w as String)))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: d.authorized_keys_mode, content: c)
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
     // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
     // orders it rank 6 — after the account and the checkout it needs, before nothing that needs a
@@ -1034,8 +1040,8 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
     EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
-    InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), upload_path: up, install_path: ip, expected_sha256: want)
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr)))
+    InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })
 }
 

@@ -614,7 +614,7 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
 // asserted HERE (on the planned action) so a per-arm literal that ignored d.store_dir_mode reddens it.
 fn has_ensure_directory_mode(ws: List<ConvergeAction>, path: String, mode: String) -> Bool {
   length(filter(ws, a => match a {
-    EnsureDirectory { path: p, owner_user: _, owner_group: _, mode: m } => p == path && m == mode
+    EnsureDirectory { path: p, owner_user: _, owner_group: _, mode: m } => p == path && file_mode_octal(mode: m) == mode
     _ => false
   })) > 0
 }
@@ -842,7 +842,7 @@ test fn fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary() -> 
 
 fn has_directory_write(ws: List<ConvergeAction>, path: String, owner: String, mode: String) -> Bool {
   length(filter(ws, a => match a {
-    EnsureDirectory { path: p, owner_user: ou, owner_group: _, mode: m } => p == path && ou == owner && m == mode
+    EnsureDirectory { path: p, owner_user: ou, owner_group: _, mode: m } => p == path && ou == owner && file_mode_octal(mode: m) == mode
     _ => false
   })) == 1
 }
