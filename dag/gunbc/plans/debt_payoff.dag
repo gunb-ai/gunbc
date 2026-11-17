@@ -31,6 +31,7 @@ fn debt_payoff_body() -> List<MarkdownBlock> {
     p(text: "Debt receives active capacity only when it does at least one of: unblocks a named intention's done-when; restores a currently declared rung drop; removes a measured recurring human cost; deletes a competing authority or a recurring failure mechanism. A count floor, a widened budget or a cache is never payoff (`debt-payoff`'s red control). A batch is admitted as one pull request naming its population, each member's owning intention, its witness and its executing route, and dissolves on acceptance."),
     h2(text: "4. What is outside this campaign"),
     p(text: "The v2 program's own walls (`gunbc.plans.v2_self_host`) are not debt; `dp-m6-native-route-walls` restores declared drops, it does not build the native route."),
+    p(text: "Inside it since 2026-11-17: zero hand-maintained Rust (`v1-zero-hand-maintained-rust`), a repository-purity obligation that is stronger than the v1 program's acceptance gate and so no longer terminates `gunbc.plans.v2_self_host`; it is admitted under section 3 once the seed is gone, as its own terminal."),
     h2(text: "5. Realization"),
     p(text: "Not authored here. Batches are admitted one pull request at a time, each node mapping one authority transition with one discriminating witness and one executing route; what a landing reports is the roster's new size or the class's new rung, named by the witness that measured it."),
   ]
