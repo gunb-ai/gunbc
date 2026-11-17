@@ -1116,8 +1116,19 @@ fn release_bins_retention_delete_cap_text() -> String {
 // <=8 s, plus local jq -- bounded by construction and far inside the step's unchanged 5-minute
 // budget. The whole chore additionally runs inside a best-effort subshell whose refusal prints one
 // typed chore-failed line and lets the outcome proceed.
-data release_bins_retention_curl_max_time_text: String = "5"
-data release_bins_retention_curl_timeout_text: String = "8s"
+data release_bins_retention_curl_max_time: Second = second(count: 5)
+data release_bins_retention_curl_timeout: Second = second(count: 8)
+
+// `timeout(1)` takes an unsigned integer of SECONDS with no suffix, so both bounds are read off
+// their Second carriers as plain counts -- the wait policy stays on the measure algebra (review
+// 96116), and no unit letter is re-spelled in a string.
+fn release_bins_retention_curl_max_time_text() -> String {
+  int_to_decimal_string(value: second_count(s: release_bins_retention_curl_max_time))
+}
+
+fn release_bins_retention_curl_timeout_text() -> String {
+  int_to_decimal_string(value: second_count(s: release_bins_retention_curl_timeout))
+}
 
 // THE ANSWER FILE LIVES IN THE WORKSPACE, at the step's working directory, exactly like the lookup's
 // answer (release_bins_lookup_file / lookup_fetch_statement): curl writes it with -o at $ROOT/<name>
