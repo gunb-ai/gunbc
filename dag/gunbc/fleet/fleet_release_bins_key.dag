@@ -2,9 +2,10 @@ module gunbc.fleet.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result }
+import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result, int_compare }
+import std.algebra { Ordering, Less, Equal, Greater }
 import std.measure { Second, second, second_count, measure_add, minutes_per_hour, seconds_per_minute }
-import std.error_primitives { Ok, Err }
+import std.error_primitives { Result, Ok, Err }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -1039,23 +1040,61 @@ data release_bins_retention_census_approval_margin: Second = second(count: 4 * m
 data release_bins_retention_census_group_size: Int = 4
 data release_bins_retention_census_spare_entries: Int = 1
 
-fn release_bins_retention_ceil_div(a: Int, b: Int) -> Int {
+// A broken census datum REFUSES, it does not produce a plausible number (review 96120;
+// gunbc.design_argument::fail_closed: "Every path succeeds fully or fails with a typed, located
+// diagnostic, and no plausible output is fabricated"). The earlier sentinel (Err => 1000000) made a
+// zero divisor look like a giant keep, after which the chore reported nothing-due as if retention
+// had worked -- a fabricated default hiding a deficit. Now the refusal is typed, and
+// fleet_converge_release_bins_retention_census_refusal turns it into a workflow-generation refusal
+// on the same channel the emitter already uses for every other unemittable fact
+// (FleetConvergeYamlGenerationRefused): no yaml at all rather than a chore on a made-up count.
+fn release_bins_retention_ceil_div(a: Int, b: Int) -> Result<Int, String> {
   match int_div_result(int_add(a, int_sub(b, 1)), b) {
-    // A zero divisor is a broken census datum. Fail closed toward KEEPING: a huge
-    // keep deletes nothing, the safe direction for a budget guardian.
-    Ok { value: q } => q
-    Err { value: _ } => 1000000
+    Ok { value: q } => Ok(q)
+    Err { value: _ } => Err(join(["release-bins retention census: ceiling division by a zero divisor (numerator ", int_to_decimal_string(a), ", divisor ", int_to_decimal_string(b), ") -- a census datum is zero"], ""))
   }
 }
 
-fn release_bins_retention_keep_computed() -> Int {
+fn release_bins_retention_keep_computed() -> Result<Int, String> {
   let horizon = measure_add(a: release_bins_retention_census_observed_lag, b: release_bins_retention_census_approval_margin)
   let horizon_secs: Int = second_count(s: horizon)
   let window_secs: Int = second_count(s: release_bins_retention_census_peak_window)
-  let raw: Int = int_add(release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_window_entries, horizon_secs), window_secs), release_bins_retention_census_spare_entries)
-  int_mul(release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size), release_bins_retention_census_group_size)
+  let needed = match release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_window_entries, horizon_secs), window_secs) {
+    Ok { value: q } => q
+    Err { value: r } => return Err(r)
+  }
+  let raw: Int = int_add(needed, release_bins_retention_census_spare_entries)
+  match release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size) {
+    Ok { value: q } => Ok(int_mul(q, release_bins_retention_census_group_size))
+    Err { value: r } => return Err(r)
+  }
 }
-data fleet_converge_release_bins_retention_keep: Int = release_bins_retention_keep_computed()
+
+// THE CENSUS GATE AT THE WORKFLOW BORDER. Ok and positive -> no refusal; anything else names the
+// cause and the emitter emits NO workflow (see expected_fleet_converge_yml in
+// gunbc.fleet.fleet_converge_workflow). The keep value must also be positive: a zero keep would
+// delete every non-current entry, which is the opposite of what a broken census should do.
+// The refusal over an arbitrary census result, so the witnesses can hand it a broken one and
+// watch it refuse, and a good one and watch it admit (gunbc.design_argument::fail_closed: "Done
+// means ... a discriminating input that goes red when the behavior is wrong"). The production
+// gate reads the real census.
+fn release_bins_retention_census_refusal_of(result: Result<Int, String>) -> String? {
+  match result {
+    Ok { value: q } =>
+      match int_compare(q, 0) {
+        Greater => Absent
+        Equal => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: the release-bins retention census computed keep 0 -- the deletion plan would take every non-current entry on a broken count. No workflow yaml was emitted (gunbc.design_argument::fail_closed). Fix the census rows (census_peak_window_entries, census_group_size, the std.measure windows), or raise this refusal deliberately in a review."], "") }
+        Less => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: the release-bins retention census computed the negative keep ", int_to_decimal_string(q), " -- a census datum is negative. No workflow yaml was emitted (gunbc.design_argument::fail_closed)."], "") }
+      }
+    Err { value: r } => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: ", r, ". No workflow yaml was emitted -- retention would otherwise plan deletions or report nothing-due on a keep it never computed (gunbc.design_argument::fail_closed)."], "") }
+  }
+}
+
+fn fleet_converge_release_bins_retention_census_refusal() -> String? {
+  release_bins_retention_census_refusal_of(result: release_bins_retention_keep_computed())
+}
+
+data fleet_converge_release_bins_retention_keep: Result<Int, String> = release_bins_retention_keep_computed()
 // The hand-shell gate (ctrl review policy, review 96043): the listing, plan
 // and deletion below are carried as a bash sequence built through the
 // bash_build grammar (curl page ladder, jq plan invocations, xargs deletes).
@@ -1097,8 +1136,16 @@ data release_bins_retention_incomplete_basename: String = "release-bins-retentio
 data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
 data release_bins_retention_delete_header_basename: String = "release-bins-retention-delete-auth-header"
 
+// Renderings of the computed keep. fleet_converge_release_bins_retention_census_refusal makes
+// every Err here UNREACHABLE at emission (the workflow is not emitted at all when the census
+// refuses), so these arms are totalization, not a second path: each renders something that CANNOT
+// plan a deletion -- "REFUSED" is not a number, so jq refuses the slice and the run prints
+// plan-failed instead. fail_closed demands no fabricated number even in an unreachable arm.
 fn release_bins_retention_keep_text() -> String {
-  int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
+  match fleet_converge_release_bins_retention_keep {
+    Ok { value: q } => int_to_decimal_string(value: q)
+    Err { value: _ } => "REFUSED"
+  }
 }
 
 // The per-run DELETE CAP (F2, side chat 2026-11-17): at most one KEEP WINDOW of deletions per
@@ -1107,7 +1154,10 @@ fn release_bins_retention_keep_text() -> String {
 // over-cap ceiling (500), while the delete PHASE is bounded by construction -- cap x the per-op
 // bound below (<=16 x 8 s = 128 s worst case).
 fn release_bins_retention_delete_cap_text() -> String {
-  int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
+  match fleet_converge_release_bins_retention_keep {
+    Ok { value: q } => int_to_decimal_string(value: q)
+    Err { value: _ } => "REFUSED"
+  }
 }
 
 // PER-OP NETWORK BOUND (F2): the 2026-11-16 census measured ~1.3 s per Actions-API call from the

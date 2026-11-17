@@ -25,7 +25,9 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_retention_ids_basename, release_bins_retention_ids_dedup_basename,
   release_bins_retention_union_basename, release_bins_retention_incomplete_basename,
   release_bins_retention_page1_program, release_bins_retention_page_program, release_bins_retention_union_program,
+  fleet_converge_release_bins_retention_census_refusal, release_bins_retention_census_refusal_of,
 }
+import std.error_primitives { Ok, Err }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
   bash_build_assign, bash_build_with_redir_to_file, bash_build_and_then, bash_build_word_cmdsubst,
@@ -779,6 +781,33 @@ test fn release_bins_retention_paged_delete_reaches_past_one_page() -> Bool {
     && string_contains(s: r.stdout, pattern: " 234")
     && !string_contains(s: r.stdout, pattern: " 235")
     && !string_contains(s: r.stdout, pattern: "page-failed")
+}
+
+// THE CENSUS REFUSAL (review 96120; gunbc.design_argument::fail_closed). The one number that
+// bounds what retention deletes must never be fabricated: the former sentinel (Err => 1000000)
+// turned a zero-divisor census into a giant keep and the chore then reported nothing-due as if it
+// had worked. These two inputs discriminate: the real census MUST admit, and a broken one MUST
+// refuse loudly. Red either way: if someone restores a fabricated default, the broken-census test
+// goes red; if the gate wrongly refuses, the admit test goes red.
+test fn release_bins_retention_census_admits_the_computed_keep() -> Bool {
+  match fleet_converge_release_bins_retention_census_refusal() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn release_bins_retention_census_refuses_a_broken_census() -> Bool {
+  match release_bins_retention_census_refusal_of(result: Err("test census: ceiling division by a zero divisor")) {
+    Present { value: r } => string_contains(s: r, pattern: "REFUSED") && string_contains(s: r, pattern: "zero divisor")
+    Absent => false
+  }
+}
+
+test fn release_bins_retention_census_refuses_a_zero_keep() -> Bool {
+  match release_bins_retention_census_refusal_of(result: Ok(0)) {
+    Present { value: r } => string_contains(s: r, pattern: "REFUSED") && string_contains(s: r, pattern: "keep 0")
+    Absent => false
+  }
 }
 
 // A required page failing, whole step (F4d, review 96005): page 2 never
