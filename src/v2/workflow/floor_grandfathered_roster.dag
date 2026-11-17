@@ -2758,7 +2758,9 @@ fn floor_grandfathered_cut_size() -> Int {
 // consumer that lands next is the roster's own regeneration gate, which must run this verdict
 // against the discovery producer's current output before writing the file -- so that a regen which
 // would ADD a row refuses instead of silently resetting the baseline. Trigger: the first change
-// that re-derives this roster.
+// that re-derives this roster. Neither consumer is CI: the required lane
+// (`.github/workflows/witnesses.yml`) fires on pull_request, merge_group and main push and invokes
+// no `claim_batch` on any of them, so it parses and typechecks these claims and executes none.
 type RosterChangeVerdict =
     RosterChangeAdmitted
   | RosterAdditionRefused { added: String }

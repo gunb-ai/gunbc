@@ -639,7 +639,7 @@ test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
 // `v2.workflow.floor_grandfathered_roster` says so itself, where it calls the corpus scale a
 // declared frontier. This section calls the SAME fold, `roster_change_verdict` and its
 // `first_undisposed_removal` arm and no checker written beside them, against the live roster's own
-// rows and the live disposition rows, on the dry claim corpus the witnesses route runs.
+// rows and the live disposition rows.
 //
 // EVERY STEP COUNT BELOW IS A MEASUREMENT, NOT A FIGURE OF SPEECH: `claim_batch --source-root dag
 // --source-root src/v2 --entry dag/test/claim/floor_eval_step_budget_witness.dag --functions
@@ -656,6 +656,18 @@ test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
 // live rows, at 8,618 eval steps. Corpus scale for it stays the frontier the roster module declares,
 // and the corpus-wide sweep over the departure dispositions already runs through
 // `floor_grandfathered_holds` in that same claim.
+
+// WHICH ROUTE EXECUTES THEM, STATED HONESTLY. The run above was IN-SESSION, at the head of
+// gunbc#16610, and that run is these claims' executing consumer: the PR carries it as a run link
+// (invocation, raw PASS lines, binary sha256, the head it ran on). Nothing in CI executes them. The
+// required lane IS `.github/workflows/witnesses.yml` -- its run 43986394322, job `v2-bootstrap`, is
+// the check that ran on that PR -- and that file fires on `pull_request`, on `merge_group` and on
+// `push` to main with no path filter, while containing no `claim_batch` invocation anywhere in it
+// (grep for `claim_batch`: no match). Its steps build the compiler, typecheck the v1 unit-test
+// population ("no codegen, no link, no assertion runs here"), check layout and marked references,
+// and walk the PARSE population. So on no event does a CI route carry a live-roster claim, and that
+// is recorded here, where the verdict is declared, rather than answered with a schedule row invented
+// to look like one.
 
 // THREE LIVE IDENTITIES THE FROZEN CUT HAS NEVER HELD. The roster module names them where it
 // records the strike: the generating floor run was taken part-way through the lane that ADDED
