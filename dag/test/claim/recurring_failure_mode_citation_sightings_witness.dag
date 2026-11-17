@@ -21,7 +21,14 @@ module test.claim.recurring_failure_mode_citation_sightings_witness
 import std.algebra { count_equal, fold_list, length, list_append }
 import v2.std.text { string_all_chars_in }
 import std.decl_ref { DeclarationRef }
-import gunbc.recurring_failure_mode { AtCeiling, BelowCeiling, RecurringFailureMode, RungRead, RungStanding }
+import gunbc.recurring_failure_mode {
+  AtCeiling,
+  BelowCeiling,
+  RecurringFailureMode,
+  RungRead,
+  RungStanding,
+  RungUnread,
+}
 import gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved {
   declaration_reference_cites_a_declaration_nothing_resolved,
   declaration_reference_cites_a_declaration_nothing_resolved_frozen_run,
