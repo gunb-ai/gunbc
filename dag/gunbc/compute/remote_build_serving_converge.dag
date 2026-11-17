@@ -25,7 +25,7 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -879,70 +879,101 @@ fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: Servin
 // caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
 // over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
 // for elevated writes.
-fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> Bool {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv) {
-    TypedArgvExecRefused { reason: _ } => false
-    TypedArgvExecConverged { result: r } => r.exit_code == 0
+// ONE STEP of a write, as the transport saw it (review 96096). A step that did not land carries its
+// CAUSE: the refusal before exec, or the exit code and stderr the command returned, or the readback
+// that disagreed. Nothing collapses to Bool, so the receipt can say WHY a write failed, not only which
+// (gunbc.design_argument::fail_closed: "a typed, located diagnostic").
+type ConvergeStep =
+  | StepDone
+  | StepFailed { cause: String }
+
+// A command's exit, as a step: 0 is done; any other exit carries the code and the trimmed stderr.
+fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
+  match outcome {
+    TypedArgvExecRefused { reason: r } => StepFailed { cause: concat("refused before exec: ", r) }
+    TypedArgvExecConverged { result: r } => if r.exit_code == 0 { StepDone } else {
+      StepFailed { cause: join(["exit ", to_string(r.exit_code), ": ", trim(r.stderr)], "") }
+    }
   }
+}
+
+// The elevated WRITE transport: takes the FULLY BUILT argv — elevation included, composed by the
+// caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
+// over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
+// for elevated writes.
+fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv))
 }
 
 // The as-user WRITE transport (review 96039 shape): argv_words(command: sudo_elevate_as_command(
 // user: .., command: argv_words(command: <extdeps builder>))) — the command runs as the serving
 // account through sudo, its argv built by extdeps builders (git, rustup), never hand-typed.
-fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> Bool {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))) {
-    TypedArgvExecRefused { reason: _ } => false
-    TypedArgvExecConverged { result: r } => r.exit_code == 0
-  }
+fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))))
 }
 
 // The executor's OWN transport for uploading one local file (the serve binary, the authorized_keys
 // content). scp is run locally over LocalExec with the anchored trust options; the remote install
 // and sha256 readback then happen over the ssh edge.
-fn converge_upload(target: SshTarget, context: FleetSshExecutionContext, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> Bool {
+fn converge_upload(target: SshTarget, context: FleetSshExecutionContext, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> ConvergeStep {
   match run_shell_command_capture(command: fleet_scp_upload_command(context: context, target: target, local_path: local_path, remote_path: remote_path), transport: LocalExec) {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => StepDone
+    ProcessOutputAbsent => StepDone
+    ProcessRefused { exit_code: c, stderr: e } => StepFailed { cause: join(["scp upload exit ", to_string(c), ": ", trim(e)], "") }
   }
 }
 
-// Upload `content` (written to a local staging file) and install it at `path` with the given mode
-// and owner. Used for authorized_keys; the serve binary has its own arm (with sha256 readback).
+// A PRIVATE staging directory on the host, or why there is none.
+type ConvergeStage =
+  | StageReady { dir: String }
+  | StageFailed { cause: String }
+
 // Create a PRIVATE staging directory ON the host as the CONNECTING ssh user (NOT root): mktemp -d is
 // mode 0700 and owned by that user, so no other local user can pre-create or swap the file we install
-// via sudo. The world-writable, predictable /tmp paths it replaces were TOCTOU-open. Returns none when
-// the host could not create it — the write then fails, never settles, and the wet apply refuses.
-fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: coreutils_mktemp_tempdir_argv()) {
-    TypedArgvExecRefused { reason: _ } => none
-    TypedArgvExecConverged { result: r } => if r.exit_code == 0 { Present { value: trim(r.stdout) } } else { none }
+// via sudo. The world-writable, predictable /tmp paths it replaces were TOCTOU-open. A host that could
+// not create it fails the write with mktemp's own cause, never settles, and the wet apply refuses.
+fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> ConvergeStage {
+  let outcome = typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: coreutils_mktemp_tempdir_argv())
+  match converge_exec_step(outcome: outcome) {
+    StepFailed { cause: c } => StageFailed { cause: concat("mktemp -d (private staging dir): ", c) }
+    StepDone => match outcome {
+      TypedArgvExecRefused { reason: r } => StageFailed { cause: concat("mktemp -d (private staging dir): refused before exec: ", r) }
+      TypedArgvExecConverged { result: r } => StageReady { dir: trim(r.stdout) }
+    }
   }
 }
 
-// Upload a locally-materialized content string and install it 0600 as the owner, staging in a PRIVATE
+// A readback leg's verdict on a value just installed: equal is done, a different value or an
+// unreadable leg is a failed step naming what was read.
+fn converge_readback_step(what: String, read: ObservationAttempt<String, ServingLegFailure>, want: String) -> ConvergeStep {
+  match read {
+    ObservationEstablished { observed: got } => if got == want { StepDone } else {
+      StepFailed { cause: concat(what, " read back different from the installed value") }
+    }
+    ObservationRefused { cause: f } => StepFailed { cause: join([what, " readback refused (", f.item, "): ", f.cause], "") }
+  }
+}
+
+// Upload a locally-materialized content string and install it as the owner, staging in a PRIVATE
 // 0700 mktemp dir (not a fixed /tmp path — review 5b #5), then READ THE INSTALLED FILE BACK through the
 // same observer the settle gate uses and require equality: a successful install is not proof the intended
-// bytes landed (previously authorized_keys content was never re-observed, only the forced-command line).
-fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext, staging_local: String, path: String, owner: String, group: String, mode: String, content: String) -> Bool {
+// bytes landed. Each step that fails names its own cause.
+fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext, staging_local: String, path: String, owner: String, group: String, mode: String, content: String) -> ConvergeStep {
   let local_write = Filesystem.Write(path: staging_local, content: content)
   if local_write.success == false {
-    false
+    StepFailed { cause: join(["local staging write of ", staging_local, " failed: ", local_write.error], "") }
   } else {
     match converge_private_stage_dir(target: target, context: context) {
-      none => false
-      Present { value: stage } => {
+      StageFailed { cause: c } => StepFailed { cause: c }
+      StageReady { dir: stage } => {
         let remote_staging = concat(stage, "/ak.upload")
-        if converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) == false {
-          false
-        } else if converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging as NonEmptyStr, destination: path as NonEmptyStr))) == false {
-          false
-        } else {
-          // Readback of the file we JUST sudo-installed — elevation is established (the install above
-          // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
-          match serving_leg_authorized_keys(elevation: ObservationEstablished { observed: true }, item: "authorized_keys", target: target, context: context, path: path) {
-            ObservationEstablished { observed: got } => got == content
-            ObservationRefused { cause: _ } => false
+        match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
+          StepFailed { cause: c } => StepFailed { cause: c }
+          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging as NonEmptyStr, destination: path as NonEmptyStr))) {
+            StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
+            // Readback of the file we JUST sudo-installed — elevation is established (the install above
+            // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
+            StepDone => converge_readback_step(what: "authorized_keys content", read: serving_leg_authorized_keys(elevation: ObservationEstablished { observed: true }, item: "authorized_keys", target: target, context: context, path: path), want: content)
           }
         }
       }
@@ -950,61 +981,55 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
   }
 }
 
-// The serve binary: scp the executor's built $ROOT/target/release/gunbc up, install it 0755 as the
-// serving account, then READ BACK its sha256 and require it to equal the pin. A host whose binary
-// does not read back to the pin's sha is NOT settled (the arm returns false; the re-observe agrees).
-fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: String, action: ConvergeAction) -> Bool {
-  match action {
-    InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } =>
-      match converge_private_stage_dir(target: target, context: context) {
-        none => false
-        Present { value: stage } => {
-          let remote_path = concat(stage, "/serve.upload")
-          if converge_upload(target: target, context: context, local_path: up as NonEmptyStr, remote_path: remote_path as NonEmptyStr) == false {
-            false
-          } else if converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path as NonEmptyStr, destination: ip as NonEmptyStr))) == false {
-            false
-          } else {
-            match serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: ip) {
-              ObservationEstablished { observed: got } => got == want
-              ObservationRefused { cause: _ } => false
-            }
-          }
+// The serve binary: scp the executor's built $ROOT/target/release/gunbc up, install it as the serving
+// account, then READ BACK its sha256 and require it to equal the pin. A binary that does not read back
+// to the pin's sha is a failed step (the re-observe agrees). It takes the install's own fields, so no
+// other action kind can reach it.
+fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: String, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
+  match converge_private_stage_dir(target: target, context: context) {
+    StageFailed { cause: c } => StepFailed { cause: c }
+    StageReady { dir: stage } => {
+      let remote_path = concat(stage, "/serve.upload")
+      match converge_upload(target: target, context: context, local_path: upload_path as NonEmptyStr, remote_path: remote_path as NonEmptyStr) {
+        StepFailed { cause: c } => StepFailed { cause: c }
+        StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_names_argv(mode: mode as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path as NonEmptyStr, destination: install_path as NonEmptyStr))) {
+          StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
+          StepDone => converge_readback_step(what: "serve binary sha256", read: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path), want: expected_sha256)
         }
       }
-    EnsureGroup { name: _, gid: _ } => false
-    EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, shell: _, supplementary: _ } => false
-    EnsureGroupMembership { group_name: _, group_gid: _, member: _ } => false
-    EnsureDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => false
-    EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => false
-    EnsureCheckout { dir: _, clone_url: _, revision: _, as_user: _ } => false
-    EnsureLedgerDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => false
-    EnsureToolchain { channel: _, as_user: _ } => false
+    }
   }
 }
 
-// A write's result, spelled as the CAUSE it failed for or "" when it settled. The common arms have no
-// richer cause than the action's own key, so they name the failed write by converge_action_key; the
-// checkout arm returns converge_run_checkout's cause, which can name the FETCH (review 95935). "" means
-// settled (converge_execute_plan filters those out), so the failed list the receipt reports is the causes
-// of the writes that did NOT settle — one execution per write, the filter is on the result, not a re-run.
-fn converge_write_failure(ok: Bool, name: String) -> String {
-  if ok { "" } else { name }
+// A write that did not settle: its key (converge_action_key, the name the plan and the receipt share)
+// and the cause its transport reported.
+type ConvergeWriteFailure { key: String, cause: String }
+
+// One write's outcome (review 96096): a coproduct, not a String where "" meant settled.
+type ConvergeWriteOutcome =
+  | WriteSettled
+  | WriteFailed { failure: ConvergeWriteFailure }
+
+fn converge_write_outcome(action: ConvergeAction, step: ConvergeStep) -> ConvergeWriteOutcome {
+  match step {
+    StepDone => WriteSettled
+    StepFailed { cause: c } => WriteFailed { failure: ConvergeWriteFailure { key: converge_action_key(action), cause: c } }
+  }
 }
 
-fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, action: ConvergeAction) -> String {
-  match action {
+fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, action: ConvergeAction) -> ConvergeWriteOutcome {
+  converge_write_outcome(action: action, step: match action {
     // groupadd WITHOUT -f: this arm runs only for a group the observe PROVED absent (GroupAbsent), so the
     // name must be free at apply time; a spurious -f would silently drop -g on a taken gid and fabricate a
-    // gid (fail_closed). If the group somehow exists now, groupadd fails loudly, the write fails to settle,
-    // and the wet apply refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_argv(name: n as NonEmptyStr, gid: g))), name: converge_action_key(action))
-    EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } => {
-      converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup))), name: converge_action_key(action))
-    }
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr))), name: converge_action_key(action))
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr))), name: converge_action_key(action))
-    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_write_failure(ok: converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c), name: converge_action_key(action))
+    // gid (fail_closed). If the group somehow exists now, groupadd fails loudly — its exit code and stderr
+    // (e.g. exit 4, "GID '1006' already exists") are the cause the receipt names — and the wet apply
+    // refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
+    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_argv(name: n as NonEmptyStr, gid: g)))
+    EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } =>
+      converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr)))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr)))
+    EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c)
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
     // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
     // orders it rank 6 — after the account and the checkout it needs, before nothing that needs a
@@ -1012,26 +1037,25 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // idempotent, so re-applying a settled host is a no-op settle; the absolute rustup path and
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
-    EnsureToolchain { channel: c, as_user: usr } => converge_write_failure(ok: converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c))), name: converge_action_key(action))
-    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => converge_write_failure(ok: converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), action: action), name: converge_action_key(action))
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr))), name: converge_action_key(action))
-  }
+    EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
+    InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), upload_path: up, install_path: ip, expected_sha256: want)
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_directory_owned_names_argv(mode: mo as NonEmptyStr, owner: ou as NonEmptyStr, group: og as NonEmptyStr, destination: p as NonEmptyStr)))
+  })
 }
 
-// The checkout's verdict + cause, split so the cause is a hermetic (SSH-free) function of the two
-// command outcomes. The DETACH is the verdict: settled when it succeeds, regardless of the clone (a fresh
-// clone proves nothing about the revision) or even the fetch (a fetch can fail on an already-complete local
-// object graph and the detach still lands). Only when the detach FAILS does the fetch's fate matter as the
-// CAUSE: a failed fetch that then blocks the detach NAMES THE FETCH as the cause (the fetch is why the
-// detach could not reach the revision), rather than reporting a bare detach failure. The verdict is still
-// the detach; the cause is what the receipt names (review 95935). "" means settled.
-fn converge_checkout_cause(fetch_ok: Bool, detach_ok: Bool) -> String {
-  if detach_ok {
-    ""
-  } else if fetch_ok == false {
-    "checkout: git fetch of the pinned revision failed, so the detach could not reach it"
-  } else {
-    "checkout: git checkout --detach of the pinned revision failed"
+// The checkout's step from its two command steps, hermetic (SSH-free). The DETACH is the verdict: done
+// when it succeeds, regardless of the clone (a fresh clone proves nothing about the revision) or even
+// the fetch (a fetch can fail on an already-complete local object graph and the detach still lands).
+// Only when the detach FAILS does the fetch's fate matter: a failed fetch that then blocks the detach
+// NAMES THE FETCH, with the fetch's own cause, as why the detach could not reach the revision (review
+// 95935); otherwise the cause is the detach's own.
+fn converge_checkout_step(fetch: ConvergeStep, detach: ConvergeStep) -> ConvergeStep {
+  match detach {
+    StepDone => StepDone
+    StepFailed { cause: dc } => match fetch {
+      StepFailed { cause: fc } => StepFailed { cause: join(["git fetch of the pinned revision failed (", fc, "), so the detach could not reach it"], "") }
+      StepDone => StepFailed { cause: concat("git checkout --detach of the pinned revision failed: ", dc) }
+    }
   }
 }
 
@@ -1040,79 +1064,56 @@ fn converge_checkout_cause(fetch_ok: Bool, detach_ok: Bool) -> String {
 // sudo -u). On a host whose checkout is at an older commit the revision is not present locally, so a bare
 // 'checkout --detach rev' would fail; the fetch brings the exact pinned object first. The clone RESULT IS
 // IGNORED ON PURPOSE (a fresh clone succeeds but proves nothing about the revision); the fetch and detach
-// results feed converge_checkout_cause, which keeps the DETACH as the verdict but names the FETCH as the
-// cause when a failed fetch is what left the detach with nothing to detach. Returns "" when settled.
-fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> String {
+// steps feed converge_checkout_step.
+fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> ConvergeStep {
   let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
-  let fetch_ok = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
-  let detach_ok = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
-  converge_checkout_cause(fetch_ok: fetch_ok, detach_ok: detach_ok)
+  let fetch = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
+  let detach = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
+  converge_checkout_step(fetch: fetch, detach: detach)
 }
 
 // The execute path, and the only consumer of a plan's writes. Its parameter is the PLAN arm's
 // non-empty write list, not a decision (review 95928): a ConvergeRefused or a ConvergeUnhandled has no
-// value of this type, so neither can be routed here even by mistake — 'refused/unhandled executes
-// nothing' is a typing fact, not a gate the caller has to remember.
-// B3 (side-chat review of 2026-11-16): what one apply pass did, in two lists the receipt can name.
-// `failed` holds the CAUSE of the write that stopped the pass (at most one: execution stops at the
-// first failure); `skipped` names every write ordered AFTER that failure — the writes that depended
+// value of this type, so neither can be routed here even by mistake.
+// B3 (side-chat review of 2026-11-16): what one apply pass did. `attempted` names every write run, by
+// key; `failed` holds the write that stopped the pass with its cause (at most one: execution stops at
+// the first failure); `skipped` names every write ordered AFTER that failure — the writes that depended
 // on it and were never attempted. A pass with no failure has failed = [] and skipped = [].
 type ConvergeExecuted {
   attempted: List<String>,
-  failed: List<String>,
+  failed: List<ConvergeWriteFailure>,
   skipped: List<String>
 }
 
-// THE PURE PART of the execution policy, claimable hermetically (converge witness
-// execution_stops_at_first_failure): given the ORDERED plan and the key of the write
-// that is INJECTED to fail, name which writes were attempted, which failed, and which
-// were skipped. Execution stops at the first failure, so every write ordered after it
-// — the writes that depended on it (parents before installs, account before checkout,
-// checkout before toolchain, all ordered by converge_kind_rank) — is skipped, not
-// attempted against an absent prerequisite. failed_key = Absent models the all-settle
-// pass: everything attempted, nothing failed, nothing skipped. The wet executor below
-// runs the same policy against real writes: the model is the policy the receipt reports.
-fn converge_execution_model(order: List<ConvergeAction>, failed_key: String?) -> ConvergeExecuted {
-  match order {
-    Empty => ConvergeExecuted { attempted: [], failed: [], skipped: [] }
-    Cons { head: a, tail: more } => {
-      let key = converge_action_key(a)
-      let stop = match failed_key {
-        Present { value: k } => k == key
-        Absent => false
-      }
-      if stop {
-        ConvergeExecuted { attempted: [key], failed: [key], skipped: map(more, r => converge_action_key(r)) }
-      } else {
-        let tail = converge_execution_model(order: more, failed_key: failed_key)
-        ConvergeExecuted { attempted: concat([key], tail.attempted), failed: tail.failed, skipped: tail.skipped }
-      }
-    }
-  }
-}
-
-// The wet executor: attempt writes IN ORDER and stop at the FIRST failure — a later write
-// whose kind depends on the failed one (every later write does, by the ordering the plan
-// carries) must not run against an absent prerequisite. The skipped suffix is named by the
-// same converge_action_key the pure model uses, so the receipt and the claim speak one
-// language. The checkout write's cause can name the FETCH (review 95935); every other cause
-// is the write's own key.
-fn converge_execute_from(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, remaining: List<ConvergeAction>, attempted: List<String>) -> ConvergeExecuted {
+// THE execution policy, written ONCE (review 96096): attempt writes IN ORDER and stop at the FIRST
+// failure, so no later write — every later write depends on an earlier one by the ordering the plan
+// carries (parents before installs, account before checkout, checkout before toolchain, all ordered by
+// converge_kind_rank) — runs against an absent prerequisite. The write itself is a parameter: the wet
+// apply passes converge_run_write over the fleet SSH edge, and the hermetic witness passes an injected
+// runner, so the claim exercises the same fold the apply runs (gunbc.design_argument::witness_one_interface).
+fn converge_execute_with(remaining: List<ConvergeAction>, attempted: List<String>, run: fn(ConvergeAction) -> ConvergeWriteOutcome) -> ConvergeExecuted {
   match remaining {
     Empty => ConvergeExecuted { attempted: attempted, failed: [], skipped: [] }
     Cons { head: a, tail: rest } => {
-      let cause = converge_run_write(target: target, context: context, d: d, action: a)
-      if cause != "" {
-        ConvergeExecuted { attempted: concat(attempted, [cause]), failed: [cause], skipped: map(rest, r => converge_action_key(r)) }
-      } else {
-        converge_execute_from(target: target, context: context, d: d, remaining: rest, attempted: concat(attempted, [converge_action_key(a)]))
+      let done = concat(attempted, [converge_action_key(a)])
+      match run(a) {
+        WriteSettled => converge_execute_with(remaining: rest, attempted: done, run: run)
+        WriteFailed { failure: f } => ConvergeExecuted { attempted: done, failed: [f], skipped: map(rest, r => converge_action_key(r)) }
       }
     }
   }
 }
 
 fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, writes: FreeSemigroup<ConvergeAction>) -> ConvergeExecuted {
-  converge_execute_from(target: target, context: context, d: d, remaining: non_empty_to_list(writes), attempted: [])
+  converge_execute_with(remaining: non_empty_to_list(writes), attempted: [], run: a => converge_run_write(target: target, context: context, d: d, action: a))
+}
+
+// The execution lines the apply receipt carries after the re-observed assessment: the failed write with
+// its CAUSE, then the writes skipped after it. Empty for a pass with no failure.
+fn converge_execution_receipt_lines(executed: ConvergeExecuted) -> String {
+  let failed_lines = join(map(executed.failed, f => join(["failed write: ", f.key, ": ", f.cause, "\n"], "")), "")
+  let skip_line = if length(executed.skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(executed.skipped, "; "), "\n"], "") }
+  join([failed_lines, skip_line], "")
 }
 
 // The three exits, each spelled ONCE, so the SHAPE of the decision is the only thing that routes
@@ -1154,16 +1155,16 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
   let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
   let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch, rustup: after.observed.rustup)
   let body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
-  // B3: the receipt names the writes the failed prerequisite made us SKIP, never attempted.
-  let skiplist = if length(skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(skipped, "; "), "\n"], "") }
-  let body_with_skips = join([body, skiplist], "")
+  // B3 + review 96096: the receipt names the failed write WITH ITS CAUSE, and the writes that failure made
+  // us SKIP, never attempted.
+  let body_with_skips = join([body, converge_execution_receipt_lines(executed: executed)], "")
   let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: body_with_skips)
   if w.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body_with_skips], ""))
   } else {
     match after_plan {
       ConvergeSettled => if length(failed) != 0 || length(skipped) != 0 || serving_assessment_settled(a: after_assessment) == false {
-        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused [", join(failed, "; "), "], ", to_string(length(skipped)), " skipped [", join(skipped, "; "), "]\n", body_with_skips], ""))
+        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes failed, ", to_string(length(skipped)), " skipped\n", body_with_skips], ""))
       } else {
         ExitSuccess
       }

@@ -22,7 +22,7 @@ import gunbc.compute.remote_build_serving_setup {
   serving_store_dir_mode_octal,
 }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_cause, converge_execution_model, ConvergeExecuted }
+import gunbc.compute.remote_build_serving_converge { serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -731,16 +731,34 @@ test fn planned_useradd_shell_is_the_model_value_not_empty() -> Bool {
   }
 }
 
-// GREEN + red in one (review 95935): the checkout's VERDICT is the detach, but a failed fetch that blocks
-// the detach NAMES THE FETCH as the cause; a failed detach with a good fetch names the detach; and a good
-// detach is settled no matter what the fetch did. The clone result is irrelevant to all four.
+// GREEN + red in one (review 95935, cause carried per review 96096): the checkout's VERDICT is the detach,
+// but a failed fetch that blocks the detach NAMES THE FETCH, with the fetch's own cause; a failed detach
+// with a good fetch names the detach and its cause; and a good detach is done no matter what the fetch
+// did. The clone result is irrelevant to all four.
+fn checkout_cause_of(step: ConvergeStep) -> String {
+  match step {
+    StepDone => ""
+    StepFailed { cause: c } => c
+  }
+}
+
 test fn checkout_cause_names_the_fetch_only_when_it_blocked_the_detach() -> Bool {
-  let fetch_named = string_contains(s: converge_checkout_cause(fetch_ok: false, detach_ok: false), pattern: "fetch")
-  let detach_named = string_contains(s: converge_checkout_cause(fetch_ok: true, detach_ok: false), pattern: "detach")
-    && string_contains(s: converge_checkout_cause(fetch_ok: true, detach_ok: false), pattern: "fetch") == false
-  // The detach is the verdict: a good detach settles even when the fetch failed.
-  let detach_is_verdict = converge_checkout_cause(fetch_ok: false, detach_ok: true) == ""
-    && converge_checkout_cause(fetch_ok: true, detach_ok: true) == ""
+  let fetch_failed = StepFailed { cause: "exit 128: fatal: couldn't find remote ref deadbeef" }
+  let detach_failed = StepFailed { cause: "exit 1: error: pathspec did not match" }
+  let both = checkout_cause_of(step: converge_checkout_step(fetch: fetch_failed, detach: detach_failed))
+  let fetch_named = string_contains(s: both, pattern: "fetch") && string_contains(s: both, pattern: "couldn't find remote ref")
+  let only_detach = checkout_cause_of(step: converge_checkout_step(fetch: StepDone, detach: detach_failed))
+  let detach_named = string_contains(s: only_detach, pattern: "detach")
+    && string_contains(s: only_detach, pattern: "pathspec did not match")
+    && string_contains(s: only_detach, pattern: "fetch") == false
+  // The detach is the verdict: a good detach is done even when the fetch failed.
+  let detach_is_verdict = match converge_checkout_step(fetch: fetch_failed, detach: StepDone) {
+    StepDone => true
+    StepFailed { cause: _ } => false
+  } && match converge_checkout_step(fetch: StepDone, detach: StepDone) {
+    StepDone => true
+    StepFailed { cause: _ } => false
+  }
   fetch_named && detach_named && detach_is_verdict
 }
 
@@ -857,12 +875,12 @@ test fn fresh_host_plans_the_parents_before_the_installs_they_parent() -> Bool {
   }
 }
 
-// ── side-chat review of 2026-11-16, finding B3: the execution policy is claimable over its pure part ──
+// ── side-chat review of 2026-11-16, finding B3; review 96096: ONE execution fold, with causes ──
 //
 // converge_execute_plan stops at the FIRST failed write so no later write runs against an absent
-// prerequisite; the skipped suffix lands in the receipt. The wet executor cannot run in a hermetic
-// claim (it crosses the fleet SSH edge), so converge_execution_model carries the policy — ordered
-// plan in, INJECTED failed key in, attempted/failed/skipped out — and the witness below pins it.
+// prerequisite; the failed write's cause and the skipped suffix land in the receipt. The fold is
+// converge_execute_with, parameterized by the write-runner: the wet apply passes converge_run_write over
+// the fleet SSH edge, and these claims pass an injected runner, so they exercise the fold the apply runs.
 
 fn b3_group() -> ConvergeAction {
   EnsureGroup { name: "gunbc-compute", gid: 1006 }
@@ -888,25 +906,45 @@ fn b3_order(ak_path: String) -> List<ConvergeAction> {
   [b3_group(), b3_ak(ak_path: ak_path), b3_checkout(), b3_toolchain(), b3_binary()]
 }
 
-test fn execution_model_stops_at_first_failure_and_skips_the_dependents() -> Bool {
-  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
-  let order = b3_order(ak_path: ak_path)
-  let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
-  let m = converge_execution_model(order: order, failed_key: Present { value: ak_key })
-  // The failing write itself IS attempted; everything ordered after it is skipped, never run.
-  m.failed == [ak_key]
-    && m.skipped == map([b3_checkout(), b3_toolchain(), b3_binary()], a => converge_action_key(a))
-    && length(m.attempted) == 2
-    && match first_where(m.attempted, keep: k => k == converge_action_key(b3_group())) {
-         Present { value: _ } => true
-         Absent => false
-       }
+data b3_injected_cause: String = "exit 1: install: cannot change owner of '/home/gunbc-build/.ssh/authorized_keys': Operation not permitted"
+
+// The injected write-runner: the write keyed `failing` fails with b3_injected_cause, every other settles.
+fn b3_run_failing(failing: String, a: ConvergeAction) -> ConvergeWriteOutcome {
+  let key = converge_action_key(a)
+  if key == failing { WriteFailed { failure: ConvergeWriteFailure { key: key, cause: b3_injected_cause } } } else { WriteSettled }
 }
 
-test fn execution_model_with_no_failure_attempts_everything() -> Bool {
+test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
-  let m = converge_execution_model(order: b3_order(ak_path: ak_path), failed_key: Absent)
-  m.failed == [] && m.skipped == [] && length(m.attempted) == 5
+  let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  // The failing write itself IS attempted, with its cause kept; everything ordered after it is skipped.
+  let failed_with_cause = match m.failed {
+    Cons { head: f, tail: more } => f.key == ak_key && f.cause == b3_injected_cause && length(more) == 0
+    Empty => false
+  }
+  failed_with_cause
+    && m.skipped == map([b3_checkout(), b3_toolchain(), b3_binary()], a => converge_action_key(a))
+    && m.attempted == [converge_action_key(b3_group()), ak_key]
+}
+
+test fn execution_with_no_failure_attempts_everything() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  m.failed == [] && m.skipped == [] && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+}
+
+// Review 96096 (fail_closed): the receipt names the failed write WITH ITS CAUSE, not only its key, and
+// still names the skipped writes. A settled pass adds no execution lines.
+test fn the_apply_receipt_names_the_failed_write_and_its_cause() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
+  let lines = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a)))
+  let clean = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a)))
+  string_contains(s: lines, pattern: ak_key)
+    && string_contains(s: lines, pattern: "Operation not permitted")
+    && string_contains(s: lines, pattern: converge_action_key(b3_toolchain()))
+    && clean == ""
 }
 
 // ── side-chat review of 2026-11-16, finding B4: an EXTRA ledger-group member is unhandled, not "fixed" ──
