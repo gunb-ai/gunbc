@@ -1101,6 +1101,24 @@ fn release_bins_retention_keep_text() -> String {
   int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
 }
 
+// The per-run DELETE CAP (F2, side chat 2026-11-17): at most one KEEP WINDOW of deletions per
+// run. Grounded in the same census as KEEP: steady-state creation is ~5 entries per 8 h, so the
+// realistic backlog stays near the keep window and converges within a few runs even from the
+// over-cap ceiling (500), while the delete PHASE is bounded by construction -- cap x the per-op
+// bound below (<=16 x 8 s = 128 s worst case).
+fn release_bins_retention_delete_cap_text() -> String {
+  int_to_decimal_string(value: fleet_converge_release_bins_retention_keep)
+}
+
+// PER-OP NETWORK BOUND (F2): the 2026-11-16 census measured ~1.3 s per Actions-API call from the
+// runner. curl self-limits at --max-time 5 (nearly 4x the measurement); the timeout PREFIX (8 s)
+// catches a curl that ignores its own limit. Worst-case chore: <=6 GETs + <=cap DELETEs, each
+// <=8 s, plus local jq -- bounded by construction and far inside the step's unchanged 5-minute
+// budget. The whole chore additionally runs inside a best-effort subshell whose refusal prints one
+// typed chore-failed line and lets the outcome proceed.
+data release_bins_retention_curl_max_time_text: String = "5"
+data release_bins_retention_curl_timeout_text: String = "8s"
+
 // THE ANSWER FILE LIVES IN THE WORKSPACE, at the step's working directory, exactly like the lookup's
 // answer (release_bins_lookup_file / lookup_fetch_statement): curl writes it with -o at $ROOT/<name>
 // and the jq operand is the same path spelled relative, because the lowered jq argv carries the path
@@ -1158,7 +1176,7 @@ fn release_bins_retention_page1_program() -> String {
     "))",
     " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
     release_bins_retention_prefix,
-    "\")) and .key != $ENV.RELEASE_BINS_KEY",
+    "\"))",
     join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
     ")] else error(\"cache-API answer is not the admitted shape\") end end",
   ], "")
@@ -1174,7 +1192,7 @@ fn release_bins_retention_union_program() -> String {
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
-    " else 0 end)] | .[] | .id | tostring else error(\"duplicate ids across pages: the listing is incomplete, deletions refused\") end else error(\"union entries are not the admitted family objects\") end",
+    " else 0 end)] | map(select(.key != $ENV.RELEASE_BINS_KEY)) | reverse | .[0: ", release_bins_retention_delete_cap_text(), "] | .[] | .id | tostring else error(\"duplicate ids across pages: the listing is incomplete, deletions refused\") end else error(\"union entries are not the admitted family objects\") end",
   ], "")
 }
 
@@ -1260,9 +1278,11 @@ fn release_bins_retention_total_words(answer_path: String) -> List<Node> {
 
 // A later page's own admission: the same shape checks as the plan, bounded by
 // the page size, and NO keep-slice -- every family entry on pages past the
-// first is older than everything on page 1 (the listing is created_at-
-// descending), so all of them are due. The current run's key is still excluded,
-// per page, by $ENV.
+// tfirst is older than everything on page 1 (the listing is created_at-
+// descending), so all of them are due. Admission is UNFILTERED (F1, review side chat
+// 2026-11-17): even the current run's key stays in the listing, so the duplicate-id and
+// completeness gates see EVERY entry; the exclusion happens only when the plan selects
+// delete candidates.
 fn release_bins_retention_page_program(n: Int) -> String {
   // A page must carry EXACTLY as many entries as its own total_count declares
   // for its position: pages before the last are full (per_page each), the last
@@ -1286,7 +1306,7 @@ fn release_bins_retention_page_program(n: Int) -> String {
     ") end)",
     " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
     release_bins_retention_prefix,
-    "\")) and .key != $ENV.RELEASE_BINS_KEY",
+    "\"))",
     join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
     ")] else error(\"cache-API answer is not the admitted shape\") end end",
   ], "")
@@ -1329,7 +1349,7 @@ fn release_bins_retention_echo(word: String) -> Node {
 fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
   let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
   let get = cmd(ws: concat(
-    concat([lit(t: "curl"), lit(t: "-sSf")], gunbc_ci_auth_header_file_args(header_path: header)),
+    concat([lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text())], gunbc_ci_auth_header_file_args(header_path: header)),
     [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_word(), lit(t: "-o"), answer],
   ))
   // A failed lookup is TYPED, not swallowed: the failure arm removes the
@@ -1363,7 +1383,7 @@ fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
 // only come from the curl that just ran (F3, per page).
 fn release_bins_retention_fetch_page(header: Node, answer: Node, n_text: String) -> Node {
   let get = cmd(ws: concat(
-    concat([lit(t: "curl"), lit(t: "-sSf")], gunbc_ci_auth_header_file_args(header_path: header)),
+    concat([lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text())], gunbc_ci_auth_header_file_args(header_path: header)),
     [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_page_word(n_text: n_text), lit(t: "-o"), answer],
   ))
   bash_build_or_else(
@@ -1463,7 +1483,7 @@ fn release_bins_retention_delete(header: Node) -> Node {
   let xargs_delete = cmd(ws: concat(
     [lit(t: "xargs"), lit(t: "-r"), lit(t: "-n"), lit(t: "1"), lit(t: "-I"), lit(t: "RETENTION_ID")],
     concat(
-      [lit(t: "curl"), lit(t: "-sSf"), lit(t: "-o"), lit(t: "/dev/null"), lit(t: "-X"), lit(t: "DELETE")],
+      [lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text()), lit(t: "-o"), lit(t: "/dev/null"), lit(t: "-X"), lit(t: "DELETE")],
       concat(
         gunbc_ci_auth_header_file_args(header_path: header),
         [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_delete_url_word()],
@@ -1719,32 +1739,46 @@ fn release_bins_retention_decide_statements() -> List<Node> {
 
 fn release_bins_retention_statements() -> List<Node> {
   let header = temp(file: release_bins_retention_header_basename)
-  concat(
-    [
-      // On-carrier marker: the hand-shell gate asks every interim bash carrier
-      // to name what retires it (ctrl review policy; review 96043).
-      match bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")) {
-        Present { value: n } => n
-        Absent => bash_build_command_from_lits(lits: ["echo", "release-bins retention: dissolve-on marker refused -- fix dissolution_description text"])
-      },
-      root_statement(),
-      release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
-      // Invalidate before fetching: a leftover answer (or over-cap flag) from
-      // anything earlier must never reach the plan -- only this invocation's
-      // own curl answers.
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_flag_basename)]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_union_basename)]),
-      // Every attempt-scoped scratch file is invalidated up front (F6, side
-      // chat #16596 review 2): a second invocation whose fetch fails must find
-      // no ids to delete and no stale flag to block a good run.
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_basename)]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_dedup_basename)]),
-      cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_incomplete_basename)]),
-      release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
-    ],
-    release_bins_retention_decide_statements(),
-  )
+  let true_arm = cmdl(ls: ["true"])
+  [
+    // On-carrier marker: the hand-shell gate asks every interim bash carrier
+    // to name what retires it (ctrl review policy; review 96043).
+    match bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")) {
+      Present { value: n } => n
+      Absent => bash_build_command_from_lits(lits: ["echo", "release-bins retention: dissolve-on marker refused -- fix dissolution_description text"])
+    },
+    root_statement(),
+    // THE BEST-EFFORT BOUNDARY (F2, side chat 2026-11-17): the whole chore runs inside one
+    // subshell guarded by `|| echo chore-failed`, so no internal failure -- an uncaught
+    // non-zero, a scratch path staged as a directory, anything -- can abort the step before
+    // the outcome chain. Expiry/hang cannot either: every network call is individually
+    // bounded (timeout prefix + curl --max-time) and the delete phase is capped, so the
+    // chore's worst case is a closed arithmetic bound far inside the step's unchanged
+    // 5-minute budget. Inside the subshell `set -e` is inert (an ||-left context), which is
+    // exactly the best-effort semantics the chore needs; its own typed lines still classify.
+    bash_build_or_else(
+      left: bash_build_subshell_from_stmts(stmts: concat([
+        release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
+        // Invalidate before fetching: a leftover answer (or over-cap flag) from
+        // anything earlier must never reach the plan -- only this invocation's
+        // own curl answers. Each removal is GUARDED (F2): an `rm -f` whose path
+        // is a directory exits non-zero even with -f, and an unguarded one could
+        // abort the chore -- the guard makes removal best-effort while the
+        // existence gates downstream still decide correctly.
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_flag_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_union_basename)]), right: true_arm),
+        // Every attempt-scoped scratch file is invalidated up front (F6, side
+        // chat #16596 review 2): a second invocation whose fetch fails must find
+        // no ids to delete and no stale flag to block a good run.
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_dedup_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_incomplete_basename)]), right: true_arm),
+        release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
+      ], release_bins_retention_decide_statements())),
+      right: release_bins_retention_echo(word: "chore-failed"),
+    ),
+  ]
 }
 
 

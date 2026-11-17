@@ -24,6 +24,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_outcome_with_retention_statements, release_bins_retention_answer_page_basename,
   release_bins_retention_ids_basename, release_bins_retention_ids_dedup_basename,
   release_bins_retention_union_basename, release_bins_retention_incomplete_basename,
+  release_bins_retention_page1_program, release_bins_retention_page_program, release_bins_retention_union_program,
 }
 import gunbc.ci.ci_release_bins { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -551,6 +552,27 @@ test fn release_bins_retention_malformed_answer_is_plan_failed() -> Bool {
 
 test fn release_bins_retention_missing_answer_is_no_answer() -> Bool {
   succeeded_with(script: script_retention_missing_answer, marker: "release-bins retention: no-answer")
+}
+
+// F1 (side chat 2026-11-17): admission is UNFILTERED -- a page program that dropped
+// $ENV.RELEASE_BINS_KEY before the union would hide a duplicated id carrying the current key
+// from the uniqueness and completeness gates (the reproduced case planned 232 deletions through
+// exactly that hole). The plan excludes the current key only when selecting delete candidates,
+// after the keep-window slice, and caps the per-run deletions.
+test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_key() -> Bool {
+  !string_contains(s: release_bins_retention_page1_program(), pattern: "and .key != $ENV.RELEASE_BINS_KEY")
+    && !string_contains(s: release_bins_retention_page_program(n: 2), pattern: "and .key != $ENV.RELEASE_BINS_KEY")
+    && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY))")
+}
+
+// F2 (side chat 2026-11-17): every retention network call is bounded -- a `timeout` prefix and
+// curl --max-time on each curl, and the plan carries the per-run delete-cap slice -- so the
+// chore cannot overrun the step it lives in, and the chore runs inside a best-effort subshell.
+test fn release_bins_retention_network_calls_are_bounded() -> Bool {
+  let text = release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_retention_statements()))
+  string_contains(s: text, pattern: "--max-time")
+    && string_contains(s: text, pattern: "'timeout'")
+    && string_contains(s: text, pattern: "map(select(.key != $ENV.RELEASE_BINS_KEY)) | reverse | .[0: ")
 }
 
 // F1 REVISED (review 96095, superseding the 2026-11-16 side-chat shape): the step's script must
