@@ -710,6 +710,37 @@ fn retention_div28(i: Int) -> Int {
 // delete. These two executed cases are the discriminators a whole-second fixture cannot be:
 // seventeen main-ref entries whose timestamps all carry .000Z, and seventeen whose shapes are
 // mixed -- both must plan, name the oldest eligible entry (id 1), and keep the newest 16.
+// The refusal side of the parse (F3's "an unparseable timestamp must still refuse, not silently
+// sort"): seventeen main-ref entries where the newest carries a timestamp in neither documented
+// shape. The plan must abort with plan-failed and issue zero deletions -- retention degrades
+// visibly (annotation) rather than ordering deletions on a guess.
+fn retention_garbage_entry_text(i: Int) -> String {
+  join([
+    "{\"id\": ", int_to_decimal_string(i),
+    ", \"key\": \"release-bins-r", int_to_decimal_string(i),
+    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"not-a-timestamp\"}",
+  ], "")
+}
+
+fn retention_garbage_page_body() -> String {
+  join(["{\"total_count\": 17, \"actions_caches\": ["], "")
+    + join(map(retention_int_range(1, 16), i => retention_family_entry_text(i: i)), ", ")
+    + ", "
+    + retention_garbage_entry_text(i: 17)
+    + "]}"
+}
+
+data retention_garbage_body: String = retention_garbage_page_body()
+data script_retention_garbage_timestamp: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_garbage_body)))
+
+test fn release_bins_retention_refuses_an_unparseable_timestamp() -> Bool {
+  let r = run_script(script: script_retention_garbage_timestamp)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: plan-failed")
+    && !string_contains(s: r.stdout, pattern: "deleting=")
+}
+
 fn retention_family_entry_text_frac(i: Int) -> String {
   join([
     "{\"id\": ", int_to_decimal_string(i),
