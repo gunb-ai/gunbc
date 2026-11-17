@@ -767,37 +767,55 @@ test fn an_unreadable_event_log_refuses_the_close_rather_than_appending_blind() 
 // refused WHOLE and LOCATED — never a silent double-count, never a silent drop. They are put there
 // through the route's own writer (issue_command_apply, the only writer) so the load's law does not
 // depend on the close gate that would ordinarily stop the second one.
+// THE DUPLICATE REFUSAL, WITNESSED OVER A COMMITTED LOG — the third claim the #16625 cause reaches. It stood a
+// `wet` instance whose repo_root had no repository (wet_owned mints the scratch and opens the fabric store, but
+// NEVER provisions the event carrier), so the FIRST acceptance died in issue_command_apply's snapshot at the same
+// `ls-remote: exit 125` that took the launch-gate claim at 5039f5b07d47 — e1 went false and the whole claim went
+// false for a reason outside the law (red at main: eval_steps=23509). It now composes wet_owned + provision, so the
+// first acceptance reaches a committed event tail and the LOAD — the same replay production uses — is what must
+// refuse the duplicate. The history is read off the SAME provisioned layout the Ready arm hands back: history and
+// judgement from one carrier, and the fixture's sweep (run.swept) is part of the verdict.
 test fn a_duplicate_acceptance_of_one_node_refuses_the_whole_load_located() -> Bool {
-  wet(fn_with: fn(instance) {
-    let layout = close_layout(instance)
-    let node = "node-duplicate" as NonEmptyStr as RoadmapNodeId
-    let receipt = sample_receipt("node-duplicate")
-    let facts = fact_set()
-    let first = issue_command_apply(layout: layout,
-      command: AcceptNode {
-        subject: IssueCommandSubject { node: node, author: opr_principal(),
-          operation: "op-duplicate-one" as NonEmptyStr, expected: none },
-        receipt: receipt, evidence: earned(facts) },
-      recorded_at: "2026-11-04T08:00:00Z")
-    let e1 = match first { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the first acceptance appended", true)
-      _ => claim("the first acceptance was refused", false) }
-    let second = issue_command_apply(layout: layout,
-      command: AcceptNode {
-        subject: IssueCommandSubject { node: node, author: opr_principal(),
-          operation: "op-duplicate-two" as NonEmptyStr, expected: none },
-        receipt: receipt, evidence: earned(facts) },
-      recorded_at: "2026-11-04T08:00:01Z")
-    let e2 = match second { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
-      CarrierClosed { result: EventAppendRefused { id: _, step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
-    match roadmap_operator_close_history(layout: layout) {
-      RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
-      RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
-        count(filter(evs, e => match e {
-          AcceptanceRecorded { receipt: r } => (r.node as String) == "node-duplicate"
-          AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
-        })) <= 1)
+  let run = wet_owned(fn_with: fn(instance, scratch) { duplicate_acceptance_witness(instance: instance, scratch: scratch) })
+  run.result && run.swept
+}
+
+fn duplicate_acceptance_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
+  match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+    RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
+      "the wet event carrier could not be stood up at " + step + ": " + detail,
+      false,
+    )
+    RoadmapEventCarrierReady { instance: _, layout: layout } => {
+      let node = "node-duplicate" as NonEmptyStr as RoadmapNodeId
+      let receipt = sample_receipt("node-duplicate")
+      let facts = fact_set()
+      let first = issue_command_apply(layout: layout,
+        command: AcceptNode {
+          subject: IssueCommandSubject { node: node, author: opr_principal(),
+            operation: "op-duplicate-one" as NonEmptyStr, expected: none },
+          receipt: receipt, evidence: earned(facts) },
+        recorded_at: "2026-11-04T08:00:00Z")
+      let e1 = match first { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the first acceptance appended", true)
+        _ => claim("the first acceptance was refused", false) }
+      let second = issue_command_apply(layout: layout,
+        command: AcceptNode {
+          subject: IssueCommandSubject { node: node, author: opr_principal(),
+            operation: "op-duplicate-two" as NonEmptyStr, expected: none },
+          receipt: receipt, evidence: earned(facts) },
+        recorded_at: "2026-11-04T08:00:01Z")
+      let e2 = match second { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
+        CarrierClosed { result: EventAppendRefused { id: _, step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
+      match roadmap_operator_close_history(layout: layout) {
+        RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
+        RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
+          count(filter(evs, e => match e {
+            AcceptanceRecorded { receipt: r } => (r.node as String) == "node-duplicate"
+            AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
+          })) <= 1)
+      }
     }
-  })
+  }
 }
 
 // THE READ IS THE SAME ONE PRODUCTION USES, AND IT NEVER ANSWERS A SILENT EMPTY: an untouched
