@@ -36,6 +36,17 @@ import gunbc.roadmap.roadmap_event_log {
   NodeStandingRow, StandingsObserved, roadmap_node_standing_key, standing_for_node, NodeOpen,
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import std.content_hash { Fnv1a64Structural }
+
+// THE TYPED PAIR THAT SERVES THIS DOCUMENT — carried whole from the serve gate's ReleaseBoundToTree arm down to the
+// JSON boundary, where (and only where) the revision becomes wire hex and the surface becomes its digest text
+// (source_annotations: a fact that must survive belongs in a typed carrier; fail_closed: making the prose/
+// divergence state unwritable). Two independent observations from the one binding that cannot disagree.
+type ServedReleaseIdentity {
+  revision: GitObjectId
+  surface: Fnv1a64Structural
+}
 
 // v2: every row carries issue_page (v1 rows did not), and the plan's own nodes are listed.
 // v3: the document names the release it is served from -- source_head is the bound tree's commit id (the
@@ -93,7 +104,7 @@ fn roadmap_standings_document_rows(declared: List<RoadmapNode>, rows: List<NodeS
 // (roadmap_served_observation served_observation_apply_freshness), so a reader treats any status
 // but 200 as "not known now" -- never as the current standing -- and reads observed_at to say how
 // old a 200 is.
-fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, declared: List<RoadmapNode>, rows: List<NodeStandingRow>, plan: RoadmapAuthorityProjection, source_head: String, release_identity: String) -> JsonValue {
+fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, declared: List<RoadmapNode>, rows: List<NodeStandingRow>, plan: RoadmapAuthorityProjection, identity: ServedReleaseIdentity) -> JsonValue {
   // THE PAIR THAT SERVES THIS DOCUMENT, NAMED ON THE BYTES. This body is pre-rendered at the belt tick and
   // served as stored bytes (gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source),
   // so the identity of the release that produced them must be written here or no reader can recover it. Both
@@ -104,8 +115,8 @@ fn roadmap_standings_document_json(log_head: NonEmptyStr, observed_at: String, d
     json_kv(key: "schema", value: json_string(s: roadmap_standings_document_schema)),
     json_kv(key: "log_head", value: json_string(s: log_head as String)),
     json_kv(key: "observed_at", value: json_string(s: observed_at)),
-    json_kv(key: "source_head", value: json_string(s: source_head)),
-    json_kv(key: "release_identity", value: json_string(s: release_identity)),
+    json_kv(key: "source_head", value: json_string(s: git_object_id_wire_hex(oid: identity.revision) as String)),
+    json_kv(key: "release_identity", value: json_string(s: identity.surface.digest as String)),
     json_kv(key: "standings", value: json_array(elements: map(
       roadmap_standings_document_rows(declared: declared, rows: rows, plan: plan),
       r => json_object(members: [

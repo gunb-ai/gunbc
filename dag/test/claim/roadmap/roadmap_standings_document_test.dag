@@ -24,8 +24,10 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_standings_document {
   RoadmapStandingsDocumentRow, roadmap_standings_document_rows,
   roadmap_standings_document_json, roadmap_standings_document_refusal_json,
-  roadmap_standings_document_schema,
+  roadmap_standings_document_schema, ServedReleaseIdentity,
 }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap.roadmap_served_observation {
   served_observation_kind_of_key, served_observation_kind_key, served_observation_kind_url_path,
   ServedObservationKindDecoded, ServedObservationKindUnknown, StandingsJson,
@@ -122,7 +124,10 @@ test fn witness_standings_undeclared_log_node_is_listed_after_declared_and_marke
 }
 
 test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> Bool {
-  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), source_head: "3333333333333333333333333333333333333333", release_identity: "release-binding BOUND revision=3333333333333333333333333333333333333333 surface=abc123 -- bound")
+  let doc = match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") {
+    Present { value: oid } => roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), identity: ServedReleaseIdentity { revision: oid, surface: Fnv1a64Structural { digest: "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9" as NonEmptyStr } })
+    Absent => "{}"
+  }
   string_member_is(v: doc, key: "schema", want: roadmap_standings_document_schema)
     && string_member_is(v: doc, key: "observed_at", want: "2026-11-11T23:00:00Z")
     && string_member_is(v: doc, key: "log_head", want: "10bf77aa512883ad7aeb6e2f2c42dfceab502480")
@@ -141,11 +146,16 @@ test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> 
 test fn witness_standings_document_names_the_serving_pair() -> Bool {
   let head = "3333333333333333333333333333333333333333"
   // A machine token (surface-digest-shaped hex), NOT a prose line, and NOT the same as source_head.
-  let identity = "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
-  let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), source_head: head, release_identity: identity)
-  string_member_is(v: doc, key: "source_head", want: head)
-    && string_member_is(v: doc, key: "release_identity", want: identity)
-    && head != identity
+  let digest = "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
+  match git_object_id_from_untagged_hex(hex: head) {
+    Present { value: oid } => {
+      let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), identity: ServedReleaseIdentity { revision: oid, surface: Fnv1a64Structural { digest: digest as NonEmptyStr } })
+      string_member_is(v: doc, key: "source_head", want: head)
+        && string_member_is(v: doc, key: "release_identity", want: digest)
+        && head != digest
+    }
+    Absent => false
+  }
 }
 
 test fn witness_standings_issue_page_is_the_plans_not_the_declarations() -> Bool {

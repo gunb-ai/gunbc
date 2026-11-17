@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapStandings, RoadmapEventEnvelope }
-import gunbc.roadmap.roadmap_standings_document { roadmap_standings_document_json, roadmap_standings_document_refusal_json }
+import gunbc.roadmap.roadmap_standings_document { roadmap_standings_document_json, roadmap_standings_document_refusal_json, ServedReleaseIdentity }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_standings_at_head_read, StandingsAtHead, StandingsAtHeadUnobserved,
   roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
@@ -350,12 +350,12 @@ fn served_observation_workflow_surface_for_instance(instance: HostDashboardInsta
 // stale or 503 unread by the freshness law, never served as current.
 // The snapshot's close standing has no surface here, as for the page's own standings read
 // (served_standings_after_snapshot_close); a leaked snapshot is listed by the instance's census.
-fn served_observation_standings_surface_for_instance(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, source_head: String, release_identity: String) -> ServedObservationSurface {
+fn served_observation_standings_surface_for_instance(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> ServedObservationSurface {
   let read = roadmap_standings_at_head_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
   match read.result {
     StandingsAtHead { head, rows } => ServedObservationSurface {
       kind: StandingsJson, status: 200,
-      body: serialize_json(v: roadmap_standings_document_json(log_head: head, observed_at: observed_at, declared: declared_roadmap_nodes(), rows: rows, plan: plan, source_head: source_head, release_identity: release_identity)),
+      body: serialize_json(v: roadmap_standings_document_json(log_head: head, observed_at: observed_at, declared: declared_roadmap_nodes(), rows: rows, plan: plan, identity: identity)),
     }
     StandingsAtHeadUnobserved { step, reason } => ServedObservationSurface {
       kind: StandingsJson, status: 503,
@@ -373,7 +373,7 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
 // (one observing authority, several projections), so the walk over dispatch worktrees happens
 // once; the launch host standing is read once as well and handed to the three surfaces that read
 // it, rather than read again by each.
-fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, source_head: String, release_identity: String) -> ServedObservationSnapshot {
+fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
   let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   ServedObservationSnapshot {
@@ -384,7 +384,7 @@ fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, pla
       served_observation_attempts_surface_for_instance(instance: instance),
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
-      served_observation_standings_surface_for_instance(instance: instance, plan: plan, observed_at: observed_at, source_head: source_head, release_identity: release_identity),
+      served_observation_standings_surface_for_instance(instance: instance, plan: plan, observed_at: observed_at, identity: identity),
     ],
   }
 }
@@ -635,20 +635,19 @@ fn served_observation_write_for_instance(instance: HostDashboardInstance, snapsh
   }
 }
 
-fn served_observation_observe_and_write_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, source_head: String, release_identity: String) -> BeltPassOutcome {
+fn served_observation_observe_and_write_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_write_for_instance(
     instance: instance,
-    snapshot: served_observation_snapshot_observe_over(instance: instance, plan: plan, observed_at: observed_at, source_head: source_head, release_identity: release_identity),
+    snapshot: served_observation_snapshot_observe_over(instance: instance, plan: plan, observed_at: observed_at, identity: identity),
   )
 }
 
-fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String, source_head: String, release_identity: String) -> BeltPassOutcome {
+fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
     plan: roadmap_plan_projection(),
     observed_at: observed_at,
-    source_head: source_head,
-    release_identity: release_identity,
+    identity: identity,
   )
 }
 

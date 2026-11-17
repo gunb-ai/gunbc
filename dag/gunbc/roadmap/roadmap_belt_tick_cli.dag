@@ -60,6 +60,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_metering_attempts_for_instance, belt_metering_pass_outcome_from,
 }
 import gunbc.roadmap.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import gunbc.roadmap.roadmap_standings_document { ServedReleaseIdentity }
 import gunbc.roadmap.roadmap_dogfood_route {
   dogfood_start_record_for_instance, DogfoodStartRecord,
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
@@ -289,8 +290,7 @@ fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: St
       match served_observation_observe_and_write_for_instance(
         instance: instance,
         observed_at: observed_at,
-        source_head: git_object_id_wire_hex(oid: r) as String,
-        release_identity: sfc.digest as String,
+        identity: ServedReleaseIdentity { revision: r, surface: sfc },
       ) {
         BeltPassRecorded => ExitSuccess
         BeltPassFailed { reason: r } => exit_failure(reason: r)
