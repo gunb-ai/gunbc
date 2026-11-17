@@ -39,7 +39,8 @@ import extdeps.access.posix { file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
-import std.list { first_where }
+import std.list { first_where, list_member }
+import std.algebra { Cons, Empty }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
@@ -446,6 +447,12 @@ type ConvergeAction =
   | EnsureDirectory { path: String, owner_user: String, owner_group: String, mode: String }
   | EnsureAuthorizedKeys { path: String, owner_user: String, content: String }
   | EnsureCheckout { dir: String, clone_url: String, revision: String, as_user: String }
+  // B1 (side-chat review of 2026-11-16): the PINNED toolchain, rustup-installed AS THE BUILD
+  // ACCOUNT — its own step, ordered after the account (it runs sudo -u) and after the checkout,
+  // and BEFORE the serve binary it is a prerequisite of. Only the toolchain install — no release
+  // build (that would be a build action, not a convergence action). Consumes the pin's
+  // toolchain_channel, which until now was never read.
+  | EnsureToolchain { channel: String, as_user: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: String }
 
@@ -527,9 +534,28 @@ fn converge_store_directories(acc: ConvergeDraft, path: String, d: RemoteBuildSe
 // The authorized_keys write carries the single forced-command line. It is only ever a
 // divergence when the line is renderable (serving_ak_deviations yields none otherwise),
 // but the field is Optional, so an absent line is treated as unhandled, never a blank write.
+// B2 (side-chat review of 2026-11-16): the .ssh PARENT rides with the authorized_keys write. Its
+// mode and owner are the desired state's declared fields (modes derived from the octal grammar in
+// gunbc.compute.remote_build_serving_setup, owner = the account), read here — never re-spelled as
+// literals. Rank 3 (EnsureDirectory) orders it before the rank-4 install it parents.
+fn converge_ssh_parent_dir(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft {
+    writes: concat([EnsureDirectory {
+      path: d.account_ssh_dir,
+      owner_user: d.account_name,
+      owner_group: d.account_group_name,
+      mode: file_mode_octal(mode: d.account_ssh_dir_mode),
+    }], acc.writes),
+    unhandled: acc.unhandled,
+  }
+}
+
 fn converge_authorized_keys(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   match d.forced_command_line {
-    Present { value: line } => ConvergeDraft { writes: concat([EnsureAuthorizedKeys { path: d.authorized_keys_path, owner_user: d.account_name, content: line }], acc.writes), unhandled: acc.unhandled }
+    Present { value: line } => converge_ssh_parent_dir(
+      ConvergeDraft { writes: concat([EnsureAuthorizedKeys { path: d.authorized_keys_path, owner_user: d.account_name, content: line }], acc.writes), unhandled: acc.unhandled },
+      d,
+    )
     Absent => converge_draft_unhandled(acc, "authorized_keys")
   }
 }
@@ -554,11 +580,37 @@ fn converge_checkout(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: Serv
 fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
   match target_arch {
     ObservationEstablished { observed: a } => match a == pin.executor_arch {
-      true => ConvergeDraft { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled }
+      true => converge_bin_parent_dir(
+        ConvergeDraft { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled },
+        d,
+      )
       false => converge_draft_unhandled(acc, "serve_binary.sha256")
     }
     ObservationRefused { cause: _ } => converge_draft_unhandled(acc, "serve_binary.sha256")
   }
+}
+
+// B2 (side-chat review of 2026-11-16): the bin PARENT rides with the serve-binary install. Owner is
+// the service principal the instance root carries (read from linux_service_directory_owner through
+// the desired state), mode from the declared FileMode — no literals at the write site. Rank 3
+// (EnsureDirectory) orders it before the rank-7 install it parents.
+fn converge_bin_parent_dir(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft {
+    writes: concat([EnsureDirectory {
+      path: d.serve_binary_dir,
+      owner_user: d.serve_binary_dir_owner_user,
+      owner_group: d.serve_binary_dir_owner_group,
+      mode: file_mode_octal(mode: d.serve_binary_dir_mode),
+    }], acc.writes),
+    unhandled: acc.unhandled,
+  }
+}
+
+// B1 (side-chat review of 2026-11-16): the PINNED toolchain, rustup-installed as the build account.
+// THE consumer of ServingPlanInput.toolchain_channel — a channel nobody read was a plan that could
+// settle a host whose toolchain would never match what the dispatch pinned.
+fn converge_ensure_toolchain(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([EnsureToolchain { channel: pin.toolchain_channel, as_user: d.account_name }], acc.writes), unhandled: acc.unhandled }
 }
 
 // A ledger row whose owner/group/mode drifted => re-establish it with install -d -o -g at the declared
@@ -592,7 +644,10 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     EnsureLedgerDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => 3
     EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => 4
     EnsureCheckout { dir: _, clone_url: _, revision: _, as_user: _ } => 5
-    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 6
+    // B1 (side-chat review of 2026-11-16): the toolchain install is its OWN step — rank 6, after the
+    // account it sudo -u's and after the checkout, and before the serve binary it gates serving.
+    EnsureToolchain { channel: _, as_user: _ } => 6
+    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 7
   }
 }
 
@@ -605,6 +660,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureLedgerDirectory { path: p, owner_user: _, owner_group: _, mode: _ } => concat("ledger:", p)
     EnsureAuthorizedKeys { path: p, owner_user: _, content: _ } => concat("ak:", p)
     EnsureCheckout { dir: dd, clone_url: _, revision: _, as_user: _ } => concat("checkout:", dd)
+    EnsureToolchain { channel: c, as_user: u } => concat("toolchain:", c, ":", u)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
   }
 }
@@ -621,7 +677,20 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
   let r4 = filter(ws, a => converge_kind_rank(a) == 4)
   let r5 = filter(ws, a => converge_kind_rank(a) == 5)
   let r6 = filter(ws, a => converge_kind_rank(a) == 6)
-  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, r6))))))
+  let r7 = filter(ws, a => converge_kind_rank(a) == 7)
+  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, r7)))))))
+}
+
+// B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
+// roster — means REMOVAL, and no removal is modelled (gpasswd -d could silently evict a legitimate
+// member of a shared group; a human decides). So the classifier must not route it through
+// converge_group_membership, which only ever ADDS: it records the item unhandled and the wet apply
+// refuses the host, mutating nothing. Witnesses: ledger_group_extra_member_is_unhandled_not_planned.
+fn converge_membership_has_extra(desired: List<String>, observed: List<String>) -> Bool {
+  match first_where(observed, keep: m => list_member(xs: desired, x: m, eq: (a, b) => a == b) == false) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>, dev: ServingDeviation) -> ConvergeDraft {
@@ -638,6 +707,10 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
+      // B1 (side-chat review of 2026-11-16): the toolchain absence has a remediation — rustup install
+      // of the PINNED channel, as the account — so it no longer falls to unhandled. The pin's
+      // toolchain_channel is consumed here.
+      "toolchain" => converge_ensure_toolchain(acc, d, pin)
       "seed.serve_binary" => converge_install_binary(acc, d, pin, target_arch)
       _ => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
@@ -657,7 +730,21 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       Absent => converge_add_account(acc, d)
       Present { value: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
-    GroupMembersMismatch { desired: _, observed: _ } => converge_group_membership(acc, d)
+    // B4 (side-chat review of 2026-11-16): the membership write ONLY ADDS members (gpasswd -a); nothing
+    // here models REMOVAL. An EXTRA member in an otherwise-right group is therefore not remediable:
+    // classifying it as the membership write would report settled forever (the write settles nothing —
+    // the observe still drifts), a green plan that never converges. So 'extra member present' is
+    // UNHANDLED — the apply refuses and a human removes the member. Missing members (and a group whose
+    // row is unread/absent) keep the add-write.
+    GroupMembersMismatch { desired: ds, observed: o } => match o {
+      Present { value: ms } =>
+        if converge_membership_has_extra(desired: ds, observed: ms) {
+          converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+        } else {
+          converge_group_membership(acc, d)
+        }
+      Absent => converge_group_membership(acc, d)
+    }
     // A required group the observe PROVED absent is created at its own declared gid (converge_ensure_group
     // picks account_gid vs group_gid by name). A group present at the wrong gid, or a declared gid already
     // held by a different name, is NOT auto-renumbered or stolen — it goes unhandled and the apply refuses.
@@ -684,6 +771,10 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // the arm, not by a stored item string (review 95935).
     StoreRootModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_root, d)
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_staging, d)
+    // A3 (side-chat review of 2026-11-16): a file present at the WRONG MODE re-runs the install that
+    // carries the declared mode (the write arms chmod as they install) — remediable, so not unhandled.
+    AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => converge_authorized_keys(acc, d)
+    ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
@@ -819,6 +910,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
     EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => false
     EnsureCheckout { dir: _, clone_url: _, revision: _, as_user: _ } => false
     EnsureLedgerDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => false
+    EnsureToolchain { channel: _, as_user: _ } => false
   }
 }
 
@@ -846,6 +938,13 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
     EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_write_failure(ok: converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: file_mode_octal(mode: d.authorized_keys_mode), content: c), name: converge_action_key(action))
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
+    // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
+    // orders it rank 6 — after the account and the checkout it needs, before nothing that needs a
+    // release build: converge builds nothing, the executor does). rustup toolchain install is
+    // idempotent, so re-applying a settled host is a no-op settle; the absolute rustup path and
+    // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
+    // profile under sudo -u.
+    EnsureToolchain { channel: c, as_user: usr } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["-u", usr, "env", concat("RUSTUP_HOME=", concat(d.account_home, "/.rustup")), concat("CARGO_HOME=", concat(d.account_home, "/.cargo")), concat(d.account_home, "/.cargo/bin/rustup"), "toolchain", "install", c, "--profile", "minimal", "--no-self-update"]), name: converge_action_key(action))
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => converge_write_failure(ok: converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: file_mode_octal(mode: d.serve_binary_mode), action: action), name: converge_action_key(action))
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_write_failure(ok: converge_sudo(target: target, context: context, argv: ["install", "-d", "-m", mo, "-o", ou, "-g", og, p]), name: converge_action_key(action))
   }
@@ -886,13 +985,66 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
 // non-empty write list, not a decision (review 95928): a ConvergeRefused or a ConvergeUnhandled has no
 // value of this type, so neither can be routed here even by mistake — 'refused/unhandled executes
 // nothing' is a typing fact, not a gate the caller has to remember.
-fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, writes: FreeSemigroup<ConvergeAction>) -> List<String> {
-  // Review 95922 #1: the body filtered ConvergeActions, not Strings. Name each
-  // failed write by its key so the declared List<String> is true and the receipt
-  // can say which writes refused (guarantee_ladder: values inhabit declared types).
-  // One execution per write: map each write to its cause ("" settled), then keep the non-empty ones. The
-  // checkout write's cause can name the FETCH (review 95935); every other cause is the write's own key.
-  filter(map(non_empty_to_list(writes), a => converge_run_write(target: target, context: context, d: d, action: a)), c => c != "")
+// B3 (side-chat review of 2026-11-16): what one apply pass did, in two lists the receipt can name.
+// `failed` holds the CAUSE of the write that stopped the pass (at most one: execution stops at the
+// first failure); `skipped` names every write ordered AFTER that failure — the writes that depended
+// on it and were never attempted. A pass with no failure has failed = [] and skipped = [].
+type ConvergeExecuted {
+  attempted: List<String>,
+  failed: List<String>,
+  skipped: List<String>
+}
+
+// THE PURE PART of the execution policy, claimable hermetically (converge witness
+// execution_stops_at_first_failure): given the ORDERED plan and the key of the write
+// that is INJECTED to fail, name which writes were attempted, which failed, and which
+// were skipped. Execution stops at the first failure, so every write ordered after it
+// — the writes that depended on it (parents before installs, account before checkout,
+// checkout before toolchain, all ordered by converge_kind_rank) — is skipped, not
+// attempted against an absent prerequisite. failed_key = Absent models the all-settle
+// pass: everything attempted, nothing failed, nothing skipped. The wet executor below
+// runs the same policy against real writes: the model is the policy the receipt reports.
+fn converge_execution_model(order: List<ConvergeAction>, failed_key: String?) -> ConvergeExecuted {
+  match order {
+    Empty => ConvergeExecuted { attempted: [], failed: [], skipped: [] }
+    Cons { head: a, tail: more } => {
+      let key = converge_action_key(a)
+      let stop = match failed_key {
+        Present { value: k } => k == key
+        Absent => false
+      }
+      if stop {
+        ConvergeExecuted { attempted: [key], failed: [key], skipped: map(more, r => converge_action_key(r)) }
+      } else {
+        let tail = converge_execution_model(order: more, failed_key: failed_key)
+        ConvergeExecuted { attempted: concat([key], tail.attempted), failed: tail.failed, skipped: tail.skipped }
+      }
+    }
+  }
+}
+
+// The wet executor: attempt writes IN ORDER and stop at the FIRST failure — a later write
+// whose kind depends on the failed one (every later write does, by the ordering the plan
+// carries) must not run against an absent prerequisite. The skipped suffix is named by the
+// same converge_action_key the pure model uses, so the receipt and the claim speak one
+// language. The checkout write's cause can name the FETCH (review 95935); every other cause
+// is the write's own key.
+fn converge_execute_from(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, remaining: List<ConvergeAction>, attempted: List<String>) -> ConvergeExecuted {
+  match remaining {
+    Empty => ConvergeExecuted { attempted: attempted, failed: [], skipped: [] }
+    Cons { head: a, tail: rest } => {
+      let cause = converge_run_write(target: target, context: context, d: d, action: a)
+      if cause != "" {
+        ConvergeExecuted { attempted: concat(attempted, [cause]), failed: [cause], skipped: map(rest, r => converge_action_key(r)) }
+      } else {
+        converge_execute_from(target: target, context: context, d: d, remaining: rest, attempted: concat(attempted, [converge_action_key(a)]))
+      }
+    }
+  }
+}
+
+fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, writes: FreeSemigroup<ConvergeAction>) -> ConvergeExecuted {
+  converge_execute_from(target: target, context: context, d: d, remaining: non_empty_to_list(writes), attempted: [])
 }
 
 // The three exits, each spelled ONCE, so the SHAPE of the decision is the only thing that routes
@@ -927,18 +1079,23 @@ fn converge_wet_settled(host_name: String, context_receipt: String, assessment: 
 // APPLY: attempt every write of the plan (an individual exit is NOT the verdict), then RE-OBSERVE and
 // require the re-observed decision to have settled. Not settled -> exit failure (fail_closed).
 fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput, host_name: String, context_receipt: String, writes: FreeSemigroup<ConvergeAction>) -> ProcessExit {
-  let failed = converge_execute_plan(target: target, context: context, d: d, writes: writes)
+  let executed = converge_execute_plan(target: target, context: context, d: d, writes: writes)
+  let failed = executed.failed
+  let skipped = executed.skipped
   let after = observe_host_reads(target: target, context: context, d: d)
   let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
   let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch)
   let body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
-  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: body)
+  // B3: the receipt names the writes the failed prerequisite made us SKIP, never attempted.
+  let skiplist = if length(skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(skipped, "; "), "\n"], "") }
+  let body_with_skips = join([body, skiplist], "")
+  let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_plan_receipt_path, content: body_with_skips)
   if w.success == false {
-    exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body], ""))
+    exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body_with_skips], ""))
   } else {
     match after_plan {
-      ConvergeSettled => if length(failed) != 0 || serving_assessment_settled(a: after_assessment) == false {
-        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused [", join(failed, "; "), "]\n", body], ""))
+      ConvergeSettled => if length(failed) != 0 || length(skipped) != 0 || serving_assessment_settled(a: after_assessment) == false {
+        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes refused [", join(failed, "; "), "], ", to_string(length(skipped)), " skipped [", join(skipped, "; "), "]\n", body_with_skips], ""))
       } else {
         ExitSuccess
       }
