@@ -895,9 +895,11 @@ test fn the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_hol
       wanted: wanted, log_events: wanted, envelopes: [] as List<RoadmapEventEnvelope>,
       layout: layout, retired_ids: retired, retired_roster: join(model, ",")) {
       MigrationVerified {
-        manifest_events: m, retired_named: rn, held_events: h, event_lines: _, report_path: _,
+        manifest_events: m, accepted_events: ae, revoked_events: rv, retired_named: rn,
+        held_events: h, event_lines: _,
       } => claim("the verdict certifies the migration it was handed, and names the model's roster as retired",
-        wrote_all && rn == count(model) && m == count(carried) && h == count(carried))
+        wrote_all && rn == count(model) && m == count(carried) && h == count(carried)
+          && ae == count(carried) && rv == 0)
       MigrationRefused { cause: cause } => claim(join([
         "the verdict refused a migration whose facts the carrier holds: ",
         roadmap_acceptance_migration_refusal_report(cause: cause)], ""), false)
