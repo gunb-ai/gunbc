@@ -568,7 +568,7 @@ data script_retention_head_text: String = release_bins_script_text(outcome: rele
 test fn release_bins_retention_outcome_script_leads_with_the_chore_and_the_build_arm_exits_zero() -> Bool {
   string_contains(s: script_outcome_with_retention_text, pattern: "outcome=build")
     && string_contains(s: script_outcome_with_retention_text, pattern: "release-bins retention:")
-    && string_contains(s: script_outcome_with_retention_text, pattern: "'exit' '0'")
+    && string_contains(s: script_outcome_with_retention_text, pattern: "exit 0")
     && starts_with(s: script_outcome_with_retention_text, prefix: script_retention_head_text)
 }
 
