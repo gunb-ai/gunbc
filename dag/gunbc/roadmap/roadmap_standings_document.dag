@@ -38,10 +38,12 @@ import gunbc.roadmap.roadmap_event_log {
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool }
 
 // v2: every row carries issue_page (v1 rows did not), and the plan's own nodes are listed.
-// v3: the document names the release it is served from -- the source head and the release identity the
-//     serving unit's ExecStart carries (roadmap_serve threads the one release_revision identity the unit
-//     was started with; nothing here re-spells it). A reader can now tell WHICH bound pair produced these
-//     standings without hashing the locus -- the readback the delivery leg owes.
+// v3: the document names the release it is served from -- source_head is the bound tree's commit id (the
+//     revision wire hex) and release_identity is the build-artifact SURFACE DIGEST (the release/build-key
+//     machine token) that pair was built from. BOTH are read off the ONE verified serve-gate binding (the
+//     ReleaseBoundToTree arm in roadmap_belt_tick_cli::belt_served_observation_exit), so they are two different
+//     machine facts that cannot disagree -- never a prose line, never a re-spelling of the other. A reader can
+//     tell WHICH bound pair produced these standings without hashing the locus -- the readback the delivery leg owes.
 data roadmap_standings_document_schema: String = "roadmap-standings/v3"
 
 type RoadmapStandingsDocumentRow {

@@ -140,10 +140,12 @@ test fn witness_standings_document_carries_schema_log_head_and_observed_at() -> 
 // is the failure this witness forecloses: a stored body whose schema omitted the identity it was derived under).
 test fn witness_standings_document_names_the_serving_pair() -> Bool {
   let head = "3333333333333333333333333333333333333333"
-  let identity = "release-binding BOUND revision=3333333333333333333333333333333333333333 surface=abc123 -- the running process states the revision the deployed tree is on"
+  // A machine token (surface-digest-shaped hex), NOT a prose line, and NOT the same as source_head.
+  let identity = "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
   let doc = roadmap_standings_document_json(log_head: "10bf77aa512883ad7aeb6e2f2c42dfceab502480" as NonEmptyStr, observed_at: "2026-11-11T23:00:00Z", declared: declared_pair(), rows: [], plan: plan_without_mercurial(), source_head: head, release_identity: identity)
   string_member_is(v: doc, key: "source_head", want: head)
     && string_member_is(v: doc, key: "release_identity", want: identity)
+    && head != identity
 }
 
 test fn witness_standings_issue_page_is_the_plans_not_the_declarations() -> Bool {
