@@ -51,34 +51,13 @@ type GitArgvRoute
   = GitWorkdirCarrying { workdir: NonEmptyStr }
   | GitWorkdirFree
 
-// A git subcommand that WRITES the repository / working tree wherever it runs -- the damage class
-// this wall exists to stop. Through a bare argv on a workdir-free route such a subcommand mutates
-// the tree the process happens to occupy. The set is git's local-write plumbing, closed here; the
-// leading token is matched against it. Read-only inspection (status, log, diff, rev-parse, ...) is
-// deliberately NOT mutating: it is not the silent-gate-poisoning hazard, and refusing it would
-// refuse a legal pairing rather than guard against the defect.
-fn git_subcommand_is_mutating(subcommand: String) -> Bool {
-     subcommand == "commit"
-  || subcommand == "add"
-  || subcommand == "checkout"
-  || subcommand == "reset"
-  || subcommand == "clean"
-  || subcommand == "rm"
-  || subcommand == "mv"
-  || subcommand == "merge"
-  || subcommand == "rebase"
-  || subcommand == "cherry-pick"
-  || subcommand == "restore"
-  || subcommand == "switch"
-  || subcommand == "apply"
-  || subcommand == "stash"
-  || subcommand == "am"
-  || subcommand == "worktree"
-  || subcommand == "update-ref"
-  || subcommand == "symbolic-ref"
-  || subcommand == "filter-branch"
-  || subcommand == "replace"
-}
+// The single classification a workdir-free route needs is `git_subcommand_is_safe_read_only` below
+// plus `git_argv_is_in_repo_dressed`: an argv is admissible at a workdir-free route ONLY if it names
+// its repository or its leading verb is on the closed read-only allowlist. There is deliberately NO
+// separate "is this verb mutating" denylist beside it: the wall must carry ONE classification of
+// "may this argv run without a place?", so the two lists can never drift into disagreeing about the
+// same verb. A verb is refused because it is not proven safe, not because it is proven dangerous --
+// which is why an explicit dangerous-list would be both dead weight and a second source of truth.
 
 // A git subcommand that only ever READS -- an inspection verb that cannot write the repository or the
 // working tree, whatever its arguments. This is the CLOSED allowlist a workdir-free route admits in
@@ -181,12 +160,6 @@ fn git_argv_leading_subcommand_at(argv: List<String>, index: Int) -> String {
         git_argv_leading_subcommand_at(argv: argv, index: index + 1)
       }
   }
-}
-
-// A BARE mutating argv: not in-repo-dressed, and its leading subcommand writes the tree. This is
-// precisely the shape that must never reach a route that carries no working directory.
-fn git_argv_is_bare_mutating(argv: List<String>) -> Bool {
-  !git_argv_is_in_repo_dressed(argv) && git_subcommand_is_mutating(git_argv_leading_subcommand(argv))
 }
 
 // The decision a route branches on before spawning: Admitted, or a distinct Refused variant. There

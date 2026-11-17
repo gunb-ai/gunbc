@@ -21,8 +21,6 @@ import gunbc.git_argv_route_wall {
   GitArgvRefused,
   git_argv_is_in_repo_dressed,
   git_argv_leading_subcommand,
-  git_subcommand_is_mutating,
-  git_argv_is_bare_mutating,
   admit_git_argv_on_route,
 }
 
@@ -98,11 +96,7 @@ test fn in_repo_dressing_reaches_the_workdir_free_route() -> Bool {
 // workdir-free route: it inspects, it does not poison a tree, and refusing it would refuse a legal
 // pairing rather than guard the defect.
 test fn read_only_bare_argv_is_admitted_at_workdir_free_route() -> Bool {
-  let status_argv = shape_git_status_porcelain_nul_args()
-  admitted(route: GitWorkdirFree, argv: status_argv)
-    && !git_subcommand_is_mutating(subcommand: "status")
-    && git_subcommand_is_mutating(subcommand: "commit")
-    && !git_argv_is_bare_mutating(argv: status_argv)
+  admitted(route: GitWorkdirFree, argv: shape_git_status_porcelain_nul_args())
 }
 
 // The classifier reads the REAL shape argv, stepping over the in-repo dressing to the subcommand it
