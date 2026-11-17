@@ -35,6 +35,14 @@ data gunbc_workspace_root_env_name: String = "GUNBC_WORKSPACE_ROOT"
 
 data release_locus_tree_receipt_name: String = ".gunbc-tree-receipt"
 
+// THE RELEASE-TREE RECEIPT LINE KEYS — the single authority for the receipt's `key=value` field names. The
+// per-revision tree receipt records which candidate revision was installed and the digest of the bytes placed
+// for it, one `key=value` line each. gunbc.live_deploy.release_locus::tree_receipt_field reads it through these
+// rows; the pair-delivery actuator writes it through them (and the same renderer beside them), so the names are
+// decided once (gunbc.design_argument::single_authority) rather than forked between the reader and the writer.
+data release_locus_tree_receipt_revision_key: String = "candidate_revision"
+data release_locus_tree_receipt_digest_key: String = "installed_digest"
+
 data cli_run_workspace_root_spawn_test_discriminator_authority: String = "spawn_root_is_authority_and_the_walk_is_not_consulted"
 
 data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_root_without_receipt_refuses_instead_of_walking"
