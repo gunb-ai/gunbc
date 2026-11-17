@@ -56,6 +56,22 @@ data roadmap_effort_estimates: List<EffortEstimate> = [
     basis: "the 2026 batch: seven nodes, three landed in the week of 2026-11-16; acceptance-bound, 4 to 8 weeks if acceptances flow"),
   estimate(subject: "factory-attempt-execution-on-fabric-lease", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 15), pessimistic: d(y: 2027, m: 3, day: 31),
     basis: "planning consolidation's realization half: the acceptance guidance, the closed binding, the realization-home decision and the projection; mostly plan and carrier work, 2 to 3 months"),
+  // SECOND ROUND, SAME DAY, FROM A SIMULATED EXECUTION OVER THE UNITS (operator, 2026-11-17: the aggregate is the
+  // simulation over units; honest accounting at unit grain is all that matters). List scheduling over the 36 open
+  // units of the v2 cone with declared duration classes (receipt 5 working days, generator sweep 15, join 10,
+  // v1 preparation 30, namespace 40, hard compiler node 60 = the measured 12-week median), three workers,
+  // longest-remaining-path first; the critical path is the six serial emitter nodes from direct-rust-door to
+  // second-generation and then the bootstrap, fixed point and deletions; five or more workers change the makespan
+  // by two weeks only. The first round above assumed native-seven's parents get seats of their own; this round
+  // shows that with three workers and critical-path-first staffing native-seven waits behind the emitter chain,
+  // which is a staffing choice the operator makes, not a fact about the work. Producer: simulate.py in the
+  // session's scratch (the classes are declared in it and are the falsifiable part).
+  estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 4, day: 27), pessimistic: d(y: 2027, m: 9, day: 21),
+    basis: "simulation: day 115 with five workers (native-seven's parents staffed beside the emitter chain), day 220 with three workers critical-path-first; the first-round January date holds only if its parents are staffed first"),
+  estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
+    basis: "simulation: day 250 at three workers, bound by six serial hard emitter nodes at 60 working days each; more workers do not move it, only decomposing those nodes into parallel units does"),
+  estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 2, day: 28),
+    basis: "simulation: day 450 at three workers (day 440 at five); the first-round end-of-2027 date assumed 4 to 8 weeks per deletion step, the simulation's v1 class is 30 working days and the chain after second-generation is seven serial units"),
 ]
 
 fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
