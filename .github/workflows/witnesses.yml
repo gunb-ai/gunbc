@@ -207,7 +207,35 @@ jobs:
           'echo' 'a29='"$ANCESTOR_29" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         if: github.event_name == 'pull_request'
       - name: Wait for the base commit's fast-lane unit
-        run: __GUNBC_FAST_LANE_DECISION_UNEMITTABLE__
+        run: |
+          'rm' '-f' "$MARK" "$RUNNER_TEMP"'/gunbc-fast-lane-own.txt' "$RUNNER_TEMP"'/gunbc-fast-lane-anc.txt' "$RUNNER_TEMP"'/gunbc-fast-lane-idsha.txt' "$RUNNER_TEMP"'/gunbc-fast-lane-match.txt' "$RUNNER_TEMP"'/gunbc-fast-lane-poll.txt' 'gunbc-fl-wait-runs.json' 'gunbc-fl-wait-run.json'
+          API='https://api.github.com'
+          WF='witnesses.yml'
+          ANCHOR=$('git' 'rev-parse' '--verify' '-q' 'HEAD^1' 2>/dev/null || 'echo')
+          fl_done(){ 'echo' 'fast lane: wait --' "$FL_WORD"; 'echo' "$FL_WORD" > "$MARK"; 'rm' '-f' 'gunbc-fl-wait-runs.json' 'gunbc-fl-wait-run.json'; exit 0; }
+          if '[' "$FL_CAP" '-le' '0' ']'; then 'echo' 'fast lane: dissolve:' "$FL_DISSOLVE"; { FL_WORD='disabled'; 'fl_done'; }; fi
+          'echo' 'fast lane: anchor' "$ANCHOR" 'head' '${{ github.event.pull_request.head.sha }}' 'HEAD^1' $('git' 'rev-parse' 'HEAD^1' 2>/dev/null) 'HEAD^2' $('git' 'rev-parse' 'HEAD^2' 2>/dev/null)
+          if '[' '-z' "$ANCHOR" ']'; then { FL_WORD='none'; 'fl_done'; }; fi
+          'git' 'diff' '--name-only' '--no-renames' "$ANCHOR"'...HEAD' 2>/dev/null > "$RUNNER_TEMP"'/gunbc-fast-lane-own.txt'
+          if '[' '!' '-s' "$RUNNER_TEMP"'/gunbc-fast-lane-own.txt' ']'; then { FL_WORD='skipped-no-diff'; 'fl_done'; }; fi
+          'grep' '-qE' 'Cargo.toml|Cargo.lock|rust-toolchain|rust-toolchain.toml|src/v2/std/read_set.dag|dag/gunbc/seed_build_inputs.dag|dag/gunbc/read_set_schema.dag|dag/gunbc/read_set_publish.dag|dag/gunbc/read_set_restore.dag|dag/gunbc/parse_verdict_schema.dag|dag/gunbc/parse_verdict_publish.dag|dag/gunbc/parse_verdict_restore.dag|dag/gunbc/witness/compiler_gate_workflow.dag|dag/gunbc/source_layout.dag|dag/gunbc/source_layout_namespaces.dag|dag/gunbc/layout_namespace_row.dag|dag/gunbc/layout_namespace_row/gunbc_tree.dag|src/v1/|.cargo/|fixtures/|.github/' "$RUNNER_TEMP"'/gunbc-fast-lane-own.txt' 2>/dev/null && { FL_WORD='skipped-own-input'; 'fl_done'; }
+          'command' '-v' 'jq' 2>/dev/null || { FL_WORD='no-jq'; 'fl_done'; }
+          'curl' '-fsS' '-m' '15' '-H' 'Authorization: Bearer '"$GITHUB_TOKEN" '-H' 'Accept: application/vnd.github+json' 'https://api.github.com/repos/'"$GUNBC_REPO"'/actions/workflows/'"$WF"'/runs?event=push&branch=main&status=in_progress&per_page=20' 2>/dev/null > 'gunbc-fl-wait-runs.json' || { FL_WORD='api-error'; 'fl_done'; }
+          'jq' '--raw-output' '--exit-status' '.workflow_runs[] | "\(.id) \(.head_sha) \(.created_at)"' 'gunbc-fl-wait-runs.json' > "$RUNNER_TEMP"'/gunbc-fast-lane-idsha.txt' || { FL_WORD='api-error'; 'fl_done'; }
+          'git' 'rev-list' '--first-parent' '-n' "$FL_WINDOW" "$ANCHOR" 2>/dev/null > "$RUNNER_TEMP"'/gunbc-fast-lane-anc.txt'
+          'grep' '-F' '-f' "$RUNNER_TEMP"'/gunbc-fast-lane-anc.txt' "$RUNNER_TEMP"'/gunbc-fast-lane-idsha.txt' 2>/dev/null | 'head' '-n' '1' > "$RUNNER_TEMP"'/gunbc-fast-lane-match.txt'
+          if '[' '!' '-s' "$RUNNER_TEMP"'/gunbc-fast-lane-match.txt' ']'; then { FL_WORD='none'; 'fl_done'; }; fi
+          RID=$('cut' '-d ' '-f1' "$RUNNER_TEMP"'/gunbc-fast-lane-match.txt')
+          CREATED=$('cut' '-d ' '-f3' "$RUNNER_TEMP"'/gunbc-fast-lane-match.txt')
+          CREATED_E=$('date' '-d' "$CREATED" '+%s' 2>/dev/null || 'echo' '0')
+          NOW=$('date' '+%s')
+          EST=$('expr' "$CREATED_E" '+' "$FL_TYPICAL" '-' "$NOW")
+          if '[' "$EST" '-le' '0' ']'; then { FL_WORD='too-far'; 'fl_done'; }; fi
+          if '[' "$EST" '-gt' "$FL_CAP" ']'; then { FL_WORD='too-far'; 'fl_done'; }; fi
+          DEADLINE=$('expr' $('date' '+%s') '+' "$FL_CAP")
+          fl_poll(){ 'sleep' '30'; '[' $('date' '+%s') '-gt' "$DEADLINE" ']' && { FL_WORD='timeout'; 'fl_done'; }; 'rm' '-f' 'gunbc-fl-wait-run.json'; 'curl' '-fsS' '-m' '15' '-H' 'Authorization: Bearer '"$GITHUB_TOKEN" '-H' 'Accept: application/vnd.github+json' 'https://api.github.com/repos/'"$GUNBC_REPO"'/actions/runs/'"$RID" 2>/dev/null; ST_S=$('jq' '--raw-output' '--exit-status' '.status' 'gunbc-fl-wait-run.json' 2>/dev/null); ST_C=$('jq' '--raw-output' '--exit-status' '.conclusion // ""' 'gunbc-fl-wait-run.json' 2>/dev/null); '[' '-n' "$ST_S" '-a' "$ST_S" '=' 'completed' '-a' "$ST_C" '=' 'success' ']' && { FL_WORD='hit'; 'fl_done'; }; '[' "$ST_S" '=' 'completed' ']' && { FL_WORD='failed'; 'fl_done'; }; 'echo' 'poll' >> "$RUNNER_TEMP"'/gunbc-fast-lane-poll.txt'; POLL=$('grep' '-c' '.' "$RUNNER_TEMP"'/gunbc-fast-lane-poll.txt'); '[' "$POLL" '-ge' "$FL_STEPS" ']' && { FL_WORD='timeout'; 'fl_done'; }; 'fl_poll'; }
+          'fl_poll'
+          { FL_WORD='timeout'; 'fl_done'; }
         env:
           MARK: ${{ runner.temp }}/gunbc-fl-waited.txt
           GITHUB_TOKEN: ${{ github.token }}
