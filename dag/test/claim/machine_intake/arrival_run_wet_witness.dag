@@ -61,11 +61,6 @@ import gunbc.machine_intake.prior_life_boundary {
 }
 import gunbc.machine_intake.prior_life_capture_live { LiveCaptureStop, LiveCaptureFailure }
 import gunbc.bmc_model { BmcPowerOn }
-import std.process {
-  ProcessExit,
-  ExitSuccess,
-  exit_failure,
-}
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiPrivilegeNoAccess }
@@ -505,14 +500,6 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
 
 
 
-// DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
-// FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
-test fn debug_kernel_reason() -> ProcessExit {
-  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "1db-debug" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
-    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => ExitSuccess
-    ArrivalRunRefused { reason: reason } => exit_failure(reason: reason as String)
-  }
-}
 
 // THE LIVE ARM IS THE ONLY ARM. With the door carrying the live prior-life facts -- every required
 // carrier captured and the store's own read-back matching the body this module re-derives -- the run
