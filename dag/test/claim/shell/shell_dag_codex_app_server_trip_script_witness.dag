@@ -104,9 +104,11 @@ test fn trip_surface_carries_no_stdio_sentinel() -> Bool {
   !any(stdio_sentinels, s => string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: s))
 }
 
-// RE-POINTED (SECOND AUTHORIZED MOVE, this node) under the operator ruling PENDING on escalation
-// msg_87d2aff1-c358-4b5f-b17c-11b7504962e2 (2026-11-16) for the node dp-m2-codex-direct-argv-policy;
-// when answered it is recorded as a gunbc.design_ruling row and cited here via @ref. It
+// RE-POINTED (SECOND AUTHORIZED MOVE, this node) under the operator ruling of 2026-11-17 (escalation
+// msg_87d2aff1-c358-4b5f-b17c-11b7504962e2, answered verbatim: "yes the codex pinned check is fine to
+// ignore"), recorded as gunbc.design_ruling::codex_app_server_trip_pinned_oracle_repointed_to_direct_argv
+// and cited here via @ref for the node dp-m2-codex-direct-argv-policy. The authorization covers this
+// re-point only; the general do-not-hand-edit rule still governs any other change. It
 // no longer pins the ssh portable-word wall's refusal: that wall is justified by the ssh remote
 // re-parsing a command STRING, a fact THIS direct-exec seam does not have (the trip's argv goes to
 // shell.Exec.RunArgvStdin -- execve of [program, arguments] with the payload on stdin -- so no shell
@@ -118,6 +120,7 @@ test fn trip_surface_carries_no_stdio_sentinel() -> Bool {
 // (the pre-fix defect) this arm FAILS: a true discriminator, not a stand-in. The fn NAME is unchanged,
 // as the execution contract
 // gunbc.roadmap.roadmap_authority::shell_dag_codex_app_server_trip_script_execution_contract names it.
+// @ref(gunbc.design_ruling::codex_app_server_trip_pinned_oracle_repointed_to_direct_argv)
 test fn adversarial_codex_home_renders_no_shell_control_word() -> Bool {
   let surface = trip_surface(codex_home: "/tmp/codex-home; reboot")
   // PRESERVED, not refused, not split. The adversarial value survives as ONE contiguous argv element:
