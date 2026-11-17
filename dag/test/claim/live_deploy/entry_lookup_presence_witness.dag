@@ -239,7 +239,7 @@ test fn only_the_queried_paths_errnos_certify_absence() -> Bool {
   // The suffix alone is not a testimony: the line must be ABOUT the path, whole, and quoted as ls quotes
   // it. A substring match plus a suffix is what let a refusal testify -- see the two-line control below.
   let suffix_only = ls_entry_missing_diagnostic(line: "No such file or directory", path: "/a/b")
-  let wrong_quote = ls_entry_missing_diagnostic(line: 'ls: cannot access /a/b: No such file or directory', path: "/a/b")
+  let wrong_quote = ls_entry_missing_diagnostic(line: "ls: cannot access /a/b: No such file or directory", path: "/a/b")
   enoent && enotdir && !eacces && !other_path && !lookalike && !suffix_only && !wrong_quote
 }
 
