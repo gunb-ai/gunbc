@@ -113,6 +113,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
     decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_list_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_install_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_receipt_object_command"),
     decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_sandbox_preflight_command"),
@@ -299,6 +301,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
+    // The group-name sibling of the user-name probe, admitted for the same reason: the ledger read
+    // compares owner.group against the declared group NAME, so it needs %G by name (%g's numeric gid
+    // never string-matches a group name). Same shape, same sealing.
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_group_name_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),

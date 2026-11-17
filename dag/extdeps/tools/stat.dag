@@ -73,6 +73,16 @@ fn stat_owner_user_name_command(path: String) -> ArgvCommand {
   argv_command(program: stat_program(), arguments: ["-c", "%U", "--", path])
 }
 
+// The group-name sibling of the user-name probe above, in the SAME shape (an ArgvCommand via
+// argv_command, `--` before the operand so a path beginning with a dash is not read as an option).
+// %G prints the GID-TO-NAME, which is what a DeclaredDirectoryMode/owner.group comparison needs:
+// %g would print the numeric gid, and a numeric gid never string-matches the declared group NAME,
+// so comparing owner.group against %g is always a false drift (the exact trap the ledger read must
+// not fall into). The ledger read owns the boundary; it reads the group NAME, like the user NAME.
+fn stat_owner_group_name_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_program(), arguments: ["-c", "%G", "--", path])
+}
+
 // %F IS THE HUMAN-READABLE FILE TYPE ("socket", "directory", "regular file") and %i is the inode
 // number. Both take `--` before the operand: a path beginning with a dash would otherwise be read as
 // an option, and these two are the probes whose operand comes from observed host state rather than

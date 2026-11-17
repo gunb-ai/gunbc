@@ -6,6 +6,8 @@ import std.algebra { trim, skip, string_contains }
 import std.list { first_where }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -160,4 +162,31 @@ fn rustup_first_text(xs: List<String>) -> String {
     Present { value } => value
     Absent => ""
   }
+}
+
+// ---- the rustup PROGRAM and its two serving commands (side-chat review follow-up, clever-raven-401) ----
+//
+// The serving observe asks rustup ITSELF which channels are installed (`rustup toolchain list`), and
+// the apply installs the PINNED channel (`rustup toolchain install <channel>`); both must reach the
+// remote through the argv carriers, so the program and its fixed argv shape are sealed here rather
+// than hand-typed at the call sites (review 96039: no literal sudo/flag lists outside extdeps).
+// The program is spelled at its standard installation path — <cargo home>/bin/rustup — which the
+// CALLER supplies: rustup's location is an observation-shaped claim about the host's install layout,
+// so the builder takes it as an argument rather than inventing one (see
+// extdeps.exec.command program_spelling_is_an_observation_claim).
+
+fn rustup_program(rustup_bin: String) -> ProgramIdentity = uncataloged_program(invocation: rustup_bin)
+
+// `rustup toolchain list` — one installed toolchain per line, "<channel>-<host triple>", the default
+// one suffixed " (default)". The reader decides which channel a listing NAMES; this builder only
+// spells the question.
+fn rustup_toolchain_list_command(rustup_bin: String) -> ArgvCommand {
+  argv_command(program: rustup_program(rustup_bin: rustup_bin), arguments: ["toolchain", "list"])
+}
+
+// `rustup toolchain install <channel> --profile minimal --no-self-update` — the remediation for a
+// present rustup that lacks the pinned channel. minimal profile, no self-update: the remediation
+// installs THE CHANNEL and nothing else; building anything is the executor's job, not converge's.
+fn rustup_toolchain_install_command(rustup_bin: String, channel: String) -> ArgvCommand {
+  argv_command(program: rustup_program(rustup_bin: rustup_bin), arguments: ["toolchain", "install", channel, "--profile", "minimal", "--no-self-update"])
 }
