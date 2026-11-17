@@ -37,6 +37,9 @@ test fn nodes_serving_is_in_layer_order() -> Bool {
   fold(rows, init: 0, f: fn(acc, b) { if acc < 0 { acc } else { if b.layer >= acc { b.layer } else { 0 - 1 } } }) >= 0
 }
 
-test fn an_unknown_intention_serves_nothing() -> Bool {
-  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "no_such_plan"))) == 0
+// An intention with no bound work items reads as empty, not as a refusal: gunbc.plans.debt_payoff declares
+// no layers yet. (A reference to a declaration that does not exist cannot be planted here at all: the
+// cited-declaration sweep refuses it at parse, which is the undefined-variable wall this carrier rests on.)
+test fn an_intention_with_no_bound_items_serves_nothing() -> Bool {
+  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"))) == 0
 }
