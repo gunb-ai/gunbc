@@ -226,8 +226,11 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
 // born: the two halves land at different times, so in between the lab serves a binary from one head against
 // a tree from another, and the gate (once the serving binary is new enough to carry it) refuses. This fold
 // is that delivery as ONE authority: one main head in, a bound pair out, or a refusal that keeps the last
-// good pair serving. It is the delivery leg the lab's timer calls, so a node merged to main reaches the
-// served standings with no hand redeploy.
+// good pair serving. Its consumer is gunbc.live_deploy.release_pair_delivery::release_pair_delivery_plan,
+// which consults this fold and turns a PairInstalled into the ordered typed install (fetch argv -> build-key
+// verify -> place both halves at the locus -> restart serve) and a PairRefused into PlanKeepsLastGood; the
+// lab's own delivery unit (emitted in the sibling change to emit.dag / apply_legs.dag) runs that plan on a
+// timer, so a node merged to main reaches the served standings with no hand redeploy.
 //
 // THE REFUSAL HAS ONE PLACE (gunbc.fail_closed::fail_closed, "every degradation is typed and named"): every
 // refusal arm returns the `serving` binding it was handed as `kept`, so "keep the last good locus serving" is
@@ -240,7 +243,9 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
 // caller's `verified` witness — the consumer verify script's build-key verdict, not recomputed here — and a
 // fetched source head, the installed pair is bound exactly when the head's pack exists (not none), verified,
 // and the fetched source head IS the main head being delivered for. It does NOT itself download or hash bytes;
-// the delivery unit's ExecStart carries that, and this fold is the single decision that leg consults.
+// the delivery leg's fetch and verify effects carry that (gh_run_download_argv + the consumer build-key verify
+// dispatch), and this fold is the single decision gunbc.live_deploy.release_pair_delivery::release_pair_delivery_plan
+// consults to turn a bound pair into the ordered install plan.
 type DeliveredReleasePair {
   main_head: CommitSha
   source_head: CommitSha
@@ -263,7 +268,11 @@ fn deliver_release_pair(base_root: String, serving: ReleaseRevisionBinding, main
   match binaries_sha256 {
     none => PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
     Present { value: sha } =>
-      if !verified {
+      if (sha as String) == "" {
+        // An empty digest is not a binary: refuse it as unbuilt rather than let `sha as NonEmptyStr` mint a
+        // "non-empty" digest from the empty string (fail_closed: no unchecked cast where validation is available).
+        PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
+      } else if !verified {
         PairRefused { reason: release_pair_pack_unverified_reason, kept: serving }
       } else if (source_head as String) != (main_head as String) {
         PairRefused { reason: release_pair_source_head_mismatch_reason, kept: serving }

@@ -177,3 +177,17 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
     PairRefused { reason: _, kept: _ } => false
   }
 }
+
+// RED CONTROL (arm 1b): a Present-but-EMPTY digest is refused as unbuilt, never minted into a "non-empty"
+// digest by an unchecked `as NonEmptyStr` (fail_closed: validation stood where construction was available).
+test fn witness_empty_sha_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: "" },
+    verified: true,
+  )
+  kept_is(v: d, want: last_good_serving())
+}
