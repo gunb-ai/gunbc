@@ -503,37 +503,58 @@ fn roadmap_event_carrier_provision(instance: HostDashboardInstance, scratch: Roa
 // way to make the scenario exist and be unstat-able at once. `test -d` on it exits 1, the code the first version
 // read as absence, and the sweep's refusal was forgiven on the strength of that 1: teardown reported complete,
 // the claim passed, and the scenario sat in /tmp with its payload. Measured here on 2026-11-17: test -d exit 1,
-// `ls -l -n -d --` exit 2 saying Permission denied. The mode is restored before any cleanup so the sweep still
-// gets to do its job, and every step below is bound by a `let` rather than chained behind `&&`, because `&&`
-// short-circuits and a skipped restore would leave a 000 directory in /tmp for the next run to trip over.
+// `ls -l -n -d --` exit 2 saying Permission denied.
+//
+// EFFECTS ARE ORDERED BY DEMAND, NOT BY WRITING ORDER, so the steps below are nested `if` conditions rather than
+// `let` bindings read off a trailing `&&`. This language is call-by-need and `&&` is
+// OperandDemand::DemandsRightOnlyWhenLeftIs { deciding: true } (src/v1/stage0/src/std_operator_realization.rs),
+// which means a `let`-bound effect runs only if something eventually demands it, and a chain that goes false part
+// way through simply stops asking. A first draft of this control did exactly that: it `let`-bound the chmod-700
+// restore and the reclaim sweep and read them from a final `&&` chain, so the run that FAILS — the one this control
+// exists to catch — was the run that skipped the restore and left a 000 directory behind, and the delete could be
+// demanded before the probe that was supposed to read it. Every path below now ends in
+// roadmap_carrier_statcheck_teardown, including the failing ones, because teardown is the thing that must happen
+// whatever the verdict says.
 test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
   let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as FilePath)
-  let parent: String = made.path as String
   if !made.success {
     claim("the harness could not mint its own parent directory under /tmp/", false)
   } else {
+    let parent: String = made.path as String
     let root: String = concat(concat(parent, "/"), "scenario")
-    let scaffolded = shell.Mkdir.NewOwnerOnly(path: root as FilePath).success
+    let scratch = RoadmapEventCarrierScratch { path: root, template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as String }
+    if !(shell.Mkdir.NewOwnerOnly(path: root as FilePath).success
       && shell.Mkdir.NewOwnerOnly(path: concat(root, "/payload") as FilePath).success
-      && roadmap_carrier_seal_create(root: root)
-    if !scaffolded {
-      claim("the harness could not scaffold a scenario, its payload, and its seal inside the parent", false)
+      && roadmap_carrier_seal_create(root: root)) {
+      // A half-built scaffold is still a directory under /tmp that this run made, so it comes back before the
+      // verdict does — the removal is the left conjunct precisely because `&&` demands the left first.
+      shell.Remove.RecursiveForce(path: parent as FilePath).success
+        && claim("the harness could not scaffold a scenario, its payload, and its seal inside the parent", false)
+    } else if shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["000", parent]).exit_code != 0 {
+      // Nothing was hidden, so nothing can leak — but the scaffold still has to come back, and a control that
+      // could not make the scenario unreadable has proved nothing and must say so.
+      roadmap_carrier_statcheck_teardown(parent: parent, scratch: scratch)
+        && claim("chmod 000 on the parent failed, so the scenario was never unstat-able and this control would have proved nothing", false)
+    } else if !claim("an unreadable scenario must not be certified absent, because an unreadable entry is not a missing one", !roadmap_carrier_path_is_absent(path: root)) {
+      roadmap_carrier_statcheck_teardown(parent: parent, scratch: scratch) && false
+    } else if !claim("a scenario the fixture cannot even look at is not a completed teardown, so its sweep must not be forgiven", !roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: roadmap_event_carrier_sweep(scratch: scratch))) {
+      roadmap_carrier_statcheck_teardown(parent: parent, scratch: scratch) && false
     } else {
-      let scratch = RoadmapEventCarrierScratch { path: root, template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as String }
-      let hidden = shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["000", parent])
-      let blinded_absent = claim("an unreadable scenario must not be certified absent, because an unreadable entry is not a missing one", !roadmap_carrier_path_is_absent(path: root))
-      let blinded_sweep = roadmap_event_carrier_sweep(scratch: scratch)
-      let blinded_teardown = claim("a scenario the fixture cannot even look at is not a completed teardown, so its sweep must not be forgiven", !roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: blinded_sweep))
-      let restored = shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["700", parent])
-      let cleaned = roadmap_event_carrier_sweep(scratch: scratch)
-      let torn_back = roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: cleaned)
-      let parent_removed = shell.Remove.RecursiveForce(path: parent as FilePath).success
-      claim("chmod 000 on the parent succeeded, so the scenario really was unstat-able rather than merely missing", hidden.exit_code == 0)
-        && blinded_absent
-        && blinded_teardown
-        && claim("chmod 700 restored the parent, so the cleanup below ran against a readable tree", restored.exit_code == 0)
-        && claim("with the parent readable again the sweep takes the scenario back and the root is independently gone", torn_back)
-        && claim("the harness left nothing behind in /tmp/", parent_removed && roadmap_carrier_path_is_absent(path: parent))
+      roadmap_carrier_statcheck_teardown(parent: parent, scratch: scratch)
     }
+  }
+}
+
+// THE ONE TEARDOWN EVERY PATH ENDS IN. Restore first and unconditionally, because a parent left at 000 is a
+// directory nobody can remove and the next run inherits it; only then may the sweep be asked to do its job, since a
+// sweep against an unreadable parent would refuse and be read as a clean refusal by someone less suspicious than
+// this file. Each step is the condition of the `if` that follows it, so the order is demanded rather than hoped for.
+fn roadmap_carrier_statcheck_teardown(parent: String, scratch: RoadmapEventCarrierScratch) -> Bool {
+  if shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["700", parent]).exit_code != 0 {
+    claim("the harness could not restore the parent's mode, so the scenario was left unreadable for whoever runs next", false)
+  } else if !roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: roadmap_event_carrier_sweep(scratch: scratch)) {
+    claim("with the parent readable again the sweep must take the scenario back and the root must be independently gone", false)
+  } else {
+    claim("the harness must leave nothing behind in /tmp/", shell.Remove.RecursiveForce(path: parent as FilePath).success && roadmap_carrier_path_is_absent(path: parent))
   }
 }
