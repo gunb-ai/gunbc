@@ -2519,22 +2519,3 @@ test fn w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_s
       }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-// ── TEMPORARY DIAGNOSTICS (deleted before the final evidence run) ─────────────────────────────
-
-
-
-
-
-

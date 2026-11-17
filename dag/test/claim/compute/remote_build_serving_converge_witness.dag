@@ -1,0 +1,148 @@
+module test.claim.compute.remote_build_serving_converge_witness
+
+// PR 5(a): the read-only observe arm's receipt COMPOSITION. It lives in the converge module
+// so importing it forces the whole observe entry (the fleet-converge workflow --function) to
+// type-check; the cells prove the receipt carries the host/probe header and the terminal
+// state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
+// only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
+// controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
+import gunbc.compute.remote_build_serving_setup {
+  remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
+  ServingLegFailure, serving_forced_command_line,
+  ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
+  serving_store_dir_mode_octal,
+}
+import extdeps.access.posix { file_mode_octal }
+import gunbc.compute.remote_build_serving_converge { serving_receipt_body }
+
+fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationEstablished { observed: text }
+}
+
+fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
+// Elevation precondition for hermetic cells (review 95915): the sudo grant works.
+fn est_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
+fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: false }
+}
+
+// The executor plan-time pin, and matched pins so the ONLY drift in a drifted fixture is the one
+// the cell breaks (here: a confirmed-absent store dir). The three string legs stand equal to the
+// pin, and every ledger row reads its declared owner/group/mode, so no spurious deviation.
+fn pin_sha() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+fn pin_rev() -> String { "0123456789abcdef0123456789abcdef01234567" }
+fn pin_arch() -> String { "aarch64" }
+fn pin_ok() -> ServingPlanInput {
+  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: pin_arch(), local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+}
+fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved> {
+  map(d.ledger_dirs, t => ServingLedgerRowObserved {
+    path: owned_directory_path(t: t),
+    user: est_s(owned_directory_owner(t: t).user as String),
+    group: est_s(owned_directory_owner(t: t).group as String),
+    mode: est_s(serving_ledger_declared_mode_octal(t: t)),
+  })
+}
+
+// A host that is correct except a confirmed-absent store directory: a real drift, whose
+// assessment carries the secret forced-command line in its structured deviation but which the
+// receipt must render by NAME only.
+fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"),
+    authorized_keys: est_s(dline),
+    store_root: est_absent(), store_staging: est_ok(),
+    store_root_mode: est_s(text: serving_store_dir_mode_octal(d: d)), store_staging_mode: est_s(text: serving_store_dir_mode_octal(d: d)),
+    serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// The header names the host and the probed_at context; the body names the terminal state.
+test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "2026-11-16T00:00:00Z", context_receipt: "fleet ssh receipt\n", assessment: a)
+      string_contains(s: body, pattern: "srv1.example") && string_contains(s: body, pattern: "remote-build-serving-plan: drift")
+    }
+  }
+    }
+  }
+}
+
+// LEAK CONTROL: the receipt must carry the unmet item by NAME but never the value of the
+// secret forced-command line (the candidate public key / command). A naive renderer that
+// printed deviations' observed/desired strings would leak the key into a CI artifact.
+test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "store.root") && string_contains(s: body, pattern: line) == false
+    }
+  }
+    }
+  }
+}
+
+// An already-converged host's receipt is the settled/adopt wording — the observe reports the
+// host as a no-op rather than planning to rebuild it.
+test fn a_converged_host_receipt_reports_settled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(),
+        store_root_mode: est_s(text: serving_store_dir_mode_octal(d: d)), store_staging_mode: est_s(text: serving_store_dir_mode_octal(d: d)),
+        serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      ), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "remote-build-serving-plan: settled")
+    }
+  }
+    }
+  }
+}

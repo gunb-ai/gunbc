@@ -156,6 +156,7 @@ import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
+import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
@@ -231,6 +232,7 @@ import gunbc.runner.runner_ci_step {
   gunbc_ci_runner_host_cap_release_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_remote_build_serving_observe_invoke,
   gunbc_ci_runner_host_restore_invoke,
   gunbc_ci_runner_host_withdraw_invoke,
   gunbc_ci_runner_password_session_tool_converge_invoke,
@@ -392,6 +394,7 @@ type FleetConvergeWorkflowMode
   | HostResetReturn
   | HostnameConverge
   | RunnerHostFileObserve
+  | RemoteBuildServingObserve
   | HostMemoryObserve
   | MicrovmSlotReserve
   | MicrovmSlotStart
@@ -526,6 +529,7 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     HostResetReturn => FleetConvergeModeFacts { wire: "host_reset_return", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: "host-reset-return" as NonEmptyStr, is_spark_target: false },
     HostnameConverge => FleetConvergeModeFacts { wire: hostname_converge_mode, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: hostname_converge_target_input_name }, job_id: "hostname-converge" as NonEmptyStr, is_spark_target: false },
     RunnerHostFileObserve => FleetConvergeModeFacts { wire: "runner_host_file_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    RemoteBuildServingObserve => FleetConvergeModeFacts { wire: "remote_build_serving_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     HostMemoryObserve => FleetConvergeModeFacts { wire: "host_memory_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: OwnRunConfined, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotReserve => FleetConvergeModeFacts { wire: "microvm_slot_reserve", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotStart => FleetConvergeModeFacts { wire: "microvm_slot_start", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -636,7 +640,7 @@ fn fleet_converge_spark_target_description() -> String {
 // silently misspelled -- but nothing refuses it. NEXT RUNG: a value-level variant enumeration this list
 // derives from, or a witness asserting every arm of fleet_converge_mode_facts appears in this roster
 // exactly once; until then the roster and the facts match are two enumerations of one vocabulary.
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, TailscaleJoinConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, RemoteBuildServingObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, TailscaleJoinConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -1685,6 +1689,8 @@ data fleet_converge_microvm_network_apply_step_if: String = fleet_converge_mode_
 
 data fleet_converge_runner_host_file_observe_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostFileObserve)
 
+data fleet_converge_remote_build_serving_observe_step_if: String = fleet_converge_mode_step_if(mode: RemoteBuildServingObserve)
+
 data fleet_converge_host_memory_observe_step_if: String = fleet_converge_mode_step_if(mode: HostMemoryObserve)
 
 data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostFileConverge)
@@ -2467,6 +2473,34 @@ fn fleet_converge_runner_host_file_observe_step() -> Step {
     invoke: gunbc_ci_runner_host_file_observe_invoke(),
     if_condition: fleet_converge_runner_host_file_observe_step_if,
   )
+}
+
+fn fleet_converge_remote_build_serving_observe_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "remote_build_serving_observe",
+    name: "Remote-build serving: read one roster host's serving setup over fleet SSH against the derived desired state; emit a per-host plan receipt (no writes)",
+    invoke: gunbc_ci_remote_build_serving_observe_invoke(),
+    if_condition: fleet_converge_remote_build_serving_observe_step_if,
+  )
+}
+
+fn fleet_converge_remote_build_serving_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload remote-build serving plan receipt" },
+    id: Present { value: "remote_build_serving_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "remote-build-serving-plan-receipt",
+      path: gunbc_ci_remote_build_serving_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_remote_build_serving_observe_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_host_memory_observe_step() -> Step {
@@ -6232,6 +6266,8 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_spark_wireless_link_converge_step(),
         fleet_converge_spark_grants_observe_step(),
         fleet_converge_runner_host_file_observe_step(),
+        fleet_converge_remote_build_serving_observe_step(),
+        fleet_converge_remote_build_serving_observe_receipt_upload_step(),
         fleet_converge_host_memory_observe_step(),
         fleet_converge_executor_subject_split_gate_step(),
         fleet_converge_runner_host_file_converge_step(),
