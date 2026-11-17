@@ -3291,6 +3291,57 @@ data site_pxe_edge_pinned_chainloader_member_absent_from_srv4: IntegrationConcer
   },
 }
 
+// deploy-readers-must-order-after-tree-converger (review 95811 item 2, filed at gate-cb8-rebuild).
+// A CAPABILITY GAP, not a fork: there is ONE authority for TreeContent coverage (the deploy-artifact gate's
+// (path,kind) matcher) and it cannot express a concrete requirement the reader units need. The reader units
+// -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read at
+// the instance repo_root (working_directory_read classifies a WorkingDirectory==repo_root as TreeContent) --
+// must be ordered After= and Requires= the tree-sync PUBLICATION unit so the tree is present when they start.
+// The gate proves only that a converger RUNS this deploy (rung: converger-runs, not ordering); no After=/
+// Requires= edge from reader to converger is recorded anywhere, so it cannot be checked. The affected
+// declarations name the readers (deployment_artifact_read_set / working_directory_read) and the converger
+// (live_deploy_tree_sync_unit_file_for_closure, decided by converger_brought_up matching the publication
+// leg's typed systemctl action and unit identity; tree-remote only sets the origin URL and never publishes
+// content, so it is not the producer).
+data deploy_readers_must_order_after_tree_converger: IntegrationConcern = IntegrationConcern {
+  identity: "deploy-readers-must-order-after-tree-converger",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers"),
+    requirement: "each reader unit that opens the deployed source tree at the instance repo_root -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read -- is ordered After= and Requires= the tree-sync publication unit (spec.names.tree_sync_unit_name, whose typed unit file is live_deploy_tree_sync_unit_file_for_closure), so the tree content is present when the reader starts",
+    standing: RequirementUnestablished { decided_by: "the coverage matcher has no ordering axis: deploy_artifact_closure_gate covers a TreeContent by unit kind (converger_brought_up), proving only that the tree-sync publication runs this deploy, and never records an After=/Requires= edge from a reader unit to the tree-sync publication unit, so nothing in the model can be checked for the ordering" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "deployment_artifact_read_set"),
+    tail: [
+      decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "working_directory_read"),
+      decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_tree_sync_unit_file_for_closure"),
+      decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "converger_brought_up"),
+    ],
+  },
+  question: "How does the deploy-artifact gate record that each reader unit (ServeBinary, the roadmap-daemon unit, the tailnet door units) must start After=/Requires= the tree-sync publication unit, when its TreeContent coverage proves only that the publication runs this deploy -- not that the tree content is present when the reader starts?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "349be312b30ac1fa355fcb82062d349ec2226a3c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers") },
+        tail: [],
+      },
+      account: "The rebuilt deploy-artifact gate covers a TreeContent read only when the tree-sync PUBLICATION leg is brought up this deploy (its typed systemctl action Restart on the unit named spec.names.tree_sync_unit_name, the unit file live_deploy_tree_sync_unit_file_for_closure decides); a reader unit whose WorkingDirectory is the repo_root therefore reads that tree with no modelled ordering edge to the publication. The gate is honest about the rung it establishes -- publication-runs, not ordering -- and this row is the discoverable record that the ordering is a still-owed obligation, not an established guarantee. Tree-remote is not the producer: ensure_deployed_tree_remote only sets the origin URL.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "deployment_artifact_read_set"),
+        control: Absent,
+        statement: "a reader unit's TreeContent read at the instance repo_root is covered only by the tree-sync publication leg being brought up this deploy; the rung the gate establishes stays honest (the publication runs this deploy, NOT that content is present when a reader starts)",
+      },
+    ],
+    next: climbs_when(capability: "the unit-file model records each reader's After=/Requires= edge to the tree-sync publication unit and deploy_artifact_closure_gate checks it, so a TreeContent read is covered only when the reader is ordered after the publication"),
+  },
+}
 data authenticated_lanplus_retry_bound_receipts_revision: CommitSha = "467de6693bee535aaa9a5b61e5dfd2dd99c91ddf"
 
 // The revision at which the three string-built ipmitool script builders were sighted bound-free, alongside
@@ -3448,7 +3499,8 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
-  redfish_get_status_read_fork]
+  redfish_get_status_read_fork,
+  deploy_readers_must_order_after_tree_converger]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
