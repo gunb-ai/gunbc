@@ -835,7 +835,7 @@ fn fast_lane_decision_statements() -> List<Node> {
     bash_build_assign(
       name: "WAITRES",
       value: bash_build_word_cmdsubst(body: bash_build_or_else(
-        left: fl_cmd(ws: [fl_lit(t: "cat"), fl_var(n: fast_lane_wait_marker_env), fl_lit(t: "2>/dev/null")]),
+        left: fl_wait_suppressed(command: fl_cmd(ws: [fl_lit(t: "cat"), fl_var(n: fast_lane_wait_marker_env)])),
         right: fl_cmd(ws: [fl_lit(t: ":")])
       ))
     ),
