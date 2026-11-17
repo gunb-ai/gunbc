@@ -248,16 +248,16 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
 // head being delivered for. It does NOT itself download or hash bytes; the delivery stages' fetch and verify
 // effects carry that (gh_run_download_argv + the consumer build-key verify dispatch).
 //
-// THE PAIR CARRIES ONE HEAD, ONE DIGEST, AND THE FILE THAT WAS DELIVERED (reviews 96050, 96059). The pair is the
-// delivered binary as ONE identity: the single head (deliver_release_pair builds a pair only where source_head ==
-// main_head, so storing main_head too duplicated one fact), the CI-verified digest that names it in the release
-// locus, and the path of the file the fetch OBSERVED (its placement source). Carrying the source here — not
 // The OBSERVED build-key verdict of the consumer script, carrying the digest it verified against. Its single
 // producer is the staged plan's verification derivation (it names this digest ONLY when the verify observation ran
 // on the same pack_dir the fetch observed); the fold cross-checks it against the binary it binds, so a verdict for
 // an unverified — or different — pack cannot be handed to the fold to authorize an install (fail_closed).
 type VerifiedPack { digest: NonEmptyStr }
 
+// THE PAIR CARRIES ONE HEAD, ONE DIGEST, AND THE FILE THAT WAS DELIVERED (reviews 96050, 96059). The pair is the
+// delivered binary as ONE identity: the single head (deliver_release_pair builds a pair only where source_head ==
+// main_head, so storing main_head too duplicated one fact), the CI-verified digest that names it in the release
+// locus, and the path of the file the fetch OBSERVED (its placement source). Carrying the source here — not
 // re-deriving it at the placement site — is what makes the install a single authority: the file placed is provably
 // the file fetched, with no path left for the executing unit to invent (review 96059).
 type DeliveredReleasePair {
