@@ -16,7 +16,10 @@ import gunbc.live_deploy.release_pair_deliver_cli {
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
-data sha_hex: NonEmptyStr = "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef"
+data sha_hex: NonEmptyStr = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+// The real shape `sha256sum <path>` prints on stdout: "<64hex>  <path>". The digest binding must take the first field,
+// not the whole line, so the fold's member path built from the digest is the bare hex, not a path-bearing string.
+data sha_line_with_path: String = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90  /opt/gunbc/releases/incoming-release-bins/gunbc_serve"
 data pack_dir_str: String = "/opt/gunbc/releases/incoming-release-bins"
 data member_src_str: String = "/opt/gunbc/releases/incoming-release-bins/gunbc_serve"
 
@@ -59,6 +62,26 @@ test fn witness_pack_fetch_present_binds_observed_digest() -> Bool {
 // could not actually fetch.
 test fn witness_pack_fetch_refused_is_absent() -> Bool {
   let f = release_pair_pack_fetch(ProcessRefused { exit_code: 1, stderr: "gh run download failed" }, ProcessOutputPresent { text: sha_hex as String }, pack_dir_str, member_src_str)
+  match f {
+    PackAbsent { reason: _ } => true
+    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
+  }
+}
+
+// The `sha256sum` line "<hex>  <path>" binds the bare hex, NOT the whole line: the fold builds the member path from
+// this digest, so a path-bearing digest would corrupt the placement. Proves the first-field extraction.
+test fn witness_pack_fetch_binds_digest_from_sha256sum_line() -> Bool {
+  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: sha_line_with_path }, pack_dir_str, member_src_str)
+  match f {
+    PackPresent { sha256: d, pack_dir: _, binary_source: _ } => (d as String) == (sha_hex as String)
+    PackAbsent { reason: _ } => false
+  }
+}
+
+// A digest line whose first field is not 64 lowercase hex is NOT a pack: the lower_hex_64 gate refuses it (red control
+// for the digest binding — a corrupt or truncated digest can never authorize an install).
+test fn witness_pack_fetch_rejects_non_hex_digest() -> Bool {
+  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: "not-a-digest  /x" }, pack_dir_str, member_src_str)
   match f {
     PackAbsent { reason: _ } => true
     PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
