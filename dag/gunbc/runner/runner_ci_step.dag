@@ -23,7 +23,7 @@ import gunbc.runner.runner_host_withdraw {
   gunbc_ci_runner_host_withdraw_receipt_path,
 }
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
-import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path }
+import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path, gunbc_ci_remote_build_serving_apply_receipt_path }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
@@ -39,6 +39,13 @@ data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = gunbc_run_st
 data gunbc_ci_remote_build_serving_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.compute.remote_build_serving_converge",
   function: "remote_build_serving_observe_ci_wet",
+)
+// PR 5(b): the remote-build serving CONVERGE (apply). Reuses the observe's single comparator via a
+// plan-time pin; the plan is decided purely and only executable when every arm is handled (host.arch
+// has no arm -> the run refuses and writes nothing). Main-only mode; roster unchanged (srv1-only).
+data gunbc_ci_remote_build_serving_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.compute.remote_build_serving_converge",
+  function: "remote_build_serving_converge_ci_wet",
 )
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.runner.runner_host_file_converge",
@@ -82,6 +89,17 @@ fn gunbc_ci_remote_build_serving_observe_invoke() -> String {
     target: gunbc_ci_remote_build_serving_observe_target,
     claim_run: false,
     receipt_rel: gunbc_ci_remote_build_serving_observe_receipt_path
+  )
+}
+// PR 5(b) converge invoke. No org-roster prelude: the serving roster is the static
+// remote_build_serving_hosts row (srv1-only until 5(c)), not the live org roster, so the plan
+// needs no minted installation token. The apply re-observes and requires settled before success.
+fn gunbc_ci_remote_build_serving_converge_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_remote_build_serving_converge_target,
+    claim_run: false,
+    receipt_rel: gunbc_ci_remote_build_serving_apply_receipt_path
   )
 }
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
