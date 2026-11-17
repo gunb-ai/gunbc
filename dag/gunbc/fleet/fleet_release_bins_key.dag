@@ -1050,6 +1050,10 @@ data release_bins_retention_ids_basename: String = "release-bins-retention.ids"
 data release_bins_retention_ids_dedup_basename: String = "release-bins-retention.ids.dedup"
 data release_bins_retention_union_basename: String = "release-bins-retention.union"
 data release_bins_retention_flag_basename: String = "release-bins-retention.seen-answer"
+// Set by ANY required page that failed to fetch or admit. One admission of
+// completeness is checked before planning and before deleting: a partial
+// listing must never drive deletions (F4d, review 96005).
+data release_bins_retention_incomplete_basename: String = "release-bins-retention.pages-incomplete"
 data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
 data release_bins_retention_delete_header_basename: String = "release-bins-retention-delete-auth-header"
 
@@ -1274,7 +1278,11 @@ fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
     left: bash_build_subshell_from_stmts(stmts: [
       gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
       bash_build_or_else(
-        left: bash_build_and_then(left: get, right: remove_header),
+        // The header OUTLIVES this fetch on success: pages 2..5 reuse the same
+        // header file (their curl references it and nothing recreates it), and
+        // the final cleanup statement removes it once. Removing it here made
+        // every real page-2 curl fail (F4b, review 96005).
+        left: get,
         right: bash_build_subshell_from_stmts(stmts: [
           remove_header,
           cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
@@ -1291,16 +1299,16 @@ fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
 // invalidated before the curl and removed again on failure, so a page's ids can
 // only come from the curl that just ran (F3, per page).
 fn release_bins_retention_fetch_page(header: Node, answer: Node, n_text: String) -> Node {
-  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
   let get = cmd(ws: concat(
     concat([lit(t: "curl"), lit(t: "-sSf")], gunbc_ci_auth_header_file_args(header_path: header)),
     [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_page_word(n_text: n_text), lit(t: "-o"), answer],
   ))
   bash_build_or_else(
-    left: bash_build_and_then(left: get, right: remove_header),
+    // Header kept alive by the page-1 fetch (F4b); its own curl references it.
+    left: get,
     right: bash_build_subshell_from_stmts(stmts: [
-      remove_header,
       cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
+      cmd(ws: [lit(t: "touch"), temp(file: release_bins_retention_incomplete_basename)]),
       release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
     ]),
   )
@@ -1324,6 +1332,7 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
   let total_matches = test_words(ws: [var(n: "RELEASE_BINS_RETENTION_TOTAL_PAGE"), lit(t: "="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])
   let page_type_fail = bash_build_subshell_from_stmts(stmts: [
     cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
+    cmd(ws: [lit(t: "touch"), temp(file: release_bins_retention_incomplete_basename)]),
     release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
   ])
   let append_plan = bash_build_with_redir_append_to_file(
@@ -1344,21 +1353,23 @@ fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) 
         release_bins_retention_answer_rooted(),
       ]),
       right: bash_build_subshell_from_stmts(stmts: [
+        // Invalidate this page's answer before its curl (F3, per page): ids
+        // can only come from the curl that just ran.
+        cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
         release_bins_retention_fetch_page(header: header, answer: answer_n, n_text: n_text),
         bash_build_or_else(
           left: bash_build_and_then(left: answer_present_n, right: total_n_assign),
-          right: bash_build_subshell_from_stmts(stmts: [
-            cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
-            release_bins_retention_echo(word: join(["page-failed=", n_text], "")),
-          ]),
-        ),
-        bash_build_or_else(
-          left: bash_build_and_then(left: answer_present_n, right: total_matches),
           right: page_type_fail,
         ),
         bash_build_or_else(
-          left: bash_build_and_then(left: answer_present_n, right: append_plan),
-          right: cmdl(ls: ["true"]),
+          left: answer_present_n,
+          right: bash_build_or_else(left: total_matches, right: page_type_fail),
+        ),
+        // A page whose own admission jq refuses is a failed REQUIRED page: it
+        // must not silently contribute nothing (F4d).
+        bash_build_or_else(
+          left: answer_present_n,
+          right: bash_build_or_else(left: append_plan, right: page_type_fail),
         ),
       ]),
     ),
@@ -1448,15 +1459,15 @@ fn release_bins_retention_decide_statements() -> List<Node> {
   ])
   let flag_operand = temp(file: release_bins_retention_flag_basename)
   let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), flag_operand])
+  let incomplete_operand = temp(file: release_bins_retention_incomplete_basename)
+  let incomplete_absent = test_words(ws: [lit(t: "!"), lit(t: "-s"), incomplete_operand])
+  let incomplete_present = test_words(ws: [lit(t: "-s"), incomplete_operand])
   [
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_answer_basename)]),
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_ids_basename)]),
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_ids_dedup_basename)]),
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_union_basename)]),
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_flag_basename)]),
     // TOTAL comes first: it gates the over-cap declaration and every later
     // page. An absent or non-numeric total leaves the variable empty, every
     // numeric test below false, and the shape verdict to the plan.
+    // (Every scratch file was invalidated by the caller BEFORE the fetch --
+    // rm-ing any of them HERE would discard the answer this fetch just wrote.)
     bash_build_or_else(
       left: bash_build_and_then(
         left: answer_present,
@@ -1507,26 +1518,68 @@ fn release_bins_retention_decide_statements() -> List<Node> {
       ),
       right: nothing_arm,
     ),
-    bash_build_or_else(left: bash_build_and_then(left: union_present, right: jq_run), right: nothing_arm),
+    // Fetch and admit EVERY required page before any plan runs (F4a, review
+    // 96005): the old order planned right after page 1, so a 250-entry family
+    // deleted 84 ids from page 1 only and never looked at pages 2-3.
+    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
     // no-answer fires only when this invocation never held an answer at all --
     // over-cap removed the answer deliberately and touched the flag to say so.
     bash_build_or_else(
       left: bash_build_and_then(left: answer_present, right: nothing_arm),
       right: bash_build_and_then(left: flag_absent, right: release_bins_retention_echo(word: "no-answer")),
     ),
-    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: temp(file: release_bins_retention_union_basename)),
-    bash_build_or_else(left: bash_build_and_then(left: ids_present, right: delete_block), right: nothing_arm),
+    // ONE plan, over the union of all admitted pages, only when every page
+    // this invocation needed admitted cleanly and the total is under the cap.
     bash_build_or_else(
-      left: bash_build_and_then(left: union_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed")))),
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(left: flag_absent, right: jq_run),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // Deletions ride only on a complete plan over a complete listing (F4d).
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: ids_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(left: flag_absent, right: delete_block),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // The single admission for "a required page failed": the plan and the
+    // deletions above were gated on it, and this line names the refusal.
+    bash_build_or_else(
+      left: bash_build_and_then(left: incomplete_present, right: release_bins_retention_echo(word: "pages-incomplete")),
+      right: nothing_arm,
+    ),
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_echo(word: "plan-failed"))),
+          ),
+        ),
+      ),
       right: nothing_arm,
     ),
     bash_build_or_else(
       left: bash_build_and_then(left: union_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_exists, right: release_bins_retention_echo(word: "nothing-due")))),
       right: nothing_arm,
     ),
+    // The shared auth header outlived the fetches on purpose (F4b); this is
+    // its only remaining consumer, so it goes last.
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_header_basename)]),
   ]
 }
 
