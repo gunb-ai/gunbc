@@ -5648,6 +5648,11 @@ fn fleet_converge_checkout_step() -> Step {
 
 // build's checkout is the same step under the same name (the capability closure reads the name), with
 // the ref that names the plan's revision when there is one.
+// persist-credentials is turned OFF (review 96111): the job carries `actions: write` only for the
+// retention step's DELETE calls, which receive the token explicitly via their own env. Persisting
+// github.token into .git/config would hand the widened scope to every later step -- including the
+// cargo builds and the restored release-bins binaries this job verifies and runs. No step in this
+// job performs authenticated git, so nothing consumes the persisted credential.
 fn fleet_converge_build_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout" },
@@ -5657,6 +5662,7 @@ fn fleet_converge_build_checkout_step() -> Step {
       value: [
         kv(key: "fetch-depth", value: yaml_int(n: 0)),
         checkout_ref_entry(ref_expression: fleet_converge_build_checkout_ref),
+        kv(key: "persist-credentials", value: yaml_bool(b: false)),
       ]
     },
     env: none,
