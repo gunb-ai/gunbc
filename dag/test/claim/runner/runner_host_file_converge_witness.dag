@@ -72,6 +72,8 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal, RemoteFileConverged, TypedRemoteFileWrite }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path, runner_lifecycle_jit_wrapper_scope }
+import gunbc.file_access { path_within_file_tree_scope }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
@@ -150,6 +152,8 @@ import gunbc.runner.runner_host_file_converge {
   PathsUnobservable,
   PathsNotApplicable,
   fleet_host_path_ancestors,
+  fleet_host_file_scope,
+  runner_host_jit_wrapper_file,
   runner_host_root_only_find_argv,
   ctrl_jobserver_retired_residue,
   RunnerHostActuationAdmission, ActuationAdmitted, ActuationSkipped,
@@ -323,7 +327,7 @@ fn role_join_residual(expected: List<String>, files: List<FleetHostFileDesired>,
 }
 
 fn role_file_at(path: String) -> FleetHostFileDesired {
-  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, scope: fleet_host_file_scope, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 fn role_withheld_entry() -> RunnerHostFileWithheld {
@@ -501,9 +505,10 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
   empty && spaced && paren
 }
 
-// Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
-// would refuse at the seal rather than reaching a sudo leg.
-test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+// Every desired path is inside the scope its OWN row names (the /etc rows name fleet_host_file_scope),
+// so the write seal admits it; a path outside its row's tree would refuse at the seal rather than
+// reaching a sudo leg.
+test fn every_desired_file_is_admitted_by_its_own_write_seal() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -512,6 +517,78 @@ test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       })
   }
+}
+
+// THE WRAPPER ROW IS SEALED AGAINST ITS OWN NAMED SCOPE: the runner install tree, declared beside
+// its path in gunbc.runner.runner_lifecycle. Admitted -- and the scope's root is the path datum's own
+// prefix, both reading actions_runner_base_dir, so the row and its scope cannot drift.
+test fn the_wrapper_row_carries_the_runner_tree_scope_and_is_admitted() -> Bool {
+  match fleet_host_file_write_admission(file: runner_host_jit_wrapper_file(script: "#!/bin/sh\n")) {
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      (w.path as String) == runner_lifecycle_jit_wrapper_path
+        && path_within_file_tree_scope(scope: runner_lifecycle_jit_wrapper_scope, path: runner_lifecycle_jit_wrapper_path as NonEmptyStr)
+        && runner_lifecycle_jit_wrapper_scope.root_path as String == "/opt/actions-runner"
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+  }
+}
+
+// THE WRAPPER'S AUTHORIZATION LIVES ENTIRELY IN ITS ROW. The sudoers body rendered for the JIT host
+// grants exactly the argv the activation plan issues (unmask/enable/start) and the slot lifecycle
+// classes; NO rendered line mentions the wrapper path or a tee, because a converge write is not a
+// sudoers-modeled operation -- it runs as the session principal's non-interactive sudo leg, sealed by
+// the scope the row carries. The sudoers delta of per-file scoping is therefore empty, not widened.
+test fn the_wrapper_never_widens_the_rendered_sudoers_roster() -> Bool {
+  match runner_host_sudoers_body(host: "srv14" as HostIdentity, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: "srv14" as HostIdentity })) {
+    RunnerHostSudoersBodyProduced { content: c } =>
+      !string_contains(s: c, pattern: runner_lifecycle_jit_wrapper_path)
+        && !string_contains(s: c, pattern: " tee ")
+    RunnerHostSudoersBodyRefused { reason: _ } => false
+  }
+}
+
+// RED: A DECLARED FILE OUTSIDE ITS OWN SCOPE REFUSES AT ADMISSION. The path sits inside ANOTHER
+// declared tree, but the row carries the /etc scope -- the admission follows the ROW, not whichever
+// tree the path happens to fall in. The refusal names the row's own scope, which is the point.
+test fn red_a_declared_file_outside_its_own_scope_refuses_at_admission() -> Bool {
+  match fleet_host_file_write_admission(file: FleetHostFileDesired {
+    subject: "red-file-outside-its-scope" as NonEmptyStr,
+    path: "/opt/actions-runner/red.conf" as FilePath,
+    scope: fleet_host_file_scope,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }) {
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: c } =>
+      c == "typed_remote_file_write: path /opt/actions-runner/red.conf outside file tree scope rooted at /etc"
+  }
+}
+
+// RED: A FILE UNDER /opt BUT OUTSIDE /opt/actions-runner REFUSES. The wrapper's scope is the
+// runner's OWN install root, not a wildcard for anything under /opt.
+test fn red_a_file_under_opt_outside_the_runner_tree_refuses() -> Bool {
+  match fleet_host_file_write_admission(file: FleetHostFileDesired {
+    subject: "red-under-opt-outside-runner-tree" as NonEmptyStr,
+    path: "/opt/gunbc-other/jit-runner.sh" as FilePath,
+    scope: runner_lifecycle_jit_wrapper_scope,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }) {
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: c } =>
+      c == "typed_remote_file_write: path /opt/gunbc-other/jit-runner.sh outside file tree scope rooted at /opt/actions-runner"
+  }
+}
+
+// THE ANCESTOR FLOOR FOLLOWS THE ROW'S SCOPE. The wrapper's ancestors start at its own tree's root
+// -- never at /etc, whose ownership says nothing about the runner install -- and the same path
+// judged under the /etc floor reports NO ancestors at all, which is exactly why the floor had to
+// become per-file.
+test fn the_wrapper_ancestors_start_at_its_own_tree_root_not_etc() -> Bool {
+  fleet_host_path_ancestors(scope: runner_lifecycle_jit_wrapper_scope, path: runner_lifecycle_jit_wrapper_path)
+    == ["/opt/actions-runner"]
+    && fleet_host_path_ancestors(scope: fleet_host_file_scope, path: runner_lifecycle_jit_wrapper_path) == []
 }
 
 // ── The subject ──────────────────────────────────────────────────────────────────────────────────
@@ -706,9 +783,9 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
 test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool {
-  fleet_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
+  fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
     == ["/etc", "/etc/needrestart", "/etc/needrestart/conf.d"]
-    && fleet_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
+    && fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
     == ["/etc", "/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@.service.d"]
 }
 
