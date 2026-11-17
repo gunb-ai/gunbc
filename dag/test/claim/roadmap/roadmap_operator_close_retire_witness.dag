@@ -860,31 +860,70 @@ test fn a_terminal_lineage_owes_nothing_and_an_open_one_owes_the_unsettled_revie
 // The retired half of the one rule, exercised through the real write law (issue_command_apply, the
 // route's own writer) so the read and the write share no fixture: a retired node's lineage reads
 // terminal to the belt, and the read is the ONLY place terminality is decided for the obligation lane.
+// THE BELT READ, WITNESSED OVER A COMMITTED LOG — the read-side twin of the launch-gate claim below it, built
+// the same way. The instance and its event carrier come from test.claim.roadmap.roadmap_event_carrier_fixture
+// (mint + provision through `wet_owned`), so the retire reaches the belt through a COMMITTED event tail — a git
+// object in a repository the fixture provisioned — and the terminal read is decided ONLY by reading it back, not
+// by a value handed to the fold. Before #16625 this claim stood a bare Mktemp.Dir + fabric_fixture_instance with
+// no repository at the layout's repo_root, so issue_command_apply's snapshot step died at
+// `ls-remote: exit 125: cannot change directory to '<root>/source'` and the append was refused for a reason that
+// has nothing to do with the law — a gate that passed it had passed nothing.
+//
+// THE HISTORY THE BELT IS JUDGED OVER IS THE HISTORY THE BELT READS. belt_node_lineage_terminal_read consults the
+// ACCEPTANCE history FIRST (roadmap_operator_node_closed), and a ClosedStatusUnreadable there makes the read come
+// out LineageTerminalUnreadable BEFORE the event log is ever consulted — so judging over a refused carrier's
+// history (close_layout(refused_carrier_instance())) makes the retired half unreadable rather than LineageRetired.
+// The history therefore comes from the SAME provisioned layout the fixture hands back, exactly as the launch-gate
+// claim does: history and judgement from one carrier, never one from the fixture and one from nowhere.
+//
+// THE SWEEP IS PART OF THE VERDICT, the way the launch-gate claim does it. The retired half alone would also be
+// satisfied by a belt that read EVERY node retired; the open, never-retired node in the SAME provisioned instance
+// must read LineageOpen, which proves the terminal read is a retirement rule and not a blanket terminal veto. That
+// control (`open_lineage`) is &&-ed into the body, and `wet_owned`'s sweep (`run.swept`) is &&-ed into the verdict
+// so a scenario left behind in /tmp fails the claim — the leak this replaces was measured, not imagined.
 test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  if !directory.success { claim("the temp dir for the retired-belt row could not be made", false) }
-  else {
-    let instance = fabric_fixture_instance(root: directory.path as String)
-    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    match issue_command_apply(layout: layout,
-      command: RetireNode { subject: IssueCommandSubject {
-        node: "node-retired-belt" as NonEmptyStr as RoadmapNodeId,
-        author: opr_principal(),
-        operation: "op-retired-belt" as NonEmptyStr,
-        expected: none },
-        reason: "ended by the operator" as NonEmptyStr },
-      recorded_at: "2026-11-04T08:00:00Z") {
-      CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
-        match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))) {
-          // The retired half now reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal
-          // prose tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the
-          // discriminating control; the reason carries the operator's own retirement text.
-          LineageRetired { by: _, reason } => claim("the retired node reads LineageRetired and names the retirement", string_contains(s: reason, pattern: "ended"))
-          LineageTerminal { why: _ } => claim("the retired node read closed-terminal LineageTerminal instead of the typed LineageRetired — wrong terminality kind", false)
-          LineageOpen => claim("a retired node read open to the belt", false)
-          LineageTerminalUnreadable { reason: r } => claim("the retired lane read unreadable: " + (r as String), false)
+  let run = wet_owned(fn_with: fn(instance, scratch) { retired_belt_lineage_witness(instance: instance, scratch: scratch) })
+  run.result && run.swept
+}
+
+fn retired_belt_lineage_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
+  match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+    RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
+      "the wet event carrier could not be stood up at " + step + ": " + detail,
+      false,
+    )
+    RoadmapEventCarrierReady { instance: _, layout: layout } => {
+      // The acceptance history the belt read judges over is read off the SAME provisioned layout, so an open node
+      // is AcceptanceAbsent (not ClosedStatusUnreadable) and the read descends to the event log it must decide on.
+      let belt_history = roadmap_operator_close_history(layout: layout)
+      match issue_command_apply(layout: layout,
+        command: RetireNode { subject: IssueCommandSubject {
+          node: "node-retired-belt" as NonEmptyStr as RoadmapNodeId,
+          author: opr_principal(),
+          operation: "op-retired-belt" as NonEmptyStr,
+          expected: none },
+          reason: "ended by the operator" as NonEmptyStr },
+        recorded_at: "2026-11-04T08:00:00Z") {
+        CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+          let retired = match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: belt_history) {
+            // The retired half reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal prose
+            // tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the discriminating
+            // control; the reason carries the operator's own retirement text.
+            LineageRetired { by: _, reason } => claim("the retired node reads LineageRetired and names the retirement", string_contains(s: reason, pattern: "ended"))
+            LineageTerminal { why: _ } => claim("the retired node read closed-terminal LineageTerminal instead of the typed LineageRetired — wrong terminality kind", false)
+            LineageOpen => claim("a retired node read open to the belt", false)
+            LineageTerminalUnreadable { reason: r } => claim("the retired lane read unreadable: " + (r as String), false)
+          }
+          let open_lineage = match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt-open", history: belt_history) {
+            LineageOpen => claim("the belt leaves an open, never-retired node open to the belt (a retirement rule, not a blanket terminal veto)", true)
+            LineageRetired { by: _, reason: _ } => claim("an open, never-retired node read LineageRetired to the belt", false)
+            LineageTerminal { why: _ } => claim("an open, never-retired node read closed-terminal to the belt", false)
+            LineageTerminalUnreadable { reason: r } => claim("the open lane read unreadable: " + (r as String), false)
+          }
+          retired && open_lineage
         }
-      _ => claim("the retire write law refused the seed event for the belt row", false)
+        _ => claim("the retire write law refused the seed event for the belt row", false)
+      }
     }
   }
 }
