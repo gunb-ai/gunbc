@@ -49,8 +49,6 @@ import extdeps.git { git_rev_parse_head_command }
 import extdeps.tools.uname { uname_machine_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.tools.uname { uname_machine_command }
-import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.github.actions_environment { github_sha_variable_name }
 import extdeps.rust.rustup { rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
 

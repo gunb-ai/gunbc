@@ -155,6 +155,7 @@ import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
+import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
@@ -2478,6 +2479,25 @@ fn fleet_converge_remote_build_serving_observe_step() -> Step {
     invoke: gunbc_ci_remote_build_serving_observe_invoke(),
     if_condition: fleet_converge_remote_build_serving_observe_step_if,
   )
+}
+
+fn fleet_converge_remote_build_serving_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload remote-build serving plan receipt" },
+    id: Present { value: "remote_build_serving_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "remote-build-serving-plan-receipt",
+      path: gunbc_ci_remote_build_serving_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_remote_build_serving_observe_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_host_memory_observe_step() -> Step {
@@ -6206,6 +6226,7 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_spark_grants_observe_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_remote_build_serving_observe_step(),
+        fleet_converge_remote_build_serving_observe_receipt_upload_step(),
         fleet_converge_host_memory_observe_step(),
         fleet_converge_executor_subject_split_gate_step(),
         fleet_converge_runner_host_file_converge_step(),
