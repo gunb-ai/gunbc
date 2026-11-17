@@ -74,8 +74,8 @@ data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", inst
 // checks the card interface before any duct is drawn against it. The face's height above the board is about
 // 10 mm (operator, rough) and is not entered as a datum: no lane obstacle is read on this board yet.
 // The first coupon's sleeve at 0.1 mm per side was too narrow across the face and bowed out (product
-// .printed_chassis.fit_observations t10_sleeve_coupon_fit), so the second is 0.3 mm per side across: the next
-// trial, not a qualified figure.
+// .printed_chassis.fit_observations t10_sleeve_coupon_fit), so the second is 0.3 mm per side across, and the
+// second fits (t10_sleeve_coupon_second_fit): the figure holds on this card, one print, not a qualified tolerance.
 data t10_h11ssl_slot4_plan: GroupDuctPlan = GroupDuctPlan { id: "t10-h11ssl-slot4", installation: t10_h11ssl_installation, sizes: [1, 1], group: 0, fit_record: t10_sleeve_coupon_fit_display(), face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 300) }
 
 data group_duct_plans: List<GroupDuctPlan> = [a2_altra_row_plan, t10_h11ssl_slot4_plan]
