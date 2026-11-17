@@ -249,7 +249,11 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear,
   launch_fixture_doc
 }
-import test.claim.roadmap.roadmap_event_carrier_fixture { roadmap_event_carrier_wet }
+import test.claim.roadmap.roadmap_event_carrier_fixture {
+  RoadmapEventCarrierReady,
+  RoadmapEventCarrierRefused,
+  roadmap_event_carrier_provision,
+}
 import gunbc.roadmap.roadmap_provider_events {
   ProviderCompleted
 }
@@ -854,34 +858,42 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
 // REFUSED carrier is the point, this file already says it — a_retired_node_is_not_open_to_the_belt_even_over_a_refused_carrier
 // and a_retired_nodes_lineage_is_terminal_to_the_belt both judge over one and expect the refusal.
 test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -> Bool {
-  roadmap_event_carrier_wet(fn_with: fn(instance) {
-    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    let gate_history = roadmap_operator_close_history(layout: layout)
-    match issue_command_apply(layout: layout,
-      command: RetireNode { subject: IssueCommandSubject {
-        node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
-        author: opr_principal(),
-        operation: "op-launch-gate" as NonEmptyStr,
-        expected: none },
-        reason: "ended at the launch gate" as NonEmptyStr },
-      recorded_at: "2026-11-04T08:00:00Z") {
-      CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
-        let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
-          Present { value: LaunchNodeRetired { by: _, reason } } =>
-            claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
-          Present { value: _ } => claim("a retired node was refused with a refusal other than the typed LaunchNodeRetired", false)
-          Absent => claim("a retired node's launch was admitted instead of refused", false)
+  wet(fn_with: fn(instance) {
+    match roadmap_event_carrier_provision(instance: instance) {
+      RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
+        "the wet event carrier could not be stood up at " + step + ": " + detail,
+        false,
+      )
+      RoadmapEventCarrierReady { instance: _, layout: layout } => {
+        let gate_history = roadmap_operator_close_history(layout: layout)
+        match issue_command_apply(layout: layout,
+          command: RetireNode { subject: IssueCommandSubject {
+            node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
+            author: opr_principal(),
+            operation: "op-launch-gate" as NonEmptyStr,
+            expected: none },
+            reason: "ended at the launch gate" as NonEmptyStr },
+          recorded_at: "2026-11-04T08:00:00Z") {
+          CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+            let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
+              Present { value: LaunchNodeRetired { by: _, reason } } =>
+                claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
+              Present { value: _ } => claim("a retired node was refused with a refusal other than the typed LaunchNodeRetired", false)
+              Absent => claim("a retired node's launch was admitted instead of refused", false)
+            }
+            let open_free = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-open", history: gate_history) {
+              Absent => claim("the gate leaves an open, non-retired node's launch alone (a retirement rule, not a veto)", true)
+              Present { value: _ } => claim("the gate refused an open, non-retired node's launch", false)
+            }
+            refused && open_free
+          }
+          _ => claim("the retire write law refused the seed event for the launch-gate row", false)
         }
-        let open_free = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-open", history: gate_history) {
-          Absent => claim("the gate leaves an open, non-retired node's launch alone (a retirement rule, not a veto)", true)
-          Present { value: _ } => claim("the gate refused an open, non-retired node's launch", false)
-        }
-        refused && open_free
       }
-      _ => claim("the retire write law refused the seed event for the launch-gate row", false)
     }
   })
 }
+
 
 // ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────
 

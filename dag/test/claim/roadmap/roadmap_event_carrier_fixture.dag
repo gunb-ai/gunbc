@@ -1,78 +1,74 @@
 module test.claim.roadmap.roadmap_event_carrier_fixture
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  THE WET EVENT-CARRIER FIXTURE: it stands a throwaway dashboard instance up so that the event
-//  carrier's APPEND ROUTE accepts it, then hands the caller the instance to append through.
+//  THE WET EVENT-CARRIER FIXTURE: it stands a throwaway dashboard instance's event carrier up so that the
+//  carrier's APPEND ROUTE accepts it, and hands the caller the instance and layout to append through.
 //
-//  WHY THIS EXISTS. The append route (gunbc.roadmap.roadmap_issue_command.issue_command_apply, driven
-//  with a layout from gunbc.roadmap.roadmap_event_carrier.roadmap_event_carrier_layout_for_instance)
-//  reaches the git tool in the carrier's own snapshot step, run with the layout's `repo_root` as its
-//  working tree: `roadmap_event_carrier_ensure` is `git ls-remote origin <branch>` in `repo_root` and
-//  `roadmap_event_carrier_snapshot` is `git worktree add --detach --no-checkout <snapshot> HEAD` in the
-//  same place. A minted instance (gunbc.roadmap.roadmap_dashboard_instance.isolated_dashboard_instance,
-//  which is what the wet fabric fixture mints) DECLARES `repo_root` and `local_origin_root` and creates
-//  neither — those are deployment rows, and the instance mint is not the deployment. So the carrier's
-//  first git call dies before it reads anything, and the append is refused for a reason that has nothing
-//  to do with the law under test:
+//  WHY THIS EXISTS. The append route (gunbc.roadmap.roadmap_issue_command.issue_command_apply, driven with a
+//  layout from gunbc.roadmap.roadmap_event_carrier.roadmap_event_carrier_layout_for_instance) reaches the git
+//  tool in the carrier's own snapshot step, run with the layout's `repo_root` as its working tree:
+//  `roadmap_event_carrier_ensure` is `git ls-remote <remote> <branch>` in `repo_root` and
+//  `roadmap_event_carrier_snapshot` is `git worktree add --detach --no-checkout <snapshot> HEAD` in the same
+//  place. A minted instance (gunbc.roadmap.roadmap_dashboard_instance.isolated_dashboard_instance, which is what
+//  the wet fabric fixture mints) DECLARES `repo_root` and `local_origin_root` and creates neither — those are
+//  deployment rows, and the instance mint is not the deployment. So the carrier's first git call dies before it
+//  reads anything, and the append is refused for a reason that has nothing to do with the law under test:
 //
 //      snapshot: ls-remote: exit 125: env: cannot change directory to '<root>/source': No such file or directory
 //
-//  Every claim that appends over a wet instance was answered by that refusal, which is an answer about
-//  the fixture, not about the law — and a gate that passes such a claim has passed nothing.
+//  Every claim that appends over a wet instance was answered by that refusal, which is an answer about the
+//  fixture, not about the law — and a gate that passes such a claim has passed nothing.
 //
-//  WHAT WAS MISSING. The provisioning the route demands — `git init` in `repo_root`, one root commit
-//  under a real identity so `HEAD` resolves, `git init --bare` for the origin, and `remote add origin` —
-//  was spelled out ONLY in test.manual.issue_command_wet, a manual driver that nothing which gates runs.
-//  This file is that provisioning moved where a gated witness may use it. It is NOT that driver imported:
-//  dag/test/manual is outside the gate's closure, and a witness reaching into it would be un-gated by
-//  construction. What is shared is the SHAPE the manual driver documents, restated here as declared argv.
+//  WHAT THIS FILE IS, AND WHAT IT IS NOT. It is the PROVISIONING SEQUENCE and its verdicts, in the order the
+//  route needs them; the WORDS it puts on the tool's command line are extdeps.git's, because
+//  gunbc.design_argument::interface_realization_policy gives a dependency's interface shape to `extdeps/` and
+//  gunbc.design_argument::single_authority calls a second place that independently decides it a fork. So each
+//  step row is built from a `shape_git_*` function (and the two shapes this sequence needed did not have go into
+//  extdeps.git, where the rest of them live, rather than being hand-spelled here). It is NOT a copy of
+//  test.manual.issue_command_wet, the manual driver that was the only place this sequence existed: that driver
+//  lives in dag/test/manual, outside the gate's closure, and a witness reaching into it would be un-gated by
+//  construction. What is shared with it is the SEQUENCE, which is a fact about the route, not an interface.
 //
-//  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the wet storage fixture
-//  it composes, because a fixture a gated witness may not import is not a fixture. Every path it touches
-//  hangs off the throwaway instance root its caller was given (a mktemp under /tmp): it takes no
-//  /var/lib/gunbc, no production partition, no srv1/srv2/srv3 realization, no service instance, and it
-//  writes only into the instance it was handed. It fails CLOSED — a step that does not succeed is
-//  reported by name with the tool's own words, never swallowed — so a caller can never mistake "the
-//  carrier was never stood up" for "the carrier refused the event", the confusion that let a wrong answer
-//  through the gate once before.
+//  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the witnesses that use it,
+//  because a fixture a gated witness may not import is not a fixture. Every path it touches hangs off the
+//  throwaway instance root its caller was given (a mktemp under /tmp): it takes no /var/lib/gunbc, no production
+//  partition, no srv1/srv2/srv3 realization, no service instance, and it writes only into the instance it was
+//  handed. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
+//  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import std.types { Bool, FilePath, NonEmptyStr, String }
+import extdeps.git {
+  shape_git_commit_allow_empty_in_repo_args,
+  shape_git_config_local_in_repo_args,
+  shape_git_init_bare_argv,
+  shape_git_init_in_repo_args,
+  shape_git_remote_add_in_repo_args,
+}
 import extdeps.shell
 import extdeps.shell.exec
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
-import test.claim.fabric.fabric_storage_fixture {
-  FabricWetScenarioReady,
-  FabricWetScenarioUnready,
-  FabricWetStoreReady,
-  FabricWetStoreUnready,
-  fabric_wet_scenario,
-  fabric_wet_store,
-}
 
 // The witness voice, the same shape every claim file uses: a named row whose boolean the runner reports.
 fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
 
-// THE TOOL OF RECORD, named by argv row — never assembled as a shell string.
-data roadmap_carrier_fixture_program: NonEmptyStr = "git"
-
-// THE SIGNING IDENTITY of the fixture's root commit. The carrier commits the event branch itself — its
-// ensure step is `git commit --allow-empty -m "roadmap events: root"` — and it names NO identity: on a
-// real deployment the repository's own local config carries it, which is part of what the deployment's
-// provisioning installs. A freshly `git init`-ed directory has no such config and git refuses a commit
-// without one, so the fixture installs it LOCALLY: it belongs to this throwaway repository alone and
-// never reaches a global or system config, which a witness must not touch.
+// THE SIGNING IDENTITY of the fixture's root commit. The carrier commits the event branch itself — its ensure
+// step is a `commit --allow-empty` — and it names NO identity: on a real deployment the repository's own local
+// config carries it, which is part of what the deployment's provisioning installs. A freshly `git init`-ed
+// directory has no such config and git refuses a commit without one, so the fixture installs it in that
+// repository's LOCAL config: it belongs to this throwaway repository alone and never reaches a global or system
+// config, which a witness must not touch.
 data roadmap_carrier_fixture_author_name: String = "gunbc wet carrier fixture"
 data roadmap_carrier_fixture_author_email: String = "wet-carrier-fixture@gunb.ai"
 data roadmap_carrier_fixture_root_commit_message: String = "gunbc wet carrier fixture: root"
 
-// ONE PROVISIONING STEP: its own name, and its argv as pure data. The name is what a refusal reports —
-// "the carrier refused" and "git init refused" are different answers, and a witness that cannot tell them
-// apart cannot tell a law of the route from an accident of the environment.
+// ONE PROVISIONING STEP: its own name, and its argv as pure data built by extdeps.git's shapes. The name is what
+// a refusal reports — "the carrier refused" and "git init refused" are different answers, and a witness that
+// cannot tell them apart cannot tell a law of the route from an accident of the environment.
 type RoadmapCarrierProvisionStep { name: String, arguments: List<String> }
 
 // A step's verdict. A refusal carries the step's name and the tool's own words.
@@ -80,30 +76,32 @@ type RoadmapCarrierStep
   = RoadmapCarrierStepDone
   | RoadmapCarrierStepRefused { step: String, detail: String }
 
-// THE DIRECTORIES THE ROUTE DEMANDS, read off the rows the deployment itself declares — the repository
-// root is the instance's own declared row, and the carrier's worktree is
-// gunbc.roadmap.roadmap_event_carrier_directory.roadmap_event_carrier_directory, which is the very path
+// THE DIRECTORIES THE ROUTE DEMANDS, read off the rows the deployment itself declares — the repository root is
+// the instance's own declared row, and the carrier's worktree is
+// gunbc.roadmap.roadmap_event_carrier_directory.roadmap_event_carrier_directory, the very path
 // roadmap_event_carrier_layout_for_instance puts in the layout's `worktree`. Never a hand-written spelling.
 fn roadmap_event_carrier_provision_directories(instance: HostDashboardInstance) -> List<FilePath> {
   [instance.repo_root, owned_directory_path(t: roadmap_event_carrier_directory(instance: instance))]
 }
 
-// THE PROVISIONING, in the order the route needs it. The repository the snapshot runs in must exist and
-// carry a `HEAD` — the snapshot is `git worktree add ... HEAD`, which has nothing to resolve on an unborn
-// branch — and the branch the carrier publishes must have somewhere to be pushed: the bare origin the
-// `remote add origin` row points at, named off the instance's own `local_origin_root`, so the fixture
-// builds the carrier the instance already claims to have rather than one the instance would deny.
-fn roadmap_event_carrier_provision_steps(instance: HostDashboardInstance) -> List<RoadmapCarrierProvisionStep> {
-  let repo: String = instance.repo_root as String
-  let origin: String = instance.local_origin_root as String
+// THE PROVISIONING, in the order the route needs it. The repository the snapshot runs in must exist and carry a
+// `HEAD` — the snapshot is `git worktree add ... HEAD`, which has nothing to resolve on an unborn branch — and
+// the branch the carrier publishes must have somewhere to be pushed: a bare origin at the instance's own
+// `local_origin_root`, under the name the LAYOUT calls its remote (roadmap_event_carrier_layout_for_instance
+// chooses that name; for a preview instance it is a path, and a path-named remote resolves to the same URL, so
+// one rule covers both). Every argv below is extdeps.git's.
+fn roadmap_event_carrier_provision_steps(
+  instance: HostDashboardInstance,
+  layout: RoadmapEventCarrierLayout,
+) -> List<RoadmapCarrierProvisionStep> {
   [
-    RoadmapCarrierProvisionStep { name: "git-init", arguments: ["-C", repo, "init", "-q"] },
-    RoadmapCarrierProvisionStep { name: "git-config-author", arguments: ["-C", repo, "config", "--local", "user.name", roadmap_carrier_fixture_author_name] },
-    RoadmapCarrierProvisionStep { name: "git-config-author-email", arguments: ["-C", repo, "config", "--local", "user.email", roadmap_carrier_fixture_author_email] },
-    RoadmapCarrierProvisionStep { name: "git-config-no-signing", arguments: ["-C", repo, "config", "--local", "commit.gpgsign", "false"] },
-    RoadmapCarrierProvisionStep { name: "git-init-bare-origin", arguments: ["init", "-q", "--bare", origin] },
-    RoadmapCarrierProvisionStep { name: "git-remote-add-origin", arguments: ["-C", repo, "remote", "add", "origin", origin] },
-    RoadmapCarrierProvisionStep { name: "git-root-commit", arguments: ["-C", repo, "commit", "-q", "--allow-empty", "-m", roadmap_carrier_fixture_root_commit_message] },
+    RoadmapCarrierProvisionStep { name: "git-init", arguments: shape_git_init_in_repo_args(repo: instance.repo_root) },
+    RoadmapCarrierProvisionStep { name: "git-config-author", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "user.name", value: roadmap_carrier_fixture_author_name) },
+    RoadmapCarrierProvisionStep { name: "git-config-author-email", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "user.email", value: roadmap_carrier_fixture_author_email) },
+    RoadmapCarrierProvisionStep { name: "git-config-no-signing", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "commit.gpgsign", value: "false") },
+    RoadmapCarrierProvisionStep { name: "git-init-bare-origin", arguments: shape_git_init_bare_argv(path: instance.local_origin_root) },
+    RoadmapCarrierProvisionStep { name: "git-remote-add-origin", arguments: shape_git_remote_add_in_repo_args(repo: instance.repo_root, remote: layout.remote as NonEmptyStr, url: instance.local_origin_root as String) },
+    RoadmapCarrierProvisionStep { name: "git-root-commit", arguments: shape_git_commit_allow_empty_in_repo_args(repo: instance.repo_root, message: roadmap_carrier_fixture_root_commit_message) },
   ]
 }
 
@@ -115,10 +113,12 @@ fn roadmap_event_carrier_make_directory(path: FilePath) -> RoadmapCarrierStep {
   }
 }
 
-// ONE git STEP, executed as declared argv. A nonzero exit is data the caller's policy reads; here the
-// policy is the fixture's own: stop, and say which step and why.
-fn roadmap_event_carrier_run_git(step: RoadmapCarrierProvisionStep) -> RoadmapCarrierStep {
-  let run = shell.Exec.RunArgv(program: roadmap_carrier_fixture_program, arguments: step.arguments)
+// ONE git STEP, executed as declared argv. `program` is the layout's OWN git — the same realization the
+// carrier's snapshot and ensure steps will exec — because provisioning the carrier with a different tool than
+// the route will read it with is its own silent divergence. A nonzero exit is data the caller's policy reads;
+// the policy here is the fixture's own: stop, and say which step and why.
+fn roadmap_event_carrier_run_git(program: String, step: RoadmapCarrierProvisionStep) -> RoadmapCarrierStep {
+  let run = shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: step.arguments)
   if run.exit_code == 0 {
     RoadmapCarrierStepDone
   } else {
@@ -126,16 +126,16 @@ fn roadmap_event_carrier_run_git(step: RoadmapCarrierProvisionStep) -> RoadmapCa
   }
 }
 
-// RUN THE DECLARED STEPS IN ORDER, AND STOP AT THE FIRST REFUSAL: the fold's stuck arm keeps the located
-// cause and never executes what follows, because a repository that was never created has no use for a
-// remote, and a cascade of refusals would bury the one that is true.
-fn roadmap_event_carrier_run_steps(steps: List<RoadmapCarrierProvisionStep>) -> RoadmapCarrierStep {
+// RUN THE DECLARED STEPS IN ORDER, AND STOP AT THE FIRST REFUSAL: the fold's stuck arm keeps the located cause
+// and never executes what follows, because a repository that was never created has no use for a remote, and a
+// cascade of refusals would bury the one that is true.
+fn roadmap_event_carrier_run_steps(program: String, steps: List<RoadmapCarrierProvisionStep>) -> RoadmapCarrierStep {
   fold(
     steps,
     init: RoadmapCarrierStepDone,
     f: (acc, step) => match acc {
       RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapCarrierStepRefused { step: failed, detail: cause }
-      RoadmapCarrierStepDone => roadmap_event_carrier_run_git(step: step)
+      RoadmapCarrierStepDone => roadmap_event_carrier_run_git(program: program, step: step)
     }
   )
 }
@@ -151,43 +151,24 @@ fn roadmap_event_carrier_make_directories(paths: List<FilePath>) -> RoadmapCarri
   )
 }
 
-// THE RESULT OF STANDING THE CARRIER UP. Ready carries the layout the append route takes — the layout read
-// off the same instance through the production reader, never one assembled by hand — so a caller cannot
-// append over a carrier other than the one that was provisioned.
+// THE RESULT OF STANDING THE CARRIER UP. Ready carries the layout the append route takes — the layout read off
+// the same instance through the production reader, never one assembled by hand — so a caller cannot append over
+// a carrier other than the one that was provisioned.
 type RoadmapEventCarrierProvision
   = RoadmapEventCarrierReady { instance: HostDashboardInstance, layout: RoadmapEventCarrierLayout }
   | RoadmapEventCarrierRefused { step: String, detail: String }
 
-// STAND THE CARRIER UP OVER AN INSTANCE THE CALLER ALREADY OWNS. Directories first, then argv: each phase
-// refuses with the step that failed, and nothing after a refusal is attempted.
+// STAND THE CARRIER UP OVER AN INSTANCE THE CALLER ALREADY OWNS — the seam for any wet route that has its own
+// scenario (every claim file's `wet` helper, which composes the fabric scenario and store its own way).
+// Directories first, then argv: each phase refuses with the step that failed, and nothing after a refusal is
+// attempted.
 fn roadmap_event_carrier_provision(instance: HostDashboardInstance) -> RoadmapEventCarrierProvision {
+  let layout: RoadmapEventCarrierLayout = roadmap_event_carrier_layout_for_instance(instance: instance)
   match roadmap_event_carrier_make_directories(roadmap_event_carrier_provision_directories(instance: instance)) {
     RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
-    RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(roadmap_event_carrier_provision_steps(instance: instance)) {
+    RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(program: layout.git_program, steps: roadmap_event_carrier_provision_steps(instance: instance, layout: layout)) {
       RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
-      RoadmapCarrierStepDone => RoadmapEventCarrierReady {
-        instance: instance,
-        layout: roadmap_event_carrier_layout_for_instance(instance: instance),
-      }
-    }
-  }
-}
-
-// THE FIXTURE A WET CLAIM CALLS. One call stands up everything the append route needs and nothing else: a
-// private scenario directory under /tmp, the fabric store areas under it (fabric_wet_store, through the
-// deployment's own directory rows), and the carrier's git provisioning on top — then runs the body over
-// the instance and reports its verdict. A scenario, store, or carrier that cannot be stood up is a FAILED
-// claim naming its cause, never a silently passed one: the body never reaches its own assertions over a
-// world that was not there.
-fn roadmap_event_carrier_wet(fn_with: fn(HostDashboardInstance) -> Bool) -> Bool {
-  match fabric_wet_scenario(template: "/tmp/gunbc_roadmap_event_carrier_fixture.XXXXXX" as NonEmptyStr) {
-    FabricWetScenarioUnready { detail: d } => claim("the wet carrier scenario could not be made: " + d, false)
-    FabricWetScenarioReady { instance: instance, root: _ } => match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
-      FabricWetStoreUnready { area: a, detail: d } => claim("the wet fabric store is not ready at " + (a as String) + ": " + d, false)
-      FabricWetStoreReady { store: _ } => match roadmap_event_carrier_provision(instance: instance) {
-        RoadmapEventCarrierRefused { step: s, detail: d } => claim("the wet event carrier could not be stood up at " + s + ": " + d, false)
-        RoadmapEventCarrierReady { instance: ready, layout: _ } => fn_with(ready)
-      }
+      RoadmapCarrierStepDone => RoadmapEventCarrierReady { instance: instance, layout: layout }
     }
   }
 }
