@@ -39,7 +39,7 @@ import extdeps.access.posix { file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
-import std.list { first_where, list_member }
+import std.list { first_where, list_member, distinct_by_key }
 import std.algebra { Cons, Empty }
 import std.env_binding { EnvSet }
 import extdeps.github.github { github_https_clone_url }
@@ -675,9 +675,9 @@ fn converge_ledger_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired, p
 
 // ── explicit write ordering + dedupe ────────────────────────────────────────────────────────────
 // The fold PREPENDS each step's writes (concat([x], acc.writes)), so a plan's write order was the
-// reverse of the deviation order — on a fresh host the checkout / authorized_keys / store / gpasswd
+// reverse of the deviation order — on a fresh host the checkout / authorized_keys / store / usermod -aG
 // could all run before useradd. converge_plan therefore re-derives the order by ACTION KIND, not fold
-// position: groups, account, membership, dirs+ledger, authorized_keys, checkout, binary. It also
+// position: groups, account, membership, dirs+ledger, authorized_keys, checkout, toolchain, binary. It also
 // DEDUPES by identity (uid and gid arms could both emit EnsureAccount; the group can be requested by
 // the account arm and again by every membership arm) — a duplicate would re-run useradd/groupadd and
 // trip "already exists".
@@ -713,7 +713,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
 }
 
 fn converge_dedupe(ws: List<ConvergeAction>) -> List<ConvergeAction> {
-  fold(ws, init: [], f: (acc, x) => if length(filter(acc, y => converge_action_key(y) == converge_action_key(x))) == 0 { concat(acc, [x]) } else { acc })
+  distinct_by_key(xs: ws, key: a => converge_action_key(a))
 }
 
 fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
@@ -785,7 +785,7 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       Absent => converge_add_account(acc, d)
       Present { value: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
     }
-    // B4 (side-chat review of 2026-11-16): the membership write ONLY ADDS members (gpasswd -a); nothing
+    // B4 (side-chat review of 2026-11-16): the membership write ONLY ADDS members (usermod -aG); nothing
     // here models REMOVAL. An EXTRA member in an otherwise-right group is therefore not remediable:
     // classifying it as the membership write would report settled forever (the write settles nothing —
     // the observe still drifts), a green plan that never converges. So 'extra member present' is
@@ -875,10 +875,6 @@ fn converge_plan(d: RemoteBuildServingDesired, a: ServingAssessment, pin: Servin
 // per-write exit is NOT the verdict — the re-observe is: a write that did not land leaves the host
 // not-settled and the entry exits failure (gunbc.design_argument::fail_closed).
 
-// The elevated WRITE transport: takes the FULLY BUILT argv — elevation included, composed by the
-// caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
-// over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
-// for elevated writes.
 // ONE STEP of a write, as the transport saw it (review 96096). A step that did not land carries its
 // CAUSE: the refusal before exec, or the exit code and stderr the command returned, or the readback
 // that disagreed. Nothing collapses to Bool, so the receipt can say WHY a write failed, not only which

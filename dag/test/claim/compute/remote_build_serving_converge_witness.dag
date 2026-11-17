@@ -407,7 +407,7 @@ test fn fresh_host_without_rustup_is_unhandled_and_plans_no_writes() -> Bool {
   }
 }
 
-// ORDER + DEDUPE red control: a fresh host's writes are dirs(rank3) x2, checkout(rank5), binary(rank6) in
+// ORDER + DEDUPE red control: a fresh host's writes are dirs(rank3) x2, checkout(rank5), binary(rank7) in
 // NON-DECREASING rank order (a reverse-fold order would set bad>0), and carry no duplicate identity.
 test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
@@ -950,7 +950,7 @@ test fn the_apply_receipt_names_the_failed_write_and_its_cause() -> Bool {
 // ── side-chat review of 2026-11-16, finding B4: an EXTRA ledger-group member is unhandled, not "fixed" ──
 //
 // serving_group_deviations flags a group whose members are not EXACTLY the declared roster, but the
-// only remediation is gpasswd --add; no removal is modelled (removing a member could evict someone a
+// only remediation is usermod -aG; no removal is modelled (removing a member could evict someone a
 // human added on purpose). So an extra member must route to unhandled — and an unhandled plan carries
 // NO writes: the red control is that the apply refuses this host rather than half-fixing it.
 
