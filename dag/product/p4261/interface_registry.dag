@@ -18,6 +18,14 @@ import product.p4261.e1_position_receipts { PositionReceipt, e1_position_receipt
 // and stays a candidate; an unread function is said to be unread, never guessed from a connector's shape.
 // Behaviour is recorded with its board and its state, because a switch that did nothing in one state is
 // not thereby inert (the review of 2026-11-16, forwarded by the operator).
+//
+// A REPORTED FUNCTION IS SOMEONE ELSE'S ACCOUNT, kept apart from what this bench established. On 2026-11-16
+// an owner of a running Ranger tray (NVIDIA's "TS1C RANGER COMPUTE", P/N 675-24265-2020-T1C, on ZT Systems
+// boards) wrote that one E1-type P4261 runs there, started by the tray's controller, an ASPEED AST2600
+// management module in the front IO board's DC-SCM slot, through four factory cables, and gave the cable map
+// printed inside the tray's lid (H88-1516-001 REV X02). That owner allowed it to be recorded and is not
+// named. It is evidence about an E1 in that tray, not a reading of any board held here, and it says which
+// socket a cable goes to, not what any contact carries.
 
 type InterfaceKind
   = PowerInput
@@ -31,6 +39,7 @@ type InterfaceKind
 type FunctionStanding
   = FunctionEstablished { function: NonEmptyStr, basis: NonEmptyStr }
   | FunctionCandidate { candidates: NonEmptyStr, basis: NonEmptyStr }
+  | FunctionReported { function: NonEmptyStr, source: NonEmptyStr, scope: NonEmptyStr }
   | FunctionUnread
 
 type BoardInterface {
@@ -54,6 +63,20 @@ fn form_only(name: NonEmptyStr, form: NonEmptyStr) -> BoardInterface {
   BoardInterface { designator: designator_of(verbatim: name), part: Absent, kind: KindUnknown, form: Present { value: form }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent }
 }
 
+data ranger_source: NonEmptyStr = "an owner of a running Ranger tray, 2026-11-16, from the cable map on the tray's lid label H88-1516-001 REV X02"
+
+data ranger_scope: NonEmptyStr = "an E1-type P4261 in a TS1C Ranger tray; not read on a board held here, and no contact's signal is known"
+
+fn ranger_cable(name: NonEmptyStr, form: NonEmptyStr, function: NonEmptyStr) -> BoardInterface {
+  BoardInterface {
+    designator: designator_of(verbatim: name), part: Absent, kind: ServiceOrDebug, form: Present { value: form },
+    function: FunctionReported { function: function, source: ranger_source, scope: ranger_scope },
+    observed: Absent,
+    next_discriminator: Present { value: "where each non-ground contact first lands on an unpowered bare board, the standby lines first" },
+    not_to_infer: Present { value: "which contact carries which of the controller's lines, or their signalling voltage" },
+  }
+}
+
 data s1_seen_on_e1b: NonEmptyStr = "E1-b, 2026-10-20, no 48 V stage on: pole 2 toward ON started the sequence from 38 mA to about 94 mA with the lamps settling; before S2 was set, neither S1 pole did anything"
 
 data s1_seen_on_218: NonEmptyStr = "S/N 1583323120218, 2026-11-16, override held, module with heatsink and fan fitted: each S1 pole lowers the draw from 0.33 A (one combination about 0.25 A, toward the 0.09 A standby figure) and lamps go out; which pole gives which figure was not recorded, and no position raised the draw"
@@ -71,7 +94,7 @@ fn switch_pole(package: NonEmptyStr, pole: NonEmptyStr, seen: NonEmptyStr) -> Bo
 }
 
 data p4261_e1_interfaces: List<BoardInterface> = [
-  BoardInterface { designator: designator_of(verbatim: "J20"), part: Absent, kind: PowerInput, form: Present { value: "two-row input housing" }, function: FunctionEstablished { function: "the carrier's 48 to 54 V input and return", basis: "every powered run since 2026-10-20 has been through it (product.p4261.e1_b e1_j20_housing)" }, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
+  BoardInterface { designator: designator_of(verbatim: "J20"), part: Absent, kind: PowerInput, form: Present { value: "two-row input housing" }, function: FunctionEstablished { function: "the carrier's 48 to 54 V input and return", basis: "every powered run since 2026-10-20 has been through it (product.p4261.e1_b e1_j20_housing)" }, observed: Present { value: "reported for the Ranger tray: fed from the tray's power board J4 by cable CA-03382-001, the power board fed with 48 V" }, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J3"), part: Absent, kind: ModuleReceptacle, form: Present { value: "long module receptacle" }, function: FunctionEstablished { function: "one of the carrier's two module receptacles", basis: "the module site, read 2026-10-20 (product.p4261.e1_b)" }, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J4"), part: Absent, kind: ModuleReceptacle, form: Present { value: "long module receptacle" }, function: FunctionEstablished { function: "one of the carrier's two module receptacles", basis: "the module site, read 2026-10-20 (product.p4261.e1_b)" }, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J68"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 pin header" }, function: FunctionEstablished { function: "JTAG to U4, the carrier's FPGA", basis: "U4 identified and sampled read-only over a USB Blaster on S/N 1583323120148, 2026-11-13; it was running a design" }, observed: Absent, next_discriminator: Present { value: "only a controlled comparison with one change between captures (one S1 pole, or the module fitted) asks it anything new" }, not_to_infer: Present { value: "that one board's scan is another board's, or that a changed FPGA pin names the board net it reaches" } },
@@ -80,19 +103,19 @@ data p4261_e1_interfaces: List<BoardInterface> = [
   BoardInterface { designator: designator_of(verbatim: "J31"), part: Absent, kind: KindUnknown, form: Present { value: "small five-pad footprint beside Q530; its pad pattern resembles a SOT-23-5 and no part type is read" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J620"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 receptacle housing, one top-row position plugged as a key; pin 1 marked" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J190"), part: Absent, kind: UsbCandidate, form: Present { value: "metal-shell receptacle at the board edge, stamped Amphenol 1502, that takes a Micro-USB plug" }, function: FunctionCandidate { candidates: "a USB SuperSpeed Micro-B port", basis: "the atlas reads the Amphenol 1502 shell at J190, the plug fit was read on 2026-10-16 (product.p4261.e1_b management_io), and a TI TUSB8042A hub is read at U816" }, observed: Present { value: "2026-11-16, the operator: 'i already plugged in a usb cable to j190, it provides no interface here'; which board, its power state and the host were not said" }, next_discriminator: Present { value: "nothing more at the bench for now: no enumeration fits a hub that is unpowered or held in reset in the state tried, as well as a port that is not the hub's upstream" }, not_to_infer: Present { value: "that J190 is the hub's upstream port, or from one silent try that the port is dead" } },
-  BoardInterface { designator: designator_of(verbatim: "J5"), part: Absent, kind: HighSpeedData, form: Present { value: "long fine-pitch vertical connector" }, function: FunctionCandidate { candidates: "an MCIO-class high-speed connector, as used with the riser", basis: "the review of 2026-11-16; no reading in this model" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
-  BoardInterface { designator: designator_of(verbatim: "J6"), part: Absent, kind: HighSpeedData, form: Absent, function: FunctionCandidate { candidates: "an MCIO-class high-speed connector, as used with the riser", basis: "the review of 2026-11-16; no reading in this model" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
+  BoardInterface { designator: designator_of(verbatim: "J5"), part: Absent, kind: HighSpeedData, form: Present { value: "long fine-pitch vertical connector" }, function: FunctionCandidate { candidates: "the riser's connector in a K1 board's original chassis", basis: "a K1 owner's account of 2026-10-31 (a riser cabled to J5 and J6); the running E1 tray's cable map names J7 and J8 as its MCIO links, so nothing here says what J5 and J6 carry on an E1" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
+  BoardInterface { designator: designator_of(verbatim: "J6"), part: Absent, kind: HighSpeedData, form: Absent, function: FunctionCandidate { candidates: "the riser's connector in a K1 board's original chassis", basis: "a K1 owner's account of 2026-10-31 (a riser cabled to J5 and J6); the running E1 tray's cable map names J7 and J8 as its MCIO links, so nothing here says what J5 and J6 carry on an E1" }, observed: Absent, next_discriminator: Absent, not_to_infer: Present { value: "its protocol or its sideband signals" } },
   BoardInterface { designator: designator_of(verbatim: "J22"), part: Absent, kind: KindUnknown, form: Present { value: "1x3 pin header" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   form_only(name: "J1", form: "dark grey housing with rectangular contact openings"),
   form_only(name: "J2", form: "connector with a moulded logo resembling TE"),
-  form_only(name: "J7", form: "fine-pitch connector with hold-down pegs, the same type as J8"),
-  form_only(name: "J8", form: "fine-pitch connector with hold-down pegs"),
+  ranger_cable(name: "J7", form: "fine-pitch connector with hold-down pegs, the same type as J8", function: "the tray controller's MCIO1 link (cable CA-03379-001 to the front IO board's J12)"),
+  ranger_cable(name: "J8", form: "fine-pitch connector with hold-down pegs", function: "the tray controller's MCIO2 link (cable CA-03428-001 to the front IO board's J13)"),
   form_only(name: "J9", form: "large fine-pitch two-row board-to-board receptacle"),
   form_only(name: "J10", form: "fine-pitch connector beside J9"),
   form_only(name: "J11", form: "high-density two-row fine-pitch connector, the same type as J12"),
   form_only(name: "J12", form: "high-density two-row fine-pitch connector"),
-  form_only(name: "J13", form: "tall fine-pitch two-row vertical receptacle, the same type as J14"),
-  form_only(name: "J14", form: "tall fine-pitch two-row vertical receptacle"),
+  ranger_cable(name: "J13", form: "tall fine-pitch two-row vertical receptacle, the same type as J14", function: "the tray controller's MGMT1 link (cable CA-03429-001 to the front IO board's J20)"),
+  ranger_cable(name: "J14", form: "tall fine-pitch two-row vertical receptacle", function: "the tray controller's MGMT2 link (cable CA-03378-001 to the front IO board's J19)"),
   form_only(name: "J16", form: "1x4 single-row header"),
   form_only(name: "J540", form: "2x5 shrouded box header, one top-row position without a pin"),
   form_only(name: "J740", form: "FPC/FFC connector with a flip actuator, at the board edge"),
@@ -127,6 +150,16 @@ fn is_established(i: BoardInterface) -> Bool {
   match i.function {
     FunctionEstablished { function: _, basis: _ } => true
     FunctionCandidate { candidates: _, basis: _ } => false
+    FunctionReported { function: _, source: _, scope: _ } => false
+    FunctionUnread => false
+  }
+}
+
+fn is_reported(i: BoardInterface) -> Bool {
+  match i.function {
+    FunctionEstablished { function: _, basis: _ } => false
+    FunctionCandidate { candidates: _, basis: _ } => false
+    FunctionReported { function: _, source: _, scope: _ } => true
     FunctionUnread => false
   }
 }
@@ -144,6 +177,7 @@ fn function_words(f: FunctionStanding) -> String {
   match f {
     FunctionEstablished { function, basis } => join(["ESTABLISHED: ", function as String, " (", basis as String, ")"], "")
     FunctionCandidate { candidates, basis } => join(["CANDIDATE: ", candidates as String, " (", basis as String, ")"], "")
+    FunctionReported { function, source, scope } => join(["REPORTED: ", function as String, " (", source as String, "; ", scope as String, ")"], "")
     FunctionUnread => "UNREAD"
   }
 }

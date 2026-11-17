@@ -9,6 +9,7 @@ import product.p4261.interface_registry {
   names_without_rows,
   rows_not_admitted,
   is_established,
+  is_reported,
   admitted,
   unread,
 }
@@ -42,6 +43,14 @@ test fn only_four_functions_are_established() -> Bool {
     && all(["J20", "J3", "J4", "J68"], n => all(rows_for(name: n), i => is_established(i: i)))
     && all(rows_for(name: "S1"), i => !is_established(i: i))
     && all(rows_for(name: "J24"), i => !is_established(i: i))
+}
+
+// What another owner reported of a running tray is kept as reported, not established: the four cables' sockets
+// and nothing else, and J5 and J6 are not among them.
+test fn the_ranger_cable_map_is_reported_not_established() -> Bool {
+  count(filter(p4261_e1_interfaces, i => is_reported(i: i))) == 4
+    && all(["J7", "J8", "J13", "J14"], n => all(rows_for(name: n), i => is_reported(i: i) && !is_established(i: i)))
+    && all(["J5", "J6"], n => all(rows_for(name: n), i => !is_reported(i: i) && !is_established(i: i)))
 }
 
 // The joins discriminate: a registry missing J24 reports it, and a row for a position the atlas never
