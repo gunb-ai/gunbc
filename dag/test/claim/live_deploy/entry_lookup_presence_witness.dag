@@ -33,9 +33,12 @@ import std.algebra { string_contains }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup,
   FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit,
-  filesystem_entry_lookup_absent_strerror, filesystem_entry_lookup_line_names_path,
   listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+}
+import extdeps.tools.ls {
+  LsEntryQueryPresent, LsEntryQueryMissing, LsEntryQueryRefused, LsEntryQueryUnreadable,
+  ls_entry_missing_diagnostic, ls_entry_query_reading_of_output,
 }
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
@@ -172,7 +175,8 @@ test fn a_refused_or_failed_observation_is_never_read_as_absence() -> Bool {
   let refused_keeps_the_words = string_contains(s: lookup_cause(eacces), pattern: "Permission denied")
     && string_contains(s: lookup_cause(eio), pattern: "Input/output error")
     && string_contains(s: lookup_cause(estale), pattern: "Stale file handle")
-    && string_contains(s: lookup_cause(silent), pattern: "exit 2")
+    && string_contains(s: lookup_cause(silent), pattern: "/srv/marker")
+    && string_contains(s: lookup_cause(silent), pattern: "said nothing")
   lookup_is_unobservable(eacces) && lookup_is_unobservable(eio) && lookup_is_unobservable(estale)
     && lookup_is_unobservable(silent) && lookup_is_unobservable(outside_the_roster)
     && refused_keeps_the_words
@@ -204,20 +208,39 @@ test fn a_success_counts_only_when_it_names_the_queried_entry() -> Bool {
     exit_code: 0,
     stdout: "-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker\n-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/second",
     stderr: "")
+  // A line this module's parser will not accept is not an answer, even behind a successful exit: a mode
+  // that is not a mode, and a mode carrying '+' (an alternate access method that can grant what the bits
+  // do not show). The first cut of this reader only looked for the name among the fields and called both
+  // of these Present.
+  let not_a_mode = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/marker",
+    exit_code: 0,
+    stdout: "garbage 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker",
+    stderr: "")
+  let acl_marked = filesystem_entry_lookup_reading_of_exit(
+    path: "/etc/gunbc-roadmap/marker",
+    exit_code: 0,
+    stdout: "-rw-r--r--+ 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker",
+    stderr: "")
   lookup_is_present(ours) && lookup_is_present(link) && lookup_is_unobservable(someone_else)
     && lookup_is_unobservable(nothing) && lookup_is_unobservable(two_entries)
+    && lookup_is_unobservable(not_a_mode) && lookup_is_unobservable(acl_marked)
 }
 
 // (4) THE STRERROR ROSTER, AS ITS OWN PREDICATE: the two texts, attached to the queried path, and
 // nothing else. A message about some OTHER path says nothing about this one -- including if someone
 // leaves a file named after the message.
 test fn only_the_queried_paths_errnos_certify_absence() -> Bool {
-  let enoent = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': No such file or directory", path: "/a/b")
-  let enotdir = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': Not a directory", path: "/a/b")
-  let eacces = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/b': Permission denied", path: "/a/b")
-  let other_path = filesystem_entry_lookup_absent_strerror(text: "ls: cannot access '/a/c': No such file or directory", path: "/a/b")
-  let lookalike = filesystem_entry_lookup_absent_strerror(text: "total 0", path: "/a/b")
-  enoent && enotdir && !eacces && !other_path && !lookalike
+  let enoent = ls_entry_missing_diagnostic(line: "ls: cannot access '/a/b': No such file or directory", path: "/a/b")
+  let enotdir = ls_entry_missing_diagnostic(line: "ls: cannot access '/a/b': Not a directory", path: "/a/b")
+  let eacces = ls_entry_missing_diagnostic(line: "ls: cannot access '/a/b': Permission denied", path: "/a/b")
+  let other_path = ls_entry_missing_diagnostic(line: "ls: cannot access '/a/c': No such file or directory", path: "/a/b")
+  let lookalike = ls_entry_missing_diagnostic(line: "total 0", path: "/a/b")
+  // The suffix alone is not a testimony: the line must be ABOUT the path, whole, and quoted as ls quotes
+  // it. A substring match plus a suffix is what let a refusal testify -- see the two-line control below.
+  let suffix_only = ls_entry_missing_diagnostic(line: "No such file or directory", path: "/a/b")
+  let wrong_quote = ls_entry_missing_diagnostic(line: 'ls: cannot access /a/b: No such file or directory', path: "/a/b")
+  enoent && enotdir && !eacces && !other_path && !lookalike && !suffix_only && !wrong_quote
 }
 
 // (5) THE SHAPE THE FOLD DIED ON, STAGED AND OBSERVED ON A REAL HOST. A directory the observing
@@ -436,4 +459,78 @@ test fn the_lookup_leg_routes_each_privilege_by_its_own_type() -> Bool {
     == ["/usr/bin/sudo", "-n", "env", "LC_ALL=C", "ls", "-l", "-n", "-d", "--", "/etc/sudoers.d/gunbc-ghrunner"]
     && entry_lookup_leg_argv(path: "/etc/gunbc-roadmap/marker", privilege: BareListing)
     == ["env", "LC_ALL=C", "ls", "-l", "-n", "-d", "--", "/etc/gunbc-roadmap/marker"]
+}
+
+// (13) THE FORGERY THE SUBSTRING LAW ALLOWED, NOW RED. The first cut of the reader asked that the
+// queried path APPEAR in the diagnostics and that the WHOLE stderr END with an admitted errno -- so this
+// stderr, with exit 2, certified "/srv/instance" as ABSENT while the host was in fact REFUSING to answer
+// for it: the first line is the refusal, the second is someone else's absence. Absence is a testimony, so
+// it needs one line, about this path, compared exactly -- both orders below, plus the status that is not
+// the one ls uses to testify. Each of these is Unobservable, and a fold that released a cell on any of
+// them would be releasing it on a refusal.
+test fn a_second_diagnostic_or_a_wrong_status_cannot_certify_absence() -> Bool {
+  let forgery = filesystem_entry_lookup_reading_of_exit(
+    path: "/srv/instance",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/srv/instance': Permission denied\nls: cannot access '/tmp/other': No such file or directory",
+  )
+  let forgery_reversed = filesystem_entry_lookup_reading_of_exit(
+    path: "/srv/instance",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/srv/instance': No such file or directory\nls: cannot access '/tmp/other': Stale file handle",
+  )
+  let wrong_status = filesystem_entry_lookup_reading_of_exit(
+    path: "/srv/instance",
+    exit_code: 1,
+    stdout: "",
+    stderr: "ls: cannot access '/srv/instance': No such file or directory",
+  )
+  let testimony = filesystem_entry_lookup_reading_of_exit(
+    path: "/srv/instance",
+    exit_code: 2,
+    stdout: "",
+    stderr: "ls: cannot access '/srv/instance': No such file or directory\n",
+  )
+  lookup_is_unobservable(forgery) && lookup_is_unobservable(forgery_reversed)
+    && lookup_is_unobservable(wrong_status) && lookup_is_absent(testimony)
+}
+
+// (14) AND THE DECODING IS THE TOOL MODULE'S, NOT A COPY OF IT (gunbc.design_argument::single_authority).
+// The presence reader is the four-arm map over ls_entry_query_reading_of_output; this claim pins that map
+// directly, so a presence fold that quietly treated Refused as Absent -- or Unreadable as Present -- has
+// somewhere to go red. The four arms arrive from the utility's own streams, never invented.
+test fn each_utility_reading_maps_to_one_presence_answer() -> Bool {
+  let missing = ls_entry_query_reading_of_output(
+    path: "/etc/gunbc-roadmap/marker", exit_code: 2, stdout: "",
+    stderr: "ls: cannot access '/etc/gunbc-roadmap/marker': No such file or directory")
+  let refused = ls_entry_query_reading_of_output(
+    path: "/etc/gunbc-roadmap/marker", exit_code: 2, stdout: "",
+    stderr: "ls: cannot access '/etc/gunbc-roadmap/marker': Permission denied")
+  let unreadable = ls_entry_query_reading_of_output(path: "/etc/gunbc-roadmap/marker", exit_code: 0, stdout: "", stderr: "")
+  let present = ls_entry_query_reading_of_output(
+    path: "/etc/gunbc-roadmap/marker", exit_code: 0,
+    stdout: "-rw-r--r-- 1 1000 1000 7 Nov 16 23:59 /etc/gunbc-roadmap/marker", stderr: "")
+  match missing {
+    LsEntryQueryMissing { path: p, diagnostic: _ } => p == "/etc/gunbc-roadmap/marker"
+    LsEntryQueryPresent { path: _, entry: _ } => false
+    LsEntryQueryRefused { path: _, diagnostic: _ } => false
+    LsEntryQueryUnreadable { path: _, cause: _ } => false
+  } && match refused {
+    LsEntryQueryRefused { path: p, diagnostic: d } => p == "/etc/gunbc-roadmap/marker" && string_contains(s: d, pattern: "Permission denied")
+    LsEntryQueryPresent { path: _, entry: _ } => false
+    LsEntryQueryMissing { path: _, diagnostic: _ } => false
+    LsEntryQueryUnreadable { path: _, cause: _ } => false
+  } && match unreadable {
+    LsEntryQueryUnreadable { path: _, cause: _ } => true
+    LsEntryQueryPresent { path: _, entry: _ } => false
+    LsEntryQueryMissing { path: _, diagnostic: _ } => false
+    LsEntryQueryRefused { path: _, diagnostic: _ } => false
+  } && match present {
+    LsEntryQueryPresent { path: p, entry: _ } => p == "/etc/gunbc-roadmap/marker"
+    LsEntryQueryMissing { path: _, diagnostic: _ } => false
+    LsEntryQueryRefused { path: _, diagnostic: _ } => false
+    LsEntryQueryUnreadable { path: _, cause: _ } => false
+  }
 }

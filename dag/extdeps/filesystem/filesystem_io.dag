@@ -6,6 +6,10 @@ import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
 import std.algebra { collection_join_shape, string_contains, trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.optional { Present, Absent }
+import extdeps.tools.ls {
+  LsEntryQueryReading, LsEntryQueryPresent, LsEntryQueryMissing, LsEntryQueryRefused, LsEntryQueryUnreadable,
+  ls_entry_query_reading_of_output,
+}
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -721,55 +725,30 @@ fn listed_entry_presence(directory: String, name: String) -> FilesystemEntryPres
 // format word", because the `%` a `stat -c` needs is refused by the fleet SSH edge's portable-word
 // re-parse: gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed). The ROUTE --
 // transport, elevation, the `LC_ALL=C` binding -- is the caller's (gunbc.live_deploy.member_observe
-// builds one leg per arm and rides its own transport); the MEANING is decided here, once.
+// builds one leg per arm and rides its own transport). The DECODING of what the utility printed is the
+// utility module's: extdeps.tools.ls owns that command, its stdout line parser (ls_long_entry_of_line)
+// and its diagnostic law (ls_entry_missing_diagnostic). What is decided HERE, and only here, is what
+// each of those readings licenses for the presence of one named entry -- which is a filesystem fact, not
+// a fact about ls.
 
 type FilesystemEntryLookup
   = FilesystemEntryPresentByLookup { path: String }
   | FilesystemEntryAbsentByLookup { path: String, cause: String }
   | FilesystemEntryUnobservable { path: String, cause: String }
 
-// The two errno texts that let the host testify that a name is not there. Both must arrive attached to
-// the path that was asked about -- the utility quotes it -- because a message about some other path says
-// nothing about this one. `ls(1)` emits them on exit 2 and `stat(1)` on exit 1; neither code is trusted
-// on its own, only as far as this roster allows.
-fn filesystem_entry_lookup_absent_strerror(text: String, path: String) -> Bool {
-  string_contains(s: text, pattern: join(["'", path, "'"], ""))
-    && (ends_with(s: text, suffix: ": No such file or directory")
-      || ends_with(s: text, suffix: ": Not a directory"))
-}
-
-// Did the successful observation describe the name we asked about? `ls -l -n -d` prints mode, link
-// count, numeric uid, numeric gid, size, date, then the name -- and for a symbolic link prints
-// `name -> target` after it, so the name is a field either way. A success that printed no such field is
-// not an answer about this name and is not reported as one.
-fn filesystem_entry_lookup_line_names_path(line: String, path: String) -> Bool {
-  any(split(s: line, delimiter: " "), field => field == path)
-}
-
-// THE ONE READER: the utility's status and words, as one answer about one name. All three inputs reach
-// it, because the answer depends on all three; a reader that drops the words is where an invented
-// absence would come from.
+// THE ONE PRESENCE READER: the utility's status and both streams, as one answer about one name. The
+// bytes are decoded by extdeps.tools.ls (single authority over its own output, and the fork where a
+// consumer split this same stdout itself is gone); this fold decides the filesystem consequence of each
+// reading -- the testimony (Missing) is the ONLY arm that may say Absent, and the two arms where the
+// host declined or the observation was not an answer both land Unobservable, because unreadable stops a
+// deployment while absence releases a cell (gunbc.design_argument::fail_closed). An invented absence has
+// exactly one possible source in this design, and it is a missing arm here.
 fn filesystem_entry_lookup_reading_of_exit(path: String, exit_code: Int, stdout: String, stderr: String) -> FilesystemEntryLookup {
-  if exit_code == 0 {
-    let lines = filter(split(s: stdout, delimiter: "\n"), line => trim(s: line) != "")
-    match get(xs: lines, index: 0) {
-      Present { value: line } =>
-        if count(lines) == 1 && filesystem_entry_lookup_line_names_path(line: line, path: path) {
-          FilesystemEntryPresentByLookup { path: path }
-        } else {
-          FilesystemEntryUnobservable { path: path, cause: join(["the lookup succeeded without printing one entry for ", path, "; a successful observation of something else is not an answer about this name"], "") }
-        }
-      Absent => FilesystemEntryUnobservable { path: path, cause: join(["the lookup succeeded but printed nothing for ", path], "") }
-    }
-  } else if (exit_code == 1 || exit_code == 2) && filesystem_entry_lookup_absent_strerror(text: trim(s: stderr), path: path) {
-    FilesystemEntryAbsentByLookup { path: path, cause: trim(s: stderr) }
-  } else if stderr != "" {
-    // The host refused, or failed, and said why: EACCES (an ACL, an LSM, a parent that will not search),
-    // EIO, a usage error. The words are carried because the cause is the point -- the fold that stops on
-    // it has to be able to say what it stopped on.
-    FilesystemEntryUnobservable { path: path, cause: trim(s: stderr) }
-  } else {
-    FilesystemEntryUnobservable { path: path, cause: join(["the lookup for ", path, " failed with exit ", to_string(value: exit_code), " and said nothing"], "") }
+  match ls_entry_query_reading_of_output(path: path, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    LsEntryQueryPresent { path: p, entry: _ } => FilesystemEntryPresentByLookup { path: p }
+    LsEntryQueryMissing { path: p, diagnostic: d } => FilesystemEntryAbsentByLookup { path: p, cause: d }
+    LsEntryQueryRefused { path: p, diagnostic: d } => FilesystemEntryUnobservable { path: p, cause: d }
+    LsEntryQueryUnreadable { path: p, cause: c } => FilesystemEntryUnobservable { path: p, cause: c }
   }
 }
 
