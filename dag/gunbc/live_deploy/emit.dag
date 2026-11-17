@@ -1301,7 +1301,10 @@ fn live_deploy_belt_standings_refresh_timer_unit_file(spec: DeploymentSpec) -> S
 // THE PAIR-DELIVERY unit + timer (node://lab-converges-release-pair): the EXECUTING consumer of the staged wet
 // delivery CLI. The service oneshot runs release_pair_deliver_once_cli (its OWN run performs the delivery —
 // fetch -> observed build-key verify -> fold -> place + restart — not a hand step); the timer re-arms it on the
-// pair cadence. Registered in apply_legs so it ships with the deployment, and witnessed in the emission oracle.
+// pair cadence. DECLARED here (builder + emission witness stay in this PR); their INSTALL legs are deliberately
+// NOT registered in apply_legs — registering them would let a fleet converge install and RUN this unit while the
+// source/binary guard still compares a value to itself. That registration, with the guard's real observation, is a
+// DECLARED FRONTIER consumed by the stacked PR (roadmap node lab-converges-release-pair). Witnessed in the emission oracle.
 // Built DIRECTLY (not via the belt-event helper) because this entry lives in a different module than the belt tick
 // CLI, and its own environment is supplied here: the release locus root, the serve unit to restart, and the repo root,
 // all DERIVED from spec authorities (no literals in the unit).
