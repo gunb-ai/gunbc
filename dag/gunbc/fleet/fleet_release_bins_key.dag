@@ -1528,7 +1528,6 @@ fn release_bins_retention_decide_statements() -> List<Node> {
         ),
         right: bash_build_subshell_from_stmts(stmts: [
           cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
-          cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
           cmd(ws: [lit(t: "touch"), flag_operand]),
         ]),
       ),
