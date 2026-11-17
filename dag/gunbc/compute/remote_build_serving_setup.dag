@@ -707,9 +707,8 @@ type ServingObserved {
   // Whether rustup itself (the account's cargo-bin program) is executable. Observe gates this — and
   // the toolchain leg — on the account being present: account confirmed absent CONFIRMS both absent
   // (a home whose account does not exist has no rustup and no channels). When the toolchain leg is
-  // established absent, this leg decides the classification: present = EnsureToolchain is runnable;
-  // absent = unhandled ('rustup not installed for <account>; no bootstrap modelled') — converge does
-  // not bootstrap toolchains, and planning a write that execs a missing program is planning a failure.
+  // established absent, this leg decides the classification: present = EnsureToolchain alone;
+  // absent = the verified rustup-init bootstrap (EnsureRustup) first, then EnsureToolchain.
   rustup: ObservationAttempt<Bool, ServingLegFailure>
   // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
   // the apply would act on, so the observe reads these host facts and compares them to
