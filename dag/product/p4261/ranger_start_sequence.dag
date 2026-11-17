@@ -2,49 +2,19 @@ module product.p4261.ranger_start_sequence
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import extdeps.nvidia.gracebmc_ranger { RangerLine, SequenceStep, ranger_lines, ranger_start_steps, is_run_phase, phase_text }
+import extdeps.nvidia.ranger_tray { RangerPowerState, StandbyHostOff, JustAfterPowerOn, RunningIdle, RunningAtOwnerLimits, ranger_watts_at_most, ranger_power_board_feed_volts }
+import extdeps.nvidia.gracebmc_ranger { Script, ScriptAction, RangerSignal, script_run_power, script_standby, script_sets, signal_name, same_signal }
 
-// WHAT THIS BENCH MAKES OF THE RANGER TRAY'S START SEQUENCE. The sequence itself is NVIDIA's firmware fact
-// (extdeps.nvidia.gracebmc_ranger) and the tray and its cables are the tray's (extdeps.nvidia.ranger_tray);
-// both are another owner's account, typed there as uncited. This module is the observing layer: folds that
-// ask the sequence questions, that owner's own summary and controller readings kept as evidence, the ladder
-// of states used to place a board, and where the lot board held here stands against it. Nothing here is a
-// reading of a tray, and no row here is an upstream fact.
-
-// A line's level once a list of steps has run: the last level a step gave it, or 2 where no step named it.
-data level_not_given: Nat = 2
-
-fn level_after(steps: List<SequenceStep>, line: NonEmptyStr) -> Nat {
-  fold(filter(steps, s => s.line == line), init: level_not_given, f: (acc, s) => s.level)
-}
-
-fn steps_through_standby(steps: List<SequenceStep>) -> List<SequenceStep> {
-  filter(steps, s => !is_run_phase(p: s.phase))
-}
-
-// The lines whose level differs between the end of standby and the end of run power, derived from the steps.
-fn lines_changing_for_run(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<RangerLine> {
-  filter(lines, l => level_after(steps: steps_through_standby(steps: steps), line: l.name) != level_after(steps: steps, line: l.name))
-}
-
-// THE ACCOUNT'S OWN SUMMARY, AND WHERE THE STEPS DISAGREE WITH IT. The owner summed up: "between standby and
-// running five of these lines change: RUN_POWER_EN, BMC_EP_PERST_EN and SYS_RST_IN_L from the controller;
-// RUN_POWER_PG and SYS_RST_OUT_L from the board." The steps as given also raise LOCAL_RUN_PWR_EN. The likely
-// reading is that LOCAL_RUN_PWR_EN stays on the tray's own boards and never reaches the carrier, which is an
-// inference and is owed as a question to that owner (the review of 2026-11-16).
-data reported_lines_changing_for_run: List<NonEmptyStr> = ["RUN_POWER_EN", "BMC_EP_PERST_EN", "SYS_RST_IN_L", "RUN_POWER_PG", "SYS_RST_OUT_L"]
-
-fn changing_but_not_in_the_summary(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<RangerLine> {
-  filter(lines_changing_for_run(lines: lines, steps: steps), l => !any(reported_lines_changing_for_run, n => n == l.name))
-}
-
-fn steps_naming_no_listed_line(lines: List<RangerLine>, steps: List<SequenceStep>) -> List<SequenceStep> {
-  filter(steps, s => !any(lines, l => l.name == s.line))
-}
+// WHERE THIS BENCH STANDS AGAINST THE RANGER TRAY'S START SEQUENCE. The tray, its cables and its telemetry
+// are the tray's facts (extdeps.nvidia.ranger_tray); the lines and what the controller's scripts do with
+// them are the firmware's (extdeps.nvidia.gracebmc_ranger). This module holds only what is local or derived:
+// the states used to place a board, where the lot board held here stands, and the comparisons and estimates
+// this bench draws from the upstream figures. No row here is an upstream fact.
 
 // ── THE STATES, AND WHERE THIS BENCH'S BOARD IS NOT ─────────────────────────────────────────────────
 
-// The states the sequence passes through, in order (the review of 2026-11-16).
+// The states the controller's scripts take a board through, in order. The names are this repository's
+// (the review of 2026-11-16), not NVIDIA's.
 type RangerState
   = RangerBoardAbsentOrReset
   | RangerStandbyRequested
@@ -57,9 +27,10 @@ type RangerState
   | RangerSystemResetReleased
   | RangerHostRunning
 
-// A board's state against that ladder. Forcing the hot-swap stage on by hand at Q300, with none of the
+// A board's standing against that ladder. Forcing the hot-swap stage on by hand at Q300, with none of the
 // controller's lines driven, is not a state on it: the 48 V stage is up, and nothing says standby was
-// requested, the FPGA released, the controller ready or the system reset let go.
+// requested, the FPGA released, the controller ready or the system reset let go. The name says a module was
+// fitted and the board drew partial power; it does not say how much of that draw was the module's.
 type StartStanding
   = OnRangerLadder { state: RangerState }
   | ManualHotSwapForcedWithModulePartialPower { seen: NonEmptyStr }
@@ -73,47 +44,30 @@ fn is_on_ladder(s: StartStanding) -> Bool {
   }
 }
 
-// ── THE POWER THAT TRAY REPORTS ─────────────────────────────────────────────────────────────────────
+// ── THIS BENCH'S DRAW AGAINST THE TRAY'S REPORTED FIGURES ───────────────────────────────────────────
 
-// The carrier's two hot-swap readings as its FPGA reports them to that controller, in watts, with a
-// 699-2G530-0215-DV5 module. Which of the carrier's two LM5066I parts is which is not established.
-// At idle the owner reports 140 to 150 W on the first reading; only the figures a fold here uses are rows.
-// They are that owner's controller's readings, kept as evidence in this layer: observations are never an
-// upstream's facts (gunbc.design_argument::external_upstreams).
-type ReportedPower {
-  state: NonEmptyStr
-  hsc_watts: Nat
-  standby_hsc_watts: Nat
-}
-
-data ranger_power_host_off: ReportedPower = ReportedPower { state: "standby, host off", hsc_watts: 7, standby_hsc_watts: 27 }
-
-data ranger_power_at_start: ReportedPower = ReportedPower { state: "just after power-on", hsc_watts: 162, standby_hsc_watts: 37 }
-
-data ranger_power_at_owner_limit: ReportedPower = ReportedPower { state: "under load with that owner's limits (module 450 W, GPU 300 W)", hsc_watts: 412, standby_hsc_watts: 37 }
-
-fn total_watts(p: ReportedPower) -> Nat {
-  p.hsc_watts + p.standby_hsc_watts
-}
-
-// This bench's forced state against that tray's standby: about 16 W here, by 0.33 A at 48 V.
+// The lot board's forced state: about 16 W, by 0.33 A at 48 V, read on the bench supply.
 data lot_e1_218_forced_watts: Nat = 16
 
+// Below the two channels' host-off total on the tray, so the forced state is not the tray's standby.
 fn below_ranger_standby(watts: Nat) -> Bool {
-  watts < total_watts(p: ranger_power_host_off)
+  watts < ranger_watts_at_most(state: StandbyHostOff)
 }
 
-// Milliamps at 48 V for a reported state, for sizing a supply's limit.
-fn milliamps_at_48_volts(p: ReportedPower) -> Nat {
-  (total_watts(p: p) * 1000) / 48
+// AN ESTIMATE, NOT A REPORTED TOTAL: the two channels' figures added, each at its most, turned into
+// milliamps at the tray's feed voltage. The account gives the channels separately and does not say they
+// were read together, so this sizes a supply and its limit and is never quoted as the tray's draw.
+fn estimated_milliamps(state: RangerPowerState) -> Nat {
+  (ranger_watts_at_most(state: state) * 1000) / ranger_power_board_feed_volts
 }
 
-// ── WHAT IT PRINTS ──────────────────────────────────────────────────────────────────────────────────
+// ── WHAT A SEQUENCER HERE WOULD HAVE TO DRIVE ───────────────────────────────────────────────────────
 
-fn step_line(s: SequenceStep) -> String {
-  join([phase_text(p: s.phase), ": ", if s.waits { "wait for " } else { "set " }, s.line as String, " = ", to_string(s.level), if s.waits && s.limit_seconds > 0 { join([" (limit ", to_string(s.limit_seconds), " s)"], "") } else { "" }], "")
+// The lines the run-power script sets that the standby script never sets: what is new at run power.
+fn lines_first_set_at_run_power() -> List<RangerSignal> {
+  filter(script_sets(s: script_run_power), x => !any(script_sets(s: script_standby), y => same_signal(a: x, b: y)))
 }
 
-fn start_sequence_lines() -> List<String> {
-  map(ranger_start_steps, s => step_line(s: s))
+fn line_names(xs: List<RangerSignal>) -> List<String> {
+  map(xs, x => signal_name(s: x))
 }

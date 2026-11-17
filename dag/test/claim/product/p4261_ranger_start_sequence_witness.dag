@@ -1,75 +1,96 @@
 module test.claim.product.p4261_ranger_start_sequence_witness
 
 import std.types { List, NonEmptyStr }
-import extdeps.nvidia.gracebmc_ranger { ranger_lines, ranger_start_steps, set, RunPower }
+import extdeps.bmc.aspeed_ast2600 { ast2600_pin, ast2600_pin_bit_in_range, PortO, PortF }
+import extdeps.nvidia.gracebmc_ranger {
+  ranger_signal_bindings, ranger_scripts, ranger_watch_rules,
+  bindings_with_wrong_offset, bindings_sharing_a_pin, script_direction_slips,
+  binding_of, is_driven, is_awaited, is_watched, signal_name, gpio_offset, sysfs_number,
+  script_standby, script_run_power, script_forced_off, is_bus_work, pin_table_lines,
+  drives, RunPowerEn, RunPowerPg, LocalRunPwrEn, ShdnOkL, SysRstInL, BbPrsntL, StbyPowerEn,
+}
+import extdeps.nvidia.ranger_tray {
+  ranger_management_cables, ranger_corroborations, ranger_watts_at_most, ranger_gap_is_recorded,
+  StandbyHostOff, JustAfterPowerOn, RunningIdle, RunningAtOwnerLimits,
+  BaseboardContactMap, SignallingVoltage, WholeTrayInputCurrent, I2cMessageContent,
+}
 import product.p4261.ranger_start_sequence {
-  lines_changing_for_run,
-  changing_but_not_in_the_summary,
-  reported_lines_changing_for_run,
-  steps_naming_no_listed_line,
-  level_after,
-  steps_through_standby,
-  lot_e1_218_standing,
-  is_on_ladder,
-  OnRangerLadder,
-  RangerBmcReady,
-  below_ranger_standby,
-  lot_e1_218_forced_watts,
-  total_watts,
-  milliamps_at_48_volts,
-  ranger_power_host_off,
-  ranger_power_at_start,
-  ranger_power_at_owner_limit,
-  start_sequence_lines,
+  lot_e1_218_standing, is_on_ladder, OnRangerLadder, RangerBmcReady,
+  below_ranger_standby, lot_e1_218_forced_watts, estimated_milliamps,
+  lines_first_set_at_run_power, line_names,
 }
 
-// Every step names a listed line, and the sequence prints one line per step.
-test fn every_step_names_a_listed_line() -> Bool {
-  count(steps_naming_no_listed_line(lines: ranger_lines, steps: ranger_start_steps)) == 0
-    && count(start_sequence_lines()) == count(ranger_start_steps)
-    && count(steps_naming_no_listed_line(lines: ranger_lines, steps: concat(ranger_start_steps, [set(phase: RunPower, line: "NO_SUCH_LINE", level: 1)]))) == 1
+// The pin table: twenty-six lines, each bound once; fifteen the controller drives, five listed as waited on
+// and six as only watched; every bit within its port.
+test fn the_pin_table_binds_each_line_once() -> Bool {
+  count(ranger_signal_bindings) == 26
+    && all(ranger_signal_bindings, b => count(binding_of(s: b.signal)) == 1)
+    && count(filter(ranger_signal_bindings, b => is_driven(s: b.signal))) == 15
+    && count(filter(ranger_signal_bindings, b => !is_driven(s: b.signal) && b.listed_as_awaited)) == 5
+    && count(filter(ranger_signal_bindings, b => !is_driven(s: b.signal) && !b.listed_as_awaited)) == 6
+    && all(ranger_signal_bindings, b => ast2600_pin_bit_in_range(p: b.pin))
+    && count(pin_table_lines()) == 26
 }
 
-// From the steps, six lines differ between standby and running: the five the owner summed up and
-// LOCAL_RUN_PWR_EN, which the summary leaves out. That one line is the question owed to the owner.
-test fn the_steps_change_one_line_more_than_the_summary() -> Bool {
-  count(lines_changing_for_run(lines: ranger_lines, steps: ranger_start_steps)) == 6
-    && all(reported_lines_changing_for_run, n => any(lines_changing_for_run(lines: ranger_lines, steps: ranger_start_steps), l => l.name == n))
-    && count(changing_but_not_in_the_summary(lines: ranger_lines, steps: ranger_start_steps)) == 1
-    && all(changing_but_not_in_the_summary(lines: ranger_lines, steps: ranger_start_steps), l => l.name == "LOCAL_RUN_PWR_EN")
+// Every reported line number is the one its pin gives (eight per port, port A at 0), no two lines share a
+// pin or a ball, and the three sysfs numbers the owner read come out: O0 928, O3 931, F4 860. A row with
+// the wrong number, and a row on a pin already taken, are each reported.
+test fn offsets_and_sysfs_numbers_are_derived_and_unique() -> Bool {
+  count(bindings_with_wrong_offset(bs: ranger_signal_bindings)) == 0
+    && count(bindings_sharing_a_pin(bs: ranger_signal_bindings)) == 0
+    && sysfs_number(pin: ast2600_pin(port: PortO, bit: 0)) == 928
+    && sysfs_number(pin: ast2600_pin(port: PortO, bit: 3)) == 931
+    && sysfs_number(pin: ast2600_pin(port: PortF, bit: 4)) == 860
+    && all(binding_of(s: LocalRunPwrEn), b => gpio_offset(pin: b.pin) == 112 && (b.ball as String) == "AD26")
+    && count(bindings_with_wrong_offset(bs: [drives(signal: RunPowerEn, pin: ast2600_pin(port: PortO, bit: 3), ball: "AD24", reported_offset: 116)])) == 1
+    && count(bindings_sharing_a_pin(bs: concat(ranger_signal_bindings, [drives(signal: StbyPowerEn, pin: ast2600_pin(port: PortO, bit: 3), ball: "ZZ1", reported_offset: 115)]))) == 2
 }
 
-// What standby leaves in place before run power: the shutdown and brake lines at 1, the FPGA released and
-// ready, the controller ready, and the system reset still held at 0 with run power off.
-test fn standby_ends_with_reset_held_and_run_power_off() -> Bool {
-  let standby = steps_through_standby(steps: ranger_start_steps)
-  level_after(steps: standby, line: "SHDN_REQ_L") == 1
-    && level_after(steps: standby, line: "SHDN_FORCE_L") == 1
-    && level_after(steps: standby, line: "PWR_BRAKE_L") == 1
-    && level_after(steps: standby, line: "FPGA_RST_L") == 1
-    && level_after(steps: standby, line: "FPGA_READY") == 1
-    && level_after(steps: standby, line: "BMC_READY") == 1
-    && level_after(steps: standby, line: "SYS_RST_IN_L") == 0
-    && level_after(steps: standby, line: "RUN_POWER_EN") == 0
-    && level_after(steps: ranger_start_steps, line: "SYS_RST_IN_L") == 1
-    && level_after(steps: ranger_start_steps, line: "RUN_POWER_EN") == 1
+// The scripts only set lines the controller drives and only read lines the board answers. RUN_POWER_PG is
+// both waited on and watched; SHDN_OK_L, listed as only watched, is also waited on in the forced power-off.
+test fn scripts_respect_each_lines_direction() -> Bool {
+  count(ranger_scripts) == 7
+    && all(ranger_scripts, s => count(script_direction_slips(s: s)) == 0)
+    && is_awaited(s: RunPowerPg) && is_watched(s: RunPowerPg)
+    && is_awaited(s: ShdnOkL) && is_watched(s: ShdnOkL)
+    && is_awaited(s: BbPrsntL) && !is_watched(s: BbPrsntL)
+    && count(ranger_watch_rules) == 7
+    && all(ranger_watch_rules, r => !is_driven(s: r.signal))
 }
 
-// The lot board's forced state is not on the ladder, and its 16 W is below that tray's 34 W with the host
-// off; a state on the ladder reads as one, and 34 W would not be below.
-test fn the_forced_state_is_off_the_ladder_and_below_standby() -> Bool {
+// What is new at run power: the endpoint reset enable, the tray's own run power, run power itself and the
+// IO-module power that this tray never raises. The bus work before BMC_READY is kept as two undetailed steps.
+test fn run_power_adds_four_lines_and_standby_keeps_its_bus_work() -> Bool {
+  count(lines_first_set_at_run_power()) == 4
+    && all(["BMC_EP_PERST_EN", "LOCAL_RUN_PWR_EN", "RUN_POWER_EN", "IOM_PWR_EN"], n => any(line_names(xs: lines_first_set_at_run_power()), x => x == n))
+    && count(filter(script_standby.actions, a => is_bus_work(a: a))) == 2
+    && count(filter(script_run_power.actions, a => is_bus_work(a: a))) == 0
+    && count(script_forced_off.actions) == 8
+}
+
+// The tray's own facts: four cables, three corroborations beside the label, and the gaps a consumer would
+// trip on named as gaps.
+test fn the_tray_keeps_its_corroboration_and_its_gaps() -> Bool {
+  count(ranger_management_cables) == 4
+    && count(ranger_corroborations) == 3
+    && ranger_gap_is_recorded(want: BaseboardContactMap)
+    && ranger_gap_is_recorded(want: SignallingVoltage)
+    && ranger_gap_is_recorded(want: WholeTrayInputCurrent)
+    && ranger_gap_is_recorded(want: I2cMessageContent)
+}
+
+// The lot board's forced state is not on the ladder, and its 16 W is below the tray's 34 W with the host
+// off; a state on the ladder reads as one, and 34 W would not be below. The estimates for sizing a supply:
+// over 4 A just after power-on, under 1 A in standby, over 9 A at that owner's limits.
+test fn the_forced_state_is_off_the_ladder_and_a_real_start_needs_amps() -> Bool {
   !is_on_ladder(s: lot_e1_218_standing)
     && is_on_ladder(s: OnRangerLadder { state: RangerBmcReady })
+    && ranger_watts_at_most(state: StandbyHostOff) == 34
+    && ranger_watts_at_most(state: JustAfterPowerOn) == 199
+    && ranger_watts_at_most(state: RunningIdle) == 187
     && below_ranger_standby(watts: lot_e1_218_forced_watts)
     && !below_ranger_standby(watts: 34)
-    && total_watts(p: ranger_power_host_off) == 34
-}
-
-// The supply a real start needs, from the reported figures: about 4.1 A at 48 V just after power-on and
-// about 9.3 A at that owner's limit, so a 1 A limit stops a start that is working.
-test fn a_real_start_needs_more_than_one_amp() -> Bool {
-  total_watts(p: ranger_power_at_start) == 199
-    && milliamps_at_48_volts(p: ranger_power_at_start) > 4000
-    && milliamps_at_48_volts(p: ranger_power_at_owner_limit) > 9000
-    && milliamps_at_48_volts(p: ranger_power_host_off) < 1000
+    && estimated_milliamps(state: StandbyHostOff) < 1000
+    && estimated_milliamps(state: JustAfterPowerOn) > 4000
+    && estimated_milliamps(state: RunningAtOwnerLimits) > 9000
 }
