@@ -694,7 +694,7 @@ fn activation_step_readings(unit: NonEmptyStr) -> List<SlotActuationReading> {
 }
 
 fn activation_reading(unit: NonEmptyStr, load: String, file: String, active: String) -> SlotActuationReading {
-  match slot_actuation_reading_typed(unit: unit, load_raw: load, file_raw: file, active_raw: active) {
+  match slot_actuation_reading_typed(unit: unit, load_raw: load, file_raw: file, active_raw: active, result_raw: "success", main_pid_raw: "0") {
     SlotReadingTyped { reading: r } => r
     SlotReadingUnknownWord { property: _, raw: _ } =>
       SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed, result: ServiceResultSuccess, main_pid: NoMainProcess }
