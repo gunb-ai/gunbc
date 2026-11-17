@@ -20,6 +20,7 @@ import gunbc.fleet.fleet_release_bins_key {
   release_bins_credential_pattern,
   release_bins_retention_decide_statements, release_bins_retention_answer_file,
   release_bins_retention_statements, release_bins_outcome_with_retention_script,
+  release_bins_script_text,
   release_bins_outcome_with_retention_statements, release_bins_retention_answer_page_basename,
   release_bins_retention_ids_basename, release_bins_retention_ids_dedup_basename,
   release_bins_retention_union_basename, release_bins_retention_incomplete_basename,
@@ -552,19 +553,23 @@ test fn release_bins_retention_missing_answer_is_no_answer() -> Bool {
   succeeded_with(script: script_retention_missing_answer, marker: "release-bins retention: no-answer")
 }
 
-// F1 (side chat, 2026-11-16): the outcome=build arm must NOT end in an exit 0,
-// or the retention chore appended after the outcome statements never runs --
-// and the build runs are exactly the ones that ADD cache entries. The script
-// text is the emitted step text; no exit 0 anywhere in it, while both the
-// build outcome and the chore's markers are present, means the build arm
-// falls through to the chore. Before the fix this was red: the arm ended in
-// 'exit' '0'.
+// F1 REVISED (review 96095, superseding the 2026-11-16 side-chat shape): the step's script must
+// BOTH end the outcome=build arm in `exit 0` AND lead with the retention chore. The old claim
+// here asserted the opposite -- no exit 0 anywhere, so the build arm "fell through" to a chore
+// appended at the tail -- and that shape was wrong twice over: falling through runs on into the
+// REUSE path's stored-pack verification, which refuses the just-emptied $STAGE with a fabricated
+// StoredEntryIncomplete on every cache-miss run, and a tail chore never runs on the build path
+// anyway because the arm exits. Discriminators: no exit 0 anywhere is red (the fabricated-refusal
+// shape), and retention not leading is red (the tail-chore shape).
 data script_outcome_with_retention_text: String = release_bins_outcome_with_retention_script()
 
-test fn release_bins_retention_outcome_script_falls_through_build_to_the_chore() -> Bool {
+data script_retention_head_text: String = release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_retention_statements()))
+
+test fn release_bins_retention_outcome_script_leads_with_the_chore_and_the_build_arm_exits_zero() -> Bool {
   string_contains(s: script_outcome_with_retention_text, pattern: "outcome=build")
     && string_contains(s: script_outcome_with_retention_text, pattern: "release-bins retention:")
-    && !string_contains(s: script_outcome_with_retention_text, pattern: "'exit' '0'")
+    && string_contains(s: script_outcome_with_retention_text, pattern: "'exit' '0'")
+    && starts_with(s: script_outcome_with_retention_text, prefix: script_retention_head_text)
 }
 
 // F3 (side chat): a failed lookup is TYPED as lookup-failed, and deletions can

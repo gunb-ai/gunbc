@@ -533,17 +533,18 @@ fn release_bins_transport_test(transport: ReleaseBinsTransportExactness) -> Node
 fn release_bins_outcome_arm(outcome: ReleaseBinsOutcome) -> Node {
   match outcome {
     ReuseAfterVerification => bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: [":", "no-op"])])
-    // No trailing exit 0: in the outcome step this arm is followed by the
-    // release-bins retention chore (release_bins_outcome_with_retention_
-    // statements appends it after the outcome statements), and an exit here
-    // would skip the very runs that ADD cache entries -- the runs retention
-    // exists for. Without the appended chore the script simply ends on this
-    // arm's tee (exit 0), so removing it changes nothing for callers that
-    // stop at the outcome statements.
+    // THE ARM MUST END IN exit 0 (review 96095). Falling through runs on into the REUSE path's
+    // stored-pack verification, whose first check tests $STAGE/release-bins.preimage against the
+    // $STAGE this arm just emptied: every cache-miss run would refuse with a false
+    // StoredEntryIncomplete instead of building -- a fabricated refusal where the real outcome is
+    // a build. The retention chore does not ride this arm's tail: it LEADS the step
+    // (release_bins_outcome_with_retention_statements prepends it), so build runs complete the
+    // chore before they exit, which is exactly what the chore exists for.
     BuildAfterEstablishedAbsence => bash_build_stmt_list_from_nodes(stmts: [
       cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "STAGE")]),
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "STAGE")]),
       append_line(file_var: "GITHUB_OUTPUT", line: lit(t: join(["outcome=", release_bins_build_wire], ""))),
+      bash_build_exit(code: "0"),
     ])
     RefuseOutcome { refusal: r } => bash_build_stmt_list_from_nodes(stmts: [refuse(r: r)])
   }
@@ -2174,7 +2175,15 @@ fn release_bins_key_script_dispatch(pair_modes: List<String>) -> String {
 // the witness and the retained executing controls replay the outcome runner as the workflow emitted
 // it, and deletion is a workflow-cache chore that belongs to CI, not to those controls.
 fn release_bins_outcome_with_retention_statements(product: ReleaseBinsProduct) -> List<Node> {
-  concat(release_bins_outcome_statements(product: product), release_bins_retention_statements())
+  // The retention chore LEADS the step (review 96095). The build arm of the outcome chain must
+  // end in exit 0 -- falling through would run it into the reuse path's stored-pack verification,
+  // which refuses against the just-emptied $STAGE with a fabricated StoredEntryIncomplete -- and
+  // the build runs are exactly the ones that ADD cache entries, the runs retention exists for.
+  // A tail chore would therefore never run there. Leading makes both the build and the reuse
+  // path pay the bookkeeping; every retention outcome is typed and none can stop the step, so
+  // "Deletion never fails the job's real work" (gunbc.design_ruling::release_bins_retention_admitted)
+  // holds on both paths.
+  concat(release_bins_retention_statements(), release_bins_outcome_statements(product: product))
 }
 
 fn release_bins_outcome_with_retention_script_for(product: ReleaseBinsProduct) -> String {
