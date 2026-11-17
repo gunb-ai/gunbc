@@ -71,7 +71,10 @@ type GitArgvRoute
 // Only UNAMBIGUOUSLY read-only verbs belong here. A verb whose write-ness is argument-dependent is
 // NOT safe at a route that names no place to run, so it stays out and is refused: `config <k> <v>`
 // writes while `config <k>` reads; `branch`/`tag` create by default; `remote add/remove` write;
-// `stash`, `clean`, `bisect` mutate state. Reaching one of those at a workdir-free route means
+// `stash`, `clean`, `bisect` mutate state; `reflog` is the subtle one -- bare `git reflog` only reads,
+// but `git reflog expire` prunes entries and `git reflog delete` removes one, both WRITING the
+// repository (verified: `git reflog expire --expire=now --all` empties the reflog). So `reflog` is
+// refused here too; reach it, if ever, via the in-repo dressing (`-C <repo> reflog show ...`). Reaching one of those at a workdir-free route means
 // re-dressing it (`-C <repo> ...`) or taking a directory-carrying route -- never admitting an
 // unconsidered verb by default.
 fn git_subcommand_is_safe_read_only(subcommand: String) -> Bool {
@@ -92,7 +95,6 @@ fn git_subcommand_is_safe_read_only(subcommand: String) -> Bool {
   || subcommand == "shortlog"
   || subcommand == "whatchanged"
   || subcommand == "grep"
-  || subcommand == "reflog"
 }
 
 // The in-repo dressing: a git global option in first position that actually LOCATES the repository --

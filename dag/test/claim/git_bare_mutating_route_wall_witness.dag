@@ -190,3 +190,16 @@ test fn work_tree_dressing_does_not_name_the_repo_and_is_refused() -> Bool {
        argv: ["--git-dir", "/worktrees/gate/.git", "--work-tree", "/worktrees/gate", "commit", "-q", "-m", "x"],
      )
 }
+
+// `reflog` is the argument-dependent-write verb the read-only allowlist must NOT carry: bare `git
+// reflog` only reads, but `git reflog expire` prunes and `git reflog delete` removes entries, both
+// WRITING the repository (verified: `git reflog expire --expire=now --all` empties the reflog, 1->0
+// entries). A bare `reflog` argv at a workdir-free route is refused; reaching it requires the in-repo
+// dressing (`-C <repo> reflog show ...`). These are attack inputs (no extdeps shape mints them),
+// matching the RED-claim convention.
+// RED control (review 96171 finding 2): re-add `reflog` to `git_subcommand_is_safe_read_only` and both
+// conjuncts go Admitted, reddening THIS claim alone while the others stay green.
+test fn reflog_writes_are_refused_at_workdir_free_route() -> Bool {
+     refused_bare_mutating_free(["reflog"])
+  && refused_bare_mutating_free(["reflog", "expire", "--expire=now", "--all"])
+}
