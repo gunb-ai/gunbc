@@ -268,14 +268,24 @@ test fn a_run_record_for_an_entry_no_deferral_carries_refuses_the_join() -> Bool
 // that is not a tree token, a digest that is not a digest), a rebuilt binary on one side (which would make the
 // comparison one of instruments rather than of trees), the same tree claimed twice (which would make the
 // before/after a difference without a change), and two different function grains.
-fn pair_holds(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
-  before.entry_file == after.entry_file
-    && before.binary_digest == after.binary_digest
-    && is_sha256_digest(digest: before.binary_digest)
+// The pair relation split into the three things it actually asserts, so the RED below can show WHICH one each
+// mutation breaks. A single opaque predicate would let a mutation refuse for the wrong reason and still look
+// like a control -- review 96205 caught exactly that in the first version of this claim.
+fn one_instrument_one_binary(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  before.entry_file == after.entry_file && before.binary_digest == after.binary_digest
+}
+
+fn run_records_are_well_shaped(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  is_sha256_digest(digest: before.binary_digest)
     && is_sha256_digest(digest: after.binary_digest)
-    && before.tree != after.tree
     && is_short_tree_token(text_token: before.tree)
     && is_short_tree_token(text_token: after.tree)
+}
+
+fn pair_holds(before: FrozenResolverRunSighting, after: FrozenResolverRunSighting) -> Bool {
+  one_instrument_one_binary(before: before, after: after)
+    && run_records_are_well_shaped(before: before, after: after)
+    && before.tree != after.tree
     && lists_agree(left: before.functions, right: after.functions)
 }
 
@@ -286,9 +296,12 @@ test fn the_two_run_sightings_name_one_instrument_on_one_binary_at_two_trees() -
   )
 }
 
-// DISCRIMINATING TRIPLE: each mutation of the after record has to refuse, so the predicate above is a check
-// and not a restatement. A rebuilt binary, the same tree on both sides, and a tree written as prose -- each
-// one, alone, against the real before record.
+// DISCRIMINATING TRIPLE, one refusal reason each, and the other two components asserted to PASS for that
+// same mutation -- so removing any one component of pair_holds turns one of these three lines red.
+//   rebuilt binary: a DIFFERENT but well-shaped 64-hex digest (the first version of this claim used a 32-hex
+//     token, which the shape check refused first and so tested nothing about the equality -- review 96205);
+//   repeated tree: the after record claims the before record's tree, a difference without a change;
+//   prose tree: a tree written as words, the shape the ledger forbids.
 test fn the_pair_predicate_refuses_a_rebuilt_binary_a_repeated_tree_and_prose() -> Bool {
   let before = declaration_reference_cites_a_declaration_nothing_resolved_frozen_run
   let after = declaration_reference_cites_a_declaration_nothing_resolved_restored_run
@@ -296,7 +309,7 @@ test fn the_pair_predicate_refuses_a_rebuilt_binary_a_repeated_tree_and_prose() 
     entry_file: after.entry_file,
     functions: after.functions,
     tree: after.tree,
-    binary_digest: "8f14e45fceea167a5a36dedd4bea2543",
+    binary_digest: "326f41a37958bb5cbf8ef5197bd3e358f3d3a4bea70f30719190619647ac5ce2",
   }
   let same_tree = FrozenResolverRunSighting {
     entry_file: after.entry_file,
@@ -311,6 +324,12 @@ test fn the_pair_predicate_refuses_a_rebuilt_binary_a_repeated_tree_and_prose() 
     binary_digest: after.binary_digest,
   }
   !pair_holds(before: before, after: rebuilt_binary)
+    && run_records_are_well_shaped(before: before, after: rebuilt_binary)
+    && !one_instrument_one_binary(before: before, after: rebuilt_binary)
     && !pair_holds(before: before, after: same_tree)
+    && one_instrument_one_binary(before: before, after: same_tree)
+    && run_records_are_well_shaped(before: before, after: same_tree)
     && !pair_holds(before: before, after: prose_tree)
+    && one_instrument_one_binary(before: before, after: prose_tree)
+    && !run_records_are_well_shaped(before: before, after: prose_tree)
 }
