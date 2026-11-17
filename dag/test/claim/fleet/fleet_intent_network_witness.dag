@@ -6,8 +6,10 @@ import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { mac_address, mac_addresses_are_equal }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv10, operator_host_srv11, operator_host_srv9,
+  operator_host_srv10, operator_host_srv11, operator_host_srv9, operator_host_srv14,
 }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enrollments, known_host_row_field }
+import gunbc.fleet.fleet_known_hosts_anchor { first_contact_known_host_rows, fleet_known_hosts_rows }
 import gunbc.fleet.fleet_intent_network {
   fleet_intent_network, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv10_host_lan_endpoint, srv12_host_lan_endpoint, srv14_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint, srv9_host_lan_endpoint,
 }
@@ -21,6 +23,7 @@ import product.network_topology {
   FabricationAppliance,
   HostLan,
   HostOperatingSystem,
+  Lan,
   NetworkEndpoint,
   network_reachability,
 }
@@ -139,9 +142,18 @@ test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses(
     && srv10_host_lan_endpoint.address == "192.168.1.237"
     && srv10_host_lan_endpoint.role == HostOperatingSystem
     && srv10_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv10 }
-    && srv14_host_lan_endpoint.address == "192.168.1.238"
+    // The ADDRESS IS NOT PINNED (msg_6859afc9): .238 is a DHCP lease the operator observed at 22:36Z
+    // (msg_db7db143); copying it into a claim makes a change detector, not a referent
+    // (gunbc.design_argument::fail_closed). What IS pinned is the row's KIND -- the lease-observation
+    // row for srv14's operating system on the LAN -- and its reach discipline: the ONLY rows in the
+    // verification registry that may carry srv14's LAN address are the first-contact hop rows, never an
+    // anchored row (the anchored row appears only when srv14 joins, at the DERIVED tailnet name).
+    && srv14_host_lan_endpoint.label == "srv14-host-lan"
     && srv14_host_lan_endpoint.role == HostOperatingSystem
+    && srv14_host_lan_endpoint.locality == Lan
     && srv14_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv14 }
+    && !any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String))
+    && all(first_contact_known_host_rows(), r => any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
     && !any(fleet_intent_network, e => e.label == "srv11-host-lan")
     && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10"
 }
