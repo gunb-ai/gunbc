@@ -1679,7 +1679,10 @@ fn release_bins_retention_statements() -> List<Node> {
     [
       // On-carrier marker: the hand-shell gate asks every interim bash carrier
       // to name what retires it (ctrl review policy; review 96043).
-      bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")),
+      match bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")) {
+        Present { value: n } => n
+        Absent => bash_build_command_from_lits(lits: ["echo", "release-bins retention: dissolve-on marker refused -- fix dissolution_description text"])
+      },
       root_statement(),
       release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
       // Invalidate before fetching: a leftover answer (or over-cap flag) from
