@@ -1,0 +1,131 @@
+module test.claim.live_deploy.release_pair_delivery_plan_witness
+
+// THE WET DELIVERY LEG BUILDS A TYPED PAIRED-INSTALL PLAN — AND REFUSES TO INSTALL A MIXED PAIR. This witnesses
+// the one authority the wet leg (gunbc.live_deploy.release_pair_delivery::release_pair_delivery_plan) owns: it
+// turns the fold's decision (deliver_release_pair) into an ORDERED TYPED plan (gh download argv -> consumer
+// build-key verify -> place binary at the bound-pair locus -> place source receipt -> restart serve), and it
+// collapses to PlanKeepsLastGood on every refusal, so a mixed pair is never installed and the serve unit is
+// never restarted onto a half pair. This is the DRY half of the wet leg: the argv and the locus paths are the
+// exact values the lab's own delivery unit runs, so what is claimed here is what the unit does on srv1.
+//
+// ── WHY IT IS RED ON BASE ──────────────────────────────────────────────────────────────────────────────────
+// On base the delivery leg does not exist — neither release_pair_delivery_plan nor its result type
+// (DeliveryPlan) — so no plan is built and no refusal is representable. On head a good head yields a
+// PlanToInstall whose binary/source placement paths and serve restart command equal the recomputed typed
+// values for the bound pair, while each bad head (bins unbuilt / pack unverified / source head mismatch) yields
+// PlanKeepsLastGood. That switch is the red control the claim demands.
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import gunbc.live_deploy.release_pair_delivery {
+  DeliveryPlan, PlanToInstall, PlanKeepsLastGood, release_pair_delivery_plan,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding, RevisionBoundAtEmission,
+  release_locus_member_path, release_locus_tree_receipt_path,
+}
+import gunbc.live_deploy.operations { systemctl_restart_command }
+
+// ── fixtures (hermetic; substrate inputs only, no live host) ───────────────────────────────────────────────
+data base_root: String = "/opt/gunbc/releases"
+data main_sha: String = "3333333333333333333333333333333333333333"
+data last_good_sha: String = "2222222222222222222222222222222222222222"
+data wrong_sha: String = "9999999999999999999999999999999999999999"
+data bin_sha256: String = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+data run_id: String = "43968177413"
+data repo_slug: String = "gunb-ai/gunbc"
+data pack_dir: String = "/opt/gunbc/releases/incoming"
+data serve_unit_text: String = "gunbc-srv1-lab-codex-feedback-v0.service"
+
+fn main_head() -> CommitSha { main_sha as CommitSha }
+fn last_good_head() -> CommitSha { last_good_sha as CommitSha }
+fn wrong_head() -> CommitSha { wrong_sha as CommitSha }
+fn last_good_serving() -> ReleaseRevisionBinding { RevisionBoundAtEmission { revision: last_good_head() } }
+fn serve_unit() -> NonEmptyStr { serve_unit_text as NonEmptyStr }
+
+// ── the good head: one ordered typed plan installs BOTH halves, then restarts serve ─────────────────────────
+// WITNESS: a verified head with its release bins built and its source at the SAME head builds a PlanToInstall
+// that places the binary by its OWN sha256 under the source head's revision directory and the source receipt at
+// the same revision, and restarts the serve unit — every path/command equal to the recomputed typed value for
+// the bound pair. This is the same value set the lab's delivery unit executes.
+test fn witness_plan_good_head_builds_bound_install() -> Bool {
+  let plan = release_pair_delivery_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    verified: true,
+    run_id: run_id,
+    repo: repo_slug,
+    pack_dir: pack_dir,
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { fetch_argv: _, verify_dispatch: _, place_binary: pb, place_source: ps, restart_command: rc, revision: _ } =>
+      let want_rev = RevisionBoundAtEmission { revision: main_head() }
+      (pb == release_locus_member_path(root: base_root, revision: want_rev, name: bin_sha256)) &&
+        (ps == release_locus_tree_receipt_path(root: base_root, revision: want_rev)) &&
+        (rc == systemctl_restart_command(unit: serve_unit(), privileged: true))
+    PlanKeepsLastGood { kept: _, reason: _ } => false
+  }
+}
+
+// ── RED CONTROL (arm 1): a head whose release bins were never built installs nothing ────────────────────────
+test fn witness_plan_bins_not_built_keeps_last_good() -> Bool {
+  let plan = release_pair_delivery_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: none,
+    verified: true,
+    run_id: run_id,
+    repo: repo_slug,
+    pack_dir: pack_dir,
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { fetch_argv: _, verify_dispatch: _, place_binary: _, place_source: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}
+
+// ── RED CONTROL (arm 2): a pack that fails build-key verification installs nothing ─────────────────────────
+test fn witness_plan_pack_unverified_keeps_last_good() -> Bool {
+  let plan = release_pair_delivery_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    verified: false,
+    run_id: run_id,
+    repo: repo_slug,
+    pack_dir: pack_dir,
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { fetch_argv: _, verify_dispatch: _, place_binary: _, place_source: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}
+
+// ── RED CONTROL (arm 3): a source head that is not the head delivered for installs nothing ─────────────────
+test fn witness_plan_source_head_mismatch_keeps_last_good() -> Bool {
+  let plan = release_pair_delivery_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: wrong_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    verified: true,
+    run_id: run_id,
+    repo: repo_slug,
+    pack_dir: pack_dir,
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { fetch_argv: _, verify_dispatch: _, place_binary: _, place_source: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+  }
+}

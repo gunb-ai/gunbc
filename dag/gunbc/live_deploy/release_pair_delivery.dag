@@ -1,0 +1,98 @@
+module gunbc.live_deploy.release_pair_delivery
+
+// THE WET DELIVERY LEG, MODELLED AS TYPED STEPS. This is the leg that makes a PAIRED lab deploy happen by
+// itself — a modelled leg, not a person at a terminal. It composes the EXISTING typed primitives (the gh
+// release-bins download argv, the per-revision release_locus placement paths, the systemctl restart command,
+// and the consumer build-key verify script) into one ordered install of the lab's release PAIR, and it is
+// gated end-to-end by the ONE fold that already owns the "is this pair bound?" decision —
+// gunbc.live_deploy.release_locus::deliver_release_pair. Every refusal the fold names (bins not built, pack not
+// verified, source head != the head delivered for) collapses to PlanKeepsLastGood: nothing is fetched into a
+// serve path, nothing is placed, the serve unit is not restarted, and the pair that was serving stays serving.
+// Keeping that refusal in ONE place is the whole point — a half-installed pair is exactly the mixed state the
+// lab serve gate then refuses to serve.
+//
+// ── WHAT IS AND IS NOT MODELLED HERE ───────────────────────────────────────────────────────────────────────
+// This module is DRY: it BUILDS the argv, the locus paths and the restart command as typed values. It does not
+// EXECUTE them. The wet execution — running the download argv via extdeps.shell.exec RunArgv, placing the
+// verified pack at the locus via the Filesystem effects, and restarting the serve unit via the systemctl
+// effect — is the lab's own delivery unit (the unit + timer emitted and registered in the sibling change to
+// emit.dag / spec.dag / apply_legs.dag). Those effects take exactly the values produced here, so the plan
+// claimed below IS the plan the unit runs. No new shell string is invented: every piece comes from an existing
+// named primitive.
+//
+// ── WHY IT IS RED ON BASE ──────────────────────────────────────────────────────────────────────────────────
+// On base there is no delivery leg to build — the fold (deliver_release_pair) does not exist, and with it no
+// typed plan is produced and no refusal is representable. On head, a good head yields a PlanToInstall naming
+// the bound-pair locus and the serve restart, while every bad head yields PlanKeepsLastGood — which is the red
+// control the claim demands.
+
+import std.types { String, List, NonEmptyStr, CommitSha, Bool }
+import gunbc.live_deploy.release_locus {
+  deliver_release_pair, delivered_pair_revision,
+  ReleaseRevisionBinding,
+  release_locus_member_path, release_locus_tree_receipt_path,
+}
+import gunbc.live_deploy.operations { systemctl_restart_command }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
+import extdeps.tools.gh { gh_run_download_argv }
+
+// The one authority: either the bound pair is delivered as a single ordered unit, or the last-good pair keeps
+// serving and the refusal is named. There is no third shape (no partial install).
+type DeliveryPlan =
+  | PlanToInstall {
+      // Fetch the CI release-bins pack for the head with the typed gh download argv (the ONLY host-side
+      // fetch primitive — release-bins.tgz otherwise exists only in CI).
+      fetch_argv: List<String>,
+      // The consumer build-key verify script run against the fetched pack before anything is placed.
+      verify_dispatch: String,
+      // The verified binary, placed by its OWN sha256 name inside the source head's revision directory — so
+      // the binary and the tree carry ONE identity (one authority), never two spellings.
+      place_binary: String,
+      // The source tree receipt for the same revision.
+      place_source: String,
+      // Restart the serve unit ONLY after both halves land, so it never observes a half pair.
+      restart_command: String,
+      // The delivered pair's own binding (named by the source head the pair was delivered for).
+      revision: ReleaseRevisionBinding,
+    }
+  | PlanKeepsLastGood {
+      kept: ReleaseRevisionBinding,
+      reason: NonEmptyStr,
+    }
+
+// Build the delivery plan for one candidate pair. `binaries_sha256` is optional exactly as the fold wants it
+// (none == the head's release bins were never built); `verified` is the pack's build-key check result. Every
+// argument the wet leg needs is a typed value, so the same call that the claim drives is what the unit runs.
+fn release_pair_delivery_plan(
+  base_root: String,
+  serving: ReleaseRevisionBinding,
+  main_head: CommitSha,
+  source_head: CommitSha,
+  binaries_sha256: String?,
+  verified: Bool,
+  run_id: String,
+  repo: String,
+  pack_dir: String,
+  serve_unit: NonEmptyStr,
+) -> DeliveryPlan {
+  match deliver_release_pair(
+    base_root: base_root,
+    serving: serving,
+    main_head: main_head,
+    source_head: source_head,
+    binaries_sha256: binaries_sha256,
+    verified: verified,
+  ) {
+    PairInstalled { pair: p, locus: _ } =>
+      let rev = delivered_pair_revision(pair: p)
+      PlanToInstall {
+        fetch_argv: gh_run_download_argv(run_id: run_id, repo: repo, artifact: "release-bins", dir: pack_dir),
+        verify_dispatch: release_bins_consumer_key_check_script(),
+        place_binary: release_locus_member_path(root: base_root, revision: rev, name: p.binaries_sha256 as String),
+        place_source: release_locus_tree_receipt_path(root: base_root, revision: rev),
+        restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
+        revision: rev,
+      }
+    PairRefused { reason: r, kept: k } => PlanKeepsLastGood { kept: k, reason: r }
+  }
+}
