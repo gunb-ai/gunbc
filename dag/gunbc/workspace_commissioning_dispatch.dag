@@ -13,7 +13,7 @@ import extdeps.systemd.systemctl
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.workspace_allocation { workspace_request_from_json }
-import gunbc.workspace_host_offer_observe { workspace_observe_host_offers }
+import gunbc.workspace_host_offer_observe { workspace_observe_host_offers, WorkspaceHostOfferObservation, WorkspaceHostOffersObserved, WorkspaceHostOfferNameRefused }
 import gunbc.workspace_offer_producer { workspace_host_offer_text }
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_decode, workspace_commissioning_input_read, workspace_commissioning_input_publish, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputAbsent, WorkspaceCommissioningInputRefused }
 import gunbc.workspace_commissioning_executor_input { workspace_executor_input_from_plan, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
@@ -196,9 +196,12 @@ fn workspace_dispatch_offer_cli() -> CliWireResponse {
     JsonDocumentUnreadable { gap: _ } => workspace_dispatch_refused(reason: "offer request is not one JSON document")
     JsonDocumentParsed { value: doc } => match workspace_request_from_json(value: doc) {
       Absent => workspace_dispatch_refused(reason: "offer request is not an admitted workspace request")
-      Present { value: request } => CliWirePrintable {
-        bytes: concat(join(map(workspace_observe_host_offers(request: request), read => workspace_host_offer_text(read: read)), "\n"), "\n"),
-        exit: ExitSuccess,
+      Present { value: request } => match workspace_observe_host_offers(request: request) {
+        WorkspaceHostOfferNameRefused { reason } => workspace_dispatch_refused(reason: reason as String)
+        WorkspaceHostOffersObserved { reads } => CliWirePrintable {
+          bytes: concat(join(map(reads, read => workspace_host_offer_text(read: read)), "\n"), "\n"),
+          exit: ExitSuccess,
+        }
       }
     }
   } }

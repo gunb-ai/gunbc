@@ -595,7 +595,7 @@ fn read_bmc_write_approval(
 //
 // Qualification is a separately authorized privileged effect: it is classified by executing
 // gunbc.auth.authorization_pattern_selection select_authorization_pattern in
-// gunbc.auth.privileged_effect_census (its row names qualify_rotation_route), and the pattern that
+// gunbc.auth.privileged_effect_registry (its row names qualify_rotation_route), and the pattern that
 // classification selects is an operator-approved capability per controller. So the effect takes the
 // operator's go for this exact controller, build and request with a purpose covering QualifyRoute.
 
@@ -771,7 +771,7 @@ type RouteQualificationOutcome
   | RouteQualificationRefused { standing: BmcRotationRouteStanding, cause: RouteQualificationRefusal }
 
 // THE EFFECT: from a LIVE response only. The one construction of RouteGroundedByExecutedRequest from
-// a candidate. Its census row is gunbc.auth.privileged_effect_census route_qualification_effect.
+// a candidate. Its census row is gunbc.auth.privileged_effect_registry route_qualification_effect.
 fn qualify_rotation_route(
   standing: BmcRotationRouteStanding,
   approval: ScopedAuthorization<BmcAccountWriteApproval>,

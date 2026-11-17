@@ -52,7 +52,6 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.host_identity { HostIdentity }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path }
 import gunbc.runner.runner_slot_actuation {
   read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused, slot_is_masked, slot_state_active,
   slot_actuation_settled, slot_actuation_outcome_wire, SlotActuationOutcome,
@@ -446,3 +445,7 @@ fn step_budget_seconds() -> Int? {
     ActionsVariableAbsent { variable: _, detail: _ } => none
   }
 }
+
+data gunbc_ci_runner_host_withdraw_receipt_path: String = "target/runner-host-withdraw-receipt.txt"
+
+data gunbc_ci_runner_host_restore_receipt_path: String = "target/runner-host-restore-receipt.txt"

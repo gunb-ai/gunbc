@@ -35,8 +35,15 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollment_intents, hosts_enrolled_among }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
+import gunbc.fleet.fleet_posix_accounts {
+  DeployRunnerPrincipal,
+  fleet_posix_root_user,
+  fleet_posix_ci_runner_user,
+  fleet_posix_runner_listener_login,
+}
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollments, hosts_enrolled_among }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -197,12 +204,25 @@ data runner_group_id_env_name: String = "RUNNER_GROUP_ID"
 // re-grounding the denominator. Two rows that look identical here still resolve to very different
 // widths, and that is the derivation working rather than an inconsistency.
 
+// THE RUNNER PRINCIPAL, MODELED ONCE PER LISTENER KIND -- not per host. Two shared datums: the legacy
+// root-listener principal (srv1-srv4 today, until each host's own B3d cutover) and the gunbc-runner listener
+// principal (butch/srv14 today, and where every host lands after its cutover). The deploy specs reference
+// these (the spec is the single storage for a host's listener and job user; the converge reads the same spec
+// through runner_host_spec_for), so the deploy and the converge read ONE datum for a host's principal
+// (single_authority; minimize_redundancy -- the concept is modeled once and every use derived from it). A
+// host's B3d cutover repoints its SPEC from the legacy datum to the gunbc-runner datum -- one edit to that
+// host's spec row, not an edit to a datum named after the host (operator ruling D2: per-host declarations are
+// mini forks). The logins are the account model's authorities (fleet_posix_root_user,
+// fleet_posix_ci_runner_user, fleet_posix_runner_listener_login), reused, never re-spelled.
+data legacy_root_listener_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_root_user.name, job_user: fleet_posix_ci_runner_user.name }
+data gunbc_runner_listener_principal: DeployRunnerPrincipal = DeployRunnerPrincipal { unit_user: fleet_posix_runner_listener_login, job_user: fleet_posix_ci_runner_user.name }
+
 data srv1_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv1",
   ssh_target: "briansrls@192.168.1.203",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: legacy_root_listener_principal.unit_user,
+  job_user: legacy_root_listener_principal.job_user,
   app: gunbc_ci_github_app,
 }
 
@@ -296,16 +316,16 @@ data srv2_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv2",
   ssh_target: "briansrls@192.168.1.201",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: legacy_root_listener_principal.unit_user,
+  job_user: legacy_root_listener_principal.job_user,
   app: gunbc_ci_github_app,
 }
 data srv3_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv3",
   ssh_target: "briansrls@192.168.1.221",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: legacy_root_listener_principal.unit_user,
+  job_user: legacy_root_listener_principal.job_user,
   app: gunbc_ci_github_app,
 }
 
@@ -313,10 +333,38 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
   host_label: "srv4",
   ssh_target: "briansrls@192.168.1.196",
   runner_user: "briansrls",
-  unit_user: "root",
-  job_user: "ghrunner",
+  unit_user: legacy_root_listener_principal.unit_user,
+  job_user: legacy_root_listener_principal.job_user,
   app: gunbc_ci_github_app,
 }
+
+// butch (srv14): the already-installed, CI-only host. Its ssh_target is DERIVED from the one address home
+// (gunbc.fleet.fleet_intent_network srv14_host_lan_endpoint, read through host_lan_address) -- NOT a fifth
+// hand-written IP literal (the srv1-srv4 literals above are existing debt, out of B2's scope; do not add to
+// them). It is a fn, not a datum, precisely so it can REFUSE (Absent) when the fleet records no LAN address
+// for the host, rather than silently borrowing a literal (fail_closed). Its listener is the new gunbc-runner
+// account from the start; creating that OS account on the host is B3b/B3d (the named consumers).
+fn srv14_runner_host_spec() -> RunnerHostSpec? {
+  match host_lan_address(host: operator_host_srv14) {
+    Absent => Absent
+    Present { value: address } => Present { value: RunnerHostSpec {
+      host_label: "srv14",
+      ssh_target: join(["ubuntu@", address as String], "") as NonEmptyStr,
+      runner_user: "ubuntu",
+      unit_user: gunbc_runner_listener_principal.unit_user,
+      job_user: gunbc_runner_listener_principal.job_user,
+      app: gunbc_ci_github_app,
+    } }
+  }
+}
+
+// THE RUNNER PRINCIPAL FOR A HOST lives in ONE place: that host's RunnerHostSpec row -- its unit_user is the
+// listener login, its job_user the CI job account. The deploy reads the spec directly, and the converge plan
+// reads the SAME spec through runner_host_spec_for, so there is no second storage that could drift from the
+// deploy (single_authority). A host's B3d cutover is ONE edit: repoint that host's spec to
+// gunbc_runner_listener_principal. srv1-srv4 reference legacy_root_listener_principal (root listener) until
+// their own cutover; butch (srv14) references gunbc_runner_listener_principal from the start -- creating that
+// OS account on the host is B3b/B3d (the named consumers, each with its trigger).
 
 // A REFUSED HOST IS A THIRD DISPOSITION, NOT A SPELLING OF UNMODELED. srv2 is modeled precisely
 // enough to know its width cannot be derived; calling that "unmodeled" would hand it the remedy for a
@@ -368,7 +416,7 @@ fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
 // with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
 // so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
 fn fleet_runner_host_resolutions() -> List<RunnerHostDeployResolution> {
-  runner_host_resolutions_among(intents: fleet_enrollment_intents)
+  runner_host_resolutions_among(intents: fleet_enrollments)
 }
 
 fn runner_host_resolutions_among(intents: List<HostEnrollmentIntent>) -> List<RunnerHostDeployResolution> {
@@ -397,12 +445,22 @@ type RunnerHostSpecRow {
   spec: RunnerHostSpec
 }
 
-data runner_host_spec_rows: List<RunnerHostSpecRow> = [
-  RunnerHostSpecRow { host: operator_host_srv1, spec: srv1_runner_host_spec },
-  RunnerHostSpecRow { host: operator_host_srv2, spec: srv2_runner_host_spec },
-  RunnerHostSpecRow { host: operator_host_srv3, spec: srv3_runner_host_spec },
-  RunnerHostSpecRow { host: operator_host_srv4, spec: srv4_runner_host_spec },
-]
+// One row per host that has a runner spec. srv1-srv4 are data; butch (srv14) joins only when its LAN address
+// is modeled (srv14_runner_host_spec refuses otherwise), so a host with no modeled address never gets a spec.
+fn runner_host_spec_rows() -> List<RunnerHostSpecRow> {
+  concat(
+    [
+      RunnerHostSpecRow { host: operator_host_srv1, spec: srv1_runner_host_spec },
+      RunnerHostSpecRow { host: operator_host_srv2, spec: srv2_runner_host_spec },
+      RunnerHostSpecRow { host: operator_host_srv3, spec: srv3_runner_host_spec },
+      RunnerHostSpecRow { host: operator_host_srv4, spec: srv4_runner_host_spec },
+    ],
+    match srv14_runner_host_spec() {
+      Present { value: s } => [RunnerHostSpecRow { host: operator_host_srv14, spec: s }]
+      Absent => []
+    },
+  )
+}
 
 // WHICH HOSTS' JOB ACCOUNTS HOLD A USER SYSTEMD MANAGER (loginctl linger). gunbc.runner.runner_user_session
 // converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
@@ -426,7 +484,7 @@ fn runner_job_user_session_on(host: HostIdentity) -> Bool {
 }
 
 fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
-  match filter(runner_host_spec_rows, r => (r.host as String) == (host as String)).first() {
+  match filter(runner_host_spec_rows(), r => (r.host as String) == (host as String)).first() {
     Present { value: r } => RunnerHostSpecFound { spec: r.spec }
     Absent => RunnerHostSpecAbsent { host: host }
   }

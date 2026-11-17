@@ -1,6 +1,7 @@
 module gunbc.required_lanes_gate
 
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_assign_lit,
   bash_build_command_with_words,
   bash_build_exit,
@@ -86,7 +87,7 @@ fn required_lane_not_success_test(var_name: String) -> Node {
       required_lane_result_word(var_name: var_name),
       bash_build_word_lit(text: "!="),
       bash_build_word_lit(text: floor_lane_result_success)
-    ]
+    ], spelling: BracketQuoted
   )
 }
 
@@ -119,7 +120,7 @@ fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
       bash_build_word_var(name: var_name),
       bash_build_word_lit(text: "="),
       bash_build_word_lit(text: text)
-    ]
+    ], spelling: BracketQuoted
   )
 }
 

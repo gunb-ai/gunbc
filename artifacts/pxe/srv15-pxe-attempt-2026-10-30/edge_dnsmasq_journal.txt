@@ -1,0 +1,55 @@
+2026-10-30T13:21:35.175151+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:21:35.175179+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 PXE(enP3p3s0f1) 9c:6b:00:e7:ca:63 proxy
+2026-10-30T13:21:35.175197+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 tags: onboarding-known, known, efi-arm64, onboarding-install, enP3p3s0f1
+2026-10-30T13:21:35.175215+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 next server: 192.168.1.196
+2026-10-30T13:21:35.175230+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 broadcast response
+2026-10-30T13:21:35.175245+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 sent size:  1 option: 53 message-type  2
+2026-10-30T13:21:35.175259+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 sent size:  4 option: 54 server-identifier  192.168.1.196
+2026-10-30T13:21:35.175326+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 sent size:  9 option: 60 vendor-class  50:58:45:43:6c:69:65:6e:74
+2026-10-30T13:21:35.175347+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 sent size: 17 option: 97 client-machine-id  00:0d:cb:02:cf:f2:c9:f8:43:99:92:9c:6b:00...
+2026-10-30T13:21:38.210535+00:00 srv4 dnsmasq-dhcp[266064]: 2861436263 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:21:38.259656+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:21:38.259688+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 PXE(enP3p3s0f1) 9c:6b:00:e7:ca:63 proxy
+2026-10-30T13:21:38.259703+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 tags: onboarding-known, known, efi-arm64, onboarding-install, enP3p3s0f1
+2026-10-30T13:21:38.259715+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 bootfile name: bootaa64.efi
+2026-10-30T13:21:38.259727+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 server name: 192.168.1.196
+2026-10-30T13:21:38.259739+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 next server: 192.168.1.196
+2026-10-30T13:21:38.259754+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 sent size:  1 option: 53 message-type  5
+2026-10-30T13:21:38.259766+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 sent size:  4 option: 54 server-identifier  192.168.1.196
+2026-10-30T13:21:38.259780+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 sent size:  9 option: 60 vendor-class  50:58:45:43:6c:69:65:6e:74
+2026-10-30T13:21:38.259795+00:00 srv4 dnsmasq-dhcp[266064]: 1804363857 sent size: 17 option: 97 client-machine-id  00:0d:cb:02:cf:f2:c9:f8:43:99:92:9c:6b:00...
+2026-10-30T13:21:39.213771+00:00 srv4 dnsmasq-tftp[266064]: error 8 User aborted the transfer received from 192.168.1.204
+2026-10-30T13:21:39.213804+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/bootaa64.efi to 192.168.1.204
+2026-10-30T13:21:39.457987+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/bootaa64.efi to 192.168.1.204
+2026-10-30T13:21:39.465960+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/revocations.efi not found for 192.168.1.204
+2026-10-30T13:21:40.071514+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/grubaa64.efi to 192.168.1.204
+2026-10-30T13:21:41.539534+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/grub/arm64-efi/command.lst not found for 192.168.1.204
+2026-10-30T13:21:41.539891+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/grub/arm64-efi/fs.lst not found for 192.168.1.204
+2026-10-30T13:21:41.540388+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/grub/arm64-efi/crypto.lst not found for 192.168.1.204
+2026-10-30T13:21:41.540713+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/grub/arm64-efi/terminal.lst not found for 192.168.1.204
+2026-10-30T13:21:41.542550+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg to 192.168.1.204
+2026-10-30T13:26:54.436645+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:26:54.436670+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 PXE(enP3p3s0f1) 9c:6b:00:e7:ca:63 proxy
+2026-10-30T13:26:54.436684+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 tags: onboarding-known, known, efi-arm64, onboarding-install, enP3p3s0f1
+2026-10-30T13:26:54.436697+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 next server: 192.168.1.196
+2026-10-30T13:26:54.436708+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 broadcast response
+2026-10-30T13:26:54.436721+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 sent size:  1 option: 53 message-type  2
+2026-10-30T13:26:54.436732+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 sent size:  4 option: 54 server-identifier  192.168.1.196
+2026-10-30T13:26:54.436745+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 sent size:  9 option: 60 vendor-class  50:58:45:43:6c:69:65:6e:74
+2026-10-30T13:26:54.436760+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 sent size: 17 option: 97 client-machine-id  00:0d:cb:02:cf:f2:c9:f8:43:99:92:9c:6b:00...
+2026-10-30T13:26:57.505066+00:00 srv4 dnsmasq-dhcp[266064]: 3861895847 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:26:57.552167+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 vendor class: PXEClient:Arch:00011:UNDI:003016
+2026-10-30T13:26:57.552191+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 PXE(enP3p3s0f1) 9c:6b:00:e7:ca:63 proxy
+2026-10-30T13:26:57.552205+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 tags: onboarding-known, known, efi-arm64, onboarding-install, enP3p3s0f1
+2026-10-30T13:26:57.552217+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 bootfile name: bootaa64.efi
+2026-10-30T13:26:57.552229+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 server name: 192.168.1.196
+2026-10-30T13:26:57.552240+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 next server: 192.168.1.196
+2026-10-30T13:26:57.552253+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 sent size:  1 option: 53 message-type  5
+2026-10-30T13:26:57.552265+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 sent size:  4 option: 54 server-identifier  192.168.1.196
+2026-10-30T13:26:57.552332+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 sent size:  9 option: 60 vendor-class  50:58:45:43:6c:69:65:6e:74
+2026-10-30T13:26:57.552350+00:00 srv4 dnsmasq-dhcp[266064]: 395933245 sent size: 17 option: 97 client-machine-id  00:0d:cb:02:cf:f2:c9:f8:43:99:92:9c:6b:00...
+2026-10-30T13:26:58.507612+00:00 srv4 dnsmasq-tftp[266064]: error 8 User aborted the transfer received from 192.168.1.204
+2026-10-30T13:26:58.507643+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/bootaa64.efi to 192.168.1.204
+2026-10-30T13:26:58.762331+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/bootaa64.efi to 192.168.1.204
+2026-10-30T13:26:58.770312+00:00 srv4 dnsmasq-tftp[266064]: file /srv/gunbc-site-pxe-edge/tftp/revocations.efi not found for 192.168.1.204
+2026-10-30T13:26:59.391538+00:00 srv4 dnsmasq-tftp[266064]: sent /srv/gunbc-site-pxe-edge/tftp/grubaa64.efi to 192.168.1.204

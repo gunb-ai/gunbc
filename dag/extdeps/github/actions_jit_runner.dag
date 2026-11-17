@@ -2,11 +2,21 @@ module extdeps.github.actions_jit_runner
 import std.types { Bearer }
 
 import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus, Secret }
+
 import extdeps.github.github { default_api_base }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+// THE JIT-CONFIG URL SHAPE, spelled once beside the endpoint that uses it: <api base>/orgs/{org}/actions/runners/generate-jitconfig.
+data github_jit_config_path_prefix: String = "/orgs/"
+data github_jit_config_path_suffix: String = "/actions/runners/generate-jitconfig"
+// THE JIT-CONFIG BODY AS a jq PROGRAM, spelled once: the fields GenerateOrganizationJitConfig's
+// request model declares (name, runner_group_id, labels, work_folder).
+data github_jit_config_body_filter: String = "\{\"name\":$name,\"runner_group_id\":($group|tonumber),\"labels\":($labels|fromjson),\"work_folder\":\"_work\"}"
+// THE RESPONSE FIELD carrying the registration blob.
+data github_jit_config_response_field: String = ".encoded_jit_config"
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -165,7 +175,7 @@ service github.ActionsJitRunners {
     }
     transport rest {
       method: POST,
-      path: "/orgs/\{org\}/actions/runners/generate-jitconfig",
+      path: join([github_jit_config_path_prefix, "\{org\}", github_jit_config_path_suffix], ""),
       body: {
         name: name,
         runner_group_id: runner_group_id,

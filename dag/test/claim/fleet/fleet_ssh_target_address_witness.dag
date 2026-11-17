@@ -7,7 +7,7 @@ import product.host_identity { HostIdentity }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4, NetworkHostNameMalformed, NetworkHostIpv4Malformed }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTargetRefusal, TargetEndpointUnparseable,
   fleet_ssh_target_at_standard_port, ssh_target_wire, portable_remote_words,
   shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
 }
@@ -77,11 +77,11 @@ test fn the_same_host_at_port_22_emits_no_port_option_and_a_bare_wire() -> Bool 
 // instead of becoming an argv word.
 test fn endpoint_text_that_is_not_a_host_refuses_at_the_crossing() -> Bool {
   (match fleet_ssh_target_at_standard_port(endpoint: "srv 1", principal: fleet_automation_principal_login) {
-    SshTargetRefused { endpoint: e, refusal: why } => e == "srv 1" && match why { NetworkHostNameMalformed { raw: _, error: _ } => true  _ => false }
+    SshTargetRefused { endpoint: e, refusal: why } => e == "srv 1" && match why { TargetEndpointUnparseable { reason: NetworkHostNameMalformed { raw: _, error: _ } } => true  _ => false }
     SshTargetResolved { target: _ } => false
   })
     && (match fleet_ssh_target_at_standard_port(endpoint: "10.0.0.256", principal: fleet_automation_principal_login) {
-      SshTargetRefused { endpoint: _, refusal: why } => match why { NetworkHostIpv4Malformed { raw: _, error: _ } => true  _ => false }
+      SshTargetRefused { endpoint: _, refusal: why } => match why { TargetEndpointUnparseable { reason: NetworkHostIpv4Malformed { raw: _, error: _ } } => true  _ => false }
       SshTargetResolved { target: _ } => false
     })
 }

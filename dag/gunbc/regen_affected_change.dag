@@ -1,0 +1,121 @@
+module gunbc.regen_affected_change
+
+import std.types { String, List }
+import std.algebra { list_map }
+import gunbc.regen_affected_set {
+  AffectedSetBound, WholePopulation, DependencyEdge, MirrorRow,
+  regen_affected_set, regen_list_has, regen_reverse_closure, regen_generation_role_modules,
+  regen_affected_set_bound_line, regen_affected_set_members
+}
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.seed_build_inputs { seed_build_input_members }
+import v2.std.read_set { read_set_member_covers }
+
+// THE BOUND OVER A WHOLE CHANGE, apart from the bound over one set of edited modules
+// (gunbc.regen_affected_set). They are two concerns with two dependency sets. The module bound
+// reads the dependency graph and the declared bootstrap rows; it is what the orchestrator's
+// in-process decisions consume (gunbc.stage0_partition_rebuild_scope imports it, and
+// required_regen_host rebuild_scope_decision resolves that closure on every call, several times a
+// generation). The change bound also needs what heal itself produces -- the seed-build artifact
+// roster, gunbc.seed_build_artifact_emit seed_build_artifacts, whose closure is every emitter
+// gunbc.generated_artifact names -- and is evaluated once per round, by the emission-scope child.
+// Held in one module, the roster's closure rode into every orchestrator decision: measured on srv1
+// 2026-11-11 with one binary, resolving gunbc.regen_affected_set took 0.66 s / 45 MB at 13c98e6
+// and 83.6 s / 2.65 GB at 58852e89, and heal's orchestrator grew 236 MB -> 5.26 GB between
+// generations (GenerationStateRetainedByOrchestrator on every round that needed a second generation).
+// The host's change-level entry is this module (required_regen_host REGEN_AFFECTED_CHANGE_ENTRY_UNDER_ROOT);
+// the bound-line and member renderers are imported so that entry answers them too.
+
+// THE SEED'S BUILD INPUTS ARE GENERATION INPUTS (gunbc.plans.read_set_convergence P2 and A1). Every mirror
+// is emitted by the seed, so an edit to anything that builds it -- gunbc.seed_build_inputs, declared once
+// and read with v2.std.read_set's one matcher: the seed tree, the workspace manifest and lockfile, the
+// toolchain pin, the cargo configuration -- can change any mirror, and a scope that read only `.dag` edits
+// would silently leave stale mirrors. Heal's own products are excluded because heal writes them: the
+// committed mirrors arrive here already translated to their modules (an edited mirror re-adjudicates that
+// mirror), and the seed-build artifacts are gunbc.seed_build_artifact_emit's roster (`.cargo/config.toml`
+// among them), read here so the two never drift.
+fn regen_seed_source_edits(paths: List<String>) -> List<String> {
+  let products = list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
+  paths |> filter(p =>
+    (seed_build_input_members |> any(m => read_set_member_covers(member: m, path: p)))
+      && !regen_list_has(items: products, item: p))
+}
+
+// THE BOUND A CONSUMER OVER A WHOLE CHANGE ASKS FOR. Three things make the answer the whole population,
+// because a per-mirror selection cannot see them:
+// - a seed build input changed (above);
+// - the module POPULATION changed: a `.dag` file was added or deleted (`population_changes`). Whether the
+//   new module gets a mirror, or the departed one leaves an orphaned committed mirror, is decided by
+//   emission over the whole population; a scope keyed on today's module-to-mirror join would select
+//   nothing for either and let the round answer no affected mirrors over a stale population;
+// - the `.dag` bound itself answers it (an edit under the generation-input prefixes).
+// An unlocatable edit still refuses first.
+fn regen_affected_set_over_change(
+  non_module_paths: List<String>,
+  population_changes: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  let sources = regen_seed_source_edits(paths: non_module_paths)
+  if count(unlocatable) == 0 && count(sources) > 0 {
+    WholePopulation { edited: edited, generation_inputs: sources }
+  } else if count(unlocatable) == 0 && count(population_changes) > 0 {
+    WholePopulation { edited: edited, generation_inputs: population_changes }
+  } else {
+    regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
+  }
+}
+
+// THE BOUND OVER A CHANGE WHOSE BASE HAS MOVED ON (gunbc.plans.read_set_convergence P2, operator decision
+// 2026-11-10: edits from the merge-base plus the generator delta). Heal's round emits HEAD's population
+// with a seed built from the BASE commit, while HEAD's committed mirrors were emitted by the seed at the
+// merge-base. Two observations, two questions:
+// - the change HEAD made (merge-base..HEAD) is bounded by regen_affected_set_over_change, as before;
+//   main's other commits are not this change, and folding them in answered WholePopulation for nearly
+//   every pull request;
+// - what the base changed since the merge-base (merge-base..base) matters only where it changed the
+//   GENERATOR: a seed build input (`base_delta_paths`, read by regen_seed_source_edits) or the mirror of a
+//   module the generator is built from (`base_delta_modules`). The generator is every generation-role
+//   module (regen_generation_role_modules, bootstrap sources included) AND what they import: a shared
+//   `std` module the emitter calls is compiled into the seed beside it, so the delta's modules are
+//   walked to their reverse closure first, the same walk the change's own bound takes, and the delta
+//   is a generator change when that closure reaches a generation-role module. Either can change any
+//   mirror the seed emits, so the answer is the whole population. A base change to any other module's
+//   mirror or `.dag` is not on HEAD and does not change what the seed emits for HEAD.
+// An unlocatable edit still refuses first.
+fn regen_affected_set_over_diverged_change(
+  base_delta_paths: List<String>,
+  base_delta_modules: List<String>,
+  non_module_paths: List<String>,
+  population_changes: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  let seed = regen_seed_source_edits(paths: base_delta_paths)
+  let generators = regen_generation_role_modules(
+    modules: regen_reverse_closure(edited: base_delta_modules, edges: edges, modules: modules)
+  )
+  if count(unlocatable) == 0 && count(seed) > 0 {
+    WholePopulation { edited: edited, generation_inputs: seed }
+  } else if count(unlocatable) == 0 && count(generators) > 0 {
+    WholePopulation { edited: edited, generation_inputs: generators }
+  } else {
+    regen_affected_set_over_change(
+      non_module_paths: non_module_paths,
+      population_changes: population_changes,
+      edited: edited,
+      unlocatable: unlocatable,
+      edges: edges,
+      compared: compared,
+      modules: modules
+    )
+  }
+}
+

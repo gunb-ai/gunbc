@@ -119,7 +119,7 @@ fn full_of(observations: List<FabricCellAddressObservation>) -> String {
 //
 // THE ARITY IS WHY THIS ONE WAS LOUD. Where the shadowing symbol takes a different number of
 // arguments the call refuses; where it takes the same number it returns the wrong value silently
-// (gunbc#9187, a parameter named `p` against `gunbc.plans.md_helpers` `p`). Same defect; only the
+// (gunbc#9187, a parameter named `p` against `gunbc.markdown_helpers` `p`). Same defect; only the
 // arity decides whether you find out.
 fn all_pairs_agree(observation_wire: fn(List<FabricCellAddressObservation>) -> String) -> Bool {
   fold(algebra_atoms(), init: true, f: (acc_a, a) =>

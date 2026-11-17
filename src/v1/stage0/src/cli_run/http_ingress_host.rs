@@ -643,11 +643,50 @@ pub fn realize(ctx: &InterpContext, binding: Value) -> (i32, String) {
 
 fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
     let startup = || -> Result<_, String> {
+        // FAIL FAST ON THE DECLARED KEY SET -- FIRST, before ANY fallible consult, including
+        // `http_ingress_handler_identity` itself (which is one of the declared names, so this
+        // check covers the exact fold whose absence crash-looped the srv1 unit). The fold names
+        // this host consults by name are declared ONCE in .dag (gunbc.http_ingress
+        // `data http_ingress_host_read_folds` + its reader fold); the infer-side registry
+        // (src/v1/04_infer.dag `runtime_key_readers`, instance `loaded_index_keyed_call`) seeds
+        // them into the demanded realization -- and the host reads THE SAME ROW here. If this
+        // execution's loaded index is missing any declared key, refuse HERE, naming EVERY missing
+        // key -- never the single opaque loaded-index miss of the consult that happened to come
+        // first (the ordering the source-order test
+        // `the_startup_key_set_check_precedes_the_first_fallible_consult` pins).
+        let mut missing: Vec<String> =
+            match &fold(ctx, "http_ingress_host_read_folds_reader", vec![])? {
+                Value::List(items) => items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Value::Str(s) => Some(s.as_ref().to_string()),
+                        _ => None,
+                    })
+                    .filter(|name| !v1_interpreter::function_exists(ctx, name))
+                    .collect(),
+                other => {
+                    return Err(format!(
+                        "http_ingress_host_read_folds_reader answered a non-list: {}",
+                        ctx.format_value(other)
+                    ))
+                }
+            };
+        if !missing.is_empty() {
+            return Err(format!(
+                "runtime-keyed reads not realized by this execution's loaded index: {}",
+                missing.join(", ")
+            ));
+        }
         let handler = fold_text(
             ctx,
             "http_ingress_handler_identity",
             vec![("b", binding.clone())],
         )?;
+        if !v1_interpreter::qualified_function_exists(ctx, &handler) {
+            return Err(format!(
+                "runtime-keyed reads not realized by this execution's loaded index: {handler}"
+            ));
+        }
         let limits = Limits {
             head: usize::try_from(fold_int(ctx, "http_ingress_head_limit_bytes", &binding)?)
                 .map_err(|e| e.to_string())?,

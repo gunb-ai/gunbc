@@ -4,7 +4,7 @@ import std.dissolution { unbound_dissolution }
 import std.types { String, List }
 import std.markdown { MarkdownBlock }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import gunbc.plans.md_helpers { p }
+import gunbc.markdown_helpers { p }
 
 fn fsmg_intro() -> List<MarkdownBlock> {
   [

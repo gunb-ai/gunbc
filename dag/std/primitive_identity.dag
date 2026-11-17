@@ -21,7 +21,7 @@ import std.algebra {
   all_algebra_template_names,
 }
 import std.induction { CostBound, cost_constant, cost_linear, cost_log }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }

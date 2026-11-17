@@ -74,6 +74,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.asrock_rack",
+      decl_name: "LayoutConnectorEdge",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
 data asrock_altrad8ud_download_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

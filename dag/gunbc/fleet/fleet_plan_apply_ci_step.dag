@@ -1,0 +1,209 @@
+module gunbc.fleet.fleet_plan_apply_ci_step
+
+// THE CI RUN-STEP LEAF OF THE FLEET PLAN/APPLY DOMAIN: the `gunbc run` target, invoke and
+// mode-only preludes of the fleet-converge plan, apply, plan-revision, checkout-verify and
+// run-pointer admission steps, beside the domain whose entry modules they invoke
+// (gunbc.fleet.fleet_converge_plan_cli, gunbc.fleet.fleet_converge_plan_revision). The shared
+// run-step machinery is v2.workflow.gunbc_invoke_step_emit, gunbc.ci.ci_layer_roots and
+// gunbc.ci.ci_run_step_target; the roster that joins every step target stays in
+// gunbc.ci.ci_spec, which imports these targets. A step module imports the shared machinery,
+// never the roster.
+
+import std.types { List, String }
+import v2.std.orchestration { Do, PipelineStep }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+  gunbc_run_step_script_with_prelude_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_retry { ci_retry_body_run }
+
+data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_plan_wet",
+)
+
+data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_launch_environment_plan_wet",
+)
+
+data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_allocation_store_plan_wet",
+)
+
+data gunbc_ci_fleet_converge_workspace_commissioning_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_workspace_commissioning_plan_wet",
+)
+
+data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_apply_wet",
+)
+
+data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "resolve_plan_revision",
+)
+
+data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "verify_checkout_at_plan_revision",
+)
+
+// THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision). Each admits what a
+// hand-typed predecessor run id NAMES -- that run exists, is a completed successful dispatch of
+// THIS workflow, and carries the artifact about to be downloaded -- before actions/download-artifact
+// is the first thing to touch the pointer. Refusing by name is the whole step.
+data gunbc_ci_admit_plan_run_pointer_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "admit_plan_run_pointer",
+)
+
+data gunbc_ci_admit_apply_run_pointer_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "admit_apply_run_pointer",
+)
+
+// THE DISPATCH-INPUT FAIL-FAST. The four inputs the dashboard transaction will later refuse on
+// (empty hash, malformed revision, malformed pointers) are refused HERE, in seconds, instead of
+// after the pair build and the ten-minute fold resolve that paid them in runs 39177393512 and
+// 36719161144. It asserts no truth the fold does not also assert; it only moves the same refusal
+// earlier, where it is cheap.
+data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "admit_dashboard_deploy_dispatch_inputs",
+)
+
+// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
+// step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
+// comment recorded that the step existed because the self-install route otherwise "had zero
+// callers, a disconnected mechanism". That step lived in `ci.yml`, which #8283 deleted, so the wire
+// returned to being exactly the disconnected mechanism it was added to prevent: at deletion,
+// `gunbc_ci_fleet_timer_install_invoke` had no consumer but the `DeclarationRef` inside its own
+// `Scaffold` row, and `fleet_timer_self_install` appears in neither surviving workflow.
+//
+// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
+// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
+// obligation instead of carrying it, and an unbound condition whose subject no longer exists can
+// never report itself fired.
+fn gunbc_ci_fleet_converge_plan_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_plan_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_launch_environment_plan_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_allocation_store_plan_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
+
+fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2; exit 1; fi"
+      )
+    }
+  ]
+}
+
+fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_plan_revision_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_checkout_verify_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_admit_plan_run_pointer_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_admit_apply_run_pointer_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_admit_dashboard_deploy_inputs_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_apply_invoke() -> String {
+  gunbc_run_step_script_with_prelude_for_target(
+    prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_apply_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+data gunbc_ci_workspace_allocation_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_cli",
+  function: "fleet_converge_workspace_allocation_plan_wet",
+)
+
+fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
+  gunbc_run_step_script_for_target(source_roots: witness_layer_roots, target: gunbc_ci_workspace_allocation_plan_target,
+  claim_run: false, receipt_rel: none)
+}

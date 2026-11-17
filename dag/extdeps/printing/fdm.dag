@@ -158,6 +158,25 @@ type FilamentMaterial
   | Pet
   | FiberReinforcedPolymer
 
+// The abbreviation a spool label, a slicer's filament_type and an operator use for the class: ISO 1043-1
+// symbols where one exists (PLA, PET, PC, PA, ABS, ASA, PVAL is written PVA on filament), the trade
+// names PETG, TPU and TPE for the copolyester and elastomer classes, and FRP for a fibre-filled polymer.
+fn filament_material_abbreviation(m: FilamentMaterial) -> NonEmptyStr {
+  match m {
+    Pla => "PLA"
+    Petg => "PETG"
+    Tpu => "TPU"
+    Tpe => "TPE"
+    Pva => "PVA"
+    Abs => "ABS"
+    Asa => "ASA"
+    Polycarbonate => "PC"
+    Polyamide => "PA"
+    Pet => "PET"
+    FiberReinforcedPolymer => "FRP"
+  }
+}
+
 // A MACHINE VENDOR'S OWN SUITABILITY GRADE for a material, and the third arm is the whole point.
 //
 // A vendor specification table splits materials into the ones it endorses and the ones it warns

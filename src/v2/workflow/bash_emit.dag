@@ -80,6 +80,17 @@ fn bash_emit_stmts(statements: List<Node>, set_e: Bool) -> Outcome<String> {
   bash_fold_serialize_program(stmts: statements, set_e: set_e)
 }
 
+// ONE STATEMENT, ONE LINE. `bash_emit_stmts` is the program entry point: it serialises
+// every statement and joins the results with newlines, optionally under `set -e`. A render
+// that IS a list of lines -- srv1's launcher and its container command, whose lines a
+// witness reads one at a time against goldens -- cannot use it without splitting the join
+// back apart, and a split re-decides where lines begin, which is the join's decision to
+// make. This is the same serializer, one statement at a time, so a render can emit each of
+// its lines and keep the list the witnesses read.
+fn bash_emit_stmt(stmt: Node) -> Outcome<String> {
+  bash_fold_serialize_node(stmt: stmt)
+}
+
 fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
   match bash_fold_serialize_node(stmt: stmt.node) {
     Accepted { value: folded, diagnostics: _ } => folded == golden

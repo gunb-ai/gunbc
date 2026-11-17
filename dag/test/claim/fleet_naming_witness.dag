@@ -33,17 +33,16 @@ import gunbc.hostname_allocation {
   allocated_canonical_hostname,
   allocation_selector_forms,
   draw_human_name,
-  gunbc_fleet_hostname_allocations,
+  fleet_machine_registry,
 }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import gunbc.fleet.fleet_host_identity {
-  operator_hosts,
   operator_host_mtjade1,
   operator_host_srv1,
   operator_host_srv10,
   operator_host_srv11,
   operator_host_srv12,
-  operator_host_srv13,
+  operator_host_srv14,
   operator_host_srv9,
 }
 import gunbc.fleet.fleet_enrollment {
@@ -118,6 +117,7 @@ import gunbc.fleet.fleet_naming {
   provider_endpoint_text,
 }
 import gunbc.fleet.fleet_endpoint {
+  service_endpoint_https_url,
   AdministerMember,
   ApprovalBroker,
   DeploymentRiskApi,
@@ -234,27 +234,21 @@ test fn witness_all_five_p2_rows_carry_a_draw() -> Bool {
 // forms from the policy row rather than authoring them -- a selector list nobody can type, or one that a
 // row the fleet never allocated also has, is caught here.
 test fn witness_roster_holds_the_five_claimed_rows_and_each_named_host_once() -> Bool {
-  p2_drawn_slots.all(slot => count_matching(rows: gunbc_fleet_hostname_allocations, slot: slot) == 1)
-    // EVERY ROW IS ONE NAMED HOST, ONCE. An identity join against gunbc.fleet.fleet_host_identity
-    // operator_hosts, the roster's independent membership, rather than a row count copied from the tree:
-    // a row for a slot the fleet never named, or a second row for one slot, reds here, and a new
-    // allocation for a named host needs no edit to this claim.
-    && gunbc_fleet_hostname_allocations.all(row =>
-      operator_hosts.any(host => host == row.fleet_slot)
-        && count_matching(rows: gunbc_fleet_hostname_allocations, slot: row.fleet_slot) == 1)
-    // AND THE REVERSE LEG: every operator host holds exactly one allocation, so a host that
-    // silently loses its row is red too -- the join is a bijection, not an inclusion.
-    && operator_hosts.all(host =>
-      count_matching(rows: gunbc_fleet_hostname_allocations, slot: host) == 1)
+  p2_drawn_slots.all(slot => count_matching(rows: fleet_machine_registry, slot: slot) == 1)
+    // EVERY ROW IS ONE HANDLE, ONCE. The registry is now the roster (gunbc.hostname_allocation operator_hosts is
+    // derived from it, gunbc.plans.fleet_machine_authority P2), so the old identity join against an independently
+    // authored roster would compare the registry with itself and is deleted; the bijection holds by construction.
+    // What stays checkable is that no handle has two rows.
+    && fleet_machine_registry.all(row => count_matching(rows: fleet_machine_registry, slot: row.fleet_slot) == 1)
     // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of a count.
-    && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: gunbc_fleet_hostname_allocations))
+    && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: fleet_machine_registry))
     // THE NEGATIVE ANSWER IS SAYABLE. A census that reports unmanaged members has to be able to ask "is
     // this slot allocated?" of a roster and hear no, rather than matching on a refusal -- so the same
     // identity the roster answers for answers AGAINST a roster that holds nothing.
     && (match row_for(slot: operator_host_183527) {
       Absent => false
       Present { value: unmanaged } =>
-        fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: gunbc_fleet_hostname_allocations)
+        fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: fleet_machine_registry)
           && !fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: [])
     })
     // THE SELECTOR SURFACE IS READ FROM THE ROW, not authored here: srv9's forms begin with its own slot
@@ -276,14 +270,14 @@ test fn witness_roster_holds_the_five_claimed_rows_and_each_named_host_once() ->
 // plan's defect is "one string, three meanings"; this is the cheap half of the answer -- the meanings have
 // to be distinguishable before anything can be said about them.
 test fn witness_canonical_names_are_unique_across_the_roster() -> Bool {
-  gunbc_fleet_hostname_allocations.all(a => count_by_canonical(rows: gunbc_fleet_hostname_allocations, row: a) == 1)
+  fleet_machine_registry.all(a => count_by_canonical(rows: fleet_machine_registry, row: a) == 1)
 }
 
 // THE NAMING POLICY ISSUES THE LABELS THE ROSTER RECORDS. A policy that selected a different spelling than
 // the roster stores would leave the fleet with two answers to "what is this machine called", so the policy
 // row and the roster are checked against EACH OTHER rather than each being trusted.
 test fn witness_policy_label_matches_recorded_canonical_name() -> Bool {
-  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+  fleet_machine_registry.all(a => match fleet_member_label(allocation: a) {
     Err { value: r } => legacy_row_under_a_staying_policy(allocation: a, refusal: r)
     Ok { value: l } => (l.label as String) == (allocated_canonical_hostname(allocation: a) as String)
   })
@@ -292,7 +286,7 @@ test fn witness_policy_label_matches_recorded_canonical_name() -> Bool {
 // THE MACHINE NAME IS THE MEMBER LABEL, because it is an alias rather than a second mint. Claimed
 // separately so the alias cannot quietly grow into a real second brand without a red claim.
 test fn witness_machine_name_is_the_member_label() -> Bool {
-  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+  fleet_machine_registry.all(a => match fleet_member_label(allocation: a) {
     Err { value: _ } => true
     Ok { value: l } => match linux_hostname(allocation: a) {
       Err { value: _ } => false
@@ -305,7 +299,7 @@ test fn witness_machine_name_is_the_member_label() -> Bool {
 // THE PROVIDER ENDPOINT RUNS THE LABEL WALL FIRST. A row the naming policy refuses yields no endpoint:
 // there is no path around the wall, which is the sentence "no consumer builds a name".
 test fn witness_no_provider_endpoint_without_a_member_label() -> Bool {
-  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+  fleet_machine_registry.all(a => match fleet_member_label(allocation: a) {
     Err { value: _ } => match provider_endpoint(allocation: a) {
       Ok { value: _ } => false
       Err { value: _ } => true
@@ -592,13 +586,13 @@ test fn witness_overlay_binding_records_a_desired_label_not_a_route() -> Bool {
   }
 }
 
-// A BINDING FOR ANOTHER MEMBER'S SLOT REFUSES. An attachment about srv1 handed srv13's allocation is the
+// A BINDING FOR ANOTHER MEMBER'S SLOT REFUSES. An attachment about srv1 handed srv14's allocation is the
 // plan's defect shape at the overlay layer -- one member's overlay fact recorded as evidence about another
 // -- and it refuses at its mint rather than being corrected downstream.
 test fn witness_binding_for_another_member_refuses() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv14) {
       Absent => false
       Present { value: other } => match attachment_of(subject: srv1.fleet_slot) {
         Absent => false
@@ -741,7 +735,7 @@ test fn witness_intake_without_a_boundary_refuses() -> Bool {
 test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv14) {
       Absent => false
       Present { value: other } => match fleet_member_label(allocation: other) {
         Err { value: _ } => false
@@ -765,15 +759,15 @@ test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
   }
 }
 
-// A BINDING CANNOT CITE ANOTHER MACHINE'S LIFE. The attachment says srv1 and the incarnation says srv13;
-// the model refuses at the binding's mint instead of letting the census record srv13's overlay facts as
+// A BINDING CANNOT CITE ANOTHER MACHINE'S LIFE. The attachment says srv1 and the incarnation says srv14;
+// the model refuses at the binding's mint instead of letting the census record srv14's overlay facts as
 // evidence about srv1 -- the plan's defect, typed at the seam where it would actually be committed.
 test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
   match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
-      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv13) {
+      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv14) {
         Err { value: _ } => false
         Ok { value: other_life } => match overlay_member_binding(
           attachment: attachment,
@@ -784,7 +778,7 @@ test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
           Ok { value: _ } => false
           Err { value: r } => match r {
             BindingIncarnationIsAnotherMachine { subject: s, other_slot: o, incarnation: _ } =>
-              s == srv1.fleet_slot && o == (operator_host_srv13 as HostIdentity)
+              s == srv1.fleet_slot && o == (operator_host_srv14 as HostIdentity)
             _ => false
           }
         }
@@ -976,7 +970,7 @@ fn fixture_archive_digest() -> ContentHash {
 }
 
 fn prior_rows_excluding(slot: HostIdentity) -> List<HostnameAllocation> {
-  filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot != slot)
+  filter(fleet_machine_registry, a => a.fleet_slot != slot)
 }
 
 // THE URL READER AND THE SOCKET READER AGREE, asked as one question so the two cannot drift into two
@@ -1002,7 +996,7 @@ fn url_agrees_with_the_socket(
 }
 
 fn row_for(slot: HostIdentity) -> Optional<HostnameAllocation> {
-  match filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot == slot).first() {
+  match filter(fleet_machine_registry, a => a.fleet_slot == slot).first() {
     Absent => Absent
     Present { value: row } => Present { value: row }
   }

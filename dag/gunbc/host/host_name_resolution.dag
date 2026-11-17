@@ -122,6 +122,7 @@ import extdeps.dns.domain_name { host_name_joined_with_zone, domain_name_wire }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.hostname_allocation { fleet_machine_srv2, allocated_canonical_hostname, HostnameAllocation }
 
 // ── THE ZONE A NAME SPACE ANSWERS FOR ────────────────────────────────────────────────────────
 
@@ -1072,7 +1073,7 @@ fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
       // that refuses an IP literal (gunbc.design_argument::consumption: the seal is the point, so this must not be handed a bypass). The
       // round trip through text is the boundary, not an oversight.
       match resolvable_name_admit(spelling: domain_name_wire(name: host_name_joined_with_zone(
-        host: (operator_host_srv2 as String) as DnsLabel,
+        host: fleet_lan_name(machine: fleet_machine_srv2),
         zone: zone.suffix,
       ).name)) {
         ResolvableNameAdmitted { name: n } =>
@@ -1104,6 +1105,14 @@ fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
 // THE PRODUCTION ROW: srv2's LAN name, under the zone this module records. This is the call a boot makes.
 fn srv2_lan_name() -> HostNameResolutionAdmission {
   srv2_lan_name_under(zone_wire: lan_zone_wire)
+}
+
+// THE LAN-NAME AUTHORITY (gunbc.plans.fleet_machine_authority 2.3): a machine's LAN label is its canonical
+// registry NAME read from its registry row, never a cast of its handle (decision D12), so renaming a
+// machine in the registry moves its LAN name through here. srv2_lan_name_under composes this label with the
+// zone; gunbc.host.boot_medium addresses the export host by it. It replaces the old inline handle casts.
+fn fleet_lan_name(machine: HostnameAllocation) -> DnsLabel {
+  allocated_canonical_hostname(allocation: machine)
 }
 
 // THE PRODUCTION CUT-OVER, AS A TYPED FRONTIER WITH A MACHINE-READABLE TRIGGER.

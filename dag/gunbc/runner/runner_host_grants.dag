@@ -28,11 +28,11 @@ import gunbc.executor_privileged_operation {
   EnsureOwnedDirectory,
   EnsureSupplementaryGroupMembership,
   SystemdDaemonReload,
-  SystemdEnableUnit,
   SystemdStartUnit,
   SystemdMaskNowUnit,
   SystemdSetUnitProperty,
   executor_managed_directory_mode,
+  executor_privileged_operation_sudoers_line,
   executor_privileged_operations_sudoers_body,
   ExecutorPrivilegedProvisioningPlan,
   OwnedDirectoryPlanRefusal,
@@ -79,6 +79,10 @@ import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spe
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_slot_retirement { host_maskable_units }
+import gunbc.runner.runner_slot_actuation {
+  RunnerSlotActivationStep, runner_slot_activation_steps, runner_slot_activation_plan_operations,
+  runner_slot_activation_step_operation, runner_slot_activation_step_word,
+}
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, dashboard_instance_legacy_writer_fence }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
@@ -106,28 +110,106 @@ data runner_host_sudoers_install_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrun
 
 data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 
-// THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
-// line for every desired slot. That is what makes gunbc.runner.runner_service_activation's separation
-// enforceable rather than stylistic: sudoers matches the whole command, so neither derived line
-// matches `systemctl enable --now <unit>`, and the fused form the hand loop ran has no grant on any
-// executor host. It is refused by sudo, not by anybody remembering.
+// THE ACTIVATION GRANTS ARE THE STEPS THE ACTIVATION PLAN CAN ISSUE: one row per step the plan can put on
+// the wire, per DESIRED slot, in plan order -- unmask, enable, start. The population used to be authored
+// beside the plan as `[SystemdEnableUnit, SystemdStartUnit]` per member, and that is the whole defect: the
+// plan of gunbc.runner.runner_slot_actuation answers a masked unit with THREE elevated commands, because
+// systemctl(1) will not enable or start a unit masked to /dev/null, so the first converge of a masked slot
+// stopped at its unmask leg with `sudo: a password is required`. srv3-06/07 and srv4-06/07 are masked live
+// (former fabric execution slots, all 18 committed slots on each host now serve GitHub Actions by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci), so on the two hosts the model most needs to reach,
+// the effect could never reach it.
 //
-// THE ROSTER IS desired_runner_slot_members FOR BOTH POPULATIONS, which is why the fabric cell
-// carries no activation grant: srv3-06 is a reserved compute-fabric identity, it is not a desired
-// runner member, so it contributes neither a directory pair nor a transition pair. srv3 therefore
-// derives one fewer of each than srv4, and the difference is the carve doing its job rather than an
-// omission. The fabric cell's OWN grants -- its substrate directories and its slice boundary --
-// enter through fabric_cell_privileged_operations below, derived from the fabric identity
-// authority; the slice start granted there activates a cgroup boundary, not an actions-runner
-// unit, so this activation carve stays exact.
+// WHY DERIVING IT IS THE ROOT AND NOT THE PATCH (gunbc.design_argument::earliest_unjustified_boundary,
+// ::root_generalization): the two-verb list was the boundary no rule explained -- it inherited its shape
+// from the two transitions gunbc.runner.runner_service_activation admits, a different effect's question --
+// so the repair had to move the generalization, not the row. The steps a slot's plan can issue are now a
+// coproduct of that module with total projections onto the operation and onto the argv, so a step the plan
+// can issue and no grant names has no constructor, and "the plan gained a step" cannot land without the
+// row that authorizes it. The converse direction -- NO row for a step no plan issues, the consumption
+// property -- is what runner_slot_activation_grant_gaps below reports and the sudoers route stops on; the
+// witness test.claim.runner.runner_service_activation_witness drives both directions and the red case.
+//
+// THE TWO SERVICE TRANSITIONS STAY SEPARATE GRANTS, and that separation is what makes
+// gunbc.runner.runner_service_activation's separation enforceable rather than stylistic: sudoers matches
+// the whole command, so no derived line matches `systemctl enable --now <unit>`, and the fused form the
+// hand loop once ran has no grant on any executor host. Unmask is a THIRD grant and never a prefix of
+// enable: it neither enables nor starts, and `enable --now` neither unmasks nor is granted.
+//
+// THE ROSTER IS desired_runner_slot_members, so a slot that is not a desired member contributes no row:
+// the fabric cell's OWN grants -- its substrate directories and its slice boundary -- enter through
+// fabric_cell_privileged_operations below, derived from the fabric identity authority, and the slice start
+// granted there activates a cgroup boundary, not an actions-runner unit, so this carve stays exact.
 fn runner_slot_activation_operations(members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
-  flat_map(
-    members,
-    m => {
-      let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
-      [SystemdEnableUnit { unit: unit }, SystemdStartUnit { unit: unit }]
-    },
-  )
+  flat_map(members, m => runner_slot_activation_plan_operations(unit: runner_unit_name_of_registration(registration_name: m.instance_name)))
+}
+
+// A STEP WITH NO ROW IS A BROKEN HOST, AND THE ARTIFACT SAYS SO RATHER THAN LEAVING SUDO TO DISCOVER IT.
+// The population above is derived, so it cannot omit a row on its own; what this guards is everything
+// BETWEEN it and the installed file -- a future filter, a dedup, a refusal carve that starts dropping
+// activation rows the way gunbc.runner.runner_host_grants runner_host_refused_privileged_operations drops
+// the install rows on a refused width. Each desired slot's three steps are looked for in the RENDERED text,
+// one exact line each: zero rows is missing, and more than one is a duplicate, which is the same defect
+// read from the other side (sudoers would then carry an authorization nothing asked for). The comparison is
+// against the rendered line rather than the operation because the rendered line is what ships, and
+// gunbc.executor_privileged_operation derives both from one argv.
+type RunnerSlotActivationGrantGap
+  = ActivationGrantGapMissing { unit: String, step: String }
+  | ActivationGrantGapDuplicated { unit: String, step: String }
+
+fn runner_slot_activation_grant_gaps(spec: RunnerHostSpec, members: List<RunnerSlotMember>, content: String) -> List<RunnerSlotActivationGrantGap> {
+  flat_map(members, m => runner_slot_activation_grant_gaps_for_unit(
+    grantee: spec.job_user,
+    unit: runner_unit_name_of_registration(registration_name: m.instance_name),
+    content: content,
+  ))
+}
+
+fn runner_slot_activation_grant_gaps_for_unit(grantee: NonEmptyStr, unit: NonEmptyStr, content: String) -> List<RunnerSlotActivationGrantGap> {
+  flat_map(runner_slot_activation_steps(), s => runner_slot_activation_grant_gap_for(grantee: grantee, unit: unit, step: s, content: content))
+}
+
+fn runner_slot_activation_grant_gap_for(grantee: NonEmptyStr, unit: NonEmptyStr, step: RunnerSlotActivationStep, content: String) -> List<RunnerSlotActivationGrantGap> {
+  let line = executor_privileged_operation_sudoers_line(grantee: grantee, op: runner_slot_activation_step_operation(step: step, unit: unit)) as String
+  let rows = length(filter(split(s: content, delimiter: "\n"), l => l == line))
+  if rows == 0 {
+    [ActivationGrantGapMissing { unit: unit as String, step: runner_slot_activation_step_word(step: step) }]
+  } else {
+    if rows > 1 {
+      [ActivationGrantGapDuplicated { unit: unit as String, step: runner_slot_activation_step_word(step: step) }]
+    } else {
+      []
+    }
+  }
+}
+
+// THE GAP'S TEXT, quoted by the stop below and checkable by a witness: the unit, the verb, and where to
+// look. The reason names the effect whose plan would run the ungranted command, because the fix is never to
+// add a line here by hand -- the row comes from the step, and a step that should not be issued comes out of
+// the plan.
+fn runner_slot_activation_grant_gap_text(g: RunnerSlotActivationGrantGap) -> String {
+  match g {
+    ActivationGrantGapMissing { unit: u, step: v } =>
+      concat("slot unit ", concat(u, " has no `systemctl ", concat(v, "` grant: the activation plan of gunbc.runner.runner_slot_actuation issues it and the rendered sudoers carries no row for it"))),
+    ActivationGrantGapDuplicated { unit: u, step: v } =>
+      concat("slot unit ", concat(u, " has more than one `systemctl ", concat(v, "` grant: the activation population must render exactly one row per step the plan issues"))),
+  }
+}
+
+// THE ACTIVATION CHANNEL'S STOP, composed with the provisioning refusal gate at each width that renders
+// activation rows. A host whose file cannot authorize the command its own converge will run is not a host
+// whose sudoers should be installed: the previous bytes stay in place, the artifact gate reports the
+// refusal, and the census already carries it. No new stop mechanism -- this is the arm
+// gunbc.tier_o_artifact_emit already uses for a withheld artifact.
+fn runner_slot_activation_grant_gate(spec: RunnerHostSpec, members: List<RunnerSlotMember>, body: RunnerHostSudoersBody) -> RunnerHostSudoersBody {
+  match body {
+    RunnerHostSudoersBodyRefused { reason: why } => RunnerHostSudoersBodyRefused { reason: why }
+    RunnerHostSudoersBodyProduced { content: c } =>
+      match runner_slot_activation_grant_gaps(spec: spec, members: members, content: c).first() {
+        Present { value: g } => RunnerHostSudoersBodyRefused { reason: concat("activation grant coverage refused: ", runner_slot_activation_grant_gap_text(g: g)) }
+        Absent => RunnerHostSudoersBodyProduced { content: c }
+      }
+  }
 }
 
 // THE HOST'S REQUIRED PRIVILEGED POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. Nothing here is
@@ -660,13 +742,21 @@ fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> Runner
 
 fn runner_host_sudoers_body_of(resolution: RunnerHostDeployResolution, artifact_path: String) -> RunnerHostSudoersBody {
   match resolution {
-    RunnerHostDeployFound { deploy } => runner_host_sudoers_body_guard(
-      refusals: runner_host_provisioning_plan_refusals(spec: runner_host_spec_of(deploy: deploy)),
-      content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path),
+    RunnerHostDeployFound { deploy } => runner_slot_activation_grant_gate(
+      spec: runner_host_spec_of(deploy: deploy),
+      members: desired_runner_slot_members(deploy: deploy),
+      body: runner_host_sudoers_body_guard(
+        refusals: runner_host_provisioning_plan_refusals(spec: runner_host_spec_of(deploy: deploy)),
+        content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path),
+      ),
     )
-    RunnerHostDeployZeroWidth { spec: sp } => runner_host_sudoers_body_guard(
-      refusals: runner_host_provisioning_plan_refusals(spec: sp),
-      content: runner_host_sudoers_content_of(spec: sp, members: [], artifact_path: artifact_path),
+    RunnerHostDeployZeroWidth { spec: sp } => runner_slot_activation_grant_gate(
+      spec: sp,
+      members: [],
+      body: runner_host_sudoers_body_guard(
+        refusals: runner_host_provisioning_plan_refusals(spec: sp),
+        content: runner_host_sudoers_content_of(spec: sp, members: [], artifact_path: artifact_path),
+      ),
     )
     RunnerHostDeployUnmodeled { host: unmodeled } =>
       RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }

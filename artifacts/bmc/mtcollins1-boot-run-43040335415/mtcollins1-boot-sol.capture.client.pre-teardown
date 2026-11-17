@@ -1,0 +1,3 @@
+tcgetattr: Inappropriate ioctl for device
+SOL session closed by BMC
+gunbc-sol-hold: collector exited status=1 at=2026-11-11T14:59:56Z

@@ -88,12 +88,6 @@ fn runner_lifecycle_realize_ensure_runner_slot_directory(
   runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerSlotDirectory", intent: intent)
 }
 
-fn runner_lifecycle_realize_ensure_runner_jit_wrapper(
-  intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerJitWrapper", intent: intent)
-}
-
 fn runner_lifecycle_realize_ensure_runner_systemd_template(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {

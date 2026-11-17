@@ -499,3 +499,155 @@ pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collectio
 pub fn non_fold_residue_site_is_rostered(site: &str) -> Result<bool, String> {
     Ok(non_fold_residue_roster_set()?.contains(site))
 }
+
+#[cfg(test)]
+const NFR_DECL_KEYWORDS: &[&str] = &["fn ", "data ", "type ", "carrier ", "effect "];
+
+/// Does `line` declare `name` as a top-level item? Skips comments and matches only after a keyword.
+#[cfg(test)]
+fn nfr_line_declares(line: &str, name: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") {
+        return false;
+    }
+    match NFR_DECL_KEYWORDS
+        .iter()
+        .find_map(|kw| trimmed.strip_prefix(kw))
+    {
+        Some(rest) => {
+            rest.starts_with(name)
+                && rest.get(name.len()..).map_or(true, |tail| {
+                    !tail
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_alphanumeric() || c == '_')
+                })
+        }
+        None => false,
+    }
+}
+
+/// Semantic discovery floor: every entry resolves to a declaration the module actually declares.
+/// Replaces the former `entries.len() >= 64` count floor.
+#[cfg(test)]
+pub(crate) fn nfr_entries_all_resolve(entries: &[String], root: &Path) -> Result<(), String> {
+    for entry in entries {
+        let last_sep = entry
+            .rfind("::")
+            .ok_or_else(|| format!("nfr resolution: entry has no :: separator: {entry}"))?;
+        let module_path = &entry[..last_sep];
+        let decl_name = &entry[last_sep + 2..];
+
+        let content = std::fs::read_to_string(root.join(module_path)).map_err(|e| {
+            format!("nfr resolution: cannot read `{module_path}` for `{entry}`: {e}")
+        })?;
+
+        if !content
+            .lines()
+            .any(|line| nfr_line_declares(line, decl_name))
+        {
+            return Err(format!(
+                "nfr resolution: `{module_path}` does not declare `{decl_name}` (entry: {entry})"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Carrier completeness: every file in the commit under test, under dag/ and src/v2/, that
+/// declares the frontier contributes rows to the union. Catches a walk that silently excludes
+/// a subtree — including one whose files have vanished from the work tree, because the
+/// expected population is enumerated from the commit (git), not from the same filesystem
+/// walk the union is built by (two authorities, per gunbc.design_argument::fail_closed).
+#[cfg(test)]
+pub(crate) fn nfr_carrier_completeness(entries: &[String], root: &Path) -> Result<(), String> {
+    let entry_set: BTreeSet<&str> = entries.iter().map(|s| s.as_str()).collect();
+
+    let dag_files = nfr_head_dag_files(root)?;
+
+    let prefix_needle = "subject: PathSubject { path: \"";
+    for carrier_rel in dag_files {
+        let content = std::fs::read_to_string(root.join(&carrier_rel)).map_err(|e| {
+            format!(
+                "nfr carrier completeness: `{carrier_rel}` is in the commit under test but \
+                 discovery missed it (unreadable): {e}"
+            )
+        })?;
+        // A carrier has a top-level `data non_fold_residue_frontier` declaration (column 0).
+        if !content
+            .lines()
+            .any(|l| l.starts_with("data non_fold_residue_frontier"))
+        {
+            continue;
+        }
+
+        let mut contributed = false;
+        for line in content.lines() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if let Some(pos) = line.find(prefix_needle) {
+                let after = &line[pos + prefix_needle.len()..];
+                if let Some(end) = after.find('"') {
+                    let authored = &after[..end];
+                    let full_entry = if authored.contains("::") {
+                        authored.to_string()
+                    } else {
+                        format!("{carrier_rel}::{authored}")
+                    };
+                    if !entry_set.contains(full_entry.as_str()) {
+                        return Err(format!(
+                            "nfr carrier completeness: `{carrier_rel}` row `{authored}` \
+                             missing from union as `{full_entry}`"
+                        ));
+                    }
+                    contributed = true;
+                }
+            }
+        }
+
+        if !contributed {
+            return Err(format!(
+                "nfr carrier completeness: `{carrier_rel}` declares frontier but contributed no rows"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Enumerate the `.dag` files the COMMIT UNDER TEST tracks under `dag/` and `src/v2/` — an
+/// authority independent of the filesystem walk that built the union, so a carrier deleted
+/// from the work tree (or a subtree the walk silently skips) is still demanded.
+#[cfg(test)]
+fn nfr_head_dag_files(root: &Path) -> Result<Vec<String>, String> {
+    let out = std::process::Command::new("git")
+        .args([
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "HEAD",
+            "--",
+            "dag",
+            "src/v2",
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|e| {
+            format!("nfr carrier completeness: cannot enumerate the commit under test via git: {e}")
+        })?;
+    if !out.status.success() {
+        return Err(format!(
+            "nfr carrier completeness: `git ls-tree` failed in {}: {}",
+            root.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.ends_with(".dag"))
+        .map(|l| l.to_string())
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
+}

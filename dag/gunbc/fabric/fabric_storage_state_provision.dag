@@ -2,7 +2,7 @@ module gunbc.fabric.fabric_storage_state_provision
 
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { second }
+import std.measure { Second, second }
 import std.content_hash { as_content_hash_cryptographic, sha256_hex_digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
@@ -13,7 +13,7 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.secret_provision { SecretProvisionAttemptIdentity }
 import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, approved_gcp_file_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
-import gunbc.auth.approval_gate { approval_instant_now, approval_expires_at, ApprovalFiled, ApprovalFilingRefused }
+import gunbc.auth.approval_gate { approval_instant_now, approval_expires_at, ApprovalFiled, ApprovalFilingRefused, approval_request_window }
 import gunbc.auth.approval_run_identity { run_attempt }
 import gunbc.auth.approval_mac_key_provision { provision_one, standing_ok, standing_line }
 import gunbc.fabric.fabric_storage_state_policy { fabric_state_key_secret_ref }
@@ -56,7 +56,19 @@ fn fabric_state_provision_request(attempt: AttemptIdentity) -> FabricStateProvis
 // (gunbc.auth.gcp_iam_converge fleet_roster_grants), so material provisioning approval can never
 // authorize an accessor-policy mutation, and no second grant entry stands here.
 
+// THE CARD'S WINDOW, NAMED SO A CLAIM CAN READ IT. It is the policy row and nothing else; naming it
+// here rather than inlining it at the filing is what lets
+// dag/test/claim/fleet/operator_approval_window_witness.dag go red the moment someone gives this card a
+// private number again.
+fn fabric_storage_state_provision_card_window() -> Second {
+  approval_request_window
+}
+
 // File the concrete bounded intent through the existing broker/app. It does not acquire a GCP token.
+// THE CARD'S WINDOW IS THE POLICY ROW, READ: this filing does not poll -- the next pass redeems the
+// decision -- so nothing here competes with a step bound, and the thirty minutes it used to carry were
+// a private copy of a decision the fleet makes once (gunbc.auth.approval_gate approval_request_window).
+// A card that closes in half an hour is a card the operator was never shown in time to read.
 fn request_fabric_state_key() -> CliWireResponse {
   match run_attempt() {
     Absent => CliWirePrintable { bytes: "No admitted convergence run identity", exit: exit_failure(reason: "run-bound approval requires the reviewed workload context") }
@@ -65,7 +77,7 @@ fn request_fabric_state_key() -> CliWireResponse {
       FabricStateProvisionRequested { request } => match approval_instant_now() {
         Absent => CliWirePrintable { bytes: "Approval clock unreadable", exit: exit_failure(reason: "approval clock unreadable") }
         Present { value: now } => match approved_gcp_file_request(request: request, issued_at: now,
-          expires_at: approval_expires_at(issued: now, window: second(count: 1800)), body_file_name: "fabric-state-provision-request.json") {
+          expires_at: approval_expires_at(issued: now, window: fabric_storage_state_provision_card_window()), body_file_name: "fabric-state-provision-request.json") {
           ApprovalFiled => CliWirePrintable { bytes: join(["Approval requested: ", request.escalation_id as String, "\n", request.purpose as String], ""), exit: ExitSuccess }
           ApprovalFilingRefused { reason } => CliWirePrintable { bytes: reason, exit: exit_failure(reason: reason) }
         }

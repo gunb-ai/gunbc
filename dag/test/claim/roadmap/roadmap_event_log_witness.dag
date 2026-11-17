@@ -12,13 +12,26 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_schema, roadmap_event_schema_v2, roadmap_event_schema_v1,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
-  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_node_standing, roadmap_history_unordered_reason, roadmap_node_standing_key, roadmap_node_standing_text,
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
   roadmap_event_admitted_after, roadmap_results_for_attempt,
   RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, EarnedByPullRequest, NodeRetired, Retired,
+  roadmap_standing_is_retired, roadmap_standing_is_terminal,
+  roadmap_revocation_names_live_acceptance, roadmap_retired_node_ids_of,
+  RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
+  roadmap_acceptance_event_rows, RoadmapAcceptanceEventRow, roadmap_event_causal_chain,
+  roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
 }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_model {
+  roadmap_node_ids_contain, RoadmapNode,
+  RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
+  AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
+}
+import std.content_hash { content_hash_atom }
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
 
@@ -111,6 +124,8 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
+          AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
+          AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
@@ -140,6 +155,8 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           Released => false
           Progress { note: _ } => false
           Blocked { reason: _ } => false
+          AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
+          AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
@@ -521,4 +538,456 @@ test fn unassigned_progress_does_not_create_an_assignment() -> Bool {
   let progress = ev(kind: Progress { note: "observation without a claim" }, parent: none, author: human_principal(), at: "t1")
   let state = roadmap_issue_state(envs: [progress])
   state.assignment.holder == none && roadmap_node_standing_key(s: state.standing) == "in_progress"
+}
+
+// ─── THE ACCEPTANCE AND THE RETIREMENT, AS EVENTS ────────────────────────────────────────────────
+// These are the DISCRIMINATING claims for the two event kinds that replaced the two carriers the
+// operator ruling deleted (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
+// the fabric partition `roadmap-operator-acceptance` and the hand-committed JSONL seed. The claims
+// that used to witness those carriers went with them. What is claimed here is the whole of what the
+// log must now guarantee on its own: an acceptance folds its node to accepted and terminal; a
+// revocation that names no live acceptance REFUSES; and a retired node leaves the plan the way an
+// accepted one does, with the read that the plan consumes refusing rather than guessing.
+
+fn receipt_fixture() -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node(),
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-09" as NonEmptyStr,
+  }
+}
+
+fn receipt_for(other: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: other,
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-09" as NonEmptyStr,
+  }
+}
+
+fn acceptance_event(parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope {
+  ev(
+    kind: AcceptanceRecordedEvent {
+      receipt: receipt_fixture(),
+      // the pull request the acceptance was earned by, spelled as the ONE typed fact it is
+      evidence: EarnedByPullRequest {
+        pr_url: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr,
+        merged_at: "2026-11-09T00:00:00Z" as NonEmptyStr,
+        head_sha: "73e79ab5" as NonEmptyStr,
+      },
+    },
+    parent: parent, author: human_principal(), at: at)
+}
+
+// A RECEIPT DATED `day`, for the claims that ask what the READER does with a day that is not a day. Same fixture
+// as receipt_fixture, one field open: the discriminator is the day and nothing else.
+fn receipt_dated(day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node(),
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "fixture-artifact" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: day as NonEmptyStr,
+  }
+}
+
+// An acceptance sealed and addressed like any other — the id is computed from the content, so a false day gives a
+// perfectly well-addressed event. Addressing is not belief: what is being asked here is whether the READER folds it.
+fn acceptance_event_dated(day: String) -> RoadmapEventEnvelope {
+  ev(
+    kind: AcceptanceRecordedEvent {
+      receipt: receipt_dated(day: day),
+      evidence: EarnedByPullRequest {
+        pr_url: "https://github.com/gunb-ai/gunbc/pull/16126" as NonEmptyStr,
+        merged_at: "2026-11-09T00:00:00Z" as NonEmptyStr,
+        head_sha: "73e79ab5" as NonEmptyStr,
+      },
+    },
+    parent: none, author: human_principal(), at: "2026-11-09T00:00:00Z")
+}
+
+fn reader_refuses_a_day(day: String) -> Bool {
+  match roadmap_event_decode(text: roadmap_event_wire_text(env: acceptance_event_dated(day: day))) {
+    RoadmapEventUndecodable { reason: _ } => true
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+}
+
+fn reader_folds_a_day(day: String) -> Bool {
+  match roadmap_event_decode(text: roadmap_event_wire_text(env: acceptance_event_dated(day: day))) {
+    RoadmapEventDecoded { envelope: _ } => true
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+}
+
+// THE READER REFUSES AN ACCEPTANCE DATED WITH NO DAY, and that is where the escape hatch actually closed. The door
+// in gunbc.roadmap.roadmap_issue_command is one of two places a false day could be let through; the other is the
+// log itself, because an acceptance is folded from the event's OWN bytes, whatever wrote them. Decoding here
+// answers Undecodable, which the log read turns into a refusal of the whole read — it does NOT skip the event.
+// Skipping is the tempting shape and the fail-open one: a log that quietly dropped the unreadable acceptance would
+// return a confident, plausible answer (the node was never accepted) manufactured from a record nobody could read,
+// which is what gunbc.design_argument::fail_closed refuses ("a failure arm refuses, never widens"). The control
+// claim is the same event on a real day, folded, so the refusals below cannot be an artefact of the fixture.
+test fn the_reader_refuses_an_acceptance_whose_day_is_not_a_calendar_day() -> Bool {
+  reader_refuses_a_day(day: "2025-13-99")
+    && reader_refuses_a_day(day: "2026-02-30")
+    && reader_refuses_a_day(day: "2023-02-29")
+    && reader_refuses_a_day(day: "2026-2-03")
+    && reader_refuses_a_day(day: "2026-02-3")
+    && reader_refuses_a_day(day: "+026-11-03")
+    && reader_refuses_a_day(day: "1999")
+    && reader_refuses_a_day(day: "0")
+    && reader_refuses_a_day(day: "banana--")
+    && reader_folds_a_day(day: "2026-11-09")
+    && reader_folds_a_day(day: "2024-02-29")
+}
+
+fn revocation_kind(receipt: RoadmapAcceptanceReceipt, disposition: AcceptanceRevocationDisposition) -> RoadmapEventKind {
+  AcceptanceRevokedEvent {
+    receipt: receipt,
+    disposition: disposition,
+    revoked_by: "briansrls" as NonEmptyStr,
+    revoked_on: "2026-11-10" as NonEmptyStr,
+    reason: "the criteria the receipt names were not met" as NonEmptyStr,
+  }
+}
+
+fn revocation_record(receipt: RoadmapAcceptanceReceipt, disposition: AcceptanceRevocationDisposition) -> RoadmapEvent {
+  RoadmapEvent {
+    node: node(),
+    author: human_principal(),
+    parent: none,
+    kind: revocation_kind(receipt: receipt, disposition: disposition),
+    recorded_at: "2026-11-10T00:00:00Z",
+  }
+}
+
+fn retired_event(at: String) -> RoadmapEventEnvelope {
+  ev(kind: Retired { reason: "the row was deleted as an authored row; its work moved" as NonEmptyStr },
+    parent: none, author: human_principal(), at: at)
+}
+
+// DISCRIMINATING: the acceptance folds to accepted, carries ITS OWN receipt into the standing, and is
+// terminal — so nothing that comes after it on the chain can move the node again. A revocation of a
+// DIFFERENT receipt is not a revocation of this one.
+test fn an_acceptance_event_folds_the_node_to_accepted_and_terminal() -> Bool {
+  let envs = [acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")]
+  match roadmap_node_standing(envs: envs) {
+    // MATCHING the hand is the assertion (review 93664 on gunb-ai/gunbc#16189): this arm is reached for the
+    // acceptance hand and for nothing else, so it does not also ask a helper whether this is the acceptance
+    // hand. That the hand is terminal is the next claim's subject, where a later event is what must not move
+    // it; that it is not the retired hand is claimed by
+    // a_retired_node_leaves_the_plan_the_way_an_accepted_one_does, which asks the retired question of a
+    // retired lane and of an accepted one.
+    NodeAccepted { by: _, receipt } =>
+      (receipt.node as String) == (node() as String)
+        && !roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt_for("another-node" as RoadmapNodeId))
+        && roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt_fixture())
+    _ => false
+  }
+}
+
+// DISCRIMINATING: a terminal standing absorbs what follows. A work event after the acceptance changes
+// nothing — the node was ended by the operator's word, and an agent cannot un-end it by reporting
+// progress. The acceptance's own id is the parent, so this is a real chain, not a fork.
+test fn a_terminal_standing_absorbs_later_work_events() -> Bool {
+  let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  let later = ev(
+    kind: Progress { note: "still working on it" as NonEmptyStr },
+    parent: Present { value: accepted.id }, author: legacy("agent@example.com"), at: "2026-11-09T01:00:00Z")
+  let envs = [accepted, later]
+  match roadmap_node_standing(envs: envs) {
+    NodeAccepted { by: _, receipt: _ } => count(roadmap_issue_history_newest_first(envs: envs)) == 2
+    _ => false
+  }
+}
+
+// DISCRIMINATING: a revocation is admitted ONLY when it names the receipt the node's live acceptance
+// recorded. On an open node it refuses; on a node whose acceptance it does not name it refuses; and
+// when it IS admitted with the reopen disposition, the node is back on the frontier — the standing is
+// open again, which is what the frontier asks.
+test fn a_revocation_names_a_live_receipt_or_refuses() -> Bool {
+  let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  let live = receipt_fixture()
+  let reopen = revocation_record(receipt: live, disposition: AcceptanceNodeReopensActiveFrontier)
+  let reopen_env = ev(kind: revocation_kind(receipt: live, disposition: AcceptanceNodeReopensActiveFrontier),
+    parent: Present { value: accepted.id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+  roadmap_event_admitted_after(envs: [accepted], event: reopen)
+    && !roadmap_event_admitted_after(envs: [], event: reopen)
+    && !roadmap_event_admitted_after(
+      envs: [self_claim(parent: none, author: human_principal(), at: "2026-11-09T00:00:00Z")], event: reopen)
+    && match roadmap_node_standing(envs: [accepted, reopen_env]) {
+         NodeOpen => true
+         _ => false
+       }
+}
+
+// DISCRIMINATING: the disposition is the operator's own word and nothing else decides it. A revocation
+// whose disposition says the node STAYS off the plan leaves the standing terminal; the same receipt
+// revoked with the reopen disposition returns it to the frontier.
+// ── THE REVOCATION'S DISPOSITION, DECIDED BOTH WAYS ────────────────────────────────────────────────
+// The two fixtures the revocation claims share. Each lane is built from a head event down, so a lane's
+// `parent:` chain is inside the lane — the fold checks it over the whole list before it folds anything
+// (roadmap_issue_state: any missing parent event => NodeHistoryIncomplete, and != 1 head => NodeForked), and
+// a claim that hands it an event whose parent it was never given is silently asking a different question.
+// The first draft of these claims did exactly that, and srv1 ran it red; the claim named
+// a_progress_whose_parent_event_is_not_in_the_lane_is_history_incomplete_not_absorption below is the record of
+// what the fold does then, so the shape is now required by execution rather than remembered by a comment.
+fn accepted_event_fixture() -> RoadmapEventEnvelope {
+  acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+}
+
+fn superseding_revocation_fixture() -> RoadmapEventEnvelope {
+  ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeRemainsSuperseded),
+    parent: Present { value: accepted_event_fixture().id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+}
+
+fn reopening_revocation_fixture() -> RoadmapEventEnvelope {
+  ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeReopensActiveFrontier),
+    parent: Present { value: accepted_event_fixture().id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+}
+
+fn progress_after(env: RoadmapEventEnvelope) -> RoadmapEventEnvelope {
+  ev(kind: Progress { note: "work continues" as NonEmptyStr },
+    parent: Present { value: env.id }, author: human_principal(), at: "2026-11-11T00:00:00Z")
+}
+
+// POSITIVE CONTROL, CLOSED HAND. remains-superseded is the word that means "the receipt is gone and the node
+// stays off the plan": the standing stays the terminal accepted one, and it is the ACCEPTANCE hand and not the
+// retirement hand (roadmap_standing_is_terminal and roadmap_standing_is_retired are the two matches over the
+// sum, and NodeAccepted / NodeRetired are their only true arms — review 93664). Later work is absorbed after a
+// terminal standing by the fold's guard (`_ => acc`).
+test fn a_revocation_that_leaves_the_node_superseded_keeps_it_closed() -> Bool {
+  let accepted = accepted_event_fixture()
+  let stays = superseding_revocation_fixture()
+  let accepted_standing = roadmap_node_standing(envs: [accepted])
+  let stays_standing = roadmap_node_standing(envs: [accepted, stays])
+  roadmap_history_unordered_reason(envs: [accepted, stays]) == none
+    && roadmap_standing_is_terminal(standing: accepted_standing)
+    && !roadmap_standing_is_retired(standing: accepted_standing)
+    && roadmap_standing_is_terminal(standing: stays_standing)
+    && !roadmap_standing_is_retired(standing: stays_standing)
+}
+
+// POSITIVE CONTROL, REOPENED HAND. reopens-active-frontier must return the node to the OPEN standing — said
+// positively, because a bare `!terminal` would also pass for claimed, blocked, handed-back, forked or
+// history-incomplete, none of which is the frontier.
+test fn a_revocation_that_reopens_the_active_frontier_returns_the_node_to_open() -> Bool {
+  let accepted = accepted_event_fixture()
+  let reopened = reopening_revocation_fixture()
+  let reopened_standing = roadmap_node_standing(envs: [accepted, reopened])
+  roadmap_history_unordered_reason(envs: [accepted, reopened]) == none
+    && reopened_standing == NodeOpen
+    && !roadmap_standing_is_terminal(standing: reopened_standing)
+    && !roadmap_standing_is_retired(standing: reopened_standing)
+}
+
+// THE ASYMMETRY IS THE FINDING. One and the same Progress event — same note, same author — meets two fates
+// that differ only by the word the operator wrote in the revocation: absorbed after the closed standing
+// (identical to the lane without it), recorded after the reopened one (the node is open work, and Progress on
+// an open node is the ordinary work signal: NodeInProgress { by: e.author, last_note: note }). A claim that
+// asserted the same behaviour for both arms would prove nothing about the disposition, which is what the first
+// draft of this claim did.
+test fn the_same_progress_is_absorbed_after_a_closed_standing_and_recorded_after_a_reopened_one() -> Bool {
+  let accepted = accepted_event_fixture()
+  let stays = superseding_revocation_fixture()
+  let reopened = reopening_revocation_fixture()
+  let stays_standing = roadmap_node_standing(envs: [accepted, stays])
+  let closed_lane = [accepted, stays, progress_after(env: stays)]
+  let reopened_lane = [accepted, reopened, progress_after(env: reopened)]
+  roadmap_history_unordered_reason(envs: closed_lane) == none
+    && roadmap_history_unordered_reason(envs: reopened_lane) == none
+    && roadmap_node_standing(envs: closed_lane) == stays_standing
+    && roadmap_node_standing(envs: reopened_lane)
+         == NodeInProgress { by: human_principal(), last_note: "work continues" as NonEmptyStr }
+}
+
+// Being recorded is not being accepted. The reopened arm shows the work and still needs an acceptance event to
+// close the node — otherwise a revocation would be half a re-acceptance, and the frontier would fill with
+// nodes that only look closed because someone typed a progress note at them.
+test fn work_recorded_after_a_reopen_is_not_an_acceptance() -> Bool {
+  let accepted = accepted_event_fixture()
+  let reopened = reopening_revocation_fixture()
+  let lane = [accepted, reopened, progress_after(env: reopened)]
+  !roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: lane))
+    && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: lane))
+}
+
+// WHY THE LANES CARRY THEIR OWN PARENTS. Hand the fold a Progress whose parent event it was never given — the
+// exact shape the first draft of these claims used for its closed arm — and the standing is not the absorbed
+// one and not the recorded one: the whole lane collapses to history-incomplete naming that parent, and every
+// verdict above would have been an accident of ordering. This is the claim that makes the lane shape a
+// requirement instead of a habit.
+test fn a_progress_whose_parent_event_is_not_in_the_lane_is_history_incomplete_not_absorption() -> Bool {
+  let accepted = accepted_event_fixture()
+  let stays = superseding_revocation_fixture()
+  let reopened = reopening_revocation_fixture()
+  let orphan_lane = [accepted, stays, progress_after(env: reopened)]
+  roadmap_node_standing(envs: orphan_lane) == NodeHistoryIncomplete { missing_parents: [reopened.id] }
+    && roadmap_history_unordered_reason(envs: orphan_lane) != none
+}
+
+// THE SEED'S OWN HISTORY, END TO END (review finding 2): acceptance, then the revocation that took it
+// back leaving the node superseded, then the operator's retirement — the recorded order of
+// entry-graph-union-construction in the deleted seed jsonl. Each step leaves the plan, and the
+// acceptance never puts the node beyond the operator's reach: retirement is admitted over a CLOSED
+// node, because gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item says any work item
+// in any state. An ordinary record after the retirement is absorbed, not obeyed.
+test fn the_recorded_history_of_one_node_folds_to_a_retirement_through_its_acceptance() -> Bool {
+  let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  let stays = ev(kind: revocation_kind(receipt: receipt_fixture(), disposition: AcceptanceNodeRemainsSuperseded),
+    parent: Present { value: accepted.id }, author: human_principal(), at: "2026-11-10T00:00:00Z")
+  let retired = ev(kind: Retired { reason: "the floor cut retired the work" as NonEmptyStr },
+    parent: Present { value: stays.id }, author: human_principal(), at: "2026-11-11T00:00:00Z")
+  let absorbed = ev(kind: Progress { note: "a note nobody should have to read" as NonEmptyStr },
+    parent: Present { value: retired.id }, author: human_principal(), at: "2026-11-12T00:00:00Z")
+  let lane = [accepted, stays, retired]
+  roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted]))
+    && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [accepted]))
+    && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted, stays]))
+    && !roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [accepted, stays]))
+    && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: lane))
+    && roadmap_node_standing(envs: concat(lane, [absorbed])) == roadmap_node_standing(envs: lane)
+    && match roadmap_retired_node_ids_of(envs: lane) {
+         RetiredNodeIdsLoaded { ids } => any(ids, i => (i as String) == (node() as String))
+         RetiredNodeIdsRefused { detail: _ } => false
+       }
+}
+
+// DISCRIMINATING: a retired node is READ the way an accepted one is — a terminal standing, and the
+// retired-id read the plan consumes names it. The read FAILS CLOSED: a lane it cannot order is a
+// refusal, not a silently-shrunk plan, because a node dropped from the retired set would reappear as
+// work someone could launch.
+test fn a_retired_node_leaves_the_plan_the_way_an_accepted_one_does() -> Bool {
+  let retired = retired_event(at: "2026-11-09T00:00:00Z")
+  let accepted = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  match roadmap_retired_node_ids_of(envs: [retired]) {
+    RetiredNodeIdsLoaded { ids } =>
+      count(ids) == 1
+        && any(ids, i => (i as String) == (node() as String))
+        && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [retired]))
+        && roadmap_standing_is_terminal(standing: roadmap_node_standing(envs: [accepted]))
+        && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: [retired]))
+    RetiredNodeIdsRefused { detail: _ } => false
+  }
+}
+
+// DISCRIMINATING: an unordered lane REFUSES the retired read whole, and the acceptance rows refuse a
+// lane that forks or names a parent the log does not hold. Both reads are the plan's inputs; neither
+// may answer "nothing is retired here" to a history it could not order.
+test fn an_unorderable_lane_refuses_the_plan_inputs_rather_than_shrinking_them() -> Bool {
+  let head = acceptance_event(parent: none, at: "2026-11-09T00:00:00Z")
+  // An event naming a parent the log does not hold: the parent's own envelope is built and then left
+  // OUT of the lane, so the chain is genuinely incomplete rather than merely unsorted.
+  let held_back = retired_event(at: "2026-11-09T00:30:00Z")
+  let orphan = ev(
+    kind: Retired { reason: "a retirement whose parent the log does not hold" as NonEmptyStr },
+    parent: Present { value: held_back.id },
+    author: human_principal(), at: "2026-11-09T01:00:00Z")
+  match roadmap_retired_node_ids_of(envs: [head, orphan]) {
+    RetiredNodeIdsRefused { detail: _ } => true
+    RetiredNodeIdsLoaded { ids: _ } => false
+  }
+    && match roadmap_acceptance_event_rows(envs: [head, orphan]) { Absent => true  Present { value: _ } => false }
+    && match roadmap_event_causal_chain(envs: [head, orphan]) { Absent => true  Present { value: _ } => false }
+    && match roadmap_acceptance_event_rows(envs: [head]) {
+         Present { value: rows } => count(rows) == 1 && any(rows, r => r.pr_url == "https://github.com/gunb-ai/gunbc/pull/16126")
+         Absent => false
+       }
+}
+
+// THE MIGRATION ROSTER, CLAIMED. The authority rows this cutover converted out of the deleted SupersededLine
+// arm carry NO retirement of their own: gunbc.roadmap.roadmap_status item_is_done answers false for a PlainLine
+// where main answered true for a superseded one. So every roster node is live work until the LOG retires it --
+// which is the risk this list exists to make checkable, and the reason the four claims below take one decision
+// each instead of sharing a conjunction: a false one has to name its own hole.
+fn roster_retired_event(id: String, reason: NonEmptyStr, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: id as RoadmapNodeId,
+    author: human_principal(),
+    parent: none,
+    kind: Retired { reason: reason },
+    recorded_at: at,
+  })
+}
+
+fn roster_authority_missing(id: String) -> Bool {
+  match roadmap_migration_retirement_authority(node: id) {
+    Present { value: a } => (a as String) == ""
+    Absent => true
+  }
+}
+
+fn roster_retired_event_for(id: String) -> RoadmapEventEnvelope {
+  match roadmap_migration_retirement_authority(node: id) {
+    Present { value: a } => roster_retired_event(id: id, reason: a, at: "2026-11-12T00:00:00Z")
+    Absent => roster_retired_event(id: id, reason: "no authority named" as NonEmptyStr, at: "2026-11-12T00:00:00Z")
+  }
+}
+
+// A roster id that names no declared node is a roster bug: the cutover would append a retirement no plan row
+// answers, and the runbook's verify would pass while the deleted item stayed on the plan under its real slug.
+test fn witness_every_migration_retirement_id_is_a_declared_node() -> Bool {
+  !any(roadmap_migration_retirement_ids(), id =>
+    !any(declared_roadmap_nodes(), n => (n.node as String) == id))
+}
+
+// Each retirement names the authority that retired the work. None is answered rather than a default, so an
+// entry without an authority goes red instead of shipping an event that cites nobody.
+test fn witness_every_migration_retirement_names_the_authority_that_retired_it() -> Bool {
+  !any(roadmap_migration_retirement_ids(), id => roster_authority_missing(id: id))
+}
+
+// WITH NO EVENTS NOTHING IS RETIRED, which is the whole point of the roster: the row cannot retire itself. If a
+// retirement-bearing arm is ever restored to RoadmapItem, or the fold starts believing a plan row, this claim
+// goes false -- and if a roster entry's event is never appended, its node stays exactly where this claim puts
+// it: active, and worked on again.
+test fn witness_no_migration_retirement_is_retired_by_its_row_alone() -> Bool {
+  match roadmap_retired_node_ids_of(envs: []) {
+    RetiredNodeIdsLoaded { ids: loaded } =>
+      !any(roadmap_migration_retirement_ids(), id =>
+        roadmap_node_ids_contain(ids: loaded, node: id as RoadmapNodeId))
+    RetiredNodeIdsRefused { detail: _ } => false
+  }
+}
+
+// AND WITH THE ROSTER'S OWN EVENTS EVERY ONE OF THEM IS RETIRED, each event carrying the citation from
+// roadmap_migration_retirement_authority. Read with the claim above it, the log is the only thing that moves
+// these nodes out of the plan (gunbc.design_argument::planning_has_one_home).
+test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
+  let envs = map(roadmap_migration_retirement_ids(), id => roster_retired_event_for(id: id))
+  match roadmap_retired_node_ids_of(envs: envs) {
+    RetiredNodeIdsLoaded { ids: loaded } =>
+      !any(roadmap_migration_retirement_ids(), id =>
+        !roadmap_node_ids_contain(ids: loaded, node: id as RoadmapNodeId))
+    RetiredNodeIdsRefused { detail: _ } => false
+  }
 }

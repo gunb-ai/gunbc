@@ -98,15 +98,13 @@ test fn srv3_reconcile_adds_exactly_the_missing_fleet_key() -> Bool {
     && any(upsert_materials, m => m == fleet_automation_ssh_key.material as String)
 }
 
-// THE THIRD REFUSAL CAUSE CONTRIBUTES NO MATERIAL, AND `tally.refusals == 2` IS WHAT KEEPS
-// THAT FROM HIDING ONE. This list collects the materials of OWNERSHIP-UNKNOWN refusals only;
-// every other action and every other cause already answers with the empty list, so
-// RosterDuplicateKey answers the same way for the same reason -- it is a different fact about
-// the roster, not a key this host declined to tear down. What stops the empty arm from
-// silently absorbing a surprise is the conjunct below it: a roster-duplicate refusal would
-// still be counted, so refusals would read 3 and this witness would fail rather than pass with
-// a shorter list.
-test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
+// node-orch IS NO LONGER REFUSED: it is now a declared fleet principal (the access template grants its key
+// to the host-administrator account), so on srv3's ubuntu it is both OWNED and DESIRED -- present, no action.
+// The one key still refused is briansrls@srv1, an out-of-band key no principal maps to and the fleet does not
+// own. This is the discriminating half of witness "a key on an account no principal maps to refuses": the
+// SAME reconcile that now accepts node-orch still refuses the genuinely foreign key, so the acceptance is the
+// grant doing work, not the reconcile loosening.
+test fn srv3_reconcile_refuses_only_the_key_no_principal_maps_to() -> Bool {
   let plan = srv3_plan()
   let tally = membership_tally(plan: plan)
   let refused_materials = flat_map(plan.actions, a =>
@@ -122,21 +120,51 @@ test fn srv3_reconcile_refuses_both_unowned_keys_never_teardown() -> Bool {
   )
   tally.adds == 1
     && tally.removals == 0
-    && tally.refusals == 2
-    && any(refused_materials, m => m == srv3_observed_node_orch_srv2_key.material as String)
+    && tally.refusals == 1
     && any(refused_materials, m => m == srv3_observed_briansrls_srv1_key.material as String)
+    && !any(refused_materials, m => m == srv3_observed_node_orch_srv2_key.material as String)
 }
 
-test fn srv4_reconcile_is_converged_empty_plan() -> Bool {
-  let tally = membership_tally(plan: srv4_plan())
-  tally.adds == 0 && tally.removals == 0 && tally.refusals == 0
+// srv4 was observed 2026-07-24, before node-orch was a fleet principal. Its ubuntu carries the operator and
+// automation keys but NOT node-orch, which the access template now requires on the host-administrator account.
+// So the reconcile adds exactly node-orch -- the honest consequence of promoting a key into the roster: every
+// host that lacked it now needs it. It is NOT a converged host, and pretending otherwise would hide that the
+// model change has real work to do on existing machines.
+test fn srv4_reconcile_adds_the_newly_required_node_orch_key() -> Bool {
+  let plan = srv4_plan()
+  let tally = membership_tally(plan: plan)
+  let upsert_materials = flat_map(plan.actions, a =>
+    match a {
+      MemberAdded { at: _, to: m } => [m.material as String]
+      MemberChanged { at: _, from: _, to: m } => [m.material as String]
+      MemberRemoved { at: _, from: _ } => []
+      MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+    }
+  )
+  tally.adds == 1
+    && tally.removals == 0
+    && tally.refusals == 0
+    && any(upsert_materials, m => m == node_orch_ssh_key.material as String)
+}
+
+// A FULLY-PROVISIONED host is the converged negative control: an ubuntu account carrying exactly the keys the
+// host-administrator account's principals map to reconciles to an empty plan. This is the control that proves
+// the reconcile does not churn a host that already matches the template -- and it is constructed from the
+// projection, so it cannot drift from what the template actually requires.
+test fn a_host_carrying_exactly_the_granted_keys_is_converged() -> Bool {
+  let converged_observed = authorized_keys_for_account(account: FleetAccountHostAdministrator)
+  let tally = membership_tally(plan: host_authorized_keys_reconcile(observed: converged_observed))
+  tally.adds == 0 && tally.removals == 0 && tally.refusals == 0 && tally.changes == 0
 }
 
 test fn srv3_and_srv4_disagree_on_convergence() -> Bool {
   let srv3 = membership_tally(plan: srv3_plan())
   let srv4 = membership_tally(plan: srv4_plan())
   (srv3.adds + srv3.refusals) > 0
-    && (srv4.adds + srv4.removals + srv4.refusals) == 0
+    && srv3.refusals > 0
+    && srv4.refusals == 0
+    && srv4.adds > 0
 }
 
 fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
@@ -149,10 +177,10 @@ test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
     observed: srv3_observed_authorized_keys,
     ownership_of: ownership_lies_owned,
   ))
-  honest.refusals == 2
+  honest.refusals == 1
     && honest.removals == 0
     && lying.refusals == 0
-    && lying.removals == 2
+    && lying.removals == 1
 }
 
 test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
@@ -163,7 +191,7 @@ test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
   }
   let observed = [renamed_macbook, fleet_automation_ssh_key]
   let tally = membership_tally(plan: host_authorized_keys_reconcile(observed: observed))
-  tally.changes == 1 && tally.adds == 0 && tally.removals == 0 && tally.refusals == 0
+  tally.changes == 1 && tally.adds == 1 && tally.removals == 0 && tally.refusals == 0
 }
 
 // Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host.host_toolchain_ensure.

@@ -1,5 +1,15 @@
 module test.claim.workflow_dispatch_input_witness
 
+import gunbc.host.host_fleet_run_step { gunbc_ci_host_reset_dispatch_admission_target }
+import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_invoke }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_fleet_converge_apply_invoke }
+import gunbc.auth.auth_ci_step { gunbc_ci_srv15_bmc_secret_versions_read_invoke }
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke }
+import gunbc.auth.approval_ci_step { gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_approval_keyring_converge_invoke }
+import std.algebra { unique }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_boot_invoke }
+import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_invoke }
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.fleet.fleet_converge_scope { LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
 
 import extdeps.github.actions {
@@ -37,12 +47,12 @@ import gunbc.host.host_reset_return {
   host_reset_observer_label_env,
 }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
-import gunbc.ci.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { second_count }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {
@@ -559,8 +569,8 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
               Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
               Absent => false
             })
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
+        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_poison(target: gunbc_ci_host_reset_dispatch_admission_target))
+        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
         && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
         && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
@@ -879,4 +889,26 @@ test fn a_guest_image_build_is_keyed_to_its_own_run_not_the_executor_host() -> B
       && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "2")
       && fleet_converge_mutation_group_for(mode: m, host: "srv1", target: "srv1", run_id: "1") == fleet_converge_mutation_group_for(mode: m, host: "srv2", target: "srv2", run_id: "1"))
     && fleet_converge_mutation_group_for(mode: WorkspaceImageBuild, host: "srv1", target: "srv1", run_id: "1") != fleet_converge_mutation_group_for(mode: RevisionJobImageBuild, host: "srv1", target: "srv1", run_id: "2")
+}
+
+// THE srv15 BMC SECRET-VERSIONS READ STEP IS THE MODEL'S PROJECTION (review artifacts 95642 and 95656 on
+// #16528). Three failures this pins shut: (1) a stale regeneration once rendered the step with the
+// submission-key opening -- bearer written to $RUNNER_TEMP/gcp-iam-converge-auth-header, the
+// approval-submission-mac-key versions/1:access PAYLOAD route, and the key exported for signing -- all of
+// which the model (gunbc_ci_srv15_bmc_secret_versions_read_invoke, plain gunbc_run_step_script) rules out
+// and the module header promises against; (2) the upload once addressed the receipt via the env.RUNNER_TEMP
+// expression context, which GitHub Actions fills with nothing (the runner sets RUNNER_TEMP as a process
+// env, not in the ${{ env.* }} context), so with if-no-files-found: error a fully successful read could
+// never publish the artifact the accessor pin cites; (3) the wet itself must be what runs. The runner.temp
+// spelling is the one the runner actually substitutes -- the same file uses it 32 other times.
+test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
+  let invoke = gunbc_ci_srv15_bmc_secret_versions_read_invoke()
+  let yml = expected_fleet_converge_yml_content()
+  string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_receipt.dag")
+    && string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_read_wet")
+    && !string_contains(s: invoke, pattern: "gcp-iam-converge-auth-header")
+    && !string_contains(s: invoke, pattern: "approval-submission-mac-key")
+    && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
+    && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
+    && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
 }

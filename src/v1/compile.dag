@@ -67,9 +67,10 @@ import v1.compiler.infer_types { algebra_field_kind_name }
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
+import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows, GeneratedPartitionCrateRow }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics, cast_realization_diagnostics }
 
-import v1.compiler.emit_rust { emit_rust_selected }
+import v1.compiler.emit_rust { emit_rust_selected, ambiguous_leaf_value_ref_diagnostics }
 
 import v1.compiler.emit_python { emit_python }
 
@@ -489,7 +490,14 @@ fn compile_bundle_error(message: String) -> ErrorNode {
 // A REFUSAL KNOWN BEFORE EMISSION STOPS THE ARTIFACT: an unmodeled transport, or a cast the target
 // cannot realize, returns its located diagnostics and no files, so no emitted program carries a
 // runtime abort standing in for a refusal the compiler already had.
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+// THE CRATE-ROOT POPULATION ARRIVES AS AN ARGUMENT, never as a read inside the renderer. A crate
+// root's `pub mod` block states which modules the PARTITION owns; read from inside the renderer the
+// only population available is the copy compiled into this binary, which is the PREDECESSOR's -- and
+// a change that adds a seed module to a partition crate is, by construction, absent from exactly
+// that, which is what made the emitted host-shell `lib.rs` oscillate
+// (gunbc.recurring_failure_mode::adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs,
+// defect 1). So the caller states which partition the crate roots are rendered against.
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
   let emission_refusals = concat(
     unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target),
     unmodeled_shell_transport_diagnostics(typed: typed, target: artifact.target),
@@ -499,7 +507,7 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     return EmitResult { files: [], diagnostics: emission_refusals, emitted_edges: [], rust_crates: [] }
   }
   match artifact.target {
-    Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
+    Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection, partition_rows: partition_rows)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
@@ -1239,7 +1247,21 @@ fn emittable_graph_from_graph(typed: ResolvedGraph) -> EmittableGraph {
   EmittableGraph { graph: typed }
 }
 
+// A CALL SITE THAT KEEPS ITS COMPILED-IN POPULATION, AND WHY. Everything host-facing that can decide
+// crate-root membership reaches the emitter through emit_resolved_for_target_selected, which carries the run's
+// fresh partition down to lib_rs_module_is_partition_owned. This entry is not on that path any more: its only
+// caller is the seed's own profile-pipeline test, whose body is an interpreter-FOLDED literal inside the
+// running binary (src/v1/compiler_tests_rust.dag), so the population it can name is the one compiled into that
+// seed -- the same standing that keeps v1_compiler_stage0_crates' plan and boundary outcome reading
+// generated_partition_crate_rows(). It stays a two-argument call, exactly as it was before this change, for a
+// second reason: a folded literal only catches up with its carrier one generation later, so moving this call
+// would make heal's base-mirror round emit the OLD call back over the committed mirror and block convergence
+// on a surface that decides nothing. gunbc.recurring_failure_mode.adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.
 fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  emit_from_artifact_plan_with_partition_rows(emittable: emittable, artifact_plan: artifact_plan, partition_rows: generated_partition_crate_rows())
+}
+
+fn emit_from_artifact_plan_with_partition_rows(emittable: EmittableGraph, artifact_plan: ArtifactPlan, partition_rows: List<GeneratedPartitionCrateRow>) -> EmitResult {
   let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
@@ -1253,7 +1275,7 @@ fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPla
   if boundary_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: boundary_diags, emitted_edges: [], rust_crates: [] }
   }
-  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
+  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact, partition_rows: partition_rows))
   let all_files = results |> flat_map(r => r.files)
   let all_diags = results |> flat_map(r => r.diagnostics)
   EmitResult { files: all_files, diagnostics: all_diags, emitted_edges: results |> flat_map(r => r.emitted_edges), rust_crates: results |> flat_map(r => r.rust_crates) }
@@ -1527,11 +1549,19 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 // selection reaches emission only, where it decides which modules are RENDERED. A caller that
 // supplies RenderEveryModule here has written `compile_sources` the long way, which is why that
 // wrapper stays the name for the whole-closure question.
-fn compile_sources_selected(sources: List<SourceFile>, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
+// THE CHANGE-DENOMINATED ENTRY, AND THE POPULATION IT CARRIES. `partition_rows` is the partition
+// this round is converging, read off the corpus by the caller: the crate roots this emission renders
+// must agree with the mirrors of the same emission, and the rows compiled into this binary are the
+// PREDECESSOR's -- missing, by construction, any module the change is adding to a partition crate.
+// `gunbc.recurring_failure_mode::adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs`,
+// defect 1; `compile_sources` above stays the whole-closure question and answers from the seed it
+// was built as.
+fn compile_sources_selected(sources: List<SourceFile>, target: RenderTarget, selection: RustModuleRenderSelection, partition_rows: List<GeneratedPartitionCrateRow>) -> PipelineResult {
   emit_resolved_for_target_selected(
     resolved: compile_to_resolved_with_options(sources: sources, options: default_compile_pipeline_options()),
     target: target,
-    selection: selection
+    selection: selection,
+    partition_rows: partition_rows
   )
 }
 
@@ -1663,10 +1693,16 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
         } else {
           []
         }
+      // An ambiguous bare data value-reference is refused HERE, at the resolution boundary that built
+      // `item_leaf_owner_modules` from the complete item registry, and never reaches the emitter (which
+      // used to render it as a diverging `panic!`). Unconditional -- like the typecheck diagnostics beside
+      // it this is a correctness gate, not an analysis the interpreter may opt out of (DESIGN.md
+      // gunbc.design_argument::fail_closed). See `ambiguous_leaf_value_ref_diagnostics` in v1.compiler.emit_rust.
+      let ambiguous_leaf_diags = ambiguous_leaf_value_ref_diagnostics(typed: typed, source_indices: source_indices)
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags, ambiguous_leaf_diags),
         provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,
@@ -1678,7 +1714,15 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
 }
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
-  emit_resolved_for_target_selected(resolved: resolved, target: target, selection: RenderEveryModule)
+  // The whole-closure question has no replacement partition in flight: the tree it renders is the
+  // seed it was built from, so the compiled rows are that seed's own declaration. Named here, not
+  // hidden in the renderer, so the next reader sees which population each entry answers from.
+  emit_resolved_for_target_selected(
+    resolved: resolved,
+    target: target,
+    selection: RenderEveryModule,
+    partition_rows: generated_partition_crate_rows()
+  )
 }
 
 // WHY THE REFUSAL PRECONDITION A SCOPED ROUND RESTS ON LIVES HERE, one binding down.
@@ -1696,7 +1740,7 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
 // refuses, asserted to produce zero files rather than the ones that did render. It runs in the
 // required unit step, so deleting the `if` goes red there, which is the only form this argument
 // can take that a later reader can check.
-fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
+fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: RenderTarget, selection: RustModuleRenderSelection, partition_rows: List<GeneratedPartitionCrateRow>) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
@@ -1717,7 +1761,11 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         selection: selection
       )
       let _ = trace_mark("compile.emit.begin")
-      let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)
+      let emit_result = emit_from_artifact_plan_with_partition_rows(
+        emittable: emittable,
+        artifact_plan: artifact_plan,
+        partition_rows: partition_rows
+      )
       let _ = trace_mark("compile.emit.done")
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics

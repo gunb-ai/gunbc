@@ -1,8 +1,8 @@
 module test.claim.machine_intake.megarac_stale_power_off_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, String }
-import std.algebra { non_empty_singleton }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { non_empty_singleton, string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable, ChassisStatusUndecodable, chassis_observation_is_off }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
@@ -14,8 +14,9 @@ import gunbc.machine_intake.megarac_media_attach {
   ConvergeStepDetachStale,
   ConvergeStepRefuse,
   ConvergenceStep,
-  MegaRacAttachResult,
+  MegaRacAttachResult, SecretFileRemoved, SecretFileResidueRemains,
   MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
   MegaRacDetachNotAdmitted,
   MegaRacPresentationObserved,
   MegaRacRawRead,
@@ -24,6 +25,7 @@ import gunbc.machine_intake.megarac_media_attach {
   SessionReleased,
   SessionReleaseNotAttempted,
   SessionReleaseRefused,
+  megarac_close_never_ran,
   ShareBound,
   ShareUnreadable,
   attach_readiness,
@@ -33,10 +35,14 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved,
+  LookSecretFileLeft, LookSessionNotReleased,
 }
+import gunbc.host.boot_attempt { PowerOffToReplaceStale, PowerOffToCycleShare }
 import gunbc.machine_intake.megarac_boot_media_attach {
   PowerOffForStale,
+  PowerOffForShareCycle,
   PowerOffNotNeeded,
+  PowerOffWithheld,
   megarac_detach_admission,
   megarac_detach_admission_after_power_off,
   megarac_stale_power_off_need,
@@ -64,7 +70,20 @@ fn raw(body: String) -> MegaRacRawRead {
 }
 
 // ONE READ-ONLY LOOK AS THE OBSERVE TASK RETURNS IT: share bound, code clean, session released.
+// One /remote/images row, and a listing of rows in the order given.
+fn offer(name: String, index: String) -> String {
+  join(["{\"image_name\":\"", name, "\",\"image_index\":", index, "}"], "")
+}
+
+fn offering(offers: List<String>) -> String {
+  concat("[", concat(join(offers, ","), "]"))
+}
+
 fn look(configurations: String) -> MegaRacAttachResult {
+  look_listing(configurations: configurations, listing: raw(body: offering(offers: [offer(name: run_desired as String, index: "0")])))
+}
+
+fn look_listing(configurations: String, listing: MegaRacRawRead) -> MegaRacAttachResult {
   MegaRacAttachResult {
     outcome: MegaRacPresentationObserved {
       share: ShareBound,
@@ -72,10 +91,12 @@ fn look(configurations: String) -> MegaRacAttachResult {
       cd_error: CdErrorRead { code: CdErrorNone },
       general: raw(body: "{}"),
       configurations: raw(body: configurations),
+      listing: listing,
+      admitted_route: none,
     },
     session_release: SessionReleased,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
 }
 
 // THE CONVERGE'S OWN DECISION over a presentation and an admission, as the attach will take it.
@@ -104,7 +125,7 @@ test fn run_36683309058_on_with_stale_refuses_without_the_power_off() -> Bool {
 }
 
 test fn run_36683309058_on_with_stale_powers_off_then_detaches() -> Bool {
-  let off = MegaRacStalePowerOffObserved { stale_image: run_stale as String, before: host_on }
+  let off = MegaRacStalePowerOffObserved { purpose: PowerOffToReplaceStale { stale_image: run_stale as String }, before: host_on }
   stale_power_off_look_owed(before: host_on)
     && (match megarac_stale_power_off_need(look: look(configurations: presenting(name: run_stale as String)), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
       PowerOffForStale { stale_image: n } => n == (run_stale as String)
@@ -171,27 +192,70 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
       cd_error: CdErrorRead { code: CdErrorNone },
       general: raw(body: "{}"),
       configurations: raw(body: presenting(name: run_stale as String)),
+      listing: raw(body: offering(offers: [offer(name: run_desired as String, index: "0")])),
+      admitted_route: none,
     },
     session_release: l.session_release,
     baseline: none,
-  }
+   secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: unbound, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
 }
 
-test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
+// A LOOK WHOSE SESSION LEAKED IS WITHHELD, NOT UNNEEDED: a failed cleanup says nothing about the medium.
+test fn a_look_whose_session_leaked_withholds_the_power_off() -> Bool {
   let l = look(configurations: presenting(name: run_stale as String))
-  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none }
+  let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: leaked, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
-    PowerOffNotNeeded { reason: _ } => true
+    PowerOffWithheld { cause: LookSessionNotReleased { detail: d } } => d == "probe 000"
     _ => false
   }
 }
 
+// A LOOK THAT LEFT ITS CSRF HEADER FILE WITHHOLDS THE POWER-OFF. The identical look -- a stale census
+// image, share bound, session released -- differing only in whether its bearer file came off the runner:
+// removed powers off for the stale image (positive control), left is withheld with the typed cause.
+test fn a_look_that_left_its_csrf_file_withholds_the_power_off() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let clean = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileRemoved }
+  let left = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleased, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: clean, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffForStale { stale_image: _ } => true
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSecretFileLeft } => true
+      _ => false
+    })
+}
+
+// NEVER OPENED IS NOT OPENED-AND-NOT-CLOSED (side chat on gunbc#16247). The identical stale look, differing only
+// in its release: a session OpenSession never allocated is unneeded, the one production writes when the header
+// bracket could not be entered AFTER OpenSession succeeded (megarac_close_never_ran) is a leak and withholds --
+// and a never-opened look that somehow left a file still withholds on the residue rather than reading unneeded.
+test fn a_session_opened_and_never_closed_withholds_and_one_never_opened_does_not() -> Bool {
+  let l = look(configurations: presenting(name: run_stale as String))
+  let never_opened = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileRemoved }
+  let left_open = MegaRacAttachResult { outcome: l.outcome, session_release: megarac_close_never_ran(cause: "mktemp -d: Permission denied"), baseline: none, secret_file: SecretFileRemoved }
+  let never_opened_with_residue = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseNotAttempted, baseline: none, secret_file: SecretFileResidueRemains }
+  (match megarac_stale_power_off_need(look: never_opened, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffNotNeeded { reason: r } => string_contains(s: r as String, pattern: "never opened")
+    _ => false
+  })
+    && (match megarac_stale_power_off_need(look: left_open, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSessionNotReleased { detail: d } } => string_contains(s: d, pattern: "CloseSession never ran") && string_contains(s: d, pattern: "Permission denied")
+      _ => false
+    })
+    && (match megarac_stale_power_off_need(look: never_opened_with_residue, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffWithheld { cause: LookSecretFileLeft } => true
+      _ => false
+    })
+}
+
 test fn a_refused_look_is_never_powered_off_for() -> Bool {
-  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none , secret_file: SecretFileRemoved }
   match megarac_stale_power_off_need(look: refused, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
@@ -210,8 +274,8 @@ test fn unreadable_or_undecodable_power_takes_no_look_and_refuses() -> Bool {
 // A POWER-OFF NOT OBSERVED NEVER ADMITS, even beside an off reading: the read-back is the evidence,
 // not the command's exit or a later reading alone.
 test fn a_power_off_not_observed_or_refused_never_admits() -> Bool {
-  let unobserved = MegaRacStalePowerOffNotObserved { stale_image: run_stale as String, before: host_on, last: ChassisUnreadable }
-  let refused = MegaRacStalePowerOffCommandRefused { stale_image: run_stale as String, before: host_on }
+  let unobserved = MegaRacStalePowerOffNotObserved { purpose: PowerOffToReplaceStale { stale_image: run_stale as String }, before: host_on, last: ChassisUnreadable }
+  let refused = MegaRacStalePowerOffCommandRefused { purpose: PowerOffToReplaceStale { stale_image: run_stale as String }, before: host_on }
   (match megarac_detach_admission_after_power_off(power: host_off, off: unobserved) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
     && (match megarac_detach_admission_after_power_off(power: host_off, off: refused) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
 }
@@ -222,4 +286,47 @@ test fn only_an_observed_off_ends_the_read_back() -> Bool {
     && !chassis_observation_is_off(observation: host_on)
     && !chassis_observation_is_off(observation: ChassisUnreadable)
     && !chassis_observation_is_off(observation: ChassisStatusUndecodable { cause: "x" })
+}
+
+
+// ─── THE POWER-OFF TO CYCLE THE SHARE (side chat on gunbc#16475) ─────────────────────────────────────────
+
+// RUN 43578670059'S SHAPE: the host on, nothing presented, and a listing that offers an image of this lane
+// but not the target. Without a power-off the cycle's admission over the on reading is refused; the look
+// selects a power-off for exactly that image, and after an OBSERVED off plus a fresh off reading the
+// admission the attach receives is admitted. RED: the nothing-presented arm removed from the need.
+test fn on_with_nothing_presented_and_a_lacking_listing_powers_off_to_cycle_then_admits() -> Bool {
+  let lacking = raw(body: offering(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0"), offer(name: run_stale as String, index: "3")]))
+  let off = MegaRacStalePowerOffObserved { purpose: PowerOffToCycleShare { cycled: run_stale as String }, before: host_on }
+  (match megarac_detach_admission(power: host_on) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
+    && stale_power_off_look_owed(before: host_on)
+    && (match megarac_stale_power_off_need(look: look_listing(configurations: "[]", listing: lacking), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+      PowerOffForShareCycle { cycled: c } => c == (run_stale as String)
+      _ => false
+    })
+    && (match megarac_detach_admission_after_power_off(power: host_off, off: off) { MegaRacDetachAdmitted => true  _ => false })
+}
+
+// NOTHING PRESENTED IS POWERED OFF FOR ONLY WHEN THE ATTACH WOULD CYCLE: a listing that offers the target,
+// an empty one, a foreign-only one, one offering the lane image under two indices, and an unanswered
+// images read all leave the host on, because the attach decides each of them without a stop.
+test fn nothing_presented_is_powered_off_for_only_when_the_attach_would_cycle() -> Bool {
+  let need = fn(listing) { megarac_stale_power_off_need(look: look_listing(configurations: "[]", listing: listing), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) }
+  let not_needed = fn(n) { match n { PowerOffNotNeeded { reason: _ } => true  _ => false } }
+  let twice = offering(offers: [offer(name: run_stale as String, index: "3"), offer(name: run_stale as String, index: "5")])
+  not_needed(need(raw(body: offering(offers: [offer(name: run_stale as String, index: "3"), offer(name: run_desired as String, index: "4")]))))
+    && not_needed(need(raw(body: "[]")))
+    && not_needed(need(raw(body: offering(offers: [offer(name: "debian-12.7.0-arm64-netinst.iso", index: "0")]))))
+    && not_needed(need(raw(body: twice)))
+    && not_needed(need(MegaRacRawRead { answered: false, body: "curl: (28)", observed_at: none }))
+}
+
+// THE STALE ARM IS UNCHANGED BY THE LISTING: a stale presentation beside a listing lacking the target still
+// powers off to replace the stale image, never to cycle.
+test fn a_stale_presentation_powers_off_to_replace_whatever_the_listing() -> Bool {
+  let lacking = raw(body: offering(offers: [offer(name: run_stale as String, index: "3")]))
+  match megarac_stale_power_off_need(look: look_listing(configurations: presenting(name: run_stale as String), listing: lacking), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
+    PowerOffForStale { stale_image: n } => n == (run_stale as String)
+    _ => false
+  }
 }

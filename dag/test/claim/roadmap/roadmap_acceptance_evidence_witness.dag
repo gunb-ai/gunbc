@@ -1,0 +1,768 @@
+module test.claim.roadmap.roadmap_acceptance_evidence_witness
+
+// EXECUTING WITNESS for the acceptance law of the roadmap event log — the eleven claims this PR added, run
+// here rather than in test.claim.roadmap.roadmap_operator_close_retire_witness, and here is why in one
+// paragraph. Those claims were first written into the close/retire witness, whose twenty-six claims and
+// thirty-odd imports include three files the seed probe itself cannot resolve (`roadmap_authority`,
+// `roadmap_serve`, `roadmap_belt_actuate`); adding them pushed that module's whole-graph resolve past the
+// point where it stops after `compile.normalize` at any cap tried here, so NEITHER the entry probe NOR
+// `gunbc run --claim-run` could execute them — and a witness that cannot run is decoration
+// (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci: rows no lane executes are not evidence).
+// Everything here is decided BEFORE a byte is written — the operation keys, the pull-request door and the
+// migration comparison read only values — so the graph these claims need is the event log, its command
+// route and the CLI edge, nothing else: they resolve, they run under `--claim-run`, and the fast lane can
+// check them. What only the carrier can answer (that a committed acceptance is really answered by its own
+// recording after the head moved, that a claimed second retirement really refuses, that a refusal really
+// wrote nothing) needs a real throwaway Git remote and lives in the repo's manual-driver idiom:
+// `test.manual.issue_command_wet issue_command_acceptance_wet`, whose header documents the fixture and
+// whose executed receipt this PR carries. The close route's claims stayed where they were, with the reader
+// they assert on (`roadmap_operator_close_history`).
+//
+// What they prove by RUNNING:
+//   ONE OPERATION, ONE OUTCOME — the key a retry recomputes is the FACT (the node, the kind of fact and
+//           the receipt's digest) and never the caller's parent guess, while the retried COMMAND is not the
+//           same command once the head has moved: that pairing is exactly why the carrier answers a retry
+//           from its operation receipt and may not decide one by command identity. A retirement is keyed the
+//           same way, so a replay of the first retirement meets its own recording and a second retirement
+//           naming a different reason is a different operation the admission law refuses outright.
+//   EVIDENCE — the pull request an acceptance was earned by is one typed fact
+//           (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence): half a pull request is refused where
+//           the command line's three arguments are read, because it is not a value of the type; the
+//           absence is admissible only for one of the migration's own receipts, named by its bytes in
+//           gunbc.roadmap.roadmap_event_log roadmap_migration_acceptance_identities — a date an operator
+//           types decides nothing — and the refusal says where the closed set lives.
+//   VERIFIER — the migration gate's seven facets, one named claim each, because the runbook prints WHICH
+//           problem it found: agreement reports nothing; swapped evidence refuses on BOTH sides of the
+//           difference; a fact the manifest names twice against one copy reports its counts; an acceptance
+//           the log lost refuses with the closedness it carried; a node the log closes that the manifest
+//           never accepted refuses; a manifest that does not replay REFUSES rather than certifying an empty
+//           expectation; and a claimed retirement the log does not hold retired refuses. The comparison
+//           reads complete canonical facts, so a swapped or missing field cannot certify a different history.
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_same_command }
+import gunbc.roadmap.roadmap_issue_command {
+  AcceptNode, IssueCommandSubject, issue_command_event, issue_command_acceptance_evidence_law,
+}
+import gunbc.roadmap.roadmap_event_cli {
+  roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
+  roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
+  roadmap_acceptance_line_of,
+}
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
+  AcceptanceNodeRemainsSuperseded, roadmap_criteria_digest, roadmap_acceptance_line_of_receipt,
+}
+import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_event_log {
+  AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
+  roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
+  roadmap_acceptance_pr_evidence_url, roadmap_acceptance_pr_evidence_merged_at, roadmap_acceptance_pr_evidence_head_sha,
+  RoadmapEvent, RoadmapEventKind, RoadmapEventDecoded, RoadmapEventUndecodable,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_envelope, roadmap_event_wire_text,
+  roadmap_event_decode, roadmap_acceptance_receipt_members,
+  roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
+  roadmap_acceptance_migration_identity,
+}
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  parse_roadmap_acceptance_event_history_carrier, RoadmapAcceptanceEventHistoryParsed,
+  RoadmapAcceptanceEventHistoryParseRefused,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
+import gunbc.principal_projection { PrincipalRef }
+
+// THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
+// module deliberately does not import the close route (gunbc.roadmap.roadmap_operator_acceptance) — its
+// claims are about what the log admits and how it folds, and the close route's own claims live in
+// test.claim.roadmap.roadmap_operator_close_retire_witness beside the reader they assert on.
+type WitnessPrFacts {
+  url: NonEmptyStr
+  merged_at: NonEmptyStr
+  head: NonEmptyStr
+}
+
+fn fact_set() -> WitnessPrFacts {
+  WitnessPrFacts {
+    url: "https://github.com/gunb-ai/gunbc/pull/16100" as NonEmptyStr,
+    merged_at: "2026-11-03T10:00:00Z" as NonEmptyStr,
+    head: "abc123def456" as NonEmptyStr,
+  }
+}
+
+// THE PULL REQUEST THE CLOSE EARNED, spelled once as the typed fact the command carries — the url, the
+// merge time and the head arrive together because the type says they do
+// (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence).
+fn earned(facts: WitnessPrFacts) -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: facts.url as NonEmptyStr, merged_at: facts.merged_at as NonEmptyStr, head_sha: facts.head as NonEmptyStr,
+  }
+}
+
+// The ticket whose criteria digest rides the receipt. Local for the same reason as the facts above.
+fn witness_ticket() -> TicketFields {
+  TicketFields {
+    headline: "Acceptance evidence witness", brief: "b", displaced_cost: "d", current_state: "c",
+    first_slice: "f", red_control: "r", out_of_scope: "o", handback: "h",
+    updates: [TicketUpdate { on: "2026-11-03", note: "n" }],
+    authored_on: "2026-11-03", last_verified_on: "",
+  }
+}
+
+// The witness voice: a named assertion, checked by its own line. The label documents the row;
+// the boolean is what the runner reports.
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+// ── THE WIRE LINE IS CANONICAL AND PARSLES UNDER THE SEED'S OWN LAW ──────────────────────────────
+fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-03",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-03" as NonEmptyStr,
+  }
+}
+// The operator's receipt on a chosen acceptance day. The day is what the pull-request evidence law turns
+// on, so the witness — and the migration — need a receipt dated on either side of it.
+fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-03",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: day as NonEmptyStr,
+  }
+}
+// The same receipt with ONE piece of evidence changed: the day its red control ran. The standing folds
+// identically either way — which is exactly why the migration verifier must compare the whole fact and
+// not the two fields that happen to decide a standing.
+fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: witness_ticket()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-06",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-03" as NonEmptyStr,
+  }
+}
+// ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────
+// THE SAME ACCEPTANCE UNDER REWRITTEN CRITERIA. One criteria line moves, which is what the
+// operation key is actually made of: roadmap_acceptance_operation_identity takes the receipt's
+// CRITERIA digest, so this is the only honest way to ask whether a second acceptance of a node is a
+// different operation. Deliberately NOT sample_receipt_on, which moves only the calendar day and so
+// keeps the key — a retried acceptance is the same operation however the day moved.
+fn witness_ticket_rewritten() -> TicketFields {
+  TicketFields {
+    headline: "Acceptance evidence witness", brief: "b", displaced_cost: "d", current_state: "c",
+    first_slice: "f", red_control: "r — the criteria the operator rewrote", out_of_scope: "o", handback: "h",
+    updates: [TicketUpdate { on: "2026-11-03", note: "n" }],
+    authored_on: "2026-11-03", last_verified_on: "",
+  }
+}
+
+fn sample_receipt_other_criteria(node: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: witness_ticket_rewritten()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-03",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-03" as NonEmptyStr,
+  }
+}
+
+fn opr_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-opr" as NonEmptyStr,
+  } }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// THE MIGRATION RESUMES, AND THE VERIFIER PRESERVES FACTS (review 92815 findings 1 and 2, review 92911).
+// The runbook migrates the operator's recorded acceptances and retirements command by command, and an
+// interrupted run is resumed by replaying its commands; the verifier then certifies that the migrated log
+// holds what the exported manifest named. Each facet below is its own named claim, so a failing run names
+// the facet rather than saying only that something is wrong.
+// The retry law, the retirement key and the pull-request door are DECIDED before any byte is written, so
+// they are witnessed as pure claims. What only the carrier can answer — that a committed acceptance really
+// is answered by its own recording after the head moved, that a claimed second retirement really refuses,
+// that a refusal really wrote nothing — is the manual driver's job, because answering it needs a real
+// throwaway Git remote: `test.manual.issue_command_wet issue_command_acceptance_wet`, whose header
+// documents the fixture and whose executed receipt this PR carries. Splitting the two this way is what the
+// repo already does for every route that touches Git (see `test.manual.snapshot_census_wet`), and it is
+// what makes these claims runnable at all: no lane executes wet claim rows
+// (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci), while a pure claim is checked by the
+// fast lane and by `--claim-run` on any workstation.
+
+test fn a_retried_acceptance_is_the_same_operation_and_the_same_command_because_the_guess_is_not_a_fact() -> Bool {
+  let node = "node-retry-head-moved"
+  let receipt = sample_receipt(node)
+  let key = roadmap_acceptance_operation_identity(
+    node: node, choice: BuildAcceptCommand { receipt: receipt, evidence: earned(fact_set()) })
+  let first = AcceptNode {
+    subject: IssueCommandSubject { node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
+      operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
+    receipt: receipt, evidence: earned(fact_set()) }
+  let retry = AcceptNode {
+    subject: IssueCommandSubject { node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
+      operation: "op-retry-head-moved" as NonEmptyStr,
+      expected: Present { value: "5f4c0d2b9a1e7c335f4c0d2b9a1e7c335f4c0d2b9a1e7c335f4c0d2b9a1e7c33" as NonEmptyStr } },
+    receipt: receipt, evidence: earned(fact_set()) }
+  claim("the operation key is the FACT — the node, the kind of fact and the receipt's digest — and never the caller's parent guess",
+    string_contains(s: key, pattern: node) && string_contains(s: key, pattern: "-acceptance-")
+      && string_contains(s: key, pattern: roadmap_acceptance_receipt_digest_text(receipt: receipt))
+      && !string_contains(s: key, pattern: "op-retry-head-moved"))
+  && claim(join(["the carrier's own command equality compares the FACT and not the caller's parent guess,",
+             "which is exactly why a retry whose head moved is answered from the operation receipt as already",
+             "present instead of refused as a conflict (the wet half, over a real append and a real intervening",
+             "commit, is test.manual.issue_command_wet.issue_command_acceptance_wet)"], " "),
+    roadmap_event_same_command(
+      a: issue_command_event(command: first, recorded_at: "2026-11-04T08:00:00Z"),
+      b: issue_command_event(command: retry, recorded_at: "2026-11-04T08:00:02Z")))
+  && claim("the same key may never authorize another payload: changing the acceptance's own fact IS a different command",
+    !roadmap_event_same_command(
+      a: issue_command_event(command: first, recorded_at: "2026-11-04T08:00:00Z"),
+      b: issue_command_event(command: AcceptNode {
+        subject: IssueCommandSubject { node: node as NonEmptyStr as RoadmapNodeId, author: opr_principal(),
+          operation: "op-retry-head-moved" as NonEmptyStr, expected: none },
+        receipt: sample_receipt_on(node: node, day: "2026-11-07"), evidence: earned(fact_set()) },
+        recorded_at: "2026-11-04T08:00:04Z")))
+  && claim("the key is the receipt's CRITERIA digest: an acceptance under rewritten criteria is a different operation",
+    key != roadmap_acceptance_operation_identity(node: node,
+      choice: BuildAcceptCommand { receipt: sample_receipt_other_criteria(node: node), evidence: earned(fact_set()) }))
+}
+
+// THE OTHER HALF OF THAT KEY, so the law is stated in both directions. The key is the criteria the
+// operator was shown, not the calendar and not how often the same acceptance was asked for: the same
+// criteria replayed on a later day is the SAME operation, which is what lets a half-finished
+// migration be finished by replaying it instead of duplicating an event or colliding on the key.
+test fn the_operation_key_is_the_criteria_and_not_the_calendar() -> Bool {
+  let node = "node-retry-key-is-criteria"
+  let key = roadmap_acceptance_operation_identity(
+    node: node, choice: BuildAcceptCommand { receipt: sample_receipt(node), evidence: earned(fact_set()) })
+  claim("the same criteria on a later day is the SAME operation, so a replay finishes it rather than duplicating it",
+    key == roadmap_acceptance_operation_identity(node: node,
+      choice: BuildAcceptCommand { receipt: sample_receipt_on(node: node, day: "2026-11-06"), evidence: earned(fact_set()) }))
+  && claim("and the red control's own day is not the key either: same criteria, control executed later, same operation",
+    key == roadmap_acceptance_operation_identity(node: node,
+      choice: BuildAcceptCommand { receipt: sample_receipt_other_executed_day(node: node), evidence: earned(fact_set()) }))
+}
+
+test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_call() -> Bool {
+  let node = "node-retirement-identity"
+  let reason = "the row was deleted as an authored row; its work moved"
+  let key = roadmap_retirement_operation_identity(node: node, reason: reason)
+  claim("the key a retried retirement recomputes names the node and the kind of fact, so it meets its own operation receipt and answers the first recording",
+    string_contains(s: key, pattern: node) && string_contains(s: key, pattern: "-retirement-"))
+  && claim("the key holds the reason's DIGEST, not the caller's sentence, so a replay from a different shell keeps the same key",
+    !string_contains(s: key, pattern: "authored row"))
+  && claim("a DIFFERENT retirement of the same node is a different key, which is what lets the admission law refuse it outright instead of absorbing it",
+    key != roadmap_retirement_operation_identity(node: node, reason: "a second retirement naming a different reason"))
+}
+
+// Half a pull request is refused where the three arguments are READ, by name of what is missing; a whole
+// one converts; an absence is the one-time migration's case, admitted only for a receipt the closed set
+// names by its bytes, and the refusal says where that set lives.
+test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
+  let facts = fact_set()
+  let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "")
+  let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456")
+  let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "")
+  let all_conv = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String)
+  claim("half a pull request is refused where the three arguments are read",
+    match half { Absent => true, Present { value: _ } => false })
+  && claim("a pull request that never merged is refused where they are read",
+    match shape { Absent => true, Present { value: _ } => false })
+  && claim("three empty arguments are the ONE admissible absence, not three refusals",
+    match none_conv { Present { value: NoPullRequest } => true, _ => false })
+  && claim("three complete arguments fold into one typed fact that the row's own readers spell back",
+    match all_conv {
+      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == (facts.url as String)
+        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == (facts.merged_at as String)
+        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == (facts.head as String)
+      Absent => false })
+  && claim("the admissible absence is the row's own spelling of no pull request: three empty fields, not three refusals",
+    match none_conv {
+      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == ""
+        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == ""
+        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == ""
+      Absent => false })
+}
+
+// THE SEED, PINNED. The seventeen acceptance lines the hand-committed
+// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl carried (its eighteenth line is a revocation,
+// which needs no pull request and is not part of this law). They are pinned here VERBATIM — copied from
+// the file at its last commit, 7e57510bb504, before this PR deleted it — because they are what the
+// migration feeds the route, and what the model's closed set is checked against. A roster entry copied
+// wrong, dropped, invented or duplicated goes red in the claim below rather than quietly admitting the
+// wrong receipt, or refusing the one-time migration.
+fn seed_acceptance_lines() -> List<String> {
+  [
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-git-upstream-model\",\"criteria_digest\":\"b3747b95baf099cc\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.git_upstream_model_execution\",\"witness_fn\":\"witness_git_cli_fixture_hashes_projects_and_independently_reads_back\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/git/object_store.dag\",\"further_artifacts\":[\"dag/test/claim/git_upstream_model_witness.dag\",\"dag/test/manual/git_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-mercurial-upstream-model\",\"criteria_digest\":\"c43b17d5134b111d\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.mercurial_upstream_model_execution\",\"witness_fn\":\"witness_mercurial_cli_fixture_projects_and_independently_reads_back\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/mercurial.dag\",\"further_artifacts\":[\"dag/test/claim/mercurial_upstream_model_witness.dag\",\"dag/test/manual/mercurial_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-pijul-upstream-model\",\"criteria_digest\":\"098c989bdc87dac7\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.manual.pijul_upstream_model_execution\",\"witness_fn\":\"witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/extdeps/pijul.dag\",\"further_artifacts\":[\"dag/test/claim/pijul_upstream_model_witness.dag\",\"dag/test/manual/pijul_upstream_model_execution.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-claim-indexed-evidence\",\"criteria_digest\":\"2b81ac6aacf6a190\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.claim_indexed_evidence_witness\",\"witness_fn\":\"witness_claim_evidence_roles_are_externally_grounded\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/claim_evidence.dag\",\"further_artifacts\":[\"dag/gunbc/provider_readiness_claim_evidence.dag\",\"dag/gunbc/os_install_claim_evidence.dag\",\"dag/gunbc/source_integration_claim_evidence.dag\",\"dag/test/claim/claim_indexed_evidence_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-compatibility-shape\",\"criteria_digest\":\"f023bb4e862d9e27\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.scm.scm_compatibility_shape_witness\",\"witness_fn\":\"witness_r1_acceptance_contract_holds\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/scm_compatibility_shape.dag\",\"further_artifacts\":[\"dag/gunbc/scm_compatibility/git.dag\",\"dag/gunbc/scm_compatibility/mercurial.dag\",\"dag/gunbc/scm_compatibility/pijul.dag\",\"dag/test/claim/scm_compatibility_shape_witness_test.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"2-scm-p0-landing-spine\",\"criteria_digest\":\"9d3aa951e0f5ffa3\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.source_integration_landing_spine_witness\",\"witness_fn\":\"witness_p0_roadmap_acceptance_contract_holds\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/source_integration_landing_spine.dag\",\"further_artifacts\":[\"dag/gunbc/native_scm_interaction_contract.dag\",\"dag/test/claim/source_integration_landing_spine_witness.dag\",\"dag/test/claim/native_scm_interaction_contract_witness.dag\",\"dag/gunbc/scm_compatibility_shape.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-occurrence-transport\",\"criteria_digest\":\"d76cf14b12dbf4bf\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.namespace_occurrence_transport\",\"witness_fn\":\"namespace_occurrence_equal_text_mints_distinct_ids_holds\",\"executed_on\":\"2026-07-28\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/occurrence_identity.dag\",\"further_artifacts\":[\"dag/test/claim/namespace_occurrence_transport.dag\",\"src/v1/tests/claim/pattern_binder_declaration_node_test.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-28\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-binding-kernel\",\"criteria_digest\":\"2eba4715cdef42eb\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.occurrence_binding_resolve_witness\",\"witness_fn\":\"occurrence_binding_resolve_malformed_transport_refuses_holds\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/occurrence_binding_resolve.dag\",\"further_artifacts\":[\"dag/test/claim/occurrence_binding_resolve_witness.dag\",\"src/v1/04_occurrence_binding.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"entry-graph-union-construction\",\"criteria_digest\":\"3502539e920d9e40\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v1-compiler-tests.union_resolve_receipts_test\",\"witness_fn\":\"shared_typecheck_distinct_compute_count_is_order_invariant\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"docs/plans/entry-graph-union-slice2-typecheck-attribution.md\",\"further_artifacts\":[\"docs/plans/receipts/entry-graph-union-slice2/receipt-broad-disjoint.json\",\"docs/plans/receipts/entry-graph-union-slice2/receipt-post-merge-representative-50.json\",\"docs/plans/per-entry-assembly-decomposition-measurement.md\",\"src/v1/tests/src/union_resolve_receipts_test.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pderive-typesafe-nullary-reflection\",\"criteria_digest\":\"dac83172a613e659\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.manual.coproduct_reflection_conformance\",\"witness_fn\":\"witness_nullary_reflection_rejects_requested_a_with_context_b\",\"executed_on\":\"2026-07-28\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/std/node_query.dag\",\"further_artifacts\":[\"src/v2/test/claim/manual/coproduct_reflection_conformance.dag\",\"src/v1/stage0/src/coproduct_reflection.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-28\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pderive-static-supplemental-contract\",\"criteria_digest\":\"fa6378dabdb12432\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract\",\"witness_fn\":\"nested_generic_swap_red_rejects_swapped_slot_requirements\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/std/trait_derive_shape.dag\",\"further_artifacts\":[\"dag/extdeps/languages/rust/derive_contracts.dag\",\"src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-test-hygiene-producer-retirement\",\"criteria_digest\":\"8f77a4b2e0ee3387\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.test_module_hygiene_hand_rust_equivalence_witness\",\"witness_fn\":\"test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds\",\"executed_on\":\"2026-07-29\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/test_module_hygiene.dag\",\"further_artifacts\":[\"dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness.dag\",\"src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-07-29\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-interpreter-primitive-roster\",\"criteria_digest\":\"581758f45921b40a\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.v1_interpreter_primitive_surface_witness\",\"witness_fn\":\"shadow_detector_catches_a_planted_duplicate\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/v1/v1_interpreter_primitive_surface.dag\",\"further_artifacts\":[\"dag/test/claim/v1_interpreter_primitive_surface_witness.dag\",\"dag/test/claim/primitive_identity_join_witness.dag\",\"src/v1/stage0/src/v1_interpreter.rs\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"ladder-measurement-schema\",\"criteria_digest\":\"74da4d8be7125c81\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.guarantee_measurement_witness\",\"witness_fn\":\"duplicate_class_id_reds_uniqueness\",\"executed_on\":\"2026-08-01\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/gunbc/guarantee_measurement.dag\",\"further_artifacts\":[\"dag/test/claim/guarantee_measurement_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-01\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v2-emitter-producer-provenance\",\"criteria_digest\":\"f1c76111c83a0a60\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"v2.test.claim.self_host.emitter_producer_provenance_witness_test\",\"witness_fn\":\"witness_restored_binding_without_executed_receipt_does_not_authorize_reds\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/compiler/self_host/frontier.dag\",\"further_artifacts\":[\"src/v2/test/claim/self_host/emitter_producer_provenance_witness.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"v1-seed-honesty-decision\",\"criteria_digest\":\"1717cfe258d9afe1\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.seed_honesty_discharge_unavailable\",\"witness_fn\":\"seed_honesty_undecided_would_keep_closing_contract_red\",\"executed_on\":\"2026-08-02\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"src/v2/workflow/bootstrap.dag\",\"further_artifacts\":[\"dag/test/claim/seed_honesty_discharge_unavailable.dag\",\"dag/gunbc/ci/ci_layer_roots.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-08-02\"}}",
+    "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"namespace-structural-observations\",\"criteria_digest\":\"e112e32d5c07a970\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.namespace_structural_observations_acceptance\",\"witness_fn\":\"an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability\",\"executed_on\":\"2026-10-11\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"dag/test/claim/namespace_structural_observations_acceptance.dag\",\"further_artifacts\":[\"dag/gunbc/namespace_cut/namespace_structural_observations_contract.dag\",\"dag/gunbc/namespace_cut/namespace_structural_observations_production.dag\"]},\"accepted_by\":\"operator\",\"accepted_on\":\"2026-10-11\"}}",
+  ]
+}
+
+// A pinned seed line as the route will see it: parsed by the operator-law parser, and the identity the log
+// stores for it. Empty text means the line is not an acceptance the grammar admits — which the claims
+// below take as a failure, never as a skip.
+fn identity_of_seed_line(text: String) -> String {
+  match roadmap_acceptance_line_of(text: text) {
+    Absent => ""
+    Present { value: e } => match e {
+      AcceptanceRecorded { receipt: r } =>
+        roadmap_acceptance_migration_identity(e: roadmap_acceptance_line_of_receipt(receipt: r))
+      _ => ""
+    }
+  }
+}
+
+// The same parse, rendered back out by the operator law's own writer. This is NOT a byte-for-byte copy of
+// the pinned line, and a claim must not pretend it is: the seed file is compact JSON
+// (`{"variant":"acceptance_recorded",…}`) and predates this writer, which spells the same line with a space
+// after every comma and colon, so the two agree on fields, order and values and never on separators. What
+// the closed set actually depends on is asserted instead — parse, render, parse again, with the receipt's
+// canonical identity unchanged and the render a fixed point after the first pass.
+fn rendered_seed_line(text: String) -> String {
+  match roadmap_acceptance_line_of(text: text) {
+    Absent => ""
+    Present { value: e } => match e {
+      AcceptanceRecorded { receipt: r } => roadmap_operator_acceptance_receipt_line(receipt: r)
+      _ => ""
+    }
+  }
+}
+
+fn seeded_identity_exists(identity: String) -> Bool {
+  any(roadmap_migration_acceptance_identities(), id => (id as String) == identity)
+}
+
+fn no_receipt() -> RoadmapAcceptanceReceipt? { none }
+
+// The migration's first acceptance, as the route will hold it. Answers none only if the pinned line cannot
+// be parsed at all, which the roster claim below fails on; the law claim falls back to a receipt that is
+// NOT in the set, so a broken parse fails the "admitted" claim rather than passing it vacuously.
+fn first_seed_receipt() -> RoadmapAcceptanceReceipt? {
+  fold(seed_acceptance_lines(), init: no_receipt(), f: fn(acc, l) {
+    match acc {
+      Present { value: held } => Present { value: held }
+      Absent => match roadmap_acceptance_line_of(text: l) {
+        Absent => none
+        Present { value: e } => match e {
+          AcceptanceRecorded { receipt: r } => Present { value: r }
+          _ => none
+        }
+      }
+    }
+  })
+}
+
+// How many entries of `hay` equal `needle`, by fold: no filter is imported here to hide a default.
+fn occurrences(hay: List<String>, needle: String) -> Int {
+  fold(hay, init: 0, f: fn(acc, x) { if x == needle { acc + 1 } else { acc } })
+}
+
+test fn the_migration_roster_is_the_pinned_seed() -> Bool {
+  let roster = roadmap_migration_acceptance_identities()
+  let pinned = seed_acceptance_lines()
+  claim("the closed set and the pinned seed are both the seventeen acceptances the hand-committed file carried",
+    length(roster) == 17 && length(pinned) == 17)
+  && claim("no identity admits the same receipt twice, so no receipt enters under two spellings",
+    fold(roster, init: true, f: fn(acc, a) { acc && occurrences(hay: roster, needle: a) == 1 }))
+  && claim("every pinned seed line's identity is in the closed set, and every entry of the closed set is the identity of a pinned line: nothing copied wrong, nothing dropped, nothing invented",
+    fold(map(pinned, l => seeded_identity_exists(identity: identity_of_seed_line(text: l))),
+      init: true, f: fn(acc, ok) { acc && ok })
+    && fold(map(roster, entry => any(pinned, l => identity_of_seed_line(text: l) == entry)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+// Split out of the roster claim, because an ungrammatical pinned line would otherwise make the round-trip
+// claim below answer `"" == ""` and pass for the wrong reason.
+test fn every_pinned_seed_line_parses_to_an_acceptance_the_grammar_admits() -> Bool {
+  claim("no pinned seed line is silently ungrammatical: an empty identity is a failure here, never a skip",
+    fold(map(seed_acceptance_lines(), l => identity_of_seed_line(text: l) != ""),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+// The arm the byte-for-byte version could not have: the pinned file was not written by
+// roadmap_operator_acceptance_receipt_line (compact JSON, older than the writer), so what the closed set is
+// entitled to assume is that the two readers agree on the FACTS — a structural round trip, not a spacing
+// match. Each guard is repeated inside so this claim cannot pass on a line that never parsed.
+test fn each_pinned_seed_line_survives_a_round_trip_through_the_operator_writer() -> Bool {
+  claim("parse, render through the operator law's own writer, parse again: the receipt's canonical identity is unchanged",
+    fold(map(seed_acceptance_lines(), l => identity_of_seed_line(text: l) != ""
+      && identity_of_seed_line(text: rendered_seed_line(text: l)) == identity_of_seed_line(text: l)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+  && claim("the writer is a fixed point after its first pass: rendering a rendered line changes nothing",
+    fold(map(seed_acceptance_lines(), l => rendered_seed_line(text: rendered_seed_line(text: l)) == rendered_seed_line(text: l)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+}
+
+test fn the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt() -> Bool {
+  let seeded = match first_seed_receipt() {
+    Absent => sample_receipt_on(node: "node-parse-of-the-pinned-line-broke", day: "2026-07-29")
+    Present { value: r } => r
+  }
+  // The backdating the dated door let through: the migration's OWN receipt with one field changed — its
+  // claimed day moved a day earlier — is no longer one of the migration's receipts, because membership is
+  // the receipt's bytes and not a date its author chose.
+  let backdated = RoadmapAcceptanceReceipt {
+    node: seeded.node, criteria_digest: seeded.criteria_digest, red_control: seeded.red_control,
+    handback: seeded.handback, accepted_by: seeded.accepted_by, accepted_on: "2026-07-28" as NonEmptyStr,
+  }
+  let other_node = RoadmapAcceptanceReceipt {
+    node: "node-not-in-the-migration" as RoadmapNodeId, criteria_digest: seeded.criteria_digest,
+    red_control: seeded.red_control, handback: seeded.handback, accepted_by: seeded.accepted_by,
+    accepted_on: seeded.accepted_on,
+  }
+  let law_seeded = issue_command_acceptance_evidence_law(receipt: seeded, evidence: NoPullRequest)
+  let law_backdated = issue_command_acceptance_evidence_law(receipt: backdated, evidence: NoPullRequest)
+  let law_other_node = issue_command_acceptance_evidence_law(receipt: other_node, evidence: NoPullRequest)
+  let law_fresh = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-absent-today", day: "2026-11-12"), evidence: NoPullRequest)
+  let law_earned = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-earned-any-day", day: "2026-11-12"), evidence: earned(fact_set()))
+  claim("a receipt that IS one of the migration's own is admitted with no pull request — the whole case the closed set exists for",
+    match law_seeded { Absent => true, Present { value: _ } => false })
+  && claim("the same receipt one day EARLIER refuses: a date typed at a command cannot join the set, which is exactly the hole the dated door left open — an acceptance issued today with an earlier-looking day",
+    match law_backdated { Present { value: _ } => true, Absent => false })
+  && claim("the same receipt on another node refuses: membership is the whole receipt, node included",
+    match law_other_node { Present { value: _ } => true, Absent => false })
+  && claim("an absence dated today refuses, and the refusal says where the door is, so the operator is not left guessing",
+    match law_fresh {
+      Present { value: why } => string_contains(s: why, pattern: "roadmap_migration_acceptance_identities")
+      Absent => false })
+  && claim("an acceptance earned by a pull request is admitted on any day — the door is on the absence, not on the acceptance",
+    match law_earned { Absent => true, Present { value: _ } => false })
+}
+
+// Does the door REFUSE an absence dated `day`? Any day that is not a calendar day must answer true here.
+fn absence_refuses(day: String) -> Bool {
+  match issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-form", day: day), evidence: NoPullRequest) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The migration's own receipt with ONE field bent to `day`. Its membership of the closed set is what makes
+// these day arms discriminating: a bent receipt is refused, and the baseline beside it is admitted, so the
+// refusal is that field and not the door.
+fn receipt_with_day(receipt: RoadmapAcceptanceReceipt, day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: receipt.node, criteria_digest: receipt.criteria_digest, red_control: receipt.red_control,
+    handback: receipt.handback, accepted_by: receipt.accepted_by, accepted_on: day as NonEmptyStr,
+  }
+}
+
+// The pinned seed's first acceptance, or a receipt that is certainly NOT in the closed set when the pinned
+// line cannot be parsed — so a broken fixture fails the admitting claims instead of passing them.
+fn the_seeded_receipt() -> RoadmapAcceptanceReceipt {
+  match first_seed_receipt() {
+    Absent => sample_receipt_on(node: "node-parse-of-the-pinned-line-broke", day: "2026-07-29")
+    Present { value: r } => r
+  }
+}
+
+// THE DAY IS A CALENDAR DAY, NOT A TEXT THAT SORTS BEFORE ONE. This is where the day law earns its keep: an
+// acceptance carrying no pull request used to be admitted by the receipt's own day, compared with
+// string_compare_canonical against "2026-11-01", so every spelling below sorted before it and was ADMITTED
+// while naming no day at all — a self-attested string judged against a date-shaped literal, which reads as a
+// hard rule and fails open, the shape gunbc.design_argument::fail_closed calls a hard reject ("a diff landing
+// a silent widen … or escape hatch"). Two things closed that: the door became a closed set over the receipt's
+// bytes (roadmap_migration_acceptance_identities), and the day is read through the checked constructor
+// gunbc.roadmap.roadmap_event_log roadmap_acceptance_day, whose Absent refuses here, on both arms.
+//
+// The set is chosen to discriminate, not to decorate:
+// - "0", "1999", "2025-13-99" — too short for the form, or beyond any calendar. A text compare admitted all three.
+// - "2026-02-30", "2023-02-29" — the right shape, the wrong calendar. A pattern would pass them; the ONE
+//   day-in-month rule (extdeps.units.iso8601_calendar, reached through the constructor) refuses them, and the
+//   leap-day control two claims below is admitted — so the refusal is the calendar, not a regex.
+// - "2026-2-03", "2026-02-3" — a real day in a form that is not fixed width. parse_int reads "2" and "3"
+//   happily, so each field is round-tripped through the calendar authority's own two-digit renderer.
+// - "+026-11-03" — a signed year: parse_int reads it as 26, and the four-digit year requirement refuses it.
+// - "banana--" — ten characters, dashes in place, nothing numeric.
+test fn the_absence_refuses_a_day_that_is_not_a_calendar_day() -> Bool {
+  claim("'0' refuses: a text that sorts before every date is not a date", absence_refuses(day: "0"))
+    && claim("'1999' refuses: four digits, no month, no day", absence_refuses(day: "1999"))
+    && claim("'2025-13-99' refuses: month 13 and day 99 are outside the calendar", absence_refuses(day: "2025-13-99"))
+    && claim("'2026-02-30' refuses: the shape is right and the day is not", absence_refuses(day: "2026-02-30"))
+    && claim("'2023-02-29' refuses: 2023 is not a leap year", absence_refuses(day: "2023-02-29"))
+    && claim("'2026-2-03' refuses: the month must be two digits", absence_refuses(day: "2026-2-03"))
+    && claim("'2026-02-3' refuses: the day must be two digits", absence_refuses(day: "2026-02-3"))
+    && claim("'+026-11-03' refuses: a signed year is not a four-digit year", absence_refuses(day: "+026-11-03"))
+    && claim("'banana--' refuses: dashes in the right places do not make a day", absence_refuses(day: "banana--"))
+    && claim("a well-formed day is not itself the reason: the migration's own receipt — a real calendar day, no pull request — is admitted, which is what makes the nine refusals above about the day",
+      match issue_command_acceptance_evidence_law(receipt: the_seeded_receipt(), evidence: NoPullRequest) {
+        Absent => true
+        Present { value: _ } => false
+      })
+}
+
+// THE DAY IS CHECKED ON BOTH ARMS. A pull-request-evidenced acceptance carries a real merge fact, and a merge fact
+// is not a substitute for a day: the fold reads the receipt's day, and an event whose accepted_on is not a calendar
+// day is refused there (see test.claim.roadmap.roadmap_event_log_witness). The door says so where the operator can
+// act on it — at the command — rather than letting the record land and the fold stop believing it afterwards.
+test fn the_pull_request_arm_still_requires_a_real_day() -> Bool {
+  let bad = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-earned-bad", day: "2025-13-99"), evidence: earned(fact_set()))
+  let good = issue_command_acceptance_evidence_law(
+    receipt: sample_receipt_on(node: "node-door-earned-good", day: "2026-11-03"), evidence: earned(fact_set()))
+  claim("an evidenced acceptance dated with a false day refuses too",
+    match bad { Present { value: _ } => true, Absent => false })
+    && claim("the same evidence on a real day is admitted, so the refusal is the day and not the arm",
+      match good { Absent => true, Present { value: _ } => false })
+}
+
+// HOW STRICT THE DAY FORM IS ABOUT WHAT A HUMAN MAY TYPE. These are pinned on the pull-request arm, where
+// membership of the closed set cannot be what refused: the same receipt is admitted on its own day and
+// refused for a five-digit year, for a leading space, for a trailing one — so the refusals are the form,
+// nothing else. The constructor does not trim, and the log is the writer of this field: a stored space is a
+// malformed field kept, re-emitted and hashed into the event id as written, so it is refused at the command
+// rather than tolerated.
+//
+// A note on why no claim compares text order to calendar order: once the constructor admits only the
+// fixed-width canonical form, the collation order and the day-count order of any two admitted days are the
+// same order, so no input can tell those implementations apart.
+// The two questions this claim asks, at module scope: a claim body in this tree holds no
+// declarations (nothing in dag/test/claim declares a fn inside a test fn), so the helpers that
+// turn the door's String? into a yes/no live beside the claim, one answer per arm.
+fn admitted(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+  match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn refused(evidence: AcceptancePrEvidence, receipt: RoadmapAcceptanceReceipt) -> Bool {
+  match issue_command_acceptance_evidence_law(receipt: receipt, evidence: evidence) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn the_day_form_is_strict_about_what_a_human_may_type() -> Bool {
+  let seeded = the_seeded_receipt()
+  claim("the migration receipt on its own day, with a pull request, is admitted — the baseline the next arms bend",
+    admitted(evidence: earned(fact_set()), receipt: seeded))
+    && claim("'19999-11-03' refuses: a five-digit year is not this form, even though it reads early as text",
+      refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "19999-11-03")))
+    && claim("surrounding space refuses: the field is stored as written, so a day valid only after trimming is refused",
+      refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: " 2026-07-29"))
+      && refused(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29 ")))
+    && claim("the same day without the space is admitted, so those two refusals are the space and nothing else",
+      admitted(evidence: earned(fact_set()), receipt: receipt_with_day(receipt: seeded, day: "2026-07-29")))
+    && claim("and the day an absence is admitted on is the migration's day, whole: bend it by one day and the closed set no longer knows the receipt",
+      refused(evidence: NoPullRequest, receipt: receipt_with_day(receipt: seeded, day: "2026-07-28")))
+}
+
+
+
+// THE MIGRATION VERIFIER, facet by facet. Each check is its own named claim, because a single Bool over
+// seven assertions says only that something is wrong; the refusal the runbook prints has to say WHICH.
+// The verifier compares COMPLETE canonical facts (roadmap_acceptance_receipt_members), counts them as a
+// multiset, checks closedness in both directions against the manifest's own replay, and reads the retired
+// roster. `node_verified` is the node every scenario here accepts; `manifest_replay_closed` is the
+// closedness the manifest's live receipts already imply for it.
+
+fn verifier_events_accepted() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRecorded { receipt: sample_receipt("node-multiset") }] as List<RoadmapAcceptanceEvent>
+}
+
+fn verifier_events_swapped() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRecorded { receipt: sample_receipt_other_executed_day("node-multiset") }] as List<RoadmapAcceptanceEvent>
+}
+
+fn verifier_events_revoked_alone() -> List<RoadmapAcceptanceEvent> {
+  [AcceptanceRevoked {
+    exact_prior_receipt: sample_receipt("node-multiset"),
+    disposition: AcceptanceNodeRemainsSuperseded,
+    reason: "the floor cut retired this work's subject" as NonEmptyStr,
+    revoked_by: "briansrls" as NonEmptyStr,
+    revoked_on: "2026-09-13" as NonEmptyStr,
+  }] as List<RoadmapAcceptanceEvent>
+}
+
+fn verifier_closed() -> List<String> { ["node-multiset"] }
+fn verifier_nothing() -> List<String> { [] }
+
+test fn a_migration_verifier_agrees_when_the_log_holds_what_the_manifest_names() -> Bool {
+  claim("agreement between the manifest and the log reports no problem at all",
+    count(roadmap_acceptance_migration_problems(
+      wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+      closed_nodes: verifier_closed(), not_retired: verifier_nothing())) == 0)
+}
+
+test fn a_migration_verifier_refuses_swapped_evidence_on_both_sides_of_the_difference() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_swapped(),
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+  claim("swapped evidence refuses on both sides of the difference", count(problems) == 2
+    && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
+    && any(problems, pr => string_contains(s: pr, pattern: "expected 0, the log holds 1")))
+}
+
+test fn a_migration_verifier_counts_a_fact_the_manifest_names_twice_against_one_copy() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: concat(verifier_events_accepted(), verifier_events_accepted()), held: verifier_events_accepted(),
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+  claim("a fact the manifest names twice against one copy in the log reports its counts",
+    count(problems) >= 1 && any(problems, pr => string_contains(s: pr, pattern: "expected 2, the log holds 1")))
+}
+
+test fn a_migration_verifier_refuses_an_acceptance_the_log_lost_with_its_closedness() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_nothing_events(),
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+  claim("an acceptance the log lost refuses as a missing fact and an unmet closedness",
+    count(problems) == 2 && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
+    && any(problems, pr => string_contains(s: pr, pattern: "node-multiset"))
+    && any(problems, pr => string_contains(s: pr, pattern: "the log does not say so")))
+}
+
+// The empty held-list typed once, so a reader cannot mistake a dropped argument for a typo.
+fn verifier_nothing_events() -> List<RoadmapAcceptanceEvent> { [] as List<RoadmapAcceptanceEvent> }
+
+test fn a_migration_verifier_refuses_a_closed_node_the_manifest_never_accepted() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+    closed_nodes: concat(verifier_closed(), ["node-the-manifest-never-accepted"]), not_retired: verifier_nothing())
+  claim("a node the log calls closed that the manifest never accepted refuses",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-the-manifest-never-accepted")))
+}
+
+test fn a_migration_verifier_refuses_a_manifest_that_does_not_replay() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_revoked_alone(), held: verifier_events_revoked_alone(),
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+  claim("a manifest that does not replay REFUSES rather than certifying an empty expectation",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "does not replay")))
+}
+
+test fn a_migration_verifier_refuses_a_retired_node_the_log_does_not_hold_retired() -> Bool {
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: verifier_events_accepted(),
+    closed_nodes: verifier_closed(), not_retired: ["node-never-retired"])
+  claim("a node the runbook claims retired that the log does not hold retired refuses",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-never-retired")))
+}
+
+// ── THE LOG'S BYTES ARE THE LINE'S BYTES ────────────────────────────────────────────────
+// THE DEFECT THIS ROW EXISTS TO CATCH, witnessed where it can be caught without a carrier. An acceptance is
+// written by the log's own canonical emitter and read back by the log's own decoder, and the receipt must
+// come home intact. When the receipt's members were flattened into the event, its own "node" sat beside the
+// event's "node", json_object_unique_member refused the object and the log could write an acceptance it could
+// never read — the wet driver met it as an append that succeeded and a read that refused "event has no node".
+// Nesting the receipt under "receipt" / "exact_prior_receipt" is what makes the bytes readable; this row is
+// the claim that says so, and it fails if anyone flattens them again.
+fn one_grammar_event(kind: RoadmapEventKind) -> RoadmapEvent {
+  RoadmapEvent {
+    node: "node-one-grammar" as NonEmptyStr as RoadmapNodeId,
+    author: opr_principal(),
+    parent: Absent,
+    kind: kind,
+    recorded_at: "2026-11-03T09:00:00Z",
+  }
+}
+
+fn receipt_facts(receipt: RoadmapAcceptanceReceipt) -> String {
+  serialize_json(v: json_object(members: roadmap_acceptance_receipt_members(r: receipt)))
+}
+
+test fn an_acceptance_event_written_by_the_log_reads_back_with_its_receipt_intact() -> Bool {
+  let receipt = sample_receipt("node-one-grammar")
+  let text = roadmap_event_wire_text(env: roadmap_event_envelope(e: one_grammar_event(
+    kind: AcceptanceRecordedEvent { receipt: receipt, evidence: NoPullRequest })))
+  match roadmap_event_decode(text: text) {
+    RoadmapEventUndecodable { reason: _ } => false
+    RoadmapEventDecoded { envelope: env } => match env.event.kind {
+      AcceptanceRecordedEvent { receipt: back, evidence: _ } => receipt_facts(receipt: back) == receipt_facts(receipt: receipt)
+      _ => false
+    }
+  }
+}
+
+// The revocation is the sharper case: it names the receipt it revokes (the live receipt, or the fold refuses
+// it), carries its disposition as the tagged sub-fact it is, and keeps the reason that says why. Every one of
+// those has to survive the bytes, because the standing the node ends in is read from them and not from what
+// was intended when they were written.
+test fn an_acceptance_revocation_reads_back_naming_the_receipt_it_revokes() -> Bool {
+  let prior = sample_receipt("node-one-grammar")
+  let text = roadmap_event_wire_text(env: roadmap_event_envelope(e: one_grammar_event(kind: AcceptanceRevokedEvent {
+    receipt: prior,
+    disposition: AcceptanceNodeRemainsSuperseded {},
+    revoked_by: "briansrls",
+    revoked_on: "2026-11-05",
+    reason: "The floor cut retired this work's subject",
+  })))
+  match roadmap_event_decode(text: text) {
+    RoadmapEventUndecodable { reason: _ } => false
+    RoadmapEventDecoded { envelope: env } => match env.event.kind {
+      AcceptanceRevokedEvent { receipt: back, disposition: _, revoked_by: by, revoked_on: on, reason: why } =>
+        receipt_facts(receipt: back) == receipt_facts(receipt: prior)
+          && (by as String) == "briansrls" && (on as String) == "2026-11-05"
+          && string_contains(s: why as String, pattern: "floor cut")
+      _ => false
+    }
+  }
+}
+
+// THE ONE GRAMMAR, CHECKED AGAINST THE TRUSTED LAW. The receipt the log nests, wrapped in the acceptance
+// line's envelope, must parse under the carrier's own parser — the native seed law that read the eighteen
+// lines and that the migration replays. This is the row that fails if the log and the line ever spell the
+// same fact differently: the variant words, the nesting, the digest and the member order are the parser's,
+// because the parser is the law and the log is its newest reader, not a second authority beside it.
+test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Bool {
+  let receipt = sample_receipt("node-one-grammar")
+  let line = serialize_json(v: json_object(members: [
+    json_kv(key: "variant", value: json_string(s: "acceptance_recorded")),
+    json_kv(key: "receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: receipt))),
+  ]))
+  match parse_roadmap_acceptance_event_history_carrier(text: join([line, ""], "\n")) {
+    RoadmapAcceptanceEventHistoryParseRefused { detail: _ } => false
+    RoadmapAcceptanceEventHistoryParsed { events: parsed } =>
+      count(parsed) == 1 && match parsed {
+        Cons { head: AcceptanceRecorded { receipt: admitted }, tail: _ } =>
+          receipt_facts(receipt: admitted) == receipt_facts(receipt: receipt)
+        Empty => false
+        _ => false
+      }
+  }
+}

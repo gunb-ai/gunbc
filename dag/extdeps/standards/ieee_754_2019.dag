@@ -49,7 +49,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE BINARY INTERCHANGE FORMAT PARAMETERS, IEEE 754-2019 §3.6 Table 3.5, named by the table's own
 // symbols: k storage width, p precision, emax, w exponent field width, t trailing significand field
 // width. They are Int, not a Nat refinement: which Nat is the integer family's root is an open fork
-// in gunbc.defork_type_name_census, and a standard's module must not pick its side by import.
+// (rostered in gunbc.defork_type_name_census until it was retired on 2026-11-10), and a standard's module must not pick its side by import.
 type BinaryInterchangeFormat {
   k: Int
   p: Int

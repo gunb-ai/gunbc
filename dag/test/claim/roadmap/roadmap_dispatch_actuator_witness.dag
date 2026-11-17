@@ -2,10 +2,11 @@ module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
-import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi }
 
 import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting }
@@ -80,7 +81,7 @@ import extdeps.llm.cli {
   reasoning_effort_label,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptWorkerRole }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_review_unit_command, dispatch_unit_exec_argv, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on, dispatch_attempt_unit_name, DispatchWorkerFirst }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_review_unit_command, dispatch_unit_exec_argv, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on, dispatch_attempt_unit_name, DispatchWorkerFirst, DispatchWorkerResumed, DispatchWorkerContinuedFrom, dispatch_worker_run_placement_ordinal }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -669,7 +670,7 @@ test fn witness_not_ready_node_refused() -> Bool {
   let child = sized_derivable(id: "child", prs: [200], title: "Child")
   let edges = [RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
     node: child,
@@ -688,7 +689,7 @@ test fn witness_not_ready_node_refused() -> Bool {
 test fn witness_ready_node_permitted_without_live_session() -> Bool {
   let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
     node: node,
@@ -712,7 +713,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
 test fn witness_live_lease_refused() -> Bool {
   let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match classify_dispatch_request_for_process_fingerprint(
     instance: srv1_live_dashboard_instance(),
@@ -797,7 +798,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
+  let ready = next_spawnable(doc: doc, merged: [], accepted: [], withheld: [])
   let selection = dispatch_actuator_vendor_selection(instance: srv1_live_dashboard_instance(), sizing_expectation: NoDerivedSizingExpectation)
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
@@ -948,7 +949,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> RoadmapNode {
-  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
+  fx_ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
@@ -1054,8 +1055,8 @@ fn umask_of(props: List<SystemdRunProperty>) -> List<String> {
 }
 
 test fn the_dedicated_worker_unit_runs_at_umask_0002_and_the_service_user_unit_does_not() -> Bool {
-  let lab = umask_of(props: dispatch_worker_unit_properties(instance: srv1_lab_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr))
-  let live = umask_of(props: dispatch_worker_unit_properties(instance: srv1_live_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr))
+  let lab = umask_of(props: dispatch_worker_unit_properties(instance: srv1_lab_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr, launch_route: UnitRunOnSystemManager))
+  let live = umask_of(props: dispatch_worker_unit_properties(instance: srv1_live_dashboard_instance(), working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr, launch_route: UnitRunOnSystemManager))
   lab == ["0002"] && count(live) == 0
 }
 
@@ -1298,7 +1299,6 @@ fn specimen_row(parent: NodeParent?) -> RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: unrooted_specimen_id()),
     line: TicketLine {
-      done: false,
       ticket: TicketFields {
         headline: "Specimen headline",
         brief: "Specimen brief",
@@ -1533,3 +1533,18 @@ test fn valid_attempt_unit_parts_render_as_the_historical_join() -> Bool {
   }
 }
 
+
+// RED (review 94243): the placement figure is ONE fail-closed projection of the run -- the same figure the
+// exit role and the harness function are read from -- so the unit's name, its exit role and the slot it
+// opens cannot diverge. A first/branch-continued worker opens the base unit (0, byte-identical); a resumed
+// worker opens its carried ordinal; and a resume carrying a NON-POSITIVE ordinal is INADMISSIBLE (a resume
+// is the second-or-later placement; the first is not a resume). It is refused, not silently clamped to 0 --
+// clamping would name the unit under the resumed role while opening the base-unit slot (the fork).
+test fn the_placement_figure_is_one_fail_closed_projection_of_the_run() -> Bool {
+  dispatch_worker_run_placement_ordinal(run: DispatchWorkerFirst) == Present { value: 0 }
+    && dispatch_worker_run_placement_ordinal(run: DispatchWorkerContinuedFrom { branch: "feature/x" }) == Present { value: 0 }
+    && dispatch_worker_run_placement_ordinal(run: DispatchWorkerResumed { ordinal: 3 }) == Present { value: 3 }
+    && dispatch_worker_run_placement_ordinal(run: DispatchWorkerResumed { ordinal: 1 }) == Present { value: 1 }
+    && dispatch_worker_run_placement_ordinal(run: DispatchWorkerResumed { ordinal: 0 }) == Absent
+    && dispatch_worker_run_placement_ordinal(run: DispatchWorkerResumed { ordinal: -2 }) == Absent
+}

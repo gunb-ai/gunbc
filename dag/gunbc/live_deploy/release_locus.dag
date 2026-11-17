@@ -73,6 +73,32 @@ fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
+// A RELEASE LOCUS IS ONE RECORD, NOT A HANDFUL OF STRINGS THAT CAN DRIFT APART. The install that lays
+// a tree into a locus needs the spine (the parent directories it may create), the locus directory and
+// the revision the locus is named for; when those were three arguments, a caller could pair a locus
+// built for one revision with a different revision argument and nothing in the signature stopped it
+// (review 95699). `release_locus_record` is the ONE mint for the release shape: it derives spine and
+// locus from (base_root, revision) together, so a caller that mints cannot pair a locus with a
+// revision it was not minted for. `helper_release_locus_record` is the one mint for the root-helper
+// snapshot shape under a HelperLocus; it likewise derives the directory from the revision it names.
+// The type's constructor stays open (a record is a plain carrier), so the guarantee is "these two
+// folds are the sanctioned mints; every release/helper install obtains its locus through one of them,"
+// NOT "a mismatched record is unwritable" -- the constructor is public. Stated at that rung per
+// gunbc.design_argument::guarantee_ladder: the reported rung equals the rung the code establishes.
+type ReleaseLocus {
+  revision: ReleaseRevisionBinding
+  spine: List<String>
+  locus: String
+}
+
+fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    revision: revision,
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
+  }
+}
+
 // A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
 // device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
 fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
@@ -113,6 +139,24 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
+  }
+}
+
+// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT INSTALL. Its directory is helper_locus_dir(locus, revision) --
+// derived from the SAME revision the record carries. The root-helper snapshot install port
+// (live_deploy_apply_root_helper_snapshot_on_host, reached from deploy_apply_ports_on_host and the fleet
+// board-function converge delivery) now mints the directory once from (locus, revision) instead of its two
+// call sites hand-computing helper_locus_dir beside an independent revision argument (review 95713: a
+// hand-copied dir could drift from the revision it was built for -- the very split this record exists to
+// remove). Other helper_locus_dir callers (the board-function converge / srv1 gpu-power-cap unit renderers,
+// the attempt-system-unit launch) compute a path for their OWN verify/display purpose, not the install
+// directory; they are unrelated and unchanged. The spine is a caller-supplied list (the helper's parent
+// dirs are not derived from a base root the way the release spine is).
+fn helper_release_locus_record(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    revision: revision,
+    spine: spine,
+    locus: helper_locus_dir(locus: locus, revision: revision),
   }
 }
 

@@ -1,6 +1,63 @@
 module test.claim.host.host_swap_backing_witness
 
+import gunbc.host.host_phase_status { fleet_subsumption_hosts, observation_verdict_eq }
+import gunbc.host.host_swap_backing {
+  SwapBackingNotRequired,
+  SwapBackingRequired,
+  host_swap_backing_host_verdict,
+  host_swap_backing_observation,
+  host_swap_backing_observed_producer_scaffold,
+  host_swap_backing_requirement,
+  host_swap_backing_verdict,
+  swap_cap_verdict_backing_blind_widen_sketch,
+  swap_cap_verdict_gate_accepts,
+  swap_cap_verdict_qualified_by_backing,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import std.algebra { length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Scaffold, SingleAuthority }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.optional { Absent, Present }
+import std.types { Bool, Int, String }
+import std.upsert_decision { Converged, Drifted, Inaccessible, UnknownRefused }
+import extdeps.tools.free { SwapStats }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The fold under test takes its requirement as a parameter, so the claim that exercises its four
+// arms supplies the requirement AT THE INTERFACE rather than reading the live one. The live
+// `memory_swap_max` is byte_size(0) since the 2026-11-04 envelope ruling
+// (@ref(gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired), operator: "no thrashing
+// allowed", class gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal), so
+// host_swap_backing_requirement() answers SwapBackingNotRequired and host_swap_backing_verdict
+// then returns Converged for every input -- the four arms collapse and the fold is never
+// exercised. host_swap_backing_requirement() takes no parameter (it reads the cap from the
+// authority itself), so the requirement cannot be produced by pushing a nonzero cap through the
+// real relation; it is constructed here instead.
+//
+// THIS IS A HYPOTHESIS AT THE INTERFACE, NOT AN AUTHORITY. The numbers below belong to no
+// declaration: they are not the swap cap (which is byte_size(0)), and deliberately not the
+// memory cap either -- a memory ceiling is not a swap requirement, and calling this
+// `min_total: gunbc_runner_slot_memory_max` would borrow that fact's authority for a meaning it
+// does not carry. What the claim tests is the fold's shape: given *something* required of at
+// least HYPOTHESIS_MIN_TOTAL bytes, does the read separate into UnknownRefused / Absent /
+// Drifted / Converged. The live requirement and its authority are the job of
+// witness_requirement_is_derived_from_the_declared_cap, which is this claim's inhabitance pair.
+data hypothesis_min_total: ByteSize = byte_size(4294967296)
+
+fn required_backing_at_interface() -> SwapBackingRequirement {
+  SwapBackingRequired {
+    min_total: hypothesis_min_total,
+    requiring_declaration: DeclarationRef {
+      module_path: "gunbc.runner.runner_slot_desired",
+      decl_name: "gunbc_runner_slot_desired",
+      field: WholeDeclaration,
+    },
+  }
+}
+
 
 fn stats_fixture(total_bytes: Int) -> SwapStats {
   SwapStats {
@@ -17,18 +74,26 @@ fn stats_fixture(total_bytes: Int) -> SwapStats {
 // anywhere would break it.
 
 test fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
+  // Not a pin on one world's number: the requirement must be the declared cap when the cap is
+  // positive, and there must be no requirement exactly when it is not. Pinning the positive
+  // case alone (which this claim did) made it a claim about the pre-ruling world -- it went red
+  // when the envelope ruling set memory_swap_max to byte_size(0), and nothing in it said which
+  // of the two had changed.
+  let cap = byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
   match host_swap_backing_requirement() {
     SwapBackingRequired { min_total: m, requiring_declaration: d } =>
-      byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
-        && byte_size_count(b: m) > 0
-    SwapBackingNotRequired => false
+      cap > 0
+        && byte_size_count(b: m) == cap
+        && d.module_path == "gunbc.runner.runner_slot_desired"
+        && d.decl_name == "gunbc_runner_slot_desired"
+    SwapBackingNotRequired => cap == 0
   }
 }
 
 // The four backing states must stay distinct, because each names a different piece of work: no producer (build one), zero total (provision backing), undersized total (resize), sufficient total (done). A fold that collapsed any pair would make one of those disappear from every count derived from it. Absent is asserted specifically against zero rather than against small, because zero is the state the whole module exists for — a cap over nothing.
 test fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> Bool {
-  let req = host_swap_backing_requirement()
-  let cap_bytes = byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
+  let req = required_backing_at_interface()
+  let cap_bytes = byte_size_count(b: hypothesis_min_total)
   let no_producer = host_swap_backing_verdict(req: req, observed: none)
   let zero_backing = host_swap_backing_verdict(
     req: req,
@@ -46,6 +111,12 @@ test fn witness_backing_verdict_separates_unknown_absent_drifted_converged() -> 
     && observation_verdict_eq(a: zero_backing, b: std.upsert_decision.Absent)
     && observation_verdict_eq(a: undersized, b: std.upsert_decision.Drifted)
     && observation_verdict_eq(a: sufficient, b: std.upsert_decision.Converged)
+    // fail-closed on the hypothesis itself: the Drifted arm is only a Drifted arm because the
+    // undersized sample (1 GiB) really is under the required minimum, and the sufficient sample
+    // is the minimum exactly, which production's fold reads as clearing it (total < min is the
+    // Drifted test). If the minimum were ever set at or below the undersized sample, the third
+    // conjunct would be exercising the wrong arm and still read green.
+    && cap_bytes > 1073741824
 }
 
 // THE conjunct the module exists for. A per-slot MemorySwapMax read that says Converged is the input on every line here; only the backing term varies. With backing observed Converged the cap verdict passes through unchanged — the non-vacuity control, without which a qualifier that refused everything would look correct. With backing zero, unobserved, or unreachable, the same green cap must NOT survive as Converged, and each case must keep its own arm rather than rounding to a single 'not converged': absent backing is provisioning work, unobserved backing is producer work, unreachable backing is the A1 reach lane.
@@ -133,15 +204,34 @@ test fn witness_gate_admits_a_green_cap_when_backing_is_present() -> Bool {
 // roster would replace a count pinned to a population with a list pinned to nothing -- the same
 // defect with more typing. fleet_subsumption_hosts is independently authored and closed, which is
 // what DESIGN requires of the subject universe.
-fn swap_backing_unobserved_hosts() -> List<HostIdentity> {
-  filter(
+// Inhabitance, the other half of supplying an input at an interface: the observation the fold
+// consumes is a REGISTERED scaffold, not an invention of this witness. It is a Scaffold (not a
+// transport that swallows a success), it dissolves to SingleAuthority, and it is bound to the
+// effect transport realization has to fill -- so when a real /proc/swaps reader lands, this goes
+// red and the unobserved claim above has to be re-derived against it.
+test fn witness_the_backing_observation_is_a_registered_scaffold() -> Bool {
+  // Two halves, one fact: the swap-backing deficit is real and it is registered.
+  //  - the read is a registered Scaffold (not a transport that could swallow a success), it
+  //    dissolves to SingleAuthority, and it is bound to the effect transport realization has to
+  //    fill -- so this is the module's own admission of a missing producer, not a witness saying
+  //    "nobody looked";
+  //  - and the producer really does return nothing for every enrolled host, which is the
+  //    deficit as a number: the moment a /proc/swaps reader lands, `any read` stops being 0 and
+  //    this goes red rather than letting the fold keep a fiction green.
+  let any_read = filter(
     fleet_subsumption_hosts,
-    h => host_swap_backing_host_verdict(host: h) == UnknownRefused,
+    h => match host_swap_backing_observation(host: h) {
+      Absent => false
+      Present { value: s } => true
+    },
   )
-}
-
-test fn witness_every_enrolled_host_is_unobserved_today() -> Bool {
-  swap_backing_unobserved_hosts() == fleet_subsumption_hosts
-    && fleet_subsumption_hosts.length() > 0
+  match host_swap_backing_observed_producer_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: b } =>
+      b.module_path == "gunbc.host.host_effect"
+        && b.decl_name == "HostEffectTransport"
+        && length(any_read) == 0
+        && length(fleet_subsumption_hosts) > 0
+    _ => false
+  }
 }
 

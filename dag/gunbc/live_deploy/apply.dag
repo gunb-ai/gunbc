@@ -1058,7 +1058,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // it -- gunbc.apply apply_dispatch routes only the ghrunner variant -- so it was a dangling
 // declaration, and a privileged host-mutation entry at that.
 //
-// IT ALSO CONTRADICTED THIS CHANGE'S OWN ARGUMENT. gunbc.ci.ci_spec says of the principal refusal that
+// IT ALSO CONTRADICTED THIS CHANGE'S OWN ARGUMENT. gunbc.ci.ci_spec said (module since dissolved) of the principal refusal that
 // sent the dark install to a runner-executed route: "That refusal is the access model working, not
 // an obstacle to route around -- so the install reaches srv1 the way every other host mutation
 // does, as a dispatched job on the host-pinned runner, rather than by relaxing the expected

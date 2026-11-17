@@ -1,0 +1,127 @@
+module gunbc.fleet.machine_target_disk_observations
+
+// THE FLEET'S DISK READINGS: one row per machine, keyed by the machine, from captures in artifacts/.
+//
+// WHY THIS IS A TABLE AND NOT A DECLARATION PER HOST (operator ruling D2, gunbc.plans.fleet_machine_naming,
+// gunbc#16252). A `data srv15_target_disk: ...` beside a `data srv14_target_disk: ...` is two mini-forks: each
+// one is a place a reader has to visit to know what the fleet knows about disks, and adding the next machine
+// means writing a new name rather than adding a row. Here the rows are the same type, the lookup is the same
+// function, and the next machine is a row — which is the bar the new-server-bringup plan sets ("adding the next
+// machine is boring").
+//
+// WHAT A ROW IS EVIDENCE OF. Each row names the artifact the reading came from in `captured_in`, and the instant
+// it was taken in `read_at`. Two of these files are in the repository and can be opened; the instants they record
+// are dates, not timestamps — the captures print the day they were taken and not the hour — so each `read_at`
+// below is that date at 00:00Z, the earliest instant the artifact can support. That is deliberately not a guess
+// at a nicer number: a timestamp invented to look fresh is the failure mode
+// gunbc.design_argument::fail_closed names, and an admission window measured against a date-floor is
+// conservative by up to a day, which is the direction a destructive install should be wrong in. PXE 2c's
+// workflow replaces this row with a reading taken IN THE SAME RUN as the boot, at a real instant, and passes the
+// clock's value as `decided_at`; these rows are what the model knows between runs.
+//
+// WHY THE STATES DIFFER BY MACHINE, AND WHY THAT IS NOT A SPECIAL CASE. srv15's capture printed a SERIAL column
+// and srv14's did not, so one host has a serial to pin its install to and the other does not. That asymmetry is
+// not encoded in any branch: it is a difference between two rows of one table, and the same admission rule
+// (gunbc.provisioning.install_target_disk admit_install_target_disk) answers both — one admits, one is withheld
+// with a cause that says what to go read.
+import std.types { Bool, Int, List, NonEmptyStr, EpochMs, Milliseconds }
+import std.list { first_where }
+import std.optional { Optional, Present, Absent }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+import gunbc.provisioning.install_target_disk {
+  TargetDiskReading,
+  DiskIdentitySource,
+  DiskReported,
+  NoDiskReported,
+  NotRead,
+  LsblkBlockReport,
+  RedfishStorageDrive,
+  target_disk_reading_host,
+}
+
+// THE INSTANT THE srv15 lsblk READING IS TAKEN TO HAVE BEEN TAKEN. The capture's own header is
+// "srv15-inband-recovery-2026-10-29"; the date at 00:00Z is the earliest instant that header supports.
+data srv15_lsblk_capture_instant: EpochMs = 1793232000000
+
+// THE INSTANT THE srv14 lsblk READING IS TAKEN TO HAVE BEEN TAKEN, same convention: its artifact directory is
+// named altrad8ud-1l2t-6-inband-recovery-2026-10-16, and the date at 00:00Z is the earliest instant that name
+// supports.
+data srv14_lsblk_capture_instant: EpochMs = 1792108800000
+
+// THE FLEET'S DISK READINGS. Two hosts, two rows, one type.
+//
+// srv15 — `artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt`, section "### disks", printed by
+// lsblk with a SERIAL column:
+//     NAME      SIZE MODEL                   SERIAL           TRAN   TYPE
+//     sda      57.6G USB Flash Drive         5764925934879163 usb    disk
+//     nvme0n1 931.5G WD Green SN350 1TB 2G0C 25466Q801557     nvme   disk
+// The install target is nvme0n1, and the row says so by identity rather than by name: the serial is what the
+// rendered `match:` block will carry. The row also shows why the pin matters on this exact board — there are TWO
+// disks with serials, a USB flash drive beside the NVMe, and the upstream default is "install to the largest
+// disk in a system". Which disk that is today is a fact about this capture; which disk the install is AUTHORIZED
+// to erase is a decision, and it is made here.
+//
+// srv14 — `artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt`, section "### disks":
+//     sda      29.3G Cruzer Blade
+//     nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1
+// The same tool ran, but this capture asked lsblk for NAME,SIZE,MODEL and never printed a serial. So srv14 HAS
+// been read, and what was read is a model with no serial — which is neither "never read" nor enough. Upstream
+// treats a match key as a test every candidate disk must pass, and a model is a CLASS test: every disk of that
+// model passes it, so a model-only match narrows the field and leaves the installer choosing.
+// admit_install_target_disk withholds this row with TargetDiskSerialNotReported, which carries the
+// reported pair so the operator is told WHICH field was missing rather than being told the identity was bad.
+// The serial is Absent because the tool had no SERIAL column, not because the disk has no serial — the
+// difference is what tells the operator to go re-run lsblk with SERIAL.
+data machine_target_disk_observations: List<TargetDiskReading> = [
+  DiskReported {
+    host: operator_host_srv15,
+    device: "nvme0n1" as NonEmptyStr,
+    // The strings lsblk printed, in its SERIAL and MODEL columns, and nothing has checked them yet — that is
+    // admit_install_target_disk's job at the moment an install is authorized. A row that carried an already
+    // checked token would make the check somebody's silent assumption, and the capture is evidence, not a
+    // permission.
+    reported_serial: Present { value: "25466Q801557" as NonEmptyStr },
+    reported_model: Present { value: "WD Green SN350 1TB 2G0C" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt" as NonEmptyStr,
+    read_at: srv15_lsblk_capture_instant,
+  },
+  DiskReported {
+    host: operator_host_srv14,
+    device: "nvme0n1" as NonEmptyStr,
+    reported_serial: Absent,
+    reported_model: Present { value: "SAMSUNG MZVPV512HDGL-000H1" as NonEmptyStr },
+    source: LsblkBlockReport,
+    captured_in: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt" as NonEmptyStr,
+    read_at: srv14_lsblk_capture_instant,
+  },
+]
+
+// Redfish is NOT a row here, and that is a finding rather than an omission: both boards answer
+// /redfish/v1/Systems/system/Storage with `"Members": [], "Members@odata.count": 0`
+// (artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system_Storage.json), so the BMC reports no
+// drives at all on this fleet. A Redfish row would have to say NoDiskReported for every machine, and a table
+// whose rows all say the same unhelpful thing is noise that hides the one reading that exists. The source type
+// keeps RedfishStorageDrive so a capture that DOES report drives has a home, and the refusal a NoDiskReported
+// produces names which reader spoke.
+
+// THE ROW FOR A MACHINE, and the honest answer when the fleet has none. A machine with no row is a machine whose
+// storage nobody has read — which is the SAME state srv14's row records, so a new machine without a capture is
+// withheld for the same typed cause rather than crashing the fold or being handed an invented disk. A lookup that
+// returned Optional would leave it to each caller to decide what Absent means, and the callers of this are
+// install authorizations: the answer "no row" has to be the answer that withholds the install.
+fn target_disk_reading_for(host: HostIdentity) -> TargetDiskReading {
+  match first_where(xs: machine_target_disk_observations, keep: row => target_disk_reading_host(reading: row) == host) {
+    Present { value: row } => row
+    Absent => NotRead { host: host, why: "the fleet has recorded no storage reading for this machine" as NonEmptyStr }
+  }
+}
+
+// HOW OLD A DISK READING MAY BE AND STILL AUTHORIZE AN INSTALL. A standing window, not a per-host one: the
+// operator's rule is that a disk read for an install is good for thirty days, which covers a machine brought up
+// from a capture taken during its intake. The window is a request field precisely so it can be tightened without
+// touching the model — PXE 2c reads the disk in the same run as the boot and can pass a window of minutes, and
+// then a reading this old would be refused. Measured against the instant above, srv15's row sits at twelve days,
+// inside the window; a reading from before 2026-10-11T00:00Z is outside it.
+data site_pxe_edge_disk_identity_admission_window: Milliseconds = 2592000000

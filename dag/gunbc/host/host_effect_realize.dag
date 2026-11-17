@@ -23,7 +23,7 @@ import gunbc.host.host_effect {
   Srv3BmcwebTokenExtract,
   Srv3NbdProxyServe,
   CodexSupervisedWorkerTurn,
-  Srv3BootOnceReadBackSleep,
+  BootOnceReadBackSleep,
   Srv3ReceiptEmit,
   HostIdentityShortHostnameRead,
   LiveDeployApply,
@@ -36,7 +36,6 @@ import gunbc.host.host_effect {
   DeployAccessPreflight,
   EnsureActionsRunnerRelease,
   EnsureRunnerSlotDirectory,
-  EnsureRunnerJitWrapper,
   EnsureRunnerSystemdTemplate,
   EnsureRunnerMemoryCaps,
   ActivateRunnerSlot,
@@ -75,6 +74,7 @@ import extdeps.posix.test_utility {
   test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
+  path_existence_reading_of_exit,
   entry_existence_reading,
   test_executable_command,
   PathExistenceReading,
@@ -106,17 +106,21 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
-  helper_locus_dir,
+  helper_release_locus_record,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file_on,
+  approval_broker_unit_emission,
+  BrokerUnitBound,
+  BrokerUnitRefused,
+  BrokerUnitNoUnit,
   helper_sudoers_grant_mode,
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
@@ -194,7 +198,8 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import gunbc.host.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
+import gunbc.host.host_converge { HostConverge }
+import gunbc.fleet.fleet_enrollment { FreshStandup, ExistingHostQuiescentReload, apply_mode_for_host }
 import extdeps.gunbc
 import extdeps.package_managers.apt {
   package_curl,
@@ -285,7 +290,6 @@ import gunbc.live_deploy.release_locus {
 import gunbc.runner.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
   runner_lifecycle_realize_ensure_runner_slot_directory,
-  runner_lifecycle_realize_ensure_runner_jit_wrapper,
   runner_lifecycle_realize_ensure_runner_systemd_template,
   runner_lifecycle_realize_ensure_runner_memory_caps,
   runner_lifecycle_realize_activate_runner_slot,
@@ -484,9 +488,7 @@ import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
 
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
-import gunbc.srv3.srv3_boot_once_cd {
-  srv3_boot_once_apply_read_back_sleep,
-}
+import gunbc.host.managed_host_boot_once { boot_once_read_back_sleep }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
@@ -668,7 +670,6 @@ type ResolvedHostEffectCell =
       slot: RunnerSlotIdentity,
       artifact: ActionsRunnerBinaryArtifact,
     }
-  | EnsureRunnerJitWrapperOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
@@ -723,7 +724,7 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
-    Srv3BootOnceReadBackSleep =>
+    BootOnceReadBackSleep =>
       BootOnceReadBackSleepOnHost { node: n }
     Srv3ReceiptEmit { lines: lines } =>
       ReceiptEmitOnHost { node: n, lines: lines }
@@ -759,8 +760,6 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
     EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
       EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-    EnsureRunnerJitWrapper { host_label: l } =>
-      EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
     EnsureRunnerSystemdTemplate { host_label: l } =>
       EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
     EnsureRunnerMemoryCaps { slot: s } =>
@@ -811,8 +810,8 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
       IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
-    Srv3BootOnceReadBackSleep =>
-      IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
+    BootOnceReadBackSleep =>
+      IncompatibleCell { reason: "host_effect: BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     Srv3ReceiptEmit { lines: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
@@ -843,8 +842,6 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
-    EnsureRunnerJitWrapper { host_label: _ } =>
-      IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSystemdTemplate { host_label: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerMemoryCaps { slot: _ } =>
@@ -888,7 +885,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3ReceiptEmit { lines: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         HostIdentityShortHostnameRead => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployApply { warrant: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -901,7 +898,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        EnsureRunnerJitWrapper { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -922,7 +918,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           EnsureCompilePoolSliceOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
-        Srv3BootOnceReadBackSleep =>
+        BootOnceReadBackSleep =>
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
@@ -960,7 +956,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -994,7 +989,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         HostIdentityShortHostnameRead => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployApply { warrant: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1007,7 +1002,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1096,7 +1090,7 @@ fn realize_boot_once_read_back_sleep_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let seconds = to_string(second_count(s: srv3_boot_once_apply_read_back_sleep))
+  let seconds = to_string(second_count(s: boot_once_read_back_sleep.duration))
   match srv3_run_tool_by_name(
     tool: sleep_cli_tool,
     args: [seconds],
@@ -1105,7 +1099,7 @@ fn realize_boot_once_read_back_sleep_body(
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
-          "host_effect_apply: Srv3BootOnceReadBackSleep could not observe sleep on this transport, so the read-back delay was never taken and no verdict is claimed: ",
+          "host_effect_apply: BootOnceReadBackSleep could not observe sleep on this transport, so the read-back delay was never taken and no verdict is claimed: ",
           why,
         ),
         applied: intent,
@@ -1121,7 +1115,7 @@ fn realize_boot_once_read_back_sleep_body(
           exit_code: 1,
           success: false,
           stdout: "",
-          stderr: "host_effect_apply: Srv3BootOnceReadBackSleep sleep failed; fail-closed",
+          stderr: "host_effect_apply: BootOnceReadBackSleep sleep failed; fail-closed",
         },
         intent: intent,
       )
@@ -1141,7 +1135,7 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
-        reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        reason: "host_effect_apply: BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
       }
   }
@@ -1371,7 +1365,8 @@ fn realize_bmcweb_session_login_on_host(
 // non-empty check after the write, because such a check concedes the empty file is writable
 // and was in fact satisfied by editing nothing (it lived in gunbc.srv3.srv3_os_install_actuate
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
-// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb).
+// and is deleted with this climb per gunbc.design_argument::guarantee_ladder dissolution-on-climb; the host
+// module gunbc.srv3.srv3_os_install_actuate it named was itself deleted with the srv3 boot-once leaf, PXE 2b).
 type BmcwebTokenExtraction =
   | BmcwebTokenExtracted { token: NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
@@ -1845,7 +1840,7 @@ fn realize_provision_codex_runtime(
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployApply { warrant: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -1858,7 +1853,6 @@ fn realize_provision_codex_runtime(
     DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3667,7 +3661,7 @@ fn realize_provision_build_cache(
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployApply { warrant: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -3680,7 +3674,6 @@ fn realize_provision_build_cache(
     DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -4377,18 +4370,29 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     EmitArtifactThenThinRun { bootstrap: b, invocation: _ } =>
-      match gunbc_apply_mode_for_host(host: host_converge.identity) {
-        FreshStandup =>
-          if bootstrap_fragment_carries_hand_script(f: b) {
-            NotConverged {
-              reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
-              applied: intent,
-            }
-          } else {
-            realize_converge_in_process(host_converge: host_converge, intent: intent)
+      match apply_mode_for_host(host: host_converge.identity) {
+        Absent =>
+          NotConverged {
+            reason: concat(
+              concat("host_effect_apply: the host ", host_converge.identity as String),
+              " carries no converge apply mode -- it is not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollments), so there is no reload mode to run its converge under.",
+            ),
+            applied: intent,
           }
-        ExistingHostQuiescentReload =>
-          realize_converge_in_process(host_converge: host_converge, intent: intent)
+        Present { value: apply_mode } =>
+          match apply_mode {
+            FreshStandup =>
+              if bootstrap_fragment_carries_hand_script(f: b) {
+                NotConverged {
+                  reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
+                  applied: intent,
+                }
+              } else {
+                realize_converge_in_process(host_converge: host_converge, intent: intent)
+              }
+            ExistingHostQuiescentReload =>
+              realize_converge_in_process(host_converge: host_converge, intent: intent)
+          }
       }
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
@@ -6100,9 +6104,14 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 // legs because the units that name the snapshot are installed between them: the superseded snapshot is
 // retired only after the new units stand.
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  // ONE mint from the port's own (locus, spine, revision): the directory the snapshot installs into is
+  // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
+  // beside an independent revision argument (review 95713). dark_helper_snapshot_at installs this record
+  // directly, so the directory and the revision it names cannot diverge.
+  let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
-    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, tree: tree, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -6214,11 +6223,11 @@ fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractP
 
 // THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
 fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  let base_root: String = spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: spec.service.service_user,
-    base_root: spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: revision),
     source_root: source_root,
-    revision: revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: transport),
   ) {
@@ -7011,40 +7020,19 @@ fn tree_archive_member_of_line(line: String, archive_owner: NonEmptyStr) -> Tree
 
 fn approval_broker_tree_install(
   owner: NonEmptyStr,
-  base_root: String,
+  locus: ReleaseLocus,
   source_root: String,
-  revision: ReleaseRevisionBinding,
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  approval_broker_tree_install_at(
-    owner: owner,
-    spine: [base_root, release_locus_releases_dir(root: base_root)],
-    locus: release_locus_dir(root: base_root, revision: revision),
-    source_root: source_root,
-    revision: revision,
-    executables: executables,
-    transport: transport,
+  tree_install_in_realm(
+    realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
+    revision: locus.revision, executables: executables, transport: transport,
   )
 }
 
 // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
 // /releases/ segment), so one install serves both rather than a copy per locus.
-fn approval_broker_tree_install_at(
-  owner: NonEmptyStr,
-  spine: List<String>,
-  locus: String,
-  source_root: String,
-  revision: ReleaseRevisionBinding,
-  executables: List<String>,
-  transport: HostEffectElevationRoute,
-) -> ApprovalBrokerTreeInstallVerdict {
-  tree_install_in_realm(
-    realm: TreeInstallElevated { owner: owner }, spine: spine, locus: locus, source_root: source_root,
-    revision: revision, executables: executables, transport: transport,
-  )
-}
-
 // THE TREE INSTALL, IN EITHER REALM (TreeInstallRealm): the one fold both the elevated deploy install
 // and the staged release build run.
 fn tree_install_in_realm(
@@ -7478,7 +7466,7 @@ fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> D
   }
 }
 
-fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DarkLeg> {
+fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> List<DarkLeg> {
   let unit = gunbc_approval_broker_unit_name
   [
     dark_unit_install_leg(
@@ -7486,7 +7474,7 @@ fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Lis
       text: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
     dark_unit_install_leg(
       step: DarkStepBrokerUnit, dest: gunbc_approval_broker_unit_path() as String,
-      text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
+      text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url))),
     DarkLegArgv { step: DarkStepDaemonReload, command: extdeps.systemd.systemctl.systemctl_daemon_reload_command() },
     DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: unit)) },
     DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: unit)) },
@@ -7590,7 +7578,7 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
 // incident never got.
 // ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
 // the declared executable plus release_locus_tree_subdirs -- the same declarations
-// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
+// approval_broker_tree_install consumes at install time. Adding a fourth payload root to the
 // carrier moves install and verify together; verify can no longer pass over a snapshot missing a
 // root the install copies (review 90757).
 fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
@@ -7609,34 +7597,31 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
 // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
 // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
 // workers into one refused apply step.
-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_verify_at(locus: HelperLocus, tree: ReleaseLocus, transport: HostEffectTransport) -> DarkState {
   dark_run_legs(
-    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
+    legs: dark_helper_verify_legs(locus: locus, dir: tree.locus),
     transport: transport,
   )
 }
 
-fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
-  let dir = helper_locus_dir(locus: locus, revision: revision)
+fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: String, transport: HostEffectTransport) -> DarkState {
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
-    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: tree.locus)),
   }) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
-      match approval_broker_tree_install_at(
+      match approval_broker_tree_install(
         owner: locus.owner,
-        spine: spine,
-        locus: dir,
+        locus: tree,
         source_root: source_root,
-        revision: revision,
         executables: [gunbc_release_bin_name],
         transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: tree.locus), transport: transport)
       }
   }
 }
@@ -7682,11 +7667,11 @@ fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, dig
 }
 
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
+  let base_root: String = i.spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: i.spec.service.service_user,
-    base_root: i.spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: i.revision),
     source_root: i.source_root,
-    revision: i.revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: i.transport),
   ) {
@@ -7736,9 +7721,19 @@ fn dark_stage_sidecar_readback(i: DarkInstallInputs, tree_digest: String, deploy
 }
 
 fn dark_stage_broker_unit(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {
-  match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision), transport: i.transport) {
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-    DarkOk => dark_stage_slice_control(i: i, digest: tree_digest)
+  // THE SAME SINGLE GATE AS THE APPLY ROUTE (gunbc.live_deploy.emit approval_broker_unit_emission, review
+  // 94210): the dark cutover installs+enables+restarts the broker unit, so an owned broker whose address
+  // cannot be resolved must REFUSE the stage with the address cause, NOT install a unit whose Environment=
+  // line vanishes (the emitter takes only a Bound url). A host that owns no broker has no broker unit to
+  // install at all. Neither is a silent skip: each is a typed DarkInstallRefused that stops the dark line.
+  match approval_broker_unit_emission(spec: i.spec) {
+    BrokerUnitBound { url: url } =>
+      match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision, broker_base_url: url), transport: i.transport) {
+        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+        DarkOk => dark_stage_slice_control(i: i, digest: tree_digest)
+      }
+    BrokerUnitRefused { detail: d } => DarkInstallRefused { step: DarkStepBrokerUnit, reason: join(["the owned broker's address cannot be resolved (", d, "); the broker unit is not installed, enabled or restarted -- a stale unit is never left running under a run that reports success (gunbc.design_argument::fail_closed: refuse, never widen)"], "") }
+    BrokerUnitNoUnit => DarkInstallRefused { step: DarkStepBrokerUnit, reason: "the dark cutover host owns no approval broker (no prod-role holder), so there is no broker unit to install (gunbc.design_argument::fail_closed: refuse, never widen)" }
   }
 }
 
@@ -8535,8 +8530,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
     EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
       runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-    EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-      runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
     EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
       runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
     EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8699,7 +8692,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
-    Srv3BootOnceReadBackSleep => access
+    BootOnceReadBackSleep => access
     Srv3ReceiptEmit { lines: _ } => access
     HostIdentityShortHostnameRead => access
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
@@ -8710,7 +8703,6 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     DeployAccessPreflight {} => access
     EnsureActionsRunnerRelease { runner_release: _ } => access
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
-    EnsureRunnerJitWrapper { host_label: _ } => access
     EnsureRunnerSystemdTemplate { host_label: _ } => access
     EnsureRunnerMemoryCaps { slot: _ } => access
     ActivateRunnerSlot { slot: _ } => access
@@ -8794,8 +8786,6 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
         EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
           runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-        EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-          runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
         EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
           runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
         EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8876,7 +8866,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -9387,20 +9376,17 @@ fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<
   )
 }
 
-// PURE: the test status as a reading. Exit 0 present, 1 absent-or-unstattable, anything else (or a
-// refused transport) unreadable.
+// PURE: the test status as a reading. The 0/1/other law is NOT spelled out here -- it is
+// extdeps.posix.test_utility's path_existence_reading_of_exit, the one reader of what a `test` status
+// means, so this fold and this module's own path_existence_reading cannot drift from each other.
+// A transport that refused is unreadable with the transport's own words, which no exit-code mapping can
+// carry.
 fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
-      if o.exit_code == 0 {
-        PathPresent
-      } else if o.exit_code == 1 {
-        PathAbsentOrUnstattable
-      } else {
-        PathExistenceUnreadable { reason: join(["`test` on ", path, " exited ", to_string(o.exit_code), ": ", o.stderr], "") as NonEmptyStr }
-      }
+      path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
   }
 }
 
@@ -11278,9 +11264,8 @@ fn realize_microvm_controller_install_on_host(
                 MicrovmControllerTreeStep { name: name } =>
                   match approval_broker_tree_install(
                     owner: microvm_controller_owner,
-                    base_root: microvm_controller_root,
+                    locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
                     source_root: source_root,
-                    revision: revision,
                     executables: [gunbc_release_bin_name],
                     transport: transport,
                   ) {

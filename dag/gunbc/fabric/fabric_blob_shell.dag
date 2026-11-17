@@ -1,11 +1,13 @@
 module gunbc.fabric.fabric_blob_shell
 
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import std.types { String, NonEmptyStr, List, Bool }
 import v2.std.node { Node }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_pipe,
   bash_build_assign, bash_build_command_with_words, bash_build_command_from_lits,
   bash_build_if, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
@@ -25,7 +27,7 @@ import gunbc.cloudflare.r2_origin {
 }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_object_bound }
 import std.measure { measure_count, second_count }
-import gunbc.ci.ci_spec { gunbc_ci_sm_max_time, gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_statement, gunbc_ci_auth_header_file_args }
 
 // THE FABRIC BLOB PLANE FOR A RUN THAT HAS NOT BUILT gunbc YET. std.fabric_blob's two operations --
 // an exact-key GET into a directory this script minted, and a create-only PUT -- rendered as workflow
@@ -123,7 +125,7 @@ fn or_refuse(check: Node, name: String, message: String) -> Node {
   bash_build_or_else(left: check, right: refuse(name: name, message: message))
 }
 
-fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws, spelling: BracketQuoted) }
 
 // A command substitution is always ASSIGNED and read back as "$var" (the fold renders a substitution
 // argument unquoted), as gunbc.fleet.fleet_release_bins_key does.

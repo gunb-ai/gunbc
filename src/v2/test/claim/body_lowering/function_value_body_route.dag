@@ -287,3 +287,85 @@ test fn an_authored_binder_hiding_an_outer_parameter_still_refuses_as_hiding() -
     FvbHidingContextRefused { reason: _ } => false
   }
 }
+
+// THE THIRD BOUNDARY OF THIS ROUTE: THE BODY IS A BRANCH, AND THE CLOSURES SIT AT ITS ARMS.
+// #16212 (v2.test.claim.compiler.branch_arm_closure_inhabits) admitted a return-annotated closure at a
+// branch arm whose expected position is arrow-typed, so this body now reaches the emitter. What the
+// position owes at an arm is what it owes at a bare tail: the FunctionTypeRealizationRow for the item's
+// return position, which for Rust opens a closure with `move` (v2.std.compilers.target_model
+// target_project_realized_closure). A BRANCH body dropped that position: the item-body routes sent the
+// branch to the ordinary value-expression route, which passes no position (v2.std.compilers.target_model
+// target_value_expr_project_body_subexpression), so every arm closure was projected as a closure in an
+// ordinary value position (target_project_closure_in_arrow_scope) and the capture was silently absent.
+//
+// RUSTC REFEREE'D TWICE, AND BOTH READINGS ARE EXECUTED (rustc 1.93.0, --edition 2021 --crate-type lib,
+// run on the build runner against the emitted text verbatim). (1) What main emits for this shape is not
+// Rust at all: `fn fvb_branch_tail(k: i32) -> impl Fn(i32) -> i32 { if true { |q| { q } else |r| { r } } }`
+// is refused at PARSING -- "expected one of `.`, `;`, `?`, `}`, or an operator, found keyword `else`" --
+// because the target's conditional shape carries no arm delimiters, so nothing closes the then-arm and
+// nothing opens the else-arm (v2.test.claim.emit.conditional_delimiting holds the delimiting discipline
+// this shape always had; the target row filled none of it). (2) The capture is referee'd where it is not
+// vacuous: at an arm closure that CAPTURES the item's parameter, `move` at both arms is still refused --
+// error[E0308]: `if` and `else` have incompatible types -- and so is a boxed arm under an `impl Fn`
+// return; only a boxed RETURN type is accepted. That specimen is deliberately NOT pinned as a golden
+// here: a golden asserting output rustc rejects would cement the defect as correct. It is recorded as a
+// reading on the concern row branch_match_arm_closure_declared_return_not_admitted, naming the next item
+// (which row a function-typed item return takes when its body has more than one function-typed arm).
+// The arms pinned below are therefore non-capturing, which is what this row admits today: `move` is what
+// the row says and the golden asserts it, and rustc's acceptance of the whole emitted item is executed.
+data fvb_emit_branch_source: String = "module fvb_emit_probe\n\nfn fvb_branch_tail(k: Int) -> fn(Int) -> Int {\n  if true { fn(q) -> Int { q } } else { fn(r) -> Int { r } }\n}\n"
+
+data fvb_emit_branch_golden: String = "fn fvb_branch_tail(k: i32) -> impl Fn(i32) -> i32 { if true { move |q| { q } } else  { move |r| { r } } }\n\n"
+
+fn fvb_emit_branch_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_branch_source)
+}
+
+test fn a_branch_body_with_closure_arms_emits_move_closures_at_its_arms() -> Bool {
+  match fvb_emit_branch_verdict() {
+    FvbEmitted { text: t } => t == fvb_emit_branch_golden
+    FvbEmitRefused { reason: _ } => false
+  }
+}
+
+// THE ARM DELIMITERS ARE THE TARGET'S, NOT THE CLOSURE'S. The same route with Int arms has no closure
+// anywhere and shows the same refusal at main and the same shape at head, so the delimiter fix is
+// measured apart from the capture threading. Both of the delimiter lex texts carry their own spacing,
+// which is why the join prints two spaces between `else` and the else-arm's `{`: valid Rust, and the
+// bytes change only where they were malformed.
+data fvb_emit_branch_int_source: String = "module fvb_emit_probe\n\nfn fvb_branch_int(k: Int) -> Int {\n  if true { 1 } else { 2 }\n}\n"
+
+data fvb_emit_branch_int_golden: String = "fn fvb_branch_int(k: i32) -> i32 { if true { 1 } else  { 2 } }\n\n"
+
+fn fvb_emit_branch_int_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_branch_int_source)
+}
+
+test fn a_branch_body_at_an_int_return_emits_both_arm_delimiters() -> Bool {
+  match fvb_emit_branch_int_verdict() {
+    FvbEmitted { text: t } => t == fvb_emit_branch_int_golden
+    FvbEmitRefused { reason: _ } => false
+  }
+}
+
+// THE MATCH ARM OF THIS BOUNDARY IS NOT WIRED IN THE TARGET, AND THIS PIN SAYS SO. A match at an item
+// body with arrow-typed arms never reaches emission text: it refuses `target_lex_rule_literal_not_found`,
+// because the target's match shape spells itself with `rust_token_unwired_match` and
+// `rust_token_unwired_fat_arrow`, and rules for those classes live only in
+// `rust_staging_match_additional_lex_rules`, not in the production lex.
+// This is the same wall v2.test.claim.self_host.closure_emission pins for a match in a record field, and
+// that pin names its own trigger: wiring the production match tokens is a separate item, and it flips
+// that pin on purpose. The projection side is threaded by this item (v2.std.compilers.target_model
+// target_project_match), so when the tokens land the arms are already projected at the position.
+data fvb_emit_match_source: String = "module fvb_emit_probe\n\nfn fvb_match_tail(k: Int) -> fn(Int) -> Int {\n  match true {\n    true => fn(q) -> Int { q }\n    false => fn(r) -> Int { r }\n  }\n}\n"
+
+fn fvb_emit_match_verdict() -> FvbEmitVerdict {
+  fvb_emit_verdict_of(source: fvb_emit_match_source)
+}
+
+test fn a_match_body_with_closure_arms_refuses_for_want_of_production_match_tokens() -> Bool {
+  match fvb_emit_match_verdict() {
+    FvbEmitted { text: _ } => false
+    FvbEmitRefused { reason: r } => r == ^target_lex_rule_literal_not_found
+  }
+}

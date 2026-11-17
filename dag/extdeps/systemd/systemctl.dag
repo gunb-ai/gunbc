@@ -310,6 +310,21 @@ fn systemctl_show_user_property_argv(unit: NonEmptyStr, property: SystemdUnitPro
   ]
 }
 
+// THE USER MANAGER'S LIVE POPULATION, BARE. `list-units` over the USER manager (the same manager
+// systemctl --user transient units belong to -- the system manager never heard of them, the paragraph
+// above holds here too), restricted to SERVICE units that are actually holding resources right now
+// (state active or activating), matched against PATTERNS, printed bare: --plain strips the tree glyphs,
+// --no-legend strips the trailing summary, --no-pager keeps a non-tty exec from blocking. One column-list
+// row per unit, unit id first -- the census law. This is how the belt asks WHO is in the slice before it
+// admits a cohort: a just-created unit appears here the moment systemd accepts it, minutes before its
+// charge lands in the slice's memory.current, which is exactly the lag that OOM-killed the srv1 reviewers.
+fn systemctl_list_user_units_argv(patterns: List<String>) -> List<String> {
+  concat(
+    ["systemctl", "--user", "list-units", "--type=service", "--state=active", "--state=activating", "--plain", "--no-legend", "--no-pager"],
+    patterns,
+  )
+}
+
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",

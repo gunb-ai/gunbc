@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap.roadmap_issue_status {
   DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
-  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
+  DisplayDone, DisplayRetired, DisplayUnknown, issue_display_status_label,
 }
 import gunbc.roadmap.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
@@ -29,12 +29,13 @@ import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, RoadmapRetiredNodeIds, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeRetired, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_is_fabric,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_acceptance_revocation_disposition_word,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
@@ -63,6 +64,7 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap.roadmap_authority {
+  roadmap_retired_node_ids_load,
   roadmap_acceptance_event_history_load,
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
@@ -98,9 +100,9 @@ import gunbc.roadmap.roadmap_presentation {
   WorkRowView, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
-  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, hidden_not_ready_summary,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, hidden_not_ready_summary,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
@@ -203,7 +205,7 @@ fn finish_line_progress_markup_for_accepted(accepted_ids: List<RoadmapNodeId>) -
 }
 
 fn finish_line_progress_markup() -> Fragment {
-  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       el_class("section", "finish-line-progress", [
         el("h2", [ txt("v1 exit: four finish lines") ]),
@@ -446,14 +448,6 @@ data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 // under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
 // B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
 // belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
-
-fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
-  if view.superseded_by == "" {
-    []
-  } else {
-    [ el_class("span", "superseded-by", [ txt(concat("→ ", view.superseded_by)) ]) ]
-  }
-}
 
 fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
   let primary = match view.action.primary_action {
@@ -1016,7 +1010,6 @@ fn taskbar_face_nodes(view: WorkRowView, bar: TaskBarView) -> Fragment {
     concat(
       [ el_class("span", "taskbar-title", inline_md_nodes(text: view.headline)) ],
       concat(
-        superseded_badge_of(view: view),
         concat(
           [ el_attrs("span", [
               attr(name: "class", value: join(["taskbar-signal ", activity_line_prefix_class, bar.signal_class], "") ),
@@ -1292,8 +1285,20 @@ type PageTree {
   children: Map<String, List<RoadmapNode>>
 }
 
-fn page_tree(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> PageTree {
-  PageTree { rows: row_graph(nodes: nodes, edges: edges), children: roadmap_primary_children_index(nodes: nodes, edges: edges) }
+// The tree's readiness graph indexes the plan the log ATTESTES (roadmap_spawner readiness_graph), so the
+// section tree, its top-level filter and each row's parent-state come from the one subtraction. The
+// caller states what it read from the log; a render that reads no log says `[]` -- which is what
+// launch_host_unobserved_static_render() already says about the host.
+fn page_tree(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> PageTree {
+  PageTree {
+    rows: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    children: roadmap_primary_children_index(nodes: nodes, edges: edges),
+  }
 }
 
 fn node_li(rn: RoadmapNode, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1321,7 +1326,11 @@ fn node_li(rn: RoadmapNode, tree: PageTree, merged: List<Int>, fuel: Int, launch
 }
 
 fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
-  nodes_ul_in(items: items, tree: page_tree(nodes: nodes, edges: edges), merged: merged, fuel: fuel, launch: launch)
+  nodes_ul_in(
+    items: items,
+    tree: page_tree(nodes: nodes, edges: edges, accepted: launch.accepted, withheld: launch.withheld),
+    merged: merged, fuel: fuel, launch: launch,
+  )
 }
 
 fn nodes_ul_in(items: List<RoadmapNode>, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1329,7 +1338,7 @@ fn nodes_ul_in(items: List<RoadmapNode>, tree: PageTree, merged: List<Int>, fuel
 }
 
 fn group_markup(g: SectionGroup, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
-  let tree = page_tree(nodes: g.nodes, edges: g.edges)
+  let tree = page_tree(nodes: g.nodes, edges: g.edges, accepted: launch.accepted, withheld: launch.withheld)
   let tops = g.nodes |> filter(n => count(roadmap_parent_ids_in(parents: tree.rows.parents, node: n.node)) == 0)
   let ul = nodes_ul_in(items: tops, tree: tree, merged: merged, fuel: roadmap_page_max_depth(), launch: launch)
   if g.label == "" {
@@ -1878,6 +1887,15 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     CommentDeleted { comment: _ } => "comment deleted"
     ResultReturned { attempt, claim, outcome } =>
       join(["result of attempt ", attempt as String, " for claim ", claim as String, ": ", attempt_result_outcome_text(o: outcome)], "")
+    // The two acceptance kinds, captioned in the same voice as the rest of the ledger. The day is the receipt's
+    // own (a calendar day by construction — see roadmap_acceptance_day), and the revocation names the
+    // disposition through the word the log itself uses, so the page never invents a second spelling for a
+    // fact the log already words.
+    AcceptanceRecordedEvent { receipt, evidence: _ } =>
+      join(["accepted the closing check on ", receipt.accepted_on as String], "")
+    AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on, reason } =>
+      join(["revoked the acceptance on ", revoked_on as String, " (",
+        roadmap_acceptance_revocation_disposition_word(d: disposition), "): ", reason as String], "")
   }
 }
 
@@ -2020,13 +2038,21 @@ fn comment_time_text(c: IssueComment) -> String {
 // comment, or the compact automated entry a returned attempt result appends (published and
 // reassigned for merge, verification failed, or handed back) — the answer the requester
 // is owed interleaves with the narrative, never raw belt noise.
+//
+// Which kinds enter the stream is decided by what a reader of the thread needs, not by whether the
+// kind exists: only ResultReturned does, because that is the outcome owed the requester. An
+// acceptance record and an acceptance revocation are verdict records about the item rather than
+// entries in its thread, so they stay out — exactly as Retired does, the act on the node they pair
+// with. They are not hidden by that: the log is still their only home, the event row captions them
+// (issue_event_text at :1845 -> issue_event_payload, which spells both), and the receipt surfaces
+// read them from the log.
 type IssueStreamEntry
   = StreamComment { comment: IssueComment }
   | StreamPublication { env: RoadmapEventEnvelope }
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2110,6 +2136,13 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
     Claimed { assignee: _, return_to: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     Released =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    // An acceptance or a revocation is not a publication, so it gets the same empty body every other
+    // non-result kind gets: the durable event stays on the log and in the ledger, and this row does not
+    // pretend a receipt is a returned result.
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     Progress { note: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
@@ -2422,7 +2455,6 @@ fn issue_dependency_graph_status(status: NodeStatus) -> String {
     NodeStatusWithheld => "superseded"
     NodeStatusDerived { status: derived, closed: _ } => match derived {
       DisplayDone => "done"
-      DisplaySuperseded => "superseded"
       DisplayRetired => "retired"
       DisplayUnknown => "unknown"
       DisplayReady => issue_display_status_label(status: derived)
@@ -2629,12 +2661,18 @@ dispatch_client_script()
 // list the static render takes; the live attempt feed is the belt-side observation-storage
 // decision (deferred with the reason carried in the handoff), and the events keep the Work tab
 // honest until it lands. Unknown ids render the not-found document; the route answers 404 for it.
-fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -> Bool {
+// The nodes the detail route renders, in plan order: the one enumeration issue_detail_node_exists
+// asks, exposed so a reader that lists the rendered nodes (gunbc.roadmap.roadmap_standings_document)
+// lists these and no copy of them. A refused plan renders none.
+fn issue_detail_nodes(proj: RoadmapAuthorityProjection) -> List<RoadmapNode> {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: _ } => false
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
-      any(doc_all_nodes(doc: doc), n => (n.node as String) == node_id)
+    RoadmapAuthorityProjectionRefused { detail: _ } => []
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => doc_all_nodes(doc: doc)
   }
+}
+
+fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -> Bool {
+  any(issue_detail_nodes(proj: proj), n => (n.node as String) == node_id)
 }
 
 // THE CHAIN HEAD the rendered page pins into the assign form's expected_revision: the envelope no
@@ -2671,9 +2709,14 @@ fn issue_detail_page_for(
     RoadmapAuthorityProjected { doc, accepted: accepted, withheld: withheld } =>
       let nodes = doc_all_nodes(doc: doc)
       let edges = doc_all_edges(doc: doc)
-      let ctx = page_launch_context(doc: doc, merged: authored_merged_prs(), launch: launch)
+      let ctx = page_launch_context(
+        doc: doc, merged: authored_merged_prs(), launch: launch,
+        accepted: accepted, withheld: withheld,
+      )
       let observation = observation_impact_view(workflow_refused: attempts_refused)
-      let obs = RowObservations { graph: row_graph(nodes: nodes, edges: edges), merged: authored_merged_prs(), attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
+      let obs = RowObservations {
+        graph: row_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+        merged: authored_merged_prs(), attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
       match (filter(nodes, n => (n.node as String) == node_id)).first() {
         Absent =>
           issue_detail_not_found_page(node_id: node_id, viewer: viewer)
@@ -2842,10 +2885,21 @@ fn observed_node_status(rn: RoadmapNode, obs: RowObservations, accepted: List<Ro
       NodeStatusDerived { status: issue_display_status(view: view), closed: work_lifecycle_is_closed(l: view.lifecycle) }
     }
     Absent => {
+      // What an omitted node's own row would say, read ONCE and used twice below. Restored because
+      // the rewrite that replaced the row-level SupersededLine test with the log's standing dropped
+      // this binding while the branch's final arm still matched on it (srv1: roadmap_page.dag:2873:15
+      // undefined variable 'own'); the name is imported from the module that owns it and the accepted
+      // case is answered by the branch below, so the authority is asked as a non-accepted row.
       let own = omitted_node_display_status(rn: rn, merged: obs.merged, accepted: false)
-      let superseded = match own { Present { value: s } => s == DisplaySuperseded  Absent => false }
-      if superseded {
-        NodeStatusDerived { status: DisplaySuperseded, closed: true }
+      // A node the log has RETIRED is shown retired and closed, read from the standing the log
+      // folds — the one home the fact has. It is never decided by its row: the row-level
+      // SupersededLine this branch used to consult is deleted.
+      let retired = match standing_for_node(standings: obs.standings, node_id: rn.node as String) {
+        Present { value: NodeRetired { by: _, reason: _ } } => true
+        _ => false
+      }
+      if retired {
+        NodeStatusDerived { status: DisplayRetired, closed: true }
       } else if any(accepted, id => id == rn.node) {
         NodeStatusAccepted
       } else {
@@ -2869,8 +2923,24 @@ fn issue_detail_hierarchy_for(rn: RoadmapNode, plan: List<RoadmapNode>, declared
     status_of: fn(related) { observed_node_status(rn: related, obs: obs, accepted: accepted, withheld: withheld) })
 }
 
-fn page_launch_context(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> LaunchRowContext {
-  LaunchRowContext { standing: launch, graph: launch_graph_of_document(doc: doc), merged: merged }
+// The row context is built ONCE per render and carried to every row, section tree and child list, so
+// the two sets the log attests ride along with it: no consumer downstream can build a readiness graph
+// from the raw plan and disagree with the spawner and the dispatcher about a child whose parent the log
+// closed. (roadmap_presentation LaunchRowContext; roadmap_spawner readiness_graph.)
+fn page_launch_context(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> LaunchRowContext {
+  LaunchRowContext {
+    standing: launch,
+    graph: launch_graph_of_document(doc: doc, accepted: accepted, withheld: withheld),
+    merged: merged,
+    accepted: accepted,
+    withheld: withheld,
+  }
 }
 
 fn daily_workspace_view_of_for_accepted(
@@ -2888,8 +2958,10 @@ fn daily_workspace_view_of_for_accepted(
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
-  let graph = row_graph(nodes: nodes, edges: edges)
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, launch: launch, accepted: accepted_ids, withheld: withheld,
+  )
+  let graph = row_graph(nodes: nodes, edges: edges, accepted: accepted_ids, withheld: withheld)
   let obs = RowObservations { graph: graph, merged: merged, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: ctx, stale_nodes: stale_nodes, profiles: profiles }
   let rows = map(nodes, rn => observed_row_view(rn: rn, obs: obs))
   let ready_count = count(rows |> filter(r =>
@@ -2984,8 +3056,18 @@ el_class("main", "daily-workspace", [
 // this tree). That is the gunbc.design_argument::single_authority tell exactly -- a claim dominated by one call whose result
 // it does not inspect -- and the substrate's whole remedy is to SUPPLY the value instead of computing
 // it. Every production caller below passes roadmap_css(), so the served page is unchanged.
-fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
+fn roadmap_page_impl_with_stylesheet(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  main_prefix: List<Fragment>,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, launch: launch, accepted: accepted, withheld: withheld,
+  )
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged, launch: ctx))
   let main_children = concat(main_prefix, concat(lead, secs))
@@ -3000,22 +3082,47 @@ fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, ma
   site_document(title: "gunbc — roadmap", heading: "roadmap", styles: stylesheet, content: body_children)
 }
 
-fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_styles())
+fn roadmap_page_impl(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  main_prefix: List<Fragment>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: main_prefix, launch: launch, stylesheet: roadmap_styles(), accepted: accepted, withheld: withheld)
 }
 
 // The supplied-stylesheet seam a row claim renders through. It is the same page fold; only the head's
 // style text is handed in. A claim that asserts on the stylesheet must use roadmap_page_launch.
-fn roadmap_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
-  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet)
+fn roadmap_page_launch_with_stylesheet(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl_with_stylesheet(doc: doc, merged: merged, main_prefix: [], launch: launch, stylesheet: stylesheet, accepted: accepted, withheld: withheld)
 }
 
-fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch_host_unobserved_static_render())
+fn roadmap_page(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch_host_unobserved_static_render(), accepted: accepted, withheld: withheld)
 }
 
-fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch)
+fn roadmap_page_launch(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  launch: LaunchHostStanding,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch, accepted: accepted, withheld: withheld)
 }
 
 // roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a
@@ -3025,7 +3132,11 @@ fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHo
 // the rendering at all. Passing an unfocused document keeps that claim measuring markup.
 // roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view.
 
-fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
+fn roadmap_page_for_doc(
+  doc: RoadmapDocument,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Fragment {
   roadmap_page_impl(
     doc: doc,
     merged: authored_merged_prs(),
@@ -3034,6 +3145,7 @@ fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
       finish_line_progress_markup(),
     ],
     launch: launch_host_unobserved_static_render(),
+    accepted: accepted, withheld: withheld,
   )
 }
 
@@ -3054,7 +3166,7 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
 // actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor.
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  roadmap_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()))
 }
 
 fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
@@ -3068,7 +3180,11 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // The supplied-stylesheet seam of the served roadmap route: the projection's own page fold with only
 // the head's style text handed in, so a claim about rows of a supplied projection does not pay for
 // the stylesheet it never reads. roadmap_page_for_projection_launch passes roadmap_css().
-fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding, stylesheet: SiteStyles) -> Fragment {
+fn roadmap_page_for_projection_launch_with_stylesheet(
+  proj: RoadmapAuthorityProjection,
+  launch: LaunchHostStanding,
+  stylesheet: SiteStyles,
+) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl_with_stylesheet(
@@ -3080,8 +3196,12 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
         ],
         launch: launch,
         stylesheet: stylesheet,
+        // No plan is rendered on this arm -- the projection refused -- so no parent state is claimed:
+        // the empty lists are the absence the refusal itself states, not a log read that came up empty.
+        accepted: [],
+        withheld: [],
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       roadmap_page_impl_with_stylesheet(
         doc: doc,
         merged: authored_merged_prs(),
@@ -3091,6 +3211,8 @@ fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProj
         ],
         launch: launch,
         stylesheet: stylesheet,
+        accepted: accepted,
+        withheld: withheld,
       )
   }
 }
@@ -3221,7 +3343,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
 }
 
 fn roadmap_daily_workspace_page_for_authority( memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
-  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), memberships: memberships)
+  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load()), memberships: memberships)
 }
 
 fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {

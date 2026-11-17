@@ -14,7 +14,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { Minute, minute, second, second_count }
-import extdeps.cloud.gcp.iam { token_lifetime_wire, token_lifetime_within_ordinary_maximum }
+import extdeps.cloud.gcp.iam { token_lifetime_wire, admit_token_lifetime }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_head }
 import gunbc.ci.repository_ci_profile {
@@ -322,18 +322,29 @@ test fn no_publisher_step_delegates_federation_to_an_action() -> Bool {
 // so widening it here must be as loud as removing it.
 test fn the_federation_audiences_are_two_spellings_of_one_resource_and_the_lifetime_stays_ruled() -> Bool {
   let resource = heal_publisher_wif_provider_resource()
+  // Asked of the API model's one checked constructor rather than of a Bool beside it: this claim pins what
+  // the publisher's lifetime does against `extdeps.cloud.gcp.iam::admit_token_lifetime`, which is the
+  // admission the production path actually passes through
+  // (`gunbc.design_argument::single_authority`).
+  let ruled_lifetime_admitted = match admit_token_lifetime(s: heal_publisher_cloud_token_lifetime) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  // The discriminating half. A lifetime just past the ORDINARY hour must be refused: the ceiling that
+  // accepts it exists in this model (default_token_lifetime.extended_maximum, the CONDITIONAL twelve-hour
+  // ceiling reachable only under default_token_lifetime.extended_maximum_condition),
+  // so a constructor named for the maximum that checked that instead would admit this value -- and the
+  // publisher, whose service account that constraint is not known to name, would be promised a credential
+  // Google refuses to issue.
+  let one_second_past_the_ordinary_maximum_refused = match admit_token_lifetime(s: second(count: 3601)) {
+    Absent => true
+    Present { value: _ } => false
+  }
   heal_publisher_exchange_audience() as String == join(["//iam.googleapis.com/", resource], "")
     && heal_publisher_assertion_audience() as String == join(["https://iam.googleapis.com/", resource], "")
     && second_count(s: heal_publisher_cloud_token_lifetime) == 300
     && token_lifetime_wire(s: heal_publisher_cloud_token_lifetime) == "300s"
-    && token_lifetime_within_ordinary_maximum(s: heal_publisher_cloud_token_lifetime)
-    // The discriminating half. A lifetime just past the ORDINARY hour must be refused: the ceiling that
-    // accepts it exists in this model (default_token_lifetime.extended_maximum, the CONDITIONAL twelve-hour
-    // ceiling reachable only under default_token_lifetime.extended_maximum_condition),
-    // so a predicate named for the maximum that checked that instead would pass this value -- and the
-    // publisher, whose service account that constraint is not known to name, would be promised a credential
-    // Google refuses to issue.
-    && !token_lifetime_within_ordinary_maximum(s: second(count: 3601))
+    && ruled_lifetime_admitted && one_second_past_the_ordinary_maximum_refused
 }
 
 

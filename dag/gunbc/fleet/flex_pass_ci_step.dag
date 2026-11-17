@@ -1,0 +1,32 @@
+module gunbc.fleet.flex_pass_ci_step
+
+// THE CI RUN-STEP LEAF OF THE FLEX PASS DOMAIN: the `gunbc run` target and invoke of the
+// flex_pass step, beside the domain whose entry module it invokes
+// (gunbc.fleet.flex_pass_run). The shared run-step machinery is
+// v2.workflow.gunbc_invoke_step_emit, gunbc.ci.ci_layer_roots and
+// gunbc.ci.ci_run_step_target; the roster stays in gunbc.instruments.ci_run_step_roster, which imports the
+// target. A step module imports the shared machinery, never the roster.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+
+data gunbc_ci_flex_pass_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.flex_pass_run",
+  function: "pass",
+)
+
+fn gunbc_ci_flex_pass_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_flex_pass_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}

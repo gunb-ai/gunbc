@@ -42,6 +42,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_write_for_instance,
   belt_tick_result_json_value,
   belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
+  belt_review_resume_for_instance, BeltReviewResumeResult, BeltReviewResumed, BeltReviewResumeRefused,
   belt_verify_one_for_instance, belt_verify_resume_for_instance, BeltVerifyOneResult,
   VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
   belt_verify_outcome_json,
@@ -71,12 +72,29 @@ import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snaps
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
   DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
-  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationDeferred, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
+  LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
+  ReleaseBindingUnobserved, release_binding_line,
+}
+import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_ssh_target,
+}
+import product.host_identity { HostIdentity }
+import gunbc.roadmap.roadmap_launch_deployment_observe {
+  HealthzServed, HealthzRefused, observe_healthz,
+}
+import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
@@ -200,6 +218,60 @@ fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSn
   }
 }
 
+// The SSH attempt label the pairing gate's deployed-tree leg runs under. A named attempt keeps
+// the realized fleet-ssh effect auditable; the label carries no credential.
+data belt_pair_serve_gate_attempt_raw: String = "belt-standings-pair-serve"
+
+// LAB PAIRING GATE: asks whether the running binary and the deployed source tree form a
+// bound pair before the refresh is allowed to serve. Refusal keeps the last good pair
+// serving; the refusal reason names the binding arm (ReleaseMixed or ReleaseBindingUnobserved)
+// that rejected, making the refusal visible through the existing authority.
+//
+// BOTH READINGS ARE READ AT THE HOST THE LOCUS SEALS, NOT AT LOOSE TEXT. The tree leg goes
+// through the canonical observer `observe_deployed_tree_at`, which builds the sealed
+// `DeployedTreeLocus` (host + credential + repo together) -- the same instrument every other
+// consumer uses, never a re-derivation. The release identity is read at that same
+// instance's own serve port. Both readings therefore key off one `instance`, the single
+// admitted host record, so the tree and the running release cannot be joined across hosts.
+fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
+  match prepare_fleet_ssh_agent_context(attempt_raw: belt_pair_serve_gate_attempt_raw) {
+    FleetSshContextRefused { cause: c } => {
+      let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+        cause: join(["fleet ssh context refused, deployed tree undecidable: ", c], ""),
+      }
+      PairServeRefused { binding: binding, reason: release_binding_line(binding: binding) }
+    }
+    FleetSshContextReady { context: context, receipt: _ } => belt_pair_serve_gate_at(
+      instance: instance,
+      observation: observe_deployed_tree_at(
+        context: context,
+        target: fleet_locus_ssh_target(host: instance.host_identity as HostIdentity),
+        repo: instance.repo_root as NonEmptyStr,
+      ),
+    )
+  }
+}
+
+fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: DeployedTreeObservation) -> LabServePairVerdict {
+  match observe_healthz(port: instance.listen_port as Int) {
+    HealthzServed { body: _, identity: id } =>
+      lab_pair_serve_verdict(
+        observation: observation,
+        identity: id,
+        expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+      )
+    HealthzRefused { detail: d } => {
+      let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+        cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),
+      }
+      PairServeRefused {
+        binding: binding,
+        reason: release_binding_line(binding: binding),
+      }
+    }
+  }
+}
+
 fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
   match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at) {
     BeltPassRecorded => ExitSuccess
@@ -233,7 +305,15 @@ fn belt_observe_once_cli() -> ProcessExit {
               w,
             ], ""))
           DashboardInstanceResolved { instance } =>
-            belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+            match belt_pair_serve_gate(instance: instance) {
+              PairBoundToServe { binding: _ } =>
+                belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+              PairServeRefused { binding: _, reason: r } =>
+                exit_failure(reason: join([
+                  "belt_observe_once_cli: pair unbound, serve refused — last good pair continues: ",
+                  r,
+                ], ""))
+            }
         }
       }
   }
@@ -265,6 +345,48 @@ fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: Strin
       let document = serialize_json(v: review_report_json(report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)))
       let w = Filesystem.Write(path: receipt_path, content: document)
       if !w.success { exit_failure(reason: join(["belt_review_report_cli: receipt could not be written: ", w.error, "; report was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+// THE OPERATOR RESUME FOR A REVIEW REFUSED BY ITS ENVIRONMENT, symmetric to belt_verify_resume_cli. It is
+// the route out of the state where an attempt verified GREEN but every reviewer died before writing a verdict
+// (the srv1 all-218/CAPABILITIES case, bug #16382): the operators fix the host toolchain, then resume the
+// review on the SAME attempt and SAME worktree -- the review re-runs under the next review round (a fresh
+// round re-spawns the reviewers; the retained round-0 records stay as the receipt). It mints no new attempt
+// and approves nothing. A review that produced a real verdict, or one whose refusal is about the candidate,
+// is refused rather than re-run (a re-run would be the loop the manual-resume ruling refuses).
+fn belt_review_resume_result_json(r: BeltReviewResumeResult) -> JsonValue {
+  match r {
+    BeltReviewResumed { node_id, attempt_key, round, report } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-review-resume/v1")),
+        json_kv(key: "status", value: json_string(s: "resumed")),
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "attempt", value: json_string(s: attempt_key)),
+        json_kv(key: "round", value: json_string(s: to_string(round))),
+        json_kv(key: "report", value: review_report_json(report: report)),
+      ])
+    BeltReviewResumeRefused { node_id, attempt_key, reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-review-resume/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "attempt", value: json_string(s: attempt_key)),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn belt_review_resume_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_review_resume_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_review_resume_result_json(
+        r: belt_review_resume_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_review_resume_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
     }
   }
 }
@@ -409,6 +531,7 @@ fn belt_obligations_enqueued_exit(context: String, enqueues: List<BeltObligation
     BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
     BeltObligationStarted { unit: _ } => [] as List<String>
     BeltObligationHeld { unit: _ } => [] as List<String>
+    BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
   })
   if count(refused) == 0 { ExitSuccess } else { exit_failure(reason: join([context, ": ", to_string(value: count(refused)), " obligation(s) could not be handed to their unit: ", join(refused, "; ")], "")) }
 }
@@ -655,6 +778,7 @@ fn belt_publication_answer_drain_cli() -> ProcessExit {
                 BeltObligationEnqueueRefused { unit: u, reason: r } => [join([u as String, ": ", r], "")]
                 BeltObligationStarted { unit: _ } => [] as List<String>
                 BeltObligationHeld { unit: _ } => [] as List<String>
+                BeltObligationDeferred { unit: _, reason: _ } => [] as List<String>
               }
           }
         }

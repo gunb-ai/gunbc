@@ -21,7 +21,7 @@ import extdeps.tools.sha256sum {
   sha256sum_file_digest_via_shell
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
-import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import gunbc.generated_artifact { artifact_path, WholeCorpusCompileMeasuredRootDemandsArtifact }
 import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_program_readiness,
@@ -502,7 +502,7 @@ fn emission_compile_args(scope: EmissionScope, render_target: EmissionRenderTarg
 fn emission_primary_root_demand_args() -> List<String> {
   [
     "--repository", whole_corpus_compile_repository as String,
-    "--measured-root-demands", whole_corpus_compile_demand_projection_path(),
+    "--measured-root-demands", artifact_path(a: WholeCorpusCompileMeasuredRootDemandsArtifact),
   ]
 }
 

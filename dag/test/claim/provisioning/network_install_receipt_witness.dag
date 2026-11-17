@@ -122,7 +122,7 @@ fn subject() -> NetworkInstallSubject? {
     Present { value: c } => match admit_public_nocloud_seed(client_mac: client, user_data: fixture_user_data()) {
       PublicSeedRefused { findings: _ } => Absent
       PublicSeedAdmitted { seed: sd } => Present { value: NetworkInstallSubject {
-        attempt: AttemptBinding { unit: "fixture-unit" as UnitKey, attempt: "attempt-1" },
+        attempt: AttemptBinding { unit: UnitKey { kind: BoardUnitKey, value: "fixture-unit" }, attempt: "attempt-1" },
         chain: c,
         binding: SitePxeEdgeInstallBinding { seed: sd, architecture: X86_64 },
         started_at: started,
@@ -132,9 +132,10 @@ fn subject() -> NetworkInstallSubject? {
   }
 }
 
-// The paths an independent reader expects: the amd64 chain's members by their served names, GRUB's per-MAC
-// configuration (the GRUB manual's "01-" plus the dashed lowercase MAC) in place of the fallback, and the seed.
-data per_mac_cfg: NonEmptyStr = "grub/grub.cfg-01-00-25-90-00-00-01"
+// The paths an independent reader expects: the amd64 chain's members by their served names, the client's own
+// configuration (grub/install/ plus its colon-separated lowercase MAC, the file the entry grub.cfg loads) in place of
+// the entry configuration, and the seed.
+data per_mac_cfg: NonEmptyStr = "grub/install/00:25:90:00:00:01.cfg"
 
 data seed_path: NonEmptyStr = "seed/00-25-90-00-00-01/user-data"
 

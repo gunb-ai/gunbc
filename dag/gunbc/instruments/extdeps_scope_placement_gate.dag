@@ -20,19 +20,44 @@ import gunbc.extdeps_scope_frontier {
   DiffAddedObservation, AddedPathsObserved, DiffObserveFailed, DiffParseTruncated,
 }
 
-// EXECUTING ROUTE (re-measured 2026-10-01, replacing a stale "does not run" note from 2026-08-19):
-// this gate DOES execute on a CI route. It runs wherever `claim_executor --required-ci` runs the
-// required floor's gate witnesses (`.github/workflows/witnesses.yml`), as the
-// `extdeps_scope_placement_gate_passes` witness of `gunbc.instruments.floor_effect_gate_witness` — enrolled on
-// the GithubActionsCiJob surface by the `ExtdepsScopePlacementGate` row of `commit_gate_roster`
-// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_floor_gates` by `gunbc.ci.ci_spec`, and
-// dispatched by `gunbc.instruments.ci_gates` `run_spec_gate`. Its reds were loud on that route before the
-// 2026-08-24 loudness repair (ten consecutive `extdeps_scope_placement_gate_passes` reds are
-// recorded at cli_run::entry_resolve's failure-receipt companion note), and the required floor
-// has billed the gate row directly (83.0s before the module-path-index warm, required_floor_runner
-// quarantine note). The durable rule the old note was an instance of still holds: the .dag call
-// graph is not the execution graph, and "runs in CI" is decided by the executing fold
-// (`claim_executor --required-ci`) reading the gate roster — never by who calls whom in .dag.
+// EXECUTING ROUTE (re-measured 2026-11-15 at origin/main 4218e7f21e, replacing a stale
+// "this gate DOES execute on a CI route" note dated 2026-10-01, which was itself written over a stale
+// "does not run" note of 2026-08-19 — the defect is the note, not the direction): as measured, NONE
+// of this gate's three modeled enrollments executes. The `extdeps_scope_placement_gate_passes` fn of
+// `gunbc.instruments.floor_effect_gate_witness` is not a test-marked decl, and floor discovery enrolls
+// test-marked decls only, so that witness was never planned; `gunbc.instruments.ci_gates`
+// `run_spec_gate`/`main` is called by no workflow, roster or host fold in the repository; and the
+// `ExtdepsScopePlacementGate` row of `commit_gate_roster` is a `CommitSpecGate`, which
+// `project_ci_floor_witness_entries` (src/v1/stage0/src/cli_run.rs) does not turn into an executing
+// entry — only `CommitWitnessClaim` rows on an `EXECUTING_COMMIT_SURFACES` surface become entries
+// that run. The earlier note's evidence was real but older than the route it described: ten
+// consecutive `extdeps_scope_placement_gate_passes` reds are recorded at
+// cli_run::entry_resolve's failure-receipt companion note, and the required floor billed the gate row
+// 83.0s once (before the module-path-index warm). The durable rule that note stated correctly, and
+// which the 2026-10-01 note itself then violated by narrating instead of measuring: the .dag call
+// graph is not the execution graph, and "runs in CI" is decided by the executing fold, never by who
+// calls whom in .dag.
+//
+// WHAT IS ENROLLED NOW (roadmap node dp-m3-extdeps-scope-halved, gunbc#15583), AND WHAT IS NOT YET
+// EVIDENCED: `test.claim.extdeps_scope_placement_gate_live_wet_witness::the_membership_arm_verdict_passes_on_the_prepared_subject`
+// carries the gate's MEMBERSHIP arm (its own observation builder and verdict fns, no re-implementation)
+// and is enrolled in the two authorities the wet lane's recipe names — a `WetScheduledClaim` row of
+// `v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule` and a `LocalRepoWetLane`
+// `WitnessExclusionRow` of `gunbc.ci.ci_layer_roots::witness_exclusion_frontier`. THE ARM HAS EXECUTED
+// once, in-session against a tree carrying the drained 176-row manifest, with the fleet's CI-built
+// `claim_batch` (PASS, plus a planted unenrolled `dag/extdeps` file turning it red); the run identity,
+// the exact invocation and the control are in that claim module's own header — cite it, do not restate
+// it here. THE SCHEDULED ROUTE HAS NOT RUN: the fleet's floor run has not printed its
+// `[local-repo-wet] scheduled=N admitted=N refusals=0` line naming this identity (fleet-converge
+// failing), and nothing on the required PR path evaluates a witness, so the scheduled admission stays
+// a declared frontier with a trigger, discharged by that line together with the standing read
+// `hermetic-route-gap-held-and-wet-passed`. The claim is scoped
+// to the membership arm by operator decision on measured cost (0.5s against 61s for a
+// `legacy_manifest_freeze_sha..HEAD` read, under
+// `gunbc.design_ruling::ci_job_budgets_closed_to_growth`); the freeze and remove-only arms stay offline
+// with hermetic cover cited at `test.claim.external_model_scope_witness::manifest_freeze_holds`. The
+// arms' verdict kernels carry hermetic mutation controls in
+// `test.claim.extdeps_scope_placement_gate_verdict_witness`.
 // Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281;
 // modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling
 // in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with

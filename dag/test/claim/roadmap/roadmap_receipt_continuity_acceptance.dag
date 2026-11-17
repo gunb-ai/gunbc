@@ -1,6 +1,18 @@
 module test.claim.roadmap.roadmap_receipt_continuity_acceptance
 
 import std.types { NonEmptyStr }
+import gunbc.roadmap.roadmap_event_cli { roadmap_read_back_refusals, }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused, RoadmapMigrationRefusal,
+  roadmap_acceptance_migration_report,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
+}
+import gunbc.roadmap.roadmap_acceptance_history_carrier {
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded,
+  RoadmapAcceptanceEventHistoryLoadRefused,
+}
 import std.content_hash { content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_authority {
@@ -27,13 +39,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 }
 import test.claim.roadmap.roadmap_receipt_continuity_acceptance_fixture {
   receipt_continuity_acceptance_carrier_fixture_text,
-}
-import gunbc.roadmap.roadmap_acceptance_history_observation {
-  PriorHistoryGitObservationRefused,
-  PriorHistoryObserved,
-  prior_history_from_carrier_text,
-  acceptance_history_integrity_holds_from_prior_observation_with_prior,
-  git_show_path_absent_at_ref,
+  receipt_continuity_acceptance_carrier_retired_ids,
 }
 import gunbc.roadmap.roadmap_spawner {
   doc_all_nodes,
@@ -60,6 +66,15 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unreadable_carrier_text_fixture: String = "{ not json"
+
+// For the histories a claim BUILDS BY HAND, whose content the claim controls: this log retires NOTHING,
+// and — unlike an unreadable lane — that is a fact the read established, so it travels as a Loaded empty
+// set: an unreadable retired set would refuse the plan. Claims over the shared CARRIER must not use this:
+// the carrier's own last line is a remains-superseded revocation, so the retired set it depends on is
+// receipt_continuity_acceptance_carrier_retired_ids, and an empty set there is a contradicted fixture.
+fn no_retired_nodes() -> RoadmapRetiredNodeIds {
+  RetiredNodeIdsLoaded { ids: [] }
+}
 
 fn fixture_history_load() -> RoadmapAcceptanceEventHistoryLoad {
   load_roadmap_acceptance_event_history_from_carrier_text(
@@ -327,28 +342,6 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
   }
 }
 
-test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
-  git_show_path_absent_at_ref(
-    stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
-  )
-    && git_show_path_absent_at_ref(
-      stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' does not exist in '9ce6526c528'",
-    )
-}
-
-test fn witness_git_refusal_observation_refuses_integrity() -> Bool {
-  match fixture_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
-    RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
-      !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-        observation: PriorHistoryGitObservationRefused {
-          detail: "fixture planted git refusal",
-        },
-        history: prior,
-      )
-  }
-}
-
 test fn witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit() -> Bool {
   match fixture_history_load() {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
@@ -368,10 +361,6 @@ test fn witness_changed_history_empty_prior_bypass_admits_deletion_observed_prio
       count(prior) > count(current)
         && acceptance_history_integrity_holds(history: current, prior_history: [])
         && !acceptance_history_integrity_holds(history: current, prior_history: prior)
-        && !acceptance_history_integrity_holds_from_prior_observation_with_prior(
-          observation: PriorHistoryObserved { prior: prior },
-          history: current,
-        )
     }
   }
 }
@@ -395,7 +384,7 @@ test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool 
   match history {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
-      match withheld_node_ids_projection(history: history) {
+      match withheld_node_ids_projection(history: history, retired: no_retired_nodes()) {
         WithheldNodeIdsProjected { ids: _ } => false
         WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
           withheld_detail == history_detail
@@ -411,7 +400,7 @@ test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool 
   match history {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
     RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
-      match accepted_node_ids_projection(history: history) {
+      match accepted_node_ids_projection(history: history, retired: no_retired_nodes()) {
         AcceptedNodeIdsProjected { ids: _ } => false
         AcceptedNodeIdsProjectionRefused { detail: accepted_detail } =>
           accepted_detail == history_detail
@@ -424,11 +413,11 @@ test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool 
 // history they carry the same accepted set; a live fixture receipt makes the set nonempty.
 test fn witness_accepted_projection_matches_authority_projection_on_fixture_history() -> Bool {
   let history = fixture_history_load()
-  match accepted_node_ids_projection(history: history) {
+  match accepted_node_ids_projection(history: history, retired: receipt_continuity_acceptance_carrier_retired_ids()) {
     AcceptedNodeIdsProjectionRefused { detail: _ } => false
     AcceptedNodeIdsProjected { ids: ids } =>
       count(ids) > 0
-        && match roadmap_authority_projection(history: history) {
+        && match roadmap_authority_projection(history: history, retired: receipt_continuity_acceptance_carrier_retired_ids()) {
           RoadmapAuthorityProjectionRefused { detail: _ } => false
           RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: _ } => ids == accepted
         }
@@ -466,20 +455,12 @@ test fn witness_authority_projection_refuses_when_receipts_projection_refuses() 
   match roadmap_acceptance_receipts(history: history) {
     RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
     RoadmapAcceptanceReceiptsProjectionRefused { detail: receipt_detail } =>
-      match roadmap_authority_projection(history: history) {
+      match roadmap_authority_projection(history: history, retired: no_retired_nodes()) {
         RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
         RoadmapAuthorityProjectionRefused { detail: authority_detail } =>
           authority_detail == receipt_detail
             && string_contains(s: authority_detail, pattern: "line 1:")
       }
-  }
-}
-
-test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() -> Bool {
-  match prior_history_from_carrier_text(carrier_text: "not-jsonl-carrier\n") {
-    PriorHistoryObserved { prior: _ } => false
-    PriorHistoryGitObservationRefused { detail: detail } =>
-      string_contains(s: detail, pattern: "merge-base carrier parse refused")
   }
 }
 
@@ -492,7 +473,7 @@ test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
-  match roadmap_authority_projection(history: history) {
+  match roadmap_authority_projection(history: history, retired: no_retired_nodes()) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
     RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
@@ -500,7 +481,9 @@ test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
 }
 
 test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
-  match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
+  match roadmap_authority_projection(
+    history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text),
+    retired: receipt_continuity_acceptance_carrier_retired_ids()) {
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
     RoadmapAuthorityProjectionRefused { detail: _ } => false
   }
@@ -587,4 +570,164 @@ test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool
           RoadmapAcceptanceReceiptsProjected { receipts: receipts } => count(receipts) == 0
         }
   }
+}
+
+// THE READ-BACK DOORS DECIDE NOTHING NEW — AND THAT IS THE CLAIM. Each of the exits the live migration gates
+// on is a reader's verdict turned into an exit; these hold that the mapping keeps its direction under a
+// controlled RED: a reader that refused is never admitted, an empty-but-loaded set IS admitted (an empty retired
+// set is a real fact; an unreadable log is not), and nothing here decides by searching words. Review 93664 on
+// gunb-ai/gunbc#16189 removed the doors that grepped their own prose; what the runbook gates on is now the
+// coproduct every reader already returns, matched once per reader in gunbc.roadmap.roadmap_event_cli
+// roadmap_read_back_refusals, and the MIGRATION VERIFIED / MIGRATION REFUSED words exist only in
+// roadmap_acceptance_migration_report, the rendering the runbook quotes. These claims hold BOTH halves: the
+// admission a variant earns, and the sentence a variant renders. Written in the file's own idiom — a test fn is
+// a claim the runner answers with PASS or FAIL.
+
+// The admitted shape of the verifier's answer, and each refusal it can reach. One definition here so every
+// claim below differs only in WHICH reader refused — the discriminating part is the count and the name.
+fn migration_verified_outcome() -> RoadmapAcceptanceMigrationOutcome {
+  MigrationVerified {
+    manifest_events: 18, accepted_events: 15, revoked_events: 3,
+    retired_named: 2, held_events: 18, event_lines: []
+  }
+}
+
+fn migration_refused_by(cause: RoadmapMigrationRefusal) -> RoadmapAcceptanceMigrationOutcome {
+  MigrationRefused { cause: cause }
+}
+
+fn clean_retired_read() -> RoadmapRetiredNodeIds { RetiredNodeIdsLoaded { ids: [] } }
+
+fn clean_history_read() -> RoadmapAcceptanceEventHistoryLoad {
+  RoadmapAcceptanceEventHistoryLoaded { events: [] }
+}
+
+// A loaded retired set is admitted, empty or not; a refused one is the ONE reader that names itself, so the
+// report door exits 1 with the reason the reader gave and never serves a plan that looks unretired
+// (gunbc.design_argument::fail_closed: a failure arm refuses, never widens).
+test fn a_retired_verdict_maps_to_the_exit_the_log_earned() -> Bool {
+  let refused = RetiredNodeIdsRefused { detail: "the event log directory is not opened" as NonEmptyStr }
+  count(roadmap_read_back_refusals(
+    migration: migration_verified_outcome(), retired: clean_retired_read(),
+    history: clean_history_read(), wrote: true)) == 0
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(),
+      retired: RetiredNodeIdsLoaded { ids: [nid("a-node")] },
+      history: clean_history_read(), wrote: true)) == 0
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(), retired: refused,
+      history: clean_history_read(), wrote: true)) == 1
+    && string_contains(
+      s: join(roadmap_read_back_refusals(
+        migration: migration_verified_outcome(), retired: refused,
+        history: clean_history_read(), wrote: true), "\n"),
+      pattern: "retired read: the one event log refused its retired set")
+}
+
+// The same for the acceptance history: loaded is admitted even when empty (a plan with no accepted work yet is
+// the log's honest answer), refused names itself once — otherwise the page would serve no accepted work at all
+// and look healthy doing it.
+test fn an_acceptance_history_verdict_maps_to_the_exit_the_log_earned() -> Bool {
+  let refused = RoadmapAcceptanceEventHistoryLoadRefused { detail: "the event log could not be read" }
+  count(roadmap_read_back_refusals(
+    migration: migration_verified_outcome(), retired: clean_retired_read(),
+    history: clean_history_read(), wrote: true)) == 0
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(), retired: clean_retired_read(),
+      history: refused, wrote: true)) == 1
+    && string_contains(
+      s: join(roadmap_read_back_refusals(
+        migration: migration_verified_outcome(), retired: clean_retired_read(),
+        history: refused, wrote: true), "\n"),
+      pattern: "acceptance history: the one event log refused its acceptance history")
+}
+
+// THE GATE ADMITS THE VARIANT, NOT THE WORDING. Only MigrationVerified opens the door; every refusal cause
+// reaches exactly one named refusal, and each names the cause it actually is — so an edit that reworded a
+// message could change the sentence the runbook prints without ever changing which runs are admitted, and the
+// reverse (a refusal that admitted) is not reachable by editing text at all.
+test fn the_migration_gate_admits_only_the_verified_outcome() -> Bool {
+  let causes = [
+    InstanceUnregistered { repo_root: "/opt/gunbc/dashboard" },
+    LogReadRefused { step: "list", reason: "the carrier directory is not opened" },
+    LogDoesNotReplay { detail: "an event references a node it never opened" as NonEmptyStr },
+    ManifestLineInvalid { line_index: Zero, detail: "not a valid acceptance event" as NonEmptyStr },
+    RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr },
+    ManifestDisagrees {
+      wanted: 18, held: 17, problems: ["held log is missing the acceptance of node-a"], event_lines: []
+    }
+  ]
+  count(roadmap_read_back_refusals(
+    migration: migration_verified_outcome(), retired: clean_retired_read(),
+    history: clean_history_read(), wrote: true)) == 0
+    && count(map(causes, c => count(roadmap_read_back_refusals(
+        migration: migration_refused_by(cause: c), retired: clean_retired_read(),
+        history: clean_history_read(), wrote: true)))) == 6
+    && all(causes, c => count(roadmap_read_back_refusals(
+        migration: migration_refused_by(cause: c), retired: clean_retired_read(),
+        history: clean_history_read(), wrote: true)) == 1)
+    && string_contains(
+      s: join(map(causes, c => join(roadmap_read_back_refusals(
+        migration: migration_refused_by(cause: c), retired: clean_retired_read(),
+        history: clean_history_read(), wrote: true), "\n")), "\n"),
+      pattern: "migration verifier: MIGRATION REFUSED")
+}
+
+// THE RENDERING IS PINNED TO THE VARIANT, BOTH WAYS. The words are not free-floating: the verified outcome is
+// the only thing that prints MIGRATION VERIFIED and the only one that does not print MIGRATION REFUSED, each
+// refusal cause is the only thing printing its own sentence, and the verdict that used to be possible by
+// accident — one text carrying BOTH words, which the old grep had to refuse by hand — cannot be built at all.
+test fn each_outcome_renders_only_its_own_verdict() -> Bool {
+  let verified_report = roadmap_acceptance_migration_report(outcome: migration_verified_outcome())
+  let disagreement = roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: ManifestDisagrees {
+      wanted: 18, held: 17, problems: ["held log is missing the acceptance of node-a"], event_lines: []
+    }))
+  string_contains(s: verified_report, pattern: "MIGRATION VERIFIED: 18 manifest events (15 acceptances, 3 revocations), 2 retired node(s) named, all held; 18 acceptance events held in the log:")
+    && !string_contains(s: verified_report, pattern: "MIGRATION REFUSED")
+    && string_contains(s: disagreement, pattern: "MIGRATION REFUSED: 18 manifest events, 17 held, 1 disagreement(s):")
+    && string_contains(s: disagreement, pattern: "  held log is missing the acceptance of node-a")
+    && !string_contains(s: disagreement, pattern: "MIGRATION VERIFIED")
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: InstanceUnregistered { repo_root: "/no/such/instance" })),
+      pattern: "no dashboard instance is registered at /no/such/instance")
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: LogReadRefused { step: "list", reason: "the carrier directory is not opened" })),
+      pattern: "the event log read failed at list")
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: LogDoesNotReplay { detail: "an event references a node it never opened" as NonEmptyStr })),
+      pattern: "the event log does not replay")
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: ManifestLineInvalid { line_index: Zero, detail: "not a valid acceptance event" as NonEmptyStr })),
+      pattern: "is not a valid acceptance event")
+    && string_contains(s: roadmap_acceptance_migration_report(outcome: migration_refused_by(cause: RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })),
+      pattern: "the retired lane does not order")
+}
+
+// THE READ-BACK DOCUMENT IS ADMITTED ONLY WHEN EVERY PART IS. One refusal anywhere refuses the whole, which
+// is what keeps a half-read log from being quoted as a migration that completed — including a document the
+// host would not let us write, since an unread receipt is not a receipt. Each part is refused by CONSTRUCTION
+// of that reader's own refusal, not by a flag a caller could set wrongly.
+test fn the_read_back_refuses_when_any_single_part_refuses() -> Bool {
+  let retired_refused = RetiredNodeIdsRefused { detail: "the event log directory is not opened" as NonEmptyStr }
+  let history_refused = RoadmapAcceptanceEventHistoryLoadRefused { detail: "the event log could not be read" }
+  let migration_refused = migration_refused_by(cause: RetiredLaneUnorderable { detail: "the retired lane reopens a closed node" as NonEmptyStr })
+  count(roadmap_read_back_refusals(
+    migration: migration_verified_outcome(), retired: clean_retired_read(),
+    history: clean_history_read(), wrote: true)) == 0
+    && count(roadmap_read_back_refusals(
+      migration: migration_refused, retired: clean_retired_read(),
+      history: clean_history_read(), wrote: true)) == 1
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(), retired: retired_refused,
+      history: clean_history_read(), wrote: true)) == 1
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(), retired: clean_retired_read(),
+      history: history_refused, wrote: true)) == 1
+    && count(roadmap_read_back_refusals(
+      migration: migration_verified_outcome(), retired: clean_retired_read(),
+      history: clean_history_read(), wrote: false)) == 1
+    && count(roadmap_read_back_refusals(
+      migration: migration_refused, retired: retired_refused,
+      history: history_refused, wrote: false)) == 4
+    && string_contains(
+      s: join(roadmap_read_back_refusals(
+        migration: migration_verified_outcome(), retired: clean_retired_read(),
+        history: clean_history_read(), wrote: false), "\n"),
+      pattern: "read-back document: the write to the report path did not succeed")
 }

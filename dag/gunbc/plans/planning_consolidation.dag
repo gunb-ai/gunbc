@@ -1,0 +1,75 @@
+module gunbc.plans.planning_consolidation
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
+
+fn planning_consolidation_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. How it is realized is downstream and not authored here."),
+      p(text: "**Grounding:** `gunbc.design_argument::plans_are_intentions`, `gunbc.design_argument::selection_precedes_convergence` (an intention is the caller-supplied goal, a realization is a selection, and achievement is assessed against an independent observation), `gunbc.design_argument::planning_has_one_home`, `gunbc.design_argument::single_authority`, `gunbc.design_argument::consumption`, `gunbc.design_argument::epistemic_humility`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** planning is deforked. Every planning fact has one home, and it is quick and easy to see what to work on and where it lives."),
+    p(text: "**Why (operator, 2026-11-11):** planning grew piece by piece -- plans, roadmap nodes, the daily workspace, dashboard work items -- so one unit of work, its state and its reasons are written in several places that drift apart, and most of it has no reader: it is stranded, and the operator does not consume it today. Deforking before doing the work removes the cost of keeping copies agreed and of finding out which copy is true."),
+    p(text: "**Done when** (each is assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "Plans hold intentions only: no plan carries a phase list, item status or a done mark as authored text."),
+      li(text: "A work item has one home, one record type; roadmap node rows and plan prose items do not both describe units of work."),
+      li(text: "No scheduling machinery remains: no forecast, checkpoint-plan or alignment module, no time-period record."),
+      li(text: "No event kind has a writer in source on both sides: no item-event kind is constructed by a fabric writer and no fabric-event kind by an item-event writer. Judged on the source writers, not on live event facts, which need their own read."),
+      li(text: "Every module in the planning and realization trees has a named consumer reached over an executing route (an entry that a unit, timer, CLI invocation or CI job runs), or is a declared frontier naming its later consumer and the trigger that brings it. An importer alone is not a consumer (`gunbc.design_argument::consumption`)."),
+      li(text: "Operator's judgement: what is open and what is in flight across all plans can be seen from one projection."),
+    ]),
+    h2(text: "2. The planning system"),
+    p(text: "**Intention to realization to execution to observation to assessment.**"),
+    ol(items: [
+      li(text: "**Intention (authored, durable):** the plan. What, why, and done-when, assessable where possible and otherwise named as the operator's judgement. A plan holds reasoning and the design evidence behind it (measurements and observations), cited by reference; it never holds the how."),
+      li(text: "**Realization (derived, replaceable):** the work items that currently serve an intention, their containment and dependency edges, and how each would execute. One work-item record type; project, milestone and task are positions in its containment graph, not separate types. A work item names the intention it serves; the intention does not list its work items. Realization is a selection (`std.decision`): it can be thrown away and redrawn when staffing or the world changes, and the plan does not change."),
+      li(text: "**Coordination (item events):** claimed, released, accepted (referencing the execution result and acceptance evidence), retired. Home: the item event log (today `gunbc.roadmap.roadmap_event_log`)."),
+      li(text: "**Execution (fabric):** request, selection, lease or cell, run, result; fabric's own events in `gunbc.fabric.fabric_event_log`. One typed binding joins a work item to a fabric work request. In progress is derived (an open item with an active execution), never written."),
+      li(text: "**Observation and assessment:** the repository as it is, read independently; an intention's done-when is assessed against it (`std.goal_assessment`). An intention is achieved when its done-when holds, not when its work items are checked off."),
+      li(text: "**Projection:** one workspace row per work item (its intention, the item, its item state, its active execution, its latest result, its acceptance evidence), plus each intention's assessment. No such projection exists yet: the ctrl dashboard is its intended first consumer and today shows its own work-item store, and the gunbc page may render the same rows later. Summaries are derived."),
+    ]),
+    p(text: "**The grain rule:** the same fact at the same grain is authored once, and summaries are derived. An intention's aggregate direction and a work item's local deliverable are two grains, not a fork; a plan restating an item's status or completion is a fork."),
+    p(text: "**Evidence has three homes:** design evidence supports an intention and is cited from the plan; execution evidence (logs, results, resource receipts) is fabric's; acceptance evidence is referenced by the accepted event. PR and review history is projected from GitHub, not copied."),
+    h2(text: "3. Rulings this intention rests on"),
+    p(text: "Each is recorded, with the operator's words, in `gunbc.design_ruling`; this plan states what follows from it and does not restate the ruling."),
+    ul(items: [
+      li(text: "`gunbc.design_ruling::plans_are_intentions_and_realization_is_downstream`: a plan holds what, why and done-when; the name stays `gunbc.plans`; work items belong to the realization and name the intention they serve, and the intention does not list them."),
+      li(text: "`gunbc.design_ruling::planning_scheduling_is_cut`: no schedule type, time-period records, forecast state or synchronized today list; what to work on today is the operator's selection."),
+      li(text: "`gunbc.design_ruling::planning_execution_is_anchored_on_fabric`: execution converges on fabric dispatch (`product.fabric`, `gunbc.compute`, `gunbc.fabric`); the ctrl session dashboard is a side path and, for now, where the operator reads this; the gunbc page may survive as another renderer."),
+      li(text: "`gunbc.design_ruling::planning_debt_ledgers_are_consolidated`: the debt ledgers become one obligation-with-trigger concept."),
+      li(text: "`gunbc.design_ruling::planning_dashboard_work_items_need_not_name_a_plan_item_yet`: the control plane does not yet require a dashboard work item to name the work item it executes."),
+    ]),
+    h2(text: "4. Observation, 2026-11-11 (origin/main and srv1)"),
+    p(text: "`gunbc.roadmap` plus `gunbc.plans`: 158 files, about 103,000 lines. Import graph from every `module`/`import` line under dag/ and src/v2/; srv1 units and HTTP read live the same day."),
+    ul(items: [
+      li(text: "**Plans hold the how.** `gunbc.plan` `Plan` is `{ slug, title, body: List<MarkdownBlock>, retirement, projection }`; phases, status and done-when are prose in `body`."),
+      li(text: "**Units of work have three homes:** plan prose items (no reader); `gunbc.roadmap.roadmap_authority` node rows over `RoadmapNode` (272 rows, 153 dependency edges, 6,595 lines; `TicketFields` restate why, carry state in `done`, `current_state`, `last_verified_on` and `updates`, and link to plans by file path through `carriers`, three of them dangling); and ctrl dashboard work items, the only one with a live reader."),
+      li(text: "**The belt beside fabric:** `roadmap_belt_actuate` (16,521 lines; with dispatch, attempt and session modules about 35,000) already imports `gunbc.compute.work_request`, `attempt_lifecycle`, `compute_seat_ensure` and `gunbc.fabric.fabric_event_log_host`, and also keeps its own attempt state, metering, exit spool, worktree claim and session slots. On srv1 no belt tick timer exists; belt exit and credential recovery are failed; discovery and publication are dead."),
+      li(text: "**The item event log also carries execution-shaped kinds:** progress, blocked, handed_back, result_returned, published, verification_failed."),
+      li(text: "**Scheduling remnants** with no production importer: `roadmap_forecast` (1,104 lines), `roadmap_checkpoint_plan`, `roadmap_closing_contract_authoring`; and `roadmap_alignment`."),
+      li(text: "**Eighteen roadmap and plans modules have no production importer;** some are roots run by a unit or timer (`roadmap_serve`, `roadmap_ingress`, `roadmap_belt_tick_cli`), the rest are reached only by tests."),
+      li(text: "**The daily workspace page** (`roadmap_page` and its presentation, styles and components, about 13,000 lines) is served by `gunbc-roadmap.service` and answers 503: the served binary cannot decode the `retired` event kind already in the log."),
+    ]),
+    h2(text: "5. Realization"),
+    p(text: "The work that converges on section 1 is not authored here. It lives in the realization home (section 2) once that exists, and until then as dashboard work items when the work is staffed; it may be redrawn at any time without this plan changing. The 2026-11-10 cleanup already landed is history in the repository (#16292), not a step of this plan."),
+    h2(text: "6. Open questions"),
+    ul(items: [
+      li(text: "**Which plan is rewritten as an intention first.** Proposed: `gunbc.plans.read_set_convergence`."),
+      li(text: "**Where the realization lives** (the work-item record, its edges and item events): `gunbc.roadmap` renamed, or a new home, once an audit of the belt, attempt, dispatch, session and workspace modules shows what execution needs."),
+      li(text: "**The 16 plan-naming typed carriers** on roadmap nodes (13 resolve, 3 dangle to the deleted `durable_work_handoff.dag`): each node live or stale, the operator's call."),
+    ]),
+  ]
+}
+
+data planning_consolidation_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "planning-consolidation",
+  title: "Planning consolidation: plans are intentions; realization, execution and projection are downstream",
+  body: planning_consolidation_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: every done-when condition holds on the tree, or for the judgement condition the operator has accepted it, and this plan has itself been rewritten as a typed intention or deleted.") },
+}
