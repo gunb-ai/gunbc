@@ -100,11 +100,29 @@ type DeliveryPlan
 // must not be polluted by the incoming pack, so the fetch writes here and the placement steps read from it.
 data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
 
+// THE ONE member of the fetched pack the pair places, as its OWN row so the placement source is not re-spelled at
+// each call site (single_authority). Consumed by @ref(gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source).
+data release_pair_incoming_serve_member_name: NonEmptyStr = "gunbc_serve"
+
+// THE SINGLE AUTHORITY for where the incoming pack lands: base_root + the owned incoming dir name. The fetch argv,
+// the plan witness, and the fold witness all derive from this ONE row instead of each spelling the directory
+// (review 96073: an unconsumed constant plus a free fetch_argv pack_dir was a second authority for this one fact).
+fn release_pair_incoming_pack_dir(base_root: String) -> String {
+  join([base_root, "/", release_pair_incoming_pack_dir_name], "")
+}
+
+// The path of the serve member INSIDE the fetched pack, derived from the single incoming-dir authority.
+fn release_pair_incoming_serve_source(base_root: String) -> String {
+  join([release_pair_incoming_pack_dir(base_root: base_root), "/", release_pair_incoming_serve_member_name], "")
+}
+
 // STAGE 1 (fetch, DRY): the argv to fetch the head's release-bins pack, built from the one gh-download authority.
 // The executing unit runs this argv FIRST and only then asks what to verify — the fetch is not a precondition of
 // verification, verification is downstream of the fetch observation.
-fn release_pair_fetch_argv(run_id: String, repo: String, pack_dir: String) -> List<String> {
-  gh_run_download_argv(run_id: run_id, repo: repo, artifact: "release-bins", dir: pack_dir)
+fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String) -> List<String> {
+  gh_run_download_argv(
+    run_id: run_id, repo: repo, artifact: "release-bins", dir: release_pair_incoming_pack_dir(base_root: base_root),
+  )
 }
 
 // STAGE 2 (build-key verify, DRY), a FUNCTION OF THE OBSERVED FETCH: the consumer verify dispatch exists only for
