@@ -1,6 +1,6 @@
 module gunbc.git_argv_route_wall
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.algebra { list_at_optional }
 import std.optional { Present, Absent }
 
@@ -77,37 +77,68 @@ fn git_subcommand_is_mutating(subcommand: String) -> Bool {
 }
 
 // The in-repo dressing: git's global `-C <repo>` option in first position with a non-empty
-// repository operand. It is the ONLY dressing that names the repository to a route that carries no
-// working directory, and the dressing the admissible workdir-free pairing (the carrier/belt in-repo
-// shapes) supplies. It is admitted, never refused.
+// repository operand, OR a `--git-dir`/`--work-tree` global naming its target -- is what makes a
+// route that carries no working directory SAFE to spawn: git runs against the named repository, not
+// the ambient tree. Admitted, never refused. Recognising all the repo-naming globals (not just `-C`)
+// is what lets a `--git-dir` commit be admitted for the RIGHT reason -- it names its target -- rather
+// than by the accident of a flag that happens to read as non-mutating.
 fn git_argv_is_in_repo_dressed(argv: List<String>) -> Bool {
   match list_at_optional(xs: argv, index: 0) {
+    Absent => false
     Present { value: head } =>
-      if head == "-C" {
+      if head == "-C" || head == "--git-dir" || head == "--work-tree" {
         match list_at_optional(xs: argv, index: 1) {
           Present { value: repo } => repo != ""
           Absent => false
         }
       } else {
-        false
+        names_repo_with_equals(head: head)
       }
-    Absent => false
   }
 }
 
-// The leading subcommand, stepping over an in-repo `-C <repo>` dressing when present. An argv too
-// short to carry a subcommand yields "" and so classifies as neither mutating nor a command.
+// `--git-dir=<path>` / `--work-tree=<path>`: a single option token whose right-hand side is non-empty.
+fn names_repo_with_equals(head: String) -> Bool {
+     option_equals_nonempty(head: head, prefix: "--git-dir=")
+  || option_equals_nonempty(head: head, prefix: "--work-tree=")
+}
+
+// head starts with `prefix` and is strictly longer than it (a non-empty right-hand side).
+fn option_equals_nonempty(head: String, prefix: String) -> Bool {
+  starts_with(s: head, prefix: prefix) && !ends_with(s: head, suffix: prefix)
+}
+
+// The leading subcommand, stepping over a leading run of git GLOBAL options (any token beginning with
+// "-"), consuming the operand of a value-taking option given as a separate argument; the first token
+// that is not an option is the subcommand. Stepping over OPTIONS -- not just `-C` -- is what stops a
+// bare mutation hiding its verb behind `-c k=v` / `--no-pager` / `--git-dir` at a route that carries
+// no directory (fail_closed: the verb is found, not skipped past). An argv too short to carry one
+// yields "" and so classifies as neither mutating nor a command.
 fn git_argv_leading_subcommand(argv: List<String>) -> String {
-  match list_at_optional(xs: argv, index: 0) {
+  git_argv_leading_subcommand_at(argv: argv, index: 0)
+}
+
+// Value-taking git globals supplied as `-X value` (separate operand). The `--opt=value` spelling is a
+// single token and is NOT in this set -- it is stepped over as one option token.
+fn git_option_takes_separate_operand(option: String) -> Bool {
+     option == "-c"
+  || option == "-C"
+  || option == "--git-dir"
+  || option == "--work-tree"
+  || option == "--namespace"
+  || option == "--exec-path"
+}
+
+fn git_argv_leading_subcommand_at(argv: List<String>, index: Int) -> String {
+  match list_at_optional(xs: argv, index: index) {
     Absent => ""
     Present { value: head } =>
-      if head == "-C" {
-        match list_at_optional(xs: argv, index: 2) {
-          Present { value: verb } => verb
-          Absent => ""
-        }
-      } else {
+      if !starts_with(s: head, prefix: "-") {
         head
+      } else if git_option_takes_separate_operand(option: head) {
+        git_argv_leading_subcommand_at(argv: argv, index: index + 2)
+      } else {
+        git_argv_leading_subcommand_at(argv: argv, index: index + 1)
       }
   }
 }

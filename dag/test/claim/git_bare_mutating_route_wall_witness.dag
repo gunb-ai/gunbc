@@ -114,6 +114,18 @@ test fn leading_subcommand_steps_over_the_in_repo_dressing() -> Bool {
   && git_argv_leading_subcommand(argv: []) == ""
 }
 
+// (RED -- refuse a mutation hidden behind a git global option) A bare mutating argv whose verb is
+// preceded by a git global option (`-c k=v`) with no `-C` and no `--git-dir` still names no place to
+// run, so at a workdir-free route it must be refused. No `extdeps/git.dag` shape builder emits this
+// (there is no shape for `-c <k=v>`), so it is spelled as the attack input it is; the admitted-path
+// argv elsewhere in this witness stay shape-built. The classifier must find the hidden verb. RED
+// control: remove the option step-over from git_argv_leading_subcommand and the verb becomes invisible
+// -> both conjuncts go red, so the guard is load-bearing, not decorative.
+test fn mutation_behind_a_global_option_prefix_is_refused_at_workdir_free_route() -> Bool {
+  let hidden = ["-c", "user.name=x", "commit", "-q", "--allow-empty", "-m", "root commit"]
+  git_argv_leading_subcommand(argv: hidden) == "commit" && refused_bare_mutating_free(hidden)
+}
+
 // (typed decision) The admission branches both ways on the VARIANT: the mis-join is Refused with the
 // bare-mutating reason, and both admissible pairings -- a bare argv on a directory-carrying route and
 // an in-repo argv on a directory-less route -- are Admitted. The carrying route names a non-empty
