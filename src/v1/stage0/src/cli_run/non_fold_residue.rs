@@ -554,21 +554,25 @@ pub(crate) fn nfr_entries_all_resolve(entries: &[String], root: &Path) -> Result
     Ok(())
 }
 
-/// Carrier completeness: every file under dag/ and src/v2/ that declares the frontier
-/// contributes rows to the union. Catches a walk that silently excludes a subtree.
+/// Carrier completeness: every file in the commit under test, under dag/ and src/v2/, that
+/// declares the frontier contributes rows to the union. Catches a walk that silently excludes
+/// a subtree — including one whose files have vanished from the work tree, because the
+/// expected population is enumerated from the commit (git), not from the same filesystem
+/// walk the union is built by (two authorities, per gunbc.design_argument::fail_closed).
 #[cfg(test)]
 pub(crate) fn nfr_carrier_completeness(entries: &[String], root: &Path) -> Result<(), String> {
     let entry_set: BTreeSet<&str> = entries.iter().map(|s| s.as_str()).collect();
 
-    let mut dag_files: Vec<String> = Vec::new();
-    for subroot in &["dag", "src/v2"] {
-        nfr_walk_dag_files(&root.join(subroot), root, &mut dag_files)?;
-    }
+    let dag_files = nfr_head_dag_files(root)?;
 
     let prefix_needle = "subject: PathSubject { path: \"";
     for carrier_rel in dag_files {
-        let content = std::fs::read_to_string(root.join(&carrier_rel))
-            .map_err(|e| format!("nfr carrier completeness: cannot read {carrier_rel}: {e}"))?;
+        let content = std::fs::read_to_string(root.join(&carrier_rel)).map_err(|e| {
+            format!(
+                "nfr carrier completeness: `{carrier_rel}` is in the commit under test but \
+                 discovery missed it (unreadable): {e}"
+            )
+        })?;
         // A carrier has a top-level `data non_fold_residue_frontier` declaration (column 0).
         if !content
             .lines()
@@ -611,24 +615,39 @@ pub(crate) fn nfr_carrier_completeness(entries: &[String], root: &Path) -> Resul
     Ok(())
 }
 
+/// Enumerate the `.dag` files the COMMIT UNDER TEST tracks under `dag/` and `src/v2/` — an
+/// authority independent of the filesystem walk that built the union, so a carrier deleted
+/// from the work tree (or a subtree the walk silently skips) is still demanded.
 #[cfg(test)]
-fn nfr_walk_dag_files(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("nfr walk: cannot read {}: {e}", dir.display()))?;
-    let mut items: Vec<_> = entries.into_iter().collect();
-    items.sort_by_key(|e| e.as_ref().map(|e| e.file_name()).unwrap_or_default());
-    for item in items {
-        let path = item.map_err(|e| format!("nfr walk: {e}"))?.path();
-        if path.is_dir() {
-            nfr_walk_dag_files(&path, root, out)?;
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            out.push(
-                path.strip_prefix(root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
-        }
+fn nfr_head_dag_files(root: &Path) -> Result<Vec<String>, String> {
+    let out = std::process::Command::new("git")
+        .args([
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "HEAD",
+            "--",
+            "dag",
+            "src/v2",
+        ])
+        .current_dir(root)
+        .output()
+        .map_err(|e| {
+            format!("nfr carrier completeness: cannot enumerate the commit under test via git: {e}")
+        })?;
+    if !out.status.success() {
+        return Err(format!(
+            "nfr carrier completeness: `git ls-tree` failed in {}: {}",
+            root.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
-    Ok(())
+    let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.ends_with(".dag"))
+        .map(|l| l.to_string())
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
 }
