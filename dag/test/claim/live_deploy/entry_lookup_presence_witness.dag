@@ -1,6 +1,7 @@
 // WITNESS: presence of ONE NAMED ENTRY is decided by a lookup that KEEPS THE HOST'S REASON FOR FAILING
 // (extdeps.filesystem.filesystem_io's filesystem_entry_lookup_reading_of_exit, consumed by
-// gunbc.live_deploy.member_observe's entry_presence_in_parent on both arms).
+// gunbc.live_deploy.member_observe's entry_presence_in_parent, which every staged claim here rides as a
+// real ObservationArm rather than calling the host helper directly -- the dispatch IS the production route).
 //
 // WHY THIS EXISTS. Two routes to this answer were wrong in two different directions, and each direction
 // has a claim here that goes red for it. (a) The route before it asked a directory to ENUMERATE itself to
@@ -42,8 +43,10 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.member_observe {
-  EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, host_entry_presence_in_parent,
+  EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, OnTheHostItself,
+  OverTransport, BareListing, entry_presence_in_parent,
 }
+import gunbc.host.host_effect { LocalShell }
 
 // The three arms of this module's presence answer, spelled rather than wildcarded: a claim that ends in
 // `_ => false` cannot tell an invented absence from a refused observation, and the difference between
@@ -255,9 +258,9 @@ test fn a_searchable_not_listable_directory_answers_by_lookup_and_refuses_by_lis
               FilesystemEntryAbsent(_) => false
             }
             // THE LOOKUP, THROUGH THE PRODUCTION HOST ARM.
-            let absent = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
+            let absent = entry_presence_in_parent(arm: OnTheHostItself, parent: parent, name: "gunbc-no-such-entry")
             let created = Filesystem.WriteCreateNew(path: join([parent, "/gunbc-entry"], ""), content: "witness")
-            let present = host_entry_presence_in_parent(parent: parent, name: "gunbc-entry")
+            let present = entry_presence_in_parent(arm: OnTheHostItself, parent: parent, name: "gunbc-entry")
             listing_refused_for_permission && old_rule_gives_up && created.success
               && presence_is_absent(absent) && presence_is_present(present)
           }
@@ -288,7 +291,7 @@ test fn an_unsearchable_directory_is_never_read_as_absent() -> Bool {
           if mode.success == false {
             false
           } else {
-            let answer = host_entry_presence_in_parent(parent: parent, name: "gunbc-no-such-entry")
+            let answer = entry_presence_in_parent(arm: OnTheHostItself, parent: parent, name: "gunbc-no-such-entry")
             let refusal = match answer {
               EntryPresenceIndeterminate { cause: cause } => string_contains(s: cause, pattern: "Permission denied")
               EntryPresent => false
@@ -320,7 +323,7 @@ test fn a_dangling_symbolic_link_is_an_entry_and_not_an_absence() -> Bool {
         } else {
           let mode = shell.Chmod.SearchableNotListableByEveryPrincipal(path: parent as FilePath)
           let link = Filesystem.LinkCreateNew(source: "/nonexistent-target-4c0f", path: join([parent, "/dangling"], ""))
-          let answer = host_entry_presence_in_parent(parent: parent, name: "dangling")
+          let answer = entry_presence_in_parent(arm: OnTheHostItself, parent: parent, name: "dangling")
           mode.success && link.success && presence_is_present(answer)
         }
     }
@@ -331,7 +334,27 @@ test fn a_dangling_symbolic_link_is_an_entry_and_not_an_absence() -> Bool {
 // directory every principal can read. A route that only ever returned Indeterminate would fail this, and
 // so would one that invented absence.
 test fn the_production_host_arm_answers_for_real_paths() -> Bool {
-  let there = host_entry_presence_in_parent(parent: "/usr/bin", name: "test")
-  let not_there = host_entry_presence_in_parent(parent: "/usr/bin", name: "gunbc-no-such-binary-4c0f")
+  let there = entry_presence_in_parent(arm: OnTheHostItself, parent: "/usr/bin", name: "test")
+  let not_there = entry_presence_in_parent(arm: OnTheHostItself, parent: "/usr/bin", name: "gunbc-no-such-binary-4c0f")
   presence_is_present(there) && presence_is_absent(not_there)
+}
+
+// (9) THE ARM DISPATCH ITSELF, AND THE DEFECT IT CAN CARRY. A remote arm whose transport cannot carry
+// the leg must come back indeterminate carrying the transport's own refusal. If the dispatch ever
+// collapsed the arms -- catch-all patterns, or a match that reads a sum as if it were a struct -- a
+// REMOTE arm would silently be answered by the LOCAL host, and this claim's name (which does not exist
+// on either host) would read Absent instead of refused: a fabricated absence, and the exact shape the
+// review caught at head 68adf7f3e, where the dispatch matched names that are defined nowhere.
+test fn an_arm_that_cannot_be_carried_is_refused_and_never_answered_by_the_host() -> Bool {
+  let refused = entry_presence_in_parent(
+    arm: OverTransport { transport: LocalShell, listing: BareListing },
+    parent: "/usr/bin",
+    name: "gunbc-no-such-binary-4c0f",
+  )
+  let carries_the_refusal = match refused {
+    EntryPresenceIndeterminate { cause: cause } => string_contains(s: cause, pattern: "could not be carried to the peer")
+    EntryPresent => false
+    EntryAbsent => false
+  }
+  presence_is_indeterminate(refused) && carries_the_refusal
 }

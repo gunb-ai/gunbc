@@ -279,10 +279,10 @@ fn peer_entry_lookup_reading(transport: HostEffectTransport, path: String, privi
 }
 
 fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
-  let entry = join([parent, "/", name], "")
-  match observation_arm(transport: arm.transport) {
-    LocalHost => host_entry_presence_in_parent(parent: parent, name: name)
-    RemotePeer => peer_entry_presence_in_parent(transport: arm.transport, privilege: arm.privilege, parent: parent, name: name)
+  match arm {
+    OnTheHostItself => host_entry_presence_in_parent(parent: parent, name: name)
+    OverTransport { transport: t, listing: p } =>
+      peer_entry_presence_in_parent(transport: t, privilege: p, parent: parent, name: name)
   }
 }
 
