@@ -235,8 +235,10 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 // fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
 // (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
 // ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
-// that yield nothing are typed outcomes — a benign PlanWaits when there is simply nothing to deliver yet (no
-// successful run for the head, review 96214; or the pack is not built, review 96225), never a guess. Whether a tick
+// that yield nothing are typed outcomes — a benign PlanWaits ONLY when there is genuinely nothing to deliver yet:
+// no successful run for the head (RunLookupNoneForHead, review 96214) or the pair is already at head (review 96219),
+// never a guess. A fetch/digest failure AFTER a run was found is a REFUSAL (PlanKeepsLastGood, red), not a wait
+// (review 96234: gh auth expired / disk full must not keep the timer green). Whether a tick
 // exits green (a wait) or red (a refusal) follows from the DeliveryPlan VARIANT (PlanWaits vs PlanKeepsLastGood),
 // never from comparing the reason text: the old string classifier is gone (review 96225). Executed by the
 // pair-delivery unit's own run (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by
@@ -413,13 +415,14 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
 fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> ProcessExit {
   match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit) {
-    // THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT (review 96225).
-    // PlanWaits — nothing to deliver YET (pack not built, no successful run for the head, or the pair is already at
-    //   head): the serve unit keeps serving last-good and the timer retries. GREEN. The reason is logged for
-    //   observability but is never compared to decide this.
+    // THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT (review 96225 + 96234).
+    // PlanWaits — genuinely nothing to deliver YET (no successful run for the head, or the pair is already at head):
+    //   the serve unit keeps serving last-good and the timer retries. GREEN. The reason is carried for observability
+    //   but is never compared to decide this.
     // PlanKeepsLastGood — the delivery was REFUSED for a real defect (gh head unobservable, discovery refused, pack
-    //   unverified, source/binary drift, missing placement): surface the reason and exit non-zero so a broken
-    //   delivery is a located diagnostic, not silence (fail_closed). The reason is never discarded.
+    //   absent from a refused download / unreadable digest, pack unverified, source/binary drift, missing placement):
+    //   surface the reason and exit non-zero so a broken delivery is a located diagnostic, not silence (fail_closed,
+    //   review 96234: an expired gh auth or full disk must NOT stay green). The reason is never discarded.
     // Re-wording a reason cannot flip green<->red — only choosing the wrong arm can, and every arm is witnessed.
     // The wait reason is carried in the arm (observable to callers and witnesses); a steady-state no-op tick stays
     // quiet on the journal rather than flooding it every 600s (the refusal below is the loud path).

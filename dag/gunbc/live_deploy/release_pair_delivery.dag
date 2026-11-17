@@ -33,12 +33,15 @@ module gunbc.live_deploy.release_pair_delivery
 // restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command)); any refusal yields
 // PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
 //
-// THE EXECUTING CONSUMER is real and wired: the lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery
-// .service (emit.dag::live_deploy_belt_pair_delivery_unit_file), its trigger the sibling .timer on
-// OnUnitInactiveSec=600 s (live_deploy_belt_pair_delivery_timer_unit_file), named in spec.dag and registered in
-// apply_legs.dag. Its ExecStart runs release_pair_deliver_once_cli, which runs stage 1's argv, observes the fetch,
-// runs stage 2's dispatch when present, observes the verdict, builds the stage-3 plan from those observations, and
-// runs the plan's effects. The three stages are consumed by that executing route, not dangling.
+// THE EXECUTING CONSUMER is DECLARED but its install legs are NOT in this PR (declared frontier, review 96234): the
+// lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service (emit.dag::live_deploy_belt_pair_delivery_unit_file)
+// and its sibling .timer on OnUnitInactiveSec=600 s (live_deploy_belt_pair_delivery_timer_unit_file) are DECLARED in
+// emit.dag and named in spec.dag, and the emission oracle witnesses them — but they are deliberately NOT registered
+// in apply_legs in this PR. Nothing here installs or runs the unit, because the source-side observation (review
+// 96121) that makes the fold's guard check real work lands in the STACKED PR (roadmap item lab-converges-release-pair),
+// which brings back the install registration verbatim. Until then the three stages are consumed by the entry
+// (release_pair_deliver_run -> release_pair_install_plan), which the CLI + plan witnesses exercise; they are not
+// dangling, but the systemd install edge is the stacked PR's to add once the guard is real.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import extdeps.tools.gh { gh_run_download_argv }
@@ -52,7 +55,10 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.operations { systemctl_restart_command }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
-// observation and never a free boolean. PackAbsent is the unbuilt head (gh handed off no release-bins pack for it);
+// observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
+// SUCCESSFUL run was found (RunLookupNoneForHead already returns the benign wait upstream), so an absent pack means
+// the download was refused (expired gh auth, network) or the digest was unreadable (full disk) — reason names which.
+// install_plan maps every fold refusal to PlanKeepsLastGood (red); there is no benign pack-absent arm (review 96234).
 // PackPresent carries the pack's OBSERVED digest, the directory it landed in, and the path of the file it produced.
 // The digest is what the fold pairs the source with; the pack_dir is what the verify verdict must name; the
 // binary_source is the placement source, so the file installed is the file fetched (no path left for the unit).
@@ -235,17 +241,13 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
         restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
         revision: rev,
       }
-    // BENIGN-WAIT vs REFUSAL is decided by the TYPED fetch observation, never by the reason text (review 96225).
-    // An ABSENT pack means CI has not published the head's release-bins yet — the fold refuses with
-    // release_pair_bins_unbuilt_reason — but for the timer that is a benign WAIT (PlanWaits, exit green, retry next
-    // tick). A PRESENT pack the fold still refused (unverified digest, source/binary drift, missing placement member)
-    // is a real DEFECT: keep it PlanKeepsLastGood so it surfaces red. Re-wording any reason cannot flip the exit
-    // code — only the fetch variant and the fold's decision can (the fold's refusal set is unchanged; only its
-    // routing into a wait vs a refusal here is typed). The reason is carried for the log, never compared.
-    PairRefused { reason: reason, kept: kept } =>
-      match fetch {
-        PackAbsent { reason: _ } => PlanWaits { kept: kept, reason: reason }
-        PackPresent { sha256: _, pack_dir: _, binary_source: _ } => PlanKeepsLastGood { kept: kept, reason: reason }
-      }
+    // EVERY PairRefused is a REFUSAL (red) — there is no benign arm here. A head whose release bins are simply NOT
+    // BUILT YET never reaches install_plan: the entry short-circuits it upstream as RunLookupNoneForHead (a benign
+    // PlanWaits), so install_plan is reached only after a SUCCESSFUL run was FOUND. A fold refusal past that point
+    // means either an absent pack from a refused download / unreadable digest (expired gh auth, full disk) or a
+    // present pack the fold refused (unverified digest, source/binary drift, missing member) — all real defects that
+    // must surface red, never keep the timer green and silent (review 96234). PackAbsent's reason names WHICH refusal
+    // (fetch vs digest); the exit code is the variant, not that text.
+    PairRefused { reason: reason, kept: kept } => PlanKeepsLastGood { kept: kept, reason: reason }
   }
 }
