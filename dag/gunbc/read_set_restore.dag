@@ -284,14 +284,16 @@ data fast_lane_wait_hit_word: String = "hit"
 // THE WAIT BUDGET, measured 2026-11-16. The median completed main witnesses run is 51.3 minutes (97 runs
 // sampled); FL_TYPICAL rounds that up to 55 minutes, so the estimate `created + FL_TYPICAL - now` is
 // conservative: a run the model calls "within cap" is usually closer than the estimate says. THE CAP IS
-// 0 -- THE WAIT IS DORMANT. Per DESIGN (operator bans any increase to a CI time budget without explicit
-// sign-off) and review 95821, the wait may not run until a `gunbc.design_ruling` row records the
-// operator's EXPLICIT approval of this occupancy increase (escalation msg_926f150f; a default-decided
-// escalation is not sign-off). With cap 0 the step prints `wait -- disabled` and exits before any API
-// call: zero added wall time, identical behavior to before this PR. Enabling = flip the cap to
-// second(count: 720) in the same change that adds the ruling row. The manager ruled the 12-minute cap
-// with four conditions (all implemented); the 90-minute job timeout is UNCHANGED either way, and a full
-// run (~41-50) plus a worst-case wait (12, hard-deadlined) fits.
+// 0 -- THE WAIT IS DORMANT. The dormant admission is recorded in
+// gunbc.design_ruling::fast_lane_wait_step_lands_dormant (manager ruling msg_b196bf0f, four
+// conditions, all implemented here). Per DESIGN (operator bans any increase to a CI time budget
+// without explicit sign-off) and review 95821, the wait may not run until a FURTHER
+// `gunbc.design_ruling` row records the operator's EXPLICIT grant of a positive cap (escalation
+// msg_926f150f was closed defaulted and is not sign-off). With cap 0 the step prints
+// `wait -- disabled` and exits before any API call: zero added wall time, identical behavior to
+// before this PR. Enabling = flip the cap to second(count: 720) in the same change that adds that
+// operator ruling row. The 90-minute job timeout is UNCHANGED either way, and a full run (~41-50)
+// plus a worst-case wait (12, hard-deadlined) fits.
 data fast_lane_wait_cap_secs: Second = second(count: 0)
 data fast_lane_wait_typical_secs: Second = second(count: 3300)
 data fast_lane_wait_poll_secs: Second = second(count: 30)
@@ -429,7 +431,7 @@ fn fl_classify_reuse_after() -> Node {
 // the row is READ (dissolution_description renders it into the wait step's FL_DISSOLVE env, printed in
 // the run log while the wait is dormant), not dangling; it dissolves when the operator grants a
 // positive wait cap (wait-occupancy ruling, manager message msg_b196bf0f).
-data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the wait step is a SCAFFOLD -- the poll loop is now built from bash_build Nodes (the raw sh -c string retired 2026-11-17), but data fast_lane_wait_cap_secs is 0, so on every PR the step says disabled and the decision walks the full path. DISSOLVES WHEN the operator grants a positive wait cap (the wait-occupancy ruling, manager message msg_b196bf0f): until then the loop body below the disabled guard is inert scaffolding and the step must not be relied on to produce hit markers.")
+data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the wait step is a SCAFFOLD -- the poll loop is now built from bash_build Nodes (the raw sh -c string retired 2026-11-17), but data fast_lane_wait_cap_secs is 0, so on every PR the step says disabled and the decision walks the full path. The admitted state is recorded in gunbc.design_ruling::fast_lane_wait_step_lands_dormant; THE MISSING THING is a further operator ruling row granting a positive cap (an occupancy increase under ci_job_budgets_closed_to_growth -- explicit sign-off only, never a defaulted escalation). DISSOLVES WHEN that operator ruling row exists and the cap is positive: until then the loop body below the disabled guard is inert scaffolding and the step must not be relied on to produce hit markers.")
 
 //
 // FAIL CLOSED IN EVERY DIRECTION: every statement is a bash_build Node emitted with `set +e`
