@@ -192,6 +192,101 @@ type OnMiss
   | MissSetsBack { signal: RangerSignal, level: LogicLevel }
   | MissForcesShutdown
 
+// ── THE BUS WORK BEFORE BMC_READY ───────────────────────────────────────────────────────────────────
+
+// All of it is in the script that runs up to BMC_READY, after FPGA_READY has read 1, and all of it is on one
+// I2C bus of the controller. The account gives the devices, the target and what the script's own comments say
+// the writes are for; it does not give the register numbers or the bytes written.
+type ControllerI2cBus {
+  number: Nat
+  adapter: NonEmptyStr
+}
+
+data ranger_board_i2c_bus: ControllerI2cBus = ControllerI2cBus { number: 2, adapter: "1e78a180.i2c-bus" }
+
+type EepromKind = At24c02 | At24c64
+
+// An EEPROM the script declares to the kernel at a seven-bit address. By the script's comment they sit behind
+// the board's FPGA and do not answer on a cold start until the FPGA is ready.
+type DeclaredEeprom {
+  kind: EepromKind
+  address: Nat
+}
+
+data ranger_declared_eeproms: List<DeclaredEeprom> = [
+  DeclaredEeprom { kind: At24c02, address: 78 },
+  DeclaredEeprom { kind: At24c64, address: 80 },
+  DeclaredEeprom { kind: At24c64, address: 81 },
+  DeclaredEeprom { kind: At24c64, address: 82 },
+  DeclaredEeprom { kind: At24c64, address: 83 },
+]
+
+// The device tree also declares a 24c02 at 0x67 on that bus; no driver is bound to it and no script reads it.
+data ranger_undriven_eeprom: DeclaredEeprom = DeclaredEeprom { kind: At24c02, address: 103 }
+
+type BusWork
+  = ControllerPcieResetReleased
+  | EepromsDeclared { bus: ControllerI2cBus, devices: List<DeclaredEeprom> }
+  | RegisterPairWrites { bus: ControllerI2cBus, target: Nat, pairs: Nat, each_pair: NonEmptyStr, stated_purpose: NonEmptyStr, celsius: Nat, modules: Nat }
+
+// Just before BMC_READY: four pairs of writes to target 0x60, each a data register and then a command
+// register. The script's comments call them SMBPBI registers of the FPGA and say they set a thermal alert
+// threshold of 105 C for four modules. That purpose is the comments' word, not a decoded message.
+data ranger_threshold_writes: BusWork = RegisterPairWrites {
+  bus: ranger_board_i2c_bus, target: 96, pairs: 4,
+  each_pair: "a data register, then a command register",
+  stated_purpose: "by the script's comments, SMBPBI registers of the FPGA: a thermal alert threshold",
+  celsius: 105, modules: 4,
+}
+
+// Whether the board starts without the EEPROM declarations or the threshold writes was not tested there.
+data ranger_bus_work_necessity_tested: Bool = false
+
+// ── WHERE THE SEQUENCE AND THE PIN TABLE LIVE ON THE CONTROLLER ─────────────────────────────────────
+
+type ScriptFileRole
+  = SequenceUpToBmcReady
+  | RunPowerAfterBmcReady
+  | StandbyRequest
+  | StandbyPowerStatusMonitor
+  | PowerStatusMonitor
+  | FpgaReadyMonitor
+  | ShutdownOkMonitor
+
+// The two main scripts are given with their directory; the others are named as small scripts beside them.
+type ScriptFile {
+  role: ScriptFileRole
+  file_name: NonEmptyStr
+  directory: NonEmptyStr?
+}
+
+data ranger_script_files: List<ScriptFile> = [
+  ScriptFile { role: SequenceUpToBmcReady, file_name: "bmc_ready.sh", directory: Present { value: "/usr/bin" } },
+  ScriptFile { role: RunPowerAfterBmcReady, file_name: "powerctrl.sh", directory: Present { value: "/usr/bin" } },
+  ScriptFile { role: StandbyRequest, file_name: "stbypowerctrl.sh", directory: Absent },
+  ScriptFile { role: StandbyPowerStatusMonitor, file_name: "standby_power_status_monitor.sh", directory: Absent },
+  ScriptFile { role: PowerStatusMonitor, file_name: "power_status_monitor.sh", directory: Absent },
+  ScriptFile { role: FpgaReadyMonitor, file_name: "fpga_ready_monitor.sh", directory: Absent },
+  ScriptFile { role: ShutdownOkMonitor, file_name: "shutdown_ok_monitor.sh", directory: Absent },
+]
+
+// The pin table is not a file. The names are the gpio-line-names of the main GPIO controller in the device
+// tree the firmware boots with, read on the running controller with gpioinfo and /sys/kernel/debug/gpio; the
+// ball of each comes from the pin controller's pin list in debugfs. /usr/share/gpio-config.json holds only
+// two alert lines for a monitor and is not the table.
+type GpioControllerNode {
+  node: NonEmptyStr
+  chip: Nat
+  line_count: Nat
+}
+
+data ranger_gpio_controller: GpioControllerNode = GpioControllerNode { node: "gpio@1e780000", chip: 0, line_count: 208 }
+
+// A reported line number at or past the controller's line count: none may exist.
+fn bindings_past_the_controller(bs: List<SignalBinding>) -> List<SignalBinding> {
+  filter(bs, b => b.reported_offset >= ranger_gpio_controller.line_count)
+}
+
 // One thing a script does. Where the account lists several lines in one step without an order, they are one
 // SetTogether and no order among them is claimed; where it gives an order, SetInOrder keeps it.
 type ScriptAction
@@ -208,7 +303,7 @@ type ScriptAction
   | ReadAgainAfter { signal: RangerSignal, seconds: Nat }
   | SetIfPresent { condition: NonEmptyStr, signal: RangerSignal, level: LogicLevel, taken_on_reported_tray: Bool }
   | AllDrivenLines { level: LogicLevel }
-  | BusWorkNotDetailed { what: NonEmptyStr }
+  | BusStep { work: BusWork }
   | BoardAnswersOn { signal: RangerSignal }
 
 type ScriptName
@@ -243,8 +338,9 @@ data script_standby: Script = Script { name: Standby, actions: [
   KeepsAt { signal: SysRstInL, level: Low },
   SetInOrder { signals: [ErotFpgaRstL, FpgaRstL], level: High, pause_between: false },
   WaitUntil { signal: FpgaReady, level: High, limit: LimitAboutSeconds { seconds: 60 }, on_miss: MissNotStated },
-  BusWorkNotDetailed { what: "the PCIe reset toward the FPGA is released" },
-  BusWorkNotDetailed { what: "a few I2C messages go to the board" },
+  BusStep { work: ControllerPcieResetReleased },
+  BusStep { work: EepromsDeclared { bus: ranger_board_i2c_bus, devices: ranger_declared_eeproms } },
+  BusStep { work: ranger_threshold_writes },
   SetLine { signal: BmcReady, level: High },
 ] }
 
@@ -330,7 +426,7 @@ fn signals_set(a: ScriptAction) -> List<RangerSignal> {
     ReadAgainAfter { signal: _, seconds: _ } => []
     SetIfPresent { condition: _, signal, level: _, taken_on_reported_tray: _ } => [signal]
     AllDrivenLines { level: _ } => []
-    BusWorkNotDetailed { what: _ } => []
+    BusStep { work: _ } => []
     BoardAnswersOn { signal: _ } => []
   }
 }
@@ -351,14 +447,14 @@ fn signals_read(a: ScriptAction) -> List<RangerSignal> {
     ReadAgainAfter { signal, seconds: _ } => [signal]
     SetIfPresent { condition: _, signal: _, level: _, taken_on_reported_tray: _ } => []
     AllDrivenLines { level: _ } => []
-    BusWorkNotDetailed { what: _ } => []
+    BusStep { work: _ } => []
     BoardAnswersOn { signal } => [signal]
   }
 }
 
 fn is_bus_work(a: ScriptAction) -> Bool {
   match a {
-    BusWorkNotDetailed { what: _ } => true
+    BusStep { work: _ } => true
     _ => false
   }
 }

@@ -151,6 +151,43 @@ run power. Where it lands has not been measured, so whether it reaches the P4261
 power board's side is not known. (An earlier summary of "five lines that change between standby
 and running" left it out; this message corrects that.)
 
+## Message 4, 2026-11-17: where the sequence and pin table live, and the bus work before BMC_READY
+
+Sent with the owner's agreement, in answer to two questions.
+
+**Where the sequence and the pin table came from.** All of it is on the tray's controller
+(GraceBMC-23.06-2-rc1).
+
+- The sequence up to BMC_READY is `/usr/bin/bmc_ready.sh`. The run-power part after it is
+  `/usr/bin/powerctrl.sh`. The standby request and the watchers are small scripts beside them:
+  `stbypowerctrl.sh`, `standby_power_status_monitor.sh`, `power_status_monitor.sh`,
+  `fpga_ready_monitor.sh`, `shutdown_ok_monitor.sh`.
+- The pin table is not a file of its own. The line names are the `gpio-line-names` of the main GPIO
+  controller (`gpio@1e780000`, chip 0, 208 lines) in the device tree the firmware boots with. They
+  were read on the running controller with `gpioinfo` and `/sys/kernel/debug/gpio`. The port and bit
+  follow from the offset (offset divided by 8 gives the letter, the remainder the bit), and the ball
+  comes from the pin controller's own pin list in debugfs. There is also
+  `/usr/share/gpio-config.json`, but it holds only two alert lines for a monitor.
+
+**Bus work before BMC_READY.** All of it is in `bmc_ready.sh`, after FPGA_READY has read 1 and the
+controller's PCIe reset is released, and all of it is on one bus: i2c-2 (adapter
+`1e78a180.i2c-bus`).
+
+- The script declares five EEPROM devices to the kernel. Its own comment places them behind the FPGA
+  and says they do not answer on a cold start until the FPGA is ready: a 24c02 at 0x4e, and four
+  24c64 at 0x50, 0x51, 0x52 and 0x53.
+- Just before BMC_READY it writes to target 0x60 on the same bus: four pairs of writes, each a data
+  register and then a command register, which the script's comments call SMBPBI registers of the
+  FPGA. By those comments they set a thermal alert threshold of 105 C for four modules.
+- Nothing else in that script touches I2C before BMC_READY, and the run-power script that follows
+  contains no I2C command at all.
+- The device tree also declares a 24c02 at 0x67 on that bus. No driver is bound to it and no script
+  reads it.
+
+Whether the board starts without the EEPROM declarations or the four threshold settings was not
+tested. The voltage and current readings of HSC 0 and StandbyHSC 0 are to follow when the tray's
+long job has ended.
+
 ## What was not supplied
 
 - A part number for the management module.
@@ -158,7 +195,10 @@ and running" left it out; this message corrects that.)
 - The signalling voltage of any line.
 - The whole tray's input current.
 - Voltage and current for HSC 0 and StandbyHSC 0 (promised once the tray is free).
-- The content of the I2C messages sent before BMC_READY, and the scripts' file paths.
+- The register numbers and bytes of the I2C writes before BMC_READY (message 4 gives the bus, the
+  devices, the target and the stated purpose).
+- Whether the board starts without the EEPROM declarations or the threshold writes (not tested).
+- Which files hold the power-off and reset flows.
 - Photographs.
 
 ## An earlier note from the same owner, 2026-10-31

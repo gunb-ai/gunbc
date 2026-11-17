@@ -7,12 +7,13 @@ import extdeps.nvidia.gracebmc_ranger {
   bindings_with_wrong_offset, bindings_sharing_a_pin, script_direction_slips,
   binding_of, is_driven, is_awaited, is_watched, signal_name, gpio_offset, sysfs_number,
   script_standby, script_run_power, script_forced_off, is_bus_work, pin_table_lines,
+  ranger_declared_eeproms, ranger_board_i2c_bus, ranger_script_files, ranger_gpio_controller, bindings_past_the_controller, ranger_bus_work_necessity_tested,
   drives, RunPowerEn, RunPowerPg, LocalRunPwrEn, ShdnOkL, SysRstInL, BbPrsntL, StbyPowerEn,
 }
 import extdeps.nvidia.ranger_tray {
   ranger_management_cables, ranger_corroborations, ranger_watts_at_most, ranger_gap_is_recorded,
   StandbyHostOff, JustAfterPowerOn, RunningIdle, RunningAtOwnerLimits,
-  BaseboardContactMap, SignallingVoltage, WholeTrayInputCurrent, I2cMessageContent,
+  BaseboardContactMap, SignallingVoltage, WholeTrayInputCurrent, I2cRegistersAndBytes, WhetherBusWorkIsNeeded,
 }
 import product.p4261.ranger_start_sequence {
   lot_e1_218_standing, is_on_ladder, OnRangerLadder, RangerBmcReady,
@@ -30,6 +31,8 @@ test fn the_pin_table_binds_each_line_once() -> Bool {
     && count(filter(ranger_signal_bindings, b => !is_driven(s: b.signal) && !b.listed_as_awaited)) == 6
     && all(ranger_signal_bindings, b => ast2600_pin_bit_in_range(p: b.pin))
     && count(pin_table_lines()) == 26
+    && count(bindings_past_the_controller(bs: ranger_signal_bindings)) == 0
+    && count(bindings_past_the_controller(bs: [drives(signal: RunPowerEn, pin: ast2600_pin(port: PortO, bit: 3), ball: "AD24", reported_offset: 208)])) == 1
 }
 
 // Every reported line number is the one its pin gives (eight per port, port A at 0), no two lines share a
@@ -59,11 +62,17 @@ test fn scripts_respect_each_lines_direction() -> Bool {
 }
 
 // What is new at run power: the endpoint reset enable, the tray's own run power, run power itself and the
-// IO-module power that this tray never raises. The bus work before BMC_READY is kept as two undetailed steps.
+// IO-module power that this tray never raises. The bus work before BMC_READY is three steps on one bus: the
+// controller's PCIe reset released, five EEPROMs declared, and the threshold writes; run power does none.
 test fn run_power_adds_four_lines_and_standby_keeps_its_bus_work() -> Bool {
   count(lines_first_set_at_run_power()) == 4
     && all(["BMC_EP_PERST_EN", "LOCAL_RUN_PWR_EN", "RUN_POWER_EN", "IOM_PWR_EN"], n => any(line_names(xs: lines_first_set_at_run_power()), x => x == n))
-    && count(filter(script_standby.actions, a => is_bus_work(a: a))) == 2
+    && count(filter(script_standby.actions, a => is_bus_work(a: a))) == 3
+    && ranger_board_i2c_bus.number == 2
+    && count(ranger_declared_eeproms) == 5
+    && all(ranger_declared_eeproms, e => e.address >= 78 && e.address <= 83)
+    && !ranger_bus_work_necessity_tested
+    && count(ranger_script_files) == 7
     && count(filter(script_run_power.actions, a => is_bus_work(a: a))) == 0
     && count(script_forced_off.actions) == 8
 }
@@ -76,7 +85,8 @@ test fn the_tray_keeps_its_corroboration_and_its_gaps() -> Bool {
     && ranger_gap_is_recorded(want: BaseboardContactMap)
     && ranger_gap_is_recorded(want: SignallingVoltage)
     && ranger_gap_is_recorded(want: WholeTrayInputCurrent)
-    && ranger_gap_is_recorded(want: I2cMessageContent)
+    && ranger_gap_is_recorded(want: I2cRegistersAndBytes)
+    && ranger_gap_is_recorded(want: WhetherBusWorkIsNeeded)
 }
 
 // The lot board's forced state is not on the ladder, and its 16 W is below the tray's 34 W with the host

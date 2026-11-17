@@ -239,13 +239,14 @@ type RangerSourceGap
   | SignallingVoltage
   | WholeTrayInputCurrent
   | HscVoltageAndCurrent
-  | I2cMessageContent
-  | ScriptFilePaths
+  | I2cRegistersAndBytes
+  | WhetherBusWorkIsNeeded
+  | PowerOffAndResetScriptFiles
   | Photographs
 
 data ranger_source_gaps: List<RangerSourceGap> = [
   ManagementModulePartNumber, BaseboardContactMap, SignallingVoltage, WholeTrayInputCurrent, HscVoltageAndCurrent,
-  I2cMessageContent, ScriptFilePaths, Photographs,
+  I2cRegistersAndBytes, WhetherBusWorkIsNeeded, PowerOffAndResetScriptFiles, Photographs,
 ]
 
 fn is_gap(g: RangerSourceGap, want: RangerSourceGap) -> Bool {
@@ -255,8 +256,9 @@ fn is_gap(g: RangerSourceGap, want: RangerSourceGap) -> Bool {
     SignallingVoltage => match want { SignallingVoltage => true, _ => false }
     WholeTrayInputCurrent => match want { WholeTrayInputCurrent => true, _ => false }
     HscVoltageAndCurrent => match want { HscVoltageAndCurrent => true, _ => false }
-    I2cMessageContent => match want { I2cMessageContent => true, _ => false }
-    ScriptFilePaths => match want { ScriptFilePaths => true, _ => false }
+    I2cRegistersAndBytes => match want { I2cRegistersAndBytes => true, _ => false }
+    WhetherBusWorkIsNeeded => match want { WhetherBusWorkIsNeeded => true, _ => false }
+    PowerOffAndResetScriptFiles => match want { PowerOffAndResetScriptFiles => true, _ => false }
     Photographs => match want { Photographs => true, _ => false }
   }
 }
