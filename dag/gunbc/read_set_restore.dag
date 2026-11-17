@@ -457,8 +457,16 @@ data fast_lane_wait_script_dissolution_trigger: DissolutionCondition = unbound_d
 data fast_lane_wait_runs_basename: String = "gunbc-fl-wait-runs.json"
 data fast_lane_wait_run_basename: String = "gunbc-fl-wait-run.json"
 
+// The completion word travels in FL_WORD, not in $1: a positional-parameter
+// word ($1) is outside what the bash fold grammar admits, and every node this
+// file builds must re-fold through bash_fold_serialize_node -- an unadmittable
+// word poisons the whole wait script. The brace group is ONE statement that
+// still runs in the script's own shell, so fl_done's exit terminates the run.
 fn fl_wait_done(word: String) -> Node {
-  fl_cmd(ws: [fl_lit(t: "fl_done"), fl_lit(t: word)])
+  bash_build_brace_group_from_stmts(stmts: [
+    bash_build_assign_lit(name: "FL_WORD", text: word),
+    fl_cmd(ws: [fl_lit(t: "fl_done")]),
+  ])
 }
 
 fn fl_wait_curl(url: Node) -> Node {
@@ -514,34 +522,38 @@ fn fl_wait_script_statements() -> Optional<List<Node>> {
     fl_lit(t: "/actions/runs/"), fl_var(n: "RID"),
   ])
   let done_def = bash_build_function_def(name: "fl_done", body: [
-    fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "fast lane: wait --"), fl_var(n: "1")]),
-    bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_var(n: "1")]), path: fl_var(n: "MARK")),
+    fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "fast lane: wait --"), fl_var(n: "FL_WORD")]),
+    bash_build_with_redir_to_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_var(n: "FL_WORD")]), path: fl_var(n: "MARK")),
     fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), runs, runf]),
     bash_build_exit(code: "0"),
   ])
   let poll_def = bash_build_function_def(name: "fl_poll", body: [
     fl_cmd(ws: [fl_lit(t: "sleep"), fl_lit(t: fast_lane_wait_secs_text(fast_lane_wait_poll_secs))]),
-    bash_build_if_from_stmts(
-      cond: fl_test(ws: [bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "+%s")])), fl_lit(t: "-gt"), fl_var(n: "DEADLINE")]),
-      then_stmts: [fl_wait_done(word: "timeout")]
+    // Every guard exits through the AND-THEN short-circuit, not a nested IF:
+    // bash_build_function_def refuses a body that contains IF statements
+    // (src/v2/extdeps/languages/bash_build.dag::bash_build_function_def),
+    // and a refused body makes the whole wait step unemittable.
+    bash_build_and_then(
+      left: fl_test(ws: [bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "date"), fl_lit(t: "+%s")])), fl_lit(t: "-gt"), fl_var(n: "DEADLINE")]),
+      right: fl_wait_done(word: "timeout")
     ),
     fl_cmd(ws: [fl_lit(t: "rm"), fl_lit(t: "-f"), runf]),
     fl_wait_suppressed(command: fl_wait_curl(url: url_run)),
     bash_build_assign(name: "ST_S", value: bash_build_word_cmdsubst(body: fl_wait_jq_extract(program: ".status", path: fast_lane_wait_run_basename))),
     bash_build_assign(name: "ST_C", value: bash_build_word_cmdsubst(body: fl_wait_jq_extract(program: ".conclusion // \"\"", path: fast_lane_wait_run_basename))),
-    bash_build_if_from_stmts(
-      cond: fl_test(ws: [fl_lit(t: "-n"), fl_var(n: "ST_S"), fl_lit(t: "-a"), fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed"), fl_lit(t: "-a"), fl_var(n: "ST_C"), fl_lit(t: "="), fl_lit(t: "success")]),
-      then_stmts: [fl_wait_done(word: "hit")]
+    bash_build_and_then(
+      left: fl_test(ws: [fl_lit(t: "-n"), fl_var(n: "ST_S"), fl_lit(t: "-a"), fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed"), fl_lit(t: "-a"), fl_var(n: "ST_C"), fl_lit(t: "="), fl_lit(t: "success")]),
+      right: fl_wait_done(word: "hit")
     ),
-    bash_build_if_from_stmts(
-      cond: fl_test(ws: [fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed")]),
-      then_stmts: [fl_wait_done(word: "failed")]
+    bash_build_and_then(
+      left: fl_test(ws: [fl_var(n: "ST_S"), fl_lit(t: "="), fl_lit(t: "completed")]),
+      right: fl_wait_done(word: "failed")
     ),
     bash_build_with_redir_stdout_append_file(inner: fl_cmd(ws: [fl_lit(t: "echo"), fl_lit(t: "poll")]), path: counter),
     bash_build_assign(name: "POLL", value: bash_build_word_cmdsubst(body: fl_cmd(ws: [fl_lit(t: "grep"), fl_lit(t: "-c"), fl_lit(t: "."), counter]))),
-    bash_build_if_from_stmts(
-      cond: fl_test(ws: [fl_var(n: "POLL"), fl_lit(t: "-ge"), fl_var(n: "FL_STEPS")]),
-      then_stmts: [fl_wait_done(word: "timeout")]
+    bash_build_and_then(
+      left: fl_test(ws: [fl_var(n: "POLL"), fl_lit(t: "-ge"), fl_var(n: "FL_STEPS")]),
+      right: fl_wait_done(word: "timeout")
     ),
     fl_cmd(ws: [fl_lit(t: "fl_poll")]),
   ])

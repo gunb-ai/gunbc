@@ -207,51 +207,16 @@ jobs:
           'echo' 'a29='"$ANCESTOR_29" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         if: github.event_name == 'pull_request'
       - name: Wait for the base commit's fast-lane unit
-        run: |
-          set -e
-          'sh' '-c' 'set +e
-          API=https://api.github.com
-          WF=witnesses.yml
-          MARK="$RUNNER_TEMP/gunbc-fl-waited.txt"
-          rm -f "$MARK"
-          say() { echo "fast lane: wait -- $1"; echo "$1" > "$MARK"; exit 0; }
-          if [ "$FL_CAP" -le 0 ]; then echo "fast lane: dissolve: $FL_DISSOLVE"; say disabled; fi
-          git diff --name-only --no-renames "$BASE_SHA"...HEAD > "$RUNNER_TEMP/fl-own.txt" 2>/dev/null
-          if [ ! -s "$RUNNER_TEMP/fl-own.txt" ]; then say skipped-no-diff; fi
-          if grep -qE "Cargo.toml|Cargo.lock|rust-toolchain|rust-toolchain.toml|src/v2/std/read_set.dag|dag/gunbc/seed_build_inputs.dag|dag/gunbc/read_set_schema.dag|dag/gunbc/read_set_publish.dag|dag/gunbc/read_set_restore.dag|dag/gunbc/parse_verdict_schema.dag|dag/gunbc/parse_verdict_publish.dag|dag/gunbc/parse_verdict_restore.dag|dag/gunbc/witness/compiler_gate_workflow.dag|dag/gunbc/source_layout.dag|dag/gunbc/source_layout_namespaces.dag|dag/gunbc/layout_namespace_row.dag|dag/gunbc/layout_namespace_row/gunbc_tree.dag|src/v1/|.cargo/|fixtures/|.github/" "$RUNNER_TEMP/fl-own.txt" 2>/dev/null; then say skipped-own-input; fi
-          command -v jq >/dev/null 2>&1 || say no-jq
-          curl -fsS -m 15 -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$API/repos/$GUNBC_REPO/actions/workflows/$WF/runs?event=push&branch=main&status=in_progress&per_page=20" > "$RUNNER_TEMP/fl-runs.json" 2>/dev/null || say api-error
-          jq -r ".workflow_runs[] | \"\(.id) \(.head_sha) \(.created_at)\"" "$RUNNER_TEMP/fl-runs.json" > "$RUNNER_TEMP/fl-idsha.txt" 2>/dev/null || say api-error
-          git rev-list --first-parent -n "$FL_WINDOW" "$BASE_SHA" > "$RUNNER_TEMP/fl-anc.txt" 2>/dev/null
-          grep -F -f "$RUNNER_TEMP/fl-anc.txt" "$RUNNER_TEMP/fl-idsha.txt" 2>/dev/null | head -n 1 > "$RUNNER_TEMP/fl-match.txt"
-          if [ ! -s "$RUNNER_TEMP/fl-match.txt" ]; then say none; fi
-          read -r RID SHA CREATED < "$RUNNER_TEMP/fl-match.txt"
-          CREATED_E=$(date -d "$CREATED" +%s 2>/dev/null || echo 0)
-          NOW=$(date +%s)
-          EST=$(( CREATED_E + FL_TYPICAL - NOW ))
-          if [ "$EST" -le 0 ] || [ "$EST" -gt "$FL_CAP" ]; then say too-far; fi
-          I=0
-          DEADLINE=$(( $(date +%s) + FL_CAP ))
-          while [ "$I" -lt "$FL_STEPS" ]; do
-            sleep 30
-            if [ "$(date +%s)" -gt "$DEADLINE" ]; then say timeout; fi
-            ST=$(curl -fsS -m 15 -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$API/repos/$GUNBC_REPO/actions/runs/$RID" 2>/dev/null | jq -r "[.status, .conclusion] | join(\" \")" 2>/dev/null)
-            case "$ST" in
-              "completed success") echo hit > "$MARK"; echo "fast lane: wait -- hit"; exit 0;;
-              "completed "*) echo failed > "$MARK"; echo "fast lane: wait -- failed"; exit 0;;
-            esac
-            I=$(( I + 1 ))
-          done
-          say timeout' || ':'
+        run: __GUNBC_FAST_LANE_DECISION_UNEMITTABLE__
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MARK: ${{ runner.temp }}/gunbc-fl-waited.txt
           GITHUB_TOKEN: ${{ github.token }}
           GUNBC_REPO: ${{ github.repository }}
           FL_WINDOW: "30"
           FL_CAP: "0"
           FL_TYPICAL: "3300"
           FL_STEPS: "24"
-          FL_DISSOLVE: "🟡 dissolve-on: fl_wait_script_raw -- the bounded poll loop (say() helper, while/case/curl|jq/arith) is one raw sh -c string, unlike every other script in this file which is bash_build Nodes, because src/v2/extdeps/languages/bash_build.dag has NO loop, case, or arithmetic builders. DISSOLVES WHEN the orchestration-to-shell bash-emit capability lands those builders (loop + case + integer arithmetic) -- then fl_wait_script_raw is rebuilt through them as Nodes and this raw string retires. Until then the loop's semantics are visible only in the emitted text, and bash_emit_stmts checks the wrapping, not the body."
+          FL_DISSOLVE: "🟡 dissolve-on: the wait step is a SCAFFOLD -- the poll loop is now built from bash_build Nodes (the raw sh -c string retired 2026-11-17), but data fast_lane_wait_cap_secs is 0, so on every PR the step says disabled and the decision walks the full path. DISSOLVES WHEN the operator grants a positive wait cap (the wait-occupancy ruling, manager message msg_b196bf0f): until then the loop body below the disabled guard is inert scaffolding and the step must not be relied on to produce hit markers."
         if: github.event_name == 'pull_request'
       - name: Restore fast-lane unit for base ancestor 0
         id: fast_lane_unit_0

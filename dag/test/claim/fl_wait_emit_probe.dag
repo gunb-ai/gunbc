@@ -1,0 +1,24 @@
+module test.claim.fl_wait_emit_probe
+
+import std.types { String, List, Bool }
+import v2.std.node { Node }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { Outcome }
+import std.string { string_contains }
+import gunbc.read_set_restore { fl_wait_script_statements }
+import v2.workflow.bash_emit { bash_emit_stmts }
+
+// Temporary probe (cool-lynx-59): does the rebuilt fast-lane wait script still
+// emit after the $1/FL_WORD fix? Deleted once the emitted yml is green.
+@claim(severity: SeverityHigh, budget: ClaimBudgetFast, reads: [ReadsOwnAuthoring])
+test fn fl_wait_emit_probe_accepted() -> Bool {
+  match fl_wait_script_statements() {
+    Absent => false
+    Present { value: stmts } =>
+      match bash_emit_stmts(statements: stmts, set_e: false) {
+        Accepted { value: v, diagnostics: _ } =>
+          string_contains(s: v, pattern: "fl_poll") && string_contains(s: v, pattern: "fl_done")
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
