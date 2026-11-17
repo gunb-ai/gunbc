@@ -178,7 +178,7 @@ type RoadmapCarrierScopedRun
 // not the parts: they cannot skip the sweep, hand the sweep someone else's directory, or provision against a
 // scratch they typed, because the token they were handed is the only one their run ever had.
 fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
-  let judged = body(scratch: scratch)
+  let judged = body(scratch)
   RoadmapCarrierScopedRan { judged: judged, sweep: roadmap_event_carrier_sweep(scratch: scratch), root: scratch.path }
 }
 
