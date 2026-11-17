@@ -1,0 +1,160 @@
+module gunbc.live_deploy.release_pair_deliver_cli {
+  #identity "fnv1a64:release-pair-deliver-cli-step1"
+  #provenance "warm-deer-42; lab-converges-release-pair PR-2a (WIP draft, step 1: argv builders + pure observation-decode fns)."
+  #tags "live_deploy,release_pair,wet_delivery,consumer"
+  #meta @path "type:consumer"
+  #meta @claim "the fetch/verify observations are DECODED from the executing host's own process results, never taken as an input the unit was handed"
+}
+
+// THE EXECUTING CONSUMER of the staged wet plan (PR-2a). This module turns the lab's release pair into a real,
+// observed delivery: it OBSERVES the head, DISCOVERS the release-bins run for that exact head, FETCHES the pack,
+// OBSERVES its digest and build-key verdict ON the fetched pack, and only then feeds those OBSERVED results through
+// release_pair_install_plan -> deliver_release_pair. No stage takes a predecessor's result as an input it did not
+// observe. The raw effectful entry (which runs the argv through the admissible command seam) is a later step; THIS
+// step establishes the argv builders and the PURE decode fns that turn a ProcessOutcome into a typed observation, so
+// the fail-closed decoding is witnessable by execution independently of the wet runtime.
+//
+// RUNG: the decode fns are total pure functions over ProcessOutcome and are witnessed green by execution; the
+// command-seam composition that produces those ProcessOutcomes lives in the (pending) effectful entry and is
+// exercised by the unit's own run at deploy, not by the claim. Frontier (executing trigger): roadmap work item
+// `lab-converges-release-pair`.
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.optional { Optional, Present, Absent }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.git { git_in_trusted_repository_args }
+import gunbc.live_deploy.release_pair_delivery {
+  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+}
+
+// THE SINGLE AUTHORITY for where the incoming pack lands (dir + serve member) is release_pair_delivery's
+// release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
+// decode fns below, so the CLI never re-spells the incoming directory.
+
+// The repo whose release-bins run carries the pair, as ONE row (single_authority), consumed by the argv builders.
+data release_pair_deliver_repo_slug: NonEmptyStr = "gunb-ai/gunbc"
+// The fleet-converge workflow whose successful run publishes the release-bins pack for a head. ONE row; the exact
+// file name is confirmed against `gh run list` at deploy time (frontier), and it is the only place this is written.
+data release_pair_release_bins_workflow: NonEmptyStr = "release-bins.yml"
+// Why the pair keeps serving when the fetch leg did not produce a pack (consumed by pack_fetch's PackAbsent).
+data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack download for the bound head failed on the executing host"
+// Why the pair keeps serving when the pack was fetched but its digest could not be observed (consumed by pack_fetch).
+data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's sha256 could not be observed on the executing host"
+// Why the pair keeps serving when the build-key verdict did not admit the fetched pack (consumed by pack_verify).
+data release_pair_verdict_refused_reason: NonEmptyStr = "the consumer build-key check did not admit the fetched release-bins pack on the executing host"
+
+// ── argv builders (pure; the effectful entry feeds these to the command seam) ───────────────────────────────────
+// The words that OBSERVE origin/main's head in the deploy repo. The program (git) is attached by the entry; these are
+// only the argv so the observation is one decidable command, not a shell string.
+fn release_pair_head_argv(repo: String) -> List<String> {
+  append(append(["git"], items: git_in_trusted_repository_args(repo: repo)), items: ["rev-parse", "origin/main"])
+}
+
+// THE SINGLE-AUTHORITY DISCOVERY of the release-bins run for ONE head. No existing lookup exists in gunbc, so this
+// is it: `gh run list` filtered to this repo, this workflow, this exact commit, admitting only a SUCCESS run,
+// projecting the run id (or empty). The entry runs it; ProcessOutputAbsent below decodes to "no run for the head".
+fn release_pair_release_bins_run_argv(head: NonEmptyStr, repo: NonEmptyStr) -> List<String> {
+  [
+    "run", "list", "--repo", repo as String,
+    "--workflow", release_pair_release_bins_workflow as String,
+    "--commit", head as String,
+    "--json", "databaseId,conclusion",
+    "--jq", "[.[] | select(.conclusion == \"success\")][0].databaseId // empty",
+  ]
+}
+
+// The words that OBSERVE the sha256 of the fetched pack's serve member. The entry runs it as a command whose STDOUT
+// is the bare 64-hex digest (the digest tool's path column is dropped at the seam), so decode below reads the digest
+// straight off the observation — no re-parsing of a "<hex>  <path>" line inside the model.
+fn release_pair_digest_argv(member_path: String) -> List<String> {
+  ["-n", "--", member_path]
+}
+
+// ── pure observation-decode fns (ProcessOutcome -> typed observation) ────────────────────────────────────────────
+// The head the executing host OBSERVED on origin/main: Present only when a command that ran (exit 0) printed a
+// non-empty head; none on an absent output or a refusal (a failed git rev-parse is NOT a head).
+fn release_pair_decode_head(outcome: ProcessOutcome) -> NonEmptyStr? {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      if (trim(s: t) as String) == "" {
+        none
+      } else {
+        Present { value: trim(s: t) as NonEmptyStr }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// The release-bins run for the head: Present only when the discovery printed a run id; none on absent (no success run
+// for the head — a typed refusal the entry turns into keep-last-good) or on a refusal (gh itself failed).
+fn release_pair_decode_run(outcome: ProcessOutcome) -> NonEmptyStr? {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      if (trim(s: t) as String) == "" {
+        none
+      } else {
+        Present { value: trim(s: t) as NonEmptyStr }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// THE FETCH OBSERVATION: a pack the executing host OBSERVED. Present only when the download ran (exit 0, present or
+// empty stdout — `gh run download` is silent on success) AND the digest leg OBSERVED a non-empty hex; absent with a
+// named reason when the download refused or the digest could not be observed. The digest, dir and the fetched
+// serve-member source all come from the OBSERVED values the entry passes in, not from anything handed to the fold.
+fn release_pair_pack_fetch(
+  fetch_outcome: ProcessOutcome,
+  digest_outcome: ProcessOutcome,
+  pack_dir: String,
+  member_src: String,
+) -> PackFetch {
+  match fetch_outcome {
+    ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
+    ProcessOutputAbsent =>
+      match digest_outcome {
+        ProcessOutputPresent { text: d } =>
+          if (trim(s: d) as String) == "" {
+            PackAbsent { reason: release_pair_digest_unreadable_reason }
+          } else {
+            PackPresent {
+              sha256: trim(s: d) as NonEmptyStr,
+              pack_dir: pack_dir as NonEmptyStr,
+              binary_source: member_src as NonEmptyStr,
+            }
+          }
+        ProcessOutputAbsent => PackAbsent { reason: release_pair_digest_unreadable_reason }
+        ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
+      }
+    ProcessOutputPresent { text: _ } =>
+      match digest_outcome {
+        ProcessOutputPresent { text: d } =>
+          if (trim(s: d) as String) == "" {
+            PackAbsent { reason: release_pair_digest_unreadable_reason }
+          } else {
+            PackPresent {
+              sha256: trim(s: d) as NonEmptyStr,
+              pack_dir: pack_dir as NonEmptyStr,
+              binary_source: member_src as NonEmptyStr,
+            }
+          }
+        ProcessOutputAbsent => PackAbsent { reason: release_pair_digest_unreadable_reason }
+        ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
+      }
+  }
+}
+
+// THE BUILD-KEY VERDICT OBSERVED on that fetched pack: VerifiedOn(pack_dir) only when the consumer build-key check
+// ran clean (exit 0); Refused with a named reason otherwise. The pack_dir named here is the SAME directory the entry
+// observed the fetch wrote into; release_pair_install_plan then refuses unless verify and fetch name the same pack
+// (the typed same-pack_dir comparison), so a verdict for a different directory cannot authorize an install.
+fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) -> PackVerify {
+  match verify_outcome {
+    ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
+    ProcessOutputAbsent => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
+    ProcessRefused { exit_code: _, stderr: _ } => Refused { reason: release_pair_verdict_refused_reason }
+  }
+}
