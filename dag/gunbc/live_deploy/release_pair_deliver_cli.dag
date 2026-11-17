@@ -266,7 +266,13 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
           release_pair_install_plan(
             base_root: base_root,
             serving: serving,
-            main_head: main_head as CommitSha,
+            // BINARY-SIDE OBSERVATION: the run's head_sha decoded from the run-list metadata (review 96117 F1 /
+            // 96121). It is CHECKED by the fold, not trusted — the run was selected by commit = the observed
+            // origin/main head, but the fold refuses unless the pack's own recorded head equals the source half, so
+            // a run whose head_sha drifted from the head we asked for cannot install. The source half below is the
+            // OTHER independent observation (the gh head read); once the source-tree placement lands (census ruling)
+            // it becomes the head OBSERVED from the placed tree via the deployed-tree authority, not this query value.
+            main_head: run.head_sha as CommitSha,
             source_head: main_head as CommitSha,
             fetch: fetch,
             verify: verify,
