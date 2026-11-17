@@ -27,7 +27,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
-import gunbc.compute.remote_build_serving_setup {
+import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
   serving_observed_from_reads, serving_assess, ServingAssessment, ServingDeviation, serving_deviation_item,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
@@ -41,23 +41,23 @@ import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner }
 import std.list { first_where, list_member }
 import std.algebra { Cons, Empty }
+import std.env_binding { EnvSet }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
 import extdeps.tools.gnu_coreutils { true_command, cat_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git { git_rev_parse_head_command }
 import extdeps.tools.uname { uname_machine_command }
-import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.uname { uname_machine_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.github.actions_environment { github_sha_variable_name }
-import extdeps.rust.rustup { rustup_toolchain_file_channel, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
+import extdeps.rust.rustup { rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
 
 data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
 // Repo-relative (under the CI checkout's target/, which the build creates), mirroring the
@@ -213,6 +213,34 @@ fn serving_leg_stat(item: String, target: SshTarget, context: FleetSshExecutionC
   }
 }
 
+
+// ---- THE TOOLCHAIN AND RUSTUP LEGS (side-chat review follow-up, clever-raven-401) ----
+//
+
+// The PINNED-CHANNEL leg: rustup itself answers which channels exist, run AS THE ACCOUNT with
+// RUSTUP_HOME/CARGO_HOME bound explicitly (sudo does not carry the account's login environment,
+// and the cargo-bin rustup needs both bindings to see its own homes). Exit != 0 or a refused leg
+// is UNREADABLE — an unknown, never a proven absence; a readable listing without the channel is
+// the confirmed absence that drives the EnsureToolchain remediation (whose runner is rustup, so
+// the observe also reads rustup's own presence, below).
+fn serving_leg_toolchain_list(elevation: ObservationAttempt<Bool, ServingLegFailure>, target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, channel: String) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match elevation {
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: "sudo -n refused" } }
+    ObservationEstablished { observed: _ } => {
+      let cmd = env_prefixed_command(
+        bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }],
+        command: rustup_toolchain_list_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup")),
+      )
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: d.account_name as NonEmptyStr, command: argv_words(command: cmd)))) {
+        TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("ssh refused: ", reason) } }
+        TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+          true => ObservationEstablished { observed: r.stdout.split("\n").any(l => serving_toolchain_line_names_channel(line: l, channel: channel)) }
+          false => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("rustup toolchain list exit ", to_string(r.exit_code)) } }
+        }
+      }
+    }
+  }
+}
 // ONE desired ledger row, read by its three stat legs (owner USER NAME, owner GROUP NAME, octal
 // MODE). Each leg stands alone: any one refused folds to its own per-(path,field) unknown in the
 // comparator; confirmed-absent on any leg means the whole row is absent, which the comparator reads
@@ -287,7 +315,7 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
   }
 }
 
-fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingObservedView {
+fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ServingObservedView {
   // The elevation precondition is read ONCE and handed to the sudo-dependent legs (typed precondition, not
   // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and
   // serving_observed_from_reads forces them refused + serving_assess folds the elevation unknown => Indeterminate.
@@ -303,7 +331,19 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   let store_staging_mode = serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging))
   let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, probe: test_executable_command(path: d.serve_binary))
   let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
-  let toolchain = serving_leg_test(elevation: elevation, item: "toolchain", target: target, context: context, probe: test_directory_command(path: d.rustup_home))
+  // THE TOOLCHAIN PAIR, gated on the ACCOUNT (side-chat review follow-up): a confirmed-absent
+  // account CONFIRMS both legs absent (its home has no rustup and no channels — sudo -u could not
+  // run anyway); an unreadable presence read leaves them refused-as-unknown. A host that merely
+  // HAS a ~/.rustup is no longer settled: the toolchain leg establishes the PINNED channel itself.
+  let account_gate = serving_account_presence_gate(account_name: d.account_name, passwd: passwd)
+  let rustup = match account_gate {
+    ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
+    _ => serving_leg_test(elevation: elevation, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(d.account_home, "/.cargo/bin/rustup")))
+  }
+  let toolchain = match account_gate {
+    ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
+    _ => serving_leg_toolchain_list(elevation: elevation, target: target, context: context, d: d, channel: pin.toolchain_channel)
+  }
   // THE DEPENDENT READS (finding A1, side-chat review of 2026-11-16): each value leg runs only under a
   // subject its presence leg CONFIRMED PRESENT — a confirmed-absent subject (a fresh host: no serve
   // binary, no checkout, no account to sudo -u) has nothing to read, so the leg is not attempted and
@@ -347,6 +387,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     serve_binary: serve_binary,
     checkout: checkout,
     toolchain: toolchain,
+    rustup: rustup,
     serve_binary_sha256: serve_binary_value,
     checkout_revision: checkout_revision_value,
     authorized_keys_mode: authorized_keys_mode_value,
@@ -393,7 +434,6 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
               match remote_build_serving_desired(host: hi) {
                 Absent => exit_failure(reason: concat("remote_build_serving_observe: ", raw_host, " has no capacity home directory, so its ledger service user is unfabricatable; refusing to assess (fail_closed)"))
                 Present { value: hi_desired } => {
-                  let view = observe_host_reads(target: target, context: context, d: hi_desired)
               // The single comparator's expected values are the executor plan-time pin, read ONCE
               // here and handed to serve_assess (and, in PR 5(b), to the apply). An unbuildable pin
               // means the run cannot name what the host should match, so it refuses rather than
@@ -401,6 +441,7 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
               match serving_plan_pin_read() {
                 Absent => exit_failure(reason: concat("remote_build_serving_observe: the executor plan-time pin (binary sha / arch / GITHUB_SHA / rust-toolchain channel) could not be read; refusing to assess ", raw_host))
                 Present { value: pin } => {
+                  let view = observe_host_reads(target: target, context: context, d: hi_desired, pin: pin)
                   let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
                   let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
                   let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)

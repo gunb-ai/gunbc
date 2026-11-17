@@ -698,7 +698,19 @@ type ServingObserved {
   store_staging_mode: ObservationAttempt<String, ServingLegFailure>
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>
   checkout: ObservationAttempt<Bool, ServingLegFailure>
+  // ESTABLISHED TRUE means the PINNED channel (ServingPlanInput.toolchain_channel) is installed —
+  // the observe asks `rustup toolchain list` and matches the channel, it does NOT merely see a
+  // rustup home (side-chat review follow-up, clever-raven-401). Established false = the listing was
+  // readable and the channel is not in it (the remediation is EnsureToolchain, which needs rustup —
+  // see the rustup leg). Refused = unreadable, an unknown.
   toolchain: ObservationAttempt<Bool, ServingLegFailure>
+  // Whether rustup itself (the account's cargo-bin program) is executable. Observe gates this — and
+  // the toolchain leg — on the account being present: account confirmed absent CONFIRMS both absent
+  // (a home whose account does not exist has no rustup and no channels). When the toolchain leg is
+  // established absent, this leg decides the classification: present = EnsureToolchain is runnable;
+  // absent = unhandled ('rustup not installed for <account>; no bootstrap modelled') — converge does
+  // not bootstrap toolchains, and planning a write that execs a missing program is planning a failure.
+  rustup: ObservationAttempt<Bool, ServingLegFailure>
   // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
   // the apply would act on, so the observe reads these host facts and compares them to
   // the pin. Each VALUE leg exists only under its CONFIRMED-PRESENT subject (see
@@ -1021,6 +1033,15 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           serving_subject_value_unknown(item: "checkout.revision", leg: o.checkout_revision),
         ),
         match o.target_arch { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "host.arch", cause: c.cause }] },
+        // The remediation dependency: only when the channel is PROVEN absent does rustup's presence
+        // decide what the plan may write; unreadable rustup then (and only then) is a blocking unknown.
+        match o.toolchain {
+          ObservationEstablished { observed: false } => match o.rustup {
+            ObservationRefused { cause: c } => [ServingUnknown { item: "toolchain.remediation", cause: c.cause }]
+            _ => []
+          }
+          _ => []
+        },
       )
       let pin_deviations = concat(
         concat(
@@ -1228,6 +1249,19 @@ fn serving_authorized_keys_line(text: String?) -> String? {
 // Elevation gate (review 95915): when the 'sudo -n true' elevation leg was refused, force a sudo-dependent
 // leg to ObservationRefused, keeping the leg's OWN item so the resulting unknown names the real item. When
 // elevation is established, the leg's own reading passes through untouched. Typed top-level fns (String and
+// A `rustup toolchain list` line is "<channel>-<host triple>", the default toolchain suffixed
+// " (default)". The first whitespace-delimited token names the installed toolchain, and it NAMES
+// the pinned channel only when it IS the channel or the channel plus the "-<triple>" suffix — the
+// boundary must be the separator '-', so a channel that merely looks like a prefix ("1.9" against
+// an installed "1.90.0") never matches: a prefix is not a match (the pin means that exact channel).
+fn serving_toolchain_line_names_channel(line: String, channel: String) -> Bool {
+  let word = match first_where(line.split(" "), keep: w => w != "") {
+    Present { value: w } => trim(s: w)
+    Absent => ""
+  }
+  word == channel || starts_with(s: word, prefix: concat(channel, "-"))
+}
+
 // Bool attempt flavours) rather than a shared lambda, so each keeps its concrete attempt type.
 fn serving_elevation_gate_str(elevation: ObservationAttempt<Bool, ServingLegFailure>, name: String, a: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<String, ServingLegFailure> {
   match elevation {
@@ -1256,6 +1290,7 @@ fn serving_observed_from_reads(
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
+  rustup: ObservationAttempt<Bool, ServingLegFailure>,
   // THE VALUE LEGS, as far as the READ got: the observe runs one only under a confirmed-present
   // subject (its presence, and for the revision also the account, established true) and passes
   // Absent ("never read") otherwise. THIS function is where the raw read becomes a typed
@@ -1292,6 +1327,7 @@ fn serving_observed_from_reads(
     serve_binary: serve_binary_g,
     checkout: checkout_g,
     toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),
+    rustup: serving_elevation_gate_bool(elevation, "rustup", rustup),
     // Each value leg is constructed from the gates the reads returned. Elevation refusal propagates
     // THROUGH the subject gate into the value leg as SubjectValueUnread — an unread subject never
     // settles its value; it is never read as Skipped.
