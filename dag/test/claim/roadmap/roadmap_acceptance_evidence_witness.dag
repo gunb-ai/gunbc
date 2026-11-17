@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_issue_command {
 import gunbc.roadmap.roadmap_event_cli {
   roadmap_retirement_operation_identity, roadmap_acceptance_pr_evidence_from_args,
   roadmap_acceptance_operation_identity, roadmap_acceptance_receipt_digest_text, BuildAcceptCommand,
-  roadmap_acceptance_line_of,
+  roadmap_acceptance_line_of, RoadmapAcceptanceLineParsed, RoadmapAcceptanceLineRefused,
 }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
@@ -352,8 +352,8 @@ fn seed_acceptance_lines() -> List<String> {
 // below take as a failure, never as a skip.
 fn identity_of_seed_line(text: String) -> String {
   match roadmap_acceptance_line_of(text: text) {
-    Absent => ""
-    Present { value: e } => match e {
+    RoadmapAcceptanceLineRefused { line_index: _, detail: _ } => ""
+    RoadmapAcceptanceLineParsed { event: e } => match e {
       AcceptanceRecorded { receipt: r } =>
         roadmap_acceptance_migration_identity(e: roadmap_acceptance_line_of_receipt(receipt: r))
       _ => ""
@@ -369,8 +369,8 @@ fn identity_of_seed_line(text: String) -> String {
 // canonical identity unchanged and the render a fixed point after the first pass.
 fn rendered_seed_line(text: String) -> String {
   match roadmap_acceptance_line_of(text: text) {
-    Absent => ""
-    Present { value: e } => match e {
+    RoadmapAcceptanceLineRefused { line_index: _, detail: _ } => ""
+    RoadmapAcceptanceLineParsed { event: e } => match e {
       AcceptanceRecorded { receipt: r } => roadmap_operator_acceptance_receipt_line(receipt: r)
       _ => ""
     }
@@ -391,8 +391,8 @@ fn first_seed_receipt() -> RoadmapAcceptanceReceipt? {
     match acc {
       Present { value: held } => Present { value: held }
       Absent => match roadmap_acceptance_line_of(text: l) {
-        Absent => none
-        Present { value: e } => match e {
+        RoadmapAcceptanceLineRefused { line_index: _, detail: _ } => none
+        RoadmapAcceptanceLineParsed { event: e } => match e {
           AcceptanceRecorded { receipt: r } => Present { value: r }
           _ => none
         }

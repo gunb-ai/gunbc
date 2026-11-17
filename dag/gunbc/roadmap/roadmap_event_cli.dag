@@ -3,6 +3,8 @@ module gunbc.roadmap.roadmap_event_cli
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim, string_contains }
+import std.nat { Nat, Zero }
+import std.integer { nat_to_int }
 // The modeled file write, as every other producer of a document on disk uses it (gunbc.auth.branch_run_grant
 // writes its grant output the same way). The read-back's whole point is that the readers' answer becomes an
 // artifact the PR can quote, so it is written, not printed: a ProcessExit has no stdout.
@@ -177,8 +179,14 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 // dag/test/claim/roadmap/roadmap_acceptance_evidence_witness.dag.
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, merged_at: String, head_sha: String, author: String) -> ProcessExit {
   match roadmap_acceptance_line_of(text: receipt_line) {
-    Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: the receipt line is refused: it must be an acceptance line spelled exactly as the operator law spells one, naming the live receipt, its red control, and its handback" }
-    Present { value: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
+    RoadmapAcceptanceLineRefused { line_index: i, detail: d } => ExitFailure { code: 1, reason: join([
+      "roadmap_acceptance_record_cli: the receipt line is refused (line ",
+      to_string(value: nat_to_int(n: i)),
+      "): ",
+      d as String,
+      "; it must be an acceptance line spelled exactly as the operator law spells one, naming the live receipt, its red control, and its handback",
+    ], "") }
+    RoadmapAcceptanceLineParsed { event: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
       Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: only an acceptance line is written by this route; a revocation is written by roadmap_acceptance_revoke_cli" }
       Present { value: receipt } => {
         // THE COMMAND LINE IS THE UNTYPED EDGE, so this is where half a pull request dies. Three arguments
@@ -210,8 +218,14 @@ fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url
 //     --arg author=principal:<authority>/<namespace>/<subject>
 fn roadmap_acceptance_revoke_cli(repo_root: String, revocation_line: String, author: String) -> ProcessExit {
   match roadmap_acceptance_line_of(text: revocation_line) {
-    Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_revoke_cli: the revocation line is refused: it must name the exact acceptance it withdraws — the same node, the same criteria digest, the same red control and handback — with its reason and its disposition" }
-    Present { value: line } => match roadmap_acceptance_line_revocation_facts(line: line) {
+    RoadmapAcceptanceLineRefused { line_index: i, detail: d } => ExitFailure { code: 1, reason: join([
+      "roadmap_acceptance_revoke_cli: the revocation line is refused (line ",
+      to_string(value: nat_to_int(n: i)),
+      "): ",
+      d as String,
+      "; it must name the exact acceptance it withdraws - the same node, the same criteria digest, the same red control and handback - with its reason and its disposition",
+    ], "") }
+    RoadmapAcceptanceLineParsed { event: line } => match roadmap_acceptance_line_revocation_facts(line: line) {
       Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_revoke_cli: only a revocation line is written by this route; an acceptance is written by roadmap_acceptance_record_cli" }
       Present { value: facts } => roadmap_acceptance_command(
         repo_root: repo_root, author: author, node: facts.receipt.node as String, who: "roadmap_acceptance_revoke_cli",
@@ -273,10 +287,24 @@ fn roadmap_acceptance_built_command(subject: IssueCommandSubject, choice: Accept
 
 // ONE LINE, PARSED BY THE OPERATOR LAW ITSELF. The line is the operator's record; the native seed parser
 // is its only parser and this route adds no grammar of its own.
-fn roadmap_acceptance_line_of(text: String) -> RoadmapAcceptanceEvent? {
+// THE OPERATOR LINE, PARSED BY THE OPERATOR LAW ITSELF, WITH ITS REFUSAL KEPT. The line is the
+// operator's record; the native seed parser is its only parser and this route adds no grammar of its
+// own. The located refusal (line_index, detail) that roadmap_operator_acceptance_parse_tail already
+// computes is carried up and handed to the caller to refuse with -- never flattened to none
+// (gunbc.design_argument::fail_closed: a failure arm refuses, never widens). This is the primitive's
+// LIVE input-grammar job; the whole route and this parser dissolve together with the receipt-line
+// grammar (node adhoc-c445f282-1c3).
+type RoadmapAcceptanceLineParse
+  = RoadmapAcceptanceLineParsed { event: RoadmapAcceptanceEvent }
+  | RoadmapAcceptanceLineRefused { line_index: Nat, detail: NonEmptyStr }
+
+fn roadmap_acceptance_line_of(text: String) -> RoadmapAcceptanceLineParse {
   match roadmap_operator_acceptance_parse_tail(lines: [text]) {
-    RoadmapAcceptanceTailOk { events: events } => events.first()
-    RoadmapAcceptanceTailBad { line_index: _, detail: _ } => none
+    RoadmapAcceptanceTailOk { events: events } => match events.first() {
+      Present { value: event } => RoadmapAcceptanceLineParsed { event: event }
+      Absent => RoadmapAcceptanceLineRefused { line_index: Zero, detail: "the operator line parsed to no acceptance event" as NonEmptyStr }
+    }
+    RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceLineRefused { line_index: i, detail: d }
   }
 }
 
