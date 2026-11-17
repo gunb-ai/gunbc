@@ -11,8 +11,9 @@ import std.measure { second_count }
 import std.nat { Nat }
 import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmitool_lanplus_timing {
-  IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_wait,
-  ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_message_survives_drops,
+  IpmitoolLanplusInvocation, ipmitool_lanplus_invocation_of_argv, ipmitool_lanplus_unanswered_request_wait,
+  ipmitool_lanplus_auth_caps_unanswered_wait, ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops,
+  ipmitool_get_channel_auth_caps_requests,
 }
 import std.measure { Second, second, measure_add, measure_le }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
@@ -308,49 +309,56 @@ test fn a_verbose_poll_killed_at_its_deadline_with_nothing_said_is_a_failed_prob
        }
 }
 
-// THE WATCH-POLL ROW'S MARGIN, DERIVED (decision X condition 1). The figures in the policy row's table are computed
-// here from the rows themselves, through ipmitool 1.8.19's loops (extdeps.bmc.ipmitool_lanplus_timing), against the
-// read deadline the polls run under: the attempts are read back from the -R/-N words each row renders, exactly as
-// ipmitool reads its argv. Under the watch-poll row a silent controller ends inside the deadline with and without
-// ICMP refusals, a slow-but-alive controller does not (which is the case the -v deadline rule reads as a failed probe),
-// and one dropped datagram per message is retried. Under ipmitool's default a silent, refusing controller reaches the
-// deadline exactly; under the authenticated-read row a single dropped datagram fails the message.
-fn attempts_of_row(bound: IpmiRetryBound) -> IpmitoolLanplusAttempts? {
-  ipmitool_lanplus_attempts_of_argv(argv: ["-R", ipmi_retry_bound_retries_word(bound: bound) as String, "-N", ipmi_retry_bound_timeout_word(bound: bound) as String])
+// THE WATCH-POLL ROW'S MARGIN, DERIVED (decision X condition 1; re-derived for the side chat on gunbc#16529, which found
+// the second Get Channel Authentication Capabilities request and the cipher-suite discovery the first model left out).
+// The figures in the policy row's table are computed here from the rows themselves, through ipmitool 1.8.19's loops
+// (extdeps.bmc.ipmitool_lanplus_timing), against the read deadline the polls run under: each invocation is read back
+// from the -R/-N words the row renders, with no -C, exactly as the watch polls run (the unit's route carries no cipher
+// suite). Under the watch-poll row a silent controller ends inside the deadline with and without ICMP refusals (8 s
+// of margin with them), a slow-but-alive controller does not (the case the -v deadline rule reads as a failed probe),
+// and one dropped datagram per request is retried. Under ipmitool's default a silent controller reaches the deadline
+// even without refusals. Under the authenticated-read row a dropped datagram on a request sent once fails it, while
+// the auth-caps exchange absorbs one by asking twice.
+fn invocation_of_row(bound: IpmiRetryBound) -> IpmitoolLanplusInvocation? {
+  ipmitool_lanplus_invocation_of_argv(argv: ["-R", ipmi_retry_bound_retries_word(bound: bound) as String, "-N", ipmi_retry_bound_timeout_word(bound: bound) as String])
 }
 
 fn wait_is(w: Second, count: Nat) -> Bool { second_count(s: w) == count }
 
 test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retries_one_dropped_datagram() -> Bool {
   let deadline = mtcollins1_boot_ipmi_read_deadline
-  let ipmitool_default = ipmitool_lanplus_attempts_of_argv(argv: [])
-  match attempts_of_row(bound: bmc_ipmi_watch_poll_retry_bound()) {
+  match invocation_of_row(bound: bmc_ipmi_watch_poll_retry_bound()) {
     Absent => false
-    Present { value: watch } => match attempts_of_row(bound: bmc_ipmi_retry_bound()) {
+    Present { value: watch } => match invocation_of_row(bound: bmc_ipmi_retry_bound()) {
       Absent => false
-      Present { value: policy } => match ipmitool_default {
+      Present { value: policy } => match ipmitool_lanplus_invocation_of_argv(argv: []) {
         Absent => false
         Present { value: four } =>
           wait_is(w: deadline, count: 20)
-            && watch.attempts == 2 && wait_is(w: watch.response_timeout, count: 1)
-            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: false), count: 3)
-            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: true), count: 6)
-            // 14 s of margin inside the deadline, with refusals.
-            && measure_le(a: measure_add(a: ipmitool_lanplus_unanswered_message_wait(attempts: watch, refused: true), b: second(count: 14)), b: deadline)
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: watch), count: 30)
-            && measure_le(a: deadline, b: ipmitool_mc_info_slowest_answered_wait(attempts: watch))
-            && ipmitool_lanplus_message_survives_drops(attempts: watch, dropped: 1)
+            && watch.attempts == 2 && wait_is(w: watch.response_timeout, count: 1) && watch.cipher_suite_discovery
+            && wait_is(w: ipmitool_lanplus_unanswered_request_wait(invocation: watch, refused: false), count: 3)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: false), count: 6)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), count: 12)
+            // 8 s of margin inside the deadline, with refusals, before process start-up and exit.
+            && measure_le(a: measure_add(a: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), b: second(count: 8)), b: deadline)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: watch), count: 33)
+            && measure_le(a: deadline, b: ipmitool_mc_info_slowest_answered_wait(invocation: watch))
+            && ipmitool_lanplus_request_survives_drops(invocation: watch, dropped: 1)
             && four.attempts == 4
-            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: false), count: 10)
-            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: true), count: 20)
-            && measure_le(a: deadline, b: ipmitool_lanplus_unanswered_message_wait(attempts: four, refused: true))
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: four), count: 72)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false), count: 20)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: true), count: 40)
+            && measure_le(a: deadline, b: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false))
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: four), count: 82)
             && policy.attempts == 1
-            && wait_is(w: ipmitool_lanplus_unanswered_message_wait(attempts: policy, refused: true), count: 2)
-            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(attempts: policy), count: 18)
-            && !ipmitool_lanplus_message_survives_drops(attempts: policy, dropped: 1)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: policy, refused: true), count: 4)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: policy), count: 19)
+            && !ipmitool_lanplus_request_survives_drops(invocation: policy, dropped: 1)
+            // The auth-caps exchange asks twice, so one lost datagram there is absorbed even at one attempt per request.
+            && ipmitool_get_channel_auth_caps_requests * policy.attempts > 1
             // "-R 0" is not zero retries: ipmitool falls back to its default of four attempts.
-            && match ipmitool_lanplus_attempts_of_argv(argv: ["-R", "0", "-N", "1"]) { Present { value: z } => z.attempts == 4  Absent => false }
+            && match ipmitool_lanplus_invocation_of_argv(argv: ["-R", "0", "-N", "1"]) { Present { value: z } => z.attempts == 4  Absent => false }
+            // A -C in the argv turns discovery off.
+            && match ipmitool_lanplus_invocation_of_argv(argv: ["-C", "17", "-R", "2", "-N", "1"]) { Present { value: c } => !c.cipher_suite_discovery  Absent => false }
       }
     }
   }

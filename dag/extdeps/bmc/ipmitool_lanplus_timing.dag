@@ -12,8 +12,9 @@ import extdeps.uri { Uri, Https }
 // HOW LONG ONE ipmitool lanplus INVOCATION WAITS, read from ipmitool 1.8.19's own loops. This is an upstream fact
 // about the client, kept here so that a caller choosing -R/-N (a workflow policy row) DERIVES the wall time of a read
 // from the client's loops instead of asserting it, and so that a dry controller answers a call in the time the real
-// client would have spent on it. Source files and their sha256, as read for gunbc#16529 on 2026-11-16:
+// client would have spent on it. Source files and their sha256, as read for gunbc#16529:
 //   lib/ipmi_main.c                    ddcb7c570167b2d3f68f85c7bbdf294c9336f62272dbb0ca1358416ce392150c
+//   lib/ipmi_channel.c                 aa6a3d75fd8e19bc635d87d69038a6882f914062cc59e022e73968e22419186b
 //   src/plugins/lanplus/lanplus.c      0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068
 //   src/plugins/lanplus/lanplus.h      ef29e07b6ff56eca1435c6212761c6054376b035d166b9fbf9c508bd19471a06
 //   lib/hpm2.c                         4c348ac0a958f0ff4850aad2203b6e065a0b9b951849c75570e835e482d14572
@@ -21,20 +22,27 @@ import extdeps.uri { Uri, Https }
 // THE LOOPS.
 // - -R and -N. ipmi_main.c accepts "-R 0" and "-N 0" but applies them only "if (retry > 0)" / "if (timeout > 0)";
 //   ipmi_lanplus_open then fills an unset value with IPMI_LAN_RETRY (4) / IPMI_LAN_TIMEOUT (1). -R is an ATTEMPT
-//   count: ipmi_lanplus_send_payload loops "while (try < intf->ssn_params.retry)". So "-R 0" is four attempts.
-// - ONE IPMI-PAYLOAD MESSAGE. Each attempt waits select() for session->timeout seconds, and session->timeout is
-//   incremented after every retransmit. A message that is never answered therefore costs
-//   N + (N+1) + ... + (N+R-1) = R·N + R(R−1)/2 seconds. ipmi_lan_recv_packet selects a second time when recv()
-//   returns < 0 (an ICMP port-unreachable refusal, e.g. a controller whose network stack is up and whose IPMI service
-//   is not), which doubles it.
+//   count PER REQUEST: ipmi_lanplus_send_payload loops "while (try < intf->ssn_params.retry)".
+// - ONE IPMI-PAYLOAD REQUEST. Each attempt waits select() for session->timeout seconds, and session->timeout is
+//   incremented after every retransmit and restored when the request ends (saved_timeout). A request that is never
+//   answered therefore costs N + (N+1) + ... + (N+R-1) = R·N + R(R−1)/2 seconds, and the next request starts from N
+//   again. ipmi_lan_recv_packet selects a second time when recv() returns < 0 (an ICMP port-unreachable refusal, e.g.
+//   a controller whose network stack is up and whose IPMI service is not), so a refused attempt costs at most twice.
+// - GET CHANNEL AUTHENTICATION CAPABILITIES IS ASKED TWICE. ipmi_get_auth_capabilities_cmd sends it once asking for
+//   IPMI v2 data and, when that gets no answer or a completion code, sends it again without the v2 bit; only when the
+//   second also fails does it print "Get Auth Capabilities error". A silent controller therefore costs two unanswered
+//   requests before that line, and one lost datagram (any -R) is absorbed by the second request.
+// - CIPHER-SUITE DISCOVERY. Without -C, ipmi_lanplus_open calls ipmi_find_best_cipher_suite after auth caps, which
+//   sends Get Channel Cipher Suites (ipmi_get_channel_cipher_suites) once per 16-byte set of the controller's list
+//   until a short reply: at least one more request, how many more being the controller's fact.
 // - THE SESSION OPEN. The open-session request, RAKP 1 and RAKP 3 are sent once each at the session timeout, inside
-//   an outer loop of the constant IPMI_LAN_RETRY that ignores -R: at most 4 × 3 × N seconds (doubled on refusals).
-// - ONE `mc info` (-C given, so no cipher-suite discovery) makes at least six R-attempt messages: Get Channel
-//   Authentication Capabilities before the open; Set Session Privilege Level after it; hpm2_detect_max_payload_size
-//   (one message, two on an HPM.2 board); ipmi_get_oem's Get Device ID; the mc info Get Device ID; and Close Session.
+//   an outer loop of the constant IPMI_LAN_RETRY that -R does not govern: at most 4 × 3 × N seconds.
+// - ONE `mc info` makes at least six requests besides discovery: Get Channel Authentication Capabilities before the
+//   open; Set Session Privilege Level after it; hpm2_detect_max_payload_size (one, two on an HPM.2 board);
+//   ipmi_get_oem's Get Device ID; the mc info Get Device ID; and Close Session.
 //
-// WHAT THIS DOES NOT CLAIM: it bounds the client's own waiting. It says nothing about when a controller answers, which
-// is the world's fact, and it does not model the cipher-suite discovery a call without -C makes.
+// WHAT THIS DOES NOT CLAIM: it bounds the client's own waiting from below and above where the loops fix it. It says
+// nothing about when a controller answers, which is the world's fact, and the discovery count is a lower bound.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -47,7 +55,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.bmc.ipmitool_lanplus_timing",
-      decl_name: "IpmitoolLanplusAttempts",
+      decl_name: "IpmitoolLanplusInvocation",
       field: WholeDeclaration
     }
   },
@@ -63,12 +71,18 @@ data ipmitool_lan_timeout_default: Second = second(count: 1)
 // The session-open stages sent once per outer try: open session, RAKP 1, RAKP 3.
 data ipmitool_lanplus_open_stages: Nat = 3
 
-// The R-attempt messages of one `mc info` with -C given, at the least (an HPM.2 board adds one).
-data ipmitool_mc_info_lanplus_messages: Nat = 6
+// ipmi_get_auth_capabilities_cmd's two requests before it reports no answer.
+data ipmitool_get_channel_auth_caps_requests: Nat = 2
 
-// THE ATTEMPT COUNT AND THE PER-ATTEMPT TIMEOUT ONE INVOCATION RUNS WITH, after ipmitool's own defaulting. The
-// timeout is a duration (std.measure Second); the attempt count is a count.
-type IpmitoolLanplusAttempts { attempts: Nat, response_timeout: Second }
+// The requests of one `mc info` besides cipher-suite discovery, at the least (an HPM.2 board adds one).
+data ipmitool_mc_info_lanplus_requests: Nat = 6
+
+// Get Channel Cipher Suites requests when the argv names no -C: at least one (ipmi_get_channel_cipher_suites).
+data ipmitool_cipher_suite_discovery_requests_at_least: Nat = 1
+
+// ONE INVOCATION AS IPMITOOL RUNS IT, after its own defaulting: the attempts per request, the per-attempt timeout (a
+// duration, std.measure Second), and whether it discovers the cipher suite (no -C in its argv).
+type IpmitoolLanplusInvocation { attempts: Nat, response_timeout: Second, cipher_suite_discovery: Bool }
 
 // The word that follows `flag` in an argv, the way getopt reads a separated option argument.
 fn ipmitool_argv_word_after(argv: List<String>, flag: String) -> String? {
@@ -92,42 +106,56 @@ fn ipmitool_lanplus_option_value(argv: List<String>, flag: String, fallback: Nat
   }
 }
 
-// THE ATTEMPTS AN INVOCATION RUNS WITH, read from its argv.
-fn ipmitool_lanplus_attempts_of_argv(argv: List<String>) -> IpmitoolLanplusAttempts? {
+// THE INVOCATION, read from its argv.
+fn ipmitool_lanplus_invocation_of_argv(argv: List<String>) -> IpmitoolLanplusInvocation? {
   match ipmitool_lanplus_option_value(argv: argv, flag: "-R", fallback: ipmitool_lan_retry_default) {
     Absent => none
     Present { value: r } => match ipmitool_lanplus_option_value(argv: argv, flag: "-N", fallback: second_count(s: ipmitool_lan_timeout_default)) {
       Absent => none
-      Present { value: n } => Present { value: IpmitoolLanplusAttempts { attempts: r, response_timeout: second(count: n) } }
+      Present { value: n } => Present { value: IpmitoolLanplusInvocation { attempts: r, response_timeout: second(count: n), cipher_suite_discovery: !any(argv, w => w == "-C") } }
     }
   }
 }
 
-// ONE MESSAGE NEVER ANSWERED: R·N + R(R−1)/2, doubled when each attempt is refused. The waits are N, N+1, ...,
-// N+R−1 seconds (session->timeout grows by one second per retransmit), so the sum is taken over the attempts,
-// in Seconds; the attempt count is at least one (ipmitool_lanplus_option_value never yields zero).
-fn ipmitool_lanplus_unanswered_message_wait(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Second {
-  let r = attempts.attempts
-  let once = second(count: r * second_count(s: attempts.response_timeout) + (r * (r - 1)) / 2)
+fn ipmitool_wait_times(w: Second, k: Nat) -> Second { second(count: k * second_count(s: w)) }
+
+// ONE REQUEST NEVER ANSWERED: R·N + R(R−1)/2, at most doubled when each attempt is refused. The attempt count is at
+// least one (ipmitool_lanplus_option_value never yields zero).
+fn ipmitool_lanplus_unanswered_request_wait(invocation: IpmitoolLanplusInvocation, refused: Bool) -> Second {
+  let r = invocation.attempts
+  let once = second(count: r * second_count(s: invocation.response_timeout) + (r * (r - 1)) / 2)
   if refused { measure_add(a: once, b: once) } else { once }
+}
+
+// A SILENT CONTROLLER: both Get Channel Authentication Capabilities requests go unanswered before ipmitool prints
+// "Get Auth Capabilities error" and gives up.
+fn ipmitool_lanplus_auth_caps_unanswered_wait(invocation: IpmitoolLanplusInvocation, refused: Bool) -> Second {
+  ipmitool_wait_times(w: ipmitool_lanplus_unanswered_request_wait(invocation: invocation, refused: refused), k: ipmitool_get_channel_auth_caps_requests)
 }
 
 // THE SESSION OPEN AT ITS WORST: every stage of every outer try waits the full session timeout.
-fn ipmitool_lanplus_open_worst_wait(attempts: IpmitoolLanplusAttempts, refused: Bool) -> Second {
-  let once = second(count: ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * second_count(s: attempts.response_timeout))
+fn ipmitool_lanplus_open_worst_wait(invocation: IpmitoolLanplusInvocation, refused: Bool) -> Second {
+  let once = second(count: ipmitool_lan_retry_default * ipmitool_lanplus_open_stages * second_count(s: invocation.response_timeout))
   if refused { measure_add(a: once, b: once) } else { once }
 }
 
-// A CONTROLLER THAT ANSWERS EVERY MESSAGE ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, and the session open at its
-// worst: the longest an `mc info` that does succeed can take.
-fn ipmitool_mc_info_slowest_answered_wait(attempts: IpmitoolLanplusAttempts) -> Second {
+// The requests one `mc info` makes, at the least: six, and the discovery requests when it runs without -C.
+fn ipmitool_mc_info_requests_at_least(invocation: IpmitoolLanplusInvocation) -> Nat {
+  if invocation.cipher_suite_discovery { ipmitool_mc_info_lanplus_requests + ipmitool_cipher_suite_discovery_requests_at_least } else { ipmitool_mc_info_lanplus_requests }
+}
+
+// A CONTROLLER THAT ANSWERS EVERY REQUEST ONLY AT THE END OF ITS LAST ATTEMPT'S WAIT, with the session open at its
+// worst. Auth caps answered on the first request's last attempt is asked once. A lower bound on how long such an `mc
+// info` takes (the discovery count is), so "past the deadline" here is past it for every list length.
+fn ipmitool_mc_info_slowest_answered_wait(invocation: IpmitoolLanplusInvocation) -> Second {
   measure_add(
-    a: second(count: ipmitool_mc_info_lanplus_messages * second_count(s: ipmitool_lanplus_unanswered_message_wait(attempts: attempts, refused: false))),
-    b: ipmitool_lanplus_open_worst_wait(attempts: attempts, refused: false),
+    a: ipmitool_wait_times(w: ipmitool_lanplus_unanswered_request_wait(invocation: invocation, refused: false), k: ipmitool_mc_info_requests_at_least(invocation: invocation)),
+    b: ipmitool_lanplus_open_worst_wait(invocation: invocation, refused: false),
   )
 }
 
-// A MESSAGE WHOSE FIRST `dropped` DATAGRAMS ARE LOST is still answered iff an attempt is left after them.
-fn ipmitool_lanplus_message_survives_drops(attempts: IpmitoolLanplusAttempts, dropped: Nat) -> Bool {
-  dropped < attempts.attempts
+// A REQUEST WHOSE FIRST `dropped` DATAGRAMS ARE LOST is still answered iff an attempt is left after them. (Get Channel
+// Authentication Capabilities has a second request on top of this; see ipmitool_get_channel_auth_caps_requests.)
+fn ipmitool_lanplus_request_survives_drops(invocation: IpmitoolLanplusInvocation, dropped: Nat) -> Bool {
+  dropped < invocation.attempts
 }

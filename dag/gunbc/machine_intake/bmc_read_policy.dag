@@ -48,27 +48,32 @@ fn bmc_ipmi_retry_bound() -> IpmiRetryBound {
 // for the `-v mc info` polls that watch a controller after a cold reset attempt, and for nothing else. The baseline
 // read, the power reads and the reset itself keep the row above.
 //
-// WHY NOT THE ROW ABOVE. With one attempt, ONE dropped Get Channel Authentication Capabilities datagram from a
-// controller that never reset reads as "no reply" -- a loss of availability -- and the next poll answering reads as a
-// recovery, which with an available baseline and equal power is an accepted reset that never happened. Two attempts
-// retry one dropped datagram per message.
+// WHY NOT THE ROW ABOVE. With one attempt per request, ONE dropped datagram on a request ipmitool sends once (Set
+// Session Privilege Level) from a controller that never reset reads as that stage unanswered -- a loss of availability
+// -- and the next poll answering reads as a recovery, which with an available baseline and equal power is an accepted
+// reset that never happened. Two attempts retry one dropped datagram per request. (Get Channel Authentication
+// Capabilities is asked twice by ipmitool itself, so it absorbs one lost datagram at either row.)
 //
 // WHY NOT IPMITOOL'S DEFAULT (4). The poll runs under the 20 s read deadline (mtcollins1_boot_ipmi_read_deadline).
 // From ipmitool 1.8.19 (extdeps.bmc.ipmitool_lanplus_timing; lanplus.h sha256
 // ef29e07b6ff56eca1435c6212761c6054376b035d166b9fbf9c508bd19471a06, lanplus.c sha256
 // 0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068, hpm2.c sha256
-// 4c348ac0a958f0ff4850aad2203b6e065a0b9b951849c75570e835e482d14572) one unanswered message costs R·N + R(R−1)/2
-// seconds, doubled when recv() < 0 (an ICMP refusal); the session open is at most 4 × 3 × N; one mc info makes at
-// least six R-attempt messages. Wall time of one poll, without / with refusals:
+// 4c348ac0a958f0ff4850aad2203b6e065a0b9b951849c75570e835e482d14572, ipmi_channel.c sha256
+// aa6a3d75fd8e19bc635d87d69038a6882f914062cc59e022e73968e22419186b) one unanswered request costs R·N + R(R−1)/2
+// seconds, at most doubled when recv() < 0 (an ICMP refusal); Get Channel Authentication Capabilities is asked twice
+// (ipmi_get_auth_capabilities_cmd) before ipmitool reports no answer; the session open is at most 4 × 3 × N; one mc
+// info makes at least six requests, and at least one more for cipher-suite discovery when the argv names no -C, as
+// these polls' does (the unit's route carries no cipher suite). Wall time of one poll:
 //
-//   bound   silent controller (fails at auth caps)   alive controller answering each message on its last attempt
-//   R4/N1   10 s / 20 s                              72 s / 144 s
-//   R2/N1    3 s /  6 s                              30 s /  60 s
-//   R1/N1    1 s /  2 s                              18 s /  36 s
+//   bound   silent controller, both auth-caps requests unanswered   alive controller answering each request on its
+//           (no refusals / ICMP refusal on each attempt)            last attempt, without -C (at least)
+//   R4/N1   20 s / 40 s                                              82 s
+//   R2/N1    6 s / 12 s                                              33 s
+//   R1/N1    2 s /  4 s                                              19 s
 //
-// Under R4 a silent, refusing controller reaches the 20 s deadline exactly and is killed (exit 124) before it prints the
-// stage line that names the silence. Under R2 it ends in at most 6 s on that stage line, 14 s inside the deadline, so a
-// silent controller is a missing response through its stage line. A `-v` poll that still hits the deadline with
+// Under R4 a silent controller reaches the 20 s deadline even without refusals and is killed (exit 124) before it
+// prints the stage line that names the silence. Under R2 it ends in at most 12 s on that stage line, 8 s inside the
+// deadline before process start-up and exit, so a silent controller is a missing response through its stage line. A `-v` poll that still hits the deadline with
 // neither an answered line nor a stage line can then only be a controller answering slowly, which is a failed probe,
 // never a loss (gunbc.host.bmc_cold_reset cold_reset_failed_poll). The table is not transcribed: the figures are
 // computed from these rows by the extdeps functions in test.claim.host.bmc_cold_reset_witness, so editing a row moves

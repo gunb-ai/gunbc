@@ -40,7 +40,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
-import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusAttempts, ipmitool_lanplus_attempts_of_argv, ipmitool_lanplus_unanswered_message_wait }
+import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusInvocation, ipmitool_lanplus_invocation_of_argv, ipmitool_lanplus_auth_caps_unanswered_wait }
 import std.measure { measure_le }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, ipmitool_lanplus_get_auth_caps_no_reply_line, ipmitool_lanplus_get_channel_auth_caps_issuing_line, ipmitool_verbosity_argv, IpmitoolVerboseOnce }
@@ -111,10 +111,10 @@ fn bmc_controller_unanswered(world: BmcWorld, verbose: Bool) -> BmcReply {
 
 // THE CLOCK ONE CALL RUNS UNDER, read from the argv the real transport would run (the operation's declaration with the
 // call's own bindings, as bmc_call_raw_request reads a raw request): the coreutils `timeout` deadline that wraps it,
-// and the attempts ipmitool runs with after its own defaulting (extdeps.bmc.ipmitool_lanplus_timing). A dry
+// and the invocation ipmitool runs after its own defaulting (extdeps.bmc.ipmitool_lanplus_timing). A dry
 // controller that does not answer uses it to answer in the time the client would have spent: a silent controller's
 // stage line comes back only if the client finished waiting before the deadline killed it.
-type BmcLanplusCallClock { attempts: IpmitoolLanplusAttempts, deadline: Second }
+type BmcLanplusCallClock { invocation: IpmitoolLanplusInvocation, deadline: Second }
 
 fn bmc_call_argv(call: OperationCall) -> List<String>? {
   match shell_materialize_operation_argv(call.invocation.at.path, call.invocation.at.service, call.invocation.at.operation, call.invocation.bindings) {
@@ -146,18 +146,18 @@ fn bmc_argv_timeout_deadline(argv: List<String>) -> Second? {
 fn bmc_call_lanplus_clock(call: OperationCall) -> BmcLanplusCallClock? {
   match bmc_call_argv(call: call) {
     Absent => none
-    Present { value: argv } => match ipmitool_lanplus_attempts_of_argv(argv: argv) {
+    Present { value: argv } => match ipmitool_lanplus_invocation_of_argv(argv: argv) {
       Absent => none
       Present { value: a } => match bmc_argv_timeout_deadline(argv: argv) {
         Absent => none
-        Present { value: d } => Present { value: BmcLanplusCallClock { attempts: a, deadline: d } }
+        Present { value: d } => Present { value: BmcLanplusCallClock { invocation: a, deadline: d } }
       }
     }
   }
 }
 
-// A CONTROLLER THAT DOES NOT ANSWER, AT THE CLIENT'S PACE. The first message (Get Channel Authentication Capabilities)
-// goes unanswered for every attempt; if the client's wait for it ends before the deadline, ipmitool prints what it
+// A CONTROLLER THAT DOES NOT ANSWER, AT THE CLIENT'S PACE. Both Get Channel Authentication Capabilities requests go
+// unanswered for every attempt (ipmitool asks twice); if the client's wait for them ends before the deadline, ipmitool prints what it
 // prints for an unanswered controller (bmc_controller_unanswered); otherwise coreutils kills it first and nothing is
 // printed (exit 124). `refused` is a controller whose network stack answers each datagram with an ICMP refusal, which
 // doubles the client's wait. A call whose argv carries no readable clock is a harness fault, never a guess.
@@ -165,7 +165,7 @@ fn bmc_controller_silent(world: BmcWorld, call: OperationCall, refused: Bool) ->
   match bmc_call_lanplus_clock(call: call) {
     Absent => BmcReplyFault { reason: "an unanswered ipmitool call whose argv carries no readable deadline or attempt count" as NonEmptyStr }
     Present { value: clock } =>
-      if !measure_le(a: clock.deadline, b: ipmitool_lanplus_unanswered_message_wait(attempts: clock.attempts, refused: refused)) {
+      if !measure_le(a: clock.deadline, b: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: clock.invocation, refused: refused)) {
         bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
       } else {
         BmcRefused { exit_code: 124, stderr: "", world: world }

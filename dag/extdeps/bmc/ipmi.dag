@@ -831,7 +831,7 @@ service diagnostic.ipmi.Tool {
   // observed separately by the caller). This operation claims nothing about host power. NOT
   // `readonly`: it asks the controller to reinitialize, and its RMCP+ login can spend the lockout
   // budget like every authenticated write here. Bounded under coreutils `timeout` like its siblings.
-  // SINGLE-ATTEMPT SESSION SETUP. The reset takes only the response timeout; its -R is the literal "1", so
+  // ONE ATTEMPT PER REQUEST. The reset takes only the response timeout; its -R is the literal "1", so
   // no other attempt count is constructible for this operation. Why one, from ipmitool 1.8.19 source
   // (lib/ipmi_main.c sha256 ddcb7c570167b2d3f68f85c7bbdf294c9336f62272dbb0ca1358416ce392150c,
   // src/plugins/lanplus/lanplus.c sha256 0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068,
@@ -841,10 +841,12 @@ service diagnostic.ipmi.Tool {
   // unset retry to IPMI_LAN_RETRY, 4 attempts. That is why IpmiRetryBound's door (ipmi_retry_bound above)
   // mints nothing for retries 0, and this literal agrees with it. The reset request itself is sent once
   // whatever -R says: ipmi_mc_reset sets intf->noanswer for BMC_COLD_RESET and the send loop breaks after
-  // the first transmit. -R 1 therefore bounds the SESSION SETUP payloads (Get Channel Authentication
-  // Capabilities, Set Session Privilege Level) to one attempt each, each one a charge against the
-  // lockout budget; it does not prevent a resend ipmitool would not make. Pinned by the materialized-argv
-  // control test.claim.bmc.ipmi_cipher_suite_argv_witness (the McResetCold row).
+  // the first transmit. -R 1 therefore bounds each session-setup REQUEST to one attempt (one transmit, no
+  // retransmit); it does not govern the requests ipmitool repeats on its own -- the second Get Channel
+  // Authentication Capabilities request (ipmi_get_auth_capabilities_cmd) and the session-open loop of the
+  // constant IPMI_LAN_RETRY (open session, RAKP 1, RAKP 3) -- and it does not prevent a resend of the reset
+  // ipmitool would not make. Pinned by the materialized-argv control
+  // test.claim.bmc.ipmi_cipher_suite_argv_witness (the McResetCold row).
   operation McResetCold {
     requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String>, retry_bound_timeout: NonEmptyStr }

@@ -18,7 +18,8 @@ import v2.std.witness_evaluation {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after, bmc_mc_info_answer, bmc_call_lanplus_clock, bmc_controller_silent, bmc_controller_unanswered, bmc_call_verbose }
-import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_message_survives_drops }
+import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_set_privilege_prefix, ipmitool_lanplus_set_privilege_bare_suffix, ipmitool_lanplus_session_unestablished_line }
 import std.measure { measure_le }
 import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
@@ -2226,15 +2227,19 @@ fn matrix_cold_reset_ignored_in_a_window(world: BmcWorld, call: OperationCall) -
   BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: matrix_cold_reset_local_failure_back_after) }
 }
 
-// Inside the window the first Get Channel Authentication Capabilities datagram of the call is lost. With an attempt
-// left after it, ipmitool's retransmit is answered and the poll reads available; with none, the message goes unanswered
-// and ipmitool -v names that stage.
+// Inside the window the call's Set Session Privilege Level datagram is lost: a request ipmitool sends ONCE, so -R
+// alone decides it (unlike Get Channel Authentication Capabilities, whose second request absorbs one lost datagram at
+// any -R; extdeps.bmc.ipmitool_lanplus_timing). With an attempt left after the loss, ipmitool's retransmit is answered
+// and the poll reads available; with none, ipmitool prints the bare privilege line that names that stage unanswered,
+// and the session is not established (ipmi_set_session_privlvl_cmd; the default privilege, ADMINISTRATOR).
 fn matrix_cold_reset_mc_info_dropping_one_datagram_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
   if bmc_controller_resetting(world: world) {
     match bmc_call_lanplus_clock(call: call) {
       Absent => BmcReplyFault { reason: "an mc info poll whose argv carries no readable deadline or attempt count" as NonEmptyStr }
       Present { value: clock } =>
-        if ipmitool_lanplus_message_survives_drops(attempts: clock.attempts, dropped: 1) { bmc_mc_info_answer(world: world) } else { bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call)) }
+        if ipmitool_lanplus_request_survives_drops(invocation: clock.invocation, dropped: 1) { bmc_mc_info_answer(world: world) } else {
+          BmcRefused { exit_code: 1, stderr: join([ipmitool_lanplus_set_privilege_prefix, "ADMINISTRATOR", ipmitool_lanplus_set_privilege_bare_suffix, "\n", ipmitool_lanplus_session_unestablished_line, "\n"], ""), world: world }
+        }
     }
   } else {
     bmc_mc_info_reply(world: world, call: call)
@@ -2248,7 +2253,7 @@ fn matrix_cold_reset_mc_info_slow_in_window(world: BmcWorld, call: OperationCall
     match bmc_call_lanplus_clock(call: call) {
       Absent => BmcReplyFault { reason: "an mc info poll whose argv carries no readable deadline or attempt count" as NonEmptyStr }
       Present { value: clock } =>
-        if !measure_le(a: clock.deadline, b: ipmitool_mc_info_slowest_answered_wait(attempts: clock.attempts)) { bmc_mc_info_answer(world: world) } else { BmcRefused { exit_code: 124, stderr: "", world: world } }
+        if !measure_le(a: clock.deadline, b: ipmitool_mc_info_slowest_answered_wait(invocation: clock.invocation)) { bmc_mc_info_answer(world: world) } else { BmcRefused { exit_code: 124, stderr: "", world: world } }
     }
   } else {
     bmc_mc_info_reply(world: world, call: call)
@@ -2266,9 +2271,10 @@ fn matrix_cold_reset_mc_info_refusing_in_window(world: BmcWorld, call: Operation
 }
 
 // A SILENT CONTROLLER IS A MISSING RESPONSE INSIDE THE DEADLINE, EVEN WITH ICMP REFUSALS: under the watch-poll row the
-// unanswered Get Channel Authentication Capabilities costs at most 6 s, so each poll in the window ends on the stage
-// line that names it, the loss is a missing response, and the route recovers, reads power fresh, and accepts. Under
-// ipmitool's default of four attempts the same controller costs 20 s, the deadline, and no stage line is ever printed.
+// two unanswered Get Channel Authentication Capabilities requests cost at most 12 s, so each poll in the window ends on
+// the stage line that names them, the loss is a missing response, and the route recovers, reads power fresh, and
+// accepts. Under ipmitool's default of four attempts the same controller costs 20 s without refusals (40 s with), the
+// deadline or past it, and no stage line is ever printed.
 test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_deadline() -> Bool {
   match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_refusing_in_window)]) {
     WitnessReturned { value, route, state } => {
@@ -2286,7 +2292,8 @@ test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_
 
 // A SLOW CONTROLLER THAT NEVER RESET CANNOT REACH AN ACCEPTED RECOVERY: ipmitool reports sending, the controller keeps
 // its service, and the first poll after the attempt -- answered message by message at the end of each last attempt --
-// runs past the 20 s deadline (30 s under the watch-poll row) and is killed with nothing printed. That -v poll is a
+// runs past the 20 s deadline (at least 33 s under the watch-poll row, with the cipher-suite discovery a call without -C
+// makes) and is killed with nothing printed. That -v poll is a
 // failed probe, so the next poll answering available is no recovery: the route polls to its loss bound and refuses.
 // Read as a missing response (the rule before X), it would be a loss, the next answer a recovery, and with power
 // agreeing an accepted reset that never happened.
@@ -2311,9 +2318,9 @@ test fn a_slow_controller_that_never_reset_hitting_the_deadline_is_a_failed_prob
 }
 
 // ONE DROPPED DATAGRAM IS NOT A LOSS: ipmitool reports sending, the controller keeps its service, and the first poll
-// after the attempt loses one Get Channel Authentication Capabilities datagram. The watch-poll row's second attempt is
-// answered, so every poll reads available and the route refuses with no loss observed. With one attempt (the
-// authenticated-read row) that poll names the unanswered stage, a loss, and the next answer an accepted recovery.
+// after the attempt loses its Set Session Privilege Level datagram. The watch-poll row's second attempt is answered,
+// so every poll reads available and the route refuses with no loss observed. With one attempt (the authenticated-read
+// row) that poll names the privilege stage unanswered, a loss, and the next answer an accepted recovery.
 test fn one_dropped_datagram_from_a_controller_that_never_reset_is_not_a_loss() -> Bool {
   match matrix_cold_reset_run(overrides: [
     matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored_in_a_window),
@@ -2327,7 +2334,7 @@ test fn one_dropped_datagram_from_a_controller_that_never_reset_is_not_a_loss() 
         && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
         && string_contains(s: receipt, pattern: "no loss of availability was observed")
         && string_contains(s: receipt, pattern: "last: available, firmware 0.45")
-        && !string_contains(s: receipt, pattern: "no reply to Get Channel Authentication Capabilities")
+        && !string_contains(s: receipt, pattern: "Set Session Privilege Level")
         && !string_contains(s: receipt, pattern: "recovered after the attempt")
     }
     _ => false

@@ -444,8 +444,9 @@ test fn the_cold_reset_watch_poll_argv_is_mains_with_one_verbose_flag() -> Bool 
     == ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-v", "-H", "192.168.1.228", "-I", "lanplus", "-R", "2", "-N", "1", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "info"]
 }
 
-// THE COLD RESET'S MATERIALIZED ARGV (extdeps.bmc.ipmi McResetCold, single-attempt session setup). It carries "-R", "1"
-// exactly once, before -U, whatever bound the caller holds: materialized with the watch-poll row (two attempts) it is
+// THE COLD RESET'S MATERIALIZED ARGV (extdeps.bmc.ipmi McResetCold). It carries "-R", "1" -- one attempt per request,
+// which is all -R governs: not ipmitool's own second auth-caps request, not its fixed IPMI_LAN_RETRY session-open loop
+// -- exactly once, before -U, whatever bound the caller holds: materialized with the watch-poll row (two attempts) it is
 // byte-identical to the authenticated-read row's, because the operation takes only the timeout. Binding an attempt
 // count is refused, since the operation declares none. (A literal "-R 0" would not be zero retries: ipmitool falls back
 // to four attempts, extdeps.bmc.ipmitool_lanplus_timing; the attempt-count door ipmi_retry_bound refuses zero for the
@@ -462,7 +463,7 @@ fn bindings_mc_reset_cold() -> List<OperationInputBinding> {
 
 data main_argv_mc_reset_cold: List<String> = ["timeout", "--kill-after", "5s", "20s", "ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-R", "1", "-N", "1", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "mc", "reset", "cold"]
 
-test fn the_cold_reset_argv_runs_a_single_attempt_session_setup_whatever_bound_the_caller_holds() -> Bool {
+test fn the_cold_reset_argv_pins_one_attempt_per_request_whatever_bound_the_caller_holds() -> Bool {
   let with_policy = materialize(operation: "McResetCold", bindings: bindings_mc_reset_cold(), suite: none)
   let with_watch = materialize_with_bound(operation: "McResetCold", bindings: bindings_mc_reset_cold(), suite: none, bound: bmc_ipmi_watch_poll_retry_bound())
   let attempts_bound = operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(ipmi_path, ipmi_service, "McResetCold",
