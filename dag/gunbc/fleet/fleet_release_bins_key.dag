@@ -1050,8 +1050,8 @@ data release_bins_retention_census_spare_entries: Int = 1
 // (FleetConvergeYamlGenerationRefused): no yaml at all rather than a chore on a made-up count.
 fn release_bins_retention_ceil_div(a: Int, b: Int) -> Result<Int, String> {
   match int_div_result(int_add(a, int_sub(b, 1)), b) {
-    Ok { value: q } => Ok(q)
-    Err { value: _ } => Err(join(["release-bins retention census: ceiling division by a zero divisor (numerator ", int_to_decimal_string(a), ", divisor ", int_to_decimal_string(b), ") -- a census datum is zero"], ""))
+    Ok { value: q } => Ok { value: q }
+    Err { value: _ } => Err { value: join(["release-bins retention census: ceiling division by a zero divisor (numerator ", int_to_decimal_string(a), ", divisor ", int_to_decimal_string(b), ") -- a census datum is zero"], "") }
   }
 }
 
@@ -1061,12 +1061,12 @@ fn release_bins_retention_keep_computed() -> Result<Int, String> {
   let window_secs: Int = second_count(s: release_bins_retention_census_peak_window)
   let needed = match release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_window_entries, horizon_secs), window_secs) {
     Ok { value: q } => q
-    Err { value: r } => return Err(r)
+    Err { value: r } => return Err { value: r }
   }
   let raw: Int = int_add(needed, release_bins_retention_census_spare_entries)
   match release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size) {
-    Ok { value: q } => Ok(int_mul(q, release_bins_retention_census_group_size))
-    Err { value: r } => return Err(r)
+    Ok { value: q } => Ok { value: int_mul(q, release_bins_retention_census_group_size) }
+    Err { value: r } => return Err { value: r }
   }
 }
 

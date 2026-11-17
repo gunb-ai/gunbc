@@ -797,14 +797,14 @@ test fn release_bins_retention_census_admits_the_computed_keep() -> Bool {
 }
 
 test fn release_bins_retention_census_refuses_a_broken_census() -> Bool {
-  match release_bins_retention_census_refusal_of(result: Err("test census: ceiling division by a zero divisor")) {
+  match release_bins_retention_census_refusal_of(result: Err { value: "test census: ceiling division by a zero divisor" }) {
     Present { value: r } => string_contains(s: r, pattern: "REFUSED") && string_contains(s: r, pattern: "zero divisor")
     Absent => false
   }
 }
 
 test fn release_bins_retention_census_refuses_a_zero_keep() -> Bool {
-  match release_bins_retention_census_refusal_of(result: Ok(0)) {
+  match release_bins_retention_census_refusal_of(result: Ok { value: 0 }) {
     Present { value: r } => string_contains(s: r, pattern: "REFUSED") && string_contains(s: r, pattern: "keep 0")
     Absent => false
   }
