@@ -4,8 +4,9 @@ module test.claim.shell_isdirectory_absence_witness
 //
 // shell.Test.IsDirectory models `test -d`, whose Bool collapses a genuinely-missing path with a
 // present non-directory and with an entry the probe could not stat -- so `!is_directory` cannot
-// certify "gone" (dag/gunbc/recurring_failure_mode/absent_reads_identically_to_never_looked.dag;
-// and extdeps.filesystem.filesystem_io.dag rejects `test -e`/`-d` for this very reason). Presence
+// certify "gone" (the recurring-failure-mode `gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked`
+// is the class; and the filesystem presence authority `extdeps.filesystem.filesystem_io` rejects
+// `test -e`/`-d` for this very reason). Presence
 // and absence are owned by ONE authority:
 // gunbc.filesystem_file_observe::filesystem_entry_presence_of_path, which returns the typed
 // extdeps.filesystem.filesystem_io::FilesystemEntryPresence and answers Absent only from a testimony
