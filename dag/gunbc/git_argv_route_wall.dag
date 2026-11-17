@@ -1,6 +1,6 @@
 module gunbc.git_argv_route_wall
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { list_at_optional }
 import std.optional { Present, Absent }
 
@@ -32,16 +32,19 @@ import std.optional { Present, Absent }
 //     is the only way to reach it and a bare mutating argv cannot be mis-joined to it.
 //
 // `admit_git_argv_on_route` is the single decision a route branches on before spawning:
-// GitArgvAdmitted, or GitArgvRefused { reason } where reason is a closed coproduct -- a typed,
+// GitArgvAdmitted, or the distinct GitArgvRefused variant -- a typed,
 // located refusal, never an invisible default (fail_closed). It spawns nothing and claims no
 // authority over wetness; naming where the tool runs stays the route's own obligation. The point
 // is that a git route reaches a spawn only by branching on this decision. Its discriminating
 // witness is `test.claim.git_bare_mutating_route_wall_witness`.
 
 // The two route kinds, told apart by whether the route names where git runs. There is no third
-// kind: a route either carries a directory or it does not, and the admissible argv follows.
+// kind: a route either carries a directory or it does not, and the admissible argv follows. A
+// carrying route names a NON-EMPTY place by construction -- `workdir: NonEmptyStr` makes "advertises
+// a working directory but names nowhere" an unrepresentable value, so no runtime empty-check is
+// needed and no caller can build the mis-joined route at all (fail_closed: unwritable beats caught).
 type GitArgvRoute
-  = GitWorkdirCarrying { workdir: String }
+  = GitWorkdirCarrying { workdir: NonEmptyStr }
   | GitWorkdirFree
 
 // A git subcommand that WRITES the repository / working tree wherever it runs -- the damage class
@@ -115,37 +118,29 @@ fn git_argv_is_bare_mutating(argv: List<String>) -> Bool {
   !git_argv_is_in_repo_dressed(argv) && git_subcommand_is_mutating(git_argv_leading_subcommand(argv))
 }
 
-// A refusal is a CLOSED, TYPED set of reasons, not a magic string. The coproduct IS the
-// vocabulary: a caller branches on the variant, so there is no empty/typo'd label that silently
-// means "admitted" (fail_closed: a wrong answer is a located, typed error, not an invisible
-// default). The two reasons are the two halves of the safe pairing.
-type GitArgvRefusal
-  = BareMutatingGitArgvAtWorkdirFreeRoute
-  | WorkdirCarryingRouteNamesNoDirectory
-
-// The decision a route branches on before spawning: Admitted, or Refused carrying the reason
-// variant. There is no admissible-but-warned state and no admitted-by-default.
+// The decision a route branches on before spawning: Admitted, or a distinct Refused variant. There
+// is no admissible-but-warned state, no admitted-by-default and no string label a typo could turn
+// into "admitted" -- fail_closed, a wrong answer is a located, typed variant, not an invisible
+// default. There is exactly one way to be refused (the bare-mutating mis-join at a workdir-free
+// route), so `GitArgvRefused` is a nullary variant rather than a reason sum with one inhabitant; the
+// "carrying route names no directory" half never needs a reason because `workdir: NonEmptyStr` makes
+// that route unconstructable.
 type GitArgvRouteAdmission
   = GitArgvAdmitted
-  | GitArgvRefused { reason: GitArgvRefusal }
+  | GitArgvRefused
 
 // THE WALL. The single decision a route makes before any spawn.
 fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRouteAdmission {
   match route {
-    // Carries the directory: a bare argv is legitimate, but only when the route in fact names a
-    // non-empty place -- one that names nowhere is refused, the way belt_commit_git refuses to
-    // spawn until the worktree's own gitfile is verified.
-    GitWorkdirCarrying { workdir } =>
-      if workdir == "" {
-        GitArgvRefused { reason: WorkdirCarryingRouteNamesNoDirectory }
-      } else {
-        GitArgvAdmitted
-      }
+    // Carries the directory: a bare argv is legitimate, because git then runs exactly where the
+    // route says. The route cannot advertise a directory and name nowhere -- `workdir: NonEmptyStr`
+    // makes that value unconstructable -- so there is nothing left to refuse on this arm.
+    GitWorkdirCarrying => GitArgvAdmitted
     // Names no directory: only the in-repo dressing reaches it, so a bare mutating argv -- which
     // would mutate whatever repository the process happens to sit in -- is refused outright.
     GitWorkdirFree =>
       if git_argv_is_bare_mutating(argv) {
-        GitArgvRefused { reason: BareMutatingGitArgvAtWorkdirFreeRoute }
+        GitArgvRefused
       } else {
         GitArgvAdmitted
       }

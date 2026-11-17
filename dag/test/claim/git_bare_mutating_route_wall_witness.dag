@@ -18,9 +18,6 @@ import gunbc.git_argv_route_wall {
   GitArgvRouteAdmission,
   GitArgvAdmitted,
   GitArgvRefused,
-  GitArgvRefusal,
-  BareMutatingGitArgvAtWorkdirFreeRoute,
-  WorkdirCarryingRouteNamesNoDirectory,
   git_argv_is_in_repo_dressed,
   git_argv_leading_subcommand,
   git_subcommand_is_mutating,
@@ -46,30 +43,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn admitted(route: GitArgvRoute, argv: List<String>) -> Bool {
   match admit_git_argv_on_route(route: route, argv: argv) {
     GitArgvAdmitted => true
-    GitArgvRefused { reason: _ } => false
+    GitArgvRefused => false
   }
 }
 
-// Refused, and specifically because the argv is a bare mutation at a workdir-free route.
+// Refused at a workdir-free route. There is exactly one way to be refused -- the bare-mutating
+// mis-join -- so the Refused variant IS that reason; a read-only or in-repo argv is Admitted.
 fn refused_bare_mutating_free(argv: List<String>) -> Bool {
   match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
-    GitArgvRefused { reason } =>
-      match reason {
-        BareMutatingGitArgvAtWorkdirFreeRoute => true
-        WorkdirCarryingRouteNamesNoDirectory => false
-      }
-    GitArgvAdmitted => false
-  }
-}
-
-// Refused, and specifically because a directory-carrying route named nowhere to run.
-fn refused_names_no_directory(route: GitArgvRoute) -> Bool {
-  match admit_git_argv_on_route(route: route, argv: shape_git_commit_message_args(message: "x")) {
-    GitArgvRefused { reason } =>
-      match reason {
-        WorkdirCarryingRouteNamesNoDirectory => true
-        BareMutatingGitArgvAtWorkdirFreeRoute => false
-      }
+    GitArgvRefused => true
     GitArgvAdmitted => false
   }
 }
@@ -90,7 +72,7 @@ test fn bare_mutating_shapes_are_refused_at_workdir_free_route() -> Bool {
 // `belt_commit_git(worktree:) -> belt_exec(workdir:)` still reach every census site: git runs where
 // the route says, so a bare word-list is legitimate there.
 test fn bare_mutating_shapes_are_admitted_on_a_workdir_carrying_route() -> Bool {
-  let gate = GitWorkdirCarrying { workdir: "/worktrees/gate" }
+  let gate = GitWorkdirCarrying { workdir: "/worktrees/gate" as NonEmptyStr }
   admitted(route: gate, argv: shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
     && admitted(route: gate, argv: shape_git_commit_allow_empty_args(message: "root commit"))
     && admitted(route: gate, argv: shape_git_commit_message_args(message: "amend"))
@@ -122,13 +104,6 @@ test fn read_only_bare_argv_is_admitted_at_workdir_free_route() -> Bool {
     && !git_argv_is_bare_mutating(argv: status_argv)
 }
 
-// (RED -- refuse the route that names nowhere to run) A route advertised as carrying a working
-// directory but naming an empty one names nowhere to run; the same refusal `belt_commit_git` makes
-// until the worktree's gitfile is verified. A bare mutating argv must not pass it either.
-test fn workdir_carrying_route_naming_no_directory_is_refused() -> Bool {
-  refused_names_no_directory(GitWorkdirCarrying { workdir: "" })
-}
-
 // The classifier reads the REAL shape argv, stepping over the in-repo dressing to the subcommand it
 // names. Grounded on shape output, so the classification is exercised, not asserted.
 test fn leading_subcommand_steps_over_the_in_repo_dressing() -> Bool {
@@ -141,13 +116,13 @@ test fn leading_subcommand_steps_over_the_in_repo_dressing() -> Bool {
 
 // (typed decision) The admission branches both ways on the VARIANT: the mis-join is Refused with the
 // bare-mutating reason, and both admissible pairings -- a bare argv on a directory-carrying route and
-// an in-repo argv on a directory-less route -- are Admitted.
+// an in-repo argv on a directory-less route -- are Admitted. The carrying route names a non-empty
+// place by construction (`workdir: NonEmptyStr`), so the mis-joined route cannot be built at all.
 test fn admission_decision_refuses_the_mis_join_and_admits_the_pairings() -> Bool {
      refused_bare_mutating_free(shape_git_commit_allow_empty_args(message: "root commit"))
-  && admitted(route: GitWorkdirCarrying { workdir: "/worktrees/gate" }, argv: shape_git_add_all_args())
+  && admitted(route: GitWorkdirCarrying { workdir: "/worktrees/gate" as NonEmptyStr }, argv: shape_git_add_all_args())
   && admitted(
        route: GitWorkdirFree,
        argv: git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"),
      )
-  && refused_names_no_directory(GitWorkdirCarrying { workdir: "" })
 }
