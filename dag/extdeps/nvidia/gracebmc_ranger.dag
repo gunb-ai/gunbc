@@ -1,0 +1,121 @@
+module extdeps.nvidia.gracebmc_ranger
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// NVIDIA'S OPENBMC BUILD FOR THE RANGER TRAY'S CONTROLLER: "GraceBMC-23.06-2-rc1", machine name "ranger",
+// model string "AST2600 Ranger BMC". It runs on the management module of a Ranger tray
+// (extdeps.nvidia.ranger_tray) and starts the tray's P4261 baseboard. What is modelled is the set of lines
+// its start-up scripts and pin table name, which way each goes, and the order the scripts work them in.
+//
+// No NVIDIA source for this build has been read. Every row is TranscribedUncited: one owner of a running
+// tray read the scripts and the pin table on the controller and reported names, directions, logic levels at
+// the controller and order on 2026-11-16. The owner is not named. The rows are grounded when the scripts are
+// read first-hand or NVIDIA publishes them. They are one build's behaviour, and they do not say which
+// baseboard contact carries which line or at what voltage; that is wiring, not firmware.
+//
+// LEFT OUT, AS THE ACCOUNT LEFT IT OUT: between FPGA_READY and BMC_READY the scripts release the PCIe reset
+// toward the FPGA and send "a few I2C messages" to the board; neither is detailed. BMC_EROT_FPGA_SPI_MUX_SEL
+// is set to 1 "then released", kept here as its set. IOM_PWR_EN is raised in run power only when an IO
+// module is present, which that tray has not, so no step raises it.
+
+data gracebmc_ranger_version: NonEmptyStr = "GraceBMC-23.06-2-rc1"
+
+data gracebmc_ranger_machine: NonEmptyStr = "ranger"
+
+data gracebmc_ranger_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "the start-up scripts and pin table of GraceBMC-23.06-2-rc1 for machine ranger, read first-hand or published by NVIDIA; so far one owner's account of 2026-11-16" }
+
+type LineDirection
+  = ControllerDrives
+  | BoardAnswers
+
+type RangerLine {
+  name: NonEmptyStr
+  direction: LineDirection
+}
+
+fn drives(name: NonEmptyStr) -> RangerLine {
+  RangerLine { name: name, direction: ControllerDrives }
+}
+
+fn answers(name: NonEmptyStr) -> RangerLine {
+  RangerLine { name: name, direction: BoardAnswers }
+}
+
+// The lines the account names. LOCAL_RUN_PWR_EN is, by the scripts, "the tray's own run power"; whether it
+// reaches the baseboard is not said.
+data ranger_lines: List<RangerLine> = [
+  drives(name: "BMC_READY"), drives(name: "RUN_POWER_EN"), drives(name: "LOCAL_RUN_PWR_EN"), drives(name: "IOM_PWR_EN"),
+  drives(name: "EROT_FPGA_RST_L"), drives(name: "FPGA_RST_L"), drives(name: "BMC_EP_PERST_EN"), drives(name: "PWR_BRAKE_L"),
+  drives(name: "SHDN_REQ_L"), drives(name: "SHDN_FORCE_L"), drives(name: "SYS_RST_IN_L"), drives(name: "GLOBAL_WP"),
+  drives(name: "STBY_POWER_EN"), drives(name: "BMC_EROT_FPGA_SPI_MUX_SEL"), drives(name: "FPGA_EROT_RECOVERY_L"),
+  answers(name: "BB_PRSNT_L"), answers(name: "STBY_POWER_PG"), answers(name: "FPGA_READY"), answers(name: "RUN_POWER_PG"),
+  answers(name: "SYS_RST_OUT_L"), answers(name: "SHDN_OK_L"), answers(name: "RUN_POWER_FAULT_L"), answers(name: "THERM_BB_OVERT_L"),
+  answers(name: "THERM_FPGA_OVERT_L"), answers(name: "THERM_BB_WARN_L"), answers(name: "FPGA_EROT_FATAL_ERROR_L"),
+]
+
+type SequencePhase
+  = ControllerBoot
+  | Standby
+  | RunPower
+
+// One step: the controller sets a line, or waits until a line the board answers reads a level. limit_seconds
+// is the wait's limit where the account gave one, 0 where it gave none.
+type SequenceStep {
+  phase: SequencePhase
+  line: NonEmptyStr
+  level: Nat
+  waits: Bool
+  limit_seconds: Nat
+}
+
+fn set(phase: SequencePhase, line: NonEmptyStr, level: Nat) -> SequenceStep {
+  SequenceStep { phase: phase, line: line, level: level, waits: false, limit_seconds: 0 }
+}
+
+fn wait(phase: SequencePhase, line: NonEmptyStr, level: Nat, limit_seconds: Nat) -> SequenceStep {
+  SequenceStep { phase: phase, line: line, level: level, waits: true, limit_seconds: limit_seconds }
+}
+
+// The order as reported. At its own boot the controller sets its outputs to 0 only when FPGA_READY reads 0
+// at that moment, that is, when the board is not already up, and requires BB_PRSNT_L to read 0; it checks
+// no voltage, part number or FRU before standby or run power.
+data ranger_start_steps: List<SequenceStep> = [
+  set(phase: ControllerBoot, line: "BMC_READY", level: 0), set(phase: ControllerBoot, line: "RUN_POWER_EN", level: 0),
+  set(phase: ControllerBoot, line: "LOCAL_RUN_PWR_EN", level: 0), set(phase: ControllerBoot, line: "IOM_PWR_EN", level: 0),
+  set(phase: ControllerBoot, line: "EROT_FPGA_RST_L", level: 0), set(phase: ControllerBoot, line: "FPGA_RST_L", level: 0),
+  set(phase: ControllerBoot, line: "BMC_EP_PERST_EN", level: 0), set(phase: ControllerBoot, line: "PWR_BRAKE_L", level: 0),
+  set(phase: ControllerBoot, line: "SHDN_REQ_L", level: 0), set(phase: ControllerBoot, line: "SHDN_FORCE_L", level: 0),
+  set(phase: ControllerBoot, line: "SYS_RST_IN_L", level: 0), set(phase: ControllerBoot, line: "GLOBAL_WP", level: 0),
+  wait(phase: ControllerBoot, line: "BB_PRSNT_L", level: 0, limit_seconds: 0),
+  set(phase: Standby, line: "STBY_POWER_EN", level: 1),
+  wait(phase: Standby, line: "STBY_POWER_PG", level: 1, limit_seconds: 20),
+  set(phase: Standby, line: "BMC_EROT_FPGA_SPI_MUX_SEL", level: 1), set(phase: Standby, line: "FPGA_EROT_RECOVERY_L", level: 1),
+  set(phase: Standby, line: "PWR_BRAKE_L", level: 1), set(phase: Standby, line: "SHDN_REQ_L", level: 1), set(phase: Standby, line: "SHDN_FORCE_L", level: 1),
+  set(phase: Standby, line: "EROT_FPGA_RST_L", level: 1), set(phase: Standby, line: "FPGA_RST_L", level: 1),
+  wait(phase: Standby, line: "FPGA_READY", level: 1, limit_seconds: 60),
+  set(phase: Standby, line: "BMC_READY", level: 1),
+  set(phase: RunPower, line: "BMC_EP_PERST_EN", level: 1),
+  set(phase: RunPower, line: "LOCAL_RUN_PWR_EN", level: 1),
+  set(phase: RunPower, line: "RUN_POWER_EN", level: 1),
+  wait(phase: RunPower, line: "RUN_POWER_PG", level: 1, limit_seconds: 20),
+  set(phase: RunPower, line: "SYS_RST_IN_L", level: 1),
+  wait(phase: RunPower, line: "SYS_RST_OUT_L", level: 1, limit_seconds: 0),
+]
+
+fn is_run_phase(p: SequencePhase) -> Bool {
+  match p {
+    ControllerBoot => false
+    Standby => false
+    RunPower => true
+  }
+}
+
+fn phase_text(p: SequencePhase) -> String {
+  match p {
+    ControllerBoot => "controller boot"
+    Standby => "standby"
+    RunPower => "run power"
+  }
+}

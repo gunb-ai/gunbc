@@ -3,6 +3,7 @@ module test.claim.product.p4261_interface_registry_witness
 import std.types { List, NonEmptyStr }
 import extdeps.electronic_component.types { designator_of, designator_eq }
 import product.p4261.e1_position_receipts { e1_position_receipts }
+import extdeps.nvidia.ranger_tray { ranger_management_cables }
 import product.p4261.interface_registry {
   BoardInterface,
   p4261_e1_interfaces,
@@ -51,6 +52,8 @@ test fn the_ranger_cable_map_is_reported_not_established() -> Bool {
   count(filter(p4261_e1_interfaces, i => is_reported(i: i))) == 4
     && all(["J7", "J8", "J13", "J14"], n => all(rows_for(name: n), i => is_reported(i: i) && !is_established(i: i)))
     && all(["J5", "J6"], n => all(rows_for(name: n), i => !is_reported(i: i) && !is_established(i: i)))
+    && count(ranger_management_cables) == 4
+    && all(ranger_management_cables, c => count(filter(p4261_e1_interfaces, i => is_reported(i: i) && designator_eq(a: i.designator, b: c.baseboard.designator))) == 1)
 }
 
 // The joins discriminate: a registry missing J24 reports it, and a row for a position the atlas never

@@ -6,6 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.electronic_component.types { Designator, designator_of, designator_eq, designator_text }
 import product.p4261.e1_position_receipts { PositionReceipt, e1_position_receipts }
+import extdeps.nvidia.ranger_tray { RangerCable, ranger_management_cables, ranger_power_cable, ranger_cable_text }
 
 // THE P4261 E1'S INTERFACES, ONE ROW EACH. The 2026-11-03 atlas admitted twenty-six connector designators
 // and the two switch packages (product.p4261.e1_position_receipts), while the board's management-I/O
@@ -19,13 +20,11 @@ import product.p4261.e1_position_receipts { PositionReceipt, e1_position_receipt
 // Behaviour is recorded with its board and its state, because a switch that did nothing in one state is
 // not thereby inert (the review of 2026-11-16, forwarded by the operator).
 //
-// A REPORTED FUNCTION IS SOMEONE ELSE'S ACCOUNT, kept apart from what this bench established. On 2026-11-16
-// an owner of a running Ranger tray (NVIDIA's "TS1C RANGER COMPUTE", P/N 675-24265-2020-T1C, on ZT Systems
-// boards) wrote that one E1-type P4261 runs there, started by the tray's controller, an ASPEED AST2600
-// management module in the front IO board's DC-SCM slot, through four factory cables, and gave the cable map
-// printed inside the tray's lid (H88-1516-001 REV X02). That owner allowed it to be recorded and is not
-// named. It is evidence about an E1 in that tray, not a reading of any board held here, and it says which
-// socket a cable goes to, not what any contact carries.
+// A REPORTED FUNCTION IS AN UPSTREAM'S ROW, NOT THIS BENCH'S FINDING. The Ranger tray's factory cable map
+// (extdeps.nvidia.ranger_tray, one owner's account, uncited there) says which baseboard sockets the tray's
+// controller reaches. A row here that rests on it carries the cable row itself, so the text is the tray
+// model's and is never restated; it is evidence about an E1 in that tray, not a reading of a board held
+// here, and it says which socket a cable goes to, not what any contact carries.
 
 type InterfaceKind
   = PowerInput
@@ -39,7 +38,7 @@ type InterfaceKind
 type FunctionStanding
   = FunctionEstablished { function: NonEmptyStr, basis: NonEmptyStr }
   | FunctionCandidate { candidates: NonEmptyStr, basis: NonEmptyStr }
-  | FunctionReported { function: NonEmptyStr, source: NonEmptyStr, scope: NonEmptyStr }
+  | FunctionReported { cable: RangerCable }
   | FunctionUnread
 
 type BoardInterface {
@@ -63,18 +62,22 @@ fn form_only(name: NonEmptyStr, form: NonEmptyStr) -> BoardInterface {
   BoardInterface { designator: designator_of(verbatim: name), part: Absent, kind: KindUnknown, form: Present { value: form }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent }
 }
 
-data ranger_source: NonEmptyStr = "an owner of a running Ranger tray, 2026-11-16, from the cable map on the tray's lid label H88-1516-001 REV X02"
-
-data ranger_scope: NonEmptyStr = "an E1-type P4261 in a TS1C Ranger tray; not read on a board held here, and no contact's signal is known"
-
-fn ranger_cable(name: NonEmptyStr, form: NonEmptyStr, function: NonEmptyStr) -> BoardInterface {
+// The registry row for a socket the tray's cable map names: the form is the atlas's, the function is the
+// tray model's cable row.
+fn ranger_socket(cable: RangerCable, form: NonEmptyStr) -> BoardInterface {
   BoardInterface {
-    designator: designator_of(verbatim: name), part: Absent, kind: ServiceOrDebug, form: Present { value: form },
-    function: FunctionReported { function: function, source: ranger_source, scope: ranger_scope },
+    designator: cable.baseboard.designator, part: Absent, kind: ServiceOrDebug, form: Present { value: form },
+    function: FunctionReported { cable: cable },
     observed: Absent,
     next_discriminator: Present { value: "where each non-ground contact first lands on an unpowered bare board, the standby lines first" },
     not_to_infer: Present { value: "which contact carries which of the controller's lines, or their signalling voltage" },
   }
+}
+
+// The atlas's forms for those sockets, by designator.
+fn ranger_socket_form(cable: RangerCable) -> NonEmptyStr {
+  let d = designator_text(designator: cable.baseboard.designator) as String
+  if d == "J7" { "fine-pitch connector with hold-down pegs, the same type as J8" } else { if d == "J8" { "fine-pitch connector with hold-down pegs" } else { if d == "J13" { "tall fine-pitch two-row vertical receptacle, the same type as J14" } else { "tall fine-pitch two-row vertical receptacle" } } }
 }
 
 data s1_seen_on_e1b: NonEmptyStr = "E1-b, 2026-10-20, no 48 V stage on: pole 2 toward ON started the sequence from 38 mA to about 94 mA with the lamps settling; before S2 was set, neither S1 pole did anything"
@@ -93,8 +96,8 @@ fn switch_pole(package: NonEmptyStr, pole: NonEmptyStr, seen: NonEmptyStr) -> Bo
   }
 }
 
-data p4261_e1_interfaces: List<BoardInterface> = [
-  BoardInterface { designator: designator_of(verbatim: "J20"), part: Absent, kind: PowerInput, form: Present { value: "two-row input housing" }, function: FunctionEstablished { function: "the carrier's 48 to 54 V input and return", basis: "every powered run since 2026-10-20 has been through it (product.p4261.e1_b e1_j20_housing)" }, observed: Present { value: "reported for the Ranger tray: fed from the tray's power board J4 by cable CA-03382-001, the power board fed with 48 V" }, next_discriminator: Absent, not_to_infer: Absent },
+data p4261_e1_interfaces: List<BoardInterface> = concat(map(ranger_management_cables, c => ranger_socket(cable: c, form: ranger_socket_form(cable: c))), [
+  BoardInterface { designator: designator_of(verbatim: "J20"), part: Absent, kind: PowerInput, form: Present { value: "two-row input housing" }, function: FunctionEstablished { function: "the carrier's 48 to 54 V input and return", basis: "every powered run since 2026-10-20 has been through it (product.p4261.e1_b e1_j20_housing)" }, observed: Present { value: join(["reported for the Ranger tray (extdeps.nvidia.ranger_tray): ", ranger_cable_text(c: ranger_power_cable), ", the power board fed with 48 V"], "") as NonEmptyStr }, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J3"), part: Absent, kind: ModuleReceptacle, form: Present { value: "long module receptacle" }, function: FunctionEstablished { function: "one of the carrier's two module receptacles", basis: "the module site, read 2026-10-20 (product.p4261.e1_b)" }, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J4"), part: Absent, kind: ModuleReceptacle, form: Present { value: "long module receptacle" }, function: FunctionEstablished { function: "one of the carrier's two module receptacles", basis: "the module site, read 2026-10-20 (product.p4261.e1_b)" }, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   BoardInterface { designator: designator_of(verbatim: "J68"), part: Absent, kind: ServiceOrDebug, form: Present { value: "2x5 pin header" }, function: FunctionEstablished { function: "JTAG to U4, the carrier's FPGA", basis: "U4 identified and sampled read-only over a USB Blaster on S/N 1583323120148, 2026-11-13; it was running a design" }, observed: Absent, next_discriminator: Present { value: "only a controlled comparison with one change between captures (one S1 pole, or the module fitted) asks it anything new" }, not_to_infer: Present { value: "that one board's scan is another board's, or that a changed FPGA pin names the board net it reaches" } },
@@ -108,14 +111,10 @@ data p4261_e1_interfaces: List<BoardInterface> = [
   BoardInterface { designator: designator_of(verbatim: "J22"), part: Absent, kind: KindUnknown, form: Present { value: "1x3 pin header" }, function: FunctionUnread, observed: Absent, next_discriminator: Absent, not_to_infer: Absent },
   form_only(name: "J1", form: "dark grey housing with rectangular contact openings"),
   form_only(name: "J2", form: "connector with a moulded logo resembling TE"),
-  ranger_cable(name: "J7", form: "fine-pitch connector with hold-down pegs, the same type as J8", function: "the tray controller's MCIO1 link (cable CA-03379-001 to the front IO board's J12)"),
-  ranger_cable(name: "J8", form: "fine-pitch connector with hold-down pegs", function: "the tray controller's MCIO2 link (cable CA-03428-001 to the front IO board's J13)"),
   form_only(name: "J9", form: "large fine-pitch two-row board-to-board receptacle"),
   form_only(name: "J10", form: "fine-pitch connector beside J9"),
   form_only(name: "J11", form: "high-density two-row fine-pitch connector, the same type as J12"),
   form_only(name: "J12", form: "high-density two-row fine-pitch connector"),
-  ranger_cable(name: "J13", form: "tall fine-pitch two-row vertical receptacle, the same type as J14", function: "the tray controller's MGMT1 link (cable CA-03429-001 to the front IO board's J20)"),
-  ranger_cable(name: "J14", form: "tall fine-pitch two-row vertical receptacle", function: "the tray controller's MGMT2 link (cable CA-03378-001 to the front IO board's J19)"),
   form_only(name: "J16", form: "1x4 single-row header"),
   form_only(name: "J540", form: "2x5 shrouded box header, one top-row position without a pin"),
   form_only(name: "J740", form: "FPC/FFC connector with a flip actuator, at the board edge"),
@@ -124,7 +123,7 @@ data p4261_e1_interfaces: List<BoardInterface> = [
   switch_pole(package: "S1", pole: "pole 2", seen: join([s1_seen_on_e1b as String, ". ", s1_seen_on_218 as String], "") as NonEmptyStr),
   switch_pole(package: "S2", pole: "pole 1", seen: s2_seen),
   switch_pole(package: "S2", pole: "pole 2", seen: s2_seen),
-]
+])
 
 // ── THE JOIN AGAINST THE ATLAS ──────────────────────────────────────────────────────────────────────
 
@@ -150,7 +149,7 @@ fn is_established(i: BoardInterface) -> Bool {
   match i.function {
     FunctionEstablished { function: _, basis: _ } => true
     FunctionCandidate { candidates: _, basis: _ } => false
-    FunctionReported { function: _, source: _, scope: _ } => false
+    FunctionReported { cable: _ } => false
     FunctionUnread => false
   }
 }
@@ -159,7 +158,7 @@ fn is_reported(i: BoardInterface) -> Bool {
   match i.function {
     FunctionEstablished { function: _, basis: _ } => false
     FunctionCandidate { candidates: _, basis: _ } => false
-    FunctionReported { function: _, source: _, scope: _ } => true
+    FunctionReported { cable: _ } => true
     FunctionUnread => false
   }
 }
@@ -177,7 +176,7 @@ fn function_words(f: FunctionStanding) -> String {
   match f {
     FunctionEstablished { function, basis } => join(["ESTABLISHED: ", function as String, " (", basis as String, ")"], "")
     FunctionCandidate { candidates, basis } => join(["CANDIDATE: ", candidates as String, " (", basis as String, ")"], "")
-    FunctionReported { function, source, scope } => join(["REPORTED: ", function as String, " (", source as String, "; ", scope as String, ")"], "")
+    FunctionReported { cable } => join(["REPORTED: ", ranger_cable_text(c: cable), " (the Ranger tray's cable map, one owner's account; not read on a board held here)"], "")
     FunctionUnread => "UNREAD"
   }
 }

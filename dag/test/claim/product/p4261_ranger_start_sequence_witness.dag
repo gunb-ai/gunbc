@@ -1,9 +1,8 @@
 module test.claim.product.p4261_ranger_start_sequence_witness
 
 import std.types { List, NonEmptyStr }
+import extdeps.nvidia.gracebmc_ranger { ranger_lines, ranger_start_steps, set, RunPower }
 import product.p4261.ranger_start_sequence {
-  ranger_lines,
-  ranger_start_steps,
   lines_changing_for_run,
   changing_but_not_in_the_summary,
   reported_lines_changing_for_run,
@@ -22,8 +21,6 @@ import product.p4261.ranger_start_sequence {
   ranger_power_at_start,
   ranger_power_at_owner_limit,
   start_sequence_lines,
-  set,
-  RunPower,
 }
 
 // Every step names a listed line, and the sequence prints one line per step.

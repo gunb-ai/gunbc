@@ -1,0 +1,81 @@
+module extdeps.nvidia.ranger_tray
+
+import std.types { List, NonEmptyStr, String }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.population { P4261Position, p4261_position }
+
+// NVIDIA'S "TS1C RANGER COMPUTE" TRAY, P/N 675-24265-2020-T1C: a compute tray built on ZT Systems boards
+// that carries a P4261 baseboard and starts it from a plug-in management module. No NVIDIA or ZT Systems
+// document describing it has been found. Every row here is TranscribedUncited: it comes from one owner of a
+// running tray, who wrote on 2026-11-16 from the cable map printed inside that tray's lid (label H88-1516-001
+// REV X02) and the prints on its boards, and who is not named. A row is grounded only when that label or a
+// maker's document is read first-hand.
+//
+// WHAT A ROW SAYS AND DOES NOT. A cable row says which baseboard socket a factory cable joins to which
+// front-IO-board socket, and what the tray's print calls that link. It does not say what any contact of the
+// socket carries, or at what voltage. What a held board shows at one of these sockets is that board's
+// record in the observing layer (product.p4261.interface_registry), never authored here.
+
+data ranger_tray_name: NonEmptyStr = "TS1C RANGER COMPUTE"
+
+data ranger_tray_part_number: NonEmptyStr = "675-24265-2020-T1C"
+
+fn ranger_obligation(what: NonEmptyStr) -> NonEmptyStr {
+  join([what as String, ", read first-hand on a Ranger tray or from an NVIDIA or ZT Systems document; so far one owner's account of 2026-11-16"], "") as NonEmptyStr
+}
+
+// The tray's controller: a plug-in management module in the slot printed "J18 DC-SCM" on the front IO board
+// (ZT Systems board 1395A3492101 rev X03, also marked BD-00325-003). It carries an ASPEED AST2600; no part
+// number was read on the module itself. The firmware it runs is its own upstream
+// (extdeps.nvidia.gracebmc_ranger).
+type RangerController {
+  slot_print: NonEmptyStr
+  front_io_board: NonEmptyStr
+  processor: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data ranger_controller: RangerController = RangerController {
+  slot_print: "J18 DC-SCM",
+  front_io_board: "ZT Systems 1395A3492101 rev X03 (BD-00325-003)",
+  processor: "ASPEED AST2600",
+  standing: TranscribedUncited { read_obligation: ranger_obligation(what: "the front IO board's slot print and the management module's markings") },
+}
+
+// One factory cable between the baseboard and another board of the tray.
+type RangerCable {
+  part_number: NonEmptyStr
+  baseboard: P4261Position
+  far_board: NonEmptyStr
+  far_connector: NonEmptyStr
+  printed_role: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn ranger_cable(part_number: NonEmptyStr, baseboard: NonEmptyStr, far_board: NonEmptyStr, far_connector: NonEmptyStr, printed_role: NonEmptyStr) -> RangerCable {
+  RangerCable {
+    part_number: part_number,
+    baseboard: p4261_position(revision: p4261_e1, designator: baseboard),
+    far_board: far_board,
+    far_connector: far_connector,
+    printed_role: printed_role,
+    standing: TranscribedUncited { read_obligation: ranger_obligation(what: "the lid label H88-1516-001 REV X02's cable map") },
+  }
+}
+
+// The cable map as reported. The owner adds that the front board's own prints agree where photographed
+// (J13 "MCIO2 CONN", J20 "MGMT1 CONN"), and that BB-J8 to FIO-J13 was traced by hand.
+data ranger_management_cables: List<RangerCable> = [
+  ranger_cable(part_number: "CA-03379-001", baseboard: "J7", far_board: "front IO board", far_connector: "J12", printed_role: "MCIO1 CONN"),
+  ranger_cable(part_number: "CA-03428-001", baseboard: "J8", far_board: "front IO board", far_connector: "J13", printed_role: "MCIO2 CONN"),
+  ranger_cable(part_number: "CA-03429-001", baseboard: "J13", far_board: "front IO board", far_connector: "J20", printed_role: "MGMT1 CONN"),
+  ranger_cable(part_number: "CA-03378-001", baseboard: "J14", far_board: "front IO board", far_connector: "J19", printed_role: "MGMT2 CONN"),
+]
+
+// Power: the tray's power board, fed with 48 V by that owner, to the baseboard's input.
+data ranger_power_cable: RangerCable = ranger_cable(part_number: "CA-03382-001", baseboard: "J20", far_board: "power board", far_connector: "J4", printed_role: "power")
+
+fn ranger_cable_text(c: RangerCable) -> String {
+  join(["the tray's ", c.printed_role as String, " link (cable ", c.part_number as String, " to the ", c.far_board as String, "'s ", c.far_connector as String, ")"], "")
+}
