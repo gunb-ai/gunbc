@@ -48,7 +48,8 @@ fn has_offer(m: ManagedHost) -> Bool {
 // sides are derived and the check is width-agnostic; the honest production committed width is FOUR (see
 // test.claim.runner.mtcollins1_runner_offer_witness, which derives 4 from the census, not 5). STILL OWED, by the first change that
 // reads them through the real producers: runner_evidence_gated_registration_labels(mtcollins1) equals the labels of a
-// bound service slot, and service_slot_population over the real host has exactly 5 bound slots.
+// bound service slot, and service_slot_population over the real host has exactly 4 bound slots (the derived committed
+// width; see test.claim.runner.mtcollins1_runner_offer_witness, which derives 4 from the census).
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
 fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
