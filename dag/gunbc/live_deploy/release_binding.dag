@@ -146,22 +146,6 @@ fn release_binding_holds(binding: DeployedReleaseBinding) -> Bool {
   }
 }
 
-// THE BOUND TREE'S HEAD, as the wire hex the release identity is stated in -- the source head the served
-// standings document names (gunbc.roadmap.roadmap_standings_document). The serve gate renders that document
-// only under PairBoundToServe (release_binding_holds holds only for ReleaseBoundToTree). This derivation
-// therefore REFUSES rather than fabricates: a non-bound binding yields `none`, and the writer fails closed on
-// `none` -- it never puts a sentinel like "unbound" into the source_head field of a served 200 (fail_closed:
-// no plausible output is fabricated where construction was available). The caller can only serve when this
-// returns a Present hex, i.e. exactly when the tree revision is known.
-fn release_bound_source_head(binding: DeployedReleaseBinding) -> String? {
-  match binding {
-    ReleaseBoundToTree { revision: r, surface: _ } => Present { value: git_object_id_wire_hex(oid: r) as String }
-    ReleaseMixed { tree_revision: _, process_revision: _ } => none
-    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => none
-    ReleaseBindingUnobserved { cause: _ } => none
-  }
-}
-
 fn release_binding_line(binding: DeployedReleaseBinding) -> String {
   match binding {
     ReleaseBoundToTree { revision: r, surface: sfc } =>

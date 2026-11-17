@@ -81,8 +81,10 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
   LabServePairVerdict, PairBoundToServe, PairServeRefused, lab_pair_serve_verdict,
-  ReleaseBindingUnobserved, release_binding_line, release_bound_source_head,
+  ReleaseBindingUnobserved, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed,
+  release_binding_line,
 }
+import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
@@ -274,21 +276,21 @@ fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: Deploye
 
 // THE IDENTITY IS STAMPED AT THE RENDER, NOT AT THE REQUEST. The standings body is pre-rendered here and
 // served as stored bytes, so the release that produced it is written into it now, from the ONE binding the
-// serve gate resolved (its running identity verified bound to the deployed tree). Both facts derive from that
-// binding via release_binding_line / release_bound_source_head, so they cannot disagree (one authority).
+// serve gate resolved (its running identity verified bound to the deployed tree). BOTH machine facts derive
+// from that single bound arm -- the revision hex and the build-artifact surface digest (the release/build key
+// token) -- so they cannot disagree (one authority), and neither is prose nor a repeat of the other.
 fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String, binding: DeployedReleaseBinding) -> ProcessExit {
-  match release_bound_source_head(binding: binding) {
-    // Fail CLOSED: without a bound tree revision there is no honest source_head to stamp, so the observation
-    // is NOT written (a served document must never carry a fabricated head). The serve gate only reaches here
-    // under PairBoundToServe, so this is the belt refusing a state it must not serve -- a typed, located
-    // diagnostic, not a silent fallback (fail_closed).
-    none => exit_failure(reason: "served observation refused: no bound release revision (release_bound_source_head = none)")
-    Present { value: source_head } =>
+  match binding {
+    // Both facts come from the one bound binding, so source_head and release_identity cannot diverge. The serve
+    // gate only reaches here under PairBoundToServe (release_binding_holds holds only for ReleaseBoundToTree);
+    // the other arms are the belt REFUSING a state it must not serve -- a typed, located diagnostic, never a
+    // fabricated head and never a prose line in a machine-read field (fail_closed).
+    ReleaseBoundToTree { revision: r, surface: sfc } =>
       match served_observation_observe_and_write_for_instance(
         instance: instance,
         observed_at: observed_at,
-        source_head: source_head,
-        release_identity: release_binding_line(binding: binding),
+        source_head: git_object_id_wire_hex(oid: r) as String,
+        release_identity: sfc.digest as String,
       ) {
         BeltPassRecorded => ExitSuccess
         BeltPassFailed { reason: r } => exit_failure(reason: r)
@@ -297,6 +299,12 @@ fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: St
         BeltPassRefused { reason: r } =>
           exit_failure(reason: join(["served observation write returned refused: ", r], ""))
       }
+    ReleaseMixed { tree_revision: _, process_revision: _ } =>
+      exit_failure(reason: "served observation refused: deployed release is not bound to one tree revision")
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } =>
+      exit_failure(reason: "served observation refused: deployed release surface is not bound to one tree revision")
+    ReleaseBindingUnobserved { cause: _ } =>
+      exit_failure(reason: "served observation refused: deployed release binding unobserved")
   }
 }
 
