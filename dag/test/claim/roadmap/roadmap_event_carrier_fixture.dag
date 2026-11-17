@@ -512,9 +512,10 @@ fn roadmap_event_carrier_provision(instance: HostDashboardInstance, scratch: Roa
 // way through simply stops asking. A first draft of this control did exactly that: it `let`-bound the chmod-700
 // restore and the reclaim sweep and read them from a final `&&` chain, so the run that FAILS — the one this control
 // exists to catch — was the run that skipped the restore and left a 000 directory behind, and the delete could be
-// demanded before the probe that was supposed to read it. Every path below now ends in
-// roadmap_carrier_statcheck_teardown, including the failing ones, because teardown is the thing that must happen
-// whatever the verdict says.
+// demanded before the probe that was supposed to read it. Every path below that gets a parent onto the disk now ends
+// in a cleanup — roadmap_carrier_statcheck_teardown on the paths that reached a minted scratch, and the reclaim on its
+// own for a half-built scaffold — because cleanup is the thing that must happen whatever the verdict says. Only the arm
+// where mktemp itself failed has nothing to clean, and it says so.
 test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
   let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_carrier_statcheck.XXXXXX" as FilePath)
   if !made.success {
@@ -527,8 +528,8 @@ test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
       && shell.Mkdir.NewOwnerOnly(path: concat(root, "/payload") as FilePath).success
       && roadmap_carrier_seal_create(root: root)) {
       // A half-built scaffold is still a directory under /tmp that this run made, so it comes back before the
-      // verdict does — the removal is the left conjunct precisely because `&&` demands the left first.
-      shell.Remove.RecursiveForce(path: parent as FilePath).success
+      // verdict does — the salvage is the leftmost demanded thing precisely because `&&` demands the left first.
+      roadmap_carrier_statcheck_salvage(parent: parent)
         && claim("the harness could not scaffold a scenario, its payload, and its seal inside the parent", false)
     } else if shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["000", parent]).exit_code != 0 {
       // Nothing was hidden, so nothing can leak — but the scaffold still has to come back, and a control that
@@ -545,16 +546,97 @@ test fn the_wet_carrier_refuses_to_call_an_unstat_able_scratch_swept() -> Bool {
   }
 }
 
-// THE ONE TEARDOWN EVERY PATH ENDS IN. Restore first and unconditionally, because a parent left at 000 is a
-// directory nobody can remove and the next run inherits it; only then may the sweep be asked to do its job, since a
+// THE ONE TEARDOWN EVERY PATH ENDS IN. Restore first and unconditionally, because at the uid these runs belong
+// to a parent left at 000 is a directory this run's own reclaim cannot remove — `rm -rf` fails on it with Permission
+// denied, measured — and the next run inherits it; only then may the sweep be asked to do its job, since a
 // sweep against an unreadable parent would refuse and be read as a clean refusal by someone less suspicious than
 // this file. Each step is the condition of the `if` that follows it, so the order is demanded rather than hoped for.
+//
+// Shared by both controls below: both call it directly on the arms where they clean up after themselves, and the
+// refused-sweep control also reaches it through roadmap_carrier_statcheck_teardown, so the reclaim is one definition
+// rather than three that can drift.
+//
+// EVERY ARM RECLAIMS THE PARENT, INCLUDING THE ARMS THAT FAIL. The first version of this helper removed the parent
+// only on the success path, so a refused sweep — a seal gone between the scaffold and the sweep, say — or a failed
+// post-sweep observation returned false and left the control-owned parent sitting in /tmp. That is the same class of
+// defect this file was rewritten to catch: a harness that certifies against leaks while leaking itself. The salvage
+// is therefore the FIRST THING DEMANDED on each failing arm — the condition of the inner `if` here, and the left
+// conjunct of the `&&` where the controls clean up after themselves — and the verdict is false whether or not the salvage
+// succeeds, so cleaning up can never talk its way into a green.
+fn roadmap_carrier_statcheck_salvage(parent: String) -> Bool {
+  shell.Remove.RecursiveForce(path: parent as FilePath).success && roadmap_carrier_path_is_absent(path: parent)
+}
+
 fn roadmap_carrier_statcheck_teardown(parent: String, scratch: RoadmapEventCarrierScratch) -> Bool {
   if shell.Exec.RunArgv(program: "chmod" as NonEmptyStr, arguments: ["700", parent]).exit_code != 0 {
-    claim("the harness could not restore the parent's mode, so the scenario was left unreadable for whoever runs next", false)
+    if !roadmap_carrier_statcheck_salvage(parent: parent) {
+      claim("the harness could not restore the parent's mode and could not reclaim it either, so this run leaked a scratch root into /tmp/", false)
+    } else {
+      claim("the harness could not restore the parent's mode, so the scenario was left unreadable for whoever runs next", false)
+    }
   } else if !roadmap_carrier_teardown_is_complete(scratch: scratch, sweep: roadmap_event_carrier_sweep(scratch: scratch)) {
-    claim("with the parent readable again the sweep must take the scenario back and the root must be independently gone", false)
+    if !roadmap_carrier_statcheck_salvage(parent: parent) {
+      claim("the scoped teardown failed and the harness could not reclaim its own parent, so this run leaked a scratch root into /tmp/", false)
+    } else {
+      claim("with the parent readable again the sweep must take the scenario back and the root must be independently gone", false)
+    }
   } else {
-    claim("the harness must leave nothing behind in /tmp/", shell.Remove.RecursiveForce(path: parent as FilePath).success && roadmap_carrier_path_is_absent(path: parent))
+    claim("the harness must leave nothing behind in /tmp/", roadmap_carrier_statcheck_salvage(parent: parent))
+  }
+}
+
+// A REFUSED SWEEP IS NOT A TAKE-BACK, AND A REFUSAL IS NO REASON TO LEAVE THE HARNESS'S OWN DIRECTORY BEHIND.
+// Both controls reach a refused sweep, at two different doors of roadmap_event_carrier_sweep, which is why two are
+// needed. The chmod control above asks roadmap_carrier_teardown_is_complete for a verdict while the parent is still
+// 000, and THAT sweep is refused, at the OWNERSHIP door: the sweep's first arm is roadmap_carrier_root_is_minted_scratch,
+// whose last conjunct is a live `ls` of the scenario, and an entry that cannot be looked at is not one this run
+// minted — so Refused{step: "ownership"} comes back before the seal is ever examined, and the Refused arm of
+// roadmap_carrier_teardown_is_complete is executed directly by that control, not by inheritance. Only afterwards
+// does that control's helper restore mode 700 and run a second sweep, which passes both doors and returns Done.
+// Under uid 0 the first refusal would not happen at all: root looks straight through a mode-000 parent, so the
+// scenario would be observed and deleted where the control expects a refusal, and it would go RED rather than pass
+// for the wrong reason. The measured facts behind that sentence: at uid 1000, which is the uid these runs belong
+// to, both `rm -rf` and `ls -l -n -d` fail with Permission denied against a mode-000 parent.
+//
+// This control reaches the same arm from the other side and earns a DIFFERENT refusal: the parent is readable and
+// the scenario is genuinely observable, so ownership passes, and it is the ownership seal that has been taken away
+// — Refused{step: "provenance"}, which its transport trace shows as a failed probe of the seal path. A fixture that
+// tested only one of these two would not know the other door exists. It scaffolds a scenario it genuinely owns,
+// takes the seal away, and asks the helper from a condition position, so the evidence is read while the scenario is
+// still there to be looked at. Its two demands are then that a refusal is not forgiven as a completed teardown, and
+// that the harness reclaims its own parent even while failing — and because that reclaim sits in BOTH arms below, an
+// already-failing verdict gets no veto over the cleanup, while the cleanup still never runs so early that it destroys
+// the thing the assertion is asking about. `claim` is the identity, so the enforcement here is the boolean structure
+// and the demand order, not the labels.
+test fn the_wet_carrier_reclaims_its_own_root_when_the_sweep_refuses() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_carrier_salvage.XXXXXX" as FilePath)
+  if !made.success {
+    claim("the harness could not mint its own parent directory under /tmp/", false)
+  } else {
+    let parent: String = made.path as String
+    let root: String = concat(concat(parent, "/"), "scenario")
+    let scratch = RoadmapEventCarrierScratch { path: root, template: "/tmp/gunbc_carrier_salvage.XXXXXX" as String }
+    if !(shell.Mkdir.NewOwnerOnly(path: root as FilePath).success
+      && shell.Mkdir.NewOwnerOnly(path: concat(root, "/payload") as FilePath).success
+      && roadmap_carrier_seal_create(root: root)) {
+      roadmap_carrier_statcheck_salvage(parent: parent)
+        && claim("the harness could not scaffold a scenario, its payload, and its seal inside the parent", false)
+    } else if !shell.Remove.RecursiveForce(path: roadmap_carrier_seal_path(root: root) as FilePath).success {
+      roadmap_carrier_statcheck_salvage(parent: parent)
+        && claim("the seal could not be taken away, so the sweep was never refused and this control would have proved nothing", false)
+    } else {
+      // Two things are required of the helper here, in this order: it must REPORT failure, because its sweep was
+      // refused at provenance and a refusal is not a take-back; and having reported it, it must have taken its own
+      // parent directory back, because a harness that stops cleaning up the moment it starts failing is the leak
+      // this file exists to catch. The helper is called from the condition position so its sweep and its salvage
+      // are both demanded, and both arms below reclaim as well — an already-failing verdict gets no veto over the
+      // cleanup.
+      if claim("a sweep refused at provenance must make the teardown helper report failure rather than cleanliness", !roadmap_carrier_statcheck_teardown(parent: parent, scratch: scratch)) {
+        claim("and having failed, the helper must still have reclaimed the parent it owns, because failing is not a licence to leak", roadmap_carrier_path_is_absent(path: parent))
+      } else {
+        roadmap_carrier_statcheck_salvage(parent: parent)
+          && claim("the teardown helper reported a refused sweep as a completed teardown, which is a leak with better manners", false)
+      }
+    }
   }
 }
