@@ -117,12 +117,16 @@ fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
 
 fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "parameter", expected: "5") {
-    BmcReplied {
-      stdout: match world.boot_override {
-        BootOverrideNone => ipmitool_bootparam5_no_override
-        BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
-      },
-      world: world,
+    match world.boot_override {
+      BootOverrideNone => BmcReplied { stdout: ipmitool_bootparam5_no_override, world: world }
+      BootOverrideCdromEfiNextBoot => BmcReplied { stdout: ipmitool_bootparam5_cdrom_efi_next_boot, world: world }
+      // A next-boot PXE override HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER either, and the same rule
+      // that declines parameter 3 below declines synthesizing its bytes here (the SdrElistVerbose
+      // precedent): the model prints only what a committed capture says the controller prints. The arm
+      // exists so a live reading can NAME what it found (smart-crane-730's ruling B -- an unmodeled
+      // target never collapses into None); a dry world that reaches this arm is asking the model to
+      // invent evidence, and it gets a refusal that says the model is declining.
+      BootOverridePxeNextBoot => BmcRefused { exit_code: 1, stderr: "gunbc dry world: the next-boot PXE override has no committed capture of this controller's parameter-5 answer; the model does not answer it", world: world }
     }
   } else if input_is(call: call, name: "parameter", expected: "3") {
     // PARAMETER 3 (valid-bit clearing) HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER, and synthesizing its bytes

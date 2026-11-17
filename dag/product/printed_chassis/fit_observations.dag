@@ -108,10 +108,25 @@ data t10_sleeve_coupon_fit_provenance: EvidenceProvenance = EvidenceProvenance {
 }
 fn t10_sleeve_coupon_fit_display() -> String {
  let v=t10_sleeve_coupon_fit.value
+ let w=t10_sleeve_coupon_second_fit.value
  join(["The first T10 sleeve coupon (16 November 2026)",
   if v.strip_slots_fit {" fitted its backplate-strip slots"} else {" did not fit its backplate-strip slots"},
   if v.power_window_at_the_plug_end {" and cleared the 8-pin."} else {" but covered the 8-pin: its window was at the bottom end because the fit plate was mirrored along the face, so the plate's frame now puts the top end where the card has it."},
-  if v.sleeve_too_narrow_across {" Its 0.1 mm sleeve was too narrow across the face and bowed out, so this coupon is 0.3 mm per side across."} else {""}],"")
+  if v.sleeve_too_narrow_across {" Its 0.1 mm sleeve was too narrow across the face and bowed out, so the second is 0.3 mm per side across."} else {""},
+  if w.fits {" The second coupon, with the plate's top end corrected and 0.3 mm across, fits (17 November 2026)."} else {" The second coupon does not fit."}],"")
+}
+// THE SECOND T10 SLEEVE COUPON, printed 2026-11-16 on printer-02 (run 43968177413, 3MF sha256
+// 09f50e12ef737aed011aa3a507469c3af3ea84819a525b5b266a2e41a9f2d173): the fit plate no longer mirrored along
+// the face, its sleeve 0.3 mm per side across the face and 0.1 mm along it, 16 mm deep. Operator, 2026-11-17:
+// "the coupon looks good". Read as a fit of the whole interface (the 8-pin clear, the sleeve holding without
+// bowing, the plate on the face); the operator named no part that was off. One coupon on one card: the
+// figures hold on this card, not as a qualified tolerance.
+type T10SleeveCouponSecondProposition { fits: Bool }
+data t10_sleeve_coupon_second_fit: RecordedFact<T10SleeveCouponSecondProposition> = RecordedFact {
+ id:"t10-sleeve-coupon-fit-2026-11-17",value:T10SleeveCouponSecondProposition {fits:true},
+}
+data t10_sleeve_coupon_second_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/t10-sleeve-coupon-fit-2026-11-17",activity:"workflow-print-and-hand-fit",agent:"operator",
 }
 
 // THE RECEIVED DELTA BFB1012M, read by the operator on 2026-11-04 with four units in hand. The intake is on one
