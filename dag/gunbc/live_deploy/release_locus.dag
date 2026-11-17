@@ -217,3 +217,71 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
     }
   }
 }
+
+// ── THE PAIR IS DELIVERED AS ONE UNIT, OR THE LAST GOOD PAIR KEEPS SERVING ───────────────────────
+// THE LAB SERVES A PAIR, NOT A BINARY. The belt fold refuses to serve unless the serving binary and the
+// source tree it reads carry the SAME main head (gunbc.live_deploy.release_binding::lab_pair_serve_verdict).
+// A person at a terminal used to make that pair by hand — fetch CI's release bins, check out the matching
+// source, drop both into a locus, restart the serve — and a hand redeploy is exactly where a MIXED pair is
+// born: the two halves land at different times, so in between the lab serves a binary from one head against
+// a tree from another, and the gate (once the serving binary is new enough to carry it) refuses. This fold
+// is that delivery as ONE authority: one main head in, a bound pair out, or a refusal that keeps the last
+// good pair serving. It is the delivery leg the lab's timer calls, so a node merged to main reaches the
+// served standings with no hand redeploy.
+//
+// THE REFUSAL HAS ONE PLACE (gunbc.fail_closed::fail_closed, "every degradation is typed and named"): every
+// refusal arm returns the `serving` binding it was handed as `kept`, so "keep the last good locus serving" is
+// not re-decided at each call site — the fold that could refuse is the ONLY fold that decides what keeps
+// serving. The red control (a head whose release bins are not built yet, or whose pack fails build-key
+// verification) is a PairRefused arm: on the modelled leg it cannot install BOTH halves, so the previous pair
+// keeps serving and the refusal is visible rather than a half-installed serve.
+//
+// WHAT IT ESTABLISHES, at the rung the code reaches (gunbc.design_argument::guarantee_ladder): given the
+// caller's `verified` witness — the consumer verify script's build-key verdict, not recomputed here — and a
+// fetched source head, the installed pair is bound exactly when the head's pack exists (not none), verified,
+// and the fetched source head IS the main head being delivered for. It does NOT itself download or hash bytes;
+// the delivery unit's ExecStart carries that, and this fold is the single decision that leg consults.
+type DeliveredReleasePair {
+  main_head: CommitSha
+  source_head: CommitSha
+  binaries_sha256: NonEmptyStr
+}
+
+type ReleasePairDelivery
+  = PairInstalled { pair: DeliveredReleasePair, locus: ReleaseLocus }
+  | PairRefused { reason: NonEmptyStr, kept: ReleaseRevisionBinding }
+
+data release_pair_bins_unbuilt_reason: NonEmptyStr = "the release bins for this main head are not built yet — no release-bins pack was handed off for the head, so there is no verified binary to pair the source with; the lab keeps serving the last good pair"
+data release_pair_pack_unverified_reason: NonEmptyStr = "the release-bins pack for this main head failed build-key verification (--verify-build-artifacts refused it), so its binaries are not trusted; the lab keeps serving the last good pair"
+data release_pair_source_head_mismatch_reason: NonEmptyStr = "the fetched source head is not the main head being delivered for, so the source half of the pair would not match the binary half; the lab keeps serving the last good pair"
+
+// ONE HEAD, ONE PAIR, OR THE LAST GOOD PAIR KEEPS SERVING. `binaries_sha256` is `none` when CI produced no
+// pack for the head (unbuilt); `verified` is the consumer script's build-key verdict for the pack. Any refusal
+// returns the handed-in `serving` binding as `kept`, so a refused delivery installs nothing and restarts
+// nothing — the previous pair keeps serving with the refusal visible.
+fn deliver_release_pair(base_root: String, serving: ReleaseRevisionBinding, main_head: CommitSha, source_head: CommitSha, binaries_sha256: String?, verified: Bool) -> ReleasePairDelivery {
+  match binaries_sha256 {
+    none => PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
+    Present { value: sha } =>
+      if !verified {
+        PairRefused { reason: release_pair_pack_unverified_reason, kept: serving }
+      } else if (source_head as String) != (main_head as String) {
+        PairRefused { reason: release_pair_source_head_mismatch_reason, kept: serving }
+      } else {
+        let pair = DeliveredReleasePair { main_head: main_head, source_head: source_head, binaries_sha256: sha as NonEmptyStr }
+        PairInstalled {
+          pair: pair,
+          locus: release_locus_record(base_root: base_root, revision: delivered_pair_revision(pair: pair)),
+        }
+      }
+  }
+}
+
+// THE PAIR'S ONE IDENTITY. The serve unit's release_revision, the locus directory it names, and the standings
+// readback all read this ONE value — the head whose CI release bins were verified against its source — so the
+// identity is spelled once and never hand-copied (one authority). The unit's ExecStart carries it through
+// gunbc.live_deploy.release_locus::release_revision_execstart_text, and the served standings document reads
+// its source head and binary identity from that same ExecStart identity.
+fn delivered_pair_revision(pair: DeliveredReleasePair) -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: pair.source_head }
+}
