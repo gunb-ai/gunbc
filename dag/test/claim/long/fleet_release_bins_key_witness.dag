@@ -572,7 +572,7 @@ test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_
     && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.ref == \"refs/heads/main\"))")
     // recency is REAL time, not string order (2026-11-100 would sort before 2026-11-2 lexically)
     && string_contains(s: release_bins_retention_union_program(), pattern: "sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime")
-    && string_contains(s: release_bins_retention_union_program(), pattern: "sort_by(._retention_epoch)")
+    && string_contains(s: release_bins_retention_union_program(), pattern: "sort_by([._retention_epoch, ._retention_frac, .id])")
     && string_contains(s: release_bins_retention_union_program(), pattern: ".ref | type) == \"string\"")
 }
 
@@ -811,6 +811,52 @@ test fn release_bins_retention_orders_mixed_timestamp_shapes() -> Bool {
     && !string_contains(s: r.stdout, pattern: "due=7")
     && !string_contains(s: r.stdout, pattern: "due=8")
     && !string_contains(s: r.stdout, pattern: "due=9")
+    && !string_contains(s: r.stdout, pattern: "due=10")
+    && !string_contains(s: r.stdout, pattern: "due=11")
+    && !string_contains(s: r.stdout, pattern: "due=12")
+    && !string_contains(s: r.stdout, pattern: "due=13")
+    && !string_contains(s: r.stdout, pattern: "due=14")
+    && !string_contains(s: r.stdout, pattern: "due=15")
+    && !string_contains(s: r.stdout, pattern: "due=16")
+    && !string_contains(s: r.stdout, pattern: "due=17")
+    && !string_contains(s: r.stdout, pattern: "plan-failed")
+}
+
+// THE WITHIN-SECOND CONTROL (F4): seventeen eligible main-ref entries; the OLDEST two share a
+// second -- id 2 at 12:00:00.900Z and id 1 at 12:00:00.100Z -- and the listing presents the
+// pair newest-first (id 2 before id 1). Dropping the fraction ties them and jq's stable sort
+// would keep the input order, naming id 2 (the newer) for deletion. The full key
+// [epoch, numeric fraction, id] must name id 1. Pre-F4 this prints due=2 and deletes id 2.
+fn retention_tie_entry_text(id: Int) -> String {
+  let frac = if int_eq(id, 1) { "100" } else { "900" }
+  join([
+    "{\"id\": ", int_to_decimal_string(id),
+    ", \"key\": \"release-bins-t", int_to_decimal_string(id),
+    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"2025-12-31T23:59:59.", frac, "Z\"}",
+  ], "")
+}
+
+fn retention_tie_page_body() -> String {
+  join(["{\"total_count\": 17, \"actions_caches\": ["], "")
+    + join(map(retention_int_range(17, 3), i => retention_family_entry_text(i: i)), ", ")
+    + ", "
+    + retention_tie_entry_text(id: 2)
+    + ", "
+    + retention_tie_entry_text(id: 1)
+    + "]}"
+}
+
+data retention_tie_body: String = retention_tie_page_body()
+data script_retention_within_second_tie: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_tie_body)))
+
+test fn release_bins_retention_orders_within_a_second_by_fraction() -> Bool {
+  let r = run_script(script: script_retention_within_second_tie)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1")
+    && !string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
+    && !string_contains(s: r.stdout, pattern: "due=2")
     && !string_contains(s: r.stdout, pattern: "due=10")
     && !string_contains(s: r.stdout, pattern: "due=11")
     && !string_contains(s: r.stdout, pattern: "due=12")

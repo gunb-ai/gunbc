@@ -1254,7 +1254,14 @@ fn release_bins_retention_page1_program() -> String {
 // exactly what the consumer reads. So: filter to the producer ref FIRST, then one sort over that
 // population, order it by REAL TIME (strptime+mktime: created_at is a string, and sorting the
 // strings lexically would rank 2026-11-100 before 2026-11-2 -- the window would then keep a
-// pseudo-random 16 and delete recent packs. GitHub documents FRACTIONAL seconds
+// pseudo-random 16 and delete recent packs; and dropping the fraction alone would tie two
+// entries created inside one second, letting INPUT ORDER decide which of them dies (F4,
+// bright-ibex-807: counterexample -- id 2 at .900Z listed before id 1 at .100Z was the one
+// deleted), so the sort key is [epoch_seconds, NUMERIC fraction, id]: no lossy step, and
+// .id makes even byte-identical timestamps deterministic (the fraction is extracted with an
+// explicit test branch, NOT the (? ...) // 0 idiom, which drops entries whose timestamp has
+// no fraction because capture emits the EMPTY stream on no-match and map swallows it).
+// GitHub documents FRACTIONAL seconds
 // ("2019-01-24T22:45:36.000Z") and jq 1.7 strptime REJECTS them outright (review F3,
 // bright-ibex-807 2026-11-17), which would make every valid listing plan-failed and starve
 // retention forever; sub("\.[0-9]+Z$"; "Z") strips an optional fraction so both documented
@@ -1263,7 +1270,7 @@ fn release_bins_retention_page1_program() -> String {
 // oldest-first, capped. PR-ref entries are simply not this chore's population.
 fn release_bins_retention_union_program() -> String {
   join([
-    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | map(. + {\"_retention_epoch\": (.created_at | sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime)}) | sort_by(._retention_epoch) | .[0: (if length > ",
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | map(. + {\"_retention_epoch\": (.created_at | sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime), \"_retention_frac\": (if (.created_at | test(\"\\\\.[0-9]+Z$\")) then (.created_at | capture(\"\\\\.(?<f>[0-9]+)Z$\") | ((.f | tonumber) / pow(10; (.f | length)))) else 0 end)}) | sort_by([._retention_epoch, ._retention_frac, .id]) | .[0: (if length > ",
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
