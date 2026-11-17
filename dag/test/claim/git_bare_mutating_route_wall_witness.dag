@@ -169,3 +169,24 @@ test fn read_only_verb_behind_global_options_is_admitted_at_workdir_free_route()
   git_argv_leading_subcommand(argv: argv) == "status"
     && admitted(route: GitWorkdirFree, argv: argv)
 }
+
+// (RED -- the dressing must NAME the repository, not just a working tree) `--work-tree` sets
+// GIT_WORK_TREE but leaves GIT_DIR to be found from the ambient directory, so a mutating argv dressed
+// ONLY in `--work-tree` still commits into whatever repository the process sits in -- the ambient-tree
+// hazard itself. Verified against git: `git --work-tree=<x> rev-parse --git-dir` prints the AMBIENT
+// .git, while `git --git-dir=<x> ...` follows <x>. So `--work-tree` (space and `=` forms) is refused at
+// a workdir-free route; only `-C` and `--git-dir`, which actually locate the repository, admit it. The
+// third conjunct guards the OTHER direction -- a genuine `--git-dir` mutating argv (the form the census
+// sandbox commits through) MUST still be admitted, so a fix that over-refuses cannot pass. Hand-spelled:
+// no `extdeps/git.dag` shape mints a `--work-tree`-only mutating argv, because such an argv is unsafe
+// by construction; these are attack/control inputs, matching the RED-claim convention.
+// RED control: re-add `--work-tree` to the repo-naming set and the first two conjuncts go Admitted,
+// reddening THIS claim alone while the others stay green.
+test fn work_tree_dressing_does_not_name_the_repo_and_is_refused() -> Bool {
+     refused_bare_mutating_free(["--work-tree", "/worktrees/other", "commit", "-q", "-m", "x"])
+  && refused_bare_mutating_free(["--work-tree=/worktrees/other", "commit", "-q", "-m", "x"])
+  && admitted(
+       route: GitWorkdirFree,
+       argv: ["--git-dir", "/worktrees/gate/.git", "--work-tree", "/worktrees/gate", "commit", "-q", "-m", "x"],
+     )
+}
