@@ -80,7 +80,11 @@ type FilePlacement {
 // revision the fold bound (not an independent copy), so the source half of the pair is named by the same authority.
 type SourceReceiptWrite {
   destination: String
-  revision: ReleaseRevisionBinding
+  // The receipt names the DELIVERED revision as a non-empty CommitSha and the build-artifact digest as a typed
+  // NonEmptyStr — both carried by the fold, never re-derived from a path (minimize_redundancy) and never the ""
+  // an unbound binding would yield (fail_closed: the empty-revision receipt is unwritable).
+  revision: CommitSha
+  digest: NonEmptyStr
 }
 
 // THE ORDERED TYPED INSTALL the delivery unit runs once the fetch and verify have been OBSERVED: place the fetched
@@ -192,7 +196,8 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
         },
         write_source_receipt: SourceReceiptWrite {
           destination: release_locus_tree_receipt_path(root: base_root, revision: rev),
-          revision: rev,
+          revision: source_head,
+          digest: p.binaries_sha256,
         },
         restart_command: systemctl_restart_command(unit: serve_unit, privileged: true),
         revision: rev,

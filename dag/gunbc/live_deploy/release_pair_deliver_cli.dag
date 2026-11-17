@@ -345,8 +345,8 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
       ) {
         FilesystemLinked { path: _ } => {
           let body = release_locus_tree_receipt_body(
-            revision_hex: release_pair_revision_hex(b: receipt.revision),
-            installed_digest: release_pair_installed_digest(member_path: place.destination),
+            revision_hex: receipt.revision as String,
+            installed_digest: receipt.digest as String,
           )
           let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
           match filesystem_create_new(
@@ -367,18 +367,3 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
   }
 }
 
-// The installed revision hex for the receipt, from the plan's bound revision arm. An unbound arm never reaches the
-// install (the fold only plans an install for a bound pair), so the empty fallback is a fail-closed never-path.
-fn release_pair_revision_hex(b: ReleaseRevisionBinding) -> String {
-  match b {
-    RevisionBoundAtEmission { revision: c } => c as String
-    RevisionNotInstalled => ""
-  }
-}
-
-// The digest the install stage named the placed member with: release_pair_install_plan builds the member path as
-// release_locus_member_path(..., name: binaries_sha256), so the final path segment IS the placed binary's sha256.
-// Reading it back recovers the plan's own binding for the receipt (not a second decider).
-fn release_pair_installed_digest(member_path: String) -> String {
-  fold(split(s: member_path, delimiter: "/"), init: "", f: (acc, seg) => if trim(s: seg) == "" { acc } else { seg })
-}

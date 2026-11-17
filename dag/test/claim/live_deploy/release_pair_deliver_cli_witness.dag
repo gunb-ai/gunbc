@@ -21,7 +21,7 @@ import gunbc.live_deploy.release_pair_delivery {
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
-  release_pair_deliver_serving, release_pair_revision_hex, release_pair_installed_digest,
+  release_pair_deliver_serving,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -150,19 +150,3 @@ test fn witness_serving_mixed_is_poison() -> Bool {
   }
 }
 
-// Helper witnesses for the actuator's pure decision halves. revision_hex reads the bound arm's hex and refuses an
-// unbound arm to empty (its never-path); installed_digest recovers the digest from the last path segment of the
-// digest-named member path. Both feed the receipt the actuator writes.
-test fn witness_revision_hex_bound_and_empty() -> Bool {
-  let bound_ok = release_pair_revision_hex(b: RevisionBoundAtEmission { revision: head_hex as CommitSha }) == (head_hex as String)
-  let unbound_empty = release_pair_revision_hex(b: RevisionNotInstalled) == ""
-  if bound_ok { unbound_empty } else { false }
-}
-
-test fn witness_installed_digest_last_segment() -> Bool {
-  if release_pair_installed_digest(member_path: "/opt/gunbc/releases/x/deadbeefcafe") == "deadbeefcafe" {
-    release_pair_installed_digest(member_path: "gunbc_serve") == "gunbc_serve"
-  } else {
-    false
-  }
-}

@@ -104,12 +104,13 @@ test fn witness_plan_good_head_builds_bound_install() -> Bool {
   )
   let want_rev = RevisionBoundAtEmission { revision: main_head() }
   match plan {
-    PlanToInstall { place_binary: FilePlacement { source: src, destination: dst }, write_source_receipt: SourceReceiptWrite { destination: rdst, revision: rrev }, restart_command: rc, revision: _ } =>
+    PlanToInstall { place_binary: FilePlacement { source: src, destination: dst }, write_source_receipt: SourceReceiptWrite { destination: rdst, revision: rrev, digest: rdg }, restart_command: rc, revision: _ } =>
       ((src as String) == (fetched_src as String)) &&
         (dst == release_locus_member_path(root: base_root, revision: want_rev, name: bin_sha256 as String)) &&
         (rdst == release_locus_tree_receipt_path(root: base_root, revision: want_rev)) &&
         (rc == systemctl_restart_command(unit: serve_unit(), privileged: true)) &&
-        (match rrev { RevisionBoundAtEmission { revision: r } => (r as String) == main_sha, _ => false })
+        ((rrev as String) == main_sha) &&
+        ((rdg as String) == (bin_sha256 as String))
     PlanKeepsLastGood { kept: _, reason: _ } => false
   }
 }
