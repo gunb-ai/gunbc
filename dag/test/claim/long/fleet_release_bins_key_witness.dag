@@ -571,7 +571,7 @@ test fn release_bins_retention_admission_is_unfiltered_and_the_plan_excludes_by_
     // a PR-ref crowd can evict main's entries and this assertion goes red with them.
     && string_contains(s: release_bins_retention_union_program(), pattern: "map(select(.ref == \"refs/heads/main\"))")
     // recency is REAL time, not string order (2026-11-100 would sort before 2026-11-2 lexically)
-    && string_contains(s: release_bins_retention_union_program(), pattern: "strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime")
+    && string_contains(s: release_bins_retention_union_program(), pattern: "sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime")
     && string_contains(s: release_bins_retention_union_program(), pattern: "sort_by(._retention_epoch)")
     && string_contains(s: release_bins_retention_union_program(), pattern: ".ref | type) == \"string\"")
 }
@@ -702,6 +702,59 @@ fn retention_div28(i: Int) -> Int {
     Ok { value: q } => q
     Err { value: _ } => 0
   }
+}
+
+// FRACTIONAL-SECOND SHAPES (F3, bright-ibex-807): GitHub's cache API documents created_at like
+// "2019-01-24T22:45:36.000Z"; jq 1.7 strptime rejects that string outright, so without the
+// fractional strip EVERY valid listing would plan-fail and retention would silently never
+// delete. These two executed cases are the discriminators a whole-second fixture cannot be:
+// seventeen main-ref entries whose timestamps all carry .000Z, and seventeen whose shapes are
+// mixed -- both must plan, name the oldest eligible entry (id 1), and keep the newest 16.
+fn retention_family_entry_text_frac(i: Int) -> String {
+  join([
+    "{\"id\": ", int_to_decimal_string(i),
+    ", \"key\": \"release-bins-r", int_to_decimal_string(i),
+    "\", \"ref\": \"refs/heads/main\", \"created_at\": \"2026-", int_to_decimal_string(int_add(retention_div28(i), 1)),
+    "-", int_to_decimal_string(int_add(int_sub(i, int_mul(retention_div28(i), 28)), 1)), "T00:00:00.000Z\"}",
+  ], "")
+}
+
+fn retention_family_entry_text_shape(i: Int) -> String {
+  match int_div_result(i, 2) {
+    // even ids carry the fraction, odd ids do not: one ordering across two shapes
+    Ok { value: q } => if int_eq(int_mul(q, 2), i) { retention_family_entry_text_frac(i: i) } else { retention_family_entry_text(i: i) }
+    Err { value: _ } => retention_family_entry_text(i: i)
+  }
+}
+
+fn retention_shape_page_body(start: Int, end: Int, total: Int, frac: Bool) -> String {
+  join(["{\"total_count\": ", int_to_decimal_string(total), ", \"actions_caches\": ["], "")
+    + join(map(retention_int_range(start, end), i => if frac { retention_family_entry_text_frac(i: i) } else { retention_family_entry_text_shape(i: i) }), ", ")
+    + "]}"
+}
+
+data retention_frac_body: String = retention_shape_page_body(start: 1, end: 17, total: 17, frac: true)
+data retention_mixedshape_body: String = retention_shape_page_body(start: 1, end: 17, total: 17, frac: false)
+
+data script_retention_frac_shapes: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_frac_body)))
+data script_retention_mixed_shapes: TransportScript? = release_bins_transport(parts: retention_claim(answer: retention_answer_part(body: retention_mixedshape_body)))
+
+test fn release_bins_retention_parses_fractional_seconds() -> Bool {
+  let r = run_script(script: script_retention_frac_shapes)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && !string_contains(s: r.stdout, pattern: "plan-failed")
+}
+
+test fn release_bins_retention_orders_mixed_timestamp_shapes() -> Bool {
+  let r = run_script(script: script_retention_mixed_shapes)
+  r.ran
+    && r.success
+    && string_contains(s: r.stdout, pattern: "release-bins retention: due=1 ")
+    && string_contains(s: r.stdout, pattern: "release-bins retention: deleting=1 keep=16")
+    && !string_contains(s: r.stdout, pattern: "plan-failed")
 }
 
 fn retention_family_entry_text(i: Int) -> String {

@@ -1254,12 +1254,16 @@ fn release_bins_retention_page1_program() -> String {
 // exactly what the consumer reads. So: filter to the producer ref FIRST, then one sort over that
 // population, order it by REAL TIME (strptime+mktime: created_at is a string, and sorting the
 // strings lexically would rank 2026-11-100 before 2026-11-2 -- the window would then keep a
-// pseudo-random 16 and delete recent packs; a timestamp jq cannot parse aborts the plan with
+// pseudo-random 16 and delete recent packs. GitHub documents FRACTIONAL seconds
+// ("2019-01-24T22:45:36.000Z") and jq 1.7 strptime REJECTS them outright (review F3,
+// bright-ibex-807 2026-11-17), which would make every valid listing plan-failed and starve
+// retention forever; sub("\.[0-9]+Z$"; "Z") strips an optional fraction so both documented
+// shapes parse. A timestamp in NEITHER shape still aborts the plan with
 // plan-failed rather than ordering deletions on a guess), keep its newest KEEP, everything older in it is due, minus this run's own key,
 // oldest-first, capped. PR-ref entries are simply not this chore's population.
 fn release_bins_retention_union_program() -> String {
   join([
-    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | map(. + {\"_retention_epoch\": (.created_at | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime)}) | sort_by(._retention_epoch) | .[0: (if length > ",
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | map(. + {\"_retention_epoch\": (.created_at | sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime)}) | sort_by(._retention_epoch) | .[0: (if length > ",
     release_bins_retention_keep_text(),
     " then length - ",
     release_bins_retention_keep_text(),
