@@ -147,17 +147,17 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
   }
 }
 
-# Absence is probed through the EXEC route, where a non-zero exit is DATA (`exit_code`),
-# not through `shell.Test.IsDirectory`. Measured at the first wet run of this fixture
-# (2026-11-17): the sweep controls asserted `!is_directory(root)` on a path the sweep had
-# just removed, the transport logged `✗ shell.Test.IsDirectory failed: $ test -d … (exit=1)`
-# and the claim FAILed — the absence they wanted to prove is exactly what made them fail.
-# `shell.Exec.RunArgv` declares `exit { 0 => Unit; nonzero => Unit }` and carries
-# `exit_code: Int` as output, so the probe's verdict is data the caller reads: `test -d`
-# exits 1 when the path is missing or not a directory (2 would be a usage error, which is
-# not absence either — the probe requires 1 exactly, so a broken probe cannot read as a
-# swept scenario). dag/gunbc/hermetic_mock_fidelity.dag is the standing warning about
-# trusting an exit status nobody observed as data.
+// Absence is probed through the EXEC route, where a non-zero exit is DATA (`exit_code`),
+// not through `shell.Test.IsDirectory`. Measured at the first wet run of this fixture
+// (2026-11-17): the sweep controls asserted `!is_directory(root)` on a path the sweep had
+// just removed, the transport logged `✗ shell.Test.IsDirectory failed: $ test -d … (exit=1)`
+// and the claim FAILed — the absence they wanted to prove is exactly what made them fail.
+// `shell.Exec.RunArgv` declares `exit { 0 => Unit; nonzero => Unit }` and carries
+// `exit_code: Int` as output, so the probe's verdict is data the caller reads: `test -d`
+// exits 1 when the path is missing or not a directory (2 would be a usage error, which is
+// not absence either — the probe requires 1 exactly, so a broken probe cannot read as a
+// swept scenario). dag/gunbc/hermetic_mock_fidelity.dag is the standing warning about
+// trusting an exit status nobody observed as data.
 fn roadmap_carrier_path_is_absent(path: String) -> Bool {
   let probe = shell.Exec.RunArgv(
     program: "test" as NonEmptyStr,
