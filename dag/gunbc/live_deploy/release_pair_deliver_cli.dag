@@ -75,9 +75,11 @@ data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack dow
 data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's sha256 could not be observed on the executing host"
 // Why the pair keeps serving when the build-key verdict did not admit the fetched pack (consumed by pack_verify).
 data release_pair_verdict_refused_reason: NonEmptyStr = "the consumer build-key check did not admit the fetched release-bins pack on the executing host"
-// The gh api path that OBSERVES origin/main's head (the head TO DEPLOY). ONE row (single_authority), consumed by the
-// entry's call to gh_main_head_command; the gh builder takes the path whole so the repo slug is not re-joined there.
-data release_pair_main_head_api_path: NonEmptyStr = "repos/gunb-ai/gunbc/commits/main"
+// The gh api path that OBSERVES origin/main's head (the head TO DEPLOY), DERIVED from the one repo-slug row so the
+// slug is written once (single_authority). Consumed by the staged fn's call to gh_main_head_command.
+fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
+  join(["repos/", slug, "/commits/main"], "")
+}
 // Why the pair keeps serving when origin/main's head could not be observed (consumed by the entry's head leg).
 data release_pair_no_head_reason: NonEmptyStr = "origin/main's head could not be observed on the executing host"
 // Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run leg).
@@ -181,7 +183,7 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 // (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by release_pair_deliver_cli_witness.
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
   let head_outcome = run_shell_command_capture(
-    command: gh_main_head_command(api_path: release_pair_main_head_api_path as String),
+    command: gh_main_head_command(api_path: release_pair_main_head_api_path(slug: release_pair_deliver_repo_slug)),
     transport: LocalExec,
   )
   match release_pair_decode_head(outcome: head_outcome) {
