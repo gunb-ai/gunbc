@@ -22,7 +22,7 @@ import gunbc.live_deploy.release_locus {
   ReleasePairDelivery, PairInstalled, PairRefused,
   deliver_release_pair, delivered_pair_revision,
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
-  release_locus_dir, release_locus_binary_path,
+  release_locus_dir, release_locus_member_path,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary,
@@ -97,7 +97,7 @@ test fn witness_good_head_installs_bound_pair() -> Bool {
       (p.main_head as String) == main_sha &&
         (p.source_head as String) == main_sha &&
         (p.binaries_sha256 as String) == bin_sha256 &&
-        l.root == base_root &&
+        l.locus == want_dir &&
         want_dir == release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head() })
     PairRefused { reason: _, kept: _ } => false
   }
@@ -166,9 +166,9 @@ test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
     verified: true,
   )
   match d {
-    PairInstalled { pair: p, locus: l } =>
+    PairInstalled { pair: p, locus: _ } =>
       let rev = delivered_pair_revision(pair: p)
-      let bin_path = release_locus_binary_path(locus: l, revision: rev)
+      let bin_path = release_locus_member_path(root: base_root, revision: rev, name: p.binaries_sha256 as String)
       let step = DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: bin_path as NonEmptyStr }
       declared_containing(
         rs: deployment_artifact_read_set(step: step, spec: srv1_spec(), instance: srv1_inst(), revision: rev),
