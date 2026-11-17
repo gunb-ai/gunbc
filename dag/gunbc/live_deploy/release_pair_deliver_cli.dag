@@ -23,7 +23,19 @@ import extdeps.tools.gh {
 }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+  RevisionNotInstalled,
+}
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
+  ReleaseBoundToTree,
+  ReleaseMixed,
+  ReleaseSurfaceMixed,
+  ReleaseBindingUnobserved,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   DeliveryPlan, PlanKeepsLastGood,
@@ -213,5 +225,21 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             serve_unit: serve_unit,
           )
       }
+  }
+}
+
+// Maps the OBSERVED deployed binding (from the serve gate) to the fold's ReleaseRevisionBinding: what
+// keep-last-good protects is the revision the deployed TREE is on, so it is read from the bound arm's
+// GitObjectId via the single GitObjectId->hex authority (extdeps.git.object_store). Reached only with a
+// bound tree — the serve gate refuses the unobserved/mixed arms before the actuator runs the fold — so the
+// mixed and unobserved arms are fail-closed poison here (gunbc.design_argument::fail_closed): they must
+// never yield a usable binding, and reaching one reds the golden gate rather than placing a wrong pair.
+fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ReleaseRevisionBinding {
+  match binding {
+    ReleaseBoundToTree { revision: r, surface: _ } =>
+      RevisionBoundAtEmission { revision: git_object_id_wire_hex(oid: r) as CommitSha }
+    ReleaseMixed { tree_revision: _, process_revision: _ } => RevisionNotInstalled
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => RevisionNotInstalled
+    ReleaseBindingUnobserved { cause: _ } => RevisionNotInstalled
   }
 }

@@ -5,7 +5,15 @@ module test.claim.live_deploy.release_pair_deliver_cli_witness
 // (The effectful entry that PRODUCES these ProcessOutcomes runs the unit's own delivery at deploy; the argv builders
 // are consumed there — this step witnesses the decoding that decision depends on.)
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, CommitSha }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.live_deploy.release_binding {
+  ReleaseBoundToTree,
+  ReleaseMixed,
+  ReleaseBindingUnobserved,
+}
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
 import std.optional { Optional, Present, Absent }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.live_deploy.release_pair_delivery {
@@ -13,6 +21,7 @@ import gunbc.live_deploy.release_pair_delivery {
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
+  release_pair_deliver_serving,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -101,5 +110,42 @@ test fn witness_pack_verify_refused_is_not_verified() -> Bool {
   match release_pair_pack_verify(ProcessRefused { exit_code: 1, stderr: "build key mismatch" }, pack_dir_str) {
     Refused { reason: _ } => true
     VerifiedOn { pack_dir: _ } => false
+  }
+}
+
+// Serving-map witnesses. The OBSERVED bound tree revision must flow to the fold as RevisionBoundAtEmission
+// carrying the same hex (via the single GitObjectId->hex authority), so keep-last-good protects the revision
+// actually deployed. head_hex is the 40-hex sha1 fixture; git_object_id_from_untagged_hex/wire_hex round-trip it.
+fn srv_surface() -> Fnv1a64Structural { Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr } }
+
+test fn witness_serving_bound_carries_tree_revision_hex() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() }) {
+        RevisionBoundAtEmission { revision: c } => (c as String) == (head_hex as String)
+        RevisionNotInstalled => false
+      }
+  }
+}
+
+// Unobserved binding is fail-closed poison, never a usable binding (gunbc.design_argument::fail_closed).
+test fn witness_serving_unobserved_is_poison() -> Bool {
+  match release_pair_deliver_serving(ReleaseBindingUnobserved { cause: "no deployed tree" }) {
+    RevisionNotInstalled => true
+    RevisionBoundAtEmission { revision: _ } => false
+  }
+}
+
+// A drifted (mixed) binding is also poison here: the serve gate refuses it upstream, so a bound arm must
+// never be fabricated from a mixed tree. Discriminating control for the bound-arm mapping above.
+test fn witness_serving_mixed_is_poison() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_deliver_serving(ReleaseMixed { tree_revision: r, process_revision: "deadbeef" as CommitSha }) {
+        RevisionNotInstalled => true
+        RevisionBoundAtEmission { revision: _ } => false
+      }
   }
 }
