@@ -255,6 +255,7 @@ import test.claim.roadmap.roadmap_event_carrier_fixture {
   roadmap_event_carrier_mint_scratch,
   roadmap_event_carrier_provision,
   roadmap_event_carrier_sweep,
+  roadmap_carrier_path_is_absent,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderCompleted
@@ -948,7 +949,7 @@ test fn the_wet_carrier_scenario_is_swept_after_the_launch_gate_claim() -> Bool 
   claim("the launch-gate claim judged true over the committed log", run.result)
     && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
     && claim("the sweep of that scratch reported success", run.swept)
-    && claim("the scenario root it minted is gone once the run swept it", !shell.Test.IsDirectory(path: run.root as FilePath))
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
 }
 
 // THE POSITIVE ARM OF THE OWNERSHIP CONTRACT. The refusal control below is only worth anything if the gate admits
@@ -969,7 +970,7 @@ test fn the_wet_carrier_admits_the_scenario_instance_it_was_handed() -> Bool {
   })
   run.result && run.swept
     && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
-    && claim("the scenario root it minted is gone once the run swept it", !shell.Test.IsDirectory(path: run.root as FilePath))
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
 }
 
 // THE OWNERSHIP CONTRACT, WITNESSED ON THE REFUSAL ARM. An instance minted under a FOREIGN scratch — real paths,
@@ -987,7 +988,7 @@ fn carrier_ownership_refusal_witness(instance: HostDashboardInstance, scratch: R
         RoadmapEventCarrierRefused { step: step, detail: _ } => claim("the fixture refused an instance it does not own, at " + step, step == "ownership")
         RoadmapEventCarrierReady { scratch: _ } => claim("the fixture stood a carrier up over an instance minted outside the scratch it was given", false)
       }
-      let untouched = !shell.Test.IsDirectory(path: concat(foreign.path, "/source") as FilePath)
+      let untouched = roadmap_carrier_path_is_absent(concat(foreign.path, "/source"))
       let foreign_swept = roadmap_event_carrier_sweep(scratch: foreign)
       claim("the carrier the route must refuse was refused", verdict)
         && claim("the foreign tree the fixture had no right to touch was never created", untouched)
@@ -1001,7 +1002,7 @@ test fn the_wet_carrier_refuses_an_instance_it_does_not_own_and_sweeps_its_scena
   claim("the ownership refusal was judged", run.result)
     && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
     && claim("the sweep of that scratch reported success", run.swept)
-    && claim("the scenario root it minted is gone once the run swept it", !shell.Test.IsDirectory(path: run.root as FilePath))
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
 }
 
 
