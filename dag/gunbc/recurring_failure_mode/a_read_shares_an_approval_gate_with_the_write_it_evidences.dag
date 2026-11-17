@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_read_shares_an_approval_gate_with_the_write_it_evidences
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_read_shares_an_approval_gate_with_the_write_it_evidences: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_read_shares_an_approval_gate_with_the_write_it_evidences" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "a metadata read that grounds an approval decision is placed under the SAME job-level ceremony as the write it evidences: its job needs (or its steps sit behind) an operator wait, so the evidence that would unblock the decision cannot be produced until an unrelated approval lands. The read's availability is then chosen by someone else's step history -- the same authority-by-contingency class the '||' fallback ruling rejected (a read made contingent on another step's outcome), just expressed at job-needs grain instead of step-output grain. The defect is a missing proof: nothing checked that an evidence-producing step is reachable without the approval it informs.",
+
+    "SIGHTING, gunb-ai/gunbc fleet-converge run 44134741714 (2026-11-17, gcp_iam_converge on main 7f27f475982e0bc9dbb4ab534fa216ef69cc264d): the gcp-iam-bootstrap-request job found missing cells and entered its operator broker wait (up to 259 minutes), and the gcp-iam-converge job -- which held the srv15 bmc-secret versions read, the read whose receipt grounds the srv15 arrival accessor pin -- stayed skipped while gated on needs.gcp-iam-bootstrap-request...bootstrap_approved. The pin needs the receipt; the receipt waited on an unrelated bootstrap write's approval. The manager ruled (no new job -- the job roster is closed to growth): move the mint/read/upload trio INTO the request job, ahead of its wait-for-operator step, under the job's mode-only gate, with claims pinning that neither the job gate nor the read's own gate mentions an approval and that the trio precedes the wait step. test.claim.workflow_dispatch_input_witness::the_srv15_read_runs_without_any_approval_gate pins it; re-adding an approval gate to the trio, or moving it back behind the wait step, flips the claim.",
+
+    "RUNG: mitigatable -- the fleet_converge step claims pin the gated-independence of the ONE rostered evidence read; an unrostered evidence read under an approval ceremony still passes. ATTAINABLE CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, at capability grain: the emit resolves every produced artifact/receipt to its declared consumers and refuses where an ancestor of the producing step (job needs, or an if_condition on the step or its job) mentions an approval or broker output that the consumer's blocker itself is waiting on -- so evidence that must exist before a decision cannot be placed behind that decision.",
+  ],
+
+  evidence: [],
+}

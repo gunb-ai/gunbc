@@ -8588,7 +8588,8 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
         // THE SRV15 EVIDENCE READ, moved out of the converge job (smart-crane-730, after run 44134741714):
         // the versions read is the pin's grounding, and a read whose credential steps sit BEHIND an operator
         // broker wait is contingent on that approval -- the same class as the `||` fallback ruling rejected
-        // (a read made to depend on another step's outcome). Here the job's own if is `mode == gcp_iam_converge`
+        // (a read made to depend on another step's outcome; filed as recurring_failure_mode row
+        // a_read_shares_an_approval_gate_with_the_write_it_evidences after run 44134741714). Here the job's own if is `mode == gcp_iam_converge`
         // (no approval in it) and these steps precede the wait-for-operator step, so every converge dispatch
         // reads and uploads its receipt. Fail-closed stays: a 403 reddens this job BEFORE the request files,
         // which is loud by design -- the read's own getVersions grant is live iam-observe authority (proven by
