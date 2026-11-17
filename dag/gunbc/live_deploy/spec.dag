@@ -1038,6 +1038,27 @@ fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> 
   join(["/etc/systemd/system/", deployment_belt_standings_refresh_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
+// THE PAIR-DELIVERY unit pair (node://lab-converges-release-pair): the executing consumer of the staged wet
+// delivery CLI gunbc.live_deploy.release_pair_deliver_cli::release_pair_deliver_once_cli. Same stem discipline as
+// the standings-refresh backstop; the oneshot runs the delivery (fetch -> observed build-key verify -> fold ->
+// place + restart) and the timer re-arms it. This unit is what makes the fold + the wet pipeline EXECUTE on a
+// schedule (closes the consumer-dangling finding on the fold); it is registered in apply_legs, not hand-run.
+fn deployment_pair_delivery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.service"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.timer"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
 // The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
 // derived from the instance stem (unconditional membership, so the twin mirror holds and
