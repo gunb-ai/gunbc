@@ -2976,14 +2976,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
       line: ticket(t: fields(
           headline: "Dogfood G1: the immutable subject and the shared computation are each established by their own record, read by the route's receipt",
-          boundary: "Serves gunbc.plans.factory_first_customer, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G1: one attempt's verification runs through the materialization provider over the bounded store, and the receipt reads an immutable-subject record and a shared-computation record written by that run (the reader gunb-ai/gunbc#13097 declared as a frontier, shared_computation_observe_for_attempt, consumed by DogfoodRouteReceipt). Lands alone against main after factory-attempt-execution-on-fabric-lease, so there is one writer of attempt records to bind to; never as a stack.",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G1: one attempt's verification runs through the materialization provider over the bounded store, and the receipt reads an immutable-subject record and a shared-computation record written by that run (the reader gunb-ai/gunbc#13097 declared as a frontier, shared_computation_observe_for_attempt, consumed by DogfoodRouteReceipt). Lands alone against main after factory-attempt-execution-on-fabric-lease, so there is one writer of attempt records to bind to; never as a stack.",
           displaced_cost: "gunb-ai/gunbc#13097 carried this work and closed unmerged on 2026-10-09: a stacked PR whose base moved, a conflict in the generated emit file, and seven witness failures identical on main. Until the record exists the route's receipt is withheld at this stage and the dogfood window cannot start.",
           first_slice: "The reader consumed: DogfoodRouteReceipt reads the shared-computation record of one real attempt, with SharedComputationAbsent typed by its closed cause, and refuses on an attempt that has none.",
           red_control: "An attempt whose verification did not go through the provider yields SharedComputationAbsent with its cause, never a complete stage; a receipt read over a record from another attempt refuses; deleting the reader's consumer makes the route's acceptance red.",
           out_of_scope: "Metering (G3, landed), result returned (G4, landed), isolated execution (G5, its own node); the belt-to-fabric cut itself.",
           handback: "The two records written by one real attempt on the route, the receipt reading them, and the stage no longer owed."
         )),
-      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_first_customer: the one dogfood stage whose record was attempted and lost to a stacked base."),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the one dogfood stage whose record was attempted and lost to a stacked base."),
     ),
     roadmap_node(
       identity: "rn_X05JQFPT0MQG81ASDVDNMXTXAF",
@@ -2992,14 +2992,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
       line: ticket(t: fields(
           headline: "Dogfood G5: a record binds the granted unit's observed start and exit to its grant and fence, and cleanup returns both",
-          boundary: "Serves gunbc.plans.factory_first_customer, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G5: one attempt runs as a capped systemd unit under a placement grant and a fence (the dogfood bar, operator ruling 2026-10-03; microVM isolation out of scope), and a record binds the unit's observed start and exit to that grant and fence; cleanup returns the grant and the fence and is its own record. The receipt reads both.",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G5: one attempt runs as a capped systemd unit under a placement grant and a fence (the dogfood bar, operator ruling 2026-10-03; microVM isolation out of scope), and a record binds the unit's observed start and exit to that grant and fence; cleanup returns the grant and the fence and is its own record. The receipt reads both.",
           displaced_cost: "Without the record the route can show a placed grant and a finished unit without being able to say they were the same attempt, so isolation is asserted, not observed; the stage is owed and the receipt withheld.",
           first_slice: "One real attempt's unit start and exit observed and bound to its grant record, read by the receipt; its RED a unit record naming another attempt's grant, refused.",
           red_control: "A unit record whose grant or fence names another attempt refuses; an attempt with a grant and no unit record is owed, never complete; cleanup that does not return the placed grant keeps the stage owed.",
           out_of_scope: "MicroVM isolation (F5, microvm-runtime-durable-state); the G1 records; billing.",
           handback: "The binding and cleanup records of one real attempt, the receipt reading them, and the stage no longer owed."
         )),
-      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_first_customer: the dogfood stage that had no record and no node."),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the dogfood stage that had no record and no node."),
     ),
     roadmap_node(
       identity: "rn_TCZ82BX9PRSBAW1Z4WVSFQT023",
@@ -5175,6 +5175,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "factory-dogfood-route", parent: "dogfood-g5-isolated-execution-record"),
     edge(child: "fabric-worker-event-log", parent: "factory-attempt-execution-on-fabric-lease"),
     edge(child: "service-evidence-capture", parent: "factory-dogfood-route"),
+    edge(child: "factory-dogfood-route", parent: "ci-executed-coverage-receipt"),
     edge(child: "demand-m1c", parent: "demand-m1b"),
     edge(child: "demand-m2", parent: "demand-m1c"),
     edge(child: "demand-m3b", parent: "demand-m2"),

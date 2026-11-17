@@ -1,31 +1,31 @@
-module gunbc.plans.factory_first_customer
+module gunbc.plans.factory_dogfood
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
 
-fn factory_first_customer_body() -> List<MarkdownBlock> {
+fn factory_dogfood_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. How it is realized is downstream; the work items live under `gunbc.roadmap.roadmap_authority` (the `fabric-bringup`, `vm-service` and `factory` projects) and name this intention."),
       p(text: "**Grounding:** `gunbc.design_argument::fail_closed` (a published property with no receipt is not published), `gunbc.design_argument::guarantee_ladder` (a service dimension stays opaque only above a falsifiable quality floor with a named consequence), `gunbc.design_argument::consumption` (a dependency is admitted by its consumer), `gunbc.design_argument::selection_precedes_convergence`, `gunbc.design_argument::epistemic_humility`."),
     ]),
     h2(text: "1. Intention"),
-    p(text: "**What:** the factory lands and verifies work on our own fleet without operator hand-integration, and the same fleet serves the first external customer compute whose every promised property is observed rather than assumed."),
-    p(text: "**Why:** the factory exists to turn every other project's tasks into landed, verified changes without the operator's time (`factory`'s own contribution to the root), and the operator's go/no-go on an external customer is their own confidence from dogfooding (`service-evidence-capture`). Today the operator hand-integrates, hand-redeploys the lab, runs the merge-head check per pull request and accepts every node, so their time is the throughput limit of every program, this one included. The cost removed is operator time per landing and the gap between a property we promise and a property we have observed."),
+    p(text: "**What:** a selected work item travels through fabric dispatch, durable execution, implementation, exact-head verification, publication, independent review, manager acceptance and merge; interruption and restart lose no state; the operator does not hand-integrate it. Split from the first-customer service on 2026-11-17 (the program review: two goals with different consumers, risks and evidence; `gunbc.plans.first_customer_service` holds the other)."),
+    p(text: "**Why:** the factory exists to turn every other project's tasks into landed, verified changes without the operator's time (`factory`'s own contribution to the root). Today the operator hand-integrates, hand-redeploys the lab, runs the merge-head check per pull request and accepts every node, so their time is the throughput limit of every program, this one included. The cost removed is operator time per landing."),
     p(text: "**Done when** (each assessed against the tree or against a receipt unless marked as the operator's judgement):"),
     ul(items: [
       li(text: "One request has travelled the whole factory on the real route and come back as an independently reviewed, published candidate, read by the acceptance function of `gunbc.roadmap.roadmap_dogfood_route` from the durable records of one attempt (`factory-dogfood-route`'s handback: the dogfood start receipt)."),
       li(text: "Every step a change traverses (orientation, implementation, test, commit, publication, review, verification) survives process death and controller restart as workflow-owned durable state (`factory`'s red control)."),
       li(text: "The required CI verdict names what it executed and is published from an admitted receipt for the exact commit (`ci-end-to-end-execution`, `work-exec-5-ci-verdict-from-receipt`)."),
-      li(text: "A machine artifact is classified before change, a stalled route takes no new work, and no published property lacks an acceptance receipt (`vm-service`'s red control); every non-success has a declared billing or credit outcome (`failure-billing-outcomes`)."),
-      li(text: "Operator's judgement: the dogfood window has run long enough on the real route for the operator to say yes to an external customer."),
+      li(text: "The dogfood route is accepted only with exact-head verification evidence: the verifier establishes what ran for exactly which commit (`ci-executed-coverage-receipt`, now a declared parent of `factory-dogfood-route`), because an independently reviewed candidate over an unverified head is not the factory (the program review's correction)."),
+      li(text: "Operator's judgement: the dogfood window has run long enough on the real route for the operator to trust the factory with the first-customer service's work (`gunbc.plans.first_customer_service`)."),
     ]),
     h2(text: "2. The backward structure, read at e346a2c89daa"),
     p(text: "This program has no declared dependency edges. `vm-service`, `factory-dogfood-route`, `factory` and `fabric-bringup` are related only by project membership, and `gunbc.roadmap.roadmap_authority` declares no edge among the roughly sixty nodes under `fabric-bringup`, `vm-service`, `factory`, `factory-on-fabric`, `work-execution-redesign`, `ci-end-to-end-execution` and their siblings. The order lives in prose: `factory-dogfood-route` names the stages its receipt still owes to other changes, and `fabric-bringup` says in its red control that work gated on the fabric does not dispatch until it is accepted. So the backward walk below is read from node text, and its first realization obligation is to declare these edges so that a manager can read the path instead of re-deriving it."),
     ol(items: [
-      li(text: "**The goal.** The operator says yes to an external customer, resting on receipts from the dogfood window (`service-evidence-capture` pins the window's joined evidence to the start receipt)."),
+      li(text: "**The goal.** The dogfood window runs on the real route and its receipts are what the first-customer service rests on (`service-evidence-capture` pins the window's joined evidence to the start receipt)."),
       li(text: "**Just before it.** The dogfood start receipt exists: one complete attempt on the real route, every stage established by its own typed record (`factory-dogfood-route`)."),
       li(text: "**The stages the receipt still owes**, each to the change that writes its own record: G1 cutover (immutable subject, shared computation), G5 isolated execution (a record binding the granted unit's observed start and exit to its grant and fence), G3 metering (a Final metering record), G4 request binding and result returned. The attempt and lease duplicate beside fabric is deleted first (`factory-attempt-execution-on-fabric-lease`), because the srv1 lab defects of 2026-11-04 are its symptoms and every belt fix is work the cutover deletes."),
       li(text: "**Before any of that is observable.** The lab serves the head it was built from (`lab-standings-track-main` and `lab-converges-release-pair`, gunb-ai/gunbc#16592): until the lab tracks main, a new plan node appears only after a hand redeploy, the workspace page cannot decode the `retired` event kind, and no acceptance can be read from the workspace at all."),
@@ -42,7 +42,7 @@ fn factory_first_customer_body() -> List<MarkdownBlock> {
     ]),
     p(text: "**The stall that is not a layer.** 52 roadmap texts wait on \"the reviewed contracts document\": the six F nodes under `factory-on-fabric` and `microvm-runtime-durable-state` (F1 pool on the live line, F2 every attempt takes a seat, F3 host budget, F4 builds keyed on Rust inputs, F5 off the control host, F6 scoped worker grants) have been DRAFT since 2026-10-01 pending a document that has no path in the tree and was never produced. This intention is that document's replacement: each F node is re-cut against the layer it belongs to (F1 and F2 to layer 1, F5 to layer 2's G5 record, F6 to the G0 question) or retired, by the operator's word. Until then they are not reported as blocked on anything real."),
     h2(text: "4. What is outside this intention"),
-    p(text: "The customer-workspace-service rows (review sheets, the census App), direct website serving, the harness alignment rows and the fleet health and firmware rows under `fabric-application-authority` each serve a property the service will promise, but none is a prerequisite of the dogfood start receipt. They are ranked against it by the operator, not ordered before it by this plan."),
+    p(text: "Everything the service promises to a customer (admission, isolation, metering, billing, recovery, health) is `gunbc.plans.first_customer_service`; the harness alignment rows and the SCM rows are not prerequisites of the dogfood start receipt and are ranked against it by the operator."),
     h2(text: "5. Open questions"),
     ul(items: [
       li(text: "**G0, `contained-development-execution`.** A draft portfolio gate (no boundary, no red control, no edges, no contracts document after six weeks) that forbids new autonomous dispatch while the current process already dispatches autonomous workers. The 2026-10-03 ruling set the dogfood bar at a capped systemd unit plus a lease. Either G0 gets a first slice (`factory-f6-scoped-worker-grants`) and a boundary, or it is retired to a ruling; it must not stay an undefined standing veto on the route this plan converges on."),
@@ -54,10 +54,10 @@ fn factory_first_customer_body() -> List<MarkdownBlock> {
   ]
 }
 
-data factory_first_customer_plan: Plan = Plan {
+data factory_dogfood_plan: Plan = Plan {
   projection: PlanIsAuthorityOnly,
-  slug: "factory-first-customer",
-  title: "Factory and first customer: work lands without the operator, and the fleet serves what it has observed",
-  body: factory_first_customer_body(),
+  slug: "factory-dogfood",
+  title: "Factory dogfood: a work item lands and is verified without the operator",
+  body: factory_dogfood_body(),
   retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: the dogfood start receipt is read by the acceptance function, the factory's and vm-service's red controls hold on the tree, and the operator has said yes to an external customer.") },
 }

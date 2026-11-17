@@ -33,7 +33,7 @@ fn serves(node: String, module_path: String, plan: String, layer: Int) -> Intent
 }
 
 data names_without_imports_intention: String = "gunbc.plans.names_without_imports"
-data factory_first_customer_intention: String = "gunbc.plans.factory_first_customer"
+data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
@@ -53,22 +53,22 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-ambiguity-discharge", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "namespace-v2-import-completion", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "import-grammar-and-lines-deleted", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
-  // gunbc.plans.factory_first_customer, section 3.
-  serves(node: "factory-attempt-execution-on-fabric-lease", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 1),
-  serves(node: "dogfood-g1-shared-computation-record", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 2),
-  serves(node: "dogfood-g5-isolated-execution-record", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 2),
-  serves(node: "factory-dogfood-route", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 3),
-  serves(node: "service-evidence-capture", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 3),
-  serves(node: "fabric-worker-event-log", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 3),
-  serves(node: "serve-held-open-response", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 3),
-  serves(node: "work-exec-0-identity-estimate-split", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-1-placement-backend-selection", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-2-durable-route-first-consumer", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-3-automatic-sizing", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-4-local-work-cutover", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "work-exec-6-one-ledger-per-host", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
-  serves(node: "ci-executed-coverage-receipt", module_path: factory_first_customer_intention, plan: "factory_first_customer_plan", layer: 4),
+  // gunbc.plans.factory_dogfood, section 3.
+  serves(node: "factory-attempt-execution-on-fabric-lease", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 1),
+  serves(node: "dogfood-g1-shared-computation-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
+  serves(node: "dogfood-g5-isolated-execution-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
+  serves(node: "factory-dogfood-route", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "service-evidence-capture", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "fabric-worker-event-log", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "serve-held-open-response", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "work-exec-0-identity-estimate-split", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-1-placement-backend-selection", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-2-durable-route-first-consumer", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-3-automatic-sizing", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-4-local-work-cutover", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "work-exec-6-one-ledger-per-host", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "ci-executed-coverage-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
   // gunbc.plans.v2_self_host, section 2: the layers are the backward structure's numbered items, goal downward.
   serves(node: "emitted-contracts-held", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),
   serves(node: "native-frontier-required-lane", module_path: v2_self_host_intention, plan: "v2_self_host_plan", layer: 2),

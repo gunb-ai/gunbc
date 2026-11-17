@@ -32,7 +32,7 @@ test fn the_namespace_intention_has_a_layer_zero_and_a_layer_three() -> Bool {
 }
 
 test fn nodes_serving_is_in_layer_order() -> Bool {
-  let i = decl_ref(module_path: "gunbc.plans.factory_first_customer", decl_name: "factory_first_customer_plan")
+  let i = decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan")
   let rows = nodes_serving(intention: i)
   fold(rows, init: 0, f: fn(acc, b) { if acc < 0 { acc } else { if b.layer >= acc { b.layer } else { 0 - 1 } } }) >= 0
 }
