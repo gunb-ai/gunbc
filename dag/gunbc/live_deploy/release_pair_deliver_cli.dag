@@ -95,6 +95,13 @@ data release_pair_no_run_for_head_reason: NonEmptyStr = "the bound head has no s
 // wrong workflow name). NOT a CI wait — the delivery could not OBSERVE whether a pack exists, so it is a refusal the
 // timer must surface (fail_closed), never a green tick that silently stops tracking main (review 96216).
 data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins run discovery (gh run list) could not be executed on the host (auth, network, rate limit, or workflow name); this is a delivery refusal, not a CI wait"
+// Why the pair refuses when the discovery RAN but its stdout is NON-EMPTY yet unparseable (no tab separator / empty
+// head field): the observation is untrustworthy (a gh output-shape or jq change), so this is a refusal, NOT the
+// benign "no successful run" wait — otherwise delivery would silently stop tracking main forever (review 96219).
+data release_pair_run_list_malformed_reason: NonEmptyStr = "the release-bins run discovery returned unparseable output (expected <run-id>TAB<head-sha>); refusing to guess a run"
+// Why the pair keeps serving when the deployed tree is ALREADY at the bound head: nothing new to deliver, so the
+// timer must not re-download/re-link the same revision and go red on an existing link (review 96219). A benign wait.
+data release_pair_already_at_head_reason: NonEmptyStr = "the deployed tree already serves the bound head; nothing to deliver this tick"
 
 // ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
 // The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
@@ -135,8 +142,8 @@ type ReleasePairRunObservation {
 // The run-list decode is a declared three-way sum, NOT an option collapsed onto none (review 96216): "a successful
 // run exists for the head", "no successful run for the head yet (benign CI wait)" and "discovery itself refused"
 // are three distinct outcomes that must not be conflated — only the middle one is a benign wait.
-data ReleasePairRunLookup =
-    RunLookupFound { run: ReleasePairRunObservation }
+type ReleasePairRunLookup
+  = RunLookupFound { run: ReleasePairRunObservation }
   | RunLookupNoneForHead
   | RunLookupDiscoveryRefused { reason: NonEmptyStr }
 
@@ -148,7 +155,7 @@ fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
       } else {
         let parts = split(s: trim(s: t), delimiter: "\t")
         if (last(l: parts) as String) == (first(l: parts) as String) || (last(l: parts) as String) == "" {
-          RunLookupNoneForHead
+          RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
         } else {
           RunLookupFound {
             run: ReleasePairRunObservation {

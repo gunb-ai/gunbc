@@ -23,7 +23,7 @@ import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
   release_pair_deliver_serving, release_pair_reason_is_benign_wait, release_pair_no_run_for_head_reason,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
-  release_pair_run_discovery_refused_reason,
+  release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -187,7 +187,10 @@ test fn witness_decode_run_splits_run_id_and_head_sha() -> Bool {
       (r.run_id as String) == "44015305678" && (r.head_sha as String) == "1234567890abcdef1234567890abcdef12345678"
     _ => false
   }
-  let no_tab = release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678" }) == RunLookupNoneForHead
+  let no_tab = match release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678" }) {
+    RunLookupDiscoveryRefused { reason } => (reason as String) == (release_pair_run_list_malformed_reason as String)
+    _ => false
+  }
   if ok { no_tab } else { false }
 }
 
