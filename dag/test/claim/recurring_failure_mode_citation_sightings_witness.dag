@@ -1,0 +1,234 @@
+module test.claim.recurring_failure_mode_citation_sightings_witness
+
+// WITNESSES FOR THE CITATION ROW'S NEW SIGHTINGS (2026-11-17, added at smart-crane-730's request).
+//
+// THE RULE THIS ENTRY WRITES ITSELF TO, and review 96154 made explicit: a claim is filed only where its
+// referent lies OUTSIDE the text being checked. Four such referents exist here. (1) The failure-mode
+// population, which `gunbc.recurring_failure_mode.roster` derives from the row files themselves, so a row
+// whose declared identity does not match the file that declares it is absent from it. (2) The witness-deferral
+// freeze ledger, which is what actually decides whether the citation resolver runs on any cadence. (3) The
+// shape of the tokens a run receipt carries: a short commit tree and a sha256 digest have lengths and an
+// alphabet, and those are properties of those encodings, not of this file. (4) The row's own typed fields,
+// read against each other -- its rung standing, its evidence references.
+//
+// WHAT THIS ENTRY DELIBERATELY DOES NOT CLAIM. The receipt counts (how many citations a branch added, how
+// many printed unresolved) and the run's wall-clock, diagnostic text and outcome have no referent left in
+// this tree: they belong to one hand dispatch at one tree that nothing here can re-read. A string_contains
+// over the receipt that holds them would notice an edit and would not notice an error, so no such claim is
+// filed. If a future pass can resolve a `DeclarationRef` at construction -- the disposition roster plus the
+// refusal gunbc#15273 extends toward -- then the citations themselves become referents and this entry gains
+// claims over them; until then the honest guard is the freeze ledger, which says the resolver is parked.
+import std.algebra { count_equal, fold_list, length, list_append }
+import v2.std.text { string_all_chars_in }
+import std.decl_ref { DeclarationRef }
+import gunbc.recurring_failure_mode {
+  AtCeiling,
+  BelowCeiling,
+  RecurringFailureMode,
+  RungRead,
+  RungStanding,
+  RungUnread,
+}
+import gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved {
+  declaration_reference_cites_a_declaration_nothing_resolved,
+  declaration_reference_cites_a_declaration_nothing_resolved_frozen_run,
+}
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.witness.witness_deferral_freeze { frozen_path_deferrals }
+
+fn identity_is_in_the_derived_roster(identity: String) -> Bool {
+  fold_list(
+    xs: recurring_failure_mode_roster,
+    empty: false,
+    cons: (acc, row) => acc || (row.identity == identity),
+  )
+}
+
+fn strings_match(left: String, right: String) -> Bool { left == right }
+
+// The freeze ledger's own record for an entry file: the union of the function lists it carries under that
+// exact path. Empty means no freeze carries that path, which is a different fact from "frozen".
+fn frozen_functions_for(entry_file: String) -> List<String> {
+  fold_list(
+    xs: frozen_path_deferrals,
+    empty: [],
+    cons: (acc, deferral) =>
+      if deferral.entry == entry_file { list_append(left: acc, right: deferral.functions) } else { acc },
+  )
+}
+
+fn count_equal_to(items: List<String>, item: String) -> Int {
+  count_equal(xs: items, item: item, eq: strings_match)
+}
+
+// Membership in BOTH directions, which is the identity join: one-way membership would let a carrier name a
+// subset of the freeze's list and silently drop a function that is parked. No count is compared to a count.
+fn lists_agree(left: List<String>, right: List<String>) -> Bool {
+  fold_list(
+    xs: left,
+    empty: true,
+    cons: (acc, item) => acc && (count_equal_to(items: right, item: item) > 0),
+  )
+    && fold_list(
+      xs: right,
+      empty: true,
+      cons: (acc, item) => acc && (count_equal_to(items: left, item: item) > 0),
+    )
+}
+
+fn is_hex(text_token: String) -> Bool { string_all_chars_in(s: text_token, alphabet: "0123456789abcdef") }
+
+// Properties of the encodings, not of this file: git's short tree form and a sha256 digest in hex.
+fn is_short_tree_token(text_token: String) -> Bool { length(xs: text_token) == 12 && is_hex(text_token) }
+
+fn is_sha256_digest(digest: String) -> Bool { length(xs: digest) == 64 && is_hex(digest) }
+
+fn is_below_ceiling(standing: RungStanding) -> Bool {
+  match standing {
+    BelowCeiling { blocker: _ } => true
+    AtCeiling { rung: _, ceiling_reason: _ } => false
+  }
+}
+
+fn decl_ref_names(ref: DeclarationRef, module_path: String, decl_name: String) -> Bool {
+  (ref.module_path == module_path) && (ref.decl_name == decl_name)
+}
+
+fn cites(row: RecurringFailureMode, module_path: String, decl_name: String) -> Bool {
+  fold_list(
+    xs: row.evidence,
+    empty: false,
+    cons: (acc, ref) => acc || decl_ref_names(ref: ref, module_path: module_path, decl_name: decl_name),
+  )
+}
+
+// The two references this lane READ before citing, as one identity the completeness claim below joins the
+// row's evidence list against, in both directions.
+// The join is stated over module-and-declaration NAMES, not over constructed DeclarationRef values: a claim
+// that calls std.decl_ref to build one loses its callee identity and dies at resolve -- which is exactly the
+// failure the parked entry named by this row suffers, and the reason the RED below tests names rather than
+// building a reference of its own.
+fn is_a_read_authority_name(module_path: String, decl_name: String) -> Bool {
+  (module_path == "gunbc.witness.witness_deferral_freeze") && (decl_name == "frozen_path_deferrals")
+    || (module_path == "std.decl_ref") && (decl_name == "CitationIndexCoverage")
+}
+
+fn is_a_read_authority(ref: DeclarationRef) -> Bool {
+  is_a_read_authority_name(module_path: ref.module_path, decl_name: ref.decl_name)
+}
+
+// The other direction of that join: every reference the row carries has to be one of the read authorities.
+fn every_reference_is_a_read_authority(refs: List<DeclarationRef>) -> Bool {
+  fold_list(
+    xs: refs,
+    empty: true,
+    cons: (acc, ref) => acc && is_a_read_authority(ref: ref),
+  )
+}
+
+// THE ROSTER IS DERIVED FROM THE ROW FILES, so membership is not a claim about this file's text: a row that
+// renames itself without renaming the file drops out of the population the ledger renders.
+test fn the_row_is_carried_by_the_roster_the_directory_derives() -> Bool {
+  identity_is_in_the_derived_roster(identity: "declaration_reference_cites_a_declaration_nothing_resolved")
+}
+
+// DISCRIMINATING PAIR: an identity no file carries is absent. Without this the membership fold above would
+// pass on a roster that never matched anything.
+test fn an_identity_no_row_file_carries_is_absent_from_that_roster() -> Bool {
+  !(identity_is_in_the_derived_roster(identity: "declaration_reference_cites_a_declaration_nothing_resolved_renamed"))
+}
+
+test fn the_row_is_still_below_its_ceiling() -> Bool {
+  match declaration_reference_cites_a_declaration_nothing_resolved.rung {
+    RungRead { found_at: _, standing: standing } => is_below_ceiling(standing: standing)
+    RungUnread { cause: _ } => false
+  }
+}
+
+// The sighting says the resolver is parked; the freeze ledger is what makes that true, and this reads it back
+// at the grain the ledger keeps -- entry path, then function names.
+test fn the_frozen_run_sighting_names_an_entry_the_freeze_actually_carries() -> Bool {
+  length(
+    xs: frozen_functions_for(entry_file: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.entry_file),
+  ) > 0
+}
+
+test fn the_frozen_run_sighting_claims_exactly_the_functions_the_freeze_lists() -> Bool {
+  lists_agree(
+    left: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.functions,
+    right: frozen_functions_for(entry_file: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.entry_file),
+  )
+}
+
+// DISCRIMINATING PAIR against a claim that drifts from the ledger: a function the freeze does not list for
+// that entry refuses the comparison, so the carrier cannot grow a parked function of its own.
+test fn a_function_the_freeze_does_not_list_refuses_that_sighting() -> Bool {
+  let invented = [
+    "decl_ref_resolves_node_kind_authority",
+    "decl_ref_resolves_decl_ref_constructor",
+    "decl_ref_refuses_module_absent",
+    "decl_ref_refuses_declaration_absent",
+    "decl_ref_refuses_ambiguous_binding",
+    "decl_ref_refuses_named_field_absent",
+    "decl_ref_refuses_a_name_that_was_never_written",
+  ]
+  lists_agree(
+    left: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.functions,
+    right: frozen_functions_for(entry_file: "dag/test/claim/long/decl_ref_resolution_witness.dag"),
+  )
+    && !(lists_agree(left: invented, right: frozen_functions_for(entry_file: "dag/test/claim/long/decl_ref_resolution_witness.dag")))
+}
+
+test fn the_pinned_tree_and_digest_have_the_shapes_they_claim() -> Bool {
+  is_short_tree_token(text_token: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.tree)
+    && is_sha256_digest(digest: declaration_reference_cites_a_declaration_nothing_resolved_frozen_run.binary_digest)
+}
+
+// DISCRIMINATING PAIR: tokens that are not in those encodings refuse, so the shape claim is the predicate and
+// not the sample -- a truncated digest or one carrying a non-hex character fails it.
+test fn a_token_outside_the_digest_shape_refuses() -> Bool {
+  let truncated = "c29788a12a335ab04d1d56aed901074b707afb09872339a88762a7f590521daz"
+  let shortened = "c29788a12a"
+  !(is_sha256_digest(digest: truncated)) && !(is_short_tree_token(text_token: shortened))
+}
+
+// COMPLETENESS AS AN IDENTITY JOIN, not a length: both read authorities have to be cited, and every
+// reference the row carries has to be one of them -- so an unverified third reference closes the join rather
+// than bumping a number a future reader would have to trust.
+test fn the_row_cites_both_read_authorities_and_nothing_else() -> Bool {
+  cites(
+    row: declaration_reference_cites_a_declaration_nothing_resolved,
+    module_path: "gunbc.witness.witness_deferral_freeze",
+    decl_name: "frozen_path_deferrals",
+  )
+    && cites(
+      row: declaration_reference_cites_a_declaration_nothing_resolved,
+      module_path: "std.decl_ref",
+      decl_name: "CitationIndexCoverage",
+    )
+    && every_reference_is_a_read_authority(
+      refs: declaration_reference_cites_a_declaration_nothing_resolved.evidence,
+    )
+}
+
+// DISCRIMINATING PAIR on the join's other direction: the three names this branch wrote and then repaired are
+// outside the read-authority identity, so a row that carried one of them would close the join in neither
+// direction. Also the reason the predicate takes names: constructing a DeclarationRef inside a claim is what
+// loses the callee identity described above.
+test fn an_evidence_reference_that_was_never_read_refuses_the_join() -> Bool {
+  is_a_read_authority_name(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals")
+    && is_a_read_authority_name(module_path: "std.decl_ref", decl_name: "CitationIndexCoverage")
+    && !(is_a_read_authority_name(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"))
+    && !(is_a_read_authority_name(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding"))
+    && !(is_a_read_authority_name(module_path: "extdeps.bmc.supermicro_aten_ast2600_board_profile", decl_name: "supermicro_aten_ast2600_profile"))
+}
+
+// A name this branch wrote into a carrier and then repaired must never become evidence for the row that
+// records the repair.
+test fn the_row_does_not_cite_an_authority_it_once_invented() -> Bool {
+  !(cites(
+    row: declaration_reference_cites_a_declaration_nothing_resolved,
+    module_path: "gunbc.hostname_allocation",
+    decl_name: "allocate_unique_hostname",
+  ))
+}
