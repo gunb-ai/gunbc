@@ -1084,11 +1084,14 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
 // (exit=1), the indeterminate parent cannot establish absence, the file plan refuses fail-closed --
 // and the unit files were withheld, so activation could never find the unit. The elevated arm is the
 // fix: the SAME words through sudo -n, and elevation rides on the listing alone, never on answers.
-// The claims below assert the PRODUCTION route -- parent_listing_leg_argv, the function
-// entry_presence_in_parent itself calls (gunbc.design_argument::witness_one_interface: the claim is
+// The claims below assert the PRODUCTION route -- parent_listing_leg_argv, which is what THIS
+// module's tree-presence read dials (gunbc.design_argument::witness_one_interface: the claim is
 // on the ROUTE, not only the answer) -- with BOTH privileges pinned: delete the ElevatedListing arm
 // and the sudo words vanish, red by execution; delete the BareListing arm and the unprivileged
-// answer changes, red the same way.
+// answer changes, red the same way. (A tree read is enumeration, so it keeps the listing. The
+// presence of ONE NAMED ENTRY left this route at #16613: gunbc.live_deploy.member_observe's
+// entry_presence_in_parent now asks extdeps.filesystem.filesystem_io's lookup, which needs the
+// parent's search bit and not its read bit.)
 
 test fn the_parent_listing_leg_argv_routes_each_privilege_by_its_own_type() -> Bool {
   parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: ElevatedListing)

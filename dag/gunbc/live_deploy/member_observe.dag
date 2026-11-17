@@ -206,10 +206,16 @@ fn listing_contains_entry(stdout: String, name: String) -> Bool {
 
 // THE ROUTE the parent-listing leg dials: the bare words as the bootstrap principal, or the same
 // words through sudo -n (extdeps.sudo.elevation -- the elevation every privileged leg of the fleet
-// converges already carries). entry_presence_in_parent calls THIS, so a witness asserts the
-// production choice rather than re-typing it, and the pair of privileges is the discriminating
-// input (review 94925): delete the ElevatedListing arm and the srv14 failure returns -- red by
-// execution (gunbc.design_argument::fail_closed: Done means a real consumer green by execution).
+// converges already carries). Enumerating a directory is what THIS is for, and its consumers say so:
+// gunbc.runner.runner_host_file_converge's tree-presence read and
+// gunbc.fleet.host_credential_custody_converge's custody read both dial it, and
+// dag/test/claim/runner/runner_host_file_converge_witness.dag asserts the production choice rather
+// than re-typing it, with the pair of privileges as the discriminating input (review 94925): delete
+// the ElevatedListing arm and the srv14 failure returns -- red by execution
+// (gunbc.design_argument::fail_closed: Done means a real consumer green by execution). Whether ONE
+// NAMED ENTRY is present is not this route's question; entry_presence_in_parent asks
+// extdeps.filesystem.filesystem_io's lookup instead, which needs the parent's search bit and not its
+// read bit.
 // THE ONE ELEVATION EVERY READING LEG OF AN ARM USES. A leg that reads a path the bootstrap principal
 // cannot read (a root:root 0750 parent for the listing; a root-only file for a digest, a document or a
 // metadata read) wraps its argv in the SAME elevation the writes use -- extdeps.sudo.elevation, spelled
