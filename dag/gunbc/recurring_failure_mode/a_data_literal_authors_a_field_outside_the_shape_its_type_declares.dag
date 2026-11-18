@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.a_data_literal_authors_a_field_outside_the_s
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
-import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_data_literal_authors_a_field_outside_the_shape_its_type_declares: RecurringFailureMode = RecurringFailureMode {
@@ -12,9 +12,9 @@ data a_data_literal_authors_a_field_outside_the_shape_its_type_declares: Recurri
     found_at: FoundBelowTheLadder,
     standing: BelowCeiling {
       current: FoundOnRung { rung: Mitigatable },
-      ceiling: MechanicallyPreventable,
+      ceiling: StructurallyGuaranteed,
       blocker: ClimbableButUnbuilt,
-      trigger_capability: "a typecheck-side refusal that rejects a data-literal field value which inhabits no constructor of the declared field type -- today a list literal in a FreeSemigroup-typed field typechecks into a plain List and dies only in the consumer that asks its head -- with a RED enrolling exactly that literal and a positive control authored in the declared shape, both on the required path. The interim mitigation (a claim that renders every row of a ledger through the ledger's own renderer) is a per-ledger sweep the lane must enrol, not the guarantee.",
+      trigger_capability: "a typecheck-side refusal that rejects a data-literal field value which inhabits no constructor of the declared field type -- today a list literal in a FreeSemigroup-typed field typechecks into a plain List and dies only in the consumer that asks its head -- with a RED enrolling exactly that literal and a positive control authored in the declared shape, both on the required path. The ceiling is derived, not aspirational: inhabitation of a constructor of a closed declared type is decidable from the literal and the type alone, so the class can reach rung 3 (structurally guaranteed -- the source may still write the bad literal, no accepted program contains it). The interim mitigation, rung 2, is a claim that renders every row of a ledger through the ledger's own renderer -- a per-ledger sweep the lane must enrol, not the guarantee.",
     },
   },
 
