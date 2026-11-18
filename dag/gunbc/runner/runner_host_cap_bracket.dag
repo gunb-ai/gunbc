@@ -3,8 +3,6 @@ module gunbc.runner.runner_host_cap_bracket
 import std.types { String, List, Bool, Int, NonEmptyStr, EpochMs }
 import std.optional { Absent, Present }
 import std.algebra { list_flat_map, trim }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import extdeps.systemd { systemd_unit_property_wire }
 import std.measure { Second, second, second_count }
 import extdeps.github.actions { cancelled_job_always_step_timeout }
 import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
@@ -35,7 +33,6 @@ import gunbc.runner.runner_slot_actuation {
   slot_state_stopped,
   slot_state_stopping,
   slot_current_registration_over_unit,
-  slot_show_value,
   UnitRegistrationRead,
   UnitRegistrationUnreadable,
 }
@@ -419,7 +416,11 @@ type BracketWaitStep
   = BracketDrained { certified: List<CertifiedListener> }
   | BracketWaiting { ticks_left: Int }
   | BracketAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
-  | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
+  // stop_causes carries what the STOP LEG last reported on this host, newest pass winning. A bound that
+  // expires with a refused stop inside it is a different finding from one that expires on idle listeners
+  // alone, and unit names alone cannot tell them apart: srv4 run 44232633417 arrived as 13 unproven units
+  // with no cause attached (gunbc.design_argument::fail_closed: every degradation typed, located, countable).
+  | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, stop_causes: List<String> }
 
 type ClassedReading {
   unit: NonEmptyStr
@@ -446,6 +447,9 @@ fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>
     BracketBoundExceeded {
       busy: map(filter(classed, c => drain_class_is_busy(c: c.class)), c => c.unit),
       unproven: map(filter(classed, c => drain_class_is_unproven(c: c.class)), c => c.unit),
+      // The judge reads unit readings only, so it cannot know that a stop was issued and refused; the wait
+      // loop that issued it attaches those causes to whatever terminal verdict its last pass returns.
+      stop_causes: [],
     }
   } else {
     BracketWaiting { ticks_left: ticks_left - 1 }
@@ -459,7 +463,7 @@ type HostLeftState
 
 type HostCapBracketRefusal
   = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
-  | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
+  | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second, stop_causes: List<String> }
   | BracketRefusedBudgetCannotCover { needed: Second, given: Second }
   | BracketRefusedClockUnreadable { detail: String }
   | BracketRefusedObligationNotRecorded { cause: String }
@@ -467,7 +471,7 @@ type HostCapBracketRefusal
 fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
   match r {
     BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs } => join(["admission is not closed: a running idle listener is admitted only when its mask, the roster's busy=false and an empty Runner.Worker listing agree, so no cap was written and nothing was restarted; listeners=", join(map(ls, u => u as String), " "), " causes=[", join(cs, "; "), "]; ", listener_restart_residual_wire()], "")
-    BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
+    BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w, stop_causes: sc } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " "), if length(sc) > 0 { concat("; the stop leg reported: ", join(sc, "; ")) } else { "" }], "")
     BracketRefusedBudgetCannotCover { needed: n, given: g } => join(["the step budget of ", to_string(second_count(s: g)), "s cannot cover the bracket's ", to_string(second_count(s: n)), "s (drain + operations + release), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedObligationNotRecorded { cause: c } => join(["the release obligation could not be recorded (", c, "), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
@@ -714,8 +718,10 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
 // so a mask someone else holds is neither taken over nor lifted.
 // CLOSE ADMISSION, THEN WAIT. The first pass only READS: under a mask-only closure a running idle
 // listener refuses the host before anything is changed, because stopping it races a job assignment.
-// Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
-// job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
+// Later passes mask what is proven stopped, and STOP what that host's drain row authorizes stopping (the
+// stop leg below), so a slot leaves service when its own job ends or when the bracket is permitted to end
+// it. Each pass is judged by bracket_wait_step, and whatever the host refused to stop rides into the verdict
+// rather than dissolving into a unit name.
 fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, host: String, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
   let closure = runner_host_cap_admission_closure
@@ -723,8 +729,25 @@ fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionConte
   match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
     BracketAdmissionNotClosed { listeners: ls, causes: cs } => BracketAdmissionNotClosed { listeners: ls, causes: cs }
     BracketDrained { certified: cs } => BracketDrained { certified: cs }
-    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
-    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
+    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started, stop_causes: [])
+    BracketBoundExceeded { busy: b, unproven: u, stop_causes: _ } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started, stop_causes: [])
+  }
+}
+
+// WHAT A REFUSED STOP DOES TO THE VERDICT. Kept as its own function so the rule is checkable without a
+// host: the reading-derived causes in BracketAdmissionNotClosed say what the readings SHOW, the stop causes
+// say what the host refused to DO about it, and a verdict that settled (drained) is not decorated with a
+// refusal it did not have. The unit names alone are what made run 44232633417 unreadable, so this is the
+// leg that keeps a refused stop countable and located (gunbc.design_argument::fail_closed).
+fn carry_stop_causes(step: BracketWaitStep, causes: List<String>) -> BracketWaitStep {
+  if length(causes) == 0 {
+    step
+  } else {
+    match step {
+      BracketBoundExceeded { busy: b, unproven: u, stop_causes: _ } => BracketBoundExceeded { busy: b, unproven: u, stop_causes: causes }
+      BracketAdmissionNotClosed { listeners: ls, causes: cs } => BracketAdmissionNotClosed { listeners: ls, causes: concat(cs, causes) }
+      settled => settled
+    }
   }
 }
 
@@ -739,23 +762,25 @@ fn drain_time_up_over(policy: HostCapDrainPolicy, started: EpochMs) -> Bool
   }
 }
 
-fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, host: String, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, host: String, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs, stop_causes: List<String>) -> BracketWaitStep
 {
-  // ACT ON WHAT THIS PASS READ, THEN MASK, THEN JUDGE. The order matters: an idle listener stopped this
-  // pass over a proven-inhibited restart path reads stopped to mask_slot_only in the same pass, so a slot
-  // reaches certified in the fewest passes the readings allow, and no step ever runs out of order. The
-  // actions' causes are carried by the next pass's readings and the bound, not by this verdict: a slot
-  // whose stop failed is still open, and the bound is what eventually refuses for it.
+  // ACT ON WHAT THIS PASS READ, THEN MASK, THEN JUDGE. The order matters: a listener the stop leg is
+  // permitted to stop reads stopped to mask_slot_only in the same pass, so a slot reaches certified in the
+  // fewest passes the readings allow, and no step runs out of order. A stop the host REFUSED is not left to
+  // surface only as an unproven name at the end: its cause is carried pass to pass and onto the verdict.
   let readings = read_slot_drain_pass_over(target: target, context: context, units: observed)
-  let _causes = drain_actions_apply_over(target: target, context: context, host: host, readings: readings, owned: owned)
+  let causes = drain_actions_apply_over(target: target, context: context, host: host, readings: readings, owned: owned)
+  // The NEWEST report for a unit is the one worth reading, so a pass that produced causes replaces what the
+  // earlier passes said rather than stacking repeats of the same refusal.
+  let carried = if length(causes) > 0 { causes } else { stop_causes }
   let _masked = map(owned, u => mask_slot_only_over(target: target, context: context, unit: u))
   let after = read_slot_drain_pass_over(target: target, context: context, units: observed)
   match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: after, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
     BracketWaiting { ticks_left: n } => {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: policy.poll_interval)
-      drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started)
+      drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started, stop_causes: carried)
     }
-    step => step
+    step => carry_stop_causes(step: step, causes: carried)
   }
 }
 
