@@ -418,7 +418,7 @@ fn network_install_ci_missing(
     remedy: "the live arrival run commits the unit's row; until it does, the unit is not in the population and no hold key exists for it",
     standing: arrival_population_row_in(population: arrival_converge_population, wire: host as NonEmptyStr)
   )
-    + network_install_ci_managed_missing(host: "srv4" as HostIdentity)
+    + network_install_ci_managed_missing(host: host)
     + network_install_ci_controller_missing(host: host)
     + network_install_ci_capability_missing(host: host)
     + network_install_ci_disk_missing(host: host)
