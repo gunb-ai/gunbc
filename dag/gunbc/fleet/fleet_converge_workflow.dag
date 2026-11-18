@@ -81,7 +81,8 @@ import gunbc.auth.approval_request_submission {approval_submission_mac_key_path}
 import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
-import gunbc.live_deploy.desired { prod_role_actuated_realization }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, DesiredDeployment, desired_deployment_roster }
+import gunbc.deployment_risk { ProdRoleSelection, ProdRoleHeldBy, NoProdRole, prod_role_selection }
 import extdeps.github.expressions {
   Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression,
   FilteredContextAccess, FilterSegment, FilterKey, FilterAll, BoolLiteral, NullLiteral, NumberLiteral,
@@ -7767,12 +7768,46 @@ data apply_workflow_run_id_mode_readings: List<DispatchFieldModeReading> = [
 // which refuses emission when count exceeds the limit. The mode description being long was a
 // misattribution: a 25-input file with the long description dispatched. Per-mode contracts stay
 // on this module; keep the input description short anyway.
+// THE INSTANCE OPTIONS offered to the instance-scoped srv1 deploy mode (Srv1RootMutation(DesiredInstanceDeploy)),
+// DERIVED from the roster rather than a hand list (gunbc.design_argument::single_authority): the srv1 roster
+// rows, MINUS the prod-role holder. The job runs with srv1 access, so only srv1 rows are convergible by it;
+// the prod-role holder -- DERIVED from prod_role_selection, never named here -- is deployed by the prod-role
+// transaction (live_deploy_apply_prod_role_transaction_wet), so offering it in this mode would open a SECOND
+// deploy path for production (the same single-path rule that keeps the lab off the prod-role route). With the
+// current model this resolves to srv1-lab-codex-feedback-v0 ALONE: srv1-production IS the prod-role holder
+// (srv1_daily_workspace_deployment) and srv2-deploy is not srv1. An empty option set (no srv1 non-holder row)
+// yields a run that can name no instance, which live_deploy_apply_desired_wet_from_ci refuses -- never a
+// fallback to another instance (gunbc.design_argument::fail_closed).
+fn fleet_converge_desired_instance_deploy_options(
+  selection: ProdRoleSelection,
+  rows: List<DesiredDeployment>,
+  host: HostIdentity,
+) -> List<String> {
+  let holder = match selection {
+    ProdRoleHeldBy { deployment: d } => Present { value: d }
+    NoProdRole => none
+  }
+  map(
+    filter(rows, row =>
+      (row.target.host.identity == host)
+        && match holder { Present { value: d } => !(row.instance.deployment == d) Absent => true }),
+    row => row.instance.instance_id as String,
+  )
+}
+
 data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   DispatchInput { name: "revision_job_image_run_id", description: Present { value: "Revision-job image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   fleet_converge_host_input,
   fleet_converge_subject_host_input,
+  DispatchInput {
+    name: "instance",
+    description: Present { value: "desired_instance_deploy only: the ONE srv1 roster row to converge, by its instance id. Options are the srv1 non-prod-role roster rows derived from desired_deployment_roster() and prod_role_selection -- the prod-role holder is never offered (it deploys through the prod-role transaction). The deploy entry refuses an unnameable or non-roster id; there is no default instance" },
+    required: false,
+    default: none,
+    type: InputChoice { options: fleet_converge_desired_instance_deploy_options(selection: prod_role_selection, rows: desired_deployment_roster(), host: operator_host_srv1) },
+  },
   DispatchInput {
     name: "arrival_subject",
     description: Present { value: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1" },
