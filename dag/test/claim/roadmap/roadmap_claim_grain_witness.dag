@@ -183,30 +183,20 @@ test fn served_route_pipeline_refuses_pathless_on_decomposed_with_typed_reason()
   }
 }
 
-// ── THE ROSTER: every Claimed APPEND site routes through the guard ───────────────────────────
-// The Claimed APPEND producers (source-derived):
-//   roadmap_event_cli    — mints a grain via the shared parser, calls the guard, appends.
-//   roadmap_serve        — parses via the shared parser, calls the guard, appends.
-// The decode sites never mint a Claimed, so they never call the guard (correct: they only read).
-// roadmap_issue_command constructs the AssignIssue event but CANNOT import the guard (cycle); the
-// callers that reach it (serve) guard before calling it. This roster witness fails if a new module
-// appends a Claimed without being covered here.
+// ── THE GUARD PIPELINE: parser → guard on both producer inputs ──────────────────────────────
+// These two witnesses drive the parser+guard pipeline (the same functions both producers call)
+// on fixed discriminating inputs. A third producer would need its own driving test added here.
+// The guard's machine check is this test: it fails if the parser-guard chain changes behavior.
 
-test fn every_claimed_append_producer_routes_through_the_guard() -> Bool {
-  // roadmap_event_cli: parser -> guard. Verified by the pipeline tests above (same functions).
-  // roadmap_serve: parser -> guard. Verified by served_route_pipeline_* tests above.
-  // The roster is these two; both are proven by the existing tests in this file.
-  // If a third producer appears, a new test must drive its guard path and be added here.
+test fn guard_pipeline_admits_and_refuses_correctly() -> Bool {
   let item = node_of("emitter-produces-main-rs")
-  // Drive both producers' shared path: parser -> guard -> admissible for a valid leaf.
-  let cli_path = match roadmap_claim_grain_parse(node: item, leaf_stage: "0", leaf_piece: "0", leaf_member: "0") {
+  let cli_admits = match roadmap_claim_grain_parse(node: item, leaf_stage: "0", leaf_piece: "0", leaf_member: "0") {
     Parsed { grain } => refusal_tag(roadmap_claimed_grain_admissible(node: item, grain: grain)) == "admissible"
     Malformed { field: _, why: _ } => false
   }
-  // And the refusal path: parser -> guard -> pathless-on-decomposed for blank on decomposed.
-  let serve_path = match roadmap_claim_grain_parse(node: item, leaf_stage: "", leaf_piece: "", leaf_member: "") {
+  let serve_refuses = match roadmap_claim_grain_parse(node: item, leaf_stage: "", leaf_piece: "", leaf_member: "") {
     Parsed { grain } => refusal_tag(roadmap_claimed_grain_admissible(node: item, grain: grain)) == "pathless-on-decomposed"
     Malformed { field: _, why: _ } => false
   }
-  cli_path && serve_path
+  cli_admits && serve_refuses
 }

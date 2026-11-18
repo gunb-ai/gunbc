@@ -543,25 +543,31 @@ fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, vi
         attr(name: "type", value: "hidden" ),
         attr(name: "value", value: expected_revision ),
       ], []),
-      // Leaf fields: the served assign route currently names no leaf (always Pathless). An item
-      // WITHOUT a decomposition admits Pathless and works through this form. An item WITH a
-      // decomposition refuses Pathless (the guard rules it), so its claims go through the CLI
-      // (roadmap_event_record_cli --claim ... --leaf-stage N --leaf-piece N --leaf-member N).
-      // A leaf-picker UI for this form is a tracked follow-up (roadmap-dispatch-carries-leaf).
+      // Leaf fields: blank = whole item (Pathless; admits items with no decomposition).
+      // On a decomposed item, fill stage/piece/member with the leaf indices.
+      el_attrs("label", [attr(name: "class", value: "issue-assign-leaf-label" )], [
+        txt("Leaf (blank = whole item)")
+      ]),
       el_attrs("input", [
         attr(name: "name", value: "leaf_stage" ),
-        attr(name: "type", value: "hidden" ),
-        attr(name: "value", value: "" ),
+        attr(name: "type", value: "number" ),
+        attr(name: "min", value: "0" ),
+        attr(name: "placeholder", value: "stage" ),
+        attr(name: "class", value: "issue-assign-leaf-input" ),
       ], []),
       el_attrs("input", [
         attr(name: "name", value: "leaf_piece" ),
-        attr(name: "type", value: "hidden" ),
-        attr(name: "value", value: "" ),
+        attr(name: "type", value: "number" ),
+        attr(name: "min", value: "0" ),
+        attr(name: "placeholder", value: "piece" ),
+        attr(name: "class", value: "issue-assign-leaf-input" ),
       ], []),
       el_attrs("input", [
         attr(name: "name", value: "leaf_member" ),
-        attr(name: "type", value: "hidden" ),
-        attr(name: "value", value: "" ),
+        attr(name: "type", value: "number" ),
+        attr(name: "min", value: "0" ),
+        attr(name: "placeholder", value: "member" ),
+        attr(name: "class", value: "issue-assign-leaf-input" ),
       ], []),
       site_choice_list(id: concat("issue-assign-options-", node_id), options: map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: profiles)), hidden: true, empty_label: "No matching assignees"),
       el_attrs("button", [
