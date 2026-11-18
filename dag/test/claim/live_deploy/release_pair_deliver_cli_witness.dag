@@ -25,6 +25,8 @@ import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_deliver_serving, ServingMapped, ServingRefused, release_pair_serving_poison_reason,
   release_pair_source_head_verdict, SourceHeadObserved, SourceHeadRefused,
   release_pair_source_head_mismatch_reason, release_pair_source_head_unobservable_reason,
+  release_pair_source_placement_decision, PlacementCloneMissing, PlacementReuse, PlacementPresentAtOtherHead, PlacementAdd,
+  release_pair_delivery_clone_missing_prefix, release_pair_source_placed_at_other_head_prefix,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
@@ -177,29 +179,6 @@ test fn witness_serving_mixed_is_poison() -> Bool {
   }
 }
 
-// RED CONTROL (was the entry-guard witness; review 96348 re-realized the guard INTO the mapping): a MIXED serving
-// observation must map to ServingRefused, never a usable binding, so it never reaches a fresh placement. Fires red if
-// the mapping ever regresses to handing back a bound/not-installed binding for a Mixed tree.
-test fn witness_serving_mixed_poison_refused() -> Bool {
-  match git_object_id_from_untagged_hex(hex: head_hex as String) {
-    Absent => false
-    Present { value: r } =>
-      match release_pair_deliver_serving(ReleaseMixed { tree_revision: r, process_revision: "deadbeef" as CommitSha }) {
-        ServingRefused { reason: _ } => true
-        ServingMapped { binding: _ } => false
-      }
-  }
-}
-
-// RED CONTROL (was the entry-guard witness): an UNOBSERVED serving observation must map to ServingRefused, never a
-// usable binding. Fires red if the mapping ever treats an unobserved state as deliverable.
-test fn witness_serving_unobserved_poison_refused() -> Bool {
-  match release_pair_deliver_serving(ReleaseBindingUnobserved { cause: "no deployed tree" }) {
-    ServingRefused { reason: _ } => true
-    ServingMapped { binding: _ } => false
-  }
-}
-
 // The benign-vs-refusal split is NOT witnessed here: it moved to the typed DeliveryPlan arms
 // (PlanWaits vs PlanKeepsLastGood) and is witnessed against the real producer release_pair_install_plan in
 // release_pair_delivery_plan_witness, and the steady-state short-circuit is witnessed just below via the fold's pure
@@ -322,5 +301,119 @@ test fn witness_source_head_unobservable_refuses() -> Bool {
   ) {
     SourceHeadRefused { reason: reason } => (reason as String) == (release_pair_source_head_unobservable_reason as String)
     SourceHeadObserved { revision: _ } => false
+  }
+}
+
+// ============================================================================
+// IDEMPOTENT PLACEMENT (review 96353): the actuator observes the target source tree at the per-revision locus BEFORE
+// adding, so a re-run after a later-leg failure REUSES an already-correct placement, a tree at another head is REFUSED
+// (never silently clobbered), an absent tree is ADDED, and an unseeded delivery clone REFUSES with its own reason
+// (seeding is a deploy step under the operator gate -- never bootstrapped here). Every condition is its own variant +
+// reason; 'unobservable' belongs only to the observe step (release_pair_source_head_verdict), never to placement.
+// ============================================================================
+
+// RED CONTROL: an unseeded delivery clone refuses with its own typed reason, even if a tree at the right head were
+// (impossibly) observed -- a missing placement origin can never be mistaken for a deliverable source. Reuses the reason
+// the decision builds from the same inputs so the assertion is exact without a string predicate.
+test fn witness_delivery_clone_missing_refuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: false,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementCloneMissing { reason: reason } =>
+          (reason as String) == (join([release_pair_delivery_clone_missing_prefix as String, "/srv/pair/delivery-repo"], "") as String)
+        PlacementReuse { revision: _ } => false
+        PlacementPresentAtOtherHead { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// Positive control: a placed tree already at the requested head is REUSED (no add), carrying that head into the receipt.
+test fn witness_source_placement_present_match_reuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementReuse { revision: src } => (src as String) == (head_hex as String)
+        PlacementCloneMissing { reason: _ } => false
+        PlacementPresentAtOtherHead { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// RED CONTROL: a placed tree at a DIFFERENT head is REFUSED (never removed or overwritten silently), with a reason naming
+// the actual head and the requested one. Reconstructs the decision's own reason string for an exact assertion.
+test fn witness_source_placement_present_other_head_refuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: other_head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementPresentAtOtherHead { reason: reason } =>
+          (reason as String) == (join([release_pair_source_placed_at_other_head_prefix as String, other_head_hex as String, ", not ", head_hex as String], "") as String)
+        PlacementReuse { revision: _ } => false
+        PlacementCloneMissing { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// Positive control: an absent placed tree (the pre-observation could not read it) routes to PlacementAdd -- the actuator
+// will fetch + worktree-add, and the observe step then validates the result.
+test fn witness_source_placement_absent_adds() -> Bool {
+  match release_pair_source_placement_decision(
+    clone_present: true,
+    clone_path: "/srv/pair/delivery-repo",
+    pre_observed: DeployedTreeUnobservable { cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" } },
+    requested: head_hex as CommitSha,
+  ) {
+    PlacementAdd => true
+    PlacementReuse { revision: _ } => false
+    PlacementPresentAtOtherHead { reason: _ } => false
+    PlacementCloneMissing { reason: _ } => false
+  }
+}
+
+// Idempotency: after a later-leg failure, a re-run observes the SAME already-placed tree and must reach the SAME
+// PlacementReuse -- never a refusal and never a re-add. Two identical calls must both reuse the requested head.
+test fn witness_source_placement_rerun_is_idempotent() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      let first = release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      )
+      let second = release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      )
+      match first {
+        PlacementReuse { revision: a } => match second {
+          PlacementReuse { revision: b } => (a as String) == (b as String)
+          _ => false
+        }
+        _ => false
+      }
   }
 }

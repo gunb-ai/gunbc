@@ -45,7 +45,7 @@ import gunbc.live_deploy.release_binding {
   PairServeRefused,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
-import extdeps.git { git_fetch_shallow_revision_command, git_worktree_add_detached_command }
+import extdeps.git { git_fetch_shallow_revision_command, git_worktree_add_detached_command, git_rev_parse_head_command }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
   FleetSshContextReady,
@@ -111,7 +111,7 @@ fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
 // candidate source (and its worktree) is served from a fetch INTO THIS clone; the source head is then OBSERVED
 // from that placed tree. Placing straight from the runtime checkout is exactly the wrong-subject defect item-2
 // closes: /opt/gunbc/gunbc's own HEAD is not the delivered source and must never be what the source receipt names
-// (gunbc.design_argument::single_authority_over_the_noun — the delivery clone is the sole placement origin).
+// (@ref(gunbc.design_argument::single_authority) — the delivery clone is the sole placement origin).
 fn release_pair_delivery_repo_dir(base_root: String) -> String {
   join([base_root, "/delivery-repo"], "")
 }
@@ -366,74 +366,100 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
               )
             none => Refused { reason: release_pair_verdict_refused_reason }
           }
-          // SOURCE-SIDE F1 (item-2): the delivered source head must be the head OBSERVED from a placed tree, never the
-          // gh head query. Place the candidate source FROM THE DEDICATED DELIVERY CLONE (<base_root>/delivery-repo),
-          // NEVER the runtime checkout at /opt/gunbc/gunbc: fetch the head into that clone, hang a detached worktree at
-          // the per-revision locus /source, then OBSERVE that tree's head through the deployed-tree authority over SSH.
-          // Any leg that cannot be placed, and any tree whose observed head disagrees with the head we asked for (or
-          // cannot be read at all), refuses RED through PlanKeepsLastGood — a missing or mismatched reading is never
-          // mistaken for the delivered source. This is the single authority over the delivered source (the delivery
-          // clone is its only placement origin); the gh query remains only for run discovery and the drift fold.
+          // SOURCE-SIDE F1 (item-2) + idempotent placement (review 96353): the delivered source head is the head
+          // OBSERVED from a tree placed from the DEDICATED DELIVERY CLONE (<base_root>/delivery-repo), NEVER the gh head
+          // query and NEVER /opt/gunbc/gunbc. First probe that the clone is seeded (seeding is a deploy step under the
+          // operator gate -- never bootstrapped here), then OBSERVE the target locus /source BEFORE adding: already at the
+          // requested head => REUSE (no fetch, no add -- a re-run after a later-leg failure is idempotent); a tree at some
+          // OTHER head => REFUSE (never remove or overwrite it silently); absent => fetch + worktree-add, then OBSERVE the
+          // placed tree. 'unobservable' is reserved for the observe step; every placement condition carries its own reason.
           let delivery_repo = release_pair_delivery_repo_dir(base_root: base_root)
           let source_dir = join([release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head as CommitSha }), "/source"], "")
-          let clone_fetch_outcome = run_shell_command_capture(
-            command: git_fetch_shallow_revision_command(
-              repository_dir: delivery_repo,
-              remote: "origin",
-              revision: main_head as String,
-            ),
+          // Is the dedicated delivery clone seeded? git itself answers: rev-parse --verify HEAD only succeeds inside a repo.
+          let clone_present = match run_shell_command_capture(
+            command: git_rev_parse_head_command(repository_dir: delivery_repo),
             transport: LocalExec,
-          )
-          match clone_fetch_outcome {
-            // A failed clone-side fetch means the head is not placeable here: unobservable source, refuse red.
-            ProcessRefused { exit_code: _, stderr: _ } =>
+          ) {
+            ProcessRefused { exit_code: _, stderr: _ } => false
+            _ => true
+          }
+          match prepare_fleet_ssh_agent_context(attempt_raw: release_pair_source_head_attempt_raw) {
+            // Context prep is part of observing, so its failure carries the observe step's 'unobservable' reason.
+            FleetSshContextRefused { cause: _ } =>
               PlanKeepsLastGood { kept: serving, reason: release_pair_source_head_unobservable_reason }
-            _ => {
-              let worktree_outcome = run_shell_command_capture(
-                command: git_worktree_add_detached_command(
-                  repository_dir: delivery_repo,
-                  path: source_dir,
-                  revision: main_head as String,
+            FleetSshContextReady { context: context, receipt: _ } =>
+              match release_pair_source_placement_decision(
+                clone_present: clone_present,
+                clone_path: delivery_repo,
+                pre_observed: observe_deployed_tree_at(
+                  context: context,
+                  target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
+                  repo: source_dir as NonEmptyStr,
                 ),
-                transport: LocalExec,
-              )
-              match worktree_outcome {
-                // The worktree did not come up on the requested revision: the placed tree is unobservable, refuse red.
-                ProcessRefused { exit_code: _, stderr: _ } =>
-                  PlanKeepsLastGood { kept: serving, reason: release_pair_source_head_unobservable_reason }
-                _ => match prepare_fleet_ssh_agent_context(attempt_raw: release_pair_source_head_attempt_raw) {
-                  FleetSshContextRefused { cause: _ } =>
-                    PlanKeepsLastGood { kept: serving, reason: release_pair_source_head_unobservable_reason }
-                  FleetSshContextReady { context: context, receipt: _ } =>
-                    match release_pair_source_head_verdict(
-                      observed: observe_deployed_tree_at(
-                        context: context,
-                        target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
-                        repo: source_dir as NonEmptyStr,
-                      ),
-                      requested: main_head as CommitSha,
-                    ) {
-                      SourceHeadRefused { reason: reason } =>
-                        PlanKeepsLastGood { kept: serving, reason: reason }
-                      SourceHeadObserved { revision: source_head } =>
-                        release_pair_install_plan(
-                          base_root: base_root,
-                          serving: serving,
-                          // BINARY-SIDE OBSERVATION: the run's head_sha decoded from the run-list metadata (review 96117
-                          // F1 / 96121). It is CHECKED by the fold, not trusted — the fold refuses unless the pack's own
-                          // recorded head equals the source half, so a run whose head_sha drifted cannot install.
-                          main_head: run.head_sha as CommitSha,
-                          // SOURCE-SIDE OBSERVATION (item-2): the head read back OFF the placed delivery tree, not the gh
-                          // query. Only a tree whose observed revision equals the head we placed ever reaches here.
-                          source_head: source_head,
-                          fetch: fetch,
-                          verify: verify,
-                          serve_unit: serve_unit,
-                        )
-                    }
+                requested: main_head as CommitSha,
+              ) {
+                // The delivery clone is absent. Seeding it is a deploy step under the operator gate -- NEVER bootstrap it
+                // here. Its own typed refusal, distinct from 'unobservable' (review 96353).
+                PlacementCloneMissing { reason: why } =>
+                  PlanKeepsLastGood { kept: serving, reason: why }
+                // Already placed at the requested head: REUSE it -- no fetch, no add. A re-run after any later-leg failure
+                // lands here again, so placement is idempotent and never a clobber.
+                PlacementReuse { revision: source_head } =>
+                  release_pair_install_plan(
+                    base_root: base_root,
+                    serving: serving,
+                    main_head: run.head_sha as CommitSha,
+                    source_head: source_head,
+                    fetch: fetch,
+                    verify: verify,
+                    serve_unit: serve_unit,
+                  )
+                // A placed tree on a DIFFERENT head: REFUSE. Never remove or overwrite it silently (review 96353).
+                PlacementPresentAtOtherHead { reason: why } =>
+                  PlanKeepsLastGood { kept: serving, reason: why }
+                // Absent: fetch the head into the clone and hang a detached worktree at the locus /source. The placement
+                // legs are best-effort; the OBSERVE step is the sole authority that the tree is there and on the requested
+                // head -- a failed fetch/add leaves it unreadable and release_pair_source_head_verdict refuses 'unobservable'.
+                PlacementAdd => {
+                  let _ = run_shell_command_capture(
+                    command: git_fetch_shallow_revision_command(
+                      repository_dir: delivery_repo,
+                      remote: "origin",
+                      revision: main_head as String,
+                    ),
+                    transport: LocalExec,
+                  )
+                  let _ = run_shell_command_capture(
+                    command: git_worktree_add_detached_command(
+                      repository_dir: delivery_repo,
+                      path: source_dir,
+                      revision: main_head as String,
+                    ),
+                    transport: LocalExec,
+                  )
+                  match release_pair_source_head_verdict(
+                    observed: observe_deployed_tree_at(
+                      context: context,
+                      target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
+                      repo: source_dir as NonEmptyStr,
+                    ),
+                    requested: main_head as CommitSha,
+                  ) {
+                    SourceHeadRefused { reason: reason } =>
+                      PlanKeepsLastGood { kept: serving, reason: reason }
+                    SourceHeadObserved { revision: source_head } =>
+                      release_pair_install_plan(
+                        base_root: base_root,
+                        serving: serving,
+                        main_head: run.head_sha as CommitSha,
+                        source_head: source_head,
+                        fetch: fetch,
+                        verify: verify,
+                        serve_unit: serve_unit,
+                      )
+                  }
                 }
               }
-            }
           }
       }
       }
@@ -499,6 +525,51 @@ fn release_pair_source_head_verdict(observed: DeployedTreeObservation, requested
       }
     DeployedTreeUnobservable { cause: _ } =>
       SourceHeadRefused { reason: release_pair_source_head_unobservable_reason }
+  }
+}
+
+// Idempotent placement decision (review 96353). Before the actuator adds anything it OBSERVES the target source tree
+// at <release_locus_dir(main_head)>/source, so a re-run after a later-leg failure REUSES an already-correct placement
+// rather than refusing, and a tree sitting on a DIFFERENT head is REFUSED (never silently clobbered or removed). Each
+// distinct condition is a distinct variant with a distinct reason: an unseeded delivery clone (seeding is a deploy step
+// under the operator gate -- never bootstrapped here), a placed tree already at the requested head (reuse, no add), a
+// placed tree at some OTHER head (refuse), or an absent tree (add). 'unobservable' is reserved for the OBSERVE step
+// alone (release_pair_source_head_verdict) and is never reused as a placement condition.
+// @ref(gunbc.design_argument::single_authority)
+type PlacementDecision
+  = PlacementCloneMissing { reason: NonEmptyStr }
+  | PlacementReuse { revision: CommitSha }
+  | PlacementPresentAtOtherHead { reason: NonEmptyStr }
+  | PlacementAdd
+
+// Reason prefixes: the condition is the variant; the interpolated path/head is operator detail. A witness reconstructs
+// the exact expected string from the same inputs, so no string predicate is needed to assert them.
+data release_pair_delivery_clone_missing_prefix: NonEmptyStr = "delivery clone not seeded at "
+data release_pair_source_placed_at_other_head_prefix: NonEmptyStr = "placed source tree is at "
+
+fn release_pair_source_placement_decision(
+  clone_present: Bool,
+  clone_path: String,
+  pre_observed: DeployedTreeObservation,
+  requested: CommitSha,
+) -> PlacementDecision {
+  if !clone_present {
+    PlacementCloneMissing {
+      reason: join([release_pair_delivery_clone_missing_prefix as String, clone_path], "") as NonEmptyStr,
+    }
+  } else {
+    match pre_observed {
+      DeployedTreeObserved { revision: oid, tree: _, content: _ } =>
+        let observed_hex = git_object_id_wire_hex(oid: oid)
+        if observed_hex == (requested as String) {
+          PlacementReuse { revision: requested }
+        } else {
+          PlacementPresentAtOtherHead {
+            reason: join([release_pair_source_placed_at_other_head_prefix as String, observed_hex, ", not ", requested as String], "") as NonEmptyStr,
+          }
+        }
+      DeployedTreeUnobservable { cause: _ } => PlacementAdd
+    }
   }
 }
 
