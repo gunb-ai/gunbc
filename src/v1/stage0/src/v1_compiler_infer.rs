@@ -286,8 +286,9 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
     BuiltinFunction, DeclarationOnly, EmptyCollectionConstructor, KernelMethodOnly,
 };
 pub use crate::v1_compiler_infer_method::{
-    bare_call_non_declaration_binding, builtin_host_display_deferred_param_names,
-    builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
+    bare_call_non_declaration_binding, builtin_accepts_surplus_positional,
+    builtin_host_display_deferred_param_names, builtin_host_text_param_names,
+    builtin_kernel_seed_diagnostics, builtin_param_names,
     builtin_receiver_self_host_text_param_names, builtin_signature, infer_builtin_call_type,
     is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
     template_renders_receiver_elements_as_host_text, NonDeclarationBinding,
@@ -12479,6 +12480,59 @@ pub fn function_value_call_named_arg_diags(
     }
 }
 
+pub fn builtin_positional_arity_diags(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if crate::v1_compiler_infer_method::builtin_accepts_surplus_positional(func_name.clone()) {
+        Rc::new(vec![])
+    } else {
+        match crate::v1_compiler_infer_method::builtin_signature(func_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(sig) => {
+                let capacity = (sig.params.clone().len() as i64);
+                let positional_args = Rc::new({
+                    let mut __result = Vec::new();
+                    for ta in typed_args.iter().cloned() {
+                        if match crate::v1_std_core::arg_name_at(
+                            ta.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ) {
+                            std::option::Option::None => true,
+                            Some(_) => false,
+                        } {
+                            __result.push(ta);
+                        }
+                    }
+                    __result
+                });
+                let supplied = (positional_args.clone().len() as i64);
+                if (supplied.clone() > capacity.clone()) {
+                    match positional_args
+                        .clone()
+                        .get((capacity.clone()) as usize)
+                        .cloned()
+                    {
+                        Some(overflow) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::CallPositionalSurplus {
+                                callee: func_name.clone(),
+                                supplied: supplied.clone(),
+                                capacity: capacity.clone(),
+                                span: overflow.span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    }
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+        }
+    }
+}
+
 pub fn function_value_named_application_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -18350,20 +18404,29 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             emissions: infer_emissions_concat(
                                                 arg_emissions.clone(),
                                                 infer_emissions_of_diagnostics(v1_rt::concat(
-                                                    relocated_algebra_evidence_diags(
-                                                        v1_rt::concat(
-                                                            method_resolution.diagnostics.clone(),
-                                                            template_subst_diags.clone(),
+                                                    v1_rt::concat(
+                                                        relocated_algebra_evidence_diags(
+                                                            v1_rt::concat(
+                                                                method_resolution
+                                                                    .diagnostics
+                                                                    .clone(),
+                                                                template_subst_diags.clone(),
+                                                            ),
+                                                            span.clone(),
+                                                            scope.module_name.clone(),
                                                         ),
-                                                        span.clone(),
-                                                        scope.module_name.clone(),
+                                                        algebra_method_host_text_crossing_diags(
+                                                            func_name.clone(),
+                                                            method_resolution.semantics.clone(),
+                                                            method_receiver.clone(),
+                                                            remaining.clone(),
+                                                            bridge_result_type.clone(),
+                                                            scope.clone(),
+                                                        ),
                                                     ),
-                                                    algebra_method_host_text_crossing_diags(
+                                                    builtin_positional_arity_diags(
                                                         func_name.clone(),
-                                                        method_resolution.semantics.clone(),
-                                                        method_receiver.clone(),
-                                                        remaining.clone(),
-                                                        bridge_result_type.clone(),
+                                                        typed_args.clone(),
                                                         scope.clone(),
                                                     ),
                                                 )),
@@ -18596,7 +18659,7 @@ Rc::new(InferResult {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone())))))),
+    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), v1_rt::concat(builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_positional_arity_diags(func_name.clone(), typed_args.clone(), scope.clone()))))))),
 })
 }
                                 } else {

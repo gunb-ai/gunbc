@@ -1752,6 +1752,24 @@ pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
 }
 
+pub fn builtin_positionally_variadic() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("concat".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
+pub fn builtin_accepts_surplus_positional(name: String) -> bool {
+    match v1_rt::map_get(&builtin_positionally_variadic(), name.clone()) {
+        Some(v) => v.clone(),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
     match builtin_signature(name) {
         Some(sig) => Rc::new({
