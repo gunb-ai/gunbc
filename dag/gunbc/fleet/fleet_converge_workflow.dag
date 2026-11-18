@@ -8644,7 +8644,7 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
 // which is the shape the runtime mis-evaluates), then the census gate and the admission/projection
 // chain run against that plain Workflow -- identical bytes to the merge-base `data` path.
 fn fleet_converge_render_jobs(jobs: List<Job>) -> FleetConvergeYamlGenerationOutcome {
-  let wf = fleet_converge_assemble_workflow(jobs: jobs);
+  let wf = fleet_converge_assemble_workflow(jobs: jobs)
   // THE CENSUS GATE, FIRST (review 96120; gunbc.design_argument::fail_closed). The release-bins
   // retention chore deletes cached entries, and the only number that bounds what it keeps is the
   // census. If the census is not computable -- or computes zero, or negative -- no workflow is
