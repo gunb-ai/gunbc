@@ -176,7 +176,7 @@ test fn a_refused_expansion_refuses_and_a_positive_worker_count_is_echoed_as_an_
   schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 1))
     && (match schedule_answer(s: schedule(d: chain, e: admitted, workers: 4)) {
          Absent => false
-         Present { value: a } => nat_to_int(n: a.workers) == 4 && a.workers == 4
+         Present { value: a } => nat_to_int(n: a.workers) == 4
        })
   // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion.
     && !schedule_is_scheduled(s: schedule(d: ill_formed, e: refused_expansion, workers: 2))

@@ -427,7 +427,7 @@ type ScheduleRead
   = ReadRefused { cause: String }
   | CacheHeldNothing { answer: ScheduleAnswer }
   | CacheMatches { answer: ScheduleAnswer }
-  | CacheSuperseded { answer: ScheduleAnswer, stale_leaves: Int }
+  | CacheSuperseded { answer: ScheduleAnswer, stale_leaves: Int, stale_answer_fields: Int }
 
 // THE ONE READ CONSUMERS USE (roadmap-schedule-bottlenecks-and-offer, then roadmap-work-item-projection): hand it the
 // decomposition, its expansion, the worker count, and whatever you last cached; it recomputes and answers.
@@ -483,13 +483,23 @@ fn schedule_read_answer(r: ScheduleRead) -> ScheduleAnswer? {
     ReadRefused { cause: _ } => none
     CacheHeldNothing { answer: a } => Present { value: a }
     CacheMatches { answer: a } => Present { value: a }
-    CacheSuperseded { answer: a, stale_leaves: _ } => Present { value: a }
+    CacheSuperseded { answer: a, stale_leaves: _, stale_answer_fields: _ } => Present { value: a }
   }
 }
 
 fn schedule_read_stale_leaves(r: ScheduleRead) -> Int {
   match r {
-    CacheSuperseded { answer: _, stale_leaves: n } => n
+    CacheSuperseded { answer: _, stale_leaves: n, stale_answer_fields: _ } => n
+    _ => 0
+  }
+}
+
+// How many AGGREGATE fields of the cached answer the recomputation superseded (worker count, horizon, critical
+// length, in-flight shape, critical-path keys). Zero with a non-zero stale_leaves means the cache was right about
+// the totals and wrong about the placement.
+fn schedule_read_stale_answer_fields(r: ScheduleRead) -> Int {
+  match r {
+    CacheSuperseded { answer: _, stale_leaves: _, stale_answer_fields: n } => n
     _ => 0
   }
 }
