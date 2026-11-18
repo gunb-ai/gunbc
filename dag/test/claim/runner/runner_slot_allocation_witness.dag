@@ -289,7 +289,7 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
   // build-pool carve takes one more slot from each now that both are on the serving roster (-> 13 / -> 15),
   // held by the pool, so CI never loses a slot that a pool does not hold
   // (conservation). The dynamic assertions below (committed == memory-admitted, and cpu axis > memory-admitted)
-  // prove memory is the binding axis at these charged, un-carved values; srv1 pays nothing and stays 7.
+  // prove memory is the binding axis at these charged, carved values; srv1 pays nothing and stays 7.
   committed_width_is(host: operator_host_srv3, expected: 13)
     && committed_width_is(host: operator_host_srv4, expected: 15)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
