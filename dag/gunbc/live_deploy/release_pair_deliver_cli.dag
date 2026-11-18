@@ -519,12 +519,12 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
         expected_body: body,
       ) {
         // Already placed for this exact revision — the restart leg is all that remains (a re-tick converges, not reds).
-        AlreadyPlaced { } => release_pair_restart_serve(restart: restart)
+        AlreadyPlaced => release_pair_restart_serve(restart: restart)
         // A foreign or stale receipt at the per-revision locus — refuse (red control: a mismatched placement refuses).
         MismatchRefusal { reason } =>
           exit_failure(reason: join(["pair-deliver refused a foreign placement — ", reason as String], ""))
         // Nothing placed yet (or the read itself was refused — the ordinary fresh tick, not the red one): place it.
-        NotYetPlaced { } => {
+        NotYetPlaced => {
           let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
           match filesystem_link_create_new(
             source: place.source, path: place.destination,

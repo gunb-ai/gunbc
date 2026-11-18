@@ -154,8 +154,8 @@ data release_pair_already_at_head_reason: NonEmptyStr = "the pair is already ser
 // already-occupied link left by a half-done tick); DIFFERENT content means a foreign or stale placement sits at the
 // per-revision locus — refuse rather than silently overwrite it (fail_closed).
 type ReleasePairResume
-  = AlreadyPlaced { }
-  | NotYetPlaced { }
+  = AlreadyPlaced
+  | NotYetPlaced
   | MismatchRefusal { reason: NonEmptyStr }
 
 data release_pair_receipt_mismatch_reason: NonEmptyStr = "the per-revision release locus already holds a source receipt whose content differs from the one this delivery would write — a foreign or stale placement; refusing rather than overwriting (fail-closed)"
@@ -168,10 +168,10 @@ data release_pair_receipt_mismatch_reason: NonEmptyStr = "the per-revision relea
 fn release_pair_resume_decision(receipt_read: FilesystemReadOutcome, expected_body: String) -> ReleasePairResume {
   match receipt_read {
     FilesystemReadSucceeded { content: content } => match content == expected_body {
-      true => AlreadyPlaced { }
+      true => AlreadyPlaced
       false => MismatchRefusal { reason: release_pair_receipt_mismatch_reason }
     }
-    FilesystemReadRefused { error: _ } => NotYetPlaced { }
+    FilesystemReadRefused { error: _ } => NotYetPlaced
   }
 }
 
