@@ -21,8 +21,8 @@ import gunbc.roadmap.roadmap_decomposition {
   expand_node, expand_decomposition,
   occurrence_is_declared, occurrence_is_assumed, occurrence_is_offered_claimable,
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
-  decomposition, waits, leaf,
-  Expanded, Refused, DependencyClaimRefused, NegativeFindingsCount, NotUniquelyDecomposed,
+  decomposition, waits, leaf, reading_family,
+  Expanded, Refused, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
 }
 
 // THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
@@ -87,7 +87,7 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
   let beyond_ok = match expand_decomposition(d: beyond, findings_count: 3) {
     Expanded { occurrences, edges } => false
     Refused { cause: DependencyClaimRefused { item } } => item == nid(s: child)
-    Refused { cause: NegativeFindingsCount { item } } => false
+    Refused { cause: NonPositiveDeclaredCount { item } } => false
     Refused { cause: NotUniquelyDecomposed { item } } => false
   }
   let adm_ok = match expand_decomposition(d: admitted, findings_count: 3) {
@@ -103,34 +103,51 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
     && decomposition_dependencies_well_formed(d: admitted)
 }
 
-// THE FINDINGS-COUNT GUARD IS TIGHT, NOT OVER-GENERAL (§Epistemic humility). literal-elaboration carries a
-// FindingsOf family, so a NEGATIVE count would silently drop that family's assumed members and refuses with the
-// typed cause NegativeFindingsCount; the SAME node at count ZERO (a legitimate "no findings yet" simulation
-// input) EXPANDS, minting zero assumed members -- the family leaves no leaf occurrences, which is correct, not a
-// silent drop. A decomposition with NO FindingsOf family at a negative count EXPANDS: the count has no family
-// to constrain, so refusing it would over-generalize a prohibition. Together these execute both branches of
-// decomposition_has_findings -- the refusal cannot be a decoration.
-test fn a_findings_count_refuses_only_when_a_findings_family_is_present() -> Bool {
-  let leaf_only = decomposition(node: "leaf-only-expansion-fixture", waits_on: [], stages: [
-    [
-      leaf(label: "one leaf", days: 1),
-    ],
+// THE DECLARED-COUNT GUARD IS REACHABLE, NOT A DECORATION (fail_closed; guarantee_ladder). A family's member
+// count reaches the expansion from TWO sources: the ASSUMED FindingsOf count, which is a Nat (its negative is
+// unwritable -- no guard needed, §fail_closed "make the bad state unwritable"), and the carrier's DECLARED
+// population_members, a bare Int the carrier exposes and this unit must NOT edit (single_authority). A non-positive
+// DECLARED count is therefore writable at the source, so the expansion REFUSES it rather than minting zero
+// occurrences -- the exact silent drop the enumeration comment disclaims. This witness PLANTS a declared family at
+// zero members and at a negative count: both REFUSE with the typed, located NonPositiveDeclaredCount. The SAME
+// family at a positive count EXPANDS to that many DECLARED occurrences, and a FindingsOf family at count zero
+// (a legitimate "no findings yet") still EXPANDS to zero assumed members -- so the guard fires exactly on the bad
+// declared input and nowhere else.
+test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands() -> Bool {
+  let zero_pop = decomposition(node: "declared-pop-zero-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: 0, on: "mod/x", basis: "b", owner: "o") ],
   ])
-  let neg_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: -1) {
+  let neg_pop = decomposition(node: "declared-pop-negative-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: -3, on: "mod/x", basis: "b", owner: "o") ],
+  ])
+  let pos_pop = decomposition(node: "declared-pop-positive-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: 2, on: "mod/x", basis: "b", owner: "o") ],
+  ])
+  let zero_ok = match expand_decomposition(d: zero_pop, findings_count: 0) {
     Expanded { occurrences, edges } => false
-    Refused { cause: NegativeFindingsCount { item } } => true
+    Refused { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-zero-fixture")
     Refused { cause: DependencyClaimRefused { item } } => false
     Refused { cause: NotUniquelyDecomposed { item } } => false
   }
-  let zero_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: 0) {
+  let neg_ok = match expand_decomposition(d: neg_pop, findings_count: 0) {
+    Expanded { occurrences, edges } => false
+    Refused { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-negative-fixture")
+    Refused { cause: DependencyClaimRefused { item } } => false
+    Refused { cause: NotUniquelyDecomposed { item } } => false
+  }
+  let pos_ok = match expand_decomposition(d: pos_pop, findings_count: 0) {
+    Expanded { occurrences, edges } =>
+      count(filter(occurrences, o => occurrence_is_declared(o))) == 2
+        && count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
+    Refused { cause } => false
+  }
+  // A zero ASSUMED (FindingsOf) count is a legitimate simulation input and must still EXPAND, minting zero
+  // assumed members -- proving the new refusal targets only the DECLARED Int, never the Nat simulation input.
+  let zero_findings_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: 0) {
     Expanded { occurrences, edges } =>
       count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
         && count(filter(occurrences, o => occurrence_is_declared(o))) == 1
     Refused { cause } => false
   }
-  let leaf_neg_ok = match expand_decomposition(d: leaf_only, findings_count: -1) {
-    Expanded { occurrences, edges } => true
-    Refused { cause } => false
-  }
-  neg_ok && zero_ok && leaf_neg_ok
+  zero_ok && neg_ok && pos_ok && zero_findings_ok
 }
