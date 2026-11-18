@@ -718,10 +718,26 @@ fn roadmap_authority_fixture_path(f: RoadmapAuthorityFixtureFile) -> String {
 
 // THE WRITE, wet lane only. It exists so the committed fixture is produced by the encoder rather than
 // transcribed by hand; the witness re-encodes every file, so an edit here without a regeneration reddens.
+//
+// IT WRITES ONE PLACE, AND THE TYPE SAYS SO. The only directory this driver will ever write is the
+// committed fixture under the checkout, and the guard refuses anything else: no absolute path, no `..`
+// escaping the checkout, nothing outside the fixture root. That is not decoration -- the live route reads
+// its log from a working-tree `events/` directory, and a generator that could be aimed anywhere is a
+// generator that will someday be aimed at the lab's log. Generation therefore runs in a throwaway clone
+// (`mktemp -d`), never the lab checkout, and never under any real instance root.
+data roadmap_authority_fixture_write_prefix: String = "fixtures/roadmap_authority/events/"
+
+fn roadmap_authority_fixture_write_allowed(path: String) -> Bool {
+  !path.starts_with(prefix: "/")
+    && !path.contains(fragment: "..")
+    && path.starts_with(prefix: roadmap_authority_fixture_write_prefix)
+}
+
 fn roadmap_authority_fixture_emit() -> Bool {
   all(roadmap_authority_fixture_files(), f => {
-    let w = Filesystem.Write(path: roadmap_authority_fixture_path(f: f), content: roadmap_authority_fixture_bytes(f: f))
-    w.success
+    let path = roadmap_authority_fixture_path(f: f)
+    roadmap_authority_fixture_write_allowed(path: path)
+      && Filesystem.Write(path: path, content: roadmap_authority_fixture_bytes(f: f)).success
   })
 }
 
