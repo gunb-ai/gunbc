@@ -33,15 +33,13 @@ module gunbc.live_deploy.release_pair_delivery
 // restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command), the single registered privileged restart authority); any refusal yields
 // PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
 //
-// THE EXECUTING CONSUMER is DECLARED but its install legs are NOT in this PR (declared frontier, review 96234): the
-// lab's delivery unit gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service (emit.dag::live_deploy_belt_pair_delivery_unit_file)
-// and its sibling .timer on OnUnitInactiveSec=600 s (live_deploy_belt_pair_delivery_timer_unit_file) are DECLARED in
-// emit.dag and named in spec.dag, and the emission oracle witnesses them — but they are deliberately NOT registered
-// in apply_legs in this PR. Nothing here installs or runs the unit, because the source-side observation (review
-// 96121) that makes the fold's guard check real work lands in the STACKED PR (roadmap item lab-converges-release-pair),
-// which brings back the install registration verbatim. Until then the three stages are consumed by the entry
-// (release_pair_deliver_run -> release_pair_install_plan), which the CLI + plan witnesses exercise; they are not
-// dangling, but the systemd install edge is the stacked PR's to add once the guard is real.
+// THE EXECUTING CONSUMER is now INSTALLED. The lab's delivery unit
+// gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service (emit.dag::live_deploy_belt_pair_delivery_unit_file) and
+// its sibling .timer on OnUnitInactiveSec=600 s (live_deploy_belt_pair_delivery_timer_unit_file) are registered in
+// apply_legs (apply_legs.dag::deploy_apply_belt_legs), gated on the instance's own PairDelivered declaration
+// (spec.dag::PairDelivery) so only pair-delivered instances gain the legs. The source-side observation (review
+// 96121) that makes the fold's guard check real work is real (release_pair_source_head_verdict), which is the
+// condition this note named for bringing the install registration back.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.algebra { trim }

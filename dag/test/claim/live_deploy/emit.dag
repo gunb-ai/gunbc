@@ -16,6 +16,7 @@ import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_storage_slots }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.optional { Present, Absent }
+import gunbc.live_deploy.spec { NotPairDelivered }
 import gunbc.live_deploy.spec {
   HoldsNoRoleSingleton,
   DeploymentArtifactStep,
@@ -715,6 +716,7 @@ fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
     instance: srv1_live_dashboard_instance(),
     target: target,
     names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+    pair_delivery: NotPairDelivered,
   )
 }
 
