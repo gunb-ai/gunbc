@@ -285,15 +285,13 @@ fn heal_publisher_phase_script(
     o: phase,
     f: fn(p) { match source {
       PublisherBuildsItsOwnCheckout { required_bins: _ } =>
-        outcome_accepted(
-          value: gunbc_run_step_script_with_prelude(
-            prelude: heal_publisher_cgroup_prelude(),
-            source_roots: profile.roster.source_roots,
-            entry: p.entry as String,
-            function: p.function as String,
-            claim_run: false,
-            receipt_rel: none
-          )
+        gunbc_run_step_script_with_prelude(
+          prelude: heal_publisher_cgroup_prelude(),
+          source_roots: profile.roster.source_roots,
+          entry: p.entry as String,
+          function: p.function as String,
+          claim_run: false,
+          receipt_rel: none
         )
     }
    })
