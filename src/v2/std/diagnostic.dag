@@ -1,6 +1,7 @@
 module v2.std.diagnostic
 
 import std.types { List }
+import std.optional { Optional, Present, Absent }
 import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
@@ -163,6 +164,19 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 }
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
+}
+
+// PROJECT an Outcome onto its accepted value as an Optional: Accepted -> Present, Rejected -> Absent.
+// This is a PROJECTION, not a total accessor -- the refusal stays VISIBLE as Absent (no default value is
+// fabricated), so a consumer that requires the value must still handle Absent and cannot mistake a refusal
+// for an accepted result. It is the canonical way to hand an accepted value to a consumer that only wants
+// the value-or-nothing, and the refusal must never be silently dropped; a caller that must surface WHY it
+// refused matches on Outcome directly (Rejected carries the NonEmptyDiagnostics), not through this.
+fn outcome_accepted_value<T>(o: Outcome<T>) -> Optional<T> {
+  match o {
+    Accepted { value: v, diagnostics: _ } => Present { value: v }
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
 fn extent_eq(a: Extent, b: Extent) -> Bool {
