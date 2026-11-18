@@ -18404,20 +18404,29 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             emissions: infer_emissions_concat(
                                                 arg_emissions.clone(),
                                                 infer_emissions_of_diagnostics(v1_rt::concat(
-                                                    relocated_algebra_evidence_diags(
-                                                        v1_rt::concat(
-                                                            method_resolution.diagnostics.clone(),
-                                                            template_subst_diags.clone(),
+                                                    v1_rt::concat(
+                                                        relocated_algebra_evidence_diags(
+                                                            v1_rt::concat(
+                                                                method_resolution
+                                                                    .diagnostics
+                                                                    .clone(),
+                                                                template_subst_diags.clone(),
+                                                            ),
+                                                            span.clone(),
+                                                            scope.module_name.clone(),
                                                         ),
-                                                        span.clone(),
-                                                        scope.module_name.clone(),
+                                                        algebra_method_host_text_crossing_diags(
+                                                            func_name.clone(),
+                                                            method_resolution.semantics.clone(),
+                                                            method_receiver.clone(),
+                                                            remaining.clone(),
+                                                            bridge_result_type.clone(),
+                                                            scope.clone(),
+                                                        ),
                                                     ),
-                                                    algebra_method_host_text_crossing_diags(
+                                                    builtin_positional_arity_diags(
                                                         func_name.clone(),
-                                                        method_resolution.semantics.clone(),
-                                                        method_receiver.clone(),
-                                                        remaining.clone(),
-                                                        bridge_result_type.clone(),
+                                                        typed_args.clone(),
                                                         scope.clone(),
                                                     ),
                                                 )),
