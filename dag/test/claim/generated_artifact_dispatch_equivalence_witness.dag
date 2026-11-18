@@ -64,6 +64,11 @@ fn discriminant(a: GeneratedArtifact) -> String =
     ApproveIosOperationErrorsSwiftArtifact => "ApproveIosOperationErrorsSwiftArtifact"
     ApproveIosEnrolmentMachineTestsSwiftArtifact => "ApproveIosEnrolmentMachineTestsSwiftArtifact"
     ApproveIosOperationErrorsTestsSwiftArtifact => "ApproveIosOperationErrorsTestsSwiftArtifact"
+    RoadmapAuthorityOccurrenceAcceptanceArtifact => "RoadmapAuthorityOccurrenceAcceptanceArtifact"
+    RoadmapAuthorityUpstreamAcceptanceArtifact => "RoadmapAuthorityUpstreamAcceptanceArtifact"
+    RoadmapAuthorityUpstreamRevocationArtifact => "RoadmapAuthorityUpstreamRevocationArtifact"
+    RoadmapAuthorityUpstreamRetiredArtifact => "RoadmapAuthorityUpstreamRetiredArtifact"
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => "RoadmapAuthorityAbsentNodeAcceptanceArtifact"
   }
 
 fn row_for(a: GeneratedArtifact) -> ProducerRow {

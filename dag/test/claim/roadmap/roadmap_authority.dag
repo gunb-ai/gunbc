@@ -182,19 +182,18 @@ import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph 
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
-import gunbc.roadmap.roadmap_authority_fixture_writer {
-  roadmap_authority_fixture_root,
-  roadmap_authority_fixture_worktree_root,
-  FixtureWriteTarget,
-  RoadmapAuthorityFixtureWrite,
-  RoadmapAuthorityFixtureEmit,
-  FixtureFileWritten,
-  FixtureWriteRefused,
-  FixtureEmitComplete,
-  FixtureEmitRefused,
-  roadmap_authority_fixture_guard,
-  roadmap_authority_fixture_write_all,
-}
+// THE COMMITTED EVENT LOG, AS A GENERATED ARTIFACT. This module reads the fixture and never produces it: the
+// roster (gunbc.generated_artifact) owns where the files live, the producer
+// (gunbc.roadmap.roadmap_authority_fixture) owns what their bytes are, the gate
+// (gunbc.instruments.generated_artifact_gate) owns putting them on disk, and this module only ever asks the
+// filesystem what is actually there. An earlier revision imported a writer from here and wrote the log itself;
+// that route is deleted, and every name below is a read.
+import gunbc.roadmap.roadmap_authority_fixture { roadmap_authority_fixture_worktree_root, roadmap_authority_fixture_absent_node }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_directory, artifact_name, artifact_path, artifact_eq }
+import gunbc.generated_artifact_registry { committed_generated_artifacts }
+import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.instruments.generated_artifact_gate { artifact_selection_for_path, ArtifactSelected, ArtifactSelectionEmpty }
+import std.filesystem { path_parent_directory }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -648,157 +647,112 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   }
 }
 
-// ─── THE COMMITTED FIXTURE ───────────────────────────────────────────────────
-// A SMALL LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
-// through the floor's checkout carve-out instead of being mocked. Its bytes are THIS table rendered by the
-// log's own emitter, written by gunbc.roadmap.roadmap_authority_fixture_writer -- the one module allowed to
-// write them -- and witness_committed_fixture_bytes_are_the_encoders_own re-encodes every file and reddens on
-// a byte of drift, so the fixture cannot rot away from the encoder it was generated with.
+// ─── THE COMMITTED FIXTURE ──────────────────────────────
+// A SMALL EVENT LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
+// through the floor's checkout carve-out instead of being mocked. It is five generated artifacts: five rows of
+// gunbc.generated_artifact's population, whose bytes the log's own emitter produces in
+// gunbc.roadmap.roadmap_authority_fixture and whose only route to disk is
+// gunbc.instruments.generated_artifact_gate::write_generated_artifact. Nothing in this module writes them;
+// witness_committed_fixture_bytes_are_the_encoders_own reads each file back and compares it, byte for byte, to
+// what the roster's generator says it should be, so the fixture cannot rot away from the encoder it came from.
+
+// THE COMMITTED FIXTURE IS THE ROSTER'S, NOT THIS MODULE'S.
 //
-// Regenerating it is one wet run; the command, the guard, and why the write is not on the sanctioned
-// generated-artifact route all live in that writer module's header.
-// THE PATH COMES FROM THE MODULE THAT WRITES IT, in one spelling. A root restated here is a fork: this module
-// reads the directory and that module creates it, and if the two spellings ever drift the witness is reading a
-// different directory than the one generated -- a missing-fixture FAIL, which is the state this PR exists to
-// make impossible. gunbc.design_argument::single_authority.
-
-type RoadmapAuthorityFixtureFile {
-  node: RoadmapNodeId
-  name: String
-  event: RoadmapEvent
-}
-
-// THE ROW THE AUTHORITY DOES NOT DECLARE. The fixture carries an acceptance for it precisely so the
-// fail-closed path is exercised by the committed route, not argued about: a log may name a node the
-// plan has never heard of, and nothing may be admitted on it — and nothing may crash on it either.
-fn roadmap_authority_fixture_absent_node() -> RoadmapNodeId {
-  tnid(s: "roadmap-authority-scenario-absent-node")
-}
-
-fn roadmap_authority_fixture_files() -> List<RoadmapAuthorityFixtureFile> {
-  let accepted_row = tnid(s: "namespace-occurrence-transport")
-  let superseded_row = tnid(s: "2-scm-git-upstream-model")
-  let absent_row = roadmap_authority_fixture_absent_node()
-  let opening = scenario_event(node: accepted_row, parent: Absent, kind: scenario_acceptance_kind(id: accepted_row))
-  let granted = scenario_event(node: superseded_row, parent: Absent, kind: scenario_acceptance_kind(id: superseded_row))
-  let taken_back = scenario_event(
-    node: superseded_row,
-    parent: Present { value: roadmap_event_id(e: granted) },
-    kind: scenario_revocation_kind(id: superseded_row, disposition: AcceptanceNodeRemainsSuperseded {}),
-  )
-  let ended = scenario_event(
-    node: superseded_row,
-    parent: Present { value: roadmap_event_id(e: taken_back) },
-    kind: Retired { reason: "the scenario closed the node" as NonEmptyStr },
-  )
-  // The absent row is given a digest copied from a DECLARED row, so the only thing wrong with it is the
-  // thing under test: the authority does not declare the node the receipt is about.
-  let borrowed = scenario_receipt(id: accepted_row)
-  let stranger = scenario_event(
-    node: absent_row,
-    parent: Absent,
-    kind: AcceptanceRecordedEvent {
-      receipt: RoadmapAcceptanceReceipt {
-        node: absent_row,
-        criteria_digest: borrowed.criteria_digest,
-        red_control: borrowed.red_control,
-        handback: borrowed.handback,
-        accepted_by: borrowed.accepted_by,
-        accepted_on: borrowed.accepted_on,
-      },
-      evidence: scenario_evidence(),
-    },
-  )
-  [
-    RoadmapAuthorityFixtureFile { node: accepted_row, name: "01-acceptance.json", event: opening },
-    RoadmapAuthorityFixtureFile { node: superseded_row, name: "01-acceptance.json", event: granted },
-    RoadmapAuthorityFixtureFile { node: superseded_row, name: "02-revocation.json", event: taken_back },
-    RoadmapAuthorityFixtureFile { node: superseded_row, name: "03-retired.json", event: ended },
-    RoadmapAuthorityFixtureFile { node: absent_row, name: "01-acceptance.json", event: stranger },
-  ]
-}
-
-// THE BYTES THE GENERATOR WRITES, in one place so the witness and the generator cannot disagree.
-fn roadmap_authority_fixture_bytes(f: RoadmapAuthorityFixtureFile) -> String {
-  roadmap_event_wire_text(env: roadmap_event_envelope(e: f.event))
-}
-
-fn roadmap_authority_fixture_path(f: RoadmapAuthorityFixtureFile) -> String {
-  join([roadmap_authority_fixture_root(), "/", f.node as String, "/", f.name], "")
-}
-
-// THE WRITE, wet lane only. It exists so the committed fixture is produced by the encoder rather than
-// transcribed by hand; the witness re-encodes every file, so an edit here without a regeneration reddens.
+// Five committed JSON files under fixtures/roadmap_authority/events, each of them a member of
+// gunbc.generated_artifact's population and of gunbc.generated_artifact_registry's committed list. This module
+// READS them and writes nothing: the bytes come from the gate's own generator (artifact_generate), the paths
+// come from the roster's own artifact_location, and the walk root is DERIVED from the roster instead of being
+// spelled a second time here. That separation is the design, not a nicety -- the witness that demands a file and
+// the code that produces it must be different authorities, or the witness can be talked into agreement with
+// whatever the writer happens to do. An earlier revision of this change carried its own writer, its own path
+// guard and its own copy of the directory here; review 96472/96474/96479 each blocked that as a second path
+// beside a modelled route, and the ruling is that the roster is the route.
 //
-// THE GUARD LIVES OVER THERE, ONCE. The only directory this driver may ever write is the committed fixture,
-// and the guard that refuses anything else -- no absolute path, no `..` escaping the checkout, nothing outside
-// the fixture root -- is gunbc.roadmap.roadmap_authority_fixture_writer::roadmap_authority_fixture_guard. It
-// used to be duplicated here as a prefix constant plus an allowed-predicate; nothing in this module called the
-// copy, so it was a second authority over one decision with no consumer, and the red control below interrogates
-// the writer's guard, which is the one that gates real writes. That is not decoration either: the live route
-// reads its log from a working-tree `events/` directory, and a generator that could be aimed anywhere is a
-// generator that will someday be aimed at the lab's log -- so generation runs in a throwaway clone
-// (`mktemp -d`), never the lab checkout, and never under any real instance root.
+// WHAT EACH PIECE IS AUTHORITATIVE FOR.
+//   the path    -> gunbc.generated_artifact artifact_location, read back through artifact_directory / artifact_name
+//   the bytes   -> gunbc.generated_artifact_emit artifact_generate, which dispatches to the pure producer
+//                  gunbc.roadmap.roadmap_authority_fixture
+//   the walk    -> derived from the rostered directory; nothing here re-spells it, and
+//                  witness_committed_fixture_is_the_rosters_five_rows reddens if the two ever disagree
+//
+// REGENERATING IT IS THE ROSTER'S OWN WET RUN, not a command in this file: the gate materializes the parent
+// directory and reports a false Filesystem.Write as an exit failure naming the artifact path
+// (dag/gunbc/instruments/generated_artifact_gate.dag::write_generated_artifact), so a partial log can never be
+// reported as a fixture -- which is the property this change carried over when the local writer was deleted.
+// The byte witness below is what makes the commit load-bearing: regenerate and forget to commit, or hand-edit a
+// file, and it reddens before any projection is consulted.
 
-// THE FIXTURE IS WRITTEN ELSEWHERE, ON PURPOSE. This module commits a log under the checkout so the real
-// Filesystem.List walk has something real to walk, and it READS that log. Authoring it from here would put
-// the input and the assertion over the input in the same module, which is how a witness gets talked into
-// agreement with whatever the code next does. So the emit is a thin bridge over
-// gunbc.roadmap.roadmap_authority_fixture_writer -- the one place the fixture may be written -- which owns the
-// path guard, the mkdir -p, the write, and the typed refusal. The bridge says nothing the writer does not.
-fn roadmap_authority_fixture_targets() -> List<FixtureWriteTarget> {
-  map(roadmap_authority_fixture_files(), f => FixtureWriteTarget {
-    path: roadmap_authority_fixture_path(f: f), content: roadmap_authority_fixture_bytes(f: f),
-  })
+// THE FIXTURE'S ROWS, selected from the committed roster by their directory. Selecting by directory rather than
+// by naming five constructors here keeps this module from holding its own list of what the fixture contains; the
+// count in witness_committed_fixture_is_the_rosters_five_rows is what notices if a row moves out.
+fn roadmap_authority_fixture_rows() -> List<GeneratedArtifact> {
+  filter(
+    committed_generated_artifacts(),
+    a => artifact_directory(a: a).starts_with(prefix: concat(roadmap_authority_fixture_worktree_root(), "/")),
+  )
 }
 
-fn roadmap_authority_fixture_emit() -> RoadmapAuthorityFixtureEmit {
-  roadmap_authority_fixture_write_all(targets: roadmap_authority_fixture_targets())
-}
-
-// THE WET ENTRY POINT. claim_batch prints a verdict for a Bool, so this is the bridge over the bridge: it
-// says nothing the typed emit did not say and fails the same way it refuses. Run THIS wet to regenerate.
-fn roadmap_authority_fixture_emit_ok() -> Bool {
-  match roadmap_authority_fixture_emit() {
-    FixtureEmitComplete { written: written } => string_length(s: join(written, ",")) > 0
-    FixtureEmitRefused { path: _, step: _, reason: _ } => false
+// THE DIRECTORY THE WALK RUNS OVER, off the roster. A fixture whose rows were spread over two directories would
+// not be one log, and the walk would silently read one of them; the agreement is asserted, not assumed.
+fn roadmap_authority_fixture_walk_root() -> String? {
+  match first(roadmap_authority_fixture_rows()) {
+    Absent => Absent
+    Present { value: a } => Present { value: path_parent_directory(path: artifact_directory(a: a)) }
   }
 }
 
-// THE RED CONTROL, and it needs no filesystem to run. Every one of these targets is one the generator must
-// refuse BY NAME, in the guard, before any effect is attempted -- an absolute path into a real instance
-// root, a traversal out of the fixture, and a path that is a perfectly ordinary file elsewhere in the
-// checkout. And the admissible path must be admitted, or this would pass by refusing everything.
-test fn witness_fixture_generator_refuses_an_unwritable_target_by_name() -> Bool {
+// THE FIXTURE IS FIVE ROWS, IN ONE DIRECTORY, EACH WITH ITS OWN PATH. A roster edit that renamed a row, moved a
+// file out of the fixture, or let a second row claim the same path would otherwise arrive as a baffling reader
+// failure; here it fails as the roster defect it is. Two rows on one path is the case worth naming: the wet run
+// would write both and the last would win, silently -- which is why the gate's own selection counts matches
+// instead of stopping at the first, and why this witness counts them too.
+test fn witness_committed_fixture_is_the_rosters_five_rows() -> Bool {
+  let rows = roadmap_authority_fixture_rows()
+  match roadmap_authority_fixture_walk_root() {
+    Absent => false
+    Present { value: root } =>
+      count(rows) == 5
+        && all(rows, a => artifact_path(a: a).starts_with(prefix: concat(root, "/")))
+        && all(rows, a => path_parent_directory(path: artifact_directory(a: a)) == root)
+        && all(rows, a => string_length(s: artifact_name(a: a)) > 0)
+        && all(rows, a => count(rows |> filter(x => artifact_path(a: x) == artifact_path(a: a))) == 1)
+  }
+}
+
+// THE GATE REFUSES AN UNROSTERED TARGET BY NAME, BEFORE ANY WRITE IS ATTEMPTED. This is the red control the
+// deleted local writer used to carry, and it is stronger here because it interrogates the route that actually
+// writes: an absolute path into the lab's real event log, a traversal out of the fixture, an ordinary file
+// elsewhere in the checkout, and the empty path must each select NOTHING -- and one genuinely rostered fixture
+// path must select exactly ONE row, or "refuses everything" would pass for the wrong reason. Hermetic by
+// construction: selection is a pure fold over the registry, and a refusal happens before mkdir or
+// Filesystem.Write is ever reached.
+test fn witness_gate_refuses_an_unrostered_target_by_name() -> Bool {
   all(
     [
       "/opt/gunbc/roadmap-events/namespace-occurrence-transport/01-acceptance.json",
-      "fixtures/roadmap_authority/../../../etc/passwd",
+      "fixtures/roadmap_authority/events/../../../etc/passwd",
       "dag/gunbc/roadmap/roadmap_authority.dag",
       "",
     ],
-    target => match roadmap_authority_fixture_guard(path: target) {
-      Absent => false
-      Present { value: r } => match r {
-        FixtureWriteRefused { path: named, step: step, reason: reason } =>
-          named == target && step == "guard" && string_length(s: reason) > 0
-        FixtureFileWritten { path: _ } => false
-      }
+    target => match artifact_selection_for_path(path: target) {
+      ArtifactSelectionEmpty { matches: n } => n == 0
+      ArtifactSelected { artifact: _, matches: _ } => false
     },
   )
-    && match roadmap_authority_fixture_guard(
-      path: concat(concat(roadmap_authority_fixture_root(), "/"), "some-node/01-acceptance.json"),
-    ) {
-      Absent => true
-      Present { value: _ } => false
-    }
+    && all(roadmap_authority_fixture_rows(), a => match artifact_selection_for_path(path: artifact_path(a: a)) {
+         ArtifactSelectionEmpty { matches: _ } => false
+         ArtifactSelected { artifact: selected, matches: n } => n == 1 && artifact_eq(a: a, b: selected)
+       })
 }
 
 // THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
 fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
-  match roadmap_events_read_dir(dir: roadmap_authority_fixture_root()) {
-    AllEventsRead { envelopes: envs } => Present { value: envs }
-    AllEventsReadRefused { step: _, reason: _ } => Absent
+  match roadmap_authority_fixture_walk_root() {
+    Absent => Absent
+    Present { value: root } => match roadmap_events_read_dir(dir: root) {
+      AllEventsRead { envelopes: envs } => Present { value: envs }
+      AllEventsReadRefused { step: _, reason: _ } => Absent
+    }
   }
 }
 
@@ -865,9 +819,12 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
 // compared byte for byte, so a hand-edit to the log reddens here, before any projection is consulted --
 // and the fixture cannot be quietly edited into agreement with a projection that has moved.
 test fn witness_committed_fixture_bytes_are_the_encoders_own() -> Bool {
-  all(roadmap_authority_fixture_files(), f => {
-    let r = Filesystem.Read(path: roadmap_authority_fixture_path(f: f))
-    r.success && r.content == roadmap_authority_fixture_bytes(f: f)
+  all(roadmap_authority_fixture_rows(), a => {
+    let r = Filesystem.Read(path: artifact_path(a: a))
+    match artifact_generate(a: a) {
+      ArtifactGenerated { content } => r.success && r.content == content
+      ArtifactGenerationRefused { reason: _ } => false
+    }
   })
 }
 

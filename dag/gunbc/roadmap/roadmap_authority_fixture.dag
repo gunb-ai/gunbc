@@ -1,0 +1,252 @@
+module gunbc.roadmap.roadmap_authority_fixture
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  AcceptanceNodeRemainsSuperseded,
+  node_criteria_digest,
+}
+import gunbc.roadmap.roadmap_status { RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent,
+  RoadmapEventKind,
+  RoadmapEventId,
+  EventPrincipalAuthenticated,
+  AcceptancePrEvidence,
+  AcceptanceRecordedEvent,
+  AcceptanceRevokedEvent,
+  Retired,
+  EarnedByPullRequest,
+  roadmap_event_envelope,
+  roadmap_event_id,
+  roadmap_event_wire_text,
+  roadmap_event_schema,
+}
+
+// THE COMMITTED ROADMAP-AUTHORITY EVENT LOG, AS A GENERATED ARTIFACT.
+//
+// Five JSON files under fixtures/roadmap_authority/events, checked into the tree so a hermetic witness can
+// walk a REAL event log through the floor's checkout carve-out (Filesystem.List + Filesystem.Read) instead of
+// having the log handed to it. What the walk proves is the carrier: one directory walk, one decode, the fold's
+// typed answers. Nothing here touches a filesystem, a command transport, or a clock -- the bytes are produced
+// by the log's own emitter, and the gate
+// (gunbc.instruments.generated_artifact_gate::write_generated_artifact) is the only thing that puts them on
+// disk, under the roster row that names each path (gunbc.generated_artifact, five
+// RoadmapAuthority*Artifact variants; gunbc.generated_artifact_registry lists them).
+//
+// WHY THESE FIVE FILES EXIST AT ALL. A witness that is handed its envelopes in process tests the fold; it does
+// not test the carrier that turns bytes on disk into those envelopes. The 21 scenario witnesses cover the
+// fold, and these files exist so the carrier and the fold are joined by something real: the reader is asked to
+// read a directory nobody fabricated at runtime. DESIGN gunbc.design_argument::witness_one_interface: supplying
+// inputs may never remove the last execution of the real path.
+//
+// WHY THE ROWS ARE ROSTERED AND NOT WRITTEN HERE. The route for a committed generated file is the gate behind
+// the roster: it refuses an unrostered path with a typed refusal naming it
+// (gunbc.generated_artifact::GeneratedArtifactPathUnrostered), it creates the parent directory, and it reports
+// a false Filesystem.Write as an exit failure naming the artifact path -- so a partial log can never be
+// reported as a fixture. A second writer beside that route would be a fork over one decision
+// (gunbc.design_argument::single_authority), which is what an earlier revision of this change had and what
+// review 96472, 96474 and 96479 each blocked. The ruling (neat-badger-614, 2026-11-18) is that adding a member
+// to the roster's population is ordinary extension, not a fork, and the local writer is deleted.
+//
+// WHAT THE BYTE WITNESS STILL OWNS. gunbc.roadmap.roadmap_authority_fixture is pure, so the witness can call
+// these same five functions and compare the result to what Filesystem.Read returns, byte for byte. That is the
+// drift gate: regenerate the roster and forget to commit, or edit a file by hand, and the witness reddens.
+
+// ── The one spelling of the directory ───────────────────────────────────────
+// THE ONE SPELLING OF THE DIRECTORY ON THE READER'S SIDE. The roster rows name their own locations
+// (gunbc.generated_artifact artifact_location), and the witness DERIVES its walk root from those rows; this is
+// the constant the witness uses to recognise which roster rows belong to the fixture at all. A witness that
+// re-spelled the whole path would drift from the roster silently -- so it spells this one prefix and a witness
+// (test.claim.roadmap.roadmap_authority witness_committed_fixture_is_the_rosters_five_rows) demands that every
+// fixture row's rostered path live under it.
+data roadmap_authority_fixture_worktree_dir: String = "fixtures/roadmap_authority"
+
+fn roadmap_authority_fixture_worktree_root() -> String { roadmap_authority_fixture_worktree_dir }
+
+// ── The three rows the log is about ─────────────────────────────────────────
+fn roadmap_authority_scenario_node_id(s: String) -> RoadmapNodeId { s as NonEmptyStr as RoadmapNodeId }
+
+// THE ROW THE AUTHORITY DOES NOT DECLARE. The fixture carries an acceptance for it precisely so the
+// fail-closed path is exercised by the committed route rather than argued about: a log may name a node the
+// plan has never heard of, and nothing may be admitted on it -- and nothing may crash on it either.
+fn roadmap_authority_fixture_absent_node() -> RoadmapNodeId {
+  roadmap_authority_scenario_node_id(s: "roadmap-authority-scenario-absent-node")
+}
+
+fn roadmap_authority_fixture_accepted_node() -> RoadmapNodeId {
+  roadmap_authority_scenario_node_id(s: "namespace-occurrence-transport")
+}
+
+fn roadmap_authority_fixture_superseded_node() -> RoadmapNodeId {
+  roadmap_authority_scenario_node_id(s: "2-scm-git-upstream-model")
+}
+
+// ── The scenario's receipts, digests and evidence ───────────────────────────
+// A receipt only survives the fold if its criteria_digest is the one the declared node carries AND its
+// evidence is delivered; anything else is dropped, and a dropped acceptance silently changes what every
+// witness sees. So the digest is taken from the authority's own declaration, not invented here.
+fn roadmap_authority_fixture_digest(id: RoadmapNodeId) -> Fnv1a64Structural {
+  match first(declared_roadmap_nodes() |> filter(n => n.node == id)) {
+    Absent => content_hash_atom(value: "0000000000000000" as NonEmptyStr)
+    Present { value: n } => match node_criteria_digest(rn: n) {
+      Present { value } => value
+      Absent => content_hash_atom(value: "0000000000000000" as NonEmptyStr)
+    }
+  }
+}
+
+fn roadmap_authority_fixture_receipt(id: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: id,
+    criteria_digest: roadmap_authority_fixture_digest(id: id),
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+// THE ACCEPTANCE WAS EARNED BY A PULL REQUEST, legibly the scenario's: a real-shaped url, merge time and
+// head, and a url whose number cannot be read as anybody's work.
+fn roadmap_authority_fixture_evidence() -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: "https://github.com/gunb-ai/gunbc/pull/0" as NonEmptyStr,
+    merged_at: "2026-11-18T00:00:00Z" as NonEmptyStr,
+    head_sha: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  }
+}
+
+fn roadmap_authority_fixture_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr,
+    namespace: "accounts" as NonEmptyStr,
+    subject: "sub-roadmap-authority-scenario" as NonEmptyStr,
+  } }
+}
+
+// ONE SCENARIO EVENT, recorded at the same instant as every other one, so the ordering a witness relies on is
+// always the chain -- the parent an event names -- never a timestamp nobody read.
+fn roadmap_authority_fixture_event(
+  node: RoadmapNodeId,
+  parent: RoadmapEventId?,
+  kind: RoadmapEventKind,
+) -> RoadmapEvent {
+  RoadmapEvent {
+    node: node, author: roadmap_authority_fixture_principal(), parent: parent, kind: kind,
+    recorded_at: "2026-11-18T00:00:00Z",
+  }
+}
+
+fn roadmap_authority_fixture_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventKind {
+  AcceptanceRecordedEvent {
+    receipt: roadmap_authority_fixture_receipt(id: id),
+    evidence: roadmap_authority_fixture_evidence(),
+  }
+}
+
+// ── The five files, each as one event ───────────────────────────────────────
+// THE TABLE IS THE ROSTER, ONE ROW PER FILE. Each of these functions is what a roster row's producer
+// declaration names (gunbc.generated_artifact artifact_producer), so "what the committed bytes are" has exactly
+// one home. The witness reads the same functions and compares them to Filesystem.Read.
+
+// The accepted row: one acceptance, which is what puts it on the active frontier at all.
+fn expected_roadmap_authority_occurrence_acceptance_json() -> String {
+  let row = roadmap_authority_fixture_accepted_node()
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
+    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row),
+  )))
+}
+
+// The superseded row, event 1 of 3: accepted, so it exists on the frontier to begin with.
+fn expected_roadmap_authority_upstream_acceptance_json() -> String {
+  let row = roadmap_authority_fixture_superseded_node()
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
+    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row),
+  )))
+}
+
+// Event 2 of 3: the acceptance is taken back and the node STAYS SUPERSEDED. Its receipt is the same bytes as
+// event 1's, which is what makes it a revocation of that acceptance rather than a second opinion about it.
+fn expected_roadmap_authority_upstream_revocation_json() -> String {
+  let row = roadmap_authority_fixture_superseded_node()
+  let opened = roadmap_authority_fixture_event(
+    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row))
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
+    node: row,
+    parent: Present { value: roadmap_event_id(e: opened) },
+    kind: AcceptanceRevokedEvent {
+      receipt: roadmap_authority_fixture_receipt(id: row),
+      disposition: AcceptanceNodeRemainsSuperseded {},
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-11-18" as NonEmptyStr,
+      reason: "the scenario took the acceptance back" as NonEmptyStr,
+    },
+  )))
+}
+
+// Event 3 of 3: the node is retired. A remains-superseded revocation on a node that was never retired is
+// inadmissible (gunbc.roadmap.roadmap_model remains_superseded_revocations_join refuses it), so this event is
+// what makes the row's chain a legal log rather than a refusal that would empty the fixture.
+fn expected_roadmap_authority_upstream_retired_json() -> String {
+  let row = roadmap_authority_fixture_superseded_node()
+  let opened = roadmap_authority_fixture_event(
+    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row))
+  let taken_back = roadmap_authority_fixture_event(
+    node: row,
+    parent: Present { value: roadmap_event_id(e: opened) },
+    kind: AcceptanceRevokedEvent {
+      receipt: roadmap_authority_fixture_receipt(id: row),
+      disposition: AcceptanceNodeRemainsSuperseded {},
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-11-18" as NonEmptyStr,
+      reason: "the scenario took the acceptance back" as NonEmptyStr,
+    })
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
+    node: row,
+    parent: Present { value: roadmap_event_id(e: taken_back) },
+    kind: Retired { reason: "the scenario closed the node" as NonEmptyStr },
+  )))
+}
+
+// THE ROW THAT IS NOT DECLARED, given a receipt whose digest is copied from a declared row so that the only
+// thing wrong with it is the thing under test: the authority does not declare the node the receipt is about.
+fn expected_roadmap_authority_absent_node_acceptance_json() -> String {
+  let stranger = roadmap_authority_fixture_absent_node()
+  let borrowed = roadmap_authority_fixture_receipt(id: roadmap_authority_fixture_accepted_node())
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
+    node: stranger,
+    parent: Absent,
+    kind: AcceptanceRecordedEvent {
+      receipt: RoadmapAcceptanceReceipt {
+        node: stranger,
+        criteria_digest: borrowed.criteria_digest,
+        red_control: borrowed.red_control,
+        handback: borrowed.handback,
+        accepted_by: borrowed.accepted_by,
+        accepted_on: borrowed.accepted_on,
+      },
+      evidence: roadmap_authority_fixture_evidence(),
+    },
+  )))
+}
+
+// WHAT A WRITTEN EVENT FILE MUST CONTAIN, checked by the gate before it will call a write a success
+// (gunbc.generated_artifact_emit artifact_extra_valid). Not a shapeless "non-empty": the two members the
+// carrier itself keys on -- the schema tag and the node the file is filed under -- must both be present, so a
+// generator that emitted the wrong node's bytes into this path reddens at the gate instead of putting a
+// misfiled event in the log.
+fn roadmap_authority_fixture_json_is_a_written_event(content: String, node: String) -> Bool {
+  content.contains(fragment: concat("\"schema\": \"", roadmap_event_schema))
+    && content.contains(fragment: concat("\"node\": \"", node))
+    && content.contains(fragment: "\"id\": ")
+}
