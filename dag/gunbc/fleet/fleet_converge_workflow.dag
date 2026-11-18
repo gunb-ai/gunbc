@@ -1634,9 +1634,11 @@ concat(
 }
 
 
-fn fleet_converge_plan_revision_job() -> Job {
-  let steps = fleet_converge_plan_revision_steps()
-  Job {
+fn fleet_converge_plan_revision_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_plan_revision_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_plan_revision_job_id as String,
     name: none,
     runner: gunbc_ci_runner_spec(),
@@ -1661,6 +1663,9 @@ fn fleet_converge_plan_revision_job() -> Job {
       }
     },
   }
+      )
+    }
+  )
 }
 
 // THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, PER JOB, NOT BEFORE IT. The deploy slot's
@@ -7041,12 +7046,12 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
 // (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
 data fleet_converge_qualification_floor_step_if: String = fleet_converge_mode_step_if(mode: QualificationFloor)
 
-fn fleet_converge_qualification_floor_job() -> Job {
-  qualification_floor_job(
+fn fleet_converge_qualification_floor_job() -> Outcome<Job> {
+  outcome_accepted(value: qualification_floor_job(
     revision_input: fleet_converge_expected_revision_input,
     if_condition: join([fleet_converge_dispatch_event_if, " && ", fleet_converge_qualification_floor_step_if], ""),
     timeout_minutes: minute_count(m: compiler_gate_emit_build_timeout()),
-  )
+  ))
 }
 
 fn fleet_converge_jobs() -> List<Job> {
@@ -7188,9 +7193,11 @@ concat(
 }
 
 
-fn fleet_converge_branch_run_grant_await_job() -> Job {
-  let steps = fleet_converge_branch_run_grant_await_steps()
-  Job {
+fn fleet_converge_branch_run_grant_await_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_branch_run_grant_await_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_branch_run_grant_await_job_id as String,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
@@ -7213,6 +7220,9 @@ fn fleet_converge_branch_run_grant_await_job() -> Job {
       }
     },
   }
+      )
+    }
+  )
 }
 
 // A JOB THAT NEEDS THE WAIT RUNS ONLY IF THE WAIT SUCCEEDED, OR WAS SKIPPED WHERE NO GRANT WAS REQUIRED.
@@ -8060,11 +8070,11 @@ fn fleet_converge_gcp_iam_apply_step() -> Outcome<Step> {
 // (gunbc.auth.approval_broker_placement approval_broker_host_under). Under a refused realization it is
 // still EMITTED, so a dispatch of this mode is not silently absent, but as a refused job whose only
 // step fails with the typed cause: no federation, no approval filing, no host it could be pinned to.
-fn fleet_converge_gcp_iam_converge_job() -> Job {
+fn fleet_converge_gcp_iam_converge_job() -> Outcome<Job> {
   fleet_converge_gcp_iam_converge_job_under(realization: prod_role_actuated_realization())
 }
 
-fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Job {
+fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Outcome<Job> {
   match approval_broker_host_under(realization: realization) {
     ApprovalBrokerHostResolved { host } => fleet_converge_gcp_iam_converge_job_on(host: host)
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_converge_refused_job(cause: cause)
