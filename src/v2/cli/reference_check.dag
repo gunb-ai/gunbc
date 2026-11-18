@@ -665,6 +665,17 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 // EVERY queued run-step caller is accounted for: one whose module never normalized yields a typed, located refusal
 // (run_step_target_extract_from_load), and a home that will not resolve makes every site an unconfirmed refusal
 // (run_step_target_callee_verdict) -- never a silent "0 targets, held".
+// NAMED-FUNCTION RECURSION over the run-step target sites. Each site's check reaches the file-grain declaration
+// index host builtin (fn_arrow_decl_facts_live), and a host effect is realized only where a function -- never a
+// closure -- makes it (the emitter's rule, the shape cited_targets_read keeps for its reads). So the target lines
+// are produced here, by recursion in a named function, never inside a fold_list closure.
+fn run_step_target_verdicts(env: AcquisitionEnv, context: ResolutionContext, pending: List<RunStepTargetSite>, acc: ReferenceVerdicts) -> ReferenceVerdicts {
+  match pending {
+    Empty => acc
+    Cons { head: s, tail: rest } => run_step_target_verdicts(env: env, context: context, pending: rest, acc: reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, env: env, context: context)))
+  }
+}
+
 fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_callers: List<ReferenceWalkCaller>) -> ReferenceVerdicts {
   let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, targets: 0, lines: [] }, cons: fn(acc, s) {
     if reference_site_supported(site: s) { acc } else {
@@ -715,9 +726,12 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
           Rejected { diagnostics: _ } =>
             fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules did not form a resolution context") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
           Accepted { value: context, diagnostics: _ } =>
-            fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) {
-              reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, env: env, context: context))
-            }), cons: fn(acc, s) {
+            // The run-step target lines are computed by NAMED RECURSION (run_step_target_verdicts), not in this
+            // fold's lambda: each site's check reaches the file-grain index host builtin (fn_arrow_decl_facts_live),
+            // and the emitter realizes a host effect only where a function -- never a closure -- makes it (the same
+            // discipline cited_targets_read keeps for its reads). So the target verdicts are precomputed here, in
+            // a named-function position, and this fold only judges the pure @ref sites.
+            fold_list(xs: supported, empty: run_step_target_verdicts(env: env, context: context, pending: target_sites, acc: target_seed), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
             })
         }
