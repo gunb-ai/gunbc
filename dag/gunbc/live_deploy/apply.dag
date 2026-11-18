@@ -1422,25 +1422,47 @@ type CiInstanceSubject
 
 data live_deploy_ci_instance_subject_delimiter: String = ":"
 
-fn live_deploy_parse_ci_instance_subject(packed: String) -> CiInstanceSubject {
-  let parts = split(s: packed, delimiter: live_deploy_ci_instance_subject_delimiter)
-  if length(parts) != 2 {
-    CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' is not '<host>:<instance_id>' (a colon cannot appear in a hostname or in an instance id)"], "") }
+data ci_subject_colon_code_point: Int = 58
+
+// First colon index, or -1 (jwt's colon-scan idiom -- a plain scan, no list coercion whose callee
+// identity the effect system cannot join).
+fn ci_subject_first_colon(s: String, i: Int, len: Int) -> Int {
+  if i >= len {
+    -1
+  } else if code_point(c: char_at(s, i)) == ci_subject_colon_code_point {
+    i
   } else {
-    match list_head(xs: parts) {
-      Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
-      Present { value: host } =>
-        match list_head(xs: reverse(parts)) {
-          Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
-          Present { value: instance_id } =>
-            if string_length(s: host) == 0 {
-              CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
-            } else if string_length(s: instance_id) == 0 {
-              CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
-            } else {
-              CiInstanceSubjectParsed { host: host, instance_id: instance_id }
-            }
-        }
+    ci_subject_first_colon(s: s, i: i + 1, len: len)
+  }
+}
+
+// Is there any colon at or after index `i`? (used to reject a value with MORE than one colon).
+fn ci_subject_has_colon_from(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    false
+  } else if code_point(c: char_at(s, i)) == ci_subject_colon_code_point {
+    true
+  } else {
+    ci_subject_has_colon_from(s: s, i: i + 1, len: len)
+  }
+}
+
+fn live_deploy_parse_ci_instance_subject(packed: String) -> CiInstanceSubject {
+  let len = string_length(s: packed)
+  let colon = ci_subject_first_colon(s: packed, i: 0, len: len)
+  if colon < 0 {
+    CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' is not '<host>:<instance_id>' (a colon cannot appear in a hostname or in an instance id)"], "") }
+  } else if ci_subject_has_colon_from(s: packed, i: colon + 1, len: len) {
+    CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries more than one colon (a colon cannot appear in a hostname or in an instance id)"], "") }
+  } else {
+    let host = substring(s: packed, start: 0, end: colon)
+    let instance_id = substring(s: packed, start: colon + 1, end: len)
+    if string_length(s: host) == 0 {
+      CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
+    } else if string_length(s: instance_id) == 0 {
+      CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
+    } else {
+      CiInstanceSubjectParsed { host: host, instance_id: instance_id }
     }
   }
 }
