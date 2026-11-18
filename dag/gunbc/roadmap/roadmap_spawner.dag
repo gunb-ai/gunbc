@@ -140,14 +140,6 @@ fn ghost_probe_document_over(base: RoadmapDocument, ghost: RoadmapNode) -> Roadm
 fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
   ghost_probe_document_over(base: roadmap_authority(), ghost: ghost)
 }
-    preamble: base.preamble,
-    lead_lanes: base.lead_lanes,
-    sections: concat(base.sections, [RoadmapSection {
-      title: "SYNTHETIC ghost section (test probe only)",
-      elements: [section_group(label: "", nodes: [ghost], edges: [])],
-    }]),
-  }
-}
 
 // THE SYNTHETIC GHOST, one spelling shared by the live probe and the hermetic one.
 fn roadmap_ghost_probe_node() -> RoadmapNode {
