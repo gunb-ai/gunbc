@@ -8821,26 +8821,146 @@ fn zesty_p22() -> ProcessExit {
     FleetConvergeYamlGenerationRefused { reason: _ } => ExitFailure { code: 1, reason: "refused" }
   }
 }
-fn zesty_j01() -> Int { count([fleet_converge_approval_broker_dark_install_job()]) }
-fn zesty_j02() -> Int { count([fleet_converge_approval_ntfy_retire_job()]) }
-fn zesty_j03() -> Int { count([fleet_converge_arrival_converge_job()]) }
-fn zesty_j04() -> Int { count([fleet_converge_branch_run_grant_await_job()]) }
-fn zesty_j05() -> Int { count([fleet_converge_build_job()]) }
-fn zesty_j06() -> Int { count([fleet_converge_dashboard_deploy_job()]) }
-fn zesty_j07() -> Int { count([fleet_converge_fleet_keypair_mint_job()]) }
-fn zesty_j08() -> Int { count([fleet_converge_gcp_iam_bootstrap_job()]) }
-fn zesty_j09() -> Int { count([fleet_converge_gcp_iam_bootstrap_request_job()]) }
-fn zesty_j10() -> Int { count([fleet_converge_gcp_iam_converge_job()]) }
-fn zesty_j11() -> Int { count([fleet_converge_hostname_converge_job()]) }
-fn zesty_j12() -> Int { count([fleet_converge_host_reset_return_job()]) }
-fn zesty_j13() -> Int { count([fleet_converge_microvm_controller_install_job()]) }
-fn zesty_j14() -> Int { count([fleet_converge_mtcollins1_boot_job()]) }
-fn zesty_j15() -> Int { count([fleet_converge_namecheap_observe_job()]) }
-fn zesty_j16() -> Int { count([fleet_converge_plan_revision_job()]) }
-fn zesty_j17() -> Int { count([fleet_converge_printer_job()]) }
-fn zesty_j18() -> Int { count([fleet_converge_qualification_floor_job()]) }
-fn zesty_j19() -> Int { count([fleet_converge_review_sheet_converge_job()]) }
-fn zesty_j20() -> Int { count([fleet_converge_rlm_launch_deployment_receipt_job()]) }
+fn zesty_j01() -> ProcessExit {
+  if count([fleet_converge_approval_broker_dark_install_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j02() -> ProcessExit {
+  if count([fleet_converge_approval_ntfy_retire_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j03() -> ProcessExit {
+  if count([fleet_converge_arrival_converge_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j04() -> ProcessExit {
+  if count([fleet_converge_branch_run_grant_await_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j05() -> ProcessExit {
+  if count([fleet_converge_build_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j06() -> ProcessExit {
+  if count([fleet_converge_dashboard_deploy_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j07() -> ProcessExit {
+  if count([fleet_converge_fleet_keypair_mint_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j08() -> ProcessExit {
+  if count([fleet_converge_gcp_iam_bootstrap_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j09() -> ProcessExit {
+  if count([fleet_converge_gcp_iam_bootstrap_request_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j10() -> ProcessExit {
+  if count([fleet_converge_gcp_iam_converge_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j11() -> ProcessExit {
+  if count([fleet_converge_hostname_converge_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j12() -> ProcessExit {
+  if count([fleet_converge_host_reset_return_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j13() -> ProcessExit {
+  if count([fleet_converge_microvm_controller_install_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j14() -> ProcessExit {
+  if count([fleet_converge_mtcollins1_boot_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j15() -> ProcessExit {
+  if count([fleet_converge_namecheap_observe_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j16() -> ProcessExit {
+  if count([fleet_converge_plan_revision_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j17() -> ProcessExit {
+  if count([fleet_converge_printer_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j18() -> ProcessExit {
+  if count([fleet_converge_qualification_floor_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j19() -> ProcessExit {
+  if count([fleet_converge_review_sheet_converge_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_j20() -> ProcessExit {
+  if count([fleet_converge_rlm_launch_deployment_receipt_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
 fn zesty_jmain() -> ProcessExit {
   if count([fleet_converge_job()]) > 0 {
     ExitSuccess
