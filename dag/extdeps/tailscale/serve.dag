@@ -2,7 +2,7 @@ module extdeps.tailscale.serve
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, Port, List, Bool, Unit }
+import std.types { NonEmptyStr, Port, List, Bool, Unit, checked_port }
 import std.algebra { Less, Equal, Greater, string_contains }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label, semver_version_parse }
 
@@ -143,17 +143,20 @@ data tailscale_serve_port_proxy_prefix: String = "http://127.0.0.1:"
 // the moment one side learns a new fact): tailscale_serve_backend_of_proxy_target applies it to the
 // port half of a loopback proxy URL, and tailscale_serve_backend_target applies it to a whole backend
 // word (directly, and through tailscale_serve_backend_is_host_port for the host:port form).
-// THE UPPER BOUND IS A NAMED GAP, not a silent one: tailscale --bg and the TCP port surface both cap
-// at 65535, but no port admission fold is available to consume here -- std.types declares
-// `Port = Int where range(min: 1, max: 65535)` while reporting the refinement as deferred, the one
-// fold pattern beside a range (std.types http_status_of, consuming http_status_min/max rows) has no
-// Port twin, and the closest extdeps consumer (linux.proc_net_tcp) builds Port from a parse with no
-// bound check of its own. Binding `n <= 65535` inline here would be the copied-literal drift the fold
-// pattern exists to prevent; the fold belongs beside the Port row in std.types (its next-rung twin is
-// the http_status_of comment), and this predicate consumes it when it lands. Today 70000 answers true.
+// THE UPPER BOUND IS THE PORT FOLD, not a copied literal: tailscale --bg and the TCP port surface
+// both cap at 65535, and the admission now reads std.types checked_port (its next-rung twin is the
+// http_status_of comment), the fold pattern beside a range that this row formerly had no twin of.
+// Binding `n <= 65535` inline here would be the copied-literal drift the fold pattern exists to
+// prevent, so the bound is consumed, not restated: checked_port refuses 0 (reserved, RFC 6335 §6)
+// and 70000 (outside RFC 793 / RFC 9293's 16-bit field) by construction, and the round-trip
+// `to_string(n) == backend` refuses a non-numeric or non-canonical label. Today 70000 and 0 answer
+// false and "tcp" answers false.
 fn tailscale_serve_backend_is_port_label(backend: String) -> Bool {
   match parse_int(s: backend) {
-    Present { value: n } => n > 0 && to_string(n) == backend
+    Present { value: n } => match checked_port(n: n) {
+      Present { value: _ } => to_string(n) == backend
+      Absent => false
+    }
     Absent => false
   }
 }

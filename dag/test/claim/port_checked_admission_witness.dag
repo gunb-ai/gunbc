@@ -1,0 +1,39 @@
+// NAME: std.port_checked_admission_witness
+// SCENARIO: std.types Port is `Int where range(min: 1, max: 65535)` (dag/std/types.dag), but the
+//   where refinement is DEFERRED on the required v1 run (its standing reads
+//   gunbc.where_refinement_predicate_vocabulary), so nothing turns a plain Int into a Port and 0 /
+//   70000 were admitted wherever a Port was minted from an Int. The one admission fold is
+//   std.types checked_port (the Port twin of http_status_of,
+//   gunbc.design_ruling::where_refinements_retire_for_checked_constructors). This witness pins the
+//   fold: it admits the RFC 793 / RFC 9293 16-bit service range with the reserved 0 excluded, and
+//   refuses the two values the main-line gaps admitted -- 0 (reserved, RFC 6335 §6) and 70000
+//   (outside the 16-bit field).
+// RUN: gunbc run --claim-run --entry dag/test/claim/port_checked_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
+// EXPECT: the test fn answers true only when every bound holds.
+//    RED: if checked_port stopped reading port_min / port_max, the boundary assertions answer false.
+module test.claim.port_checked_admission_witness
+
+import std.types { Bool, Int, checked_port }
+
+fn admits(n: Int) -> Bool {
+  match checked_port(n: n) { Present { value: p } => p == n, Absent => false }
+}
+
+fn refuses(n: Int) -> Bool {
+  match checked_port(n: n) { Present { value: _ } => false, Absent => true }
+}
+
+// THE BOUNDARY AND THE INTERIOR. The fold round-trips the 16-bit service range, 0 excluded. The
+// successor of the maximum (65536) is the discriminating boundary: a fold that forgot its upper bound
+// would admit it, whereas 70000 only catches a bound dropped to >= 70000.
+// RED: drop the upper bound and refuses(65536) / refuses(70000) answer false; accept 0 and refuses(0)
+// answers false; tighten below 1 / above 65535 and admits(1) / admits(65535) answer false.
+test fn checked_port_admits_the_rfc793_service_range() -> Bool {
+  admits(n: 443)
+    && admits(n: 1)
+    && admits(n: 65535)
+    && refuses(n: 65536)
+    && refuses(n: 70000)
+    && refuses(n: 0)
+    && refuses(n: -1)
+}
