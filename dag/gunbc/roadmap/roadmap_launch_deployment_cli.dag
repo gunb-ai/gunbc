@@ -111,9 +111,11 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
   observe_instance_document_routed,
   observe_workflow_document_routed,
 }
-import gunbc.roadmap.roadmap_launch_deployment_receipt {
+import gunbc.roadmap.roadmap_launch_deployment_receipt_location {
   gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_staging_path,
   gunbc_rlm_launch_deployment_receipt_staging_digest_path,
+}
+import gunbc.roadmap.roadmap_launch_deployment_receipt {
   ReceiptWorkflowRefStanding, ReceiptWorkflowRefNamesFile, ReceiptWorkflowRefForeign,
   RoadmapLaunchDeploymentSubject, RoadmapLaunchDeploymentFacts, RoadmapLaunchDeploymentVerdict,
   DesiredRevisionObserved, DesiredRevisionUnobserved,

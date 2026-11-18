@@ -4,7 +4,7 @@ import std.types { Bool, Int, String }
 import std.decl_ref { decl_ref }
 import gunbc.roadmap.roadmap_intention_binding {
   roadmap_intention_bindings, bindings_all_have_nodes, binding_nodes_unique, binding_layers_nonnegative,
-  nodes_serving, bindings_at_layer, serves, binding_has_node, bindings_all_on_a_path, binding_layer_order_holds, binding_on_a_path,
+  nodes_serving, nodes_serving_from, bindings_at_layer, serves, binding_has_node, bindings_all_on_a_path, binding_layer_order_holds, binding_on_a_path,
 }
 
 // A binding whose node id is not a declared roadmap node is the undefined variable this carrier exists
@@ -37,15 +37,21 @@ test fn nodes_serving_is_in_layer_order() -> Bool {
   fold(rows, init: 0, f: fn(acc, b) { if acc < 0 { acc } else { if b.layer >= acc { b.layer } else { 0 - 1 } } }) >= 0
 }
 
-// An intention with no bound work items reads as empty, not as a refusal: gunbc.plans.planning_consolidation
+// An intention with no bound work items reads as empty, not as a refusal: gunbc.plans.closure_consolidation
 // declares the intention but no roadmap_intention_bindings row names it, so nodes_serving must return an
-// empty list, not refuse. (The example was gunbc.plans.debt_payoff until PR gunbc#16604 re-bound
-// v1-test-migration to debt_payoff -- which already served v1-zero-hand-maintained-rust and debt-payoff, so
-// debt_payoff is no longer the empty intention. A reference to a declaration that does not exist cannot be
-// planted here at all: the cited-declaration sweep refuses it at parse, which is the undefined-variable
-// wall this carrier rests on.)
+// empty list, not refuse. (Derived from the carrier: the intention is a real Plan declaration that passes the
+// cited-declaration sweep, and no serves() row targets it. The example was gunbc.plans.debt_payoff until PR
+// gunbc#16604, then gunbc.plans.planning_consolidation until PR gunbc#16650 bound 14 nodes to it.)
 test fn an_intention_with_no_bound_items_serves_nothing() -> Bool {
-  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"))) == 0
+  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan"))) == 0
+}
+
+// Red control: the real matching path (nodes_serving_from) finds the planted row and nothing else.
+// If nodes_serving_from's predicate broke, this goes red.
+test fn a_planted_binding_makes_a_previously_empty_intention_serve() -> Bool {
+  let target = decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan")
+  let planted = serves(node: "import-grammar-and-lines-deleted", module_path: "gunbc.plans.closure_consolidation", plan: "closure_consolidation_plan", layer: 0)
+  count(nodes_serving_from(rows: concat(roadmap_intention_bindings, [planted]), intention: target)) == 1
 }
 
 // THE FULL-PATH PROPERTY (operator, 2026-11-17): every bound work item reaches one of its intention's terminals.
