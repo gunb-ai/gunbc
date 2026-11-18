@@ -38,7 +38,9 @@ import v2.compiler.module_acquisition {
 import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, module_file_key, source_root_set_from_ingest }
 import v2.compiler.tokenize { tokenize_artifact_prepared }
-import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text }
+import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text, dag_string_literal_value_optional }
+import v2.std.compilers.body_lowering { application_head_read, ApplicationHeadFound, ApplicationHeadRefused, NotApplicationHead, AtomHead }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.compilers.lexing { LexArtifact, Token, UnboundSourceAnnotation, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_all }
 import v2.std.decl_ref_resolution {
   DeclarationRefContested,
@@ -50,7 +52,8 @@ import v2.std.decl_ref_resolution {
   resolve_declaration_ref,
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { symbol_intern_lexeme }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, node_occurrence_id_ceiling, Bool, Edge, Node, Symbol, Authored }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.resolution_policy { ImportScoped }
 import v2.std.text { String }
 
@@ -102,7 +105,7 @@ type ReferenceWalk {
   lexed: Int
   annotations: Int
   sites: List<ReferenceSite>
-  target_sites: List<RunStepTargetSite>
+  target_sites: List<ReferenceWalkCaller>
   malformed: List<MalformedSite>
   unread: List<String>
 }
@@ -206,183 +209,122 @@ type RunStepTargetSite {
   function_arg: RunStepTargetArg
 }
 
-// An argument span: the tokens of one argument, and the tokens remaining from the separator that closed it.
-type RunStepTargetSpan {
-  span: List<Token>
-  after: List<Token>
-}
-
-type RunStepTargetCall {
-  module_arg: RunStepTargetArg
-  function_arg: RunStepTargetArg
-  after: List<Token>
+// A module whose text spells the constructor, queued for the AST walk. The check reads call STRUCTURE from
+// the module's already-normalized AST (`NormalizedTree.root`, the corpus's one grammar) -- never a second
+// token matcher. This queue only records WHICH modules to walk; the decision is made from the AST.
+type ReferenceWalkCaller {
+  caller: String
+  file: String
 }
 
 fn reference_walk_target_sites(walk: ReferenceWalk, file: String, caller: String, artifact: LexArtifact) -> ReferenceWalk {
-  let found = run_step_target_sites_in(tokens: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: artifact)), caller: caller, file: file)
-  ReferenceWalk { members: walk.members, lexed: walk.lexed, annotations: walk.annotations, sites: walk.sites, target_sites: fold_list(xs: found, empty: walk.target_sites, cons: fn(acc, s) { list_snoc_item(xs: acc, item: s) }), malformed: walk.malformed, unread: walk.unread }
+  let spells = run_step_target_text_spells_constructor(tokens: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: artifact)))
+  ReferenceWalk {
+    members: walk.members,
+    lexed: walk.lexed,
+    annotations: walk.annotations,
+    sites: walk.sites,
+    target_sites: if spells { list_snoc_item(xs: walk.target_sites, item: ReferenceWalkCaller { caller: caller, file: file }) } else { walk.target_sites },
+    malformed: walk.malformed,
+    unread: walk.unread
+  }
 }
 
-
-// Scan the CODE-channel token stream for calls to the constructor. The scan is structural over tokens, so a
-// `gunbc_run_step_target(...)` written in a COMMENT is not in the semantic token stream and cannot become a
-// site (the inert control); the constructor's own DEFINITION (`fn gunbc_run_step_target(module: String, ...)`)
-// is excluded by the preceding `fn` keyword so its `String` parameter names are not read as non-literal entries.
-fn run_step_target_sites_in(tokens: List<Token>, caller: String, file: String) -> List<RunStepTargetSite> {
-  run_step_target_scan(tokens: tokens, previous: Absent, caller: caller, file: file, acc: [])
+// The prefilter keys on the constructor IDENTIFIER, not the identifier plus `(`, so a call written
+// `gunbc_run_step_target (` (a space before the paren) is still a candidate. The decision itself is AST-only.
+fn run_step_target_text_spells_constructor(tokens: List<Token>) -> Bool {
+  fold_list(xs: tokens, empty: false, cons: fn(acc, tok) { if acc { true } else { tok.lexeme == gunbc_run_step_target_constructor_name } })
 }
 
-fn run_step_target_scan(tokens: List<Token>, previous: Optional<Token>, caller: String, file: String, acc: List<RunStepTargetSite>) -> List<RunStepTargetSite> {
-  match tokens {
-    Empty => acc
-    Cons { head: tok, tail: rest } =>
-      if run_step_target_call_head(tok: tok, previous: previous) {
-        match run_step_target_parse_call(tokens: rest) {
-          Present { value: parsed } =>
-            run_step_target_scan(tokens: parsed.after, previous: Present { value: tok }, caller: caller, file: file, acc: list_snoc_item(xs: acc, item: RunStepTargetSite { file: file, caller: caller, start: tok.start, module_arg: parsed.module_arg, function_arg: parsed.function_arg }))
-          Absent => run_step_target_scan(tokens: rest, previous: Present { value: tok }, caller: caller, file: file, acc: acc)
+// A labeled child of an already-parsed call node, read by the label's LEXEME (so a keyword label matches
+// whatever token class it interned as). Read, never skipped: zero, one, or many are all accounted for --
+// zero (absent label) and many (repeated label) both become typed refusals at the site, never a silent pass.
+fn run_step_target_named_child_nodes(node: Node, label: String) -> List<Node> {
+  fold_list(xs: node.children, empty: [], cons: fn(acc, e) {
+    match e.label {
+      Authored { name: n } => if symbol_lexeme(sym: n) == label { list_snoc_item(xs: acc, item: e.target) } else { acc }
+      _ => acc
+    }
+  })
+}
+
+// Read one argument of a constructor call. A string-literal node yields its literal; anything else -- a
+// variable, a concat, a parameter, an absent label, a repeated label -- is a NOT-LITERAL that refuses, never
+// a skip. Literalness is the corpus's declared string-literal node test (the inverse of the literal builder),
+// never a shape heuristic: the corpus warns a reference and a literal can share a shape.
+fn run_step_target_arg_of_label(node: Node, label: String) -> RunStepTargetArg {
+  match run_step_target_named_child_nodes(node: node, label: label) {
+    Empty => RunStepTargetNotLiteral { text: concat("<", label, " absent>") }
+    Cons { head: n, tail: t } =>
+      if is_empty(xs: t) {
+        match dag_string_literal_value_optional(node: n) {
+          Present { value: v } => RunStepTargetLiteral { value: v }
+          Absent => RunStepTargetNotLiteral { text: concat("<", label, " not a string literal>") }
         }
       } else {
-        run_step_target_scan(tokens: rest, previous: Present { value: tok }, caller: caller, file: file, acc: acc)
+        RunStepTargetNotLiteral { text: concat("<", label, " repeated>") }
       }
   }
 }
 
-// The head of a constructor call: an identifier token spelling the constructor name, NOT preceded by the `fn`
-// keyword (which is a declaration of that name, not a call to it).
-fn run_step_target_call_head(tok: Token, previous: Optional<Token>) -> Bool {
-  match tok.class == ^dag_token_ident {
-    false => false
-    true => match tok.lexeme == gunbc_run_step_target_constructor_name {
-      false => false
-      true => match previous {
-        Absent => true
-        Present { value: prev } => match prev.class == ^dag_token_kw_fn {
-          true => false
-          false => true
+// One call node becomes a site iff its head is an atom spelling the constructor; the (module, function) pair
+// is then read from the call's labeled children. An application head that is not the constructor, or a node
+// that is not an application, contributes nothing (the fold continues).
+fn run_step_target_site_of_call(caller: String, file: String, node: Node) -> Optional<RunStepTargetSite> {
+  match application_head_read(site: node) {
+    ApplicationHeadFound { head: _, head_identity: AtomHead { identity: id }, operands: _ } =>
+      if symbol_lexeme(sym: id) == gunbc_run_step_target_constructor_name {
+        Present {
+          value: RunStepTargetSite {
+            file: file,
+            caller: caller,
+            start: node_occurrence_id_ceiling(node: node, floor: 0),
+            module_arg: run_step_target_arg_of_label(node: node, label: run_step_target_module_label),
+            function_arg: run_step_target_arg_of_label(node: node, label: run_step_target_function_label)
+          }
         }
+      } else {
+        Absent
       }
-    }
+    _ => Absent
   }
 }
 
-// After the head identifier, expect `( module : <argspan> , function : <argspan> )`. The argument spans read
-// to the next top-level separator (comma or the closing paren), tracking nesting so a comma inside a nested
-// call/bracket/brace is not mistaken for the argument separator -- a non-literal argument is therefore never
-// dropped, only recognised as not-a-literal and refused.
-fn run_step_target_parse_call(tokens: List<Token>) -> Optional<RunStepTargetCall> {
-  match tokens {
-    Empty => Absent
-    Cons { head: lp, tail: t1 } => match lp.class == ^dag_token_lparen {
-      false => Absent
-      true => match run_step_target_label(tokens: t1, label: run_step_target_module_label) {
-        Absent => Absent
-        Present { value: after_colon } => match run_step_target_arg_span(tokens: after_colon, depth: 0, span: []) {
-          Absent => Absent
-          Present { value: module_span } => match module_span.after {
-            Empty => Absent
-            Cons { head: comma, tail: t2 } => match comma.class == ^dag_token_comma {
-              false => Absent
-              true => match run_step_target_label(tokens: t2, label: run_step_target_function_label) {
-                Absent => Absent
-                Present { value: after_colon2 } => match run_step_target_arg_span(tokens: after_colon2, depth: 0, span: []) {
-                  Absent => Absent
-                  Present { value: function_span } => match run_step_target_close(tokens: function_span.after) {
-                    Absent => Absent
-                    Present { value: rest } => Present { value: RunStepTargetCall { module_arg: run_step_target_arg_of(span: module_span.span), function_arg: run_step_target_arg_of(span: function_span.span), after: rest } }
-                  }
-                }
-              }
+fn run_step_target_sites_in_root(caller: String, file: String, root: Node) -> List<RunStepTargetSite> {
+  fold_list(xs: node_subtree_nodes(root: root), empty: [], cons: fn(acc, node) {
+    match run_step_target_site_of_call(caller: caller, file: file, node: node) {
+      Present { value: s } => list_snoc_item(xs: acc, item: s)
+      Absent => acc
+    }
+  })
+}
+
+// THE AST WALK. Fold each candidate caller's already-normalized root (loaded once here, only for the callers
+// that spell the constructor plus the constructor home, so there is no whole-corpus AST parse and no new
+// effect). The caller roots are the corpus's own normalized fold, so this reads call syntax through the one
+// grammar -- not a token matcher. Identity of the callee and resolution of the entry are judged later, in the
+// shared context, exactly as before.
+fn run_step_target_ast_sites(env: AcquisitionEnv, callers: List<ReferenceWalkCaller>) -> List<RunStepTargetSite> {
+  match callers {
+    Empty => []
+    Cons { head: _, tail: _ } =>
+      let names = fold_list(xs: callers, empty: map_insert(m: empty_map(), key: gunbc_run_step_target_home_module, value: true), cons: fn(acc, c) { map_insert(m: acc, key: c.caller, value: true) })
+      let targets = cited_targets_read(env: env, pending: map_support_keys(m: names), acc: cited_targets_empty())
+      let lm = dag_language_model()
+      let scope = program_assembly_ingest_scope_outcome(ingest: targets.ingest)
+      let named = live_context_load_modules(load: live_context_load_empty(seed: occurrence_id_allocator_initial()), by_name: targets.by_name, modules: targets.readable, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
+      let context = live_context_finish(load: named, lm: lm, active_roots: source_root_set_from_ingest(ingest: targets.ingest), policy: ImportScoped)
+      match context {
+        Accepted { value: ctx, diagnostics: _ } =>
+          fold_list(xs: callers, empty: [], cons: fn(acc, c) {
+            match map_lookup(m: ctx.roots.by_name, key: qualified_name_from_dotted_string(dotted: c.caller)) {
+              Present { value: tree } => collection_concat_shape(collection_join_shape, acc, run_step_target_sites_in_root(caller: c.caller, file: c.file, root: tree.root))
+              Absent => acc
             }
-          }
-        }
-      }
-    }
-  }
-}
-
-// After the last argument, accept `)` or a trailing `,` then `)` (gunbc's call style uses a trailing comma).
-fn run_step_target_close(tokens: List<Token>) -> Optional<List<Token>> {
-  match tokens {
-    Empty => Absent
-    Cons { head: rp, tail: rest } => match rp.class == ^dag_token_rparen {
-      true => Present { value: rest }
-      false => match rp.class == ^dag_token_comma {
-        true => match rest {
-          Empty => Absent
-          Cons { head: rp2, tail: rest2 } => match rp2.class == ^dag_token_rparen {
-            true => Present { value: rest2 }
-            false => Absent
-          }
-        }
-        false => Absent
-      }
-    }
-  }
-}
-
-// Match a `label :` argument-name pair. `module` (and other labels) can be RESERVED words, so the label
-// token is matched by its lexeme and the `:`, not by requiring an identifier class.
-fn run_step_target_label(tokens: List<Token>, label: String) -> Optional<List<Token>> {
-  match tokens {
-    Empty => Absent
-    Cons { head: label_tok, tail: t1 } => match label_tok.lexeme == label {
-      false => Absent
-      true => match t1 {
-        Empty => Absent
-        Cons { head: colon, tail: t2 } => match colon.class == ^dag_token_colon {
-          false => Absent
-          true => Present { value: t2 }
-        }
-      }
-    }
-  }
-}
-
-// Collect one argument's tokens up to the next depth-0 comma or close-paren; stop BEFORE that delimiter and
-// return the tokens from it onward. Returns Absent if the stream empties before any delimiter is reached.
-fn run_step_target_arg_span(tokens: List<Token>, depth: Int, span: List<Token>) -> Optional<RunStepTargetSpan> {
-  match tokens {
-    Empty => Absent
-    Cons { head: tok, tail: rest } =>
-      if depth == 0 && (tok.class == ^dag_token_comma || tok.class == ^dag_token_rparen) {
-        Present { value: RunStepTargetSpan { span: list_reverse(xs: span), after: tokens } }
-      } else {
-        run_step_target_arg_span(tokens: rest, depth: depth + run_step_target_depth_delta(class: tok.class), span: list_snoc_item(xs: span, item: tok))
+          })
+        Rejected { diagnostics: _ } => []
       }
   }
-}
-
-fn run_step_target_depth_delta(class: Symbol) -> Int {
-  if class == ^dag_token_lparen || class == ^dag_token_lbracket || class == ^dag_token_lbrace {
-    1
-  } else if class == ^dag_token_rparen || class == ^dag_token_rbracket || class == ^dag_token_rbrace {
-    0 - 1
-  } else {
-    0
-  }
-}
-
-// An argument is a literal only when it is EXACTLY one string-literal token that decodes cleanly; anything
-// else -- a bare name, a dotted field, a call, an un-decodable literal -- is not-a-literal and refuses typed.
-fn run_step_target_arg_of(span: List<Token>) -> RunStepTargetArg {
-  match span {
-    Cons { head: tok, tail: rest } => match is_empty(xs: rest) {
-      false => RunStepTargetNotLiteral { text: run_step_target_span_text(span: span) }
-      true => match tok.class == ^dag_token_string_literal {
-        false => RunStepTargetNotLiteral { text: tok.lexeme as String }
-        true => match dag_string_literal_decoded_text(lexeme: tok.lexeme as String, occurrence_id: OccurrenceSynthetic) {
-          Rejected { diagnostics: _ } => RunStepTargetNotLiteral { text: tok.lexeme as String }
-          Accepted { value: decoded, diagnostics: _ } => RunStepTargetLiteral { value: decoded }
-        }
-      }
-    }
-    Empty => RunStepTargetNotLiteral { text: "" }
-  }
-}
-
-fn run_step_target_span_text(span: List<Token>) -> String {
-  join(sep: "", xs: list_map(xs: span, f: fn(t) { t.lexeme as String }))
 }
 
 
@@ -482,13 +424,14 @@ fn resolution_line(site: ReferenceSite, resolution: DeclarationRefResolution) ->
 
 type ReferenceVerdicts {
   resolved: Int
+  targets: Int
   lines: List<String>
 }
 
 fn reference_verdicts_push(acc: ReferenceVerdicts, line: Optional<String>) -> ReferenceVerdicts {
   match line {
-    Absent => ReferenceVerdicts { resolved: acc.resolved + 1, lines: acc.lines }
-    Present { value: l } => ReferenceVerdicts { resolved: acc.resolved, lines: list_snoc_item(xs: acc.lines, item: l) }
+    Absent => ReferenceVerdicts { resolved: acc.resolved + 1, targets: acc.targets, lines: acc.lines }
+    Present { value: l } => ReferenceVerdicts { resolved: acc.resolved, targets: acc.targets, lines: list_snoc_item(xs: acc.lines, item: l) }
   }
 }
 
@@ -621,10 +564,12 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 // target module, and the constructor home. Cost follows the demands (the cited modules + the run-step callers
 // and targets), never the corpus: there is no whole-corpus scan here (the fast-lane constraint,
 // gunbc.ci.ci_run_step_target), and both site kinds resolve against the SAME native context.
-fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_sites: List<RunStepTargetSite>) -> ReferenceVerdicts {
-  let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, lines: [] }, cons: fn(acc, s) {
+fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_callers: List<ReferenceWalkCaller>) -> ReferenceVerdicts {
+  let target_sites = run_step_target_ast_sites(env: env, callers: target_callers)
+  let target_seed = ReferenceVerdicts { resolved: 0, targets: length(xs: target_sites), lines: [] }
+  let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, targets: length(xs: target_sites), lines: [] }, cons: fn(acc, s) {
     if reference_site_supported(site: s) { acc } else {
-      ReferenceVerdicts { resolved: acc.resolved, lines: list_snoc_item(xs: acc.lines, item: concat(site_head(site: s), ": UnsupportedTarget: type-parameter references are not resolved by this version")) }
+      ReferenceVerdicts { resolved: acc.resolved, targets: acc.targets, lines: list_snoc_item(xs: acc.lines, item: concat(site_head(site: s), ": UnsupportedTarget: type-parameter references are not resolved by this version")) }
     }
   })
   let supported = supported_sites(sites: sites)
@@ -637,7 +582,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_si
     let names = fold_list(xs: run_step_target_decl_names(target_sites: target_sites), empty: cited_decl_names(sites: supported), cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
     match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
       Rejected { diagnostics: _ } =>
-        fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules' ingest scope could not be formed") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
+        fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules' ingest scope could not be formed") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
       Accepted { value: scope, diagnostics: _ } => {
         let lm = dag_language_model()
         let named = live_context_load_modules(load: live_context_load_empty(seed: occurrence_id_allocator_initial()), by_name: targets.by_name, modules: targets.readable, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
@@ -646,9 +591,9 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_si
         let live = live_context_finish(load: loaded, lm: lm, active_roots: source_root_set_from_ingest(ingest: with_homes.ingest), policy: ImportScoped)
         match live.context {
           Rejected { diagnostics: _ } =>
-            fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules did not form a resolution context") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
+            fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules did not form a resolution context") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
           Accepted { value: context, diagnostics: _ } =>
-            fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: unsupported, cons: fn(acc, s) {
+            fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, targets: targets, context: context))
             }), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
@@ -672,7 +617,7 @@ fn reference_report(walk: ReferenceWalk, verdicts: ReferenceVerdicts) -> Populat
     int_to_decimal_string(value: walk.annotations), " annotation(s) in those, ",
     int_to_decimal_string(value: length(xs: walk.sites)), " marked reference(s), ",
     int_to_decimal_string(value: verdicts.resolved), " resolved, ",
-    int_to_decimal_string(value: length(xs: walk.target_sites)), " run-step target(s)"
+    int_to_decimal_string(value: verdicts.targets), " run-step target(s)"
   )
   if is_empty(xs: lines) {
     PopulationReport { text: concat(reference_check_holds_head, " ", counts), held: true, detail: "" }
@@ -694,7 +639,7 @@ fn check_references_prepared(env: AcquisitionEnv) -> PopulationReport {
         PopulationReport { text: "", held: false, detail: "the bound trees hold no module; a check over nothing is not a check of zero" }
       } else {
         let walk = reference_walk_go(env: env, pending: modules, walk: reference_walk_empty())
-        reference_report(walk: walk, verdicts: reference_verdicts(env: env, sites: walk.sites, target_sites: walk.target_sites))
+        reference_report(walk: walk, verdicts: reference_verdicts(env: env, sites: walk.sites, target_callers: walk.target_sites))
       }
   }
 }
