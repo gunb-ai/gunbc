@@ -2,7 +2,7 @@ module v2.workflow.gunbc_invoke_step_emit
 
 import std.algebra { Cons, Empty, FreeMonoid, list_flat_map }
 import std.types { Char }
-import v2.std.text { string_contains_char }
+import v2.std.text { string_contains_char, String }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -195,7 +195,7 @@ fn gunbc_run_step_target_unstored_diagnostic(target: GunbcRunStepTarget) -> Diag
 fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> Outcome<String> {
   match gunbc_run_step_target_entry_path(target: target) {
     Present { value: path } => outcome_accepted(path)
-    Absent => outcome_rejected<String>(gunbc_run_step_target_unstored_diagnostic(target: target))
+    Absent => outcome_rejected(d: gunbc_run_step_target_unstored_diagnostic(target: target))
   }
 }
 
@@ -286,7 +286,7 @@ fn gunbc_run_command(
   )
   let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)
   if unsafe_word != "" {
-    outcome_rejected<String>(gunbc_invoke_word_wall_diagnostic(word: unsafe_word))
+    outcome_rejected(d: gunbc_invoke_word_wall_diagnostic(word: unsafe_word))
   } else {
     outcome_accepted(value: gunbc_invoke_words_command(words: words))
   }
