@@ -1,16 +1,21 @@
 // NAME: proc_net_tcp_port_admission_witness
-// SCENARIO: extdeps.linux.proc_net_tcp reads the local port of a /proc/net/tcp row and used to mint
-//   a std.types Port straight from the base16 word, its only bound a coincidental field-width cap
-//   (the reviewer's "no bound check of its own"). The field's VALUE bound is RFC 793 / RFC 9293's
-//   16-bit port field, and that authority is std.types checked_port: tcp_socket_row now decodes the
-//   hex word and runs it through checked_port, so a word spelling an out-of-range value REFUSES the
-//   row rather than minting a Port the Port authority would not admit. 0000 stays the kernel's marker
-//   for a socket with no bound port (checked_port refuses 0; the row answers TcpPortUnbound), and a
-//   real kernel row (127.0.0.1:443, printed "0100007F:01BB") still parses to TcpPortBound { port: 443 }.
+// SCENARIO: extdeps.linux.proc_net_tcp reads the local port of a /proc/net/tcp row, and used to mint
+//   a std.types Port straight from the decoded word with no domain check of its own (the reviewer's
+//   phrasing). Two SEPARATE checks guard that field and both belong: the fixed-width %04X column (the
+//   kernel's own SYNTAX -- net/ipv4/tcp_ipv4.c, get_tcp4_sock -- and this module's fact, enforced by
+//   base16's ceiling plus the exactly-four floor the module adds) and the DOMAIN bound -- which decoded
+//   values are admissible Ports (RFC 793 / RFC 9293's 16-bit field, reserved 0 excluded) -- which is
+//   std.types checked_port. tcp_socket_row now runs the decoded value through checked_port so the
+//   bound is owned by the Port authority, not smuggled in via field width. Within four digits the only
+//   value checked_port refuses is 0000, which stays the kernel's marker for a socket with no bound
+//   port: the row answers TcpPortUnbound rather than minting Port 0.
 // RUN: gunbc run --claim-run --entry dag/test/claim/proc_net_tcp_port_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
 // EXPECT: each test fn answers true on the discriminating input.
-//    RED: if tcp_socket_row minted Port without checked_port, the out-of-range row would parse to a
-//    TcpPortBound and decoder_refuses_an_out_of_range_port_word answers false.
+//    THE PAIR: 01BB admits as TcpPortBound { port: 443 }; 0000 is refused by checked_port (never a
+//    bound Port -- TcpPortUnbound). The syntax half: a 6-digit word "0001BB" and a 3-digit word "1BB"
+//    are refused at the format level naming the line. RED: drop the exactly-four floor and "1BB"
+//    silently decodes to 443; widen base16 and "0001BB" is admitted; drop checked_port and 0000 would
+//    be minted as a bound Port.
 module test.claim.proc_net_tcp_port_admission_witness
 
 import std.types { Bool, String }
@@ -59,27 +64,23 @@ test fn decoder_admits_a_real_kernel_row_on_443() -> Bool {
   row_bound_to_443(line: kernel_row_with_local(local: "0100007F:01BB"))
 }
 
-// 70000 REFUSES THE ROW, RATHER THAN MINTING A PORT. The port word "11170" is a legal base16 word
-// (0x11170 == 70000) but lies outside the 16-bit field, so checked_port refuses it and the decoder
-// refuses the whole table naming the line -- the exact value review 95857 named.
-test fn decoder_refuses_an_out_of_range_port_word() -> Bool {
-  row_refused(line: kernel_row_with_local(local: "0100007F:11170"))
-    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:11170"))
+// A PORT WORD WIDER THAN THE KERNEL'S %04X IS REFUSED AT THE SYNTAX LEVEL. "0001BB" is 6 hex digits;
+// the kernel's get_tcp4_sock prints %04X, so a row carrying a 6-digit port column is malformed and
+// the decoder refuses the whole table, naming the line. This is the upstream-format check, NOT the
+// port range -- a widened base16 that admitted it would be a silent widen (gunbc.design_argument::
+// fail_closed).
+test fn decoder_refuses_a_port_word_wider_than_four_digits() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:0001BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:0001BB"))
 }
 
-// THE GUARD IS checked_port, NOT A FIELD-WIDTH CAP. base16 accepts a hex word of any length up to a
-// syntax ceiling, so the refusal of "11170" above cannot be the width: here a longer-but-in-range
-// word "0FFFF" (0x0FFFF == 65535, the upper bound) is admitted as a bound port. If the old field-width
-// cap were still what bounded the port, this longer word would be refused -- it is not, so the value
-// bound lives in checked_port, where the ruling puts it.
-test fn decoder_admits_a_bound_port_from_a_wider_in_range_hex_word() -> Bool {
-  match tcp_socket_row(line: kernel_row_with_local(local: "0100007F:0FFFF")) {
-    Absent => false
-    Present { value: row } => match row.local_port {
-      TcpPortBound { port: p } => p == 65535
-      TcpPortUnbound => false
-    }
-  }
+// A PORT WORD NARROWER THAN THE KERNEL'S %04X IS REFUSED AT THE SYNTAX LEVEL. "1BB" is 3 hex digits;
+// %04X always prints four, so base16's ceiling alone (which takes no floor) would accept it and the
+// module's own exactly-four check refuses. Without that floor the row would decode to 0x1BB = 443, a
+// silent mis-parse of a malformed column -- the paired failure this control pins.
+test fn decoder_refuses_a_port_word_narrower_than_four_digits() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:1BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:1BB"))
 }
 
 // 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,
