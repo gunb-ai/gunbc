@@ -56,7 +56,7 @@ import extdeps.languages.yaml.types {
 }
 import extdeps.languages.yaml.types { yaml_string }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
-import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource, gcp_iam_converge_environment }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
