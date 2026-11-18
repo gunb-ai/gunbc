@@ -283,7 +283,31 @@ fn http_status_of(n: Int) -> HttpStatus? {
 }
 
 type Email        = String
+
+// Port is the TCP/UDP service endpoint number, RFC 793 §2.1 (obsoleted by RFC 9293 §2.1): the
+// source and destination ports are each a 16-bit field, so the representable range is 0..65535.
+// Port 0 is reserved and not a usable listening/endpoint port (RFC 6335 §6), so an admissible Port
+// is 1..65535. The `where range(min: 1, max: 65535)` below is the predicate SPELLING only: the
+// language-layer `where` refinement is deferred on the required v1 run (its standing reads
+// gunbc.where_refinement_predicate_vocabulary), so a bare integer literal never passes it. The ONE
+// admission path is `checked_port` beside this row, and the range lives there as data.
 type Port         = Int where range(min: 1, max: 65535)
+
+// The ONE place Port's admissible range is stated as data (same restatement shape as
+// http_status_min/max beside http_status_of; a reviewer's "it reads the bounds from the rows" must
+// hold here too, so the fold compares against port_min/port_max and not against 1 or 65535 itself).
+data port_min: Int = 1
+
+data port_max: Int = 65535
+
+// THE ONE PORT ADMISSION FOLD, the Port twin of http_status_of (gunbc.design_ruling::
+// where_refinements_retire_for_checked_constructors). Refusing 0 and 70000 by CONSTRUCTION, not by
+// each consumer re-deciding: an admissible port round-trips RFC 793 / RFC 9293's 16-bit field with
+// the reserved 0 excluded, and anything else refuses rather than minting a `Port` the where clause
+// would not admit if the refinement stood.
+fn checked_port(n: Int) -> Port? {
+  if n < port_min || n > port_max { optional_absent() } else { optional_present(value: n) }
+}
 
 type GistId       = String
 type Secret       nominal_opaque = String

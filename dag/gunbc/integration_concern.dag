@@ -525,6 +525,10 @@ data remote_build_serving_converge_merge_revision: CommitSha = "e8aeb06037b88a5b
 
 data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d2c89de45d6c766b044d65"
 
+// The head the closed sighting-basis guard (#16671) was certified at: its claims passed and it was still closed, which is the
+// evidence this concern rests on.
+data sighting_basis_guard_revision: CommitSha = "0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a"
+
 
 
 // ---------------------------------------------------------------------------------------------
