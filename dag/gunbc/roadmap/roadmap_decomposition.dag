@@ -1501,12 +1501,15 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // at member 0, one per member of a produced/read family at its DECLARED count, and one per member of a
 // FindingsOf family at a SIMULATION-input count -- an ASSUMED count the carrier itself declares none of.
 // The edge relation is stage k depending on stage k-1, plus every waits_on row aimed into the child's own
-// stage. The expansion WRITES NOTHING. Its executing consumer today is the leaf-expansion witness
+// stage. The expansion WRITES NOTHING. It carries no order or date field of its own: the occurrences are an
+// unordered set and the edges are the dependency relation, not a sequence -- an order or date field would
+// appear only where a named consumer decides something from it (DESIGN.md *Plans are intentions*, ruling
+// gunbc.design_ruling::planning_scheduling_is_cut). Its executing consumer today is the leaf-expansion witness
 // (test.claim.roadmap.roadmap_schedule_leaf_expansion_witness), which reads the occurrences and their edges
-// through the accessors below. Its declared frontier consumer is roadmap-schedule-list-scheduling -- the next
-// link in gunb-ai/gunbc#16650's chain to the roadmap Gantt -- which will read expand_decomposition and these
-// accessors to order occurrences into a schedulable list; the trigger is that unit landing over this branch. No
-// schedule, calendar, in-flight set, or readiness unit is built or claimed HERE (out of scope). It mints no
+// through the accessors below. Its only later consumer is the declared frontier roadmap-schedule-list-scheduling,
+// declared in the approved roadmap gunb-ai/gunbc#16650, which reads expand_decomposition and these accessors and
+// decides under its OWN ticket what to do with the occurrences; the trigger is that unit landing over this
+// branch. This change builds no schedule, calendar, or in-flight set and claims none (out of scope). It mints no
 // gunbc.roadmap.roadmap_authority node -- a leaf has no identity until claimed. Occurrences are keyed by the
 // single carrier LeafPath (imported from gunbc.roadmap.roadmap_model above); nothing here re-spells that tuple.
 //
@@ -1796,20 +1799,12 @@ fn expand_node(item: RoadmapNodeId, findings_count: Nat) -> Expansion {
   }
 }
 
-fn occurrence_is_declared(o: Occurrence) -> Bool {
-  o.count_source == Declared
-}
-
-fn occurrence_is_assumed(o: Occurrence) -> Bool {
-  o.count_source == Assumed
-}
-
-// An occurrence is OFFERED CLAIMABLE under a policy DISTINCT from "its count is declared": it may be offered
+// An occurrence is OFFERED CLAIMABLE under a policy DISTINCT from a mere count test: it may be offered
 // only when its count is DECLARED *and* its path actually resolves under the carrier's own
-// decomposition_has_leaf_path. This is deliberately not a rename of occurrence_is_declared -- an ASSUMED
-// FindingsOf member is not declared (so not offered), and a declared member whose index the carrier does not
-// acknowledge is likewise not offered. It composes existing authority (the carrier's leaf predicate) rather
-// than restating it.
+// decomposition_has_leaf_path. It composes the count_source test with existing authority (the carrier's
+// leaf predicate) rather than restating it -- an ASSUMED FindingsOf member is not declared (so not offered),
+// and a declared member whose index the carrier does not acknowledge is likewise not offered.
+// The count_source is matched directly here and in the witness: a two-case type needs no is_* wrapper.
 fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
-  occurrence_is_declared(o: o) && decomposition_has_leaf_path(path: o.path)
+  o.count_source == Declared && decomposition_has_leaf_path(path: o.path)
 }

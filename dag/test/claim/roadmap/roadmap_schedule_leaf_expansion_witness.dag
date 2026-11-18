@@ -11,15 +11,16 @@ module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
 // THE RED CONTROL, named the way the unit names its own: a planted waits_on naming a stage the parent does
 // not have REFUSES with the TYPED cause DependencyClaimRefused -- and it refuses by CONSUMING THE CARRIER'S OWN
 // CLAIM (decomposition_dependencies_well_formed), which the expansion CALLS rather than re-checks. The witness
-// matches the returned Expansion directly (no is_* complement predicate) and inspects the typed refusal cause.
+// matches the returned Expansion directly and inspects the typed refusal cause; occurrence membership is
+// matched on the count_source field directly -- a two-case type needs no redundant is_* wrapper.
 // The same row aimed at a stage the parent HAS is admitted.
 
 import std.types { Bool }
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
-  expand_node, expand_decomposition,
-  occurrence_is_declared, occurrence_is_assumed, occurrence_is_offered_claimable,
+  expand_node, expand_decomposition, occurrence_is_offered_claimable,
+  Declared, Assumed,
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
   decomposition, waits, leaf, reading_family,
   Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
@@ -36,10 +37,10 @@ test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_w
   match expand_node(item: nid(s: "literal-elaboration"), findings_count: 3) {
     Expanded { occurrences, edges } =>
       count(occurrences) == 4
-        && count(filter(occurrences, o => occurrence_is_declared(o))) == 1
-        && count(filter(occurrences, o => occurrence_is_assumed(o))) == 3
-        && all(filter(occurrences, o => occurrence_is_declared(o)), o => decomposition_has_leaf_path(path: o.path))
-        && count(filter(filter(occurrences, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
+        && count(filter(occurrences, o => o.count_source == Declared)) == 1
+        && count(filter(occurrences, o => o.count_source == Assumed)) == 3
+        && all(filter(occurrences, o => o.count_source == Declared), o => decomposition_has_leaf_path(path: o.path))
+        && count(filter(filter(occurrences, o => o.count_source == Assumed), o => occurrence_is_offered_claimable(o))) == 0
         && count(edges) == 3
     ExpansionRejected { cause } => false
   }
@@ -52,8 +53,8 @@ test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_w
 test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
   match expand_node(item: nid(s: "literal-elaboration"), findings_count: 5) {
     Expanded { occurrences, edges } =>
-      count(filter(occurrences, o => occurrence_is_assumed(o))) == 5
-        && count(filter(filter(occurrences, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
+      count(filter(occurrences, o => o.count_source == Assumed)) == 5
+        && count(filter(filter(occurrences, o => o.count_source == Assumed), o => occurrence_is_offered_claimable(o))) == 0
     ExpansionRejected { cause } => false
   }
 }
@@ -137,16 +138,16 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
   }
   let pos_ok = match expand_decomposition(d: pos_pop, findings_count: 0) {
     Expanded { occurrences, edges } =>
-      count(filter(occurrences, o => occurrence_is_declared(o))) == 2
-        && count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
+      count(filter(occurrences, o => o.count_source == Declared)) == 2
+        && count(filter(occurrences, o => o.count_source == Assumed)) == 0
     ExpansionRejected { cause } => false
   }
   // A zero ASSUMED (FindingsOf) count is a legitimate simulation input and must still EXPAND, minting zero
   // assumed members -- proving the new refusal targets only the DECLARED Int, never the Nat simulation input.
   let zero_findings_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: 0) {
     Expanded { occurrences, edges } =>
-      count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
-        && count(filter(occurrences, o => occurrence_is_declared(o))) == 1
+      count(filter(occurrences, o => o.count_source == Assumed)) == 0
+        && count(filter(occurrences, o => o.count_source == Declared)) == 1
     ExpansionRejected { cause } => false
   }
   zero_ok && neg_ok && pos_ok && zero_findings_ok
