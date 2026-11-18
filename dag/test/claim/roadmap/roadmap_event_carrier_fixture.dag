@@ -85,7 +85,7 @@ import extdeps.shell.exec
 // under LC_ALL=C, whose command words extdeps.tools.ls owns — decoded through the folds
 // extdeps.filesystem.filesystem_io provides for it. See roadmap_carrier_observe_entry for why a `test` probe
 // may not answer them.
-import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_entry_of_line, ls_long_numeric_entries_command, ls_long_numeric_listing_command }
+import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntry, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_entry_of_line, ls_long_numeric_entries_command, ls_long_numeric_listing_command }
 import extdeps.filesystem.filesystem_io { FilesystemEntryAbsentByLookup, FilesystemEntryPresentByLookup, FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
