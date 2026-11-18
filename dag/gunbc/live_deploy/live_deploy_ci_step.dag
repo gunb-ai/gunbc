@@ -52,13 +52,15 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = gunbc_run_ste
   function: "live_deploy_apply_prod_role_transaction_wet",
 )
 
-// THE INSTANCE-SCOPED DEPLOY (option C): converges the ONE roster row named by the run's instance input,
+// THE INSTANCE-SCOPED DEPLOY (option C): converges the ONE roster row named by the run's packed subject,
 // through the same modeled apply path as the dashboard deploy but WITHOUT the prod-role selection -- it
-// calls the env-reading CI entry (live_deploy_apply_desired_wet_from_ci reads the instance id from the
-// env, since a run step reaches an entry only through the environment). The receipt lands in the shared
-// receipt dir the assert/upload steps read; the instance identity is recorded inside the receipt, and
-// GitHub isolates each run's artifacts, so a fixed per-run path is correct (the prod-role label is not
-// used here -- this job is never the prod-role route).
+// calls the env-reading CI entry (live_deploy_apply_desired_wet_from_ci reads the packed '<host>:<instance_id>'
+// subject from the env and parses it, since a run step reaches an entry only through the environment). Two
+// receipts, two places: the run-step's OWN process receipt lands at this fixed per-run path under a stable
+// label (GitHub isolates each run's workspace, so a stable label cannot collide; the prod-role label is not
+// used here -- this job is never the prod-role route), while the transaction receipt the wet fold mints lands
+// in the chosen instance's OWN receipt dir, located by the resolve step -- not by this path. See the deploy
+// invoke comment beside gunbc_ci_desired_instance_deploy_invoke.
 data gunbc_ci_desired_instance_deploy_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.live_deploy.apply",
   function: "live_deploy_apply_desired_wet_from_ci",
