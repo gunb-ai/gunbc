@@ -4208,7 +4208,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: gcp-iam-converge
-    timeout-minutes: 299
+    timeout-minutes: 284
     if: github.event.inputs.mode == 'gcp_iam_converge'
     permissions:
       contents: read
@@ -4293,7 +4293,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'gcp_iam_converge'
-        timeout-minutes: 259
+        timeout-minutes: 244
   gcp-iam-bootstrap-apply:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build, gcp-iam-bootstrap-request]
