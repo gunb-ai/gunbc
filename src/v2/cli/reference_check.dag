@@ -598,6 +598,8 @@ fn run_step_target_callee_verdict(caller: String, constructor: RunStepTargetCons
           RunStepTargetCalleeUnconfirmed { reason: concat("the caller module ", caller, " is absent from the resolution context, so its run-step target entry could not be confirmed -- this is NOT evidence the call is not the constructor, so it refuses rather than skips") }
         DeclarationRefDeclarationAbsent { reference: _ } =>
           RunStepTargetCalleeUnconfirmed { reason: concat("the caller module ", caller, " declares no ", constructor.constructor_name, " to confirm the call against, so its run-step target entry could not be confirmed") }
+        DeclarationRefFieldAbsent { reference: _ } =>
+          RunStepTargetCalleeUnconfirmed { reason: concat("the run-step target reference in ", caller, " resolved to no field, so its entry could not be confirmed against the constructor") }
       }
     _ =>
       RunStepTargetCalleeUnconfirmed { reason: concat("the constructor home ", constructor.home_module, " did not normalize into the resolution context, so no run-step target could be confirmed against it") }
