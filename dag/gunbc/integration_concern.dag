@@ -2909,7 +2909,10 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   // //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, on srv1 in a 40G systemd scope with
   // GUNBC_MEMORY_BUDGET_BYTES=34359738368, executed 2026-11-18 07:41:47Z to 08:19:33Z at base
   // 93ab1bb19a35 over a git-archive tree with claim bodies exactly as landed in
-  // a7b273bc4e5d0f52439289cece33093ccf06a855 -- 9 claims, 9 held, 0 red, exit 0.
+  // a7b273bc4e5d0f52439289cece33093ccf06a855 -- 9 claims, 9 held, 0 red, exit 0. A second execution the
+  // same day, 10:03:50Z to 10:45:52Z, after the control row over the counting idiom was added
+  // (witness_the_count_idiom_this_wall_relies_on_discriminates), reported 10 claims, 10 held, 0 did not
+  // hold, 0 unobserved, exit 0, with the wall file byte-identical to the one on this branch.
   // MEMBERSHIP now has an author other than attention: the wall compares the roster, arm by arm,
   // against the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an
   // arm listed twice, and an entry the sum does not name are three separate reds rather than a count that

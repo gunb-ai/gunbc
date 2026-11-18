@@ -56,8 +56,10 @@ module test.claim.fleet.fleet_converge_roster_closed_sum_witness
 // ENROLLMENT, stated because a witness no lane executes is not a check
 // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling; gunbc.design_argument::
 // guarantee_ladder wants the reported rung to equal the executed one). This module is authored and it has
-// been executed -- `gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all`, 9 claims /
-// 9 held / 0 red on 2026-11-18 -- and it is enrolled in NO lane, so it judges whoever runs it and nothing
+// been executed -- `gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all`, every row
+// held, exit 0, on srv1 on 2026-11-18, the command and verdict recorded against a sha in
+// gunbc.integration_concern fleet_converge_roster_vs_closed_sum -- and it is enrolled in NO lane, so it
+// judges whoever runs it and nothing
 // on the required path: a mode dropped from the roster is still dispatchable in silence. That is the
 // standing gunbc.integration_concern fleet_converge_roster_vs_closed_sum is left Triaged on, with its
 // trigger named there as gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose
@@ -235,6 +237,31 @@ test fn witness_symbol_comparison_used_by_this_wall_discriminates() -> Bool {
     && all(arms, arm => symbol_lexeme(sym: arm) != "")
     && count(arms) > 1
     && all(arms, arm => count(filter(arms, other => symbol_eq(a: arm, b: other))) == 1)
+}
+
+// THE CONTROL FOR THE COUNTING IDIOM ITSELF, which is what makes the paragraph above about
+// count(xs, P) prose rather than a dependency. A wall may not lean on a comment for its correctness
+// (gunbc.design_argument::source_annotations: "Nothing may depend on a comment for correctness"), and
+// every multiplicity below is count(filter(xs, P)). If `filter` ever stopped consulting its predicate
+// that composition would degrade into count(xs) -- every defect tally in this module would become a
+// length, and a length of a correct roster is exactly the number a roster with one mode dropped and
+// another invented also produces. So the composition is refused here in both degenerate directions, over
+// a literal domain with no reflection in the way and again at the real roster's scale. The two-argument
+// count(xs, P) is deliberately NOT asserted about from here. It is measured, filed with its rung,
+// standing and trigger, and repaired in the lane that owns it -- fierce-ibex-326, 2026-11-18, whose row is
+// gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored once it is on main -- and a
+// second row for one failure class, in a program whose subject is duplicated authority, would be the
+// defect rather than the fix. This wall never calls that form, so no row here depends on whether it is
+// fixed.
+test fn witness_the_count_idiom_this_wall_relies_on_discriminates() -> Bool {
+  count(filter([1, 2, 3], x => false)) == 0
+    && count(filter([1, 2, 3], x => true)) == 3
+    && count(filter([1, 2, 3], x => x == 2)) == 1
+    && count(filter(
+      map(fleet_converge_workflow_modes, m => fleet_mode_discriminant(mode: m)),
+      a => symbol_lexeme(sym: a) == "FleetApply"
+    )) == 1
+    && count(fleet_converge_workflow_modes) > 1
 }
 
 // THE NESTED GRAIN, held separately because the multiplicity law above takes the nested arm's size as
