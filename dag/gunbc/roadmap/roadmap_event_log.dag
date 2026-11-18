@@ -2304,11 +2304,11 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // replaying it. There is no
 // in-flight record, no in-flight file and no in-flight event, and none may be added: an
 // in-flight-bearing record would be a SECOND authority over the fact of who holds what
-// (gunbc.design_argument::single_authority), and two authorities over a holding answer are exactly
+// (@ref(gunbc.design_argument::single_authority)), and two authorities over a holding answer are exactly
 // the drift the log exists to remove. Everything below is a read — it takes the log's own wire lines
 // and returns what they say, so a reader can never be shown a hold that no event recorded.
 //
-// CONSUMED BY A NAMED LATER CHANGE — the classification gunbc.design_argument::consumption asks for,
+// CONSUMED BY A NAMED LATER CHANGE — the classification @ref(gunbc.design_argument::consumption) asks for,
 // so the frontier is declared here rather than asserted in prose. Today the only thing that calls
 // roadmap_leaf_in_flight_set is its own witness module, which exercises the fold but is not a consumer.
 // The consumer is the node this one unblocks: roadmap-work-item-projection
@@ -2324,7 +2324,7 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 //
 // WHICH LEAVES ARE IN FLIGHT. A leaf is in flight when the chain shows it a Claimed and NOTHING
 // after it: no Released, no HandedBack, no Retired, no acceptance. "After" is read in the ONE order
-// this module admits — roadmap_event_causal_chain, oldest first, a history that will not order is
+// this module admits — @ref(gunbc.roadmap.roadmap_event_log::roadmap_event_causal_chain), oldest first, a history that will not order is
 // REFUSED (InFlightHistoryUnordered), never folded in an arbitrary file order, because the answer
 // "which leaf does the newest claim name" is nothing without an order to answer it in. A leaf's
 // identity is its LeafPath (gunbc.roadmap.roadmap_model), so a re-claim of the same leaf REPLACES
@@ -2334,7 +2334,7 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // THE CLOSERS ARE NODE-GRAIN FACTS, AND THAT IS STATED RATHER THAN HIDDEN. A Released names no
 // leaf — the grain is what a CLAIM carries, and what a claim carries belongs to
 // roadmap-claim-names-leaf (gunbc.roadmap.roadmap_decomposition). So a close is read the way the
-// node fold already reads it: roadmap_standing_step_acc answers a Released by emptying the node's
+// node fold already reads it: @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc) answers a Released by emptying the node's
 // assignment without asking which holder it was ending, and this read does the same thing one level
 // down. A Released, HandedBack, Retired or AcceptanceRecordedEvent on the item ends the holds the
 // chain shows, and EVERY leaf it ends is reported in `closed` beside the event that ended it. A
@@ -2350,14 +2350,14 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // counted in `pathless_claims` so the reader can see that the log holds claims this set does not
 // show, rather than being told nothing happened.
 //
-// A CLAIMED WITH A MALFORMED GRAIN IS A TYPED REFUSAL, NOT A DROPPED LINE (gunbc.design_argument::
-// fail_closed). Such a line cannot survive roadmap_event_decode, which is why this read takes the
+// A CLAIMED WITH A MALFORMED GRAIN IS A TYPED REFUSAL, NOT A DROPPED LINE
+// (@ref(gunbc.design_argument::fail_closed)). Such a line cannot survive roadmap_event_decode, which is why this read takes the
 // log's WIRE LINES rather than decoded events: a read over decoded events alone would never see the
 // case at all, and would fold as though the claim had never happened — reporting as free a leaf some
 // session holds. So a line the decoder refuses is asked here whether it is a Claimed with a grain
 // that cannot be read (roadmap_claim_grain_defect, which reuses the grain authority
-// roadmap_claim_grain_decode and the module's own member readers to NAME the field; it decides
-// nothing — a grain is well-formed exactly when roadmap_claim_grain_decode says so). If it is, the
+// @ref(gunbc.roadmap.roadmap_event_log::roadmap_claim_grain_decode) and the module's own member readers to NAME the field; it decides
+// nothing — a grain is well-formed exactly when @ref(gunbc.roadmap.roadmap_event_log::roadmap_claim_grain_decode) says so). If it is, the
 // whole read refuses with the line and the field named. A line that is unreadable for any other
 // reason refuses too (InFlightLineUnreadable): skipping a line could skip the very release that ends
 // a hold, and a set missing a release is a set that lies about who holds what.
@@ -2370,7 +2370,7 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // HandedBack over it is absorbed too — the fold neither ends a hold nor records a closer for an event the
 // authority refused to move the node for, and above all it cannot un-terminalise the standing. An earlier
 // revision kept its own copy of that standing and the copy had drifted, putting a leaf in flight on an
-// accepted item (review on gunb-ai/gunbc#16703); the executed checks against `roadmap_node_standing` are
+// accepted item (review on gunb-ai/gunbc#16703); the executed checks against `@ref(gunbc.roadmap.roadmap_event_log::roadmap_node_standing)` are
 // named on roadmap_leaf_in_flight_step. A revocation whose disposition
 // revocation_reopens_active_frontier admits returns the node to the frontier, and only then can a fresh
 // Claimed put a leaf back in flight — a revocation is not a re-claim.
@@ -2405,13 +2405,13 @@ type LeafClosedByEntry {
 }
 
 // THE STANDING THIS FOLD CARRIES IS THE AUTHORITY'S OWN, not a copy of its law. The fold holds a
-// RoadmapStandingAcc — the node fold's accumulator, produced by nothing but roadmap_standing_step_acc
+// RoadmapStandingAcc — the node fold's accumulator, produced by nothing but @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc)
 // (roadmap_leaf_in_flight_step) and started from roadmap_standing_acc_empty() — and it never answers
-// the terminality question itself: it ASKS the module's own predicates, roadmap_standing_is_terminal
-// and roadmap_standing_is_retired, of the standing the authority computed (gunbc.design_argument::
+// the terminality question itself: it ASKS the module's own predicates, @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_is_terminal)
+// and @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_is_retired), of the standing the authority computed (gunbc.design_argument::
 // single_authority: "a second place that independently decides it is a fork"). An earlier revision of
 // this read carried its own three-hand sum for that, and it had already drifted once — a release after
-// an acceptance reset the copy's terminality, which roadmap_node_standing would never do (review on
+// an acceptance reset the copy's terminality, which @ref(gunbc.roadmap.roadmap_event_log::roadmap_node_standing) would never do (review on
 // gunb-ai/gunbc#16703). The two folds now cannot disagree about a standing, because there is one
 // standing and one function that moves it; what this fold adds is the leaf dimension the node fold has
 // no notion of, and the only thing it decides locally is which kinds speak about leaves at all.
@@ -2493,7 +2493,7 @@ type LeafInFlightLine
   | InFlightLineRefused { cause: LeafInFlightRefusal }
 
 // ONE LINE. It decodes through the module's ONE decoder — the id verified against its bytes, the
-// grain through roadmap_claim_grain_decode — and nothing here re-spells what a record must be. Two
+// grain through @ref(gunbc.roadmap.roadmap_event_log::roadmap_claim_grain_decode) — and nothing here re-spells what a record must be. Two
 // things a decoder's refusal could mean are kept apart: a Claimed whose grain cannot be read (the
 // case fail_closed names) and any other unreadable line. Both refuse; only the first says so in the
 // grain's own words, because "this item's log carries a claim nobody can read the leaf of" is a
@@ -2624,7 +2624,7 @@ fn roadmap_leaf_grain_defect(leaf: JsonValue) -> String? {
 // THE FOLD, OLDEST FIRST OVER THE CAUSAL CHAIN, carrying what it knows: the leaves held now, the
 // leaves it has seen closed, the Pathless claims it declined to turn into leaves, the claims a terminal
 // standing absorbed, and — for the standing itself — THE AUTHORITY'S OWN ACCUMULATOR, advanced by
-// nothing but roadmap_standing_step_acc. Head-and-tail, the way every other fold in this module walks a
+// nothing but @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc). Head-and-tail, the way every other fold in this module walks a
 // list. The fold carries NO line counter: every refusal is decided on the way in
 // (roadmap_leaf_in_flight_line), where a line's position in the FILE is in hand, so no refusal can here
 // mistake the chain's step for a line of the log — the chain authority may order the two differently,
@@ -2659,7 +2659,7 @@ fn roadmap_leaf_in_flight_fold(
 }
 
 // ONE EVENT OF THE CHAIN. The standing this fold must respect is computed HERE, by the node fold itself
-// — roadmap_standing_step_acc is the only thing that ever produces the accumulator this read carries, and
+// — @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc) is the only thing that ever produces the accumulator this read carries, and
 // the module's own predicates are the only thing that answers "does this event move the node" (review on
 // gunb-ai/gunbc#16703: this read used to keep its own terminality, and the copy had drifted). What the
 // event means for a LEAF — a dimension the node fold has no notion of — is the only thing decided below,
