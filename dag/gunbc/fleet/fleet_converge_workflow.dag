@@ -5,8 +5,7 @@ import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_invoke
 import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_invoke }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
-import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke }
-import gunbc.host.network_install_ci { managed_host_network_install_receipt_path }
+import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke, managed_host_network_install_receipt_path }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
 import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_invoke }
 import gunbc.fleet.app_control_plane_inspection_ci_step { gunbc_ci_app_control_plane_inspect_invoke }
