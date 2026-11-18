@@ -3,6 +3,7 @@ module gunbc.roadmap.roadmap_decomposition
 import std.types { String, Int, Bool, List }
 import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
+import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
 import std.algebra { Cons, Empty }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -1455,11 +1456,12 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // which-one are distinct concepts, not one position twice. That Nat bound comes from the findings_count
 // simulation input (already a Nat, so a negative assumed count is UNWRITABLE -- fail_closed prefers making the
 // bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's bare Int `population_members`
-// (imported, never edited -- single_authority); that single Int is crossed into a Nat ONCE by `to_member_count`
-// via the checked crossing `checked_int_to_nat`, and the crossing's Absent (a negative) is guarded to refuse by
-// `declared_populations_positive`, the same gate the expansion and the parent resolution both call. So no
-// UNCHECKED Int ever reaches a Nat field, and no malformed count is ever read as an accidental empty family.
-// Dependencies and non-positive declared counts are refused by the typed gates below, not by a mint-time check.
+// (imported, never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
+// via the checked crossing `checked_int_to_nat`, whose Absent (a non-positive count) REFUSES as `OccsRejected` --
+// the refusal is in the builder's own type, not a bool gate a caller could skip and not a fabricated zero. The
+// expansion and the parent resolution both consume that typed `OccurrenceBuild`. So no UNCHECKED Int ever reaches
+// a Nat field, and no malformed count is ever read as an accidental empty family. Dependencies and non-positive
+// declared counts are refused by the typed carriers below, not by a mint-time check.
 
 // The count an occurrence's member index is drawn from: DECLARED by the carrier, or ASSUMED (a simulation
 // input the carrier never declared, used only for a FindingsOf family whose count is unknown until its
@@ -1511,86 +1513,106 @@ fn members_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, remaining: N
   }
 }
 
-// A declared family population is the carrier's bare Int (single_authority: the row is imported, never edited),
-// so it must CROSS into the Nat position the member walk consumes -- a checked crossing that refuses a negative
-// (fail_closed: the reverse of nat_to_int is never implicit). The crossing is guarded ONCE by
-// declared_populations_positive; the Absent arm stays a total fallback so no caller can read a bad count as an
-// accidental empty family rather than a refusal.
-fn to_member_count(n: Int) -> Nat {
-  match checked_int_to_nat(n: n) {
-    Present { value: k } => k
-    Absent => Zero
-  }
-}
+// A declared family's member count reaches the member walk through a checked Int->Nat crossing, so building a
+// piece's occurrences can REFUSE: this is the ONE place that crossing (and its refusal) lives. There is no
+// separate bool gate a caller might skip and no fabricated default -- a non-positive declared population is
+// OccsRejected, located at the offending item (fail_closed: "a silent widen, fabricated default ... is a hard
+// reject"; every path succeeds fully or fails typed/located). A FindingsOf family is exempt -- its count is the
+// Nat findings_count simulation input, whose negative is unwritable, so it never crosses and never refuses.
+type OccurrenceBuild
+  = OccsBuilt { occurrences: List<Occurrence> }
+  | OccsRejected { item: RoadmapNodeId }
 
-// A decomposition mints a member from a DECLARED family only when that family's population is a real (positive)
-// count; a non-positive one refuses rather than minting zero. A FindingsOf family is exempt -- its member count
-// is the Nat findings_count simulation input, not population_members (it never reads the carrier's Int there).
-fn family_population_is_positive(p: WorkPiece) -> Bool {
-  match p {
-    Family { label, days, population, owner } =>
-      !population_is_findings(p: population) && population_members(p: population) > 0
-    Leaf { label, days, evidence } => true
-    Join { label } => true
-    Decision { label, alternatives } => true
-    Composite { label, stages } => true
-  }
-}
-
-fn declared_populations_positive(d: WorkDecomposition) -> Bool {
-  all(d.stages, s => all(s.pieces, p => family_population_is_positive(p: p)))
-}
-
-// THE single place an Occurrence is minted. Every index arrives here as a `Nat` already built by successor
-// (Zero / Succ) at the enumeration sites below -- never as an un-checked Int->Nat crossing -- so there is no
-// representability branch to bypass and no state the type system could not already hold. The mint is total.
+// THE single place an Occurrence is minted. Every index it stamps arrives as a `Nat` already built by successor
+// (Zero / Succ) at the enumeration sites below. The one Int->Nat crossing -- the declared family count -- is the
+// CHECKED one in `piece_occurrences`, and its result is a Nat loop bound consumed by `members_occurrences`, not a
+// value handed straight to this mint; so the mint itself sees only successor-built Nats, there is no
+// representability branch to bypass, and the mint is total.
 fn member_occurrence(item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat, source: OccurrenceCount) -> Occurrence {
   Occurrence { path: LeafPath { item: item, stage: stage, piece: piece, member: member }, count_source: source }
 }
 
-fn piece_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece, findings_count: Nat) -> List<Occurrence> {
+// The single authority for crossing a DECLARED family's carrier Int into the Nat the member walk consumes. A
+// declared family must carry at least ONE member, so only a STRICTLY positive count is admissible: this returns
+// Absent for a non-positive one (a negative is the checked crossing's own Absent; zero is a declared family with
+// no member, a contradiction -- unlike the Nat FindingsOf input where zero legitimately means "no findings yet")
+// and the positive Nat otherwise. The builder refuses on Absent rather than minting zero (fail_closed: the
+// reviewer's "return Optional<Nat>, refuse on Absent," refined so a zero declared count is refused too). One
+// crossing, one admissibility rule, located refusal -- no fabricated default, no separate bool gate to skip.
+fn declared_member_nat(n: Int) -> Optional<Nat> {
+  match checked_int_to_nat(n: n) {
+    Absent => Absent
+    Present { value: k } => match k {
+      Zero => Absent
+      Succ { prev: m } => Present { value: Succ { prev: m } }
+    }
+  }
+}
+
+// One piece -> its occurrences, or a located refusal. The FindingsOf branch mints from the Nat simulation input
+// directly; every OTHER piece is total (a leaf, or a join/decision/composite that carries no member). Only the
+// DECLARED family branch reads the carrier's bare Int `population_members` and must CROSS it into the Nat the
+// member walk consumes -- via the ONE checked crossing `declared_member_nat`, whose Absent (a non-positive count)
+// REFUSES here rather than minting zero. This is the sole Int->Nat crossing in the enumeration; the mint itself
+// (`member_occurrence`) never sees an unchecked Int.
+fn piece_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece, findings_count: Nat) -> OccurrenceBuild {
   match p {
-    Leaf { label, days, evidence } => [ member_occurrence(item: item, stage: stage, piece: piece, member: Zero, source: Declared) ]
+    Leaf { label, days, evidence } => OccsBuilt { occurrences: [ member_occurrence(item: item, stage: stage, piece: piece, member: Zero, source: Declared) ] }
     Family { label, days, population, owner } =>
       if population_is_findings(p: population) {
-        members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed)
+        OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
       } else {
-        members_occurrences(item: item, stage: stage, piece: piece, remaining: to_member_count(n: population_members(p: population)), index: Zero, source: Declared)
+        match declared_member_nat(n: population_members(p: population)) {
+          Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
+          Absent => OccsRejected { item: item }
+        }
       }
-    Join { label } => []
-    Decision { label, alternatives } => []
-    Composite { label, stages } => []
+    Join { label } => OccsBuilt { occurrences: [] }
+    Decision { label, alternatives } => OccsBuilt { occurrences: [] }
+    Composite { label, stages } => OccsBuilt { occurrences: [] }
   }
 }
 
 // Walk a stage's pieces by STRUCTURAL recursion (Cons / Empty), carrying the single Nat piece index that keys
-// each occurrence -- no parallel Int counter, no index arithmetic (minimize_redundancy).
-fn stage_pieces_occurrences(item: RoadmapNodeId, stage: Nat, pieces: List<WorkPiece>, piece: Nat, findings_count: Nat) -> List<Occurrence> {
+// each occurrence -- no parallel Int counter, no index arithmetic (minimize_redundancy). A refused piece
+// (non-positive declared count) propagates the located refusal; otherwise the built lists concatenate.
+fn stage_pieces_occurrences(item: RoadmapNodeId, stage: Nat, pieces: List<WorkPiece>, piece: Nat, findings_count: Nat) -> OccurrenceBuild {
   match pieces {
-    Empty => []
-    Cons { head: p, tail: rest } => concat(
-      piece_occurrences(item: item, stage: stage, piece: piece, p: p, findings_count: findings_count),
-      stage_pieces_occurrences(item: item, stage: stage, pieces: rest, piece: Succ { prev: piece }, findings_count: findings_count),
-    )
+    Empty => OccsBuilt { occurrences: [] }
+    Cons { head: p, tail: rest } =>
+      match piece_occurrences(item: item, stage: stage, piece: piece, p: p, findings_count: findings_count) {
+        OccsRejected { item: bad } => OccsRejected { item: bad }
+        OccsBuilt { occurrences: head_occs } =>
+          match stage_pieces_occurrences(item: item, stage: stage, pieces: rest, piece: Succ { prev: piece }, findings_count: findings_count) {
+            OccsRejected { item: bad } => OccsRejected { item: bad }
+            OccsBuilt { occurrences: tail_occs } => OccsBuilt { occurrences: concat(head_occs, tail_occs) }
+          }
+      }
   }
 }
 
-fn stage_occurrences(item: RoadmapNodeId, stage: Nat, st: WorkStage, findings_count: Nat) -> List<Occurrence> {
+fn stage_occurrences(item: RoadmapNodeId, stage: Nat, st: WorkStage, findings_count: Nat) -> OccurrenceBuild {
   stage_pieces_occurrences(item: item, stage: stage, pieces: st.pieces, piece: Zero, findings_count: findings_count)
 }
 
-// Walk a decomposition's stages by structural recursion, carrying the single Nat stage index.
-fn stages_occurrences(item: RoadmapNodeId, stages: List<WorkStage>, stage: Nat, findings_count: Nat) -> List<Occurrence> {
+// Walk a decomposition's stages by structural recursion, carrying the single Nat stage index; a refused piece in
+// any stage propagates the located refusal.
+fn stages_occurrences(item: RoadmapNodeId, stages: List<WorkStage>, stage: Nat, findings_count: Nat) -> OccurrenceBuild {
   match stages {
-    Empty => []
-    Cons { head: st, tail: rest } => concat(
-      stage_occurrences(item: item, stage: stage, st: st, findings_count: findings_count),
-      stages_occurrences(item: item, stages: rest, stage: Succ { prev: stage }, findings_count: findings_count),
-    )
+    Empty => OccsBuilt { occurrences: [] }
+    Cons { head: st, tail: rest } =>
+      match stage_occurrences(item: item, stage: stage, st: st, findings_count: findings_count) {
+        OccsRejected { item: bad } => OccsRejected { item: bad }
+        OccsBuilt { occurrences: head_occs } =>
+          match stages_occurrences(item: item, stages: rest, stage: Succ { prev: stage }, findings_count: findings_count) {
+            OccsRejected { item: bad } => OccsRejected { item: bad }
+            OccsBuilt { occurrences: tail_occs } => OccsBuilt { occurrences: concat(head_occs, tail_occs) }
+          }
+      }
   }
 }
 
-fn all_occurrences(d: WorkDecomposition, findings_count: Nat) -> List<Occurrence> {
+fn all_occurrences(d: WorkDecomposition, findings_count: Nat) -> OccurrenceBuild {
   stages_occurrences(item: d.node, stages: d.stages, stage: Zero, findings_count: findings_count)
 }
 
@@ -1620,10 +1642,11 @@ fn unique_decomposition(item: RoadmapNodeId) -> UniqueDecomposition {
 
 // A waits_on parent is resolved ONCE: its occurrences at the waited-from Int stage, built exactly like every
 // other occurrence over the parent's OWN decomposition (so an edge endpoint is a real occurrence path, never a
-// synthetic mint -- single_authority), or a typed Rejected. The uniqueness rule and the non-positive declared-count
-// rule are the SAME two the top-level expansion applies -- resolve_parent_occurrences calls those single authorities
-// (unique_decomposition, declared_populations_positive) rather than re-checking -- so a waits_on parent is admitted
-// under exactly the child's rules and a bad parent count is REFUSED, never silently dropped to "no edges".
+// synthetic mint -- single_authority), or a typed Rejected. The uniqueness rule and the non-positive
+// declared-count rule are the SAME two the top-level expansion applies -- resolve_parent_occurrences consumes
+// those single authorities (unique_decomposition, and the typed OccurrenceBuild from all_occurrences) rather than
+// re-checking rows -- so a waits_on parent is admitted under exactly the child's rules and a bad parent count is
+// REFUSED, located at the parent, never silently dropped to "no edges".
 type ParentResolution
   = Resolved { occurrences: List<Occurrence> }
   | Rejected { cause: ExpansionRefusal }
@@ -1632,10 +1655,9 @@ fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_cou
   match unique_decomposition(item: item) {
     UniqueRejected { cause } => Rejected { cause: cause }
     UniqueFound { d: pd } =>
-      if !declared_populations_positive(d: pd) {
-        Rejected { cause: NonPositiveDeclaredCount { item: item } }
-      } else {
-        Resolved { occurrences: filter(all_occurrences(d: pd, findings_count: findings_count), o => nat_to_int(n: o.path.stage) == from_stage) }
+      match all_occurrences(d: pd, findings_count: findings_count) {
+        OccsRejected { item: bad } => Rejected { cause: NonPositiveDeclaredCount { item: bad } }
+        OccsBuilt { occurrences: occs } => Resolved { occurrences: filter(occs, o => nat_to_int(n: o.path.stage) == from_stage) }
       }
   }
 }
@@ -1678,20 +1700,21 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
 // THE expansion, gated in one place over a single fully admitted decomposition. Order: (1) ask the carrier's OWN
 // well-formedness claim (fail_closed, single_authority) -- a stage dependency naming a stage its parent's
 // decomposition lacks, or an undeclared edge, refuses with the typed DependencyClaimRefused and re-checks no row;
-// (2) every DECLARED family population must be a positive count -- the carrier's Int is imported, not edited, so a
-// non-positive one refuses rather than minting zero (the assumed FindingsOf count needs no gate: it is a Nat, its
-// negative is unwritable); (3) each waits_on parent is resolved under the SAME two rules (unique_decomposition +
-// declared_populations_positive). Only over a fully admitted decomposition does it emit occurrences and edges.
+// (2) build the occurrences -- a non-positive DECLARED family count refuses, located, from the builder itself
+// (the assumed FindingsOf count is a Nat, its negative unwritable, so it never refuses); (3) each waits_on parent
+// is resolved under the SAME rules (unique_decomposition + the typed build). Only over a fully admitted
+// decomposition does it emit occurrences and edges. No branch here mints from an un-guarded count.
 fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion {
   if !decomposition_dependencies_well_formed(d: d) {
     Refused { cause: DependencyClaimRefused { item: d.node } }
-  } else if !declared_populations_positive(d: d) {
-    Refused { cause: NonPositiveDeclaredCount { item: d.node } }
   } else {
-    let occs = all_occurrences(d: d, findings_count: findings_count)
-    match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
-      WaitsRejected { cause } => Refused { cause: cause }
-      WaitsBuilt { edges } => Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), edges) }
+    match all_occurrences(d: d, findings_count: findings_count) {
+      OccsRejected { item: bad } => Refused { cause: NonPositiveDeclaredCount { item: bad } }
+      OccsBuilt { occurrences: occs } =>
+        match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
+          WaitsRejected { cause } => Refused { cause: cause }
+          WaitsBuilt { edges } => Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), edges) }
+        }
     }
   }
 }
