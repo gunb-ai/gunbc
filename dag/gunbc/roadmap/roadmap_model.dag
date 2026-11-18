@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_model
 
 import std.types { NonEmptyStr, brand, Map }
+import std.nat { Nat }
 import std.algebra { list_snoc_item }
 // THE map_insert value SITES BELOW PASS A LIST-AND-SINGLETON WHERE THE FORMALS DECLARED List; they used to spell it with the builtin concat, which the typed declarer declares String-returning (std.primitives.dag concat_contract). list_snoc_item IS that meaning, declared in std.algebra. The judgment that exposed them is gunbc.recurring_failure_mode.nominal_isomorphic_record_admitted_at_sibling_declaration, whose row records the remaining corpus population.
 import std.content_hash { Fnv1a64Structural }
@@ -26,6 +27,18 @@ type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 data roadmap_node_identity_law: String = "A roadmap node's identity is MINTED, never derived. Slug, title, criteria digest, containment position, dependency neighbourhood, declaration order and file position are FORBIDDEN identity inputs — the law std.occurrence_identity states for occurrences, generalized to an entity that must outlive the graph it is read from.\n\nThe law is reused; the TYPE deliberately is not. std.occurrence_identity.OccurrenceId is an ordinal from a per-graph allocator starting at zero, so it is unique only INSIDE one constructed graph: inserting a node at the front renumbers every node after it, and two concurrent branches mint the same next integer. That is positional identity wearing an allocator's clothes — right for occurrences within one parse, wrong for a work item that must survive edits, reordering, regeneration and independent branches. What occurrence identity deliberately does not claim is PERSISTENCE SCOPE, and that is precisely what a roadmap node needs.\n\nIdentity is a REQUIRED FIELD rather than a side registry keyed by slug. A registry beside the authority leaves a node authorable without identity, detectable only by a later witness — validation standing where construction was available (gunbc.design_argument::fail_closed), and two authorities that must be kept in step (gunbc.design_argument::single_authority). As a field, a node without durable identity is unwritable, and the slug index is DERIVED from the nodes rather than independently authored, so the two can never disagree."
 
 type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
+
+// A leaf PATH names one leaf occurrence of a decomposed item: the item, then the
+// three indexes a WorkDecomposition reads to place a leaf -- its stage, its piece
+// within that stage, and its member within that piece. Indexes are Nat, so a
+// negative index is unwritable rather than caught at runtime
+// (gunbc.design_argument::guarantee_ladder). It lives here, in the model, because
+// both the record (roadmap_event_log's Claimed grain) and the leaf authority
+// (roadmap_decomposition's predicate) name it, and neither may import the other;
+// the model is the module below both. It carries only the path -- the well-formedness
+// judgment that reads these same three indexes is decomposition_has_leaf_path,
+// imported from the carrier's own authority rather than spelled here or at a call site.
+type LeafPath { item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat }
 
 type Pointer { label: String, path: String }
 

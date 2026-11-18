@@ -1,9 +1,9 @@
 module gunbc.roadmap.roadmap_decomposition
 
 import std.types { String, Int, Bool, List }
+import std.integer { nat_to_int }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.nat { Nat }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
 // THE RECURSIVE DECOMPOSITION OF EVERY OPEN BOUND WORK ITEM, DONE UP FRONT (operator, 2026-11-17: "basically i'm
@@ -83,22 +83,12 @@ type WorkDecomposition {
   stages: List<WorkStage>
 }
 
-// THE LEAF PATH: how this carrier spells one leaf of one item -- the item, the stage index, the piece
-// index, and the member index (0 for a plain Leaf, a position within a Family at its DECLARED count).
-// This type together with `decomposition_has_leaf_path` below is THE authority for "is this a leaf of
-// this item": nothing else defines a leaf path. The three indexes are `Nat`, so a negative index is
-// unwritable rather than caught at runtime (gunbc.design_argument::guarantee_ladder -- making the wrong
-// state unwritable beats catching it). It carries no schedule -- no start, finish, day, edge or lane --
-// because those are computed at the read and never stored
-// (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read); the ordered EXPANSION of a
-// decomposition into occurrences over this same type is the schedule lane's work, built on this type,
-// not a second definition of it.
-type LeafPath {
-  item: RoadmapNodeId
-  stage: Nat
-  piece: Nat
-  member: Nat
-}
+// THE LEAF PATH (type LeafPath) lives in gunbc.roadmap.roadmap_model, imported above: it is named by
+// both the record (roadmap_event_log's Claimed grain) and this carrier's authority, and neither may
+// import the other, so it sits in the model below both. `decomposition_has_leaf_path` below, over that
+// imported type, is THE authority for "is this a leaf of this item"; nothing else defines a leaf path.
+// The ordered EXPANSION of a decomposition into occurrences over that same type is the schedule lane's
+// work, built on it -- not a second definition of it.
 
 // Same working-day prior unit as WorkPiece.days: leaf_days_max is the leaf-rule ceiling and
 // decision_days the cost of a decision point, both in working days, held as bare Int.
@@ -322,23 +312,28 @@ fn decomposition_for(node: RoadmapNodeId) -> List<WorkDecomposition> {
 // exactly one decomposition refuses. Consumers -- the Claimed append route -- call THIS rather than
 // re-deriving the spelling (single_authority: import the row, do not copy it).
 fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
+  // The path's indexes are Nat (a negative leaf index is unwritable, not caught here); the list
+  // read below is indexed by Int, so each index crosses once, total and exact, via nat_to_int.
+  let stage_index: Int = nat_to_int(n: path.stage)
+  let piece_index: Int = nat_to_int(n: path.piece)
+  let member_index: Int = nat_to_int(n: path.member)
   let ds = decomposition_for(node: path.item)
   if count(ds) != 1 {
     false
   } else {
     match ds[0] {
       Absent => false
-      Present { value: d } => match d.stages[path.stage] {
+      Present { value: d } => match d.stages[stage_index] {
         Absent => false
-        Present { value: st } => match st.pieces[path.piece] {
+        Present { value: st } => match st.pieces[piece_index] {
           Absent => false
           Present { value: pc } => match pc {
-            Leaf { label, days, evidence } => path.member == 0
+            Leaf { label, days, evidence } => member_index == 0
             Family { label, days, population, owner } =>
               if population_is_findings(p: population) {
                 false
               } else {
-                path.member < population_members(p: population)
+                member_index < population_members(p: population)
               }
             Join { label } => false
             Decision { label, alternatives } => false
