@@ -1097,6 +1097,8 @@ data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
   decided: "2026-11-18",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
   provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked whether the ctrl session dashboard embeds the same timeline page the daily workspace serves or consumes only the one-row-per-item projection and draws its own view. Operator words, verbatim: \"yeah someone is working on that stuff, i will try not to add too much if anything from ctrl, that's my goal at least\". RULED, in those words: the ctrl dashboard renders the same page and adds nothing, or as little as possible, of its own. INTERPRETATION (not operator words): one renderer in gunbc.roadmap.roadmap_page; ctrl keeps no planning state and no second view until something is actually missing, and that missing thing is then added to the page here (gunbc.design_ruling::planning_execution_is_anchored_on_fabric keeps ctrl a side path)."
+}
+
 data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "codex_app_server_trip_pinned_oracle_repointed_to_direct_argv"),
   decided: "2026-11-17",
