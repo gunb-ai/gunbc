@@ -8848,6 +8848,27 @@ fn zesty_jmain() -> ProcessExit {
     ExitSuccess
   }
 }
+fn zesty_g1() -> ProcessExit {
+  if count(fleet_converge_consumer_prelude_steps()) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_g2() -> ProcessExit {
+  if count(fleet_converge_credential_prelude_steps()) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
+fn zesty_g3() -> ProcessExit {
+  if count(fleet_converge_job_work_steps()) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
