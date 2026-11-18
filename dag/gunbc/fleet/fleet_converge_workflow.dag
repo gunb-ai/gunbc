@@ -144,6 +144,8 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
+import gunbc.machine_intake.arrival_run { arrival_wet_ipmi_legs_bound }
+import gunbc.machine_intake.prior_life_capture_live { live_prior_life_legs_bound }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation { mtcollins1_ui_status_asset_observation_receipt_path, mtcollins1_ui_status_asset_probe_bound }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_observer_release_allowance }
@@ -8209,9 +8211,13 @@ fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGeneration
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet.fleet_workflow_steps)" }
       JobTimeoutWithinCeiling { minutes: _ } =>
-        match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) {
-          EmittedYaml { text: t } => FleetConvergeYamlGenerated { content: t }
-          YamlEmitRefused { path: p, reason: r } => FleetConvergeYamlGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.fleet_converge_workflow", path: p, reason: r) }
+        if fleet_converge_arrival_converge_backstop_holds() {
+          match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) {
+            EmittedYaml { text: t } => FleetConvergeYamlGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } => FleetConvergeYamlGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.fleet_converge_workflow", path: p, reason: r) }
+          }
+        } else {
+          FleetConvergeYamlGenerationRefused { reason: "the arrival-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — lower the arrival step's phases or split the job; do not clamp the figure (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet.fleet_workflow_steps)" }
         }
     }
   } else {
@@ -8248,6 +8254,48 @@ fn fleet_converge_arrival_provider_resource_expression() -> String {
 
 fn fleet_converge_arrival_service_account_expression() -> String {
   arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+// THE BUDGET OF THE ARRIVAL CONVERGE STEP: gunbc run's load of the door's closure under the ONE
+// resolve allowance every gunbc-run wet step consumes (gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_gunbc_run_resolve_step_timeout_minutes), then the door's own phases in order: the credential
+// prelude's single bounded Secret Manager read (gunbc_ci_sm_max_time), the door's credential-free IPMI
+// legs (gunbc.machine_intake.arrival_run arrival_wet_ipmi_legs_bound -- the channel walk, the served
+// threshold read, the counted census), and the carrier legs
+// (gunbc.machine_intake.prior_life_capture_live live_prior_life_legs_bound). A FOLD, NEVER A TYPED
+// FIGURE: run 44249358201 carried the flat gunbc_ci_aux_step_timeout_minutes here, paid ~107 s before
+// compile.frontend even began, then 80 s of frontend and 4 s of normalize, and was killed at 313 s of
+// wall with reconcile still open -- the door's contact with the BMC was exactly ZERO, so it established
+// nothing and the arrival lane's window burned another day. The mode it hit is named in the roadmap at
+// gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation; this is the
+// arrival lane's fix, the same shape fan_observe and the runner-host read steps moved to after the
+// identical kill.
+fn fleet_converge_arrival_converge_step_timeout_minutes() -> Int {
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()])
+}
+
+// THE ARRIVAL JOB'S BACKSTOP, built the way the boot job's is (gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes): the checkout prelude allowance, the release
+// download at the artifact-transfer bound, the three aux steps that surround the converge step (unpack
+// and verify, the credential-free admission, the WIF auth), then the converge step's own minutes. The
+// ceiling is NOT clamped away: the generation route checks this figure through
+// checked_job_timeout_minutes (fleet_converge_arrival_converge_backstop_holds, consulted by
+// fleet_converge_yml_after_unit_hold_admission) and REFUSES generation past
+// extdeps.github.actions max_job_timeout_minutes -- clamping would silently ship a figure that fails
+// closed, which is exactly what gunbc_ci_fleet_job_backstop_timeout_note forbids for this workflow.
+fn fleet_converge_arrival_converge_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + (3 * gunbc_ci_aux_step_timeout_minutes)
+    + fleet_converge_arrival_converge_step_timeout_minutes()
+}
+
+// The arrival job's backstop under the platform ceiling: checked, never clamped.
+fn fleet_converge_arrival_converge_backstop_holds() -> Bool {
+  match checked_job_timeout_minutes(computed: fleet_converge_arrival_converge_job_backstop_timeout_minutes()) {
+    JobTimeoutWithinCeiling { minutes: _ } => true
+    JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } => false
+  }
 }
 
 fn fleet_converge_arrival_converge_job() -> Job {
@@ -8292,14 +8340,14 @@ fn fleet_converge_arrival_converge_job() -> Job {
         working_directory: none,
         if_condition: none,
         continue_on_error: none,
-        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
+        timeout_minutes: Present { value: fleet_converge_arrival_converge_step_timeout_minutes() },
       },
     ],
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ArrivalConverge)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: ArrivalConverge) },
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
+    timeout_minutes: Present { value: fleet_converge_arrival_converge_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")),
     permissions: Present {

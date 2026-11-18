@@ -180,6 +180,36 @@ data live_curl_connect_timeout: Second = second(count: 5)
 data live_ipmi_read_deadline: Second = second(count: 5)
 data live_ipmi_kill_after: Second = second(count: 1)
 
+// THE PRIOR-LIFE LEGS IN ONE PLACE, so a CONSUMER can fold this archive's wall time instead of spelling
+// a number at the call site (gunbc.design_argument::single_authority; run 44249358201 is what asked for
+// it: a caller that had to guess this total put the whole wet run on a hand-picked figure and the run died
+// in load before the controller was ever contacted). Each leg is named by the op label the kernel issues
+// it with and bounded by the rows above:
+//   * TWO ipmi legs -- the SEL list behind SelAndEventLogs, the chassis status behind PowerState. One leg
+//     costs at most live_ipmi_read_deadline PLUS live_ipmi_kill_after: that pair is ipmitool's own
+//     deadline and the transport's kill past it, so the retry count inside the tool cannot extend the wall.
+//   * FOUR single-call Redfish GETs, each at most live_redfish_read_budget: curl's --max-time bounds the
+//     whole request including the connect phase, and extdeps.bmc/http declares no retry of its own.
+//   * The Entries collections are a FAN-OUT, not one call: at most live_log_services_read_bound of them,
+//     each GET under the same budget. Beyond that bound the collection is a typed gap, never a half-read.
+// The clock and the audit carriers add NO call: they are projected from the Manager body and the Entries
+// bytes the legs above already committed. A new carrier leg is added HERE, and the bound moves with it.
+data live_prior_life_ipmi_legs: List<NonEmptyStr> = [live_op_sel_list, live_op_chassis_status]
+
+data live_prior_life_redfish_single_call_legs: List<NonEmptyStr> = [live_op_get_system, live_op_log_services, live_op_virtual_media, live_op_sensors]
+
+// One bounded ipmi leg: the tool's deadline plus the transport's kill past it.
+fn live_ipmi_leg_bound() -> Second {
+  second(count: (second_count(s: live_ipmi_read_deadline) as Int) + (second_count(s: live_ipmi_kill_after) as Int))
+}
+
+// The whole capture's BMC wall: every declared leg at its own bound, nothing estimated.
+fn live_prior_life_legs_bound() -> Second {
+  let ipmi_secs = (length(xs: live_prior_life_ipmi_legs) as Int) * (second_count(s: live_ipmi_leg_bound()) as Int)
+  let redfish_calls = (length(xs: live_prior_life_redfish_single_call_legs) as Int) + live_log_services_read_bound
+  second(count: ipmi_secs + (redfish_calls * (second_count(s: live_redfish_read_budget) as Int)))
+}
+
 // THE ONCE-MINTED BUDGET PAIR (review 94204). Every Redfish carrier read rides these two durations;
 // the checked constructor at the transport boundary mints the carriers, and an empty budget mints
 // NOTHING -- the send is refused with this typed failure, nothing is substituted, nothing is sent on
