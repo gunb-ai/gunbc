@@ -2,7 +2,7 @@ module gunbc.runner.runner_spec_from_offer
 
 import extdeps.github.actions { RunnerSpec, SelfHosted, self_hosted_provenance_label, runner_os_label, runner_arch_label, self_hosted_labels }
 import gunbc.ci.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
-import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import extdeps.cpu { cpu_facts_architecture }
 import extdeps.toolchain.types { Architecture }
 import std.os.types { KernelFamily }
@@ -19,8 +19,12 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 fn runner_self_hosted_labels_from_offer(offer: ComputeOffer) -> List<String> {
   let os = offer.supply.execution.os
   match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent => concat([self_hosted_provenance_label], [runner_os_label(kernel: os.kernel)])
-    Present { value: cpu } => self_hosted_labels(kernel: os.kernel, arch: cpu_facts_architecture(cpu: cpu), custom: [])
+    // NO ARCH LABEL EITHER WAY, FOR TWO DIFFERENT REASONS. A surveyed host with no CPU row has no architecture to
+    // name; an UNSURVEYED host has no architecture anyone has read. Both publish the narrower label set rather than
+    // inventing one (gunbc.design_argument::fail_closed), and the standing keeps the two distinguishable upstream.
+    PrimaryCpuAbsentFromSurvey { host: _ } => concat([self_hosted_provenance_label], [runner_os_label(kernel: os.kernel)])
+    PrimaryCpuCensusUnread { host: _ } => concat([self_hosted_provenance_label], [runner_os_label(kernel: os.kernel)])
+    PrimaryCpuMeasured { cpu: cpu } => self_hosted_labels(kernel: os.kernel, arch: cpu_facts_architecture(cpu: cpu), custom: [])
   }
 }
 
