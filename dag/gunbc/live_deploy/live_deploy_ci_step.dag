@@ -53,6 +53,20 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = gunbc_run_ste
   function: "live_deploy_apply_prod_role_transaction_wet",
 )
 
+// THE INSTANCE-SCOPED DEPLOY (option C): converges the ONE roster row named by the run's packed subject,
+// through the same modeled apply path as the dashboard deploy but WITHOUT the prod-role selection -- it
+// calls the env-reading CI entry (live_deploy_apply_desired_wet_from_ci reads the packed '<host>:<instance_id>'
+// subject from the env and parses it, since a run step reaches an entry only through the environment). Two
+// receipts, two places: the run-step's OWN process receipt lands at this fixed per-run path under a stable
+// label (GitHub isolates each run's workspace, so a stable label cannot collide; the prod-role label is not
+// used here -- this job is never the prod-role route), while the transaction receipt the wet fold mints lands
+// in the chosen instance's OWN receipt dir, located by the resolve step -- not by this path. See the deploy
+// invoke comment beside gunbc_ci_desired_instance_deploy_invoke.
+data gunbc_ci_desired_instance_deploy_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
+  function: "live_deploy_apply_desired_wet_from_ci",
+)
+
 // THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
 // apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
 // over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
@@ -86,6 +100,40 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> Outcome<String> {
     target: gunbc_ci_live_deploy_transaction_target,
     claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
+  )
+}
+
+// THE INSTANCE-SCOPED DEPLOY step script. Two receipts, two locations -- do not conflate them:
+// (1) the run-step's OWN process receipt lands at a fixed per-run path under a stable label
+//     ("desired-instance-deploy"); GitHub isolates each run's workspace, so a stable label cannot
+//     collide across runs, and this is the file the step cats after the run;
+// (2) the transaction receipt the wet fold mints lands in the CHOSEN instance's own receipt dir
+//     (live_deploy_apply_receipt_dir_for(instance)), and the job locates THAT one through the resolve
+//     step (live_deploy_ci_instance_receipt_identity_from_ci), never through this fixed path.
+fn gunbc_ci_desired_instance_deploy_invoke() -> Outcome<String> {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_desired_instance_deploy_target,
+    claim_run: false,
+    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: "desired-instance-deploy")
+  )
+}
+
+// THE RECEIPT-IDENTITY RESOLVER step target. It reads the run's packed subject from the env and writes the
+// per-instance receipt name and dir to GITHUB_OUTPUT (a non-mutating read + output write), so the job's
+// receipt upload/assert steps reference the SAME per-instance location the wet fold writes to, rather than
+// the srv1-live-bound constant. See live_deploy_ci_instance_receipt_identity_from_ci.
+data gunbc_ci_desired_instance_receipt_identity_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
+  function: "live_deploy_ci_instance_receipt_identity_from_ci",
+)
+
+fn gunbc_ci_desired_instance_receipt_identity_invoke() -> Outcome<String> {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_desired_instance_receipt_identity_target,
+    claim_run: false,
+    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: "desired-instance-deploy-identity")
   )
 }
 
