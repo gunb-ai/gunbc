@@ -233,10 +233,10 @@ fn fold_ordered(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item:
       AcceptanceReadRefused { refusal: refusal } => Refused { refusal: refusal }
       NoAcceptance => fold_priced(
         d: d, e: e, workers: workers, item: item, first: first, pathless: pathless, retired: retired,
-        accepted_on: none)
+        stamp: none)
       AcceptanceFound { accepted_on: accepted_on } => fold_priced(
         d: d, e: e, workers: workers, item: item, first: first, pathless: pathless, retired: retired,
-        accepted_on: Present { value: accepted_on })
+        stamp: Present { value: accepted_on })
     }
   }
 }
