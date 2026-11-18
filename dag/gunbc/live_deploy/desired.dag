@@ -42,6 +42,7 @@ import gunbc.live_deploy.spec {
   DeploymentNames,
   DeploymentArtifactStep,
   deployment_spec_for,
+  PairDelivery, PairDelivered, NotPairDelivered,
   deployment_srv1_target,
   srv1_live_deployment_names,
   derived_deployment_names,
@@ -75,6 +76,7 @@ type DesiredDeployment {
   names: DeploymentNames
   selected_identity: DeclarationRef
   admitted_branch: NonEmptyStr
+  pair_delivery: PairDelivery
 }
 
 fn desired_module_path() -> String {
@@ -99,6 +101,7 @@ fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
     instance: row.instance,
     target: row.target,
     names: row.names,
+    pair_delivery: row.pair_delivery,
   )
 }
 
@@ -110,6 +113,7 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     names: srv1_live_deployment_names(instance: instance),
     selected_identity: srv1_production_selected_identity(),
     admitted_branch: production_admitted_branch,
+    pair_delivery: NotPairDelivered,
   }
 }
 
@@ -123,6 +127,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
     admitted_branch: dispatch_base_branch(instance: instance),
+    pair_delivery: PairDelivered { base_root: "/opt/gunbc/releases" as NonEmptyStr },
   }
 }
 
@@ -152,6 +157,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
     admitted_branch: production_admitted_branch,
+    pair_delivery: NotPairDelivered,
   }
 }
 
