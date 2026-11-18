@@ -1,11 +1,11 @@
 module gunbc.roadmap.roadmap_decomposition
 
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool, List, Map }
 import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -1686,8 +1686,22 @@ fn all_occurrences(d: WorkDecomposition, findings_count: Nat) -> OccurrenceBuild
   stages_occurrences(item: d.node, stages: d.stages, stage: Zero, findings_count: findings_count)
 }
 
-fn occurrences_at_stage(occs: List<Occurrence>, stage: Int) -> List<Occurrence> {
-  filter(occs, o => nat_to_int(n: o.path.stage) == stage)
+// Group the occurrences by stage ONCE, into a total function stage -> occurrences. Both edge builders below look
+// a stage up here instead of scanning the whole occurrence list per occurrence / per row: the old
+// occurrences_at_stage was a full filter invoked inside an outer scan, a proven quadratic fold that DESIGN.md
+// *How to work* says is ALWAYS fixed regardless of realized n ("a copied accumulator, a quadratic fold ... n is
+// small here is not time-stable"). Building the map is one pass; each new member is PREPENDED with
+// concat([o], prev) -- concat copies only the one-element left list, never the growing group -- so the build is
+// not a copied-accumulator fold either. Member order is reversed by prepending; occurrence order is
+// order-insensitive here (the witness checks counts and per-edge endpoints, not sequence).
+fn occurrences_by_stage(occs: List<Occurrence>) -> Map<Int, List<Occurrence>> {
+  let groups: Map<Int, List<Occurrence>> = fold(occs, init: empty_map(), f: fn(m, o) {
+    match map_lookup(m: m, key: nat_to_int(n: o.path.stage)) {
+      Present { value: prev } => map_insert(m: m, key: nat_to_int(n: o.path.stage), value: concat([o], prev))
+      Absent => map_insert(m: m, key: nat_to_int(n: o.path.stage), value: [o])
+    }
+  })
+  groups
 }
 
 // THE single place the "holds no single decomposition" rule is computed -- the same rule decomposition_has_leaf_path
@@ -1732,13 +1746,17 @@ fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_cou
   }
 }
 
-// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1.
+// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1. The lower
+// group is a single map lookup (from occurrences_by_stage), not a scan of the whole list per occurrence -- the
+// prior version filtered occs once per occurrence, a quadratic fold DESIGN.md *How to work* says is always fixed.
+// A stage with no predecessor group (including stage 0, whose predecessor -1 is absent) simply contributes no
+// edges; nothing is fabricated.
 fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
+  let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   flat_map(occs, o =>
-    if nat_to_int(n: o.path.stage) <= 0 {
-      []
-    } else {
-      map(occurrences_at_stage(occs: occs, stage: nat_to_int(n: o.path.stage) - 1), u => OccurrenceEdge { from: u.path, to: o.path })
+    match map_lookup(m: groups, key: nat_to_int(n: o.path.stage) - 1) {
+      Absent => []
+      Present { value: lower } => map(lower, u => OccurrenceEdge { from: u.path, to: o.path })
     }
   )
 }
@@ -1755,13 +1773,20 @@ type WaitsEdges
   | WaitsRejected { cause: ExpansionRefusal }
 
 fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: Nat) -> WaitsEdges {
+  let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   fold(d.waits_on, init: WaitsBuilt { edges: [] }, f: fn(acc, w) {
     match acc {
       WaitsRejected { cause } => acc
       WaitsBuilt { edges } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
         Rejected { cause } => WaitsRejected { cause: cause }
-        Resolved { occurrences: ps } =>
-          WaitsBuilt { edges: concat(flat_map(occurrences_at_stage(occs: occs, stage: w.into_stage), c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+        Resolved { occurrences: ps } => match map_lookup(m: groups, key: w.into_stage) {
+          // No child occurrence sits at into_stage: this row adds no edges (the parent is still resolved and
+          // validated above, so a bad parent still refuses -- this is not a dropped parent). Mirrors the old
+          // filter-to-empty behavior, now via a map lookup instead of a full scan (how_to_work: no quadratic).
+          Absent => WaitsBuilt { edges: edges }
+          Present { value: cs } =>
+            WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+        }
       }
     }
   })
