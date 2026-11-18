@@ -40,6 +40,7 @@ import gunbc.live_deploy.release_locus {
   release_locus_member_path, release_locus_tree_receipt_path,
 }
 import gunbc.live_deploy.operations { systemctl_restart_command }
+import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
 
 // ── fixtures (hermetic; substrate inputs only, no live host) ───────────────────────────────────────────────
 data base_root: String = "/opt/gunbc/releases"
@@ -78,7 +79,7 @@ fn join_argv(xs: List<String>) -> String {
 // emits equals the download authority's argv for (run_id, repo, "release-bins", pack_dir), element for element.
 test fn witness_stage1_fetch_argv_reuses_gh_download_authority() -> Bool {
   let got = release_pair_fetch_argv(base_root: base_root, run_id: run_id, repo: repo_slug, revision: main_sha)
-  let want = gh_run_download_argv(run_id: run_id, repo: repo_slug, artifact: "release-bins", dir: pack_dir as String)
+  let want = gh_run_download_argv(run_id: run_id, repo: repo_slug, artifact: ci_release_bins_artifact_name, dir: pack_dir as String)
   join_argv(xs: got) == join_argv(xs: want)
 }
 

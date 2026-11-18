@@ -55,6 +55,7 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.operations { systemctl_restart_command }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -200,10 +201,9 @@ data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
 // each call site (single_authority). Consumed by @ref(gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source).
 data release_pair_incoming_serve_member_name: NonEmptyStr = "gunbc_serve"
 
-// THE ONE name of the release-bins ARTIFACT the fleet-converge run publishes. ONE row (single_authority), consumed by
-// release_pair_fetch_argv (the emitted fetch) and by the wet entry's gh_run_download_command, so the artifact name is
-// never spelled twice across the dry plan and the wet fetch.
-data release_pair_release_bins_artifact_name: NonEmptyStr = "release-bins"
+// The release-bins ARTIFACT name is NOT a row here: it comes from gunbc.fleet.fleet_workflow_steps::
+// ci_release_bins_artifact_name — the name the producer uploads under — imported and used directly below
+// (review 96275), so the consumer's fetch name can never drift from the producer's upload name.
 
 // THE SINGLE AUTHORITY for where the incoming pack lands: base_root + the owned incoming dir name. The fetch argv,
 // the plan witness, and the fold witness all derive from this ONE row instead of each spelling the directory
@@ -226,7 +226,7 @@ fn release_pair_incoming_serve_source(base_root: String, revision: String) -> St
 // fetch is not a precondition of verification, verification is downstream of the fetch observation.
 fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String, revision: String) -> List<String> {
   gh_run_download_argv(
-    run_id: run_id, repo: repo, artifact: release_pair_release_bins_artifact_name as String, dir: release_pair_incoming_pack_dir(base_root: base_root, revision: revision),
+    run_id: run_id, repo: repo, artifact: ci_release_bins_artifact_name, dir: release_pair_incoming_pack_dir(base_root: base_root, revision: revision),
   )
 }
 

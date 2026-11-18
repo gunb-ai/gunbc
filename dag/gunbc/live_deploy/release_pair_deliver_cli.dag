@@ -50,11 +50,11 @@ import gunbc.live_deploy.release_pair_delivery {
   DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
   release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
-  release_pair_release_bins_artifact_name,
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
   release_pair_occupied_link_benign,
   SourceReceiptWrite,
 }
+import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.spec {
   release_pair_deliver_base_root_env,
@@ -308,7 +308,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             command: gh_run_download_command(
               run_id: run.run_id as String,
               repo: gunbc_repository_slug as String,
-              artifact: release_pair_release_bins_artifact_name as String,
+              artifact: ci_release_bins_artifact_name,
               dir: pack_dir,
             ),
             transport: LocalExec,
