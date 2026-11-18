@@ -5306,6 +5306,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
     edge(child: "v1-emitter-fixed-point", parent: "emitter-produces-main-rs"),
