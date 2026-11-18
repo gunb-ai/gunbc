@@ -18,7 +18,7 @@ module gunbc.roadmap.roadmap_schedule
 // SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how many leaves are in
 // flight on each day, and the critical path. Days stay ABSTRACT (a day is a count, not a date) until the
 // calendar unit binds them; this unit writes no calendar and no claim. That grain is carried as a typed frontier
-// row (`schedule_day_grain_frontier`), not left as prose.
+// row that already tracks it -- see the field markers below.
 //
 // The priority is LONGEST REMAINING PATH FIRST: every occurrence's rank is its own working days plus the longest
 // remaining path through the successors it waits nothing on; a ready occurrence with the largest rank is placed
@@ -48,9 +48,6 @@ import std.types { Bool, Int, List, String, Map }
 import std.algebra { empty_map, map_insert, map_lookup, map_contains_key }
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import std.list { first_where }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_decomposition {
@@ -62,9 +59,10 @@ import gunbc.roadmap.roadmap_decomposition {
 // COUNT SOURCE kept visible -- an Assumed occurrence is a simulation input, and it stays marked so downstream.
 type ScheduledLeaf {
   path: LeafPath
-  // feature:roadmap-schedule-day-measure  dissolve-on: roadmap-schedule-calendar-binding binds the day grain. Days
-  // here count WORKING DAYS from the first day of the run; the tracked row carrying that fact is
-  // `schedule_day_grain_frontier` below -- this is not a calendar instant and no date is written here.
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family. These are
+  // WORKING-DAY counts read through roadmap_decomposition::piece_member_days, so they INHERIT the grain that row
+  // already tracks on WorkPiece.days (owning lane: std.measure); this unit does not re-track it and writes no
+  // calendar instant -- roadmap-schedule-calendar-binding is the lane that binds the grain to dates.
   start_day: Int
   finish_day: Int
   lane: Int
@@ -76,8 +74,8 @@ type ScheduleAnswer {
   workers: BeltCapacity
   leaves: List<ScheduledLeaf>
   in_flight_per_day: List<Int>
-  // feature:roadmap-schedule-day-measure  dissolve-on: roadmap-schedule-calendar-binding binds the day grain (the
-  // same working-day count as ScheduledLeaf.start_day; see `schedule_day_grain_frontier`).
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same
+  // inherited grain as ScheduledLeaf.start_day (marker there; the tracked row lives on WorkPiece.days).
   horizon: Int
   critical_path: List<LeafPath>
   critical_length: Int
@@ -120,27 +118,12 @@ type ScheduleRefusal
   | NoWorkingDayPrior { paths: List<LeafPath> }
   | CyclicOccurrenceGraph
   | UnplacedOccurrences { paths: List<LeafPath> }
+  | MemberIndexBeyondExpansion { paths: List<LeafPath> }
 
 type Schedule
   = Scheduled { answer: ScheduleAnswer }
   | NotScheduled { refusal: ScheduleRefusal }
 
-// WHAT THE DAY GRAIN IS, CARRIED AS A ROW AND NOT AS PROSE. Every day quantity here is a count of WORKING DAYS
-// counted from the first day of the run -- ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and
-// .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days -- not an
-// instant on a calendar. The lane that binds that grain to dates is roadmap-schedule-calendar-binding, the next unit
-// in this chain and a consumer of exactly this answer. There is no day carrier to CONSUME: std.measure stops at
-// Minute (Nanosecond, Microsecond, Millisecond, Second, Minute), and a working day is not an SI scale of seconds, so
-// picking an existing measure row would INVENT a unit rather than consume one -- the same fact this repo carries for
-// its own day count in extdeps.pin::pin_frontier_rows (feature:pin-refresh-window-measure). So the grain is declared
-// as a tracked frontier row, the lane's standard typed carrier for unfinished modeling (as
-// gunbc.roadmap.roadmap_attempt_state_store and roadmap_attempt_state_move_rows do), and these fields become that
-// carrier's day quantity when it lands. Consume-never-fork.
-data schedule_day_grain_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_schedule", decl_name: "ScheduledLeaf"),
-  reason: "start_day and finish_day are bare Int counts of WORKING DAYS, not a day-typed magnitude; ScheduleAnswer.horizon and .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days, carry the same grain",
-  dissolution: unbound_dissolution(description: "feature:roadmap-schedule-day-measure -- a CALENDAR-DAY / working-day carrier exists to consume. A Time axis exists (std.measure: Nanosecond through Minute; std.realization_measurement composes durations as Measure<Time, S, Nat>, and roadmap_forecast holds its calibrated durations as milliseconds) -- what does NOT exist is a working-day/calendar-day row, and these counts are not SI-scaled quantities: they are abstract working days until roadmap-schedule-calendar-binding binds them, so converting them to an existing SI-scaled row would fabricate a calibration the carrier has not stated (the same position extdeps.pin::pin_frontier_rows takes for its day count: 'there is no Day, and a calendar day is not an SI scale of seconds ... Consume-never-fork'). When the calendar lane lands, ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and .critical_length become that carrier and this row deletes."),
-)
 
 // An occurrence reduced for scheduling: its carrier LeafPath, the string key the maps are keyed by, its working-day
 // prior read back through the carrier, and its count source (Declared or Assumed) kept for the answer.
@@ -195,6 +178,17 @@ fn edge_to_key(e: OccurrenceEdge) -> String {
 
 // THE STABLE STRING KEY of a leaf occurrence: the carrier LeafPath's four indexes joined. Two occurrences share a
 // key only when they share a path, so the key is the path read a second way -- never a second authority over it.
+// The (item, stage, piece) identity of an occurrence path -- the same path_key spelling WITHOUT the member index, so
+// one family occurrence's member set is counted from the expansion's own rows.
+fn occurrence_piece_key(p: LeafPath) -> String {
+  join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece))], "")
+}
+
+// How many members the expansion produced for this (item, stage, piece).
+fn member_set_size(occs: List<Occurrence>, path: LeafPath) -> Int {
+  count(filter(occs, q => occurrence_piece_key(p: q.path) == occurrence_piece_key(p: path)))
+}
+
 fn path_key(p: LeafPath) -> String {
   join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece)), "#", to_string(nat_to_int(n: p.member))], "")
 }
@@ -396,6 +390,18 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
         // (fail_closed: no plausible output is fabricated): the whole answer refuses, CARRYING the carrier paths that
         // hold no prior. `piece_member_days` is asked twice -- once to find the unpriced paths, once to build the
         // nodes -- because it is the ONE authority on the day count; nothing here caches or restates its answer.
+        // A member index must sit inside the member set the EXPANSION itself produced for that (item, stage, piece).
+        // A findings population declares no member count of its own -- its count is the ASSUMED findings count handed
+        // to expand_decomposition -- so the expansion's own member set is the bound; inventing a population count here
+        // would mean re-expanding, which this unit never does. No admitted expansion trips it: it is a typed wall, not
+        // an assumption that the caller behaved.
+        let beyond = map(
+          filter(occs, o => nat_to_int(n: o.path.member) >= member_set_size(occs: occs, path: o.path)),
+          o => o.path
+        )
+        if count(beyond) > 0 {
+          NotScheduled { refusal: MemberIndexBeyondExpansion { paths: beyond } }
+        } else {
         let unpriced_seed: List<LeafPath> = []
         let unpriced = fold(occs, init: unpriced_seed, f: fn(acc, o) {
           match piece_member_days(d: d, path: o.path) {
@@ -450,6 +456,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
               }
             }
           }
+        }
         }
       }
     }

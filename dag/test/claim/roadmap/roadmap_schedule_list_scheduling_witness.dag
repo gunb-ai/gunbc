@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
-  decomposition, leaf, reading_family, findings_family, waits, expand_decomposition,
+  decomposition, leaf, reading_family, findings_family, decision, waits, expand_decomposition,
 }
 import gunbc.roadmap.roadmap_schedule {
   schedule, schedule_read, ScheduleAnswer,
@@ -317,4 +317,50 @@ test fn an_occurrence_whose_carrier_path_is_not_on_the_decomposition_read_refuse
          Present { value: _ } => false
          Absent => true
        })
+}
+
+// A NON-LEAF PATH IS NOT A DAY. The expansion over a two-leaf stage is read against a carrier that holds a DECISION
+// at the second piece: a Decision (like a Join or a Composite) is not a leaf and the expansion emits no occurrence
+// for one, so that path has no working-day prior and the answer refuses, CARRYING the path. The day is not defaulted
+// to zero, which would place a phantom at zero duration and report it as Scheduled.
+test fn a_non_leaf_path_refuses_instead_of_being_scheduled_as_a_zero_day_leaf() -> Bool {
+  let wide = decomposition(node: "nl.wide", waits_on: [], stages: [
+    [leaf(label: "first", days: 2), leaf(label: "second", days: 3)],
+  ])
+  let decided = decomposition(node: "nl.decided", waits_on: [], stages: [
+    [leaf(label: "first", days: 2), decision(label: "which one", alternatives: ["a", "b"])],
+  ])
+  match schedule_refusal(s: schedule(d: decided, e: expand_decomposition(d: wide, findings_count: 1), workers: lanes(1))) {
+    Present { value: refusal } =>
+      match refusal {
+        NoWorkingDayPrior { paths: ps } => count(ps) == 1 && join(map(ps, p => path_key(p: p)), ",") == "nl.wide#0#1#0"
+        _ => false
+      }
+    Absent => false
+  }
+    // the same expansion against its OWN carrier schedules: the refusal is the mismatch, not the shape.
+    && (match schedule_refusal(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: lanes(1))) {
+         Present { value: _ } => false
+         Absent => true
+       })
+}
+
+// A FAMILY MEMBER THE DECLARED POPULATION DOES NOT HAVE IS NOT A DAY EITHER. The expansion over a two-member reading
+// family is read against a carrier that declares ONE member at that piece: member 1 has no duration on that carrier,
+// so it refuses with the offending member path rather than reusing member 0's days.
+test fn a_family_member_beyond_the_declared_population_refuses() -> Bool {
+  let pair = decomposition(node: "fm.pair", waits_on: [], stages: [
+    [reading_family(label: "readings", days: 2, members: 2, on: "2026-11-18", basis: "the two named members", owner: "fm-owner")],
+  ])
+  let single = decomposition(node: "fm.single", waits_on: [], stages: [
+    [reading_family(label: "readings", days: 2, members: 1, on: "2026-11-18", basis: "the one named member", owner: "fm-owner")],
+  ])
+  match schedule_refusal(s: schedule(d: single, e: expand_decomposition(d: pair, findings_count: 1), workers: lanes(1))) {
+    Present { value: refusal } =>
+      match refusal {
+        NoWorkingDayPrior { paths: ps } => count(ps) == 1 && join(map(ps, p => path_key(p: p)), ",") == "fm.pair#0#0#1"
+        _ => false
+      }
+    Absent => false
+  }
 }

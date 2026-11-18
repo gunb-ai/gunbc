@@ -1752,16 +1752,12 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // reading the SAME WorkPiece.days the expansion walked, never by copying it (single_authority). It is keyed off the
 // decomposition VALUE (the one expand_decomposition was handed), so a planted decomposition reads its own days.
 //
-// FAIL CLOSED: a path the decomposition does NOT have answers `Absent` -- NO day, never a zero. Returning 0 there
-// would mint a zero-day leaf for a path the carrier does not have, which is a fabricated default (the caller would
-// schedule a leaf out of nothing). The caller reads this and refuses; `roadmap_schedule::schedule` is the caller and
-// its refusal is named there. A path that IS on the carrier answers its own day count: a Leaf occurrence exists
-// only at member 0 (the same member rule `decomposition_has_leaf_path` states for a bound node, and the member the
-// expansion minted); a family answers the family's PER-MEMBER days for every member index the expansion emitted --
-// how many members exist is the expansion's authority (the declared population, or the assumed findings count it
-// was handed), this reads only the duration the piece carries; a Join, Decision or Composite carries no duration at
-// leaf grain, so it answers the LEGITIMATE zero: a Join is the day-zero barrier, and the expansion emits no
-// occurrence for any of the three, so no scheduled leaf ever reads these arms.
+// FAIL CLOSED: only a path that is genuinely a LEAF OCCURRENCE ON THIS CARRIER gets a day. Anything else answers
+// `Absent` -- NO day, never a zero: no such stage or piece; a Leaf at a member other than 0 (the member rule
+// `decomposition_has_leaf_path` states for a bound node, and the member the expansion minted); a family member the
+// declared population does not have; and any Join, Decision or Composite, which is not a leaf at all. A zero for any
+// of those would place a phantom at zero duration and report it as Scheduled -- a fabricated default, which the
+// caller refuses instead: `roadmap_schedule::schedule` is the caller and its refusal is named there.
 fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int? {
   match d.stages[nat_to_int(n: path.stage)] {
     Absent => none
@@ -1770,10 +1766,23 @@ fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int? {
       Present { value: p } => match p {
         Leaf { label, days, evidence } =>
           if nat_to_int(n: path.member) == 0 { Present { value: days } } else { none }
-        Family { label, days, population, owner } => Present { value: days }
-        Join { label } => Present { value: 0 }
-        Decision { label, alternatives } => Present { value: 0 }
-        Composite { label, stages } => Present { value: 0 }
+        // A family answers its PER-MEMBER days only for a member index the population declares. A findings
+        // population's count is the ASSUMED findings count the expansion was handed, which this read cannot see, so
+        // the bound on those members is the expansion's own member set -- checked by roadmap_schedule::schedule
+        // against the expansion it was given, never re-derived here.
+        Family { label, days, population, owner } =>
+          if population_is_findings(p: population)
+            || nat_to_int(n: path.member) < population_members(p: population) {
+            Present { value: days }
+          } else { none }
+        // A Join, Decision or Composite is NOT a leaf: the expansion emits no occurrence for any of them, so a path
+        // naming one is a path this carrier does not have, and it answers `none` -- the same refusal as any other
+        // unpriced path. A zero here would be the fabricated default this function's contract forbids: the caller
+        // would place the phantom at zero duration and report it as Scheduled. That no well-formed expansion produces
+        // such a path is not assumed; it is what the `none` answers.
+        Join { label } => none
+        Decision { label, alternatives } => none
+        Composite { label, stages } => none
       }
     }
   }
