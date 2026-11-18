@@ -826,11 +826,16 @@ data leak_control_calibration_name: String = "gunbc_carrier_leak_calibration"
 //  keeping their literals would be the fork the review named.
 data precreate_arm_words: String = "the template "
 
-// Which of the mint's outcomes occurred. The result TYPE decides first; the detail's leading words only separate the
-// refusal arms that share a type. No path is ever cut out of a diagnostic string -- the detail's wording is the mint's
-// business, and a control that parsed it would break silently, in the direction of green, the moment the mint improved
-// its prose. That is not hypothetical: an earlier version of this control did exactly that, and handed the resulting
-// "path" -- the real path plus a sentence of diagnostics -- to a recursive delete.
+// Which of the mint's outcomes occurred, as this control has to reason about them. The result TYPE decides, and decides
+// alone: minted, or refused and by which arm, read off RoadmapCarrierMintRefusalArm. Nothing here separates arms by
+// prose any more -- an earlier revision did, and its two failures are the reason: a seal-failure diagnostic matched
+// none of the three prefixes then tested and fell into the else as the pre-create admission, and a later cut of a path
+// out of a refusal's detail yielded the real path plus a sentence of diagnostics, which went to a recursive delete.
+// The detail's wording is the mint's business; a control that parsed it would break silently, in the direction of
+// green, the moment the mint improved its prose. This sum is NOT a restatement of the arm type: it adds the two cases
+// a refusal cannot carry -- the mint SUCCEEDED where the whole point was that this template must not mint, and an arm
+// whose own pinned words contradict it -- and collapsing those into a boolean is the untyped answer this file exists
+// to refuse.
 type LeakControlOutcome
   = Refused_before_create { detail: String }
   | Refused_after_create { detail: String }
@@ -915,9 +920,12 @@ test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behi
     EntryScanUnreadable { diagnostic: d } => claim(join(["the post-calibration listing was unreadable: ", d], ""), false)
     EntryScanRead { entries: seen } => claim(join(["the scan still reports [", leak_control_entry_words(entries: seen), "] after the calibration directory was removed; it cannot be trusted to report absence"], ""), count(seen) == 0)
   }
-  //  THE CALL UNDER TEST. Classification is by result type, then by each arm's own leading words; the fallback is
-  //  unrecognized and can only be red. The bug this replaces sat in that fallback: a seal-failure diagnostic matched
-  //  none of the three words then tested, fell into the else, and was classified as the pre-create admission.
+  //  THE CALL UNDER TEST. Classification is by result type and then by the refusal's ARM -- the closed set
+  //  RoadmapCarrierMintRefusalArm -- never by prose, and an unrecognised result can only be red. The one surviving
+  //  word-check sits INSIDE the pre-create arm and asserts the prefix the class row cites as what a reader of a
+  //  refusal should see: it can turn this control red, it cannot move an outcome between arms. The bug this replaces
+  //  was a fallback keyed on "not one of three prefixes": a seal-failure diagnostic matched none of them, fell into
+  //  the else, and was classified as the pre-create admission.
   let mint = roadmap_event_carrier_mint_scratch(template: leak_template as NonEmptyStr)
   let outcome = match mint {
     RoadmapEventCarrierMinted { scratch: s } => Minted_outside_the_shape { path: s.path }

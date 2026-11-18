@@ -17,14 +17,14 @@ fn spec_with_serve_binary(base: DeploymentSpec, binary: AdmittedFixedServeBinary
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
             role_singletons: base.role_singletons,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: binary, serve_entry: se, serve_function: f,
               provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-              listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall,
+              listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
@@ -53,7 +53,7 @@ fn spec_overriding_surfaces(
       match svc {
         DeploymentServiceConfig { unit_name: _, serve_binary: b, serve_entry: se, serve_function: _,
           provider_state_root: ps, instance_root: ir, repo_root: _, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           match l {
             HttpServerListenConfig { host: h, port: _ } =>
               match n {
@@ -75,7 +75,7 @@ fn spec_overriding_surfaces(
                       provider_state_root: ps, instance_root: ir, repo_root: repo_root,
                       service_user: su, service_uid: uid,
                       listen: HttpServerListenConfig { host: h, port: listen_port },
-                      serve_cpu_limit: cpu, serve_wall_limit: wall,
+                      serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
                     }
                   }
               }

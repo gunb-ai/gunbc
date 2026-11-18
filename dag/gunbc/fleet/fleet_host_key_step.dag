@@ -24,7 +24,7 @@ import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 // function are taken FROM the subject row, and
 // gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
 fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
-  gunbc_run_step_target(module: subject.mint_module, function: subject.mint_function)
+  subject.mint_target
 }
 
 fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {

@@ -37,6 +37,7 @@ data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
+data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.names_without_imports, section 3.
@@ -46,7 +47,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-reference-derived-closure", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-reference-derived-producer-bounded", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "names-bind-to-the-unique-declaration", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
-  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
+  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "native-seven-names-homed", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "declaration-provider-outcomes", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "compiler-closure-names-homed-and-types-merged", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 2),
@@ -121,6 +122,28 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "work-exec-6-one-ledger-per-host", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
   serves(node: "debt-payoff", module_path: debt_payoff_intention, plan: "debt_payoff_plan", layer: 1),
   serves(node: "ci-executed-coverage-receipt", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
+  // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17): the
+  // units that turn the second round of estimates into the dispatch. A layer IS THE EDGE DEPTH -- the
+  // longest chain of dependencies above a unit, the way gunbc.plans.v2_self_host derives its own, so a
+  // parent never sits at a higher layer than its child. The number is typed here like every other row in
+  // this file and CHECKED by the witness, which recomputes it from declared_roadmap_edges
+  // (each_unit_sits_at_the_depth_its_edges_give_it) rather than trusting what was written. Simulated values
+  // (worker count, a FindingsOf family's assumed count, the day priors) stay INPUTS on the read;
+  // realized durations and observed populations replace them. No ratchet, no count floor.
+  serves(node: "roadmap-schedule-leaf-expansion", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 0),
+  serves(node: "roadmap-schedule-list-scheduling", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
+  serves(node: "roadmap-schedule-calendar-binding", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),
+  serves(node: "roadmap-claim-names-leaf", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 0),
+  serves(node: "roadmap-leaf-in-flight-set", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
+  serves(node: "roadmap-leaf-realized-duration", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),
+  serves(node: "roadmap-schedule-from-now", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 3),
+  serves(node: "roadmap-schedule-bottlenecks-and-offer", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 4),
+  serves(node: "roadmap-spawn-frontier-leaf-grain", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),
+  serves(node: "roadmap-dispatch-carries-leaf", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
+  serves(node: "roadmap-typed-handback", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
+  serves(node: "roadmap-work-item-projection", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
+  serves(node: "roadmap-timeline-page", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 6),
+  serves(node: "roadmap-return-to-principal-records-acceptance", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -138,6 +161,13 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture")] },
+  // planning_consolidation's terminals are the sinks of the dispatch-from-the-simulated-execution
+  // units: the page that renders the projection, and the three units whose acceptance is itself the
+  // end of a line of work (a realized duration, a leaf carried by a dispatch, a typed handback), plus
+  // the return_to route that records an acceptance. A bound unit is on a path when it is one of these
+  // or reaches one along dependency edges; this row is what makes section 1's projection and section
+  // 6's realization home checkable as done.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"), terminals: [nid(s: "roadmap-timeline-page"), nid(s: "roadmap-leaf-realized-duration"), nid(s: "roadmap-dispatch-carries-leaf"), nid(s: "roadmap-typed-handback"), nid(s: "roadmap-return-to-principal-records-acceptance")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {
@@ -194,9 +224,13 @@ fn intention_key(b: IntentionBinding) -> String {
 
 // The projection gunbc.plans.planning_consolidation section 2 asks for, read from here: the work items
 // serving one intention, in layer order.
-fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
-  filter(roadmap_intention_bindings, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
+fn nodes_serving_from(rows: List<IntentionBinding>, intention: DeclarationRef) -> List<IntentionBinding> {
+  filter(rows, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
     |> sort_by(b => b.layer)
+}
+
+fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
+  nodes_serving_from(rows: roadmap_intention_bindings, intention: intention)
 }
 
 fn bindings_at_layer(intention: DeclarationRef, layer: Int) -> List<IntentionBinding> {
