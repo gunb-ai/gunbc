@@ -89,6 +89,11 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // stands on its own frame: it measured [dag, src/v2] against [dag/gunbc], two LARGE pools four
 // seconds apart, which supports "cost barely moves between two large pools" and does not reach the
 // small region these consumers occupy.
+// SELF-HOST-ONLY HOST SEAM: the body below is a self-call realized only in the self-host interpreter's host
+// dispatch; it is UNREALIZED in the standalone v2-native-cli emitted binary, which panics "unrealized host seam"
+// if a fast-lane verb calls it. A fast-lane caller (v2.cli.reference_check) must read declarations off the
+// already-parsed load roots instead; this is callable there only once given a body in v1.runtime_rust plus a row
+// in extdeps.languages.rust.emit rt_function_registry.
 fn fn_arrow_decl_facts_live(
   pool_roots: List<String>,
   pool_files: List<String>
