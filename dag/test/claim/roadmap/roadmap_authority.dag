@@ -912,13 +912,18 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
           let absent_receipts = receipts |> filter(r => !roadmap_authority_fixture_declares(id: r.node))
           count(declared_receipts) > 0
             && all(declared_receipts, r => count(declared_receipts |> filter(x => x.node == r.node)) == 1)
-            && all(declared_receipts, r => all(roadmap_authority_fixture_row_for(id: r.node), n =>
-              match receipt_node_match_verdict(r: r, rn: n, retired: fixture_retired_node_ids()) {
+            && all(declared_receipts, r => match roadmap_authority_fixture_row_for(id: r.node) {
+              Present { value: n } => match receipt_node_match_verdict(
+                r: r, rn: n, retired: fixture_retired_node_ids()
+              ) {
                 ReceiptMatchesNode => true
                 LiveReceiptOnRetiredNode { node: _ } => false
                 ReceiptDoesNotMatchNode => false
               }
-            ))
+              // A receipt whose row the fixture does not declare is not "nothing to check": the filter above
+              // selected it as declared, so a missing row here is the scenario being wrong. Red, not vacuous.
+              Absent => false
+            })
             // THE ABSENT ROW IS IN THE LOG AND ANSWERS WITH NOTHING ADMITTED.
             && count(absent_receipts) == 1
             && all(absent_receipts, r => !roadmap_authority_fixture_declares(id: r.node))
@@ -1075,11 +1080,13 @@ test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool
             retired: roadmap_authority_fixture_retired(envs: live),
           ) {
             RemainsSupersededRevocationsJoined =>
-              all(
-                roadmap_authority_fixture_row_for(id: superseded_row),
-                n => roadmap_node_ids_contain(
-                  ids: roadmap_authority_fixture_retired(envs: live), node: n.node),
-              )
+              match roadmap_authority_fixture_row_for(id: superseded_row) {
+                Present { value: n } => roadmap_node_ids_contain(
+                  ids: roadmap_authority_fixture_retired(envs: live), node: n.node)
+                // The join verdict says the row exists in the document it was handed; if the fixture's own
+                // rows no longer hold it, the scenario drifted and the witness goes red.
+                Absent => false
+              }
             RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
             RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
             RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
