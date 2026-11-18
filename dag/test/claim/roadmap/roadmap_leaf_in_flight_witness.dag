@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_event_log {
 
 // ------------------------------------------------------------------------------------------------
 // THE PLAINT. Every log below is built here, from the pure encoders, in causal order: an event's
-// parent is the id of the event before it, so @ref(gunbc.roadmap.roadmap_event_log::roadmap_event_causal_chain) is what orders the fold and
+// parent is the id of the event before it, so roadmap_event_causal_chain is what orders the fold and
 // no witness can hand the read a history the log itself does not form.
 // ------------------------------------------------------------------------------------------------
 
@@ -429,7 +429,7 @@ test fn a_claim_after_a_terminal_standing_is_absorbed_and_counted() -> Bool {
 // A RELEASE DOES NOT UNDO AN ACCEPTANCE. The ticket's own sentence — "the only event authorized to
 // end an acceptance is an admitted revocation" — has a consequence for LEAVES that the terminality
 // rule above does not spell out: if a release lifted the standing, the claim after it would put its
-// leaf in flight on an accepted item, an answer @ref(gunbc.roadmap.roadmap_event_log::roadmap_node_standing) would never give, and the two
+// leaf in flight on an accepted item, an answer roadmap_node_standing would never give, and the two
 // folds would be two answers to one question (@ref(gunbc.design_argument::single_authority)). So the release
 // is absorbed whole — it ends no hold, records no closer, and above all lifts nothing. The AUTHORITY
 // is asked on the very same planted lines, which is what makes this a check rather than an echo.
@@ -680,7 +680,7 @@ fn claim_of_foreign(member: Int) -> RoadmapEventKind {
 
 // THE SAME LINES, WRITTEN THE OTHER WAY ROUND. The parent links travel with the lines, so this is
 // still the log the planter formed — only the FILE order differs, which is exactly what the fold must
-// not be fooled by (@ref(gunbc.roadmap.roadmap_event_log::roadmap_event_causal_chain) re-orders it, and any position the fold itself reports
+// not be fooled by (roadmap_event_causal_chain re-orders it, and any position the fold itself reports
 // is a position in that re-ordering, not in the file).
 fn reversed(lines: List<String>, out: List<String>) -> List<String> {
   match lines.first() {
@@ -763,7 +763,7 @@ fn claim_of_c(member: Int) -> RoadmapEventKind {
 // THE HAND-MATCHED ADMISSION, CHECKED AGAINST THE AUTHORITY INSTEAD OF CURATED. This read decides
 // locally which kinds speak about leaves — the node fold has no notion of one, so that decision cannot
 // be delegated — and review 96542 on gunb-ai/gunbc#16703 named the consequence: which of those kinds the
-// node fold HONOURS is matched by hand against @ref(gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc)'s arms, so a guard added there
+// node fold HONOURS is matched by hand against roadmap_standing_step_acc's arms, so a guard added there
 // could silently desync it. The sweep closes that gap as far as it can be closed from outside: for every
 // closer kind, over every standing this module can reach, it asks the authority whether the event moved
 // the node, and wherever the authority moved nothing, this read must have closed nothing either. A new
