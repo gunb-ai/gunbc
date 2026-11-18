@@ -6629,7 +6629,7 @@ fn fleet_converge_fleet_identity_auth_condition() -> Outcome<String> {
 fn fleet_converge_job() -> Outcome<Job> {
   fleet_converge_job_with_steps(steps: concat(
     concat(
-      fleet_converge_consumer_prelude_steps(),
+      lift_steps(fleet_converge_consumer_prelude_steps()),
       fleet_converge_credential_prelude_steps()
     ),
     fleet_converge_job_work_steps()
