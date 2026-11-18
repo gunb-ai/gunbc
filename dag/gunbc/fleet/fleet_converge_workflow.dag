@@ -8340,14 +8340,26 @@ fn fleet_converge_arrival_converge_job() -> Job {
         working_directory: none,
         if_condition: none,
         continue_on_error: none,
-        timeout_minutes: Present { value: fleet_converge_arrival_converge_step_timeout_minutes() },
+        // NOT the fold. The fold (fleet_converge_arrival_converge_step_timeout_minutes, 21 minutes)
+        // is what this step needs -- run 44249358201 was killed at 05m00s inside it before the fold
+        // was ever entered -- but a budget raise needs the operator's explicit sign-off
+        // (gunbc.design_ruling::ci_job_budgets_closed_to_growth), and the row that would carry it
+        // (srv15_arrival_converge_step_raised_to_21_minutes) is staged with the words still pending.
+        // Until that row is filled and admitted through gunbc.ci.ci_budget_raise budget_admission,
+        // the emitted figure stays the shared allowance, and the witness
+        // fleet_converge_arrival_step_budget_witness refuses any other reading.
+        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
       },
     ],
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ArrivalConverge)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: ArrivalConverge) },
-    timeout_minutes: Present { value: fleet_converge_arrival_converge_job_backstop_timeout_minutes() },
+    // NOT the computed backstop (51 minutes) -- same pending sign-off as the step above. The
+    // computed figure is checked, not applied: fleet_converge_arrival_converge_backstop_holds
+    // refuses generation if it would pass the platform ceiling, so the moment the row is signed and
+    // admitted the call site flips to it with the ceiling already proven.
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")),
     permissions: Present {
