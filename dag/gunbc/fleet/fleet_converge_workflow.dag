@@ -634,17 +634,22 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-// THE ROSTER IS THE ONE HAND-AUTHORED LIST OF EVERY MODE, and that is a STATED divergence, not a
-// silent one (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall;
-// gunbc.integration_concern fleet_converge_roster_vs_closed_sum). Every per-mode FACT now has exactly
-// one authoring -- the single exhaustive fleet_converge_mode_facts row (gunbc.plans.closure_consolidation
-// P2b) -- so "no duplicate target registration" holds for the FACTS. It does NOT yet hold for
-// MEMBERSHIP: this list re-enumerates the closed sum by hand, because no value-level primitive reflects
-// over a coproduct to produce its members (the fallback-arm census reaches AST nodes, not runtime
-// values). A mode added to the sum but left out here is absent from the dispatch menu -- visible, not
-// silently misspelled -- but nothing refuses it. NEXT RUNG: a value-level variant enumeration this list
-// derives from, or a witness asserting every arm of fleet_converge_mode_facts appears in this roster
-// exactly once; until then the roster and the facts match are two enumerations of one vocabulary.
+// THE ROSTER IS THE ONE HAND-AUTHORED LIST OF EVERY MODE, a STATED divergence rather than a silent one
+// (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall; gunbc.integration_concern
+// fleet_converge_roster_vs_closed_sum). Per-mode FACTS have one authoring, the single exhaustive
+// fleet_converge_mode_facts row (gunbc.plans.closure_consolidation P2b). MEMBERSHIP has an author too:
+// the wall test.claim.fleet.fleet_converge_roster_closed_sum_witness reads this list against the arms of
+// FleetConvergeWorkflowMode as the compiler reflects them, and refuses an arm missing, an arm listed
+// twice, or an entry the sum does not name. Whether that wall has RUN, on what revision, and what it
+// concluded is deliberately not stated here: the executions are RetainedExecutionResult rows in that
+// module's witness_run_receipts, guarded by a row of its own, and the wall's enrollment standing and its
+// climb trigger are carried by the concern row (gunbc.design_argument::source_annotations: a status or a
+// receipt belongs in a carrier a pass can read, not in a comment a reader must trust). What keeps this
+// list hand-written at all is its ORDER, which is the operator's dropdown: the language's only value-level
+// enumeration of a sum's members, v2.std.node_reflection.coproduct_nullary_inhabitants, constructs one
+// value per arm and so refuses any sum with a payload-bearing arm, which Srv1RootMutation is -- so there
+// is nothing here could derive from, and that refusal is itself a row of the witness, observed rather than
+// asserted. The day the language grows the enumeration, this becomes a map.
 data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(DesiredInstanceDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, RemoteBuildServingObserve, RemoteBuildServingConverge, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, TailscaleJoinConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the

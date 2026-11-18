@@ -688,14 +688,21 @@ fn roadmap_standings_at_head_read(layout: RoadmapEventCarrierLayout) -> CarrierC
 }
 
 // The per-node read without its own ensure and sync, for a caller that already synced.
-fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
-  let dir = roadmap_event_node_dir(layout: layout, node: node)
+// THE SHARED DIRECTORY READER for one node's events, over a directory the caller names. The private
+// (synced-worktree) read and the committed-fixture read are the SAME walk and the SAME decode here
+// (gunbc.design_argument::single_authority): one parser, one decode path, so a fixture cannot drift
+// from the live route it stands in for. `dir` is that node's own directory.
+fn roadmap_events_read_node_dir(dir: String, node: RoadmapNodeId) -> RoadmapEventsRead {
   let listing = Filesystem.List(path: dir)
   if !listing.success && listing.error_kind != "not_found" { EventsReadRefused { node: node, step: "list", reason: listing.error } } else if !listing.success {
     EventsRead { node: node, envelopes: [] }
   } else {
     roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
   }
+}
+
+fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+  roadmap_events_read_node_dir(dir: roadmap_event_node_dir(layout: layout, node: node), node: node)
 }
 
 // EVERY EVENT ACROSS EVERY NODE IN ONE SYNC — one fetch, then one read per node directory, the
@@ -726,15 +733,22 @@ fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEven
 
 // Every node's events from a worktree the caller already synced: the one walk both the all-events
 // read and the bound result append decide over.
-fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
-  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-  let listing = Filesystem.List(path: root)
+// THE SHARED DIRECTORY READER over a whole events directory (the dir holding one `<node>/` per node).
+// The private synced-worktree read and the committed-fixture read both call THIS, so the one parse and
+// the one decode are shared by the live and committed routes (single_authority). `dir` is the events
+// directory itself (the carrier's worktree + "/events" on the live route).
+fn roadmap_events_read_dir(dir: String) -> RoadmapAllEventsRead {
+  let listing = Filesystem.List(path: dir)
   if !listing.success && listing.error_kind != "not_found" { AllEventsReadRefused { step: "list", reason: listing.error } } else if !listing.success {
     AllEventsRead { envelopes: [] }
   } else {
     let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
+    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_node_dir(dir: join([dir, "/", trim(n)], ""), node: trim(n) as NonEmptyStr as RoadmapNodeId)))
   }
+}
+
+fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  roadmap_events_read_dir(dir: join([layout.worktree as String, "/", roadmap_events_dir_segment], ""))
 }
 
 fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
