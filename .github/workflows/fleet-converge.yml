@@ -3002,6 +3002,7 @@ jobs:
           cat "$ROOT/target/managed-host-network-install-receipt.txt"
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
         if: github.event.inputs.mode == 'managed_host_network_install'
         timeout-minutes: 45
       - name: Upload managed host network install receipt
