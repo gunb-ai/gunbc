@@ -400,27 +400,24 @@ fn reported_rung_outruns_the_sightings(row: RecurringFailureMode, basis: Resolut
   }
 }
 
-//  THE ROW AS IT STANDS. Green today, and it is the assertion that has teeth: the moment anything
-//  reads the observed-to-compile specimen as a resolution and raises this row's rung, this claim goes
-//  red without anyone having to remember the caveat.
+//  THE ROW AS IT STANDS. Green today, and the assertion with teeth: the moment anything reads the observed-to-compile
+//  specimen as a resolution and raises this row's rung, this claim goes red without anyone having to remember the
+//  caveat. Written as a boolean because this module's claims are plain expressions -- there is no claim() helper in
+//  scope here, and an earlier revision of this guard failed closure for calling one.
 test fn the_bare_type_name_row_holds_its_unread_standing_against_its_only_sighting() -> Bool {
-  let row = a_bare_type_name_binds_the_wrong_declaration
-  claim(
-    "the bare-type-name row's standing is still unread, which is what its single observed-to-compile sighting establishes and nothing more",
-    rung_is_unread(row: row)
-  )
-    && claim(
-      "and its standing does not outrun that sighting: an observed-to-compile sighting establishes that a build did not stop, not which declaration a bare type name bound",
-      !reported_rung_outruns_the_sightings(row: row, basis: Observed_to_compile)
+  rung_is_unread(row: a_bare_type_name_binds_the_wrong_declaration)
+    && !reported_rung_outruns_the_sightings(
+      row: a_bare_type_name_binds_the_wrong_declaration,
+      basis: Observed_to_compile,
     )
 }
 
-//  THE DISCRIMINATOR. A guard that only ever sees one row and one basis cannot tell a refusal from a
-//  restatement, so the same row is rebuilt with its standing raised and offered both bases. It must be
-//  refused on the observed-to-compile basis and accepted on the route-observed one: that pair is what
-//  makes the refusal turn on the BASIS rather than on the row's identity.
+//  THE DISCRIMINATOR. A guard that only ever sees one row and one basis cannot tell a refusal from a restatement, so
+//  the same row is rebuilt with its standing raised and offered both bases. It must be refused on the observed-to-compile
+//  basis and accepted on the route-observed one: that pair is what makes the refusal turn on the BASIS rather than on the
+//  row's identity. The last two conjuncts pin that the synthetic differs from the row on record in the standing alone,
+//  which is what makes the first two a test of the standing rather than of two different rows.
 test fn a_read_standing_bought_with_an_observed_to_compile_sighting_is_refused() -> Bool {
-  let row = a_bare_type_name_binds_the_wrong_declaration
   let climbed = RecurringFailureMode {
     identity: "a_bare_type_name_binds_the_wrong_declaration" as NonEmptyStr,
     rung: RungRead {
@@ -432,19 +429,11 @@ test fn a_read_standing_bought_with_an_observed_to_compile_sighting_is_refused()
         trigger_capability: "a type-position reference resolves to exactly one declaration identity visible through the reading module or its direct imports",
       },
     },
-    receipts: ["the same receipts as the real row; only the standing differs, so what is refused is the standing"],
+    receipts: ["the same receipts as the row on record; only the standing differs, so what is refused is the standing"],
     evidence: [],
   }
-  claim(
-    "a row reporting a read rung while its only sighting is observed-to-compile is refused",
-    reported_rung_outruns_the_sightings(row: climbed, basis: Observed_to_compile)
-  )
-    && claim(
-      "the very same row is NOT refused when the sighting observed the resolving route, so the refusal turns on the basis and not on the row being this one",
-      !reported_rung_outruns_the_sightings(row: climbed, basis: Resolution_route_observed)
-    )
-    && claim(
-      "and the synthetic differs from the row on record in the standing alone, which is what makes the pair above a test of the standing",
-      !rung_is_unread(row: climbed) && rung_is_unread(row: row)
-    )
+  reported_rung_outruns_the_sightings(row: climbed, basis: Observed_to_compile)
+    && !reported_rung_outruns_the_sightings(row: climbed, basis: Resolution_route_observed)
+    && !rung_is_unread(row: climbed)
+    && rung_is_unread(row: a_bare_type_name_binds_the_wrong_declaration)
 }
