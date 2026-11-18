@@ -1564,7 +1564,7 @@ type ExpansionRefusal =
 // The expansion is fail-closed: it either holds the occurrences and their edges, or a typed, located refusal.
 type Expansion
   = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge> }
-  | Refused { cause: ExpansionRefusal }
+  | ExpansionRejected { cause: ExpansionRefusal }
 
 // Members: emit `remaining` occurrences with the given count source. `remaining` is a Nat walked DOWN by
 // structural recursion (Zero / Succ), exactly like the stage and piece walkers -- there is no Int loop bound to
@@ -1773,13 +1773,13 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
 // decomposition does it emit occurrences and edges. No branch here mints from an un-guarded count.
 fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion {
   if !decomposition_dependencies_well_formed(d: d) {
-    Refused { cause: DependencyClaimRefused { item: d.node } }
+    ExpansionRejected { cause: DependencyClaimRefused { item: d.node } }
   } else {
     match all_occurrences(d: d, findings_count: findings_count) {
-      OccsRejected { item: bad } => Refused { cause: NonPositiveDeclaredCount { item: bad } }
+      OccsRejected { item: bad } => ExpansionRejected { cause: NonPositiveDeclaredCount { item: bad } }
       OccsBuilt { occurrences: occs } =>
         match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
-          WaitsRejected { cause } => Refused { cause: cause }
+          WaitsRejected { cause } => ExpansionRejected { cause: cause }
           WaitsBuilt { edges } => Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), edges) }
         }
     }
@@ -1791,7 +1791,7 @@ fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion 
 // than one.
 fn expand_node(item: RoadmapNodeId, findings_count: Nat) -> Expansion {
   match unique_decomposition(item: item) {
-    UniqueRejected { cause } => Refused { cause: cause }
+    UniqueRejected { cause } => ExpansionRejected { cause: cause }
     UniqueFound { d: d } => expand_decomposition(d: d, findings_count: findings_count)
   }
 }

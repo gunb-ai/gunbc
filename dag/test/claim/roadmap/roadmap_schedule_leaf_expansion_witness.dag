@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_decomposition {
   occurrence_is_declared, occurrence_is_assumed, occurrence_is_offered_claimable,
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
   decomposition, waits, leaf, reading_family,
-  Expanded, Refused, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
+  Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
 }
 
 // THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_decomposition {
 // family, one per assumed member); the join carries nothing. Each of the three findings occurrences waits on
 // the probe leaf (the stage-1-on-stage-0 barrier), so three occurrence edges result. Every DECLARED occurrence
 // resolves under the carrier's own decomposition_has_leaf_path; no ASSUMED occurrence is ever offered claimable.
-// The expansion is matched directly: an Expanded carries the occurrences and edges; any Refused fails the slice.
+// The expansion is matched directly: an Expanded carries the occurrences and edges; any ExpansionRejected fails the slice.
 test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_with_their_edges() -> Bool {
   match expand_node(item: nid(s: "literal-elaboration"), findings_count: 3) {
     Expanded { occurrences, edges } =>
@@ -41,7 +41,7 @@ test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_w
         && all(filter(occurrences, o => occurrence_is_declared(o)), o => decomposition_has_leaf_path(path: o.path))
         && count(filter(filter(occurrences, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
         && count(edges) == 3
-    Refused { cause } => false
+    ExpansionRejected { cause } => false
   }
 }
 
@@ -54,7 +54,7 @@ test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
     Expanded { occurrences, edges } =>
       count(filter(occurrences, o => occurrence_is_assumed(o))) == 5
         && count(filter(filter(occurrences, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
-    Refused { cause } => false
+    ExpansionRejected { cause } => false
   }
 }
 
@@ -86,16 +86,16 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
   ])
   let beyond_ok = match expand_decomposition(d: beyond, findings_count: 3) {
     Expanded { occurrences, edges } => false
-    Refused { cause: DependencyClaimRefused { item } } => item == nid(s: child)
-    Refused { cause: NonPositiveDeclaredCount { item } } => false
-    Refused { cause: NotUniquelyDecomposed { item } } => false
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => item == nid(s: child)
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let adm_ok = match expand_decomposition(d: admitted, findings_count: 3) {
     Expanded { occurrences, edges } =>
       count(edges) >= 1
         && all(edges, ed => ed.from.item == nid(s: parent) && nat_to_int(n: ed.from.stage) == 0
           && ed.to.item == nid(s: child) && nat_to_int(n: ed.to.stage) == 0 && nat_to_int(n: ed.to.piece) == 0 && nat_to_int(n: ed.to.member) == 0)
-    Refused { cause } => false
+    ExpansionRejected { cause } => false
   }
   beyond_ok
     && adm_ok
@@ -125,21 +125,21 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
   ])
   let zero_ok = match expand_decomposition(d: zero_pop, findings_count: 0) {
     Expanded { occurrences, edges } => false
-    Refused { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-zero-fixture")
-    Refused { cause: DependencyClaimRefused { item } } => false
-    Refused { cause: NotUniquelyDecomposed { item } } => false
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-zero-fixture")
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let neg_ok = match expand_decomposition(d: neg_pop, findings_count: 0) {
     Expanded { occurrences, edges } => false
-    Refused { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-negative-fixture")
-    Refused { cause: DependencyClaimRefused { item } } => false
-    Refused { cause: NotUniquelyDecomposed { item } } => false
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-negative-fixture")
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let pos_ok = match expand_decomposition(d: pos_pop, findings_count: 0) {
     Expanded { occurrences, edges } =>
       count(filter(occurrences, o => occurrence_is_declared(o))) == 2
         && count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
-    Refused { cause } => false
+    ExpansionRejected { cause } => false
   }
   // A zero ASSUMED (FindingsOf) count is a legitimate simulation input and must still EXPAND, minting zero
   // assumed members -- proving the new refusal targets only the DECLARED Int, never the Nat simulation input.
@@ -147,7 +147,7 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
     Expanded { occurrences, edges } =>
       count(filter(occurrences, o => occurrence_is_assumed(o))) == 0
         && count(filter(occurrences, o => occurrence_is_declared(o))) == 1
-    Refused { cause } => false
+    ExpansionRejected { cause } => false
   }
   zero_ok && neg_ok && pos_ok && zero_findings_ok
 }
