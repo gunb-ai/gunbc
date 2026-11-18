@@ -423,6 +423,12 @@ test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
 // of them appear. If the entry ever routes the executor into the lookups, the unit-keyed arm goes red and the
 // executor-keyed arm goes green: the claim flips exactly on the conflation.
 test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_rows() -> Bool {
+  // The unit account must report what srv15 genuinely lacks (the firmware release capability
+  // row) and stay silent on what it holds (population row, controller row, dated disk); the
+  // executor account must report ALL of them, because srv4 owns none of these ledgers. Keying
+  // an account lookup by the executor makes the unit report the executor's absences (the
+  // controller entry appears under the unit) -- red. Keying by the unit constant makes the
+  // executor silent about its own absences -- red.
   let unit_missing = network_install_ci_missing(
     host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
     password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
@@ -433,22 +439,18 @@ test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_row
   )
   any(
     xs: unit_missing,
-    where: item => string_contains(s: item.input as String, pattern: "arrival population row")
+    where: item => string_contains(s: item.input as String, pattern: "firmware release capability row")
   )
     && !any(
       xs: unit_missing,
       where: item =>
         string_contains(s: item.input as String, pattern: "write-controller row")
-          || string_contains(s: item.input as String, pattern: "firmware release capability row")
           || string_contains(s: item.input as String, pattern: "dated target-disk reading")
+          || string_contains(s: item.input as String, pattern: "arrival population row")
     )
     && any(
       xs: executor_missing,
       where: item => string_contains(s: item.input as String, pattern: "write-controller row")
-    )
-    && any(
-      xs: executor_missing,
-      where: item => string_contains(s: item.input as String, pattern: "arrival population row")
     )
     && any(
       xs: executor_missing,
@@ -457,6 +459,10 @@ test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_row
     && any(
       xs: executor_missing,
       where: item => string_contains(s: item.input as String, pattern: "dated target-disk reading")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "arrival population row")
     )
 }
 
