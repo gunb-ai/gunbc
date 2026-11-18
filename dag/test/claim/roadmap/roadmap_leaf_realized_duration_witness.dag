@@ -529,7 +529,8 @@ fn a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_vi
         && !fold.accepted
         // The claim made before the retirement is still this leaf's first claim: the clock it started stands.
         && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
-             WorkInFlight { claimed_on: claimed_on } => date_text(date: claimed_on) == "2026-11-16"
+             PriorNamedOutLoud { working_days: _, cause: WorkInFlight { claimed_on: claimed_on } } =>
+               date_text(date: claimed_on) == "2026-11-16"
              _ => false
            })
         // The claim made AFTER it named a leaf and started nothing: that leaf reads as never claimed, at its prior.
@@ -652,7 +653,8 @@ fn a_revoked_acceptance_is_no_acceptance_and_no_realized_span_is_read_from_it() 
       !fold.accepted
         && count(filter(fold.rows, r => is_realized(row: r))) == 0
         && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
-             WorkInFlight { claimed_on: claimed_on } => date_text(date: claimed_on) == "2026-11-16"
+             PriorNamedOutLoud { working_days: _, cause: WorkInFlight { claimed_on: claimed_on } } =>
+               date_text(date: claimed_on) == "2026-11-16"
              _ => false
            })
         && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 5
