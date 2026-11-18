@@ -478,7 +478,7 @@ test fn w_an_absent_unit_refusal_names_the_arrival_subject_input_and_denies_the_
 // is refused, and the refusal names the shared identity and both roles, so the operator can see WHICH input was
 // mis-set. It is distinct text from the absent-unit refusal: two different mistakes report two different causes.
 test fn w_a_conflated_dispatch_is_refused_naming_the_identity_and_both_roles() -> Bool {
-  let text = network_install_ci_conflation_refusal(host: ci_host, unit: ci_host)
+  let text = network_install_ci_conflation_refusal(host: ci_host, install_unit: ci_host)
   string_contains(s: text, pattern: "srv15")
     && string_contains(s: text, pattern: "executor")
     && string_contains(s: text, pattern: "unit")

@@ -206,7 +206,7 @@ fn network_install_ci_run() -> ProcessExit {
           match actions_variable_read(name: fleet_converge_arrival_subject_env_name) {
             ActionsVariableAbsent { variable: variable, detail: detail } =>
               exit_failure(reason: network_install_ci_unit_refusal(variable: variable, detail: detail))
-            ActionsVariablePresent { value: raw_unit } =>
+            ActionsVariablePresent { value: raw_install_unit } =>
               match actions_run_attempt_label_of_run(prefix: network_install_ci_attempt_prefix) {
                 Absent =>
                   exit_failure(
@@ -217,10 +217,11 @@ fn network_install_ci_run() -> ProcessExit {
                       concat(network_install_ci_attempt_prefix, "-prefix).")
                     )
                   )
+                )
                 Present { value: dispatch_id } =>
                   network_install_ci_dispatch(
                     host: raw_host as HostIdentity,
-                    unit: raw_unit as HostIdentity,
+                    install_unit: raw_install_unit as HostIdentity,
                     dispatch_id: dispatch_id,
                     decided_at: decided_at
                   )
@@ -268,7 +269,7 @@ fn network_install_ci_unit_refusal(variable: NonEmptyStr, detail: NonEmptyStr) -
 
 // THE CONFLATION REFUSAL. Executor and unit name different machines; a dispatch that puts the same identity in
 // both slots is either a mis-set input or a silent widening, and neither earns a disk write.
-fn network_install_ci_conflation_refusal(host: HostIdentity, unit: HostIdentity) -> String {
+fn network_install_ci_conflation_refusal(host: HostIdentity, install_unit: HostIdentity) -> String {
   concat(
     "network-install: the dispatch conflates executor and unit (host: ",
     concat(
@@ -276,7 +277,7 @@ fn network_install_ci_conflation_refusal(host: HostIdentity, unit: HostIdentity)
       concat(
         ", unit: ",
         concat(
-          unit as String,
+          install_unit as String,
           "); the executor is the runner hosting the site PXE edge and the unit is the machine being installed — one dispatch names each exactly once, and equal identities claim one machine is two."
         )
       )
@@ -288,20 +289,20 @@ fn network_install_ci_conflation_refusal(host: HostIdentity, unit: HostIdentity)
 // entry that exits without a receipt leaves the operator with an exit code and no account of what was missing.
 // The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
 // performs an effect, so the whole account and plan are assertable without a live environment.
-fn network_install_ci_dispatch(host: HostIdentity, unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
-  if (host as String) == (unit as String) {
-    exit_failure(reason: network_install_ci_conflation_refusal(host: host, unit: unit))
+fn network_install_ci_dispatch(host: HostIdentity, install_unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  if (host as String) == (install_unit as String) {
+    exit_failure(reason: network_install_ci_conflation_refusal(host: host, install_unit: install_unit))
   } else {
     let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
     match network_install_ci_resolve(
-      host: unit, executor: host, dispatch_id: dispatch_id, decided_at: decided_at,
+      host: install_unit, executor: host, dispatch_id: dispatch_id, decided_at: decided_at,
       password_file: network_install_ci_password_file(),
       edge_context: edge_effects.context, edge_view: edge_effects.view,
     ) {
       NetworkInstallCiIncomplete { missing: missing } =>
         network_install_ci_write(
-          body: network_install_ci_incomplete_receipt(host: unit, executor: host, dispatch_id: dispatch_id, missing: missing),
-          host: unit,
+          body: network_install_ci_incomplete_receipt(host: install_unit, executor: host, dispatch_id: dispatch_id, missing: missing),
+          host: install_unit,
           succeeded: false
         )
       NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
@@ -637,7 +638,7 @@ fn network_install_ci_build(
                                                                       password_file_raw: password_file_raw,
                                                                       install_subject: NetworkInstallSubject {
                                                                         attempt: AttemptBinding {
-                                                                          unit: unit_row.unit,
+                                                                          install_unit: install_unit_row.unit,
                                                                           attempt: intake_attempt_of_run(run: dispatch_id as ConvergenceRunId),
                                                                         },
                                                                         chain: chain,
