@@ -15,7 +15,7 @@ import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invo
 import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_desired_instance_receipt_identity_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
-import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder }
+import gunbc.live_deploy.apply { live_deploy_ci_instance_subject_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
@@ -5222,7 +5222,7 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
       kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
       kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
-      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      kv(key: live_deploy_ci_instance_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
     ] },
     working_directory: none,
     if_condition: none,
@@ -5258,7 +5258,7 @@ fn fleet_converge_desired_instance_admit_inputs_step() -> Step {
   }
 }
 
-// THE RECEIPT-IDENTITY RESOLVE STEP. It reads the run's packed subject from GUNBC_DEPLOY_INSTANCE_ID and
+// THE RECEIPT-IDENTITY RESOLVE STEP. It reads the run's packed subject from GUNBC_DEPLOY_INSTANCE_SUBJECT and
 // writes the PER-INSTANCE receipt_name and receipt_dir (from the authoritative receipt helpers) to the step's
 // outputs, which the upload and exactly-one-receipt assertion steps reference. It runs BEFORE the deploy so
 // the receipt location is fixed regardless of the deploy's outcome; the assert and upload run always(). It
@@ -5270,7 +5270,7 @@ fn fleet_converge_desired_instance_receipt_identity_step() -> Step {
     run: gunbc_ci_desired_instance_receipt_identity_invoke(),
     shell: none,
     env: Present { value: [
-      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      kv(key: live_deploy_ci_instance_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
     ] },
     working_directory: none,
     if_condition: none,

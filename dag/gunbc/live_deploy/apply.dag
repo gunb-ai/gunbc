@@ -1391,7 +1391,7 @@ fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> P
 // carries no --arg), so the run's host-shaped `subject_host` input -- packed '<host>:<instance_id>' for
 // this mode -- is written to this variable by the step's env and parsed back here. One name, written by
 // the generator and read by this entry (gunbc.design_argument::single_authority).
-data live_deploy_ci_instance_id_env_name: String = "GUNBC_DEPLOY_INSTANCE_ID"
+data live_deploy_ci_instance_subject_env_name: String = "GUNBC_DEPLOY_INSTANCE_SUBJECT"
 
 // THE CI TRANSACTION'S INSTANCE-SCOPED DEPLOY ENTRY. The generated `desired-instance-deploy` job calls
 // THIS (not live_deploy_apply_desired_wet) because a run step reaches an entry only through the
@@ -1401,7 +1401,7 @@ data live_deploy_ci_instance_id_env_name: String = "GUNBC_DEPLOY_INSTANCE_ID"
 // another instance (gunbc.design_argument::fail_closed): this entry has NO default instance, so the run
 // deploys exactly the named one or refuses.
 fn live_deploy_apply_desired_wet_from_ci() -> ProcessExit {
-  match actions_variable_read(name: live_deploy_ci_instance_id_env_name) {
+  match actions_variable_read(name: live_deploy_ci_instance_subject_env_name) {
     ActionsVariablePresent { value: packed } =>
       match live_deploy_desired_instance_deploy_decide(packed: packed, access: ci_deploy_srv1_access) {
         InstanceScopedDeployRefused { reason } => exit_failure(reason: reason)
@@ -1425,7 +1425,7 @@ fn live_deploy_apply_desired_wet_from_ci() -> ProcessExit {
 // An unparseable subject refuses with no default and sets no outputs (gunbc.design_argument::fail_closed),
 // so the job's upload/assert never silently fall back to another instance's receipt.
 fn live_deploy_ci_instance_receipt_identity_from_ci() -> ProcessExit {
-  match actions_variable_read(name: live_deploy_ci_instance_id_env_name) {
+  match actions_variable_read(name: live_deploy_ci_instance_subject_env_name) {
     ActionsVariablePresent { value: packed } =>
       match live_deploy_parse_ci_instance_subject(packed: packed) {
         CiInstanceSubjectParsed { host: _, instance_id: instance_id } => {

@@ -64,7 +64,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id,
   fleet_converge_desired_instance_deploy_job, fleet_converge_desired_instance_deploy_options,
 }
-import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder, live_deploy_parse_ci_instance_subject, CiInstanceSubject, CiInstanceSubjectParsed, CiInstanceSubjectRefused, live_deploy_desired_instance_deploy_decide, InstanceScopedDeployDecision, InstanceScopedDeployAdmitted, InstanceScopedDeployRefused }
+import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_subject_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder, live_deploy_parse_ci_instance_subject, CiInstanceSubject, CiInstanceSubjectParsed, CiInstanceSubjectRefused, live_deploy_desired_instance_deploy_decide, InstanceScopedDeployDecision, InstanceScopedDeployAdmitted, InstanceScopedDeployRefused }
 import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_production_desired_deployment }
 import gunbc.live_deploy.apply_receipt { gunbc_live_deploy_receipt_artifact_name }
 import gunbc.deployment_risk { prod_role_selection }
@@ -302,7 +302,7 @@ test fn the_deploy_step_carries_the_named_instance_env() -> Bool {
       i == "desired_instance_deploy" && match envv {
         Absent => false
         Present { value: kvs } => any(kvs, e => match e {
-          YamlKeyValue { key: k, value: _ } => k == live_deploy_ci_instance_id_env_name
+          YamlKeyValue { key: k, value: _ } => k == live_deploy_ci_instance_subject_env_name
           _ => false
         })
       }
