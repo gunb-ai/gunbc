@@ -205,9 +205,11 @@ test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and
 // every sighting's evidence. It failed at main 7dc10cb275c with "cannot access field 'head' on List"
 // (ledger byte 416920, inside sighting_lines) before the two rows' evidence was authored in the shape the
 // field declares; it can go red again only when a row is authored outside that shape, and the message names
-// the row.
+// the row. The two needles are printed by concern_text itself: the fan row's identity (unique in the corpus)
+// and a clause of the host-key row's question -- its identity also sits in another row's account prose, so
+// the identity would not discriminate.
 test fn every_row_renders_through_the_reading() -> Bool {
   let text: String = reading_text(title: "every row, rendered", rows: integration_concerns)
   string_contains(s: text, pattern: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer")
-    && string_contains(s: text, pattern: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat")
+    && string_contains(s: text, pattern: "which row owns 192.168.1.236 until the lease says otherwise")
 }
