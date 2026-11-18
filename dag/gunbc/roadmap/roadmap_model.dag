@@ -40,6 +40,16 @@ type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
 // imported from the carrier's own authority rather than spelled here or at a call site.
 type LeafPath { item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat }
 
+// THE CLAIM GRAIN: what a Claimed names. Pathless = whole-item; AtPath = one leaf.
+// Moved here (like LeafPath) so both roadmap_issue_command and roadmap_decomposition can
+// reach it without a cycle. AdmittedGrain wraps a grain that passed the guard: only
+// roadmap_claimed_grain_admissible constructs it, so an unguarded Claimed cannot reach the append.
+type ClaimGrain
+  = Pathless
+  | AtPath { path: LeafPath }
+
+type AdmittedGrain { grain: ClaimGrain }
+
 type Pointer { label: String, path: String }
 
 type Acceptance

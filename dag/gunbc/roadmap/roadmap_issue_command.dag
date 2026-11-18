@@ -4,9 +4,9 @@ import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition, roadmap_acceptance_line_of_receipt }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition, roadmap_acceptance_line_of_receipt, AdmittedGrain }
 import gunbc.roadmap.roadmap_event_log {
-  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, ClaimGrain, CommentCreated, Retired,
+  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
   roadmap_acceptance_day, roadmap_acceptance_migration_identity,
   roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
@@ -24,7 +24,7 @@ type IssueCommandSubject {
 }
 
 type IssueCommand
-  = AssignIssue { subject: IssueCommandSubject, assignee: EventPrincipal, return_to: EventPrincipal, grain: ClaimGrain }
+  = AssignIssue { subject: IssueCommandSubject, assignee: EventPrincipal, return_to: EventPrincipal, grain: AdmittedGrain }
   | CreateComment { subject: IssueCommandSubject, body: NonEmptyStr }
   // The operator's retirement (operator ruling 2026-11-04): end ANY work item, in ANY state — no
   // PR, no lineage-state precondition. The durable fact is the event log's Retired kind, authored by
@@ -78,7 +78,7 @@ fn issue_operation_nonce() -> String? {
 fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEvent {
   match command {
     AssignIssue { subject, assignee, return_to, grain } => RoadmapEvent { node: subject.node, author: subject.author,
-      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to , grain: grain }, recorded_at: recorded_at }
+      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to , grain: grain.grain }, recorded_at: recorded_at }
     CreateComment { subject, body } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
@@ -144,21 +144,9 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
       result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
       close: SnapshotNotOpened }
     Absent => {
-      // CLAIMED REFUSES HERE: the grain guard cannot be imported into this module (cycle:
-      // roadmap_authority imports roadmap_decomposition which imports this module). Rather than
-      // silently append an unguarded Claimed (fail_closed: "do not hide the deficit by installing
-      // a second path"), this path REFUSES. Callers that need a Claimed (roadmap_serve, roadmap_event_cli)
-      // guard before appending through roadmap_event_append directly.
-      match command {
-        AssignIssue { subject: _, assignee: _, return_to: _, grain: _ } => CarrierClosed {
-          result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema),
-            step: "guard-cycle", reason: "a Claimed must pass the grain guard before appending; callers guard at the route (roadmap_serve, roadmap_event_cli)" },
-          close: SnapshotNotOpened }
-        _ => {
-          let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
-          roadmap_event_append(layout: layout, event: event, operation: operation as String)
-        }
-      }
+      let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
+      // AdmittedGrain proves the guard ran: only roadmap_claimed_grain_admissible constructs it.
+      roadmap_event_append(layout: layout, event: event, operation: operation as String)
     }
   }
 }

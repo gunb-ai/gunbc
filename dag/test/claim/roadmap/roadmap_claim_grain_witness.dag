@@ -20,10 +20,10 @@ module test.claim.roadmap.roadmap_claim_grain_witness
 //   an undecomposed node has no leaf to name, so a Pathless claim there is admitted.
 
 import std.types { Bool, String, NonEmptyStr }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
-import gunbc.roadmap.roadmap_event_log { ClaimGrain, Pathless, AtPath, ClaimGrainParse, Parsed, Malformed, roadmap_claim_grain_parse }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
+import gunbc.roadmap.roadmap_event_log { ClaimGrainParse, Parsed, Malformed, roadmap_claim_grain_parse }
 import gunbc.roadmap.roadmap_decomposition {
-  roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admissible, Refused, ClaimedGrainRefusal,
+  roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admitted, Refused, ClaimedGrainRefusal,
   LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
 }
 
@@ -37,7 +37,7 @@ fn node_of(s: String) -> RoadmapNodeId {
 // to typecheck, which is exactly the fail-closed discipline the ticket is built on.
 fn refusal_tag(v: ClaimedGrainVerdict) -> String {
   match v {
-    Admissible => "admissible"
+    Admitted { grain: _ } => "admissible"
     Refused { reason } => match reason {
       LeafPathUnknown { path: _ } => "leaf-path-unknown"
       LeafWrongItem { path: _, expected: _ } => "leaf-wrong-item"

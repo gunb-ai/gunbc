@@ -3,8 +3,8 @@ module gunbc.roadmap.roadmap_decomposition
 import std.types { String, Int, Bool, List }
 import std.integer { nat_to_int }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
-import gunbc.roadmap.roadmap_event_log { ClaimGrain }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath, AdmittedGrain }
+
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
 // THE RECURSIVE DECOMPOSITION OF EVERY OPEN BOUND WORK ITEM, DONE UP FRONT (operator, 2026-11-17: "basically i'm
@@ -369,7 +369,7 @@ type ClaimedGrainRefusal
   | DecompositionAmbiguous { node: RoadmapNodeId, count: Int }
 
 type ClaimedGrainVerdict
-  = Admissible
+  = Admitted { grain: AdmittedGrain }
   | Refused { reason: ClaimedGrainRefusal }
 
 fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> ClaimedGrainVerdict {
@@ -379,7 +379,7 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
     Refused { reason: DecompositionAmbiguous { node: node, count: c } }
   } else if c == 0 {
     match grain {
-      Pathless => Admissible
+      Pathless => Admitted { grain: AdmittedGrain { grain: Pathless } }
       AtPath { path } => Refused { reason: LeafPathUnknown { path: path } }
     }
   } else {
@@ -389,7 +389,7 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
         if path.item != node {
           Refused { reason: LeafWrongItem { path: path, expected: node } }
         } else if decomposition_has_leaf_path(path: path) {
-          Admissible
+          Admitted { grain: AdmittedGrain { grain: grain } }
         } else {
           Refused { reason: LeafPathUnknown { path: path } }
         }
