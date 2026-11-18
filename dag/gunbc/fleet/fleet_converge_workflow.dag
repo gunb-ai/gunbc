@@ -4438,11 +4438,13 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Outcome<Step> {
 // current boot over the anchored fleet SSH transport (hence FleetSshKeyConsumed), plans against the real organization
 // runner listing under the gunbai-ci installation token it mints, and records the admitted boot and the selection; it
 // requests no deletion and writes no host state, so it is confined to its own run.
-fn fleet_converge_service_runner_lost_boot_sweep_dry_run_step() -> Step {
-  RunStep {
+fn fleet_converge_service_runner_lost_boot_sweep_dry_run_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke(),
+    f: fn(r) outcome_accepted(value: RunStep {
     name: Present { value: "service runner lost-boot sweep, dry run: admit the current boot over the anchored transport, plan against the organization runner listing, record, delete nothing" },
     id: Present { value: "service_runner_lost_boot_sweep_dry_run" },
-    run: gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke(),
+    run: r,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4456,8 +4458,10 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_step() -> Step {
     if_condition: Present { value: fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(lost_boot_sweep_step_timeout_minutes()) }
-  }
+  })
+  )
 }
+
 
 fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -> Step {
   UsesStep {
@@ -4636,11 +4640,13 @@ fn fleet_converge_jit_dead_sweep_step() -> Outcome<Step> {
   )
 }
 
-fn fleet_converge_jit_dead_sweep_dry_run_step() -> Step {
-  RunStep {
+fn fleet_converge_jit_dead_sweep_dry_run_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_jit_dead_sweep_dry_run_invoke(),
+    f: fn(r) outcome_accepted(value: RunStep {
     name: Present { value: "JIT dead-registration dry run: list exactly what would be deleted, with counts by host; delete nothing" },
     id: Present { value: "jit_dead_registration_sweep_dry_run" },
-    run: gunbc_ci_jit_dead_sweep_dry_run_invoke(),
+    run: r,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4652,8 +4658,10 @@ fn fleet_converge_jit_dead_sweep_dry_run_step() -> Step {
     if_condition: Present { value: fleet_converge_jit_dead_sweep_dry_run_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
+  })
+  )
 }
+
 
 fn fleet_converge_jit_dead_sweep_receipt_upload_step() -> Step {
   UsesStep {
@@ -6706,11 +6714,11 @@ fn fleet_converge_job_work_steps() -> List<Outcome<Step>> {
     fleet_converge_qualification_attempt_step(),
     outcome_accepted(value: fleet_converge_qualification_attempt_receipt_upload_step()),
     outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_dry_run_step()),
+    fleet_converge_service_runner_lost_boot_sweep_dry_run_step(),
     outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step()),
     fleet_converge_jit_dead_sweep_step(),
     outcome_accepted(value: fleet_converge_jit_dead_sweep_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_jit_dead_sweep_dry_run_step()),
+    fleet_converge_jit_dead_sweep_dry_run_step(),
     outcome_accepted(value: fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step()),
     fleet_converge_service_slot_start_step(),
     outcome_accepted(value: fleet_converge_service_slot_start_receipt_upload_step()),
