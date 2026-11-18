@@ -2897,7 +2897,94 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
     },
     tail: [],
   },
-  disposition: Open,
+  // CLOSED (smart-dove-204, 2026-11-18). The roster keeps its hand-written ORDER -- a dispatch menu
+  // whose option order shifted whenever an arm happened to be declared elsewhere would be the worse
+  // artifact -- and its MEMBERSHIP stops being hand-kept:
+  // test.claim.fleet.fleet_converge_roster_closed_sum_witness compares it, arm by arm, against the
+  // closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing from the
+  // roster, an arm listed twice, and an entry the sum does not name are three separate reds rather
+  // than a count that happens to match; and the dispatch menu is that roster mapped through
+  // fleet_converge_workflow_mode_wire, walled in the same module, so it cannot drift from the roster
+  // either. The question's first branch was tried before the second was taken: the std value-level
+  // enumeration of a sum's variants is coproduct_nullary_inhabitants, and it REFUSES any sum with a
+  // payload arm ("payload arm is not nullary", src/v1/stage0/src/coproduct_reflection.rs), which this
+  // sum has -- Srv1RootMutation carries Srv1RootMutationMode -- so it yields a refusal, not a member
+  // list, and cannot author the roster. Both halves of that finding are pinned rather than remembered:
+  // the refusal over this sum, and the enumeration working where it can (the nested all-nullary arm, 4
+  // inhabitants for 4 arms). The nested arm is in scope because the roster lists its four modes as
+  // four entries, so one can go unrostered exactly as #16583's MtCollins1PcieRetimerReset would have.
+  // The fixture (one arm dropped, one repeated, and an honest twin) is what makes this a wall and not
+  // a tautology: the planted roster yields exactly those two defects and the honest one yields none.
+  // What is NOT claimed by this disposition: the wall is enrolled in no lane -- no row of
+  // v2.workflow.required_floor.required_gate_authored_modules, no step of
+  // gunbc.instruments.ci_run_step_roster -- so it judges whoever executes the command below and nobody
+  // else, and a mode dropped from the roster is still dispatchable in silence on the required path.
+  // The rung above this one is a single operator-ruled enrollment row naming the module at its own name
+  // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling), which has been asked for and
+  // not taken here.
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "a7b273bc4e5d0f52439289cece33093ccf06a855" as CommitSha,
+    superseded: [],
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"),
+      tail: [
+        decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_symbol_comparison_used_by_this_wall_discriminates"),
+        decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_nested_arm_entries_are_the_nested_sum_arms"),
+        decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_dispatch_mode_options_are_roster_wires_without_repetition"),
+        decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_the_wall_refuses_a_planted_roster_missing_and_duplicating_arms"),
+        decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_the_wall_passes_the_planted_honest_roster"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the roster holds every reflected arm of the closed sum exactly once and nothing the sum does not name",
+      },
+      tail: [
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_arm_key_reflection_is_non_vacuous_over_the_fleet_converge_mode_sum"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the arm reflection this wall reads is non-empty, so its verdict is not the verdict of an empty list",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_symbol_comparison_used_by_this_wall_discriminates"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the Symbol equality the wall compares with discriminates, in both degenerate directions, over the reflected arm keys",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_nested_arm_entries_are_the_nested_sum_arms"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the roster's payload entries are exactly the nested sum's arms, once each",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_value_level_enumeration_covers_the_all_nullary_nested_sum"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "value-level enumeration does enumerate an all-nullary sum, corroborating the read arm keys and proving the refusal below is a limit and not an outage",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_value_level_enumeration_refuses_the_fleet_converge_mode_sum"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "coproduct_nullary_inhabitants refuses this sum, so the roster cannot be derived from it",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_dispatch_mode_options_are_roster_wires_without_repetition"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the dispatch menu is the roster's wire strings, once each, in order",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_the_wall_refuses_a_planted_roster_missing_and_duplicating_arms"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the fixture roster that drops one arm and repeats another is refused with exactly those two defects",
+      },
+      RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_the_wall_passes_the_planted_honest_roster"),
+        run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855, comment-only delta to this head",
+        conclusion: "the honest fixture passes, so the refusal above is discriminating and not unconditional",
+      }
+      ],
+    },
+  } },
 }
 
 // THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE. The run-step emitter refuses
