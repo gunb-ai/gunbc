@@ -925,8 +925,11 @@ fn runner_host_file_subject_over_obligation(
   }
 }
 
-// THE SLOTS THIS HOST LENDS TO FABRIC EXECUTION ARE NOT RUNNER SLOTS (gunbc.runner.runner_slot_allocation
-// fabric_execution_slot_identities: srv1's microvm shakedown slot 13, srv3/srv4 slots 6 and 7). Their
+// THE SLOTS THIS HOST LENDS TO FABRIC EXECUTION ARE NOT RUNNER SLOTS: their membership is
+// gunbc.runner.runner_slot_allocation fabric_execution_slot_identities, read and never transcribed here
+// (it held srv3's and srv4's slots 6 and 7 until gunbc.design_ruling::
+// srv3_srv4_fabric_slots_serve_ci retired them on 2026-11-09; it holds srv1's microvm shakedown 13 and
+// revision job 14 today). Their
 // actions-runner@ unit is not desired, so a masked or absent one is the declared state and a loaded
 // one is a runner occupying a slot the model gave to fabric -- neither is "a desired slot masked by
 // mistake", which is how observe run 38662663858 misread srv1-13.
