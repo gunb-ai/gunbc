@@ -42,9 +42,11 @@ type LeafPath { item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat }
 
 // THE CLAIM GRAIN: what a Claimed names. Pathless = whole-item; AtPath = one leaf.
 // Moved here (like LeafPath) so both roadmap_issue_command and roadmap_decomposition can
-// reach it without a cycle. AdmittedGrain wraps a grain that passed the guard — it marks
-// the guard-already-ran state. The machine check is the guard pipeline witness
-// (roadmap_claim_grain_witness::guard_pipeline_admits_and_refuses_correctly).
+// reach it without a cycle. AdmittedGrain marks a grain the guard returned from: it is a
+// naming convention (any module can construct it), not a capability token. The guard is
+// called at both Claimed-producing sites (roadmap_serve, roadmap_event_cli); the witness
+// (guard_pipeline_admits_and_refuses_correctly) drives the parser+guard and fails if the
+// guard's admit/refuse behavior regresses. A new producer must add its own driving test.
 type ClaimGrain
   = Pathless
   | AtPath { path: LeafPath }

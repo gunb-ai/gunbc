@@ -145,7 +145,8 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
       close: SnapshotNotOpened }
     Absent => {
       let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
-      // AdmittedGrain documents the guard-already-ran state (enforced by the roster witness).
+      // AdmittedGrain marks the guard-ran state (naming convention; the guard is called at
+      // roadmap_serve and roadmap_event_cli; the witness drives their parser+guard pipeline).
       roadmap_event_append(layout: layout, event: event, operation: operation as String)
     }
   }
