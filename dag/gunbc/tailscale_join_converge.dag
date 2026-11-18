@@ -126,13 +126,7 @@ import extdeps.tailscale.machine_name { tailscale_status_json_argv }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
-import extdeps.tailscale.acl { tag_dashboard }
-import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
@@ -232,59 +226,6 @@ fn tailscale_join_population_from(intents: List<HostEnrollmentIntent>, seen: Lis
 
 fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
   list_member(xs: tailscale_join_population(), x: host, eq: (a, b) => a == b)
-}
-
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────
-// WHAT THIS REPOSITORY CAN VOUCH FOR, HOST BY HOST, ABOUT THE TAG. TYPED RATHER THAN PROSE, because the
-// meaning of a Noop depends on it: a Noop is only right for a host whose node carries the fleet tag, so "which
-// hosts may a Noop be read as guaranteed about" cannot live in a comment
-// (@ref(gunbc.design_argument::source_annotations): a status belongs in a typed carrier, and nothing may
-// depend on a comment for correctness).
-//
-// THE CONVERGE ITSELF NEVER CONSULTS THIS. Membership is decided from the host's OWN status document on every
-// run (extdeps.tailscale.join, the three-valued state), and substituting a remembered observation for that read
-// is the fail-open this change closes. The record is for the READER of a converge report -- which hosts a given
-// Noop was right about, and which the repository never checked. Witnessed by
-// test.claim.tailscale_join_fleet_membership_witness.
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-type TailscaleFleetTagObservation
-  = FleetTagObserved { host: HostIdentity, observed_tags: List<String> }
-  | FleetTagUnobserved { host: HostIdentity, why_unobserved: String }
-
-// TOTAL BY CONSTRUCTION: the answer for any host is UNOBSERVED unless the body says otherwise, so a host cannot
-// be silently missing from the record and read as vouched for.
-fn tailscale_fleet_tag_observation(host: HostIdentity) -> TailscaleFleetTagObservation {
-  if host == operator_host_srv1 || host == operator_host_srv2 {
-    // Read off the tailnet when the fleet key's shape was decided: both carry the fleet tag alongside
-    // tag:dashboard (gunbc.tailscale_fleet_auth_key, the note on why tag:ci was chosen). A converge for either
-    // reads JoinStateJoinedWithRequiredTag and stays a Noop, exactly as before this change.
-    FleetTagObserved {
-      host: host,
-      observed_tags: [tailscale_fleet_node_tag as String, tag_dashboard as String],
-    }
-  } else if host == operator_host_srv3 || host == operator_host_srv4 {
-    // ENROLLED AND JOINED BY THIS CONVERGE under the pre-approved TAGGED key, so the tag is expected by
-    // CONSTRUCTION ("the device assumes the identity of the auth key's tags" -- tailscale.com/kb/1085/auth-keys).
-    // Expected is not observed: no read of their `Self.Tags` has ever been brought back into this repository. If
-    // either was on the tailnet BEFORE its keyed enrolment, or was ever re-joined by hand, the refusal arm is
-    // what catches it. Their enrolment rows also refuse host-key login (gunbc.fleet.fleet_enrollment, the note on
-    // why srv3 and srv4 are not reachable for recovery work), so a converge for either refuses at the reach step
-    // today whatever its tag says -- another reason not to vouch for their Noop.
-    FleetTagUnobserved {
-      host: host,
-      why_unobserved: "joined under the fleet's tagged key, so the tag is expected by construction; no read of its Self.Tags has been recorded",
-    }
-  } else {
-    // The honest default, and the reason the record can be trusted: ken (operator_host_e2d4b7, read untagged on
-    // 2026-11-18) and dusk-1 (an untagged member device -- extdeps.tailscale.acl, the comment carried by
-    // dusk_serving_ip) are hosts whose tag state this repository knows only from a comment elsewhere, and neither
-    // is in the host registry this function is asked about. Neither is vouched for.
-    FleetTagUnobserved {
-      host: host,
-      why_unobserved: "this repository has never read this host's Self.Tags",
-    }
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────

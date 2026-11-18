@@ -33,17 +33,12 @@ module test.claim.tailscale_join_fleet_membership_witness
 // output are recorded in the PR), which is what DESIGN.md asks of a behavior fix: a witness that goes red when
 // the behavior is wrong.
 //
-// WHICH Noops ARE VOUCHED FOR IS A TYPED RECORD, NOT PROSE: `gunbc.tailscale_join_converge::tailscale_fleet_tag_observation`
-// says which hosts this repository has actually seen carrying the fleet tag (srv1, srv2) and which it has not
-// (srv3, srv4, and every host the record does not name). `w_the_vouch_record_covers_the_serving_fleet_by_name`
-// is what holds that record to its own shape -- including the part that matters most: it must NOT vouch for a
-// host it has never read.
+
 
 import std.logic { Bool }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.list { list_member }
-import std.types { FilePath, List, String }
+import std.types { FilePath, String }
 import extdeps.filesystem.filesystem_io
 import extdeps.package_managers.dpkg { DpkgPackageInstalled }
 import extdeps.tailscale.join {
@@ -55,18 +50,10 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
 }
-import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-  operator_host_srv9,
-}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag }
 import gunbc.tailscale_join_converge {
-  FleetTagObserved,
-  FleetTagUnobserved,
   JoinPlanNoop,
   JoinPlanNotFleetMember,
   JoinPlanPlaceAndJoin,
@@ -77,7 +64,6 @@ import gunbc.tailscale_join_converge {
   tailscale_join_outcome_receipt,
   tailscale_join_plan,
   tailscale_join_run_settled,
-  tailscale_fleet_tag_observation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -339,35 +325,4 @@ test fn w_the_join_and_key_refusal_arms_are_unchanged() -> Bool {
     JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
     JoinPlanRefused { host: _, cause: _ } => false
   }
-}
-
-// WHICH Noops THIS REPOSITORY CAN VOUCH FOR. The converge never reads this record -- it decides membership from
-// each host's own status document on every run -- so the question answered here is the READER's: of the four
-// serving hosts a routine fleet converge runs over, which ones has this repository actually seen carrying the
-// fleet tag? srv1 and srv2, yes; srv3 and srv4, NO -- they were joined by the tagged key, so the tag is expected
-// by construction, and expected is not observed. The last arm is the one that keeps the record honest: a host the
-// record does not name must come back unvouched, never silently assumed.
-test fn w_the_vouch_record_covers_the_serving_fleet_by_name() -> Bool {
-  match tailscale_fleet_tag_observation(host: operator_host_srv1) {
-    FleetTagObserved { host: _, observed_tags: tags } =>
-      list_member(xs: tags, x: tailscale_fleet_node_tag, eq: (a, b) => a == b)
-        && match tailscale_fleet_tag_observation(host: operator_host_srv2) {
-          FleetTagObserved { host: _, observed_tags: more } =>
-            list_member(xs: more, x: tailscale_fleet_node_tag, eq: (a, b) => a == b)
-          FleetTagUnobserved { host: _, why_unobserved: _ } => false
-        }
-    FleetTagUnobserved { host: _, why_unobserved: _ } => false
-  }
-    && match tailscale_fleet_tag_observation(host: operator_host_srv3) {
-      FleetTagUnobserved { host: _, why_unobserved: why } => why != ""
-      FleetTagObserved { host: _, observed_tags: _ } => false
-    }
-    && match tailscale_fleet_tag_observation(host: operator_host_srv4) {
-      FleetTagUnobserved { host: _, why_unobserved: why } => why != ""
-      FleetTagObserved { host: _, observed_tags: _ } => false
-    }
-    && match tailscale_fleet_tag_observation(host: operator_host_srv9) {
-      FleetTagUnobserved { host: _, why_unobserved: why } => why != ""
-      FleetTagObserved { host: _, observed_tags: _ } => false
-    }
 }
