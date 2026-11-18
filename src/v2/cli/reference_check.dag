@@ -503,9 +503,13 @@ fn run_step_target_site_head(site: RunStepTargetSite) -> String {
 // Judge one run-step-target site. First the callee must resolve, through the caller's imports in THIS context,
 // to the one constructor's declaring home -- otherwise the call lexically names the constructor but is not it
 // (a same-named local, or imported from elsewhere) and is not a site at all (condition 1, closed_grounded_substrate).
-fn run_step_target_site_line(site: RunStepTargetSite, targets: CitedTargets, context: ResolutionContext) -> Optional<String> {
+fn run_step_refused_has(refused: List<String>, module_name: String) -> Bool {
+  fold_list(xs: refused, empty: false, cons: fn(acc, r) { acc || r == module_name })
+}
+
+fn run_step_target_site_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
   match run_step_target_callee_verdict(caller: site.caller, context: context) {
-    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, targets: targets, context: context)
+    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, targets: targets, refused: refused, context: context)
     RunStepTargetNotConstructor => Absent
     RunStepTargetCalleeUnconfirmed { reason: reason } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetCalleeUnconfirmed: ", reason) }
@@ -547,7 +551,7 @@ fn run_step_target_callee_verdict(caller: String, context: ResolutionContext) ->
 // With the callee confirmed to be the constructor, the (module, function) pair must name a real declaration.
 // A non-literal argument refuses typed at the site (never skipped -- it is the un-checkable route); a literal
 // pair that does not resolve refuses, located, distinguishing a target module that did not even normalize.
-fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, context: ResolutionContext) -> Optional<String> {
+fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
   match site.module_arg {
     RunStepTargetNotLiteral { text: mt } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", run_step_target_module_label, ": argument is not a string literal (", mt, "), so its entry cannot be checked") }
@@ -559,19 +563,23 @@ fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, co
           Present { value: CitedModuleUnread { cause: cause } } =>
             Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnread: the target module was not read: ", cause) }
           Present { value: CitedModuleRead { read: _ } } =>
-            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, context: context)
+            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, refused: refused, context: context)
           Absent =>
-            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, context: context)
+            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, refused: refused, context: context)
         }
     }
   }
 }
 
-fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, function_name: String, context: ResolutionContext) -> Optional<String> {
+fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, function_name: String, refused: List<String>, context: ResolutionContext) -> Optional<String> {
   match resolve_declaration_ref(ref: decl_ref(module_path: module_name, decl_name: function_name), context: context) {
     DeclarationRefResolved { declaration_identity: _ } => Absent
     DeclarationRefModuleAbsent { reference: _ } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: the target module is not in the target universe, so it was never a run-time entry") }
+      if run_step_refused_has(refused: refused, module_name: module_name) {
+        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleNormalizeRefused: the target module ", module_name, " was read but did not normalize into the resolution context, so its run-time entry could not be confirmed") }
+      } else {
+        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: the target module ", module_name, " is not in the target universe, so it was never a run-time entry") }
+      }
     DeclarationRefDeclarationAbsent { reference: _ } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", run_step_target_function_label, " named ", function_name) }
     DeclarationRefFieldAbsent { reference: _ } =>
@@ -631,13 +639,23 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
         let extra = list_append(left: live_context_hop_homes(load: named, names: names), right: map_support_keys(m: run_step_target_cited_module_names(target_sites: target_sites)))
         let with_homes = cited_targets_read(env: env, pending: extra, acc: targets)
         let loaded = live_context_load_modules(load: named, by_name: with_homes.by_name, modules: extra, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
-        let live = live_context_finish(load: loaded, lm: lm, active_roots: source_root_set_from_ingest(ingest: with_homes.ingest), policy: ImportScoped)
+        // ONE HOP OVER THE LOADED TARGET MODULES. The @ref path reaches a cited name's home through the same
+        // live_context_hop_homes, but only for modules already in the load when it runs; a run-step target module
+        // joins the load after that pass, so any name it imports (a re-export, or the home of an entry the target
+        // module itself only re-binds) never had its home loaded. Running the identical one-hop pass now that the
+        // target modules are present pulls those homes into the SAME single context -- one hop, not transitive,
+        // exactly as @ref does; anything further is a module absent from the roots the resolver already answers
+        // ModuleAbsent for, so no widening loop.
+        let extra_homes = live_context_hop_homes(load: loaded, names: names)
+        let with_target_homes = cited_targets_read(env: env, pending: extra_homes, acc: with_homes)
+        let loaded_final = live_context_load_modules(load: loaded, by_name: with_target_homes.by_name, modules: extra_homes, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
+        let live = live_context_finish(load: loaded_final, lm: lm, active_roots: source_root_set_from_ingest(ingest: with_target_homes.ingest), policy: ImportScoped)
         match live.context {
           Rejected { diagnostics: _ } =>
             fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules did not form a resolution context") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
           Accepted { value: context, diagnostics: _ } =>
             fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) {
-              reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, targets: targets, context: context))
+              reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, targets: with_target_homes, refused: live.refused_files, context: context))
             }), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
             })
