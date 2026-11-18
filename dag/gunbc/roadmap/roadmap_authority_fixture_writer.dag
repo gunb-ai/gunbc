@@ -63,7 +63,6 @@ module gunbc.roadmap.roadmap_authority_fixture_writer
 
 import extdeps.filesystem.filesystem_io
 import std.filesystem { path_parent_directory }
-import std.text { join, string_length }
 import std.integer { int_to_decimal_string }
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
 import extdeps.exec.command { LocalExec }
