@@ -10484,7 +10484,7 @@ fn microvm_controller_stdin_step(name: String, command: ArgvCommand, stdin_paylo
 // path is its own step so a failure names the directory that failed rather
 // than a batch. The retired pipeline ran `install -d -m 0755 -o OWNER -g OWNER`
 // for each of these via install_d_owned_for_user; the flags are the same words.
-fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
+fn microvm_controller_owned_dir_argv(path: NonEmptyStr) -> List<String> {
   coreutils_install_directory_owned_argv(
     mode: install_d_shared_mode,
     owner: microvm_controller_owner,
@@ -10739,7 +10739,7 @@ fn revision_job_install_file_step(name: String, source: String, dest: String) ->
   )
 }
 
-fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerInstallStep {
+fn revision_job_owned_dir_step(name: String, path: NonEmptyStr) -> MicrovmControllerInstallStep {
   microvm_controller_argv_step(name: name, command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: path)))
 }
 
@@ -10942,7 +10942,7 @@ fn microvm_controller_install_steps(
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
-          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()) as String)),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()))),
         ),
         microvm_controller_argv_step(
           name: "cell readiness store dir",
