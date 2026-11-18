@@ -3499,36 +3499,15 @@ data redfish_get_status_read_fork: IntegrationConcern = IntegrationConcern {
   },
 }
 
-// A capability the failure-mode ledger does not have: it can record THAT a sighting was made, and not what the
-// sighting established. The trigger to file this was a guard attempt (#16671, closed): a claim that wanted to refuse a
-// read rung resting only on "it compiled" had to be handed its evidence grade by the test, because nothing the row
-// carries states a grade. A claim whose discriminator is supplied by its own caller checks the caller, not the ledger,
-// so the attempt was closed rather than landed -- and a claim that looks like a guard while deciding nothing is worse
-// than the prose caveat it replaced (gunbc.design_argument::how_to_work: a bad process is worse than no process).
-//
-// THE DEBATE THIS OWNS, and it is a single_authority debate rather than a placement preference. Ask which placement
-// makes it impossible for two artifacts to disagree about the same evidence. If the ROW carries a sighting-basis, then
-// for one sighting the row states a grade while the ladder states what establishes a rung -- two statements about one
-// fact, which can drift, and on drift a reader has nothing to tell them which is authoritative. That is a second
-// authority beside gunbc.design_argument::guarantee_ladder, which already says the reported rung equals the rung
-// established by executed evidence. If the LADDER carries executed-versus-observed, the grade becomes part of
-// rung-establishment, which is where a claim about evidence strength already lives, and there is exactly one place
-// that answers how strong this is. The cost of the ladder is real and must not be sold short: changing what it states
-// re-derives every existing standing and touches every row. Convenience argues for the row; drift argues for the
-// ladder; only one of those is a correctness argument.
-//
-// MEASURED 2026-11-18, and any grade type must not make these look unsupported: 95 of the 227 rows reporting a read
-// rung have an empty evidence list, and the ledger's own header says that is legitimate -- evidence witnesses the
-// class through computed references while receipts carry the prose the authored fold consumes, and checking and
-// publishing are deliberately different capabilities. A grade type read off the wrong field would report 95 rows as
-// resting on nothing.
+// Weighing the question below: convenience argues for the row, drift argues for the ladder, and only drift is a
+// correctness argument.
 data ledger_sighting_cannot_state_what_it_established: IntegrationConcern = IntegrationConcern {
   identity: "ledger_sighting_cannot_state_what_it_established",
   kind: SuspectedCapabilityGap {
     model: decl_field_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field_name: "receipts"),
     requirement: "a row states, per sighting, what that sighting established -- that a build did not stop, as distinct from a behaviour or a resolving route being observed -- so that a claim can refuse a read rung whose sightings are all of the weaker kind, without the claim being handed its own grade by its caller",
     standing: RequirementUnestablished {
-      decided_by: "a claim over the ledger that refuses a row reporting a read rung while every one of its sightings is of the weaker basis, and that accepts the same row once a sighting of the stronger basis is present. It is unestablished today because the grade can only be supplied by the test: the closed guard #16671 shows the shape, its two claims passed and neither could fail on anything the ledger said.",
+      decided_by: "a claim over the ledger that refuses a row reporting a read rung while every one of its sightings is of the weaker basis, and that accepts the same row once a sighting of the stronger basis is present, and that downgrades no row merely because its evidence list is empty: at main 12253b17b3ae 95 of the 227 rows reporting a read rung carry evidence: [] legitimately, since the ledger header has evidence witness the class through computed references while receipts carry the prose the authored fold consumes, so a grade derived from the evidence field fails this requirement. It is unestablished today because the grade can only be supplied by the test: the closed guard #16671 shows the shape, its two claims passed and neither could fail on anything the ledger said.",
     },
   },
   affected: FreeSemigroup {
