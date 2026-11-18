@@ -617,20 +617,20 @@ fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, re
         match map_lookup(m: targets.standing, key: module_name) {
           Present { value: CitedModuleUnread { cause: cause } } =>
             Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnread: the target module was not read: ", cause) }
-          Present { value: CitedModuleRead { read: _ } } =>
-            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, refused: refused, context: context)
+          Present { value: CitedModuleRead { read: read } } =>
+            run_step_target_refusal(site: site, module_name: module_name, module_key: symbol_lexeme(sym: read.compilation_unit), function_name: function_name, refused: refused, context: context)
           Absent =>
-            run_step_target_refusal(site: site, module_name: module_name, function_name: function_name, refused: refused, context: context)
+            run_step_target_refusal(site: site, module_name: module_name, module_key: "", function_name: function_name, refused: refused, context: context)
         }
     }
   }
 }
 
-fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, function_name: String, refused: List<String>, context: ResolutionContext) -> Optional<String> {
+fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, module_key: String, function_name: String, refused: List<String>, context: ResolutionContext) -> Optional<String> {
   match resolve_declaration_ref(ref: decl_ref(module_path: module_name, decl_name: function_name), context: context) {
     DeclarationRefResolved { declaration_identity: _ } => Absent
     DeclarationRefModuleAbsent { reference: _ } =>
-      if run_step_refused_has(refused: refused, module_name: module_name) {
+      if run_step_refused_has(refused: refused, module_name: module_key) {
         Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleNormalizeRefused: the target module ", module_name, " was read but did not normalize into the resolution context, so its run-time entry could not be confirmed") }
       } else {
         Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: the target module ", module_name, " is not in the target universe, so it was never a run-time entry") }
