@@ -1593,7 +1593,11 @@ fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
 
 // A fold over the waits_on rows that aims each edge at a REAL parent occurrence. The FIRST row whose parent is
 // not uniquely decomposed short-circuits to a typed refusal; a fabricated empty default is never returned, so a
-// caller -- including the frontier list-scheduling consumer -- cannot read a dropped row as "no edges."
+// caller -- including the frontier list-scheduling consumer -- cannot read a dropped row as "no edges". Each
+// row's edges are PREPENDED onto the accumulator (concat copies only the small new row, never the growing
+// accumulated list), so building the list is linear in the total edges, not a quadratic copied-accumulator fold
+// (how_to_work: "a copied accumulator, a quadratic fold ... is always fixed, regardless of realized n"). The
+// edge list is order-insensitive: the witness checks counts and per-edge endpoints, not sequence.
 type WaitsEdges
   = WaitsBuilt { edges: List<OccurrenceEdge> }
   | WaitsRejected { cause: ExpansionRefusal }
@@ -1605,7 +1609,7 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
       WaitsBuilt { edges } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
         Rejected { cause } => WaitsRejected { cause: cause }
         Resolved { occurrences: ps } =>
-          WaitsBuilt { edges: concat(edges, flat_map(occurrences_at_stage(occs: occs, stage: w.into_stage), c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path }))) }
+          WaitsBuilt { edges: concat(flat_map(occurrences_at_stage(occs: occs, stage: w.into_stage), c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
       }
     }
   })
