@@ -111,6 +111,14 @@ fn estimates_for(subject: RoadmapNodeId) -> List<EffortEstimate> {
   filter(roadmap_effort_estimates, e => e.subject == subject)
 }
 
+// Consumption frontier (gunbc.design_argument::consumption). latest_estimate and
+// overdue are read by no production consumer on this branch; their only reader here is
+// their own witness, which is not a consumer under the rule. They are a declared frontier:
+// consumed by the named later change `roadmap-work-item-projection` (declared in #16650,
+// stacked on this branch), whose per-node row carries a node's latest estimate and its
+// `overdue`, which `roadmap-timeline-page` then renders. Trigger: #16650 landing
+// `roadmap-work-item-projection`. The node ids are named here as the consuming change,
+// not linked as a graph edge -- this branch does not carry that node.
 // The latest estimate for a subject: the last appended, since rows are appended in order and never edited.
 fn latest_estimate(subject: RoadmapNodeId) -> Optional<EffortEstimate> {
   fold(estimates_for(subject: subject), init: optional_absent(), f: fn(acc, e) { optional_present(value: e) })
