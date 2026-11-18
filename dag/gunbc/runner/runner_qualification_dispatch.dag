@@ -1,4 +1,5 @@
 module gunbc.runner.runner_qualification_dispatch
+import v2.std.diagnostic { outcome_accepted_value }
 
 import std.optional { Absent, Present }
 import std.algebra { length }
@@ -312,7 +313,10 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
             match first(job.steps) {
               Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
               Present { value: s0 } =>
-                if s0 != qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input) {
+                match outcome_accepted_value(qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)) {
+                  Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
+                  Present { value: guard } =>
+                if s0 != guard {
                   QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
                 } else if job.steps |> any(st => step_runs_after_a_failure(step: st)) {
                   QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: floor_job_id } }
@@ -320,6 +324,7 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
                   QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: floor_job_id } }
                 } else {
                   QualificationFloorAdmitted { floor_job_name: name }
+                }
                 }
             }
           }
