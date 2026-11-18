@@ -1101,26 +1101,6 @@ fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
   )
 }
 
-// THE RESTART AS A SEALED ArgvCommand, the exact sibling of systemctl_start_command above (review 96241 finding 2).
-// The pair-delivery actuator restarts the serve unit once a verified pack is placed; running it through
-// posix_sh of a rendered string made the service restart a shell-as-medium effect when systemctl already models it.
-// Built through the same admitted mint with the restart verb (systemctl(1): `restart`), sudo-wrapped and
-// non-interactive exactly as start is, so the privileged restart the fold carries is an ArgvCommand the runtime
-// dispatch routes straight at the exec seam — never a script a shell re-parses.
-fn systemctl_restart_command(unit: NonEmptyStr) -> ArgvCommand {
-  argv_command(
-    program: sudo_program(),
-    arguments: append(
-      [
-        sudo_non_interactive_flag as String,
-        systemctl_path_resolved_program().invocation as String,
-        systemctl_restart_verb as String,
-      ],
-      items: [unit as String],
-    ),
-  )
-}
-
 // WHICH SYSTEMCTL CALLS RELOAD THE MANAGER, DECLARED ON THE COMMAND'S OWN CONSTRUCTOR. systemctl(1):
 // `mask`, `unmask`, `enable` and `disable` reload the manager's configuration implicitly after changing
 // the unit files unless `--no-reload` is given, so a drain's mask is itself a daemon-reload and loads

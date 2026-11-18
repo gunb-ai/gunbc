@@ -51,7 +51,6 @@ import gunbc.live_deploy.release_pair_delivery {
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
   SourceReceiptWrite,
 }
-import extdeps.exec.command { ArgvCommand }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.spec {
   release_pair_deliver_base_root_env,
@@ -444,15 +443,19 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
 // PLACE-LEG HELPERS (review 96241 finding 1): split so both the AlreadyPlaced resume and the NotYetPlaced fresh path
 // share ONE write-then-restart. They perform the effects; the pure resume DECISION is release_pair_resume_decision (fold).
-fn release_pair_restart_serve(restart: ArgvCommand) -> ProcessExit {
-  match run_shell_command_capture(command: restart, transport: LocalExec) {
+// The restart carries the rendered command from the SINGLE registered privileged restart authority
+// (operations::systemctl_restart_command, privileged_effect_registry). Its typed-argv realization (review 96241
+// finding 2) needs a privileged ArgvCommand mint the manager owns — tracked, not silently widened into a second
+// sudo restart builder here.
+fn release_pair_restart_serve(restart: String) -> ProcessExit {
+  match run_shell_command_capture(command: posix_sh_program_command(script: restart), transport: LocalExec) {
     ProcessRefused { exit_code: _, stderr: _ } =>
       exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
     _ => ExitSuccess
   }
 }
 
-fn release_pair_deliver_write_receipt(receipt: SourceReceiptWrite, body: String, restart: ArgvCommand) -> ProcessExit {
+fn release_pair_deliver_write_receipt(receipt: SourceReceiptWrite, body: String, restart: String) -> ProcessExit {
   let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
   match filesystem_create_new(
     path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,

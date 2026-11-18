@@ -18,7 +18,13 @@ module test.claim.live_deploy.release_pair_delivery_witness
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.live_deploy.release_pair_delivery { release_pair_incoming_serve_source }
+import gunbc.live_deploy.release_pair_delivery {
+  release_pair_incoming_serve_source,
+  ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
 import gunbc.live_deploy.release_locus {
   ReleasePairDelivery, PairInstalled, PairRefused,
   deliver_release_pair, delivered_pair_revision, VerifiedPack,
