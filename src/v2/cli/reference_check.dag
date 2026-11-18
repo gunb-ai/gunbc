@@ -571,11 +571,12 @@ fn run_step_target_site_line(site: RunStepTargetSite, context: ResolutionContext
 // Whether a call lexically spelling the constructor IS the constructor is THREE-valued, not boolean (fail_closed).
 // CONFIRMED when resolving the callee through the caller's imports yields the SAME declaring identity as the
 // constructor in its own home -- grounded on declaration identity, not spelling (condition 1,
-// closed_grounded_substrate). NOT-A-SITE when the callee resolves to a DIFFERENT declaring home (a same-named
-// local fn, or one imported from elsewhere) -- correctly skipped. UNCONFIRMED when the check itself cannot be
-// made: the constructor's home did not normalize into the context, so nothing can be confirmed against it. That
-// is an environment failure, and it REFUSES every site rather than letting the whole feature report "0 targets,
-// held" over a home nobody could read.
+// closed_grounded_substrate). NOT-A-SITE ONLY when the callee POSITIVELY resolves to a DIFFERENT declaring home (a
+// same-named local fn, or one imported from elsewhere) -- the one case that is evidence it is not the constructor.
+// UNCONFIRMED when the check itself cannot be made: the constructor's home did not normalize into the context, OR
+// the caller could not be resolved at all (ModuleAbsent / DeclarationAbsent / contested). Any of those is an
+// environment failure and REFUSES the site rather than letting a token the scan did see report "held" unchecked --
+// the gunbc#8377 escape hatch a silent NotConstructor would open (DESIGN gunbc.design_argument::fail_closed).
 type RunStepTargetCalleeVerdict
   = RunStepTargetIsConstructor
   | RunStepTargetNotConstructor
@@ -593,7 +594,10 @@ fn run_step_target_callee_verdict(caller: String, constructor: RunStepTargetCons
           }
         DeclarationRefContested { reference: _, claimants: _ } =>
           RunStepTargetCalleeUnconfirmed { reason: "the callee name is contested in its caller module, so its identity could not be confirmed against the constructor" }
-        _ => RunStepTargetNotConstructor
+        DeclarationRefModuleAbsent { reference: _ } =>
+          RunStepTargetCalleeUnconfirmed { reason: concat("the caller module ", caller, " is absent from the resolution context, so its run-step target entry could not be confirmed -- this is NOT evidence the call is not the constructor, so it refuses rather than skips") }
+        DeclarationRefDeclarationAbsent { reference: _ } =>
+          RunStepTargetCalleeUnconfirmed { reason: concat("the caller module ", caller, " declares no ", constructor.constructor_name, " to confirm the call against, so its run-step target entry could not be confirmed") }
       }
     _ =>
       RunStepTargetCalleeUnconfirmed { reason: concat("the constructor home ", constructor.home_module, " did not normalize into the resolution context, so no run-step target could be confirmed against it") }
