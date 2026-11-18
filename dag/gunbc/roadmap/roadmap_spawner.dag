@@ -27,6 +27,8 @@ import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   declared_roadmap_nodes,
   closing_contract_task_pairs_projection,
+  ClosingContractTaskPair,
+  ClosingContractTaskPairsProjection,
   ClosingContractTaskPairsProjected,
   ClosingContractTaskPairsProjectionRefused,
   roadmap_node,
@@ -101,20 +103,30 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
 // graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly
 // rather than vacuously passing.
 
+// THE COUNT OVER PAIRS THE CALLER HOLDS. The live route reads those pairs from the event log; a
+// hermetic witness brings the pairs its own scenario produced, because the only way to get them from
+// here is a Filesystem.List walk the hermetic floor refuses (and a mock of that effect would fabricate
+// the log the count is supposed to be about). The nullary below stays the single home of the live route
+// and delegates here — one law, two entry points (gunbc.design_ruling::single_authority).
+fn roadmap_rendered_ghost_count_over(pairs: List<ClosingContractTaskPair>, doc: RoadmapDocument) -> Int {
+  let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
+  doc_all_nodes(doc: doc)
+    |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
+    |> count
+}
+
 fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
   match closing_contract_task_pairs_projection() {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
     ClosingContractTaskPairsProjected { pairs: pairs } =>
-      let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
-      doc_all_nodes(doc: doc)
-        |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
-        |> count
+      roadmap_rendered_ghost_count_over(pairs: pairs, doc: doc)
   }
 }
 
-fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
-  let base = roadmap_authority()
+// THE PROBE DOCUMENT OVER A BASE THE CALLER HOLDS, with the same one extra section. The nullary's base
+// is the live authority; a hermetic witness's base is the projection its own scenario produced.
+fn ghost_probe_document_over(base: RoadmapDocument, ghost: RoadmapNode) -> RoadmapDocument {
   RoadmapDocument {
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
@@ -125,8 +137,21 @@ fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
   }
 }
 
-fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: roadmap_node(
+fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
+  ghost_probe_document_over(base: roadmap_authority(), ghost: ghost)
+}
+    preamble: base.preamble,
+    lead_lanes: base.lead_lanes,
+    sections: concat(base.sections, [RoadmapSection {
+      title: "SYNTHETIC ghost section (test probe only)",
+      elements: [section_group(label: "", nodes: [ghost], edges: [])],
+    }]),
+  }
+}
+
+// THE SYNTHETIC GHOST, one spelling shared by the live probe and the hermetic one.
+fn roadmap_ghost_probe_node() -> RoadmapNode {
+  roadmap_node(
     identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
     owner: "compiler-guarantee",
     carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
@@ -140,17 +165,32 @@ fn roadmap_ghost_node_red_probe_count() -> Int {
       handback: "None."
     )),
     dispatch: dispatchable(),
-  )))
+  )
+}
+
+// THE GHOST PROBE OVER A CALLER'S PAIRS AND BASE — the hermetic entry point (see
+// roadmap_rendered_ghost_count_over for why the pairs are the caller's to bring).
+fn roadmap_ghost_node_red_probe_count_with(pairs: ClosingContractTaskPairsProjection, base: RoadmapDocument) -> Int {
+  let doc = ghost_probe_document_over(base: base, ghost: roadmap_ghost_probe_node())
+  match pairs {
+    ClosingContractTaskPairsProjectionRefused { detail: _ } => count(doc_all_nodes(doc: doc))
+    ClosingContractTaskPairsProjected { pairs: ps } => roadmap_rendered_ghost_count_over(pairs: ps, doc: doc)
+  }
+}
+
+fn roadmap_ghost_node_red_probe_count() -> Int {
+  roadmap_ghost_node_red_probe_count_with(
+    pairs: closing_contract_task_pairs_projection(), base: roadmap_authority())
 }
 
 // THE ALTERED-COPY PROBE COPIES THE FIRST DECLARED NODE rather than a named one. It used to look up
 // one id and answer 0 when that id was absent, so deleting the row would have turned the probe into
 // a count that no longer probes anything; the first declared node is absent only when the authority
 // declares nothing, and the witness asserting a count of exactly 1 reds on that too.
-fn roadmap_altered_copy_red_probe_count() -> Int {
+fn roadmap_altered_copy_probe_node() -> RoadmapNode? {
   match declared_roadmap_nodes() |> first {
-    Absent => 0
-    Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
+    Absent => Absent
+    Present { value: n } => Present { value: RoadmapNode {
       identity: n.identity,
       node: n.node,
       line: n.line,
@@ -160,8 +200,26 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
       owner: "SYNTHETIC-altered-copy-probe",
       parent: n.parent,
       centering: n.centering,
-    }))
+    } }
   }
+}
+
+fn roadmap_altered_copy_red_probe_count_with(pairs: ClosingContractTaskPairsProjection, base: RoadmapDocument) -> Int {
+  match roadmap_altered_copy_probe_node() {
+    Absent => 0
+    Present { value: ghost } => {
+      let doc = ghost_probe_document_over(base: base, ghost: ghost)
+      match pairs {
+        ClosingContractTaskPairsProjectionRefused { detail: _ } => count(doc_all_nodes(doc: doc))
+        ClosingContractTaskPairsProjected { pairs: ps } => roadmap_rendered_ghost_count_over(pairs: ps, doc: doc)
+      }
+    }
+  }
+}
+
+fn roadmap_altered_copy_red_probe_count() -> Int {
+  roadmap_altered_copy_red_probe_count_with(
+    pairs: closing_contract_task_pairs_projection(), base: roadmap_authority())
 }
 
 // Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket

@@ -40,6 +40,8 @@ import gunbc.roadmap.roadmap_spawner {
   roadmap_rendered_ghost_count,
   roadmap_ghost_node_red_probe_count,
   roadmap_altered_copy_red_probe_count,
+  roadmap_ghost_node_red_probe_count_with,
+  roadmap_altered_copy_red_probe_count_with,
 }
 import gunbc.v1.v1_deletion_plan {
   V1FinishLine,
@@ -68,8 +70,45 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument }
 import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   roadmap_retired_node_ids_load,
+  RoadmapAcceptanceEventHistoryLoad,
+  closing_contract_task_pairs_for_accepted,
+  ClosingContractTaskPairsProjection,
+  ClosingContractTaskPairsProjected,
+  closing_contract_task_edges_for_accepted,
+  projected_roadmap_edges_for_accepted,
 }
-import gunbc.roadmap.roadmap_event_log { RetiredNodeIdsLoaded }
+import gunbc.roadmap.roadmap_event_log {
+  RetiredNodeIdsLoaded,
+  RetiredNodeIdsRefused,
+  RoadmapRetiredNodeIds,
+  roadmap_retired_node_ids_of,
+  RoadmapEvent,
+  RoadmapEventKind,
+  RoadmapEventEnvelope,
+  RoadmapEventId,
+  EventPrincipal,
+  EventPrincipalAuthenticated,
+  roadmap_event_envelope,
+  roadmap_event_id,
+  roadmap_event_wire_text,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_events_decode_reads,
+  EventFileContent,
+  EventFileUnreadable,
+  EventsRead,
+  EventsReadRefused,
+  roadmap_events_read_dir,
+  RoadmapAllEventsRead,
+  AllEventsRead,
+  AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_acceptance_history_of,
+  OperatorAcceptanceHistoryLoaded,
+  OperatorAcceptanceHistoryRefused,
+}
+import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_emit { acceptance_pending_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
@@ -222,6 +261,137 @@ fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
     handback: HandbackNotDelivered,
     accepted_by: "operator",
     accepted_on: "2026-07-28",
+  }
+}
+
+// ─── THE HERMETIC SCENARIO ───────────────────────────────────────────────────
+// WHY THIS EXISTS. Twenty-two of these witnesses were UNOBSERVED, and one refusal explained all of
+// them: the only way to an acceptance history was the LIVE load, which walks the event directory
+// through Filesystem.List, and the hermetic floor has no arm for that effect (claim_batch is hermetic
+// by default; publishing a Filesystem.List mock would FABRICATE the log this ledger's authority rests
+// on — the floor refuses it precisely so no witness can invent a history). So each witness now states
+// the scenario its own property is about: the events that scenario needs, spelled by the log's own
+// emitter, decoded back by the reader's own decoder, and folded by the same fold the live load uses.
+// Nothing is stubbed and nothing is shared — 21 scenarios for 21 witnesses, because a witness is
+// answerable for the property it names (gunbc.design_argument::witness_is_the_unit_of_change), and a
+// shared mega-fixture would be a second home for the acceptance facts (single_authority).
+//
+// A scenario is not a substitute for the real route. Two witnesses keep it: the committed fixture, read
+// by roadmap_events_read_dir so the actual directory walk runs through the checkout carve-out, and the
+// same-reader witness that holds the live and committed routes to one reader.
+
+// The scenario's principal. It names an operator, never impersonates one: the subject is legibly a
+// fixture, so no scenario byte can be read as a real person's acceptance.
+fn scenario_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr,
+    namespace: "accounts" as NonEmptyStr,
+    subject: "sub-roadmap-authority-scenario" as NonEmptyStr,
+  } }
+}
+
+// ONE SCENARIO EVENT. Every scenario event is recorded at the same instant, so an ordering a witness
+// cares about is always the chain — the parent an event names — never a timestamp nobody read.
+fn scenario_event(node: RoadmapNodeId, parent: RoadmapEventId?, kind: RoadmapEventKind) -> RoadmapEvent {
+  RoadmapEvent {
+    node: node, author: scenario_principal(), parent: parent, kind: kind,
+    recorded_at: "2026-11-18T00:00:00Z",
+  }
+}
+
+// ONE NODE'S CHAIN, parent-threaded. A second event that does not name its predecessor's id is a fork,
+// and a forked chain refuses the whole fold — so a scenario with more than one event per node goes
+// through here rather than hand-numbering ids nobody can check.
+fn scenario_chain(node: RoadmapNodeId, kinds: List<RoadmapEventKind>) -> List<RoadmapEvent> {
+  scenario_chain_after(node: node, kinds: kinds, after: Absent)
+}
+
+fn scenario_chain_after(node: RoadmapNodeId, kinds: List<RoadmapEventKind>, after: RoadmapEvent?) -> List<RoadmapEvent> {
+  match first(kinds) {
+    Absent => []
+    Present { value: k } => {
+      let e = scenario_event(
+        node: node,
+        parent: match after {
+          Absent => Absent
+          Present { value: p } => Present { value: roadmap_event_id(e: p) }
+        },
+        kind: k,
+      )
+      concat([e], scenario_chain_after(node: node, kinds: kinds.skip(n: 1), after: Present { value: e }))
+    }
+  }
+}
+
+// THE SCENARIO'S BYTES, out through the log's own emitter and back through the reader's own decoder —
+// the same decoder the directory walk feeds on the live route. A scenario that spells an event the wire
+// cannot carry is caught here, before any projection gets to call it a fact.
+fn scenario_envelopes(label: RoadmapNodeId, events: List<RoadmapEvent>) -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_decode_reads(
+    node: label,
+    reads: map(events, e => EventFileContent { content: roadmap_event_wire_text(env: roadmap_event_envelope(e: e)) })) {
+    EventsRead { envelopes: envs } => Present { value: envs }
+    EventsReadRefused { node: _, step: _, reason: _ } => Absent
+  }
+}
+
+// THE HISTORY THE PROJECTIONS CONSUME: the scenario's envelopes through the fold the live load uses —
+// the same causal ordering, the same replay law, the same drop of a receipt whose criteria digest does
+// not match its node or whose evidence was never delivered. A refusal is carried as the refusal, never
+// swallowed: a scenario that cannot produce a history must make its witness red, not quietly empty.
+fn scenario_history(envs: List<RoadmapEventEnvelope>) -> RoadmapAcceptanceEventHistoryLoad {
+  match roadmap_operator_acceptance_history_of(envelopes: envs) {
+    OperatorAcceptanceHistoryRefused { detail: d } =>
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: d }
+    OperatorAcceptanceHistoryLoaded { events: events, replayed: _, rows: _ } =>
+      RoadmapAcceptanceEventHistoryLoaded { events: events }
+  }
+}
+
+// WHAT THE SCENARIO RETIRES, read off the same envelopes by the same law.
+fn scenario_retired(envs: List<RoadmapEventEnvelope>) -> RoadmapRetiredNodeIds {
+  roadmap_retired_node_ids_of(envs: envs)
+}
+
+fn scenario_frontier(envs: List<RoadmapEventEnvelope>) -> FrontierSetsProjection {
+  frontier_sets_projection(history: scenario_history(envs: envs), retired: scenario_retired(envs: envs))
+}
+
+fn scenario_accepted(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match scenario_frontier(envs: envs) {
+    FrontierSetsProjected { accepted: accepted, withheld: _ } => accepted
+    FrontierSetsProjectionRefused { detail: _ } => []
+  }
+}
+
+fn scenario_withheld(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match scenario_frontier(envs: envs) {
+    FrontierSetsProjected { accepted: _, withheld: withheld } => withheld
+    FrontierSetsProjectionRefused { detail: _ } => []
+  }
+}
+
+// THE HISTORY AS A LIST, for the witnesses that inspect receipts one by one. A refused fold answers the
+// empty list here because every caller of this one asserts about members it found; the refusal still
+// reaches a witness that asks for it, through scenario_history directly.
+fn scenario_event_history(envs: List<RoadmapEventEnvelope>) -> List<RoadmapAcceptanceEvent> {
+  match scenario_history(envs: envs) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
+// THE AUTHORITY OVER A SCENARIO: the projection the live route would render, driven by the scenario's
+// own history and retirements instead of a directory walk.
+fn scenario_authority(envs: List<RoadmapEventEnvelope>) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection(history: scenario_history(envs: envs), retired: scenario_retired(envs: envs))
+}
+
+// THE CLOSING-CONTRACT PAIRS OVER A SCENARIO, in the carrier the probe counts want.
+fn scenario_pairs(envs: List<RoadmapEventEnvelope>) -> ClosingContractTaskPairsProjection {
+  ClosingContractTaskPairsProjected {
+    pairs: closing_contract_task_pairs_for_accepted(
+      accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs)),
   }
 }
 
