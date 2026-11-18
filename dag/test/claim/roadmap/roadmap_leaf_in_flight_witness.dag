@@ -760,6 +760,51 @@ fn claim_of_c(member: Int) -> RoadmapEventKind {
   claim_of(session_a(), session_b(), AtPath { path: leaf(member: member) })
 }
 
+// THE HAND-MATCHED ADMISSION, CHECKED AGAINST THE AUTHORITY INSTEAD OF CURATED. This read decides
+// locally which kinds speak about leaves — the node fold has no notion of one, so that decision cannot
+// be delegated — and review 96542 on gunb-ai/gunbc#16703 named the consequence: which of those kinds the
+// node fold HONOURS is matched by hand against roadmap_standing_step_acc's arms, so a guard added there
+// could silently desync it. The sweep closes that gap as far as it can be closed from outside: for every
+// closer kind, over every standing this module can reach, it asks the authority whether the event moved
+// the node, and wherever the authority moved nothing, this read must have closed nothing either. A new
+// absorbing guard in the node fold — the drift class — turns immediately into a witness failure, not a
+// plausible answer. (The converse is deliberately not asserted: an honoured event may legitimately close
+// nothing, when the event that would have closed the leaves is not among the kinds the ticket named.)
+fn closer_agrees_with_the_authority(prefix: List<RoadmapEventKind>, closing: RoadmapEventKind) -> Bool {
+  let before_lines = planted_log(kinds: prefix)
+  let after_lines = planted_log(kinds: concat(prefix, [closing]))
+  decoded_all(lines: before_lines) && decoded_all(lines: after_lines)
+    && (if standing_key_of(lines: before_lines) == standing_key_of(lines: after_lines) {
+        closed_count(read: roadmap_leaf_in_flight_set(node: item(), lines: before_lines))
+          == closed_count(read: roadmap_leaf_in_flight_set(node: item(), lines: after_lines))
+      } else { true })
+}
+
+fn closer_sweep_over(prefix: List<RoadmapEventKind>, closers: List<RoadmapEventKind>) -> Bool {
+  match closers.first() {
+    Absent => true
+    Present { value: closing } =>
+      closer_agrees_with_the_authority(prefix: prefix, closing: closing)
+        && closer_sweep_over(prefix: prefix, closers: closers.skip(n: 1))
+  }
+}
+
+fn decoded_all(lines: List<String>) -> Bool {
+  count(envs_of(lines: lines, out: [])) == count(lines)
+}
+
+// Four closer kinds × five standings the module can reach: no history at all, one claim, a released
+// claim, an accepted one and a retired one — the two terminal hands and the frontier included, because
+// those are exactly the standings whose admission the hand-matched table has to keep up with.
+test fn every_closer_the_authority_did_not_move_closes_nothing() -> Bool {
+  let closers = [Released, handed_back(), retired(), accepted()]
+  closer_sweep_over(prefix: [], closers: closers)
+    && closer_sweep_over(prefix: [claim_of_a(0)], closers: closers)
+    && closer_sweep_over(prefix: [claim_of_a(0), Released], closers: closers)
+    && closer_sweep_over(prefix: [claim_of_a(0), accepted()], closers: closers)
+    && closer_sweep_over(prefix: [claim_of_a(0), retired()], closers: closers)
+}
+
 fn envs_of(lines: List<String>, out: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
   match lines.first() {
     Absent => out
