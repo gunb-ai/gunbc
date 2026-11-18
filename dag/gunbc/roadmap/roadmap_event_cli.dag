@@ -55,7 +55,14 @@ import gunbc.roadmap.roadmap_event_carrier {
 // THE ONE WRITER. A session, an operator or a harness worker records a fact about a node with
 //   gunbc run --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_record_cli \
 //     --arg repo_root=<instance repo> --arg node=<id> --arg kind=claim|release|progress|block|handback \
-//     --arg text=<note or reason> --arg author=principal:<authority>/<namespace>/<subject>
+//     --arg text=<note or reason> --arg author=principal:<authority>/<namespace>/<subject> \
+//     --arg leaf_stage=<n> --arg leaf_piece=<n> --arg leaf_member=<n>
+// A claim names the LEAF it binds. Pass all three leaf args blank (or omit them) for a whole-item claim
+// -- admitted only on an item that carries NO decomposition; on an item WITH a decomposition a claim must
+// name a leaf, so pass the three as non-negative decimal integers (stage/piece/member) and the recorded
+// Claimed carries Leaf{path} whose item is pinned to <id>; a malformed or partial leaf (a blank mixed with
+// a number, a negative, a non-decimal) is refused, never defaulted. The guard in roadmap_decomposition
+// decides admissibility against the item's declared decomposition; see roadmap_claim_grain_witness.
 // and reads a node's standing with roadmap_event_standing_cli. The instance is resolved from the
 // repository root the caller stands in, exactly as the belt resolves its own, so the same command on
 // srv1 and srv2 writes to the same shared branch and reads the same events. The parent of the new
