@@ -8615,7 +8615,7 @@ fn fleet_converge_assemble_workflow(jobs: List<Job>) -> Workflow {
 
 fn fleet_converge_workflow_of() -> Outcome<Workflow> {
   match sequence_outcome(xs: fleet_converge_jobs(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }) {
-    Accepted { value: zesty_jobs } => Accepted { value: fleet_converge_assemble_workflow(jobs: zesty_jobs), diagnostics: None }
+    Accepted { value: zesty_jobs } => Accepted { value: fleet_converge_assemble_workflow(jobs: []), diagnostics: None }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
