@@ -17,7 +17,8 @@ module gunbc.roadmap.roadmap_schedule
 // occurrence list and their edges (Expansion) -- and answers, for an abstract worker count handed in as a
 // SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how many leaves are in
 // flight on each day, and the critical path. Days stay ABSTRACT (a day is a count, not a date) until the
-// calendar unit binds them; this unit writes no calendar and no claim.
+// calendar unit binds them; this unit writes no calendar and no claim. That grain is carried as a typed frontier
+// row (`schedule_day_grain_frontier`), not left as prose.
 //
 // The priority is LONGEST REMAINING PATH FIRST: every occurrence's rank is its own working days plus the longest
 // remaining path through the successors it waits nothing on; a ready occurrence with the largest rank is placed
@@ -26,7 +27,10 @@ module gunbc.roadmap.roadmap_schedule
 // stage edges already carry, and it never appears as a scheduled leaf.
 //
 // The worker count is shown as an input and NEVER becomes a fact: it is echoed back inside the answer labelled
-// `workers`, and a non-positive worker count is a typed refusal rather than a coerced value.
+// `workers`, typed as `PositiveInt` (std.integer: `Nat where gt_zero`) so a zero or negative count is not a
+// value a caller can write at a literal site; the runtime refusal below stays as the wall against the tracked
+// residue (pin.dag's frontier row `feature:refinement-evidence-at-non-literal-positions`: the positivity wall
+// holds at literal sites only, so a non-literal at a refined position still compiles).
 //
 // single_authority: occurrences, their edges, their LeafPaths and their count sources are IMPORTED from the
 // expansion; their working-day priors are read back through the SAME carrier via piece_member_days. Nothing here
@@ -39,7 +43,10 @@ module gunbc.roadmap.roadmap_schedule
 
 import std.types { Bool, Int, List, String, Map }
 import std.algebra { empty_map, map_insert, map_lookup, map_contains_key }
-import std.integer { nat_to_int }
+import std.integer { nat_to_int, PositiveInt }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import std.list { first_where }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_decomposition {
@@ -51,6 +58,9 @@ import gunbc.roadmap.roadmap_decomposition {
 // COUNT SOURCE kept visible -- an Assumed occurrence is a simulation input, and it stays marked so downstream.
 type ScheduledLeaf {
   path: LeafPath
+  // feature:roadmap-schedule-day-measure  dissolve-on: roadmap-schedule-calendar-binding binds the day grain. Days
+  // here count WORKING DAYS from the first day of the run; the tracked row carrying that fact is
+  // `schedule_day_grain_frontier` below -- this is not a calendar instant and no date is written here.
   start_day: Int
   finish_day: Int
   lane: Int
@@ -59,9 +69,11 @@ type ScheduledLeaf {
 
 // THE SCHEDULE ANSWER, the computed fields bundled so callers read them without matching the coproduct.
 type ScheduleAnswer {
-  workers: Int
+  workers: PositiveInt
   leaves: List<ScheduledLeaf>
   in_flight_per_day: List<Int>
+  // feature:roadmap-schedule-day-measure  dissolve-on: roadmap-schedule-calendar-binding binds the day grain (the
+  // same working-day count as ScheduledLeaf.start_day; see `schedule_day_grain_frontier`).
   horizon: Int
   critical_path: List<LeafPath>
   critical_length: Int
@@ -75,6 +87,23 @@ type ScheduleAnswer {
 type Schedule
   = Scheduled { answer: ScheduleAnswer }
   | NotScheduled { cause: String }
+
+// WHAT THE DAY GRAIN IS, CARRIED AS A ROW AND NOT AS PROSE. Every day quantity here is a count of WORKING DAYS
+// counted from the first day of the run -- ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and
+// .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days -- not an
+// instant on a calendar. The lane that binds that grain to dates is roadmap-schedule-calendar-binding, the next unit
+// in this chain and a consumer of exactly this answer. There is no day carrier to CONSUME: std.measure stops at
+// Minute (Nanosecond, Microsecond, Millisecond, Second, Minute), and a working day is not an SI scale of seconds, so
+// picking an existing measure row would INVENT a unit rather than consume one -- the same fact this repo carries for
+// its own day count in extdeps.pin::pin_frontier_rows (feature:pin-refresh-window-measure). So the grain is declared
+// as a tracked frontier row, the lane's standard typed carrier for unfinished modeling (as
+// gunbc.roadmap.roadmap_attempt_state_store and roadmap_attempt_state_move_rows do), and these fields become that
+// carrier's day quantity when it lands. Consume-never-fork.
+data schedule_day_grain_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_schedule", decl_name: "ScheduledLeaf"),
+  reason: "start_day and finish_day are bare Int counts of working days, not a day-typed magnitude; ScheduleAnswer.horizon and .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days, carry the same grain",
+  dissolution: unbound_dissolution(description: "feature:roadmap-schedule-day-measure -- a working-day carrier exists to consume (std.measure stops at Minute: Nanosecond, Microsecond, Millisecond, Second, Minute -- there is no Day, and a working day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); roadmap-schedule-calendar-binding binds the day grain to a calendar, and then ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and .critical_length become that carrier and this row deletes. Consume-never-fork"),
+)
 
 // An occurrence reduced for scheduling: its carrier LeafPath, the string key the maps are keyed by, its working-day
 // prior read back through the carrier, and its count source (Declared or Assumed) kept for the answer.
@@ -315,12 +344,13 @@ fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
 // located: the expansion was itself refused; the worker count is not a positive count; an occurrence carries no
 // working-day prior on the carrier it is read against; the occurrence graph has a cycle; the run leaves occurrences
 // unplaced (a partial schedule is never returned as a complete one).
-fn schedule(d: WorkDecomposition, e: Expansion, workers: Int) -> Schedule {
+fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedule {
+  let worker_count: Int = nat_to_int(n: workers)
   match e {
     Refused { cause: _ } =>
       NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the expansion it was handed refused (the decomposition is not well-formed); a schedule is computed only over an admitted expansion" }
     Expanded { occurrences: occs, edges: edges } => {
-      if workers <= 0 {
+      if worker_count <= 0 {
         NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the worker count is a SIMULATION INPUT and must be a positive count; 0 or fewer is never a fact about who works" }
       } else {
         // EVERY occurrence's working-day prior is read back through its OWN carrier path. An occurrence whose path
@@ -352,10 +382,10 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: Int) -> Schedule {
             Cyclic => NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the occurrence dependency graph has a cycle; no list schedule terminates on it" }
             Ranked { rank: rank } => {
               let lane_seed: Map<Int, Int> = empty_map()
-              let lanes0 = fold(range_from(0, workers), init: lane_seed, f: fn(acc, l) { map_insert(m: acc, key: l, value: 0) })
+              let lanes0 = fold(range_from(0, worker_count), init: lane_seed, f: fn(acc, l) { map_insert(m: acc, key: l, value: 0) })
               match run(
                 state: RunState { lanes: lanes0, finish: empty_map(), placed: [], remaining: nodes },
-                succ: adj.succ, pred: adj.pred, rank: rank, workers: workers
+                succ: adj.succ, pred: adj.pred, rank: rank, workers: worker_count
               ) {
                 // A run that could not place everything refuses with the occurrences it could not place; it is never
                 // wrapped as a complete `Scheduled` answer.
@@ -401,7 +431,7 @@ type ScheduleRead
 
 // THE ONE READ CONSUMERS USE (roadmap-schedule-bottlenecks-and-offer, then roadmap-work-item-projection): hand it the
 // decomposition, its expansion, the worker count, and whatever you last cached; it recomputes and answers.
-fn schedule_read(d: WorkDecomposition, e: Expansion, workers: Int, cached: Schedule) -> ScheduleRead {
+fn schedule_read(d: WorkDecomposition, e: Expansion, workers: PositiveInt, cached: Schedule) -> ScheduleRead {
   match schedule(d: d, e: e, workers: workers) {
     NotScheduled { cause: cause } => ReadRefused { cause: cause }
     Scheduled { answer: fresh } => match cached {

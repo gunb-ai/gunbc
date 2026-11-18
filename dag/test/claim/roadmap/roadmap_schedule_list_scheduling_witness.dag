@@ -14,6 +14,7 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 // run.
 
 import std.types { Bool, Int, List, String }
+import std.integer { nat_to_int }
 import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
@@ -153,10 +154,14 @@ test fn an_assumed_occurrence_is_scheduled_and_its_source_stays_visible() -> Boo
   }
 }
 
-// THE TWO REFUSALS (fail_closed), as the ticket's handback names them. (1) The worker count is a SIMULATION INPUT
-// and never a fact: a worker count that is not positive is refused, not coerced. (2) A schedule is computed only
-// over an ADMITTED expansion: when the expansion itself refused, the scheduler refuses too.
-test fn a_nonpositive_worker_count_and_a_refused_expansion_are_each_refused() -> Bool {
+// THE REFUSALS (fail_closed), as the ticket's handback names them. (1) A schedule is computed only over an ADMITTED
+// expansion: when the expansion itself refused, the scheduler refuses too. (2) The WORKER COUNT is no longer a runtime
+// refusal at all: it is typed `PositiveInt` (std.integer: `Nat where gt_zero`), so a zero or negative count is not a
+// value this witness can write -- a literal zero in that parameter position is refused before any claim runs (the
+// probe run recorded in this PR is that evidence). What IS executed here is the rest of the contract: the refusal over
+// a refused expansion, and a positive count echoed back inside the answer as the simulation input it is, never folded
+// into a derived fact.
+test fn a_refused_expansion_refuses_and_a_positive_worker_count_is_echoed_as_an_input() -> Bool {
   let chain = decomposition(node: "ref.chain", waits_on: [], stages: [
     [leaf(label: "first", days: 2)],
     [leaf(label: "second", days: 3)],
@@ -167,11 +172,13 @@ test fn a_nonpositive_worker_count_and_a_refused_expansion_are_each_refused() ->
     [leaf(label: "first", days: 2)],
   ])
   let refused_expansion = expand_decomposition(d: ill_formed, findings_count: 1)
-  // (1) zero and negative worker counts refuse; a positive count schedules.
-  !schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 0))
-    && !schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: -3))
-    && schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 1))
-  // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion too.
+  // (1) a positive worker count schedules, and the count is ECHOED back inside the answer as the input it is.
+  schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 1))
+    && (match schedule_answer(s: schedule(d: chain, e: admitted, workers: 4)) {
+         Absent => false
+         Present { value: a } => nat_to_int(n: a.workers) == 4 && a.workers == 4
+       })
+  // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion.
     && !schedule_is_scheduled(s: schedule(d: ill_formed, e: refused_expansion, workers: 2))
 }
 
