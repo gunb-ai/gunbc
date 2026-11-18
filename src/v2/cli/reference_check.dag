@@ -328,7 +328,7 @@ fn run_step_target_extract_from_load(load: LiveContextLoad, callers: List<Refere
       Absent =>
         RunStepTargetExtraction {
           sites: acc.sites,
-          lines: list_snoc_item(xs: acc.lines, item: concat(c.file, ": RunStepTargetModuleAbsent: the module spelling ", gunbc_run_step_target_constructor_name, " did not normalize into the resolution roots, so its run-step target was not checked"))
+          lines: list_snoc_item(xs: acc.lines, item: concat(c.file, " (in ", c.caller, "): RunStepTargetModuleAbsent: the module spelling ", gunbc_run_step_target_constructor_name, " did not normalize into the resolution roots, so its run-step target was not checked"))
         }
     }
   })
