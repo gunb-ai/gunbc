@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_decomposition
 
 import std.types { String, Int, Bool, List }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.nat { Nat }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
@@ -85,16 +86,18 @@ type WorkDecomposition {
 // THE LEAF PATH: how this carrier spells one leaf of one item -- the item, the stage index, the piece
 // index, and the member index (0 for a plain Leaf, a position within a Family at its DECLARED count).
 // This type together with `decomposition_has_leaf_path` below is THE authority for "is this a leaf of
-// this item": nothing else defines a leaf path. It carries no schedule -- no start, finish, day, edge
-// or lane -- because those are computed at the read and never stored
+// this item": nothing else defines a leaf path. The three indexes are `Nat`, so a negative index is
+// unwritable rather than caught at runtime (gunbc.design_argument::guarantee_ladder -- making the wrong
+// state unwritable beats catching it). It carries no schedule -- no start, finish, day, edge or lane --
+// because those are computed at the read and never stored
 // (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read); the ordered EXPANSION of a
 // decomposition into occurrences over this same type is the schedule lane's work, built on this type,
 // not a second definition of it.
 type LeafPath {
   item: RoadmapNodeId
-  stage: Int
-  piece: Int
-  member: Int
+  stage: Nat
+  piece: Nat
+  member: Nat
 }
 
 // Same working-day prior unit as WorkPiece.days: leaf_days_max is the leaf-rule ceiling and
@@ -310,12 +313,14 @@ fn decomposition_for(node: RoadmapNodeId) -> List<WorkDecomposition> {
 
 // THE ONE leaf-path check: does the item's decomposition hold a leaf at this path, at its declared
 // count? A plain Leaf is one occurrence at member 0. A Family admits a member only when its population
-// is PRODUCED or READ with a declared count and the member index lies within it -- a FindingsOf family
-// carries no count at all (its members are produced findings), so no member index names one and the
-// path refuses. A Join is zero work, a Decision an operator choice, and a Composite a container
-// addressed deeper than this path reaches: none is a leaf a worker claims. An out-of-range or negative
-// index has no element and refuses; an item without exactly one decomposition refuses. Consumers -- the
-// Claimed append route -- call THIS rather than re-deriving the spelling (single_authority).
+// is PRODUCED or READ with a declared count and the member index lies within it. A FindingsOf family
+// carries no count of its own -- its members are findings the probe produces -- so a member index names
+// a leaf there ONLY once that population is produced or read; until then the path resolves to no leaf
+// and refuses. A Join is zero work, a Decision an operator choice, and a Composite a container addressed
+// deeper than this path reaches: none is a leaf a worker claims. An out-of-range index has no element and
+// refuses, and a negative index is unwritable in `LeafPath` rather than rejected here; an item without
+// exactly one decomposition refuses. Consumers -- the Claimed append route -- call THIS rather than
+// re-deriving the spelling (single_authority: import the row, do not copy it).
 fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
   let ds = decomposition_for(node: path.item)
   if count(ds) != 1 {
@@ -333,7 +338,7 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
               if population_is_findings(p: population) {
                 false
               } else {
-                path.member >= 0 && path.member < population_members(p: population)
+                path.member < population_members(p: population)
               }
             Join { label } => false
             Decision { label, alternatives } => false
