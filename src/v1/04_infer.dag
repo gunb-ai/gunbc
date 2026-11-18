@@ -5864,6 +5864,23 @@ fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferS
 // beside the product half, so the fn body, the record field, the let and the data initializer and the
 // direct call argument are judged by the ONE relation -- not by a second relation keyed on carriers,
 // which is the fork that row exists to prevent.
+// THE DECLARED SIDE READS BOTH AUTHORITIES, exactly as the produced side does. `expected_type_head_exposure`
+// unfolds a kernel whose OWN declaration is a structured type, and std declares `type Bool = True | False`
+// (dag/std/types.dag:138), so the exposure view alone never calls a `Bool` formal a kernel scalar and a
+// carrier written under `-> Bool` walked past this arm unjudged -- the pair fell to the silent tail, which
+// is how `Outcome<Bool>` reached a `Bool` record field in the corpus and died in a primitive cast. `Bool` is
+// the kernel whose exposure view contradicts its name; `std.algebra` `is_kernel_type` is the authority the
+// produced side already consults for the same reason, and a formal cannot be judged by an authority the
+// actual is judged by without the other half being read the same way. This is NOT a Bool-specific carve-out:
+// the name authority decides, so every kernel in `std.algebra` `kernel_type_set` is treated alike, and the
+// produced-side guards below still decide the pair -- a real `Bool` value names a kernel and is excluded, so
+// no `if` condition is refused here (that over-refusal is what pinned the produced-side guard, and the
+// witness pins both readings as controls).
+fn declared_head_is_kernel_scalar_by_name(declared: Node, scope: InferScope) -> Bool {
+  is_kernel_type(name: qualified_last_segment(name: authored_name_at(
+    source_indices: scope.type_env.source_indices, node: declared)))
+}
+
 fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -5871,7 +5888,8 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
   let declared_last = qualified_last_segment(name: declared_name)
   let produced_last = qualified_last_segment(name: produced_name)
   let produced_exposure = expected_type_head_exposure(formal: produced, scope: scope)
-  if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope) {
+  if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+      && !declared_head_is_kernel_scalar_by_name(declared: declared, scope: scope) {
     false
   } else if produced_name == "" || is_kernel_type(name: produced_last) {
     // TWO CASES THIS ARM DOES NOT OWN, and the Bool false positive is what pinned them down. A produced

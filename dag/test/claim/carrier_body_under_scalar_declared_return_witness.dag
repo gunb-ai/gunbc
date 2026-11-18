@@ -168,3 +168,28 @@ test fn an_epoch_ms_at_an_epoch_ms_parameter_is_clean() -> Bool {
 test fn the_harness_refuses_a_string_at_an_int_declared_return() -> Bool {
   blocking_of_class(source: string_at_int_return_source, wanted: "TypeMismatch") >= 1
 }
+
+// THE DECLARED SIDE'S OTHER AUTHORITY, pinned. std declares `type Bool = True | False`
+// (dag/std/types.dag:138), so `expected_type_head_exposure` unfolds a `Bool` formal to a coproduct and the
+// exposure route alone never reads it as a kernel scalar; the arm therefore also asks the name authority
+// `std.algebra` `is_kernel_type`, the same one the produced side consults. These three REDs are that half:
+// the SAME carrier, at the SAME three positions, under a declared `Bool`. Beside them `a_bool_if_condition_is_clean`
+// and `a_bool_value_at_bool_positions_is_clean` are the discrimination -- a Bool VALUE at a Bool position stays
+// clean, so the name authority cannot be read as a blanket refusal of the kernel's own values.
+test fn a_carrier_at_a_bool_declared_return_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_bool_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_carrier_at_a_bool_declared_parameter_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_bool_param_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_carrier_at_a_bool_declared_record_field_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_bool_record_field_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+data carrier_at_bool_return_source: String = "module probe_carrier_at_bool_return\nimport std.types { Bool }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn probe() -> Bool { outcome_accepted(value: true) }\n"
+
+data carrier_at_bool_param_source: String = "module probe_carrier_at_bool_param\nimport std.types { Bool, String }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn take(flag: Bool) -> String { \"ok\" }\nfn probe() -> String { take(flag: outcome_accepted(value: true)) }\n"
+
+data carrier_at_bool_record_field_source: String = "module probe_carrier_at_bool_record_field\nimport std.types { Bool }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\ntype Row { flag: Bool }\nfn probe() -> Row { Row { flag: outcome_accepted(value: true) } }\n"
