@@ -554,7 +554,7 @@ fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, functio
     DeclarationRefFieldAbsent { reference: _ } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetFieldAbsent: a run-step target names a whole declaration, not a field") }
     DeclarationRefContested { reference: _, claimants: claimants } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetContested: the entry is contested between ", join(sep: ", ", xs: claimants)) }
+      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetContested: the entry is contested between ", join(claimants, ", ")) }
   }
 }
 
@@ -570,12 +570,14 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 // gunbc.ci.ci_run_step_target), and both site kinds resolve against the SAME native context.
 fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_callers: List<ReferenceWalkCaller>) -> ReferenceVerdicts {
   let target_sites = run_step_target_ast_sites(env: env, callers: target_callers)
-  let target_seed = ReferenceVerdicts { resolved: 0, targets: length(xs: target_sites), lines: [] }
   let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, targets: length(xs: target_sites), lines: [] }, cons: fn(acc, s) {
     if reference_site_supported(site: s) { acc } else {
       ReferenceVerdicts { resolved: acc.resolved, targets: acc.targets, lines: list_snoc_item(xs: acc.lines, item: concat(site_head(site: s), ": UnsupportedTarget: type-parameter references are not resolved by this version")) }
     }
   })
+  // The run-step-target fold seeds from the unsupported-reference verdicts so their located UnsupportedTarget
+  // lines are carried into the report, and records the target count once (the push preserves it across both folds).
+  let target_seed = ReferenceVerdicts { resolved: unsupported.resolved, targets: length(xs: target_sites), lines: unsupported.lines }
   let supported = supported_sites(sites: sites)
   let module_set = fold_list(xs: map_support_keys(m: run_step_target_cited_module_names(target_sites: target_sites)), empty: cited_module_names(sites: supported), cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
   let pending = map_support_keys(m: module_set)
