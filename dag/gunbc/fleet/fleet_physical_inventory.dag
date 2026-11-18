@@ -33,6 +33,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
@@ -388,20 +389,18 @@ data gpu_board_06_asset: PhysicalAsset = PhysicalAsset {
 // srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 by the session over ssh (nvidia-smi,
 // driver 595.91.07; all four report name "NVIDIA A2", 15356 MiB, power limit 35 W with min 35 / max 60 /
 // default 60 W, current cap 35 W). The board model is cited to extdeps.gpu.nvidia_a2; the per-card
-// binding (UUID, PCI function, power-limit range) WAS the typed row in gunbc.fleet.gpu_device_observation,
-// not restated there. SINCE THE 2026-11-17 REMOVAL THERE IS NO SUCH ROW ANY MORE, so the reading is kept
-// here, which is what gunbc.fleet.gpu_device_observation's STANDING note names as the home of a retired
-// reading ("the earlier reading stays in the inventory annotation as history"). The four cards' last read
-// while seated, per card, transcribed verbatim from those retired rows -- min 35 / current 35 / max 60 /
-// default 60 W, control NvidiaSmiPowerLimit, read_on "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver
-// 595.91.07)" for all four; the cards are gone so these are history, not current state:
-//   gpu_board_07 (serial 1321522057289)  GPU-c7080fc0-73f7-5c2d-0412-c5041edd95f4  pci 0000:01:00.0  PCIE5
-//   gpu_board_08 (serial 1321522058306)  GPU-d6551356-b835-59e5-8ea9-542098216e6f  pci 0001:01:00.0  PCIE4
-//   gpu_board_09 (serial 1321522036087)  GPU-63e42447-95fe-67cb-afde-3e2e80e4e389  pci 0004:01:00.0  PCIE7
-//   gpu_board_10 (serial 1321522057766)  GPU-b44c2926-091a-b3ac-3d11-bda9613c67fb  pci 0004:02:00.0  PCIE6
-// The settable range itself (35 floor, 60 default, 60 ceiling) is ALSO carried independently of these cards
-// in extdeps.gpu.nvidia_a2, where it is kept distinct from the product page's 40-60 W TDP envelope; losing
-// these rows does not lose that figure, and a future A2 read re-establishes the per-card binding. Physical slot (dmidecode -t 9 designation whose bus address is the card's upstream
+// binding (UUID, PCI function, power-limit range) is a typed row in gunbc.fleet.gpu_device_observation and is
+// NOT restated here. The cards were physically removed from butch on 2026-11-17 to be sold, so their four rows
+// left the current-state list -- but they were not deleted and not demoted into this comment: a dated reading
+// is a receipt and receipts keep a typed carrier (gunbc.design_argument::source_annotations -- "Nothing may
+// depend on a comment for correctness", an annotation "must not restate what the declaration says", and "the
+// project reserves the right to delete any comment at any time"). They are held, field for field, in
+// @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations), which no current-state consumer folds;
+// the claim witness_the_retired_butch_a2_readings_survive_typed_in_no_current_state_list is what keeps that
+// list intact. The settable range (35 floor, 60 default, 60 ceiling) is ALSO carried independently of these
+// cards in extdeps.gpu.nvidia_a2, kept distinct from the product page's 40-60 W TDP envelope, so a future A2
+// read has a product-side floor to check itself against even after these cards are gone. Physical slot
+// (dmidecode -t 9 designation whose bus address is the card's upstream
 // Altra root port): gpu-board-07 in PCIE5, gpu-board-08 in PCIE4, gpu-board-09 in PCIE7, gpu-board-10 in
 // PCIE6. These four slots are exactly product.printed_chassis.card_installation a2_altra_installation's
 // "A2 row on the ALTRAD8UD" (PCIE4/5/6/7) -- that installation names the slots the duct is designed for
@@ -425,24 +424,33 @@ data gpu_board_06_asset: PhysicalAsset = PhysicalAsset {
 // gunbc.fleet.fleet_asset_identity keeps them — a card moves between hosts, and where it sits is only ever
 // a containment row here (fleet_asset_identity's own rule, fleet_asset_identity.dag:35-36).
 //
-// WHERE THE REMOVAL IS RECORDED, AND THE HOLE THAT REMAINS. The inventory model's home for a card that is
-// owned but not in a host is the ABSENCE of its containment row, stated at the list below ("Only installed
-// cards are contained; an owned card with no row here is in inventory, not in a host"). The dated fact and
-// its citation are carried by THIS comment, because there is nowhere else to carry them: PhysicalAsset is
-// { identity, catalog, physical_serial, procurement } and has no condition, standing, or disposition field
-// to set. Nor does product.inventory's lot-keyed InventoryEvent (QuantitySold / QuantityDisposed /
-// QuantityRemoved, product/inventory.dag:806) fit these four boards: each is recorded `procurement: none`,
-// so naming a lot for them would attribute the sale to a purchase nobody observed -- the same refusal
-// gunbc.spark.dgx_procurement makes, which keeps its sold DGX sparks as typed `DgxSparkDisposedUnit` rows
-// naming router_label + former_slot and a `DgxSparkAssetSold { decision: OperatorAllocation }` citing the
-// operator decision (dgx_procurement.dag:145,166) instead of faking an inventory QuantitySold.
-// PROPOSED HOME, for a reviewer or a later dispatch to rule on -- NOT adopted here: a typed asset-disposition
-// row in THIS module keyed by PhysicalAssetIdentity, mirroring DgxSparkDisposedUnit's shape (asset, former
-// host, disposition RemovedFromHost/PendingSale/Sold, dated operator citation). It is not authored here
-// because a new standing needs a ruling and a consumer before it can be trusted to stay honest (DESIGN.md
-// consumption: a declared fact with no consumer drifts from the authority that must own it). Until then the
-// four boards sit as owned identities with no containment edge, which is what the model reads, correctly,
-// as held and unseated.
+// WHERE THE REMOVAL IS RECORDED. Two carriers, and only one of them is prose. The machine-readable half is the
+// typed row below, butch_a2s_removed_pending_sale: a DissolutionCondition is what this corpus already uses to
+// record a dated, operator-cited state that awaits a human act, and it is a typed carrier rather than a comment,
+// which is what gunbc.design_argument::source_annotations demands of a receipt. The physical fact itself is
+// carried by the model's own mechanism: the inventory's home for a card that is owned but not in a host is the
+// ABSENCE of its containment row, stated at the list below ("Only installed cards are contained; an owned card
+// with no row here is in inventory, not in a host"), and deleting those four rows is itself machine-visible.
+// What is left in prose is only irreducible rationale -- why the construction has this shape -- which is what an
+// annotation is permitted to hold.
+//
+// THE HOLE THAT REMAINS, stated rather than papered over. There is no disposal STANDING to set on these boards:
+// PhysicalAsset is { identity, catalog, physical_serial, procurement } and has no condition, standing, or
+// disposition field, and product.inventory's lot-keyed InventoryEvent (QuantitySold / QuantityDisposed /
+// QuantityRemoved) cannot carry them -- each is recorded `procurement: none`, so naming a lot would attribute
+// the sale to a purchase nobody observed, the same refusal gunbc.spark.dgx_procurement makes when it keeps sold
+// DGX sparks as typed DgxSparkDisposedUnit rows with an OperatorAllocation citing the operator decision instead
+// of faking an inventory QuantitySold. PROPOSED HOME for a reviewer or a later dispatch to rule on, NOT adopted
+// here because the brief for this change says to propose rather than invent: a typed asset-disposition row in
+// THIS module keyed by PhysicalAssetIdentity, mirroring DgxSparkDisposedUnit's shape (asset, former host,
+// disposition RemovedFromHost / PendingSale / Sold, dated operator citation). A new standing needs a ruling and
+// a consumer before it can be trusted to stay honest (gunbc.design_argument::consumption). Until it is ruled on,
+// the four boards sit as owned identities with no containment edge, which is what the model reads, correctly, as
+// held and unseated -- and the pending-sale state is carried by the typed row below, not by this comment.
+data butch_a2s_removed_pending_sale: DissolutionCondition = unbound_dissolution(
+  description: "The four NVIDIA A2 boards gpu_board_07, gpu_board_08, gpu_board_09 and gpu_board_10 were physically removed from butch (operator_host_srv14) on 2026-11-17 and are pending sale, per the operator's report of 2026-11-17 ('ALL FOUR NVIDIA A2 cards have been physically removed from butch and will be sold; butch is CI only, no serving'), corroborated by the operator's session read at 2026-11-16T22:36Z (strata-pool@a/@b inactive, a2-power-cap.service FAILED, no NVIDIA driver loaded). They remain owned assets of the operator with no containment edge in any host, and their last seated readings are held typed in gunbc.fleet.gpu_device_observation::retired_gpu_device_observations. DISSOLVES -- i.e. these four asset rows and their identities in gunbc.fleet.fleet_asset_identity leave the fleet -- only on the completed sale of the cards, which is an operator-owned act to be witnessed; until it is, they are inventory, not hardware in a box, and neither their absence from installed_gpu_board_containments nor their presence in gpu_board_assets may be 'tidied up' by deleting the other." as NonEmptyStr
+)
+
 data gpu_board_07_asset: PhysicalAsset = PhysicalAsset {
   identity: gpu_board_07,
   catalog: DeclarationRef {
