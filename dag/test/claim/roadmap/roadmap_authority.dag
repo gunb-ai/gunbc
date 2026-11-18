@@ -69,6 +69,8 @@ import gunbc.roadmap.roadmap_execution_contract {
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
 import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  RoadmapAuthorityProjection,
+  FrontierSetsProjection,
   roadmap_retired_node_ids_load,
   RoadmapAcceptanceEventHistoryLoad,
   closing_contract_task_pairs_for_accepted,
@@ -88,6 +90,9 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventId,
   EventPrincipalAuthenticated,
   AcceptancePrEvidence,
+  AcceptanceRecordedEvent,
+  AcceptanceRevokedEvent,
+  Retired,
   EarnedByPullRequest,
   roadmap_event_envelope,
   roadmap_event_id,
@@ -324,11 +329,11 @@ fn scenario_evidence() -> AcceptancePrEvidence {
 }
 
 fn scenario_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventKind {
-  RoadmapEventKind.AcceptanceRecordedEvent { receipt: scenario_receipt(id: id), evidence: scenario_evidence() }
+  AcceptanceRecordedEvent { receipt: scenario_receipt(id: id), evidence: scenario_evidence() }
 }
 
 fn scenario_revocation_kind(id: RoadmapNodeId, disposition: AcceptanceRevocationDisposition) -> RoadmapEventKind {
-  RoadmapEventKind.AcceptanceRevokedEvent {
+  AcceptanceRevokedEvent {
     receipt: scenario_receipt(id: id),
     disposition: disposition,
     revoked_by: "operator" as NonEmptyStr,
@@ -638,7 +643,7 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
 // ─── THE COMMITTED FIXTURE ───────────────────────────────────────────────────
 // A SMALL LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
 // through the floor's checkout carve-out rather than being mocked. Its bytes are THIS table rendered by
-// the log's own emitter: gunbc.roadmap.roadmap_authority_fixture_gen writes them, and
+// the log's own emitter: roadmap_authority_fixture_emit (this file) writes them, and
 // witness_acceptance_receipts_are_valid_and_unique re-encodes every file and reddens on a byte of drift,
 // so the fixture cannot rot away from the encoder it was generated with.
 //
@@ -677,7 +682,7 @@ fn roadmap_authority_fixture_files() -> List<RoadmapAuthorityFixtureFile> {
   let ended = scenario_event(
     node: superseded_row,
     parent: Present { value: roadmap_event_id(e: taken_back) },
-    kind: RoadmapEventKind.Retired { reason: "the scenario closed the node" as NonEmptyStr },
+    kind: Retired { reason: "the scenario closed the node" as NonEmptyStr },
   )
   // The absent row is given a digest copied from a DECLARED row, so the only thing wrong with it is the
   // thing under test: the authority does not declare the node the receipt is about.
@@ -685,7 +690,7 @@ fn roadmap_authority_fixture_files() -> List<RoadmapAuthorityFixtureFile> {
   let stranger = scenario_event(
     node: absent_row,
     parent: Absent,
-    kind: RoadmapEventKind.AcceptanceRecordedEvent {
+    kind: AcceptanceRecordedEvent {
       receipt: RoadmapAcceptanceReceipt {
         node: absent_row,
         criteria_digest: borrowed.criteria_digest,
