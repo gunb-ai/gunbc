@@ -1,5 +1,18 @@
 module gunbc.roadmap.roadmap_schedule
 
+// WHY THIS UNIT IS INSIDE THE DESIGN (reconciled with the scheduling cut). gunbc.design_ruling::planning_scheduling_is_cut
+// (2026-11-11) cut the STORED schedule and the daily workspace's own consumption of it -- "what to work on next is the
+// operator's choice." gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read (2026-11-18, and on main)
+// NARROWS that cut in the operator's words -- "we cut the scheduling and are redoing it now - but yes, you should
+// compute it/cache it/re-read it - the planning we did now is relevant": a schedule ANSWER computed at the read --
+// start and finish per leaf, the lanes, the critical path and the next-leaf offer -- is NOT a schedule type, a
+// time-period record, a forecast state or a synchronized today list, because it is recomputed on every read and no
+// cache of it is ever authoritative. What follows is exactly such an answer: computed, never stored as a schedule,
+// recomputed on read (see `schedule_read`). Its named consumers decide from its day and lane fields: the
+// bottleneck-and-offer row (which leaf to offer next among those the readiness predicate already admits, bounded by
+// BeltCapacity) and the roadmap-work-item-projection that renders the planning page. Days here are ABSTRACT until the
+// calendar-binding unit binds them; nothing in this file writes a date, a stored schedule, or a today list.
+
 // THE LIST SCHEDULER (roadmap-schedule-list-scheduling). It reads the leaf-expansion's OUTPUT -- the flat
 // occurrence list and their edges (Expansion) -- and answers, for an abstract worker count handed in as a
 // SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how many leaves are in
@@ -358,24 +371,13 @@ fn schedule_answer(s: Schedule) -> ScheduleAnswer? {
 }
 
 // The placed leaf for a carrier path, if it was scheduled -- the witness reads a leaf's day and lane this way,
-// through the same path key the schedule is keyed by.
+// through the single path_key the schedule is keyed by (both sides go through path_key; no second key format).
 fn scheduled_at(a: ScheduleAnswer, path: LeafPath) -> ScheduledLeaf? {
   first_where(a.leaves, l => path_key(p: l.path) == path_key(p: path))
 }
 
-// The schedule's path key spelled from its parts, so a reader locates a placed leaf (or names a critical-path
-// entry) WITHOUT rebuilding a carrier LeafPath. This is the SAME key path_key derives -- one format, not a second
-// authority over path identity.
-fn leaf_key(node: String, stage: Int, piece: Int, member: Int) -> String {
-  join([node, "#", to_string(stage), "#", to_string(piece), "#", to_string(member)], "")
-}
-
-fn scheduled_by_index(a: ScheduleAnswer, node: String, stage: Int, piece: Int, member: Int) -> ScheduledLeaf? {
-  let want = leaf_key(node: node, stage: stage, piece: piece, member: member)
-  first_where(a.leaves, l => path_key(p: l.path) == want)
-}
-
-// The critical path spelled as path keys, in order from the start of the longest remaining path.
+// The critical path spelled as path keys, in order from the start of the longest remaining path -- each key is the
+// single path_key applied to the path, never a restated format.
 fn critical_path_keys(a: ScheduleAnswer) -> List<String> {
   map(a.critical_path, p => path_key(p: p))
 }

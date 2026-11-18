@@ -6,20 +6,29 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 // count handed in as a SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how
 // many leaves are in flight each day, and the critical path. Priority is longest-remaining-path-first; a zero-day
 // Join is placed without a worker (the expansion emits no occurrence for it, so it consumes no lane). The answer is
-// COMPUTED; a cache may be passed to a read but is never authoritative -- the read recomputes it.
+// COMPUTED (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read narrows the scheduling cut to
+// allow exactly such a computed, re-read answer); a cache may be passed to a read but is never authoritative.
 //
 // THE RED CONTROL, named the way the unit names its own: a two-leaf CHAIN under ONE worker finishes at the SUM of
 // the two days; two INDEPENDENT leaves under TWO workers finish at the MAX of the two. Both answers come from one
 // run.
 
 import std.types { Bool, Int, List, String }
+import gunbc.roadmap.roadmap_model { LeafPath }
+import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   decomposition, leaf, reading_family, findings_family, waits, expand_decomposition,
 }
 import gunbc.roadmap.roadmap_schedule {
   schedule, schedule_read, ScheduleAnswer,
-  schedule_is_scheduled, schedule_answer, scheduled_by_index, critical_path_keys,
+  schedule_is_scheduled, schedule_answer, scheduled_at, critical_path_keys, path_key,
   scheduled_leaf_count, as_cache, occurrence_count_is_assumed,
+}
+
+// A carrier LeafPath for a decomposition node's (stage, piece, member), built from the SAME LeafPath the carrier
+// emits (item via nid, indexes as Nat) -- located in a schedule only through path_key, never a hand-written key.
+fn p_at(node: String, stage: Nat, piece: Nat, member: Nat) -> LeafPath {
+  LeafPath { item: nid(s: node), stage: stage, piece: piece, member: member }
 }
 
 // THE RED CONTROL. A two-leaf chain under one worker finishes at the SUM of its days; two independent leaves under
@@ -41,23 +50,23 @@ test fn a_chain_under_one_worker_finishes_at_the_sum_and_two_independent_leaves_
       Present { value: p } =>
         // SUM: the chain serializes on its single lane (2 + 3 = 5), and each leaf starts where the last finished.
         c.horizon == 2 + 3
-        && (match scheduled_by_index(a: c, node: "rc.chain", stage: 0, piece: 0, member: 0) {
+        && (match scheduled_at(a: c, path: p_at("rc.chain", 0, 0, 0)) {
              Present { value: l } => l.start_day == 0 && l.finish_day == 2 && l.lane == 0
              Absent => false
            })
-        && (match scheduled_by_index(a: c, node: "rc.chain", stage: 1, piece: 0, member: 0) {
+        && (match scheduled_at(a: c, path: p_at("rc.chain", 1, 0, 0)) {
              Present { value: l } => l.start_day == 2 && l.finish_day == 5 && l.lane == 0
              Absent => false
            })
-        && join(critical_path_keys(a: c), ",") == "rc.chain#0#0#0,rc.chain#1#0#0"
+        && join(critical_path_keys(a: c), ",") == join([path_key(p: p_at("rc.chain", 0, 0, 0)), path_key(p: p_at("rc.chain", 1, 0, 0))], ",")
         && c.critical_length == 5
         // MAX: the two independent leaves run side by side (max(2, 5) = 5), each starting on day 0, on two lanes.
         && p.horizon == 5
-        && (match scheduled_by_index(a: p, node: "rc.par", stage: 0, piece: 0, member: 0) {
+        && (match scheduled_at(a: p, path: p_at("rc.par", 0, 0, 0)) {
              Present { value: l } => l.start_day == 0 && l.finish_day == 2 && l.lane == 1
              Absent => false
            })
-        && (match scheduled_by_index(a: p, node: "rc.par", stage: 0, piece: 1, member: 0) {
+        && (match scheduled_at(a: p, path: p_at("rc.par", 0, 1, 0)) {
              Present { value: l } => l.start_day == 0 && l.finish_day == 5 && l.lane == 0
              Absent => false
            })
@@ -80,6 +89,7 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
   let e = expand_decomposition(d: slice, findings_count: 1)
   let one = schedule(d: slice, e: e, workers: 1)
   let four = schedule(d: slice, e: e, workers: 4)
+  let crit = join([path_key(p: p_at("slice", 0, 2, 0)), path_key(p: p_at("slice", 1, 1, 0))], ",")
   match schedule_answer(s: one) {
     Absent => false
     Present { value: o } => match schedule_answer(s: four) {
@@ -89,7 +99,7 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
         // family members are DECLARED occurrences kept visible in the answer.
         scheduled_leaf_count(a: o) == 6
         && scheduled_leaf_count(a: f) == 6
-        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 2, member: 0) {
+        && (match scheduled_at(a: f, path: p_at("slice", 0, 2, 0)) {
              Present { value: l } => !occurrence_count_is_assumed(c: l.count_source)
              Absent => false
            })
@@ -100,23 +110,23 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
         // at four workers: stage 0 starts together on day 0, the tails wait for the barrier (day 4), horizon = 6.
         && f.horizon == 6
         && count(f.in_flight_per_day) == f.horizon
-        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 0, member: 0) {
+        && (match scheduled_at(a: f, path: p_at("slice", 0, 0, 0)) {
              Present { value: l } => l.start_day == 0
              Absent => false
            })
-        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 2, member: 1) {
+        && (match scheduled_at(a: f, path: p_at("slice", 0, 2, 1)) {
              Present { value: l } => l.start_day == 0
              Absent => false
            })
-        && (match scheduled_by_index(a: f, node: "slice", stage: 1, piece: 1, member: 0) {
+        && (match scheduled_at(a: f, path: p_at("slice", 1, 1, 0)) {
              Present { value: l } => l.start_day == 4 && l.finish_day == 6
              Absent => false
            })
         // the critical path is the same under both worker counts: a 4-day family member then the 2-day tail B.
         && o.critical_length == 6
         && f.critical_length == 6
-        && join(critical_path_keys(a: o), ",") == "slice#0#2#0,slice#1#1#0"
-        && join(critical_path_keys(a: f), ",") == "slice#0#2#0,slice#1#1#0"
+        && join(critical_path_keys(a: o), ",") == crit
+        && join(critical_path_keys(a: f), ",") == crit
     }
   }
 }
@@ -134,10 +144,9 @@ test fn an_assumed_occurrence_is_scheduled_and_its_source_stays_visible() -> Boo
     Absent => false
     Present { value: a } =>
       scheduled_leaf_count(a: a) == 3
-      && all([0, 1, 2], m => match scheduled_by_index(a: a, node: "af", stage: 0, piece: 0, member: m) {
-           Present { value: l } => occurrence_count_is_assumed(c: l.count_source)
-           Absent => false
-         })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 0)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 1)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 2)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
       && a.horizon == 6
   }
 }
