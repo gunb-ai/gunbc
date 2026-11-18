@@ -193,3 +193,27 @@ data carrier_at_bool_return_source: String = "module probe_carrier_at_bool_retur
 data carrier_at_bool_param_source: String = "module probe_carrier_at_bool_param\nimport std.types { Bool, String }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn take(flag: Bool) -> String { \"ok\" }\nfn probe() -> String { take(flag: outcome_accepted(value: true)) }\n"
 
 data carrier_at_bool_record_field_source: String = "module probe_carrier_at_bool_record_field\nimport std.types { Bool }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\ntype Row { flag: Bool }\nfn probe() -> Row { Row { flag: outcome_accepted(value: true) } }\n"
+
+// THE NAME AUTHORITY IS NOT A BLANKET REFUSAL OF A KERNEL'S OWN VALUES, for ANY kernel -- the regression
+// net the declared-side generalization needs, since it reads `std.algebra` `is_kernel_type` rather than a
+// list of kinds. For every kernel in `std.algebra` `kernel_type_set`, an identity function whose formal is
+// that kernel and whose body returns a value of that kernel, applied twice, must stay clean: the value
+// either names its own declaration (the produced-side kernel exclusion) or is un-named (abstention). Both
+// paths are exercised here for all eight kernels, not just the `Bool` whose declaration motivated the gate.
+test fn every_kernel_value_at_its_own_kernel_position_is_clean() -> Bool {
+  blocking_of_class(source: every_kernel_at_own_kernel_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data every_kernel_at_own_kernel_source: String = "module probe_every_kernel_at_own_kernel\nimport std.types { Bool, Int, Float, String, Json, Bytes, Unit, Secret, is_kernel_type }\nfn id_bool(v: Bool) -> Bool { v }\nfn id_int(v: Int) -> Int { v }\nfn id_float(v: Float) -> Float { v }\nfn id_string(v: String) -> String { v }\nfn id_json(v: Json) -> Json { v }\nfn id_bytes(v: Bytes) -> Bytes { v }\nfn id_unit(v: Unit) -> Unit { v }\nfn id_secret(v: Secret) -> Secret { v }\nfn use_bool(a: Bool, b: Bool) -> Bool { id_bool(v: id_bool(v: a)) }\nfn use_int(a: Int) -> Int { id_int(v: id_int(v: a)) }\nfn use_float(a: Float) -> Float { id_float(v: id_float(v: a)) }\nfn use_string(a: String) -> String { id_string(v: id_string(v: a)) }\nfn use_json(a: Json) -> Json { id_json(v: id_json(v: a)) }\nfn use_bytes(a: Bytes) -> Bytes { id_bytes(v: id_bytes(v: a)) }\nfn use_unit(a: Unit) -> Unit { id_unit(v: id_unit(v: a)) }\nfn use_secret(a: Secret) -> Secret { id_secret(v: id_secret(v: a)) }\nfn check_kernels() -> Bool { is_kernel_type(name: \"Bool\") && is_kernel_type(name: \"Json\") }\n"
+
+// THE CONTROL THE REQUIRED GATE TAUGHT ME: `Int` and `Nat` are two groundings of ONE kernel literal
+// (gunbc.structural_realization_bindings kernel_grounding_rows; DESIGN section 3's "the host representation
+// is a realization fact"), and `fn length<T>(xs: FreeMonoid<T>) -> Int { xs |> count }`
+// (dag/std/algebra.dag:1580) therefore infers the Nat its callee grounds at an `Int` return. The first cut
+// of this arm refused exactly that, four times, in the v2 self-host emit. A corpus carrier spelled `Nat`
+// with no grounding row stays refused (the rows key the decision, not the spelling).
+test fn a_kernel_grounded_carrier_at_its_own_kernels_return_is_clean() -> Bool {
+  blocking_of_class(source: grounded_carrier_at_own_kernel_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data grounded_carrier_at_own_kernel_source: String = "module probe_grounded_carrier_at_own_kernel\nimport std.types { List }\nimport std.algebra { length }\nfn count_strings(xs: List<String>) -> Int { length(xs: xs) }\nfn count_ints(xs: List<Int>) -> Int { length(xs: xs) }\nfn nested_count(xs: List<String>) -> Int { length(xs: xs) + length(xs: xs) }\n"

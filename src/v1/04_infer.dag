@@ -30,6 +30,7 @@ import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
+  literal_source_kind_eq,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
   kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
@@ -5881,6 +5882,49 @@ fn declared_head_is_kernel_scalar_by_name(declared: Node, scope: InferScope) -> 
     source_indices: scope.type_env.source_indices, node: declared)))
 }
 
+// THE REALIZATION AUTHORITY THIS ARM WAS MISSING, and the required gate found it for me: the v2-bootstrap
+// emit refused four `-> Int` functions in src/v2/std (decl_index.dag:209,213 and
+// data_initializer_identity.dag:135,285) whose produced head is `std.nat.Nat`, reached through
+// `fn length<T>(xs: FreeMonoid<T>) -> Int { xs |> count }` (dag/std/algebra.dag:1580). This arm had
+// decided "a different declaration with no route to it" -- a claim about ROUTES -- while never consulting
+// the authority that says which routes exist. DESIGN section 3 is explicit that the host representation is
+// a realization fact: gunbc.structural_realization_bindings `kernel_grounding_rows` binds BOTH
+// std.nat.Nat (UnboundedNaturals, PeanoGroundingView) and std.integer.Int (UnboundedIntegers,
+// SignedGroundingView) to the SAME kernel literal source, and v1.compiler.infer `ground_kernel_views` folds
+// every Zero, Succ, NonNegative and Negative -- constructed or matched -- into integer form before any
+// realizer reads the tree. Two declarations grounding one kernel are that kernel's two readings, exactly
+// the shape `env_name_is_kernel_grounded_carrier` already abstains on when the DECLARED side is the carrier;
+// the missing half is the pair where the declared side is the other grounding of the same literal. Keyed on
+// the rows and on `literal_source_kind_eq`, never on a spelling: a corpus `Nat` declared elsewhere has no
+// row and stays refused. `Outcome` has no row at any source kind, so the carrier this arm exists for is
+// untouched by it.
+fn kernel_grounding_rows_for(name: String, env: TypeEnv) -> List<KernelGrounding> {
+  let leaf = qualified_last_segment(name: name)
+  let rows = kernel_grounding_rows |> filter(r => (r.carrier.decl_name as String) == leaf)
+  if (rows |> count) == 0 {
+    []
+  } else {
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: bound } =>
+        rows |> filter(r => match declaration_node_of_ref(d: r.carrier, env: env) {
+            Present { value: carrier_decl } => same_declaration_site(a: bound, b: carrier_decl)
+            Absent => false
+          })
+      Absent => []
+    }
+  }
+}
+
+fn both_heads_ground_one_kernel_literal(declared_name: String, produced_name: String, env: TypeEnv) -> Bool {
+  let declared_rows = kernel_grounding_rows_for(name: declared_name, env: env)
+  let produced_rows = kernel_grounding_rows_for(name: produced_name, env: env)
+  if (declared_rows |> count) == 0 || (produced_rows |> count) == 0 {
+    false
+  } else {
+    declared_rows |> any(d => produced_rows |> any(p => literal_source_kind_eq(a: d.source_kind, b: p.source_kind)))
+  }
+}
+
 fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -5923,6 +5967,12 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
       declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
     // Nat's Succ/Zero carriers stand under their own row (kernel-grounded arithmetic carriers); refusing
     // them here would contradict the arm that admits them.
+    false
+  } else if both_heads_ground_one_kernel_literal(
+      declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
+    // One kernel, two groundings -- see both_heads_ground_one_kernel_literal's header. `Int` and `Nat` are
+    // that pair, and refusing them refused the corpus's most-used function at every `-> Int` site whose
+    // trailing expression is a `length` call.
     false
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
