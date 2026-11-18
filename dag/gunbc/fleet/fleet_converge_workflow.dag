@@ -6757,14 +6757,26 @@ fn fleet_converge_job_work_steps() -> List<Outcome<Step>> {
 // timed-out withdraw cannot have its mask lifted by an always() leg). The withdraw step declares the SAME
 // timeout as the converge step (both from host_cap_bracket_budget) and its upload the same artifact-
 // transfer timeout the release upload declares, so the existing terms already cover the worst case.
-fn fleet_converge_host_cap_job_floor_minutes() -> Int {
-  gunbc_ci_fleet_job_backstop_timeout_minutes()
-    + step_declared_timeout_minutes(st: fleet_converge_runner_host_file_converge_step())
-    + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
-    + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
+// A refused step refuses the job, so its backstop is not computable and this fold refuses too (no
+// default timeout is minted for a step that never rendered -- gunbc.design_argument::fail_closed).
+fn fleet_converge_host_cap_job_floor_minutes() -> Outcome<Int> {
+  bind_outcome(
+    o: fleet_converge_runner_host_file_converge_step(),
+    f: fn(zesty_converge_step) {
+      bind_outcome(
+        o: fleet_converge_runner_host_cap_release_step(),
+        f: fn(zesty_release_step) {
+          outcome_accepted(value: gunbc_ci_fleet_job_backstop_timeout_minutes()
+            + step_declared_timeout_minutes(st: zesty_converge_step)
+            + step_declared_timeout_minutes(st: zesty_release_step)
+            + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step()))
+        }
+      )
+    }
+  )
 }
 
-fn fleet_converge_job_timeout_minutes() -> Int { fleet_converge_host_cap_job_floor_minutes() }
+fn fleet_converge_job_timeout_minutes() -> Outcome<Int> { fleet_converge_host_cap_job_floor_minutes() }
 
 fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
   Job {
