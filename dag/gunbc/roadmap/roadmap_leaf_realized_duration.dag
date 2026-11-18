@@ -85,7 +85,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_schedule {
   RealizedDays, ScheduleAnswer, ScheduleRefusal, ScheduledLeaf, path_key, schedule_with_realized,
 }
-import gunbc.roadmap.roadmap_schedule_calendar { date_text, working_days_between }
+import gunbc.roadmap.roadmap_schedule_calendar { date_text, days_between, working_days_between }
 
 // THE UNIT A COUNT FROM THIS UNIT IS IN, spelled out in the fold's own output. The ticket asks for WORKING days;
 // the rule #16697 supplies is the Monday..Friday week; NO holiday calendar exists anywhere in the repository. A
@@ -476,7 +476,7 @@ fn duration_days(duration: LeafDuration) -> Int {
 
 // THE FIRST CLAIM OF ONE LEAF, keyed by the schedule's OWN leaf key (imported, not re-derived).
 fn first_claim_for(first: List<FirstClaim>, path: LeafPath) -> FirstClaim? {
-  first_where(first, keep: c => c.key == path_key(p: path))
+  first_where(first, c => c.key == path_key(p: path))
 }
 
 // DOES THIS LINE NAME THIS ITEM. The one filter the fold takes its lines by.
