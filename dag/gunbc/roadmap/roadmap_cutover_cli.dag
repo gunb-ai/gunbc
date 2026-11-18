@@ -414,7 +414,7 @@ fn roadmap_cutover_retire_cli(
       reason: join(["roadmap_cutover_retire_cli: ", detail,
         "; the retirement was NOT handed to the carrier (report ", report_path, ", roster ", roster_path, ")"], "") }
     GateAdmitted { fact: _ } => roadmap_event_record_cli(
-      repo_root: repo_root, node: node, kind: "retire", text: text, author: author)
+      repo_root: repo_root, node: node, kind: "retire", text: text, author: author, leaf_stage: "", leaf_piece: "", leaf_member: "")
   }
 }
 
