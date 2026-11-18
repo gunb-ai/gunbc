@@ -41,11 +41,15 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  order is the enforced one. `roadmap_event_carrier_mint_scratch` admits the template — its location and its shape,
 //  through `roadmap_carrier_template_is_admissible`, a predicate over text that needs nothing on disk — BEFORE
 //  `shell.Mktemp.DirWithTemplate` is called, and a template outside `/tmp/` is refused there with nothing created.
-//  Nothing reached through the exported mint creates a directory before that decision, so no caller can have a
-//  production path brought into existence on their behalf and then refused: `/var/lib/gunbc`, a production partition,
-//  a srv1/srv2/srv3 realization and a service instance are each refused before anything exists. Confinement to
-//  scratch space is therefore no longer a convention honoured by which templates callers happen to pass — it is what
-//  the code refuses to do. What remains ATTEMPTED rather than guaranteed is the AFTER half: a template that passes the
+//  Nothing reached through the exported mint creates a directory before that decision, so a template naming
+//  `/var/lib/gunbc`, a production partition, a srv1/srv2/srv3 realization or a service instance is refused before
+//  anything exists. What the gate IS is LEXICAL TEMPLATE ADMISSION, and the distinction is not pedantry: the
+//  predicate reads the template's TEXT. It never resolves it. A `/tmp/alias` symlink to anywhere else passes
+//  admission on its face and `shell.Mktemp.DirWithTemplate` then creates THROUGH it, so this is not canonical
+//  confinement and no caller can treat it as such — it stops a template that NAMES an out-of-scratch location, not
+//  one that REACHES one. Canonicalising the path before the check is the change that would close that gap; it is
+//  deliberately not in this PR, and a caller that needs confinement rather than admission must not read this
+//  paragraph as providing it. What remains ATTEMPTED rather than guaranteed is the AFTER half: a template that passes the
 //  admission can still be refused for what it turned out to be (not readable, not owned by this uid, seal not
 //  plantable), and each of those refusals reclaims what it made and reports a failed reclamation by name, so a
 //  refusal can never imply a tidy-up that did not occur.
@@ -880,12 +884,19 @@ test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behi
   let root: String = parent.path as String
   let calibration_path = join([root, "/", leak_control_calibration_name], "")
   let leak_template = join([root, "/", leak_control_stem, "XXXXXX"], "")
-  let parent_made = claim(join(["the control could not create its own private parent under /var/tmp, so it can observe nothing at all: mktemp -d ", leak_control_parent_template], ""), parent.success)
+  //  THE PARENT'S SUCCESS IS BRACHED ON, NOT MERELY CLAIMED. If mktemp fails, root is the empty string and every
+  //  child path below becomes an absolute path at the filesystem root ("/gunbc_carrier_leak_calibration"), so a
+  //  control that only CLAIMED parent.success would go on to attempt a directory creation it never intended, in a
+  //  place it never named. So the whole observation -- calibration, mint, both scans, settlement -- lives inside the
+  //  success arm, and the failure arm mutates no child path at all.
+  if !parent.success {
+    claim(join(["the control could not create its own private parent under /var/tmp, so it can observe nothing at all; it created no child path either: mktemp -d ", leak_control_parent_template], ""), false)
+  } else {
   //  CALIBRATION BOTH WAYS, before the mint is called and before any absence is asserted.
   let made_calibration = claim(join(["the calibration directory could not be created at ", calibration_path, "; the scan is therefore untested"], ""), shell.Mkdir.NewOwnerOnly(path: calibration_path as FilePath).success)
   let saw_present = match roadmap_carrier_entries_of(directory: root) {
     EntryScanUnreadable { diagnostic: d } => claim(join(["the calibration listing was unreadable, so absence could not be certified later either: ", d], ""), false)
-    EntryScanRead { entries: seen } => claim(join(["the scan did not see the calibration directory it was handed -- it reported [", leak_control_entry_words(entries: seen), "] instead of exactly [", leak_control_calibration_name, "]"], ""), count(seen) == 1 && starts_with(s: leak_control_entry_words(entries: seen), prefix: leak_control_calibration_name))
+    EntryScanRead { entries: seen } => claim(join(["the scan did not see the calibration directory it was handed -- it reported [", leak_control_entry_words(entries: seen), "] instead of exactly [", leak_control_calibration_name, "]"], ""), count(seen) == 1 && leak_control_entry_words(entries: seen) == leak_control_calibration_name)
   }
   let _calibration_removed = shell.Remove.RecursiveForce(path: calibration_path as FilePath)
   let saw_absent = match roadmap_carrier_entries_of(directory: root) {
@@ -931,8 +942,18 @@ test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behi
     EntryScanUnreadable { diagnostic: d } => claim(join(["the control could not read its own parent after the mint, so it cannot certify that nothing was left: ", d], ""), false)
     EntryScanRead { entries: seen } => claim(join(["the mint refused via [", arm, "] and the scan sees [", leak_control_entry_words(entries: seen), "] under the control's own parent"], ""), refused_by_the_admission && count(seen) == 0)
   }
-  //  The settlement cannot move the verdict: it runs after every claim above is computed, and its result is
-  //  deliberately not combined with theirs.
-  let _settlement = shell.Remove.RecursiveForce(path: root as FilePath)
-  parent_made && made_calibration && saw_present && saw_absent && leftover_verdict
+  //  THE SETTLEMENT IS REQUIRED, NOT DISCARDED. The property verdict is computed in full BEFORE the control touches
+  //  the filesystem to clean up, so no cleanup can turn a red green; and the cleanup's own outcome is then required
+  //  separately, so no PASS can leave the private parent behind. Discarding it -- as this control's first revision
+  //  did, in `let _settlement` -- is gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_
+  //  irreversible_effect reproducing itself inside the very control that was written to prove it fixed: a green that
+  //  asserted nothing was left while the code had not checked whether anything was reclaimed.
+  let property = made_calibration && saw_present && saw_absent && leftover_verdict
+  let settlement = shell.Remove.RecursiveForce(path: root as FilePath)
+  if !property {
+    claim("the control's own property claims, labelled above, are what failed; the settlement ran only after they were computed and cannot have moved them", false)
+  } else {
+    claim(join(["the control refused to reclaim its own private parent at ", root, " -- a control that certifies nothing-was-left must leave nothing of its own either"], ""), settlement.success)
+  }
+  }
 }
