@@ -30,14 +30,14 @@ import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
-  literal_source_kind_eq,
+  LiteralHomomorphism,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
   kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { ArithmeticCarrierAmbiguous, ArithmeticNoCarrier, ArithmeticCarrierUndecided, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase, InjectionPhase, ConversionEndpoint, KernelMintedCarrier, DeclaredCarrier, kernel_carrier_of_literal_source, ArithmeticCarrierAmbiguous, ArithmeticNoCarrier, ArithmeticCarrierUndecided, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -5882,46 +5882,98 @@ fn declared_head_is_kernel_scalar_by_name(declared: Node, scope: InferScope) -> 
     source_indices: scope.type_env.source_indices, node: declared)))
 }
 
-// THE REALIZATION AUTHORITY THIS ARM WAS MISSING, and the required gate found it for me: the v2-bootstrap
-// emit refused four `-> Int` functions in src/v2/std (decl_index.dag:209,213 and
-// data_initializer_identity.dag:135,285) whose produced head is `std.nat.Nat`, reached through
-// `fn length<T>(xs: FreeMonoid<T>) -> Int { xs |> count }` (dag/std/algebra.dag:1580). This arm had
-// decided "a different declaration with no route to it" -- a claim about ROUTES -- while never consulting
-// the authority that says which routes exist. DESIGN section 3 is explicit that the host representation is
-// a realization fact: gunbc.structural_realization_bindings `kernel_grounding_rows` binds BOTH
-// std.nat.Nat (UnboundedNaturals, PeanoGroundingView) and std.integer.Int (UnboundedIntegers,
-// SignedGroundingView) to the SAME kernel literal source, and v1.compiler.infer `ground_kernel_views` folds
-// every Zero, Succ, NonNegative and Negative -- constructed or matched -- into integer form before any
-// realizer reads the tree. Two declarations grounding one kernel are that kernel's two readings, exactly
-// the shape `env_name_is_kernel_grounded_carrier` already abstains on when the DECLARED side is the carrier;
-// the missing half is the pair where the declared side is the other grounding of the same literal. Keyed on
-// the rows and on `literal_source_kind_eq`, never on a spelling: a corpus `Nat` declared elsewhere has no
-// row and stays refused. `Outcome` has no row at any source kind, so the carrier this arm exists for is
-// untouched by it.
-fn kernel_grounding_rows_for(name: String, env: TypeEnv) -> List<KernelGrounding> {
-  let leaf = qualified_last_segment(name: name)
-  let rows = kernel_grounding_rows |> filter(r => (r.carrier.decl_name as String) == leaf)
-  if (rows |> count) == 0 {
-    []
-  } else {
-    match lookup_type_by_name(env: env, name: name) {
-      Present { value: bound } =>
-        rows |> filter(r => match declaration_node_of_ref(d: r.carrier, env: env) {
-            Present { value: carrier_decl } => same_declaration_site(a: bound, b: carrier_decl)
-            Absent => false
-          })
-      Absent => []
-    }
+// THE ROUTE AUTHORITY THIS ARM WAS MISSING, and the required gate found it for me rather than my fixtures
+// doing so. The first cut refused five sites -- src/v2/std/decl_index.dag:209,213,
+// src/v2/std/data_initializer_identity.dag:135,285 (`declared Primitive(Int)`, `produced
+// Primitive(std.nat.Nat)`, all reached through `fn length<T>(xs: FreeMonoid<T>) -> Int { xs |> count }`,
+// dag/std/algebra.dag:1580, whose `count` is the carrier-size authority and returns `Nat`), and
+// src/v2/std/text.dag:146:52 (`declared` a String-of-Char, `produced Coproduct(FreeMonoid)`, where
+// `string_split` builds `Cons { head: delimiter.head, tail: delimiter.tail}` and hands it to
+// `string_split_step(delimiter: String)`). Neither pair is a defect, and the arm had asserted "a different
+// declaration with no route to it" -- a claim about ROUTES -- while never consulting the authorities that
+// declare them. DESIGN section 3 is explicit that the host representation is a realization fact:
+// gunbc.structural_realization_bindings binds std.nat.Nat (UnboundedNaturals, PeanoGroundingView) and
+// std.integer.Int (UnboundedIntegers, SignedGroundingView) to ONE kernel literal source, folds every Zero,
+// Succ, NonNegative and Negative into integer form at the end of typechecking
+// (v1.compiler.infer `ground_kernel_views`), and states the discipline for those rows -- "a row may only
+// state a realization that is already true of the carrier on every route... it is never added to make a
+// failing site compile". The named value routes are the corpus's `conversion_plan_rows`:
+// std.integer.nat_to_int (std.nat.Nat -> std.integer.Int) and std.coercion.unicode_scalar_unfold/fold
+// (the minted String <-> std.algebra.FreeMonoid bijection). So the question this arm must answer before it
+// refuses is asked of THOSE rows, keyed on resolved declarations -- never on a spelling, which is the same
+// discipline the rows themselves state ("std.nat Nat and test.fixture.structural_peeling_nat StructuralNat
+// have the same shape, and only the second has a row here"). `Outcome` appears in no row at any source
+// kind, so the carrier this arm exists for is untouched: a corpus type spelled `Nat`, `Int` or `FreeMonoid`
+// with no binding resolves to its own declaration and stays refused.
+//
+// And when the produced head cannot be resolved to a declaration at all, the arm abstains. A NEW refusal is
+// only admissible while the arm can positively name the declaration it is refusing; failing to identify a
+// declaration is not evidence of absence of a route.
+fn produced_head_declaration(produced: Node, produced_name: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match declaration_ref_of_type_node(rt: produced, source_indices: source_indices, env: env) {
+    Present { value: d } => Present { value: d }
+    none =>
+      if (module_path_segments(path: produced_name) |> count) < 2 {
+        none
+      } else {
+        match module_path_segments(path: produced_name) |> last {
+          Present { value: leaf } =>
+            Present { value: decl_ref(module_path: qualified_all_but_last(name: produced_name), decl_name: leaf) }
+          Absent => none
+        }
+      }
   }
 }
 
-fn both_heads_ground_one_kernel_literal(declared_name: String, produced_name: String, env: TypeEnv) -> Bool {
-  let declared_rows = kernel_grounding_rows_for(name: declared_name, env: env)
-  let produced_rows = kernel_grounding_rows_for(name: produced_name, env: env)
-  if (declared_rows |> count) == 0 || (produced_rows |> count) == 0 {
-    false
-  } else {
-    declared_rows |> any(d => produced_rows |> any(p => literal_source_kind_eq(a: d.source_kind, b: p.source_kind)))
+// The kernel literal a resolved declaration is grounded in, from the kernel grounding rows alone.
+fn declaration_literal_grounding(declaration: DeclarationRef) -> LiteralSourceKind? {
+  match kernel_grounding_rows |> filter(r => declaration_ref_eq(a: r.carrier, b: declaration)) |> first {
+    Present { value: r } => Present { value: r.source_kind }
+    Absent => none
+  }
+}
+
+fn minted_kernel_name_of_literal_source(kind: LiteralSourceKind) -> String {
+  match kernel_carrier_of_literal_source(kind: kind) {
+    KernelMintedCarrier { minted_name: m } => m as String
+    DeclaredCarrier { declaration: d, element: _ } => d.decl_name as String
+  }
+}
+
+fn conversion_plan_row_admits(plan: ConversionPlan, produced: DeclarationRef, declared_kernel: String) -> Bool {
+  match plan.phase {
+    InjectionPhase { source: s, target: t, safety: _ } =>
+      declaration_ref_eq(a: s, b: produced)
+        && match declaration_literal_grounding(declaration: t) {
+             Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
+             none => false
+           }
+    UnfoldPhase { row: r } => unfold_row_admits(row: r, produced: produced, declared_kernel: declared_kernel)
+    InverseUnfoldPhase { row: r } => unfold_row_admits(row: r, produced: produced, declared_kernel: declared_kernel)
+  }
+}
+
+// The unfold is a declared bijection (std.coercion states unicode_scalar_fold as the inverse of
+// unicode_scalar_unfold, lawful by the bijection), so either phase declares the pair {kernel mint,
+// destination carrier}; which side is the actual is decided by which side the position asks for.
+fn unfold_row_admits(row: LiteralHomomorphism, produced: DeclarationRef, declared_kernel: String) -> Bool {
+  declaration_ref_eq(a: row.destination, b: produced)
+    && minted_kernel_name_of_literal_source(kind: row.source_kind) == declared_kernel
+}
+
+// True when the pair has a declared route, or when the arm cannot name the produced declaration well
+// enough to claim it does not.
+fn produced_head_reaches_declared_kernel_by_declared_route(
+    declared_name: String, produced: Node, produced_name: String,
+    source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  let declared_kernel = qualified_last_segment(name: declared_name)
+  match produced_head_declaration(produced: produced, produced_name: produced_name, source_indices: source_indices, env: env) {
+    none => true
+    Present { value: p } =>
+      match declaration_literal_grounding(declaration: p) {
+        Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
+        none => conversion_plan_rows |> any(plan => conversion_plan_row_admits(plan: plan, produced: p, declared_kernel: declared_kernel))
+      }
   }
 }
 
@@ -5968,11 +6020,12 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
     // Nat's Succ/Zero carriers stand under their own row (kernel-grounded arithmetic carriers); refusing
     // them here would contradict the arm that admits them.
     false
-  } else if both_heads_ground_one_kernel_literal(
-      declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
-    // One kernel, two groundings -- see both_heads_ground_one_kernel_literal's header. `Int` and `Nat` are
-    // that pair, and refusing them refused the corpus's most-used function at every `-> Int` site whose
-    // trailing expression is a `length` call.
+  } else if produced_head_reaches_declared_kernel_by_declared_route(
+      declared_name: declared_name, produced: produced, produced_name: produced_name,
+      source_indices: source_indices, env: scope.type_env) {
+    // A declared route exists, or the produced declaration cannot be named well enough to claim that none
+    // does -- see produced_head_reaches_declared_kernel_by_declared_route's header for the five sites that
+    // taught this arm to ask the route authorities before asserting their absence.
     false
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {

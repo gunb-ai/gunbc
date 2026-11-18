@@ -217,3 +217,18 @@ test fn a_kernel_grounded_carrier_at_its_own_kernels_return_is_clean() -> Bool {
 }
 
 data grounded_carrier_at_own_kernel_source: String = "module probe_grounded_carrier_at_own_kernel\nimport std.types { List }\nimport std.algebra { length }\nfn count_strings(xs: List<String>) -> Int { length(xs: xs) }\nfn count_ints(xs: List<Int>) -> Int { length(xs: xs) }\nfn nested_count(xs: List<String>) -> Int { length(xs: xs) + length(xs: xs) }\n"
+
+// THE OTHER HALF OF THE GATE'S LESSON, pinned. `string_split` (src/v2/std/text.dag:137) builds
+// `Cons { head: delimiter.head, tail: delimiter.tail }` and hands it to `string_split_step(delimiter: String)`
+// at :146 -- the minted String and std.algebra.FreeMonoid over Char are ONE text, declared so by the corpus's
+// `literal_homomorphism_rows` UnicodeScalarSequenceUnfold row and carried to values by
+// `conversion_plan_rows` std.coercion.unicode_scalar_unfold/fold ("Host text is the kernel-minted String; the
+// code-point sequence is std.algebra FreeMonoid over std.types Char, the same post-peel key the literal row
+// uses"). The first cut of this arm refused that site, which CI's second job found and my four-file proxy had
+// not. `List<Char>` is `FreeMonoid<Char>` (dag/std/types.dag:25), so this is the corpus shape and not an
+// invented one.
+test fn the_string_and_its_code_point_sequence_are_one_text() -> Bool {
+  blocking_of_class(source: code_point_sequence_at_string_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data code_point_sequence_at_string_source: String = "module probe_code_point_sequence_at_string\nimport std.types { String, Char, List, Int }\nimport std.algebra { FreeMonoid, Cons, Empty }\nfn step(delimiter: String) -> Int { 0 }\nfn step_back(text: FreeMonoid<Char>) -> Int { 0 }\nfn use_list_as_text(cs: List<Char>) -> Int { step(delimiter: cs) }\nfn use_cons_as_text(c: Char, rest: List<Char>) -> Int { step(delimiter: Cons { head: c, tail: rest }) }\nfn use_text_as_sequence(t: String) -> Int { step_back(text: Empty { }) }\n"
