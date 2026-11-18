@@ -36,7 +36,8 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.fleet.fleet_known_hosts_anchor { ssh_authority_host_field }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.hostname_allocation { fleet_machine_registry, allocated_canonical_hostname }
 import gunbc.fleet.fleet_posix_accounts {
   DeployRunnerPrincipal,
   fleet_posix_root_user,
@@ -344,28 +345,35 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // them). It is a fn, not a datum, precisely so it can REFUSE (Absent) when the fleet records no LAN address
 // for the host, rather than silently borrowing a literal (fail_closed). Its listener is the new gunbc-runner
 // account from the start; creating that OS account on the host is B3b/B3d (the named consumers).
-// BUTCH'S SSH TARGET IS THE TAILNET ANCHOR, NOT AN ADDRESS. The anchor is the row fleet_host_key_enrollments
-// gains when srv14 JOINS (its name is DERIVED from the machine allocation through fleet_tailnet_name --
-// never a literal). Until then the host has exactly one other modeled reach: the FIRST-CONTACT HOP --
-// the pinned key at its DHCP lease address -- and only the two join-making modes may dial it
-// (fleet_known_hosts_anchor::first_contact_admitted_mode_wires; witnesses there). Once the tailnet row
-// exists the anchored branch wins for EVERY mode and the lease is never dialled again; retiring the hop
-// rows is the flip's PR. With neither -- no anchor, no pinned hop key -- srv14 is unmodeled and its spec
-// is Absent, so every consumer refuses it closed.
+// BUTCH'S SSH TARGET IS HIS IDENTITY, NOT A REACHABLE ADDRESS: the tailnet name, DERIVED from the
+// machine allocation through hostname_allocation + fleet_tailnet (never a literal, never a lease). The
+// spec is modeling data and exists before the join; whether anything may DIAL srv14 is decided only by
+// the reach functions in gunbc.fleet.fleet_known_hosts_anchor -- before srv14 joins there is no anchored
+// row, so every anchored mode (runner converge included) REFUSES it, and only the two join-making modes
+// reach it, over the mode-gated first-contact hop at its lease (first_contact_admitted_mode_wires;
+// witnesses there). The lease address appears in NO spec row, so no consumer can dial it by reading the
+// spec (review 96260: fail-closed -- a silent widen is a hard reject).
 fn srv14_runner_host_spec() -> RunnerHostSpec? {
-  match runner_host_ssh_authority(host: operator_host_srv14) {
-    Present { value: ssh_host } => Present { value: srv14_runner_spec(ssh_target_host: ssh_host) }
+  match runner_host_ssh_identity(host: operator_host_srv14) {
+    Present { value: identity } => Present { value: srv14_runner_spec(ssh_target_host: identity) }
     Absent => Absent
   }
 }
 
-// THE HOST'S SSH AUTHORITY (reusable by every host's deploy spec -- ken's follow-up builds on this,
-// msg from still-fox-404): the TAILNET ANCHOR first -- a fleet_host_key_enrollments row whose host the
-// fleet checks and whose name is DERIVED (machine allocation x tailnet domain) -- and only if no anchor
-// exists, the FIRST-CONTACT HOP: the pinned key at the derived lease address, and only while such a
-// key is actually pinned. No anchor and no pinned key: Absent, and every consumer refuses closed.
-fn runner_host_ssh_authority(host: HostIdentity) -> String? {
-  ssh_authority_host_field(host: host)
+// THE HOST'S SSH IDENTITY (reusable by every host's deploy spec -- ken's follow-up builds on this,
+// msg from still-fox-404): the tailnet name, DERIVED through hostname_allocation x fleet_tailnet_domain
+// -- the same construction the enrollment row uses when the host joins, so spec and anchor can never
+// name different machines. This is IDENTITY, not reachability: dialing decisions are made only by
+// anchored_ssh_target / first_contact_ssh_target in fleet_known_hosts_anchor, never by reading a spec.
+// A host absent from the machine registry has no identity and no spec: consumers refuse it closed.
+fn runner_host_ssh_identity(host: HostIdentity) -> String? {
+  match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (host as String)).first() {
+    Absent => Absent
+    Present { value: machine } =>
+      Present {
+        value: join([allocated_canonical_hostname(allocation: machine) as String, ".", fleet_tailnet_domain as String], "") as String,
+      }
+  }
 }
 
 fn srv14_runner_spec(ssh_target_host: String) -> RunnerHostSpec {

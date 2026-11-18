@@ -288,19 +288,20 @@ data first_contact_admitted_mode_wires: List<String> = [
   tailscale_join_converge_wire as String,
 ]
 
-// THE SINGLE ANSWER to "how may the fleet reach this host, and under which address": the ANCHORED row
-// if the host has one -- adjudicated by anchored_host_key_row itself, the verification registry's own
-// rule (hop rows skipped) -- else the FIRST-CONTACT HOP row if a key is pinned for the host, else
-// Absent. Consumers (deploy specs, planning docs) READ this and never re-filter
-// fleet_host_key_enrollments themselves (review 96252: a second place that decides the anchor is a fork).
-fn ssh_authority_host_field(host: HostIdentity) -> String? {
-  match anchored_host_key_row(host: host) {
-    Present { value: row } => Present { value: known_hosts_host_field(address: row.address) as String }
-    Absent =>
-      match filter(first_contact_known_host_rows(), r => (r.host as String) == (host as String)).first() {
-        Present { value: row } => Present { value: known_hosts_host_field(address: row.address) as String }
-        Absent => Absent
-      }
+// THE REACH COMPOSITION, in ONE place (review 96260): the ANCHOR first -- anchored_ssh_target's own
+// adjudication, the verification registry's rule, hop rows skipped -- and ONLY on refusal the
+// mode-gated FIRST-CONTACT HOP. Every dialing mode resolves through this; none may prefer the hop over
+// an existing anchor, so once a host has its tailnet row the lease is never dialled again. A mode that
+// is not in first_contact_admitted_mode_wires simply gets the anchored refusal.
+fn ssh_reach_resolution(
+  host: HostIdentity,
+  principal: NonEmptyStr,
+  mode_wire: String,
+) -> SshTargetResolution {
+  match administrator_ssh_target(host: host) {
+    SshTargetResolved { target: target } => SshTargetResolved { target: target }
+    SshTargetRefused { endpoint: _, refusal: _ } =>
+      first_contact_ssh_target(host: host, principal: principal, mode_wire: mode_wire)
   }
 }
 

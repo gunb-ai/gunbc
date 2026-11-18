@@ -2,6 +2,7 @@ module test.claim.fleet.fleet_known_hosts_anchor_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import std.types { Port }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
@@ -215,14 +216,18 @@ test fn the_hop_rows_join_the_verification_registry() -> Bool {
     any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
 }
 
-test fn the_hop_carries_the_enrolled_butch_host_key_and_one_row_only() -> Bool {
-  length(first_contact_lan_keys) == 1
-    && match first_contact_lan_keys.first() {
-      Present { value: k } =>
-        k.public_key_base64 == srv14_first_contact_key.public_key_base64
-          && k.sha256_fingerprint == srv14_first_contact_key.sha256_fingerprint
-      Absent => false
-    }
+// KEYED, not counted (still-fox-404): a second host's datum must not redden a claim about BUTCH's key,
+// and a missing-but-ordered-first datum must not pass it. The refusal half is the discriminator the
+// count never was.
+test fn the_hop_carries_the_enrolled_butch_host_key() -> Bool {
+  any(
+    first_contact_lan_keys,
+    k =>
+      (k.host as String) == (operator_host_srv14 as String)
+        && k.public_key_base64 == srv14_first_contact_key.public_key_base64
+        && k.sha256_fingerprint == srv14_first_contact_key.sha256_fingerprint,
+  )
+    && !any(first_contact_known_host_rows(), r => (r.host as String) == "srv1")
 }
 
 test fn a_host_with_only_a_hop_has_no_anchored_row() -> Bool {
