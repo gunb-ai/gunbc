@@ -23,7 +23,9 @@ fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> Outcome<Stri
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
   claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", zesty_c, "\n"], ""))
+      bind_outcome(o: gunbc_invoke_root_stamp_script(), f: fn(zesty_s) {
+        outcome_accepted(value:join([zesty_s, "fakeroot -- ", zesty_c, "\n"], ""))
+      })
     }
   )
 }
@@ -39,6 +41,6 @@ data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = gunbc_run_st
   function: "revision_job_image_build_wet",
 )
 
-fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
+fn gunbc_ci_workspace_image_build_invoke() -> Outcome<String> { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
 
-fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }
+fn gunbc_ci_revision_job_image_build_invoke() -> Outcome<String> { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }
