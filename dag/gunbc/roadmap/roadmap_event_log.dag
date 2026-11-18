@@ -2346,13 +2346,20 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // reason refuses too (InFlightLineUnreadable): skipping a line could skip the very release that ends
 // a hold, and a set missing a release is a set that lies about who holds what.
 //
-// WHY A CLAIM AFTER AN ACCEPTANCE OR A RETIREMENT DOES NOT RE-OPEN A LEAF. The node fold absorbs
-// later work events over a terminal standing, and the only event authorized to end an acceptance is
-// an admitted revocation (roadmap_revocation_names_live_acceptance, at the append). So while a
-// terminal standing stands, a Claimed is ABSORBED and counted (`absorbed_claims`), not dropped; a
-// revocation that reopens the active frontier lifts the terminal exactly as roadmap_standing_step_acc
-// returns the node to the frontier, and a Claimed after it puts its leaf in flight again; a
-// revocation that leaves the node superseded leaves the leaves closed. Nothing re-enters flight
+// WHY A CLAIM AFTER AN ACCEPTANCE OR A RETIREMENT DOES NOT RE-OPEN A LEAF — and why neither does a
+// RELEASE. The node fold absorbs later work events over a terminal standing, and the only event
+// authorized to end an acceptance is an admitted revocation (roadmap_revocation_names_live_acceptance,
+// at the append). So while a terminal standing stands, a Claimed is ABSORBED and counted
+// (`absorbed_claims`), not dropped, and a Released or HandedBack over it is absorbed too: the fold
+// neither ends a hold nor records a closer for an event the authority itself refused to honour, and it
+// most certainly does not lift the standing — a release after an acceptance used to reset terminality
+// here, which let the claim after it put its leaf in flight on an accepted item, an answer
+// roadmap_node_standing would never give (review on gunb-ai/gunbc#16703; the two folds now agree, and
+// the witness named on LeafInFlightTerminality is the executed check). A revocation that reopens the
+// active frontier lifts an ACCEPTANCE exactly as roadmap_standing_step_acc returns the node to the
+// frontier, and a Claimed after it puts its leaf in flight again; a revocation that leaves the node
+// superseded leaves the leaves closed; and over a RETIREMENT neither disposition lifts anything,
+// because the node fold's retirement guard stands before every other arm. Nothing re-enters flight
 // without a fresh Claimed — a revocation is not a re-claim.
 //
 // WHAT THIS READ IS NOT. It asks no question of a decomposition: which leaves an item HAS, and
@@ -2379,6 +2386,35 @@ type LeafClosedByEntry {
   leaf: LeafPath
   closed_by: RoadmapEventId
   by_kind: String
+}
+
+// THE STANDING THE FOLD CARRIES, in the node fold's own three hands. This is not a second law: it is
+// roadmap_standing_step_acc's terminality, restated as the ONE question this fold must ask — does this
+// event move the node at all? — and kept deliberately as coarse as that question. The node fold's sum
+// has TWO terminal hands and they do NOT obey the same rule, so one Bool could not carry this
+// faithfully: over an ACCEPTED node a retirement and an admitted revocation still pass (the operator
+// may retire anything, and a revocation is the one event authorized to end an acceptance), while over
+// a RETIRED node the fold returns the standing unchanged for EVERY event — retirement is final, and a
+// revocation of an acceptance the node no longer stands under lifts nothing (witness:
+// a_reopening_revocation_lifts_an_acceptance_but_never_a_retirement). Anything else the log carries
+// over either terminal hand is ABSORBED, exactly as the node fold absorbs it: a Claimed is counted in
+// `absorbed_claims`, and a release, a handback, a progress note or a second acceptance changes
+// nothing at all — not even the closed record, because the event the authority refused to honour
+// cannot be the one that ended a hold (witness:
+// an_accepted_leaf_released_and_claimed_again_stays_out_of_flight_as_the_node_fold_says).
+type LeafInFlightTerminality
+  = InFlightOpen {}
+  | InFlightAccepted {}
+  | InFlightRetired {}
+
+// WHETHER THE STANDING ABSORBS ORDINARY WORK: the node fold's guard, asked the same way
+// roadmap_standing_is_terminal and roadmap_standing_is_retired ask it.
+fn roadmap_leaf_in_flight_absorbs(standing: LeafInFlightTerminality) -> Bool {
+  match standing {
+    InFlightRetired {} => true
+    InFlightAccepted {} => true
+    InFlightOpen {} => false
+  }
 }
 
 // WHY THERE IS NO ANSWER AT ALL. Every arm names a record on the log this read could not use; none
@@ -2413,12 +2449,11 @@ fn roadmap_leaf_in_flight_set(node: RoadmapNodeId, lines: List<String>) -> LeafI
       Absent => InFlightRefused { cause: InFlightHistoryUnordered {} }
       Present { value: chain } => roadmap_leaf_in_flight_fold(
         chain: chain,
-        line: 0,
         held: [],
         closed: [],
         pathless_claims: 0,
         absorbed_claims: 0,
-        terminal: false,
+        standing: InFlightOpen {},
       )
     }
   }
@@ -2455,21 +2490,60 @@ type LeafInFlightLine
 // grain's own words, because "this item's log carries a claim nobody can read the leaf of" is a
 // different fact from "this log carries a line that is not an event".
 //
-// An event from ANOTHER item's log is refused too. A chain built from two items' lines would answer
-// this item's question with the other item's holds, and the file layout (one log per node) makes that
-// a corrupt read rather than a merge anybody asked for.
+// THE LINE IS ALSO WHERE BOTH CROSS-ITEM FACTS ARE DECIDED, because this is the only place the
+// line's POSITION IN THE FILE is in hand. The fold downstream walks the CAUSAL chain, which the chain
+// authority may order differently from the file, so a chain step is not a line number and a refusal
+// raised there would name the wrong place (review on gunb-ai/gunbc#16703: an out-of-file-order log
+// reported the chain step, so every other refusal pointed at the log and this one pointed at
+// something else). Both refusals therefore fire here, at the first pass over the lines, before any
+// folding: an event that belongs to ANOTHER ITEM's log, and a Claimed whose leaf belongs to another
+// item while the record itself sits on this item's log. A chain built from two items' lines would
+// answer this item's question with the other item's holds, and guessing which item a leaf meant would
+// put in flight a leaf nobody claimed; the file layout (one log per node) makes either a corrupt read
+// rather than a merge anybody asked for.
 fn roadmap_leaf_in_flight_line(node: RoadmapNodeId, line: String, index: Int) -> LeafInFlightLine {
   match roadmap_event_decode(text: line) {
-    RoadmapEventDecoded { envelope } =>
-      if (envelope.event.node as String) != (node as String) {
-        InFlightLineRefused { cause: InFlightEventOfAnotherItem { line: index, event_node: envelope.event.node, asked: node } }
-      } else {
-        InFlightLineRead { envelope: envelope }
-      }
+    RoadmapEventDecoded { envelope } => roadmap_leaf_in_flight_decoded(node: node, envelope: envelope, index: index)
     RoadmapEventUndecodable { reason } => match roadmap_claim_grain_defect(line: line) {
       Present { value: field } => InFlightLineRefused { cause: InFlightClaimGrainUnreadable { line: index, field: field } }
       Absent => InFlightLineRefused { cause: InFlightLineUnreadable { line: index, reason: reason } }
     }
+  }
+}
+
+// A DECODED LINE, judged against the item whose log it was read from. Built in a function body rather
+// than inside a match arm, so the two refusals name their positions from one place.
+fn roadmap_leaf_in_flight_decoded(node: RoadmapNodeId, envelope: RoadmapEventEnvelope, index: Int) -> LeafInFlightLine {
+  if (envelope.event.node as String) != (node as String) {
+    InFlightLineRefused { cause: InFlightEventOfAnotherItem { line: index, event_node: envelope.event.node, asked: node } }
+  } else {
+    match roadmap_leaf_in_flight_claimed_leaf(kind: envelope.event.kind) {
+      Present { value: path } => roadmap_leaf_in_flight_own_leaf(node: node, envelope: envelope, index: index, path: path)
+      Absent => InFlightLineRead { envelope: envelope }
+    }
+  }
+}
+
+// THE LEAF A DECODED CLAIM NAMES, if it names one at all. Read off the DECODED kind — the grain the
+// module's one decoder produced, the same authority roadmap-claim-names-leaf installed — never
+// re-parsed from the bytes here. A Pathless claim, and every kind that is not a claim, name no leaf.
+fn roadmap_leaf_in_flight_claimed_leaf(kind: RoadmapEventKind) -> LeafPath? {
+  match kind {
+    Claimed { assignee: _, return_to: _, grain: grain } => match grain {
+      AtPath { path } => Present { value: path }
+      Pathless => Absent
+    }
+    _ => Absent
+  }
+}
+
+// A CLAIMED LEAF ON THE WRONG LOG REFUSES; on this item's own log it is the ordinary case and the
+// envelope is handed on to the fold unchanged.
+fn roadmap_leaf_in_flight_own_leaf(node: RoadmapNodeId, envelope: RoadmapEventEnvelope, index: Int, path: LeafPath) -> LeafInFlightLine {
+  if (path.item as String) != (node as String) {
+    InFlightLineRefused { cause: InFlightLeafOfAnotherItem { line: index, leaf_item: path.item, asked: node } }
+  } else {
+    InFlightLineRead { envelope: envelope }
   }
 }
 
@@ -2540,18 +2614,20 @@ fn roadmap_leaf_grain_defect(leaf: JsonValue) -> String? {
 
 // THE FOLD, OLDEST FIRST OVER THE CAUSAL CHAIN, carrying what it knows: the leaves held now, the
 // leaves it has seen closed, the Pathless claims it declined to turn into leaves, the claims a
-// terminal standing absorbed, and whether the standing is terminal. Terminality is the node fold's
-// law (roadmap_standing_step_acc), not a new one: accepted or retired absorbs later claims, and only
-// a reopening revocation lifts it. Head-and-tail, the way every other fold in this module walks a
-// list, with the position carried along so a refusal can name WHICH line of the chain is the problem.
+// terminal standing absorbed, and the standing HAND. Terminality is the node fold's law
+// (roadmap_standing_step_acc), not a new one, and it is carried in the node fold's own three hands
+// because its two terminal hands do not obey one rule. Head-and-tail, the way every other fold in
+// this module walks a list. The fold carries NO line counter: every refusal is decided on the way in
+// (roadmap_leaf_in_flight_line), where a line's position in the FILE is in hand, so no refusal can
+// here mistake the chain's step for a line of the log — the chain authority may order the two
+// differently, and a refusal that named the chain step pointed at a place nobody can read.
 fn roadmap_leaf_in_flight_fold(
   chain: List<RoadmapEventEnvelope>,
-  line: Int,
   held: List<LeafInFlightEntry>,
   closed: List<LeafClosedByEntry>,
   pathless_claims: Int,
   absorbed_claims: Int,
-  terminal: Bool
+  standing: LeafInFlightTerminality
 ) -> LeafInFlightRead {
   match chain.first() {
     Absent => InFlightLeaves {
@@ -2563,12 +2639,11 @@ fn roadmap_leaf_in_flight_fold(
     Present { value: e } => roadmap_leaf_in_flight_step(
       event: e,
       rest: chain.skip(n: 1),
-      line: line,
       held: held,
       closed: closed,
       pathless_claims: pathless_claims,
       absorbed_claims: absorbed_claims,
-      terminal: terminal,
+      standing: standing,
     )
   }
 }
@@ -2578,45 +2653,39 @@ fn roadmap_leaf_in_flight_fold(
 fn roadmap_leaf_in_flight_step(
   event: RoadmapEventEnvelope,
   rest: List<RoadmapEventEnvelope>,
-  line: Int,
   held: List<LeafInFlightEntry>,
   closed: List<LeafClosedByEntry>,
   pathless_claims: Int,
   absorbed_claims: Int,
-  terminal: Bool
+  standing: LeafInFlightTerminality
 ) -> LeafInFlightRead {
   match event.event.kind {
     // A CLAIM ENTRIES ITS LEAF, OR COUNTS ITSELF, OR IS ABSORBED — and never more than one of those.
+    // The leaf's own item was already checked on the way in; what is decided here is only whether the
+    // standing still lets a leaf into flight at all.
     Claimed { assignee: holder, return_to: back_to, grain: grain } => match grain {
       // The whole-item claim: no leaf is named, so no leaf moves, and the count says it happened.
       Pathless => roadmap_leaf_in_flight_fold(
         chain: rest,
-        line: line + 1,
         held: held,
         closed: closed,
         pathless_claims: pathless_claims + 1,
         absorbed_claims: absorbed_claims,
-        terminal: terminal,
+        standing: standing,
       )
       AtPath { path } =>
-        if (path.item as String) != (event.event.node as String) {
-          // A leaf of ANOTHER item recorded on this item's log. Its leaf is not this item's to hold,
-          // and guessing which item the writer meant would put a leaf in flight that nobody claimed.
-          InFlightRefused { cause: InFlightLeafOfAnotherItem { line: line, leaf_item: path.item, asked: event.event.node } }
-        } else if terminal {
+        if roadmap_leaf_in_flight_absorbs(standing: standing) {
           roadmap_leaf_in_flight_fold(
             chain: rest,
-            line: line + 1,
             held: held,
             closed: closed,
             pathless_claims: pathless_claims,
             absorbed_claims: absorbed_claims + 1,
-            terminal: terminal,
+            standing: standing,
           )
         } else {
           roadmap_leaf_in_flight_fold(
             chain: rest,
-            line: line + 1,
             held: roadmap_leaf_in_flight_hold(
               held: held,
               entry: roadmap_leaf_in_flight_entry(leaf: path, claim: event, assignee: holder, return_to: back_to),
@@ -2624,45 +2693,69 @@ fn roadmap_leaf_in_flight_step(
             closed: closed,
             pathless_claims: pathless_claims,
             absorbed_claims: absorbed_claims,
-            terminal: terminal,
+            standing: standing,
           )
         }
     }
-    // THE CLOSERS. Each ends the holds the chain shows on this item and says which event did it.
-    Released => roadmap_leaf_in_flight_close(
-      closing: event, rest: rest, line: line, held: held, closed: closed,
-      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, terminal: false,
+    // THE CLOSERS. Each ends the holds the chain shows on this item and says which event did it —
+    // where the standing lets the event through at all. A release and a handback are NOT events the
+    // node fold honours over a terminal standing (they fall to its absorbing arm), so they are not
+    // events this read honours either: nothing is closed, and above all the standing is NOT lifted.
+    // Resetting it there let the claim after such a release put its leaf in flight on an accepted
+    // item — an answer roadmap_node_standing would never give, which is two answers to one question.
+    Released => roadmap_leaf_in_flight_closer(
+      closing: event, rest: rest, held: held, closed: closed,
+      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: standing,
     )
-    HandedBack { reason: _ } => roadmap_leaf_in_flight_close(
-      closing: event, rest: rest, line: line, held: held, closed: closed,
-      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, terminal: false,
+    HandedBack { reason: _ } => roadmap_leaf_in_flight_closer(
+      closing: event, rest: rest, held: held, closed: closed,
+      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: standing,
     )
+    // A retirement is admitted over an acceptance too — the operator may retire anything — and it is
+    // the FINAL hand: the node fold's retirement guard stands before every other arm, so from here on
+    // it answers every event with the standing unchanged.
     Retired { reason: _ } => roadmap_leaf_in_flight_close(
-      closing: event, rest: rest, line: line, held: held, closed: closed,
-      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, terminal: true,
+      closing: event, rest: rest, held: held, closed: closed,
+      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: InFlightRetired {},
     )
-    AcceptanceRecordedEvent { receipt: _, evidence: _ } => roadmap_leaf_in_flight_close(
-      closing: event, rest: rest, line: line, held: held, closed: closed,
-      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, terminal: true,
-    )
-    // THE ONE EVENT THAT CAN UNDO AN ACCEPTANCE, and it is not a re-claim: whatever the disposition,
-    // no leaf comes back without a fresh Claimed. A reopening revocation lifts the terminal standing
-    // (so a later Claimed can put its leaf in flight); a remains-superseded one leaves it standing.
-    AcceptanceRevokedEvent { receipt: _, disposition: disposition, revoked_by: _, revoked_on: _, reason: _ } =>
-      if revocation_reopens_active_frontier(disposition: disposition) {
-        roadmap_leaf_in_flight_close(
-          closing: event, rest: rest, line: line, held: held, closed: closed,
-          pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, terminal: false,
-        )
-      } else {
+    // An acceptance over a node already standing accepted is the node fold's own absorbed case: the
+    // standing does not move, so the closed record gains nothing and the FIRST acceptance stays the
+    // one named as the closer.
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } =>
+      if roadmap_leaf_in_flight_absorbs(standing: standing) {
         roadmap_leaf_in_flight_fold(
           chain: rest,
-          line: line + 1,
           held: held,
           closed: closed,
           pathless_claims: pathless_claims,
           absorbed_claims: absorbed_claims,
-          terminal: terminal,
+          standing: standing,
+        )
+      } else {
+        roadmap_leaf_in_flight_close(
+          closing: event, rest: rest, held: held, closed: closed,
+          pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: InFlightAccepted {},
+        )
+      }
+    // THE ONE EVENT THAT CAN UNDO AN ACCEPTANCE, and it is not a re-claim: whatever the disposition,
+    // no leaf comes back without a fresh Claimed. A reopening revocation lifts an ACCEPTED standing
+    // (so a later Claimed can put its leaf in flight); a remains-superseded one leaves it standing;
+    // and over a RETIREMENT neither disposition lifts anything, because a retirement is final and the
+    // node fold says so before reading the event at all.
+    AcceptanceRevokedEvent { receipt: _, disposition: disposition, revoked_by: _, revoked_on: _, reason: _ } =>
+      if revocation_reopens_active_frontier(disposition: disposition) && !roadmap_leaf_in_flight_retired(standing: standing) {
+        roadmap_leaf_in_flight_close(
+          closing: event, rest: rest, held: held, closed: closed,
+          pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: InFlightOpen {},
+        )
+      } else {
+        roadmap_leaf_in_flight_fold(
+          chain: rest,
+          held: held,
+          closed: closed,
+          pathless_claims: pathless_claims,
+          absorbed_claims: absorbed_claims,
+          standing: standing,
         )
       }
     // EVERY OTHER EVENT LEAVES THE LEAVES ALONE. Progress, Blocked, a ResultReturned, a receipt
@@ -2670,36 +2763,71 @@ fn roadmap_leaf_in_flight_step(
     // and this read does not answer that question (roadmap_node_standing does).
     _ => roadmap_leaf_in_flight_fold(
       chain: rest,
-      line: line + 1,
       held: held,
       closed: closed,
       pathless_claims: pathless_claims,
       absorbed_claims: absorbed_claims,
-      terminal: terminal,
+      standing: standing,
     )
   }
 }
 
-// A CLOSING EVENT, applied: every leaf held at this point leaves flight and is recorded as closed by
-// THIS event, and the fold continues with nothing held.
-fn roadmap_leaf_in_flight_close(
+// A RELEASE OR A HANDBACK, where the standing decides whether the event is honoured at all: open, it
+// ends the holds and records itself as their closer; terminal, it is absorbed whole, exactly as the
+// node fold absorbs it — holds, closed record and standing all left exactly as they were.
+fn roadmap_leaf_in_flight_closer(
   closing: RoadmapEventEnvelope,
   rest: List<RoadmapEventEnvelope>,
-  line: Int,
   held: List<LeafInFlightEntry>,
   closed: List<LeafClosedByEntry>,
   pathless_claims: Int,
   absorbed_claims: Int,
-  terminal: Bool
+  standing: LeafInFlightTerminality
+) -> LeafInFlightRead {
+  if roadmap_leaf_in_flight_absorbs(standing: standing) {
+    roadmap_leaf_in_flight_fold(
+      chain: rest,
+      held: held,
+      closed: closed,
+      pathless_claims: pathless_claims,
+      absorbed_claims: absorbed_claims,
+      standing: standing,
+    )
+  } else {
+    roadmap_leaf_in_flight_close(
+      closing: closing, rest: rest, held: held, closed: closed,
+      pathless_claims: pathless_claims, absorbed_claims: absorbed_claims, standing: InFlightOpen {},
+    )
+  }
+}
+
+// WHETHER THIS HAND IS THE FINAL ONE — the node fold's retirement guard, asked of the hand this fold
+// carries.
+fn roadmap_leaf_in_flight_retired(standing: LeafInFlightTerminality) -> Bool {
+  match standing {
+    InFlightRetired {} => true
+    _ => false
+  }
+}
+
+// A CLOSING EVENT, applied: every leaf held at this point leaves flight and is recorded as closed by
+// THIS event, and the fold continues with nothing held, standing in the hand the arm named.
+fn roadmap_leaf_in_flight_close(
+  closing: RoadmapEventEnvelope,
+  rest: List<RoadmapEventEnvelope>,
+  held: List<LeafInFlightEntry>,
+  closed: List<LeafClosedByEntry>,
+  pathless_claims: Int,
+  absorbed_claims: Int,
+  standing: LeafInFlightTerminality
 ) -> LeafInFlightRead {
   roadmap_leaf_in_flight_fold(
     chain: rest,
-    line: line + 1,
     held: [],
     closed: concat(closed, roadmap_leaf_in_flight_closed_entries(held: held, closing: closing)),
     pathless_claims: pathless_claims,
     absorbed_claims: absorbed_claims,
-    terminal: terminal,
+    standing: standing,
   )
 }
 
