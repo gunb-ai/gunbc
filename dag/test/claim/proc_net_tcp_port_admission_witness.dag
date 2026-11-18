@@ -8,14 +8,14 @@
 //   for a socket with no bound port (checked_port refuses 0; the row answers TcpPortUnbound), and a
 //   real kernel row (127.0.0.1:443, printed "0100007F:01BB") still parses to TcpPortBound { port: 443 }.
 // RUN: gunbc run --claim-run --entry dag/test/claim/proc_net_tcp_port_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
-// EXPECT: each test fn asserts its own claim; the run passes only when every assertion holds.
+// EXPECT: each test fn answers true on the discriminating input.
 //    RED: if tcp_socket_row minted Port without checked_port, the out-of-range row would parse to a
-//    TcpPortBound instead of refusing the table, and the second test's assertion fails.
+//    TcpPortBound and decoder_refuses_an_out_of_range_port_word answers false.
 module test.claim.proc_net_tcp_port_admission_witness
 
-import std.types { Bool }
+import std.types { Bool, String }
 import extdeps.linux.proc_net_tcp {
-  tcp_socket_row, proc_net_tcp_table, TcpSocketRow, TcpPortBound, TcpPortUnbound, ProcNetTcpUnparseable,
+  tcp_socket_row, proc_net_tcp_table, TcpPortBound, TcpPortUnbound, ProcNetTcpUnparseable,
 }
 
 // THE KERNEL-PRINTED COLUMN LAYOUT, with the local port substituted. The fields this module reads
@@ -33,38 +33,43 @@ fn table_refuses_naming_line(line: String) -> Bool {
   match proc_net_tcp_table(text: line) { ProcNetTcpUnparseable { line: _ } => true, _ => false }
 }
 
+fn row_bound_to_443(line: String) -> Bool {
+  match tcp_socket_row(line: line) {
+    Absent => false
+    Present { value: row } => match row.local_port {
+      TcpPortBound { port: p } => p == 443
+      TcpPortUnbound => false
+    }
+  }
+}
+
+fn row_is_unbound(line: String) -> Bool {
+  match tcp_socket_row(line: line) {
+    Absent => false
+    Present { value: row } => match row.local_port {
+      TcpPortUnbound => true
+      TcpPortBound { port: _ } => false
+    }
+  }
+}
+
 // A REAL ROW ADMITS, AND THE BOUND PORT IS THE ADMITTED Port. 127.0.0.1:443 on the little-endian
 // host prints "0100007F:01BB"; the row parses and its local port is TcpPortBound { port: 443 }.
 test fn decoder_admits_a_real_kernel_row_on_443() -> Bool {
-  match tcp_socket_row(line: kernel_row_with_local(local: "0100007F:01BB")) {
-    Absent => assert(false, "a genuine 127.0.0.1:443 kernel row must parse")
-    Present { value: row } => match row.local_port {
-      TcpPortBound { port: p } => assert(p == 443, "the bound port is admitted as Port 443")
-      TcpPortUnbound => assert(false, "01BB is 443, a bound port -- not the unbound marker")
-    }
-  }
+  row_bound_to_443(line: kernel_row_with_local(local: "0100007F:01BB"))
 }
 
 // 70000 REFUSES THE ROW, RATHER THAN MINTING A PORT. The port word "11170" is a legal base16 word
 // (0x11170 == 70000) but lies outside the 16-bit field, so checked_port refuses it and the decoder
 // refuses the whole table naming the line -- the exact value review 95857 named.
 test fn decoder_refuses_an_out_of_range_port_word() -> Bool {
-  assert(row_refused(line: kernel_row_with_local(local: "0100007F:11170")),
-    "a port word spelling 70000 must not mint a Port")
-  assert(table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:11170")),
-    "an out-of-range port word must refuse the table, naming the line")
-  true
+  row_refused(line: kernel_row_with_local(local: "0100007F:11170"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:11170"))
 }
 
 // 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,
 // RFC 6335 §6); a row whose local port word is 0000 answers TcpPortUnbound -- the decoder never mints
 // Port 0.
 test fn decoder_never_mints_reserved_port_zero() -> Bool {
-  match tcp_socket_row(line: kernel_row_with_local(local: "0100007F:0000")) {
-    Absent => assert(false, "a 0000 local port is the kernel's unbound marker and must parse")
-    Present { value: row } => match row.local_port {
-      TcpPortUnbound => true
-      TcpPortBound { port: _ } => assert(false, "port 0 must never be minted as a bound Port")
-    }
-  }
+  row_is_unbound(line: kernel_row_with_local(local: "0100007F:0000"))
 }

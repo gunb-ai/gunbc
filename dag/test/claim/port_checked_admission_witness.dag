@@ -9,16 +9,12 @@
 //   refuses the two values the main-line gaps admitted -- 0 (reserved, RFC 6335 §6) and 70000
 //   (outside the 16-bit field).
 // RUN: gunbc run --claim-run --entry dag/test/claim/port_checked_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
-// EXPECT: each test fn asserts its own claim; the run passes only when every assertion holds.
-//    The paired RED comments say what fails if checked_port stops reading port_min / port_max.
+// EXPECT: the test fn answers true only when every bound holds.
+//    RED: if checked_port stopped reading port_min / port_max, the boundary assertions answer false.
 module gunbc.test.port_checked_admission_witness
 
-import std.types { checked_port }
+import std.types { Bool, Int, checked_port }
 
-// THE BOUNDARY AND THE INTERIOR. The fold round-trips the 16-bit service range, 0 excluded.
-// RED: if checked_port dropped the upper bound, is_absent(70000) would answer false and the
-// "70000" assertion fails; if it accepted 0, the "0" assertion fails; if it tightened below 1 or
-// above 65535, the lower/upper-bound assertions fail.
 fn admits(n: Int) -> Bool {
   match checked_port(n: n) { Present { value: p } => p == n, Absent => false }
 }
@@ -27,12 +23,14 @@ fn refuses(n: Int) -> Bool {
   match checked_port(n: n) { Present { value: _ } => false, Absent => true }
 }
 
+// THE BOUNDARY AND THE INTERIOR. The fold round-trips the 16-bit service range, 0 excluded.
+// RED: drop the upper bound and refuses(70000) answers false; accept 0 and refuses(0) answers false;
+// tighten below 1 / above 65535 and admits(1) / admits(65535) answer false.
 test fn checked_port_admits_the_rfc793_service_range() -> Bool {
-  assert(admits(n: 443), "443 is a valid TCP service port (RFC 793 / RFC 9293 16-bit field)")
-  assert(admits(n: 1), "port 1 is the lower bound of the service range")
-  assert(admits(n: 65535), "65535 is the upper bound (2^16 - 1) of the RFC 793 / RFC 9293 field")
-  assert(refuses(n: 70000), "70000 exceeds RFC 793 / RFC 9293's 16-bit port field")
-  assert(refuses(n: 0), "port 0 is reserved and not a usable endpoint (RFC 6335 §6)")
-  assert(refuses(n: -1), "a negative word is not a port")
-  true
+  admits(n: 443)
+    && admits(n: 1)
+    && admits(n: 65535)
+    && refuses(n: 70000)
+    && refuses(n: 0)
+    && refuses(n: -1)
 }

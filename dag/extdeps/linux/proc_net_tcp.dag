@@ -75,6 +75,9 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
             match get(xs: parts, index: 1) {
               Absent => none
               Present { value: port_hex } =>
+                // Decode the field as a hex WORD (base16 owns syntax: nonempty, [0-9A-F], exact case,
+                // length ceiling) and let std.types checked_port own the VALUE bound -- the width is a
+                // syntax ceiling now, not the Port bound smuggled in via field width.
                 match base16_word_value(word: port_hex, max_digits: 8) {
                   Absent => none
                   Present { value: port } =>
