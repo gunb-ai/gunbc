@@ -16,9 +16,17 @@ module test.claim.live_deploy.release_pair_delivery_witness
 // is a PairRefused arm that keeps the last-good pair serving, which is exactly what the red control demands.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
-import std.algebra { fold_list }
+import std.algebra { fold_list, list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.live_deploy.release_pair_delivery { release_pair_incoming_serve_source }
+import gunbc.live_deploy.release_pair_delivery {
+  release_pair_incoming_serve_source,
+  ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+  release_pair_occupied_link_benign,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
+import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.live_deploy.release_locus {
   ReleasePairDelivery, PairInstalled, PairRefused,
   deliver_release_pair, delivered_pair_revision, VerifiedPack,
@@ -29,7 +37,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary,
 }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_set }
-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared, DeclaredRead }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
 
@@ -45,7 +53,7 @@ data last_good_sha: String = "2222222222222222222222222222222222222222"
 data wrong_sha: String = "9999999999999999999999999999999999999999"
 data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 // the file the fetch OBSERVED producing the pack — the placement source the fold must carry (review 96059)
-data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root) as NonEmptyStr
+data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root, revision: main_sha) as NonEmptyStr
 
 fn main_head() -> CommitSha { main_sha as CommitSha }
 fn last_good_head() -> CommitSha { last_good_sha as CommitSha }
@@ -76,8 +84,10 @@ fn member(p: String, xs: List<String>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { if acc { true } else if x == p { true } else { false } })
 }
 
+fn read_path(r: DeclaredRead) -> String { r.path }
+
 fn declared_containing(rs: ArtifactReadSet, p: String) -> Bool {
-  match rs { Declared { paths: ps } => member(p: p, xs: ps), _ => false }
+  match rs { Declared { reads: reads } => member(p: p, xs: list_map(xs: reads, f: read_path)), _ => false }
 }
 
 // ── the good head: one main head installs BOTH halves as one unit ─────────────────────────────────────────────
@@ -220,4 +230,71 @@ test fn witness_verdict_names_other_pack_keeps_last_good() -> Bool {
     verified: Present { value: VerifiedPack { digest: wrong_bin_sha256 } },
   )
   kept_is(v: d, want: last_good_serving())
+}
+
+// ── RESUME (review 96241 f1): the receipt the delivery would write is the completion authority ───────────────
+data resume_body: String = "revision 3333333333333333333333333333333333333333 digest 0f1e2d3c installed 1"
+
+// A byte-identical receipt means the pair is already placed: resume at the restart, never re-create (the create-only
+// link would go red on a healthy pair). Second tick on a half-done-then-completed pair performs no create leg.
+test fn witness_resume_receipt_match_is_already_placed() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadSucceeded { content: resume_body },
+    expected_body: resume_body,
+  ) {
+    AlreadyPlaced => true
+    _ => false
+  }
+}
+
+// A receipt with DIFFERENT content is a foreign/stale placement at the per-revision locus: refuse (red control: a
+// mismatched pre-existing placement refuses; it must NOT be adopted or overwritten).
+test fn witness_resume_receipt_mismatch_refuses() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadSucceeded { content: "a-different-receipt-body" },
+    expected_body: resume_body,
+  ) {
+    MismatchRefusal { reason: _ } => true
+    _ => false
+  }
+}
+
+// A receipt that cannot be read (absent / unreadable) is the ORDINARY fresh tick, not the red one: place it.
+test fn witness_resume_receipt_absent_is_not_yet_placed() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadRefused { error: "ENOENT" },
+    expected_body: resume_body,
+  ) {
+    NotYetPlaced => true
+    _ => false
+  }
+}
+
+// ── OCCUPIED-LINK GUARD (review 96241 f1, manager B): benign ONLY when it already points here ────────────────
+data locus_link: String = "/opt/gunbc/releases/incoming-release-bins/3333333333333333333333333333333333333333/bin/gunbc-standings-serve"
+
+// readlink prints THIS revision's fetched member -> benign (a prior tick placed the link then died before the receipt;
+// the fresh tick may resume to write it). Trailing newline is trimmed, matching the actuator's readlink capture.
+test fn witness_occupied_link_to_same_target_is_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessOutputPresent { text: join([locus_link, "\n"], "") },
+    expected_source: locus_link,
+  )
+}
+
+// readlink prints a DIFFERENT target -> NOT benign (red control: an occupied link pointing elsewhere refuses rather
+// than being silently adopted). Written as an == false compare to avoid relying on a not-operator spelling.
+test fn witness_occupied_link_to_other_target_is_not_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessOutputPresent { text: "/some/other/revision/bin/gunbc-standings-serve\n" },
+    expected_source: locus_link,
+  ) == false
+}
+
+// readlink refuses (the path is not a symlink) -> NOT benign (fail-closed: never adopt a foreign path as ours).
+test fn witness_occupied_link_readlink_refused_is_not_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessRefused { exit_code: 1, stderr: "not a symlink" },
+    expected_source: locus_link,
+  ) == false
 }

@@ -7407,8 +7407,9 @@ data fleet_converge_gcp_iam_observe_reauth_step_id: NonEmptyStr = "wif_auth_iam_
 
 // ================= SRV15 BMC SECRET-VERSIONS READ (operator ruling msg_0b62002f) =================
 // A METADATA-ONLY versions.list of bmc-srv15-admin, ON THIS JOB'S IDENTITY, whose artifact grounds
-// the srv15 arrival accessor pin (srv15_bmc_gunbc_arrival_accessor_version is TranscribedUncited --
-// zero secret grants -- so the pin needs a receipt, and this is it). The whole read, including every
+// the srv15 arrival accessor pin (the standing WAS TranscribedUncited -- zero secret grants -- until
+// this read's receipt from run 44134741714 was cited into it; the read keeps running every dispatch,
+// so the citation stays re-checkable and a future drift is catchable against a fresh receipt). The whole read, including every
 // refusal (permission-denied refuses BY NAME, no fallback; secret-absent; unreadable; paginated;
 // no/ambiguous enabled version), is decided in gunbc.auth.srv15_bmc_secret_versions_receipt; the
 // step below only invokes it with the job's own minted identity. The bearer token reaches the

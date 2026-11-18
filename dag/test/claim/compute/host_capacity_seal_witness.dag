@@ -111,27 +111,34 @@ test fn an_admitted_host_resolves_its_ledger_to_the_host_carrier_not_its_dashboa
 
 // A HOST OFF THE ROSTER IS NOT CARVED, SO NO CI MEMORY IS LOST (PR 4, review 95809 -- the conservation
 // invariant). The build-pool carve (gunbc.runner runner_slot_desired host_build_pool_reservation) is gated
-// on the host being ON the serving roster AND resolving no dashboard instance. srv3/srv4 are not yet admitted
-// (PR 5 admits each as it creates and reads back its /opt/gunbc home), so NOTHING is carved for them: their
-// reservation is byte_size(0) and their seat is the host default ceiling -- NOT a phantom carved slot. This
-// is the red control for the carve gate: were the carve an ungated srv3/srv4 test (as it was), their
-// reservation would come back one slot while no rostered pool held it, this cell's zero-check would fail,
-// and a full slot per host would be lost to neither side. When PR 5 admits srv3/srv4 the carve and the pool
-// appropriation fire in that same change -- host_capacity_build_seat then reads the carved slot and the pool
-// equals it (the derived-once mechanism host_capacity_build_seat -> host_build_pool_reservation).
+// on the host being ON the serving roster AND resolving no dashboard instance. srv2 is not admitted, so
+// NOTHING is carved for it: its reservation is byte_size(0) and its seat is the host default ceiling -- NOT a
+// phantom carved slot. This is the red control for the carve gate: an ungated carve would come back one slot
+// while no rostered pool held it, and a full slot would be lost to neither side.
 test fn a_host_off_the_roster_is_not_carved_and_keeps_its_full_ci_width() -> Bool {
   let default_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: compute_build_memory_ceiling_default))
-  kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv3" as HostIdentity))) == 0
-    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv4" as HostIdentity))) == 0
-    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv3" as HostIdentity))) == default_kib
-    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv4" as HostIdentity))) == default_kib
+  kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: "srv2" as HostIdentity))) == 0
+    && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: "srv2" as HostIdentity))) == default_kib
+}
+
+// THE ADMITTED HOSTS ARE CARVED. srv3 and srv4 are on the roster and resolve no dashboard instance, so
+// each gives exactly one CI runner slot to its build pool, and its seat is the seat derived from that slot
+// (host_capacity_build_seat reads the same host_build_pool_reservation): the slot leaves CI and the pool
+// holds it, in the one change that admitted the host.
+test fn the_admitted_hosts_carve_one_slot_into_the_build_pool() -> Bool {
+  let one_slot_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max))
+  let carved_seat_kib = kibibyte_count(k: kibibyte_from_byte_size_floor(b: capacity_seat_for_reservation(reservation: gunbc_runner_slot_memory_max)))
+  ["srv3", "srv4"] |> all(name =>
+    kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_build_pool_reservation(host: (name as String) as HostIdentity))) == one_slot_kib
+      && kibibyte_count(k: kibibyte_from_byte_size_floor(b: host_capacity_build_seat(host: (name as String) as HostIdentity))) == carved_seat_kib
+  )
 }
 
 // THE POSITIVE CASE, PROVEN BEFORE PR 5 EXERCISES IT (manager, review 95809). The carve rule
 // (build_pool_carve_is_due) and the seat derivation (capacity_seat_for_reservation) are PURE over the host
 // facts / the reservation, so both are witnessed even though PR 4 carves nothing. A host that IS on the
 // roster and carries no ledger carves exactly one slot; a rostered host that DOES carry its ledger (srv1)
-// and an off-roster host (srv3 today) do NOT. And a full carved slot becomes a seat that, split across the
+// and an off-roster host (srv2 today) do NOT. And a full carved slot becomes a seat that, split across the
 // pool's seats, is re-multiplied by host_capacity_pool_appropriation back to EXACTLY the carved slot -- the
 // slot leaves CI and is held by the ledger pool. PR 5's admission of srv3/srv4 (rostered, no dashboard
 // instance) flips THIS proven rule, so it is not an unexercised one when it lands.

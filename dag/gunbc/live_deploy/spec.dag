@@ -1038,6 +1038,29 @@ fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> 
   join(["/etc/systemd/system/", deployment_belt_standings_refresh_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
+// THE PAIR-DELIVERY unit pair (node://lab-converges-release-pair): the executing consumer of the staged wet
+// delivery CLI gunbc.live_deploy.release_pair_deliver_cli::release_pair_deliver_once_cli. Same stem discipline as
+// the standings-refresh backstop; the oneshot runs the delivery (fetch -> observed build-key verify -> fold ->
+// place + restart) and the timer re-arms it. This unit is what makes the fold + the wet pipeline EXECUTE on a
+// schedule. NOTE (split, review 96121): the unit + timer are DECLARED here (name builder + emit builders stay in
+// this PR, witnessed by the emission oracle), but the INSTALL-SPECIFIC builders — the timer unit NAME (needed by its
+// enable leg) and the two .path builders (needed by the install legs) — moved to the stacked PR together with the
+// apply_legs registration, so nothing in this PR installs or runs the unit while the source-side observation is not
+// yet real. They reappear verbatim with the observation that makes the guard check real work.
+fn deployment_pair_delivery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.service"], "") as NonEmptyStr
+}
+
+// THE PAIR-DELIVERY unit's environment, single authority. base_root is the per-revision release locus root the
+// wet CLI places into and reads the served binding from; it is NOT derivable from instance_root (deployed_tree_locus
+// takes a repo path; release_locus_record takes base_root as an input), so it is a per-deployment fact held here
+// beside the unit names, not a literal in the emitted unit. The three env-var NAME rows live here (foundational,
+// cycle-free) so the CLI that reads them and the unit file that sets them share one spelling.
+data gunbc_pair_delivery_base_root: NonEmptyStr = "/opt/gunbc/releases"
+data release_pair_deliver_base_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_BASE_ROOT"
+data release_pair_deliver_serve_unit_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_SERVE_UNIT"
+data release_pair_deliver_repo_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_REPO_ROOT"
+
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
 // The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
 // derived from the instance stem (unconditional membership, so the twin mirror holds and

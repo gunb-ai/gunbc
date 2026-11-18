@@ -479,7 +479,7 @@ fn coreutils_install_directory_owned_argv(
   mode: FileMode,
   owner: NonEmptyStr,
   group: NonEmptyStr,
-  path: String,
+  path: NonEmptyStr,
 ) -> List<String> {
   concat(
     [coreutils_install_binary_name as String],

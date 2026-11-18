@@ -242,6 +242,12 @@ data belt_credential_recovery_backstop: Second = second(count: 900)
 // the scheduler slack, so a few minutes of jitter is expected and needs no exactness.
 data belt_standings_refresh_backstop: Second = second(count: 600)
 
+// THE PAIR-DELIVERY cadence (node://lab-converges-release-pair): how often the pair-delivery timer re-arms the
+// wet delivery (fetch -> observed build-key verify -> fold -> place + restart). Same 600 s as the standings
+// refresh by intent (keep the served pair near origin/main on a ~10 min beat), but a SEPARATE row so the two
+// schedules are not one authority and one can be tuned without moving the other.
+data belt_pair_delivery_backstop: Second = second(count: 600)
+
 // The freshness law's STALE-BY-AGE horizon for /standings.json, in seconds. The existing 409
 // (`ObservationStale`) compares observed_at against the newest EVENT, so a stopped timer whose carrier
 // also cannot advance its log reads as CURRENT and is served 200 — the exact silent-stale hole this

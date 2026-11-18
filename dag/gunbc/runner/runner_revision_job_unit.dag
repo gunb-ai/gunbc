@@ -42,8 +42,8 @@ data revision_job_image_pinned_sha256: NonEmptyStr = "5c658ba6294668ab47319a3da2
 // is not admission, the installer verifies the installed copies against the pin.
 data revision_job_image_staging_root: String = "target/revision-job-image-artifact"
 
-fn revision_job_installed_image_root(release_dir: String) -> String {
-  join([release_dir, "/images/revision-job/", revision_job_image_pinned_sha256 as String], "")
+fn revision_job_installed_image_root(release_dir: String) -> NonEmptyStr {
+  join([release_dir, "/images/revision-job/", revision_job_image_pinned_sha256 as String], "") as NonEmptyStr
 }
 
 fn revision_job_installed_kernel(release_dir: String) -> String { concat(revision_job_installed_image_root(release_dir: release_dir), "/vmlinux") }
@@ -57,13 +57,13 @@ fn revision_job_installed_toolchain(release_dir: String) -> String { concat(revi
 // already holds sudo there. The repository a spec may name is authored (revision_job_admitted_repositories),
 // and the root unit still stages the tree itself; unprivileged staging is the declared terminal shape,
 // with its trigger (before any spec names a commit not on main) stated at that row.
-data revision_job_state_root: String = "/var/lib/gunbc/revision-job"
-data revision_job_spec_dir: String = "/var/lib/gunbc/revision-job/spec"
-data revision_job_receipt_store: String = "/var/lib/gunbc/revision-job/receipts"
+data revision_job_state_root: NonEmptyStr = "/var/lib/gunbc/revision-job" as NonEmptyStr
+data revision_job_spec_dir: NonEmptyStr = "/var/lib/gunbc/revision-job/spec" as NonEmptyStr
+data revision_job_receipt_store: NonEmptyStr = "/var/lib/gunbc/revision-job/receipts" as NonEmptyStr
 
-fn revision_job_instance_dir(instance: String) -> String { join([revision_job_state_root, "/", instance], "") }
-fn revision_job_cache_dir(instance: String) -> String { concat(revision_job_instance_dir(instance: instance), "/cache") }
-fn revision_job_work_dir(instance: String) -> String { concat(revision_job_instance_dir(instance: instance), "/work") }
+fn revision_job_instance_dir(instance: String) -> NonEmptyStr { join([revision_job_state_root, "/", instance], "") as NonEmptyStr }
+fn revision_job_cache_dir(instance: String) -> NonEmptyStr { concat(revision_job_instance_dir(instance: instance), "/cache") as NonEmptyStr }
+fn revision_job_work_dir(instance: String) -> NonEmptyStr { concat(revision_job_instance_dir(instance: instance), "/work") as NonEmptyStr }
 fn revision_job_spec_path(instance: String) -> String { join([revision_job_spec_dir, "/", instance, ".env"], "") }
 
 data revision_job_runner_unit_template_name: NonEmptyStr = "gunbc-revision-job-runner@.service" as NonEmptyStr

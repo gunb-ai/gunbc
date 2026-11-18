@@ -1,6 +1,6 @@
 module test.claim.fleet.gpu_board_residence_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, Int }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { PhysicalContainment, HostContainsComponent, PhysicalAsset }
@@ -8,7 +8,13 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
 import gunbc.hostname_allocation { operator_hosts }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
-import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments }
+import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments, butch_a2s_removed_pending_sale }
+import gunbc.fleet.gpu_device_observation {
+  current_gpu_device_observations, retired_gpu_device_observations, gpu_device_observation_board,
+  gpu_device_observation_host, GpuDeviceEnumerated,
+}
+import std.dissolution { dissolution_is_bound, dissolution_description }
+import std.algebra { string_contains }
 import extdeps.gpu.types { GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused }
 import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_board_catalog, amd_board_catalogs }
 import extdeps.gpu.gigabyte { gigabyte_r9700_ai_top_32g_board_catalog }
@@ -27,19 +33,31 @@ fn admitted(a: GpuBoardAdmission) -> Bool {
 }
 
 // srv1 HOLDS BOTH PRO 6000s (the Workstation card and, since 2026-11-07, the Max-Q); srv4 HOLDS THE TWO
-// RTX 2000 Ada cards (read 2026-11-07); srv14/butch HOLDS THE FOUR A2 CARDS (read on butch 2026-11-10);
-// BOTH R9700s ARE IN host-6ce85c (h11-a16) SINCE 2026-11-12 (operator; only gpu_board_02 enumerates, which
-// gunbc.fleet.gpu_device_observation keeps apart from residence). No card is contained twice: a card in two hosts
-// is a residence contradiction.
+// RTX 2000 Ada cards (read 2026-11-07); BOTH R9700s ARE IN host-6ce85c (h11-a16) SINCE 2026-11-12 (operator;
+// only gpu_board_02 enumerates, which gunbc.fleet.gpu_device_observation keeps apart from residence). No card
+// is contained twice: a card in two hosts is a residence contradiction.
+// srv14/butch HELD THE FOUR A2 CARDS (read on butch 2026-11-10) AND NO LONGER DOES: all four were physically
+// removed from butch on 2026-11-17 to be sold, per the operator report of 2026-11-17, corroborated by the
+// operator's session read at 2026-11-16T22:36Z (no NVIDIA driver loaded, a2-power-cap.service FAILED,
+// strata-pool@a/@b inactive). They stay IN INVENTORY -- owned identities, unseated, in no host -- which is
+// what the two halves below assert: the six seated cards are seated, and the four A2s are in no host while
+// still being assets. A re-added containment row reds the first claim; deleting an A2 identity reds the second.
 test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s() -> Bool {
   hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_01 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_04 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: gpu_board_05 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: gpu_board_06 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_07 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_08 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_09 as String)
-    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_10 as String)
+    // The four A2s are in NO host, and specifically not in srv14: removed from butch 2026-11-17 for sale.
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_07 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_08 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_09 as String)
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_10 as String)
+    && !installed_gpu_board_containments.any(c => match c {
+      HostContainsComponent { host: _, component: k } =>
+        (k as String) == (gpu_board_07 as String) || (k as String) == (gpu_board_08 as String)
+          || (k as String) == (gpu_board_09 as String) || (k as String) == (gpu_board_10 as String)
+      _ => false
+    })
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_02 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_03 as String)
     && gpu_board_assets.all(a => installed_gpu_board_containments.filter(c => match c {
@@ -52,6 +70,72 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s()
       || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
       || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
       || a.identity == gpu_board_09 || a.identity == gpu_board_10)
+}
+
+// THE FOUR SOLD A2s ARE STILL ASSETS. They left butch on 2026-11-17 and are pending sale, so their residence
+// is gone but their IDENTITY IS NOT: "pending sale" is a holding standing, not a disposal, and gunbc.fleet.
+// fleet_asset_identity keeps them (fleet_asset_identity.dag:35-36 -- a card moves between hosts and where it
+// sits is only ever a containment row here). This claim reds if anyone retires the retirement too far and
+// deletes an A2 identity or its asset row while the cards still exist; the sale itself is a separate,
+// later, operator-owned act.
+test fn witness_the_sold_a2s_remain_assets_though_seated_nowhere() -> Bool {
+  gpu_board_assets.any(a => a.identity == gpu_board_07)
+    && gpu_board_assets.any(a => a.identity == gpu_board_08)
+    && gpu_board_assets.any(a => a.identity == gpu_board_09)
+    && gpu_board_assets.any(a => a.identity == gpu_board_10)
+}
+
+// THE RETIRED READINGS SURVIVE, TYPED, AND STAY OUT OF CURRENT STATE. The four 2026-11-10 A2 readings were not
+// deleted when the cards left butch -- deleting a dated receipt destroys history, and retyping it into an
+// annotation would put a receipt in a carrier the project may delete at any time
+// (gunbc.design_argument::source_annotations). They live in gunbc.fleet.gpu_device_observation's typed
+// retired_gpu_device_observations. This claim is that list's consumer: it executes every row, so the list is
+// live data rather than a comment with a type on it. It goes red three ways: a row dropped or a field drifted
+// (the left conjunct), or -- the dangerous one -- someone puts a seated-nothing card back into the CURRENT list,
+// which would make admit_gpu_cap_against and the converge paths treat butch as enumerating A2s today.
+fn retired_butch_row_for(board: String) -> Int {
+  filter(retired_gpu_device_observations, o =>
+    (gpu_device_observation_board(o: o) as String) == board
+      && (gpu_device_observation_host(o: o) as String) == (operator_host_srv14 as String)).length()
+}
+
+fn current_row_for(board: String) -> Int {
+  filter(current_gpu_device_observations, o => (gpu_device_observation_board(o: o) as String) == board).length()
+}
+
+test fn witness_the_retired_butch_a2_readings_survive_typed_in_no_current_state_list() -> Bool {
+  // each A2 has exactly one retired reading, and it is an enumerated device carrying its UUID
+  retired_butch_row_for(board: (gpu_board_07 as String)) == 1
+    && retired_butch_row_for(board: (gpu_board_08 as String)) == 1
+    && retired_butch_row_for(board: (gpu_board_09 as String)) == 1
+    && retired_butch_row_for(board: (gpu_board_10 as String)) == 1
+    && retired_gpu_device_observations.length() == 4
+    && retired_gpu_device_observations.all(o => match o {
+      GpuDeviceEnumerated {
+        host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: _, power_limit_maximum: _,
+        power_limit_current: _, power_limit_default: _, power_limit_control: _, read_on: _,
+      } => match u { Present { value: _ } => true, Absent => false }
+      _ => false
+    })
+    // and NONE of them is in the current-state population
+    && current_row_for(board: (gpu_board_07 as String)) == 0
+    && current_row_for(board: (gpu_board_08 as String)) == 0
+    && current_row_for(board: (gpu_board_09 as String)) == 0
+    && current_row_for(board: (gpu_board_10 as String)) == 0
+}
+
+// THE SALE IS PENDING IN A TYPED CARRIER, AND IT CANNOT FIRE ITSELF. butch_a2s_removed_pending_sale is the
+// machine-readable record that these four boards left butch on the operator's 2026-11-17 report and await sale;
+// it is a DissolutionCondition because that is this corpus's typed carrier for a dated, operator-cited state
+// awaiting a human act. The behavioural leg is the predicate: it must be UNBOUND, so nothing can auto-dissolve
+// the assets and retire the identities before the operator actually sells the cards. The wording leg only
+// detects someone silently deleting the date or the citation from the description, and per
+// gunbc.design_argument::fail_closed a .contains() over prose is not a consumer -- the executed predicate above
+// is, and this whole claim executes the row.
+test fn witness_the_butch_a2_sale_pendings_is_typed_and_cannot_fire_early() -> Bool {
+  !dissolution_is_bound(butch_a2s_removed_pending_sale)
+    && string_contains(s: dissolution_description(butch_a2s_removed_pending_sale), pattern: "2026-11-17")
+    && string_contains(s: dissolution_description(butch_a2s_removed_pending_sale), pattern: "gpu_board_07")
 }
 
 // EVERY CARD IN INVENTORY BINDS A BOARD ROW THAT EXISTS, and the R9700 board row is admitted.

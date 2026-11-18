@@ -981,6 +981,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       execution: bound(contract: namespace_reference_derived_closure_execution_contract()),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Dependencies derived from resolved references are what make a file's closure independent of which unrelated files are loaded."),
+      centering: plan(text: "One module only, in the native-seven closure: derive its dependency set from the declarations its qualified references resolve to, compare it to the set its import list produced, and hand back the two sets and their difference with a reason per differing module. The six-arm acceptance witness stays red; this slice establishes one arm (pool independence) on one real module."),
     ),
     roadmap_node(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
@@ -1004,7 +1005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-v2-import-completion",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Decide whether an import list binds, and make it enforceable",
           boundary: "The symbol index is built from a tree-wide census, while the compiled population is the import closure. One answer is needed: either the import list binds and a name resolving outside it refuses, or bare references are reconciled for every file. #12782 made the 77 files' implicit imports explicit with zero binding change.",
           displaced_cost: "A file that declares any import silently gets no bare edges, so the compiled population is decided by accident.",
@@ -1012,7 +1013,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "Strict binding: a reference outside the declared closure refuses, located at file and name. Reconciliation: a permitted bare dependency enters the population and its effect summary. The existing import-list flip control stays as the regression probe.",
           out_of_scope: "Quieting the effect-summary join. (Deleting import syntax, XL-7, is withdrawn.)",
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
-        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
+        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path."), on: "2026-11-16", note: "The question this node asks is answered by gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted: an import list does not bind, because the import concept is deleted before v2 is accepted; in-scope is the switch-over's single definition. The out_of_scope parenthesis (XL-7 withdrawn) is superseded by that ruling and left as written. Serves gunbc.plans.names_without_imports.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before resolution can say what a name sees."),
     ),
@@ -1032,6 +1033,90 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       ), on: "2026-09-30", note: "Not yet centered: after seed retirement per interlock.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Every rival way of deciding a name is deleted in one motion."),
+    ),
+    roadmap_node(
+      identity: "rn_F7X5W11359B0PQ90BYD7V73VJA",
+      id: "names-bind-to-the-unique-declaration",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/compiler/resolve.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 0: every declaration reference is fully qualified, a bare name is a lexical binder or unbound, the ambient tables are deleted, and the closure is read from the references",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 0 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified and gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded (2026-11-17). In v2.compiler.resolve a declaration reference is admitted only through the qualified door (try_resolve_qualified_name_node, qualified_head_scope_binding), binding by the path's one declaration and refusing, located and typed, when the path has no declaration or two providers; a bare head is answered by a lexical binder (parameter, let, match or lambda binder, type parameter) or refuses as unbound; the four AmbientBindingTable arms and their census are deleted, and no occurrence resolution is BoundAmbient afterwards. A subject's closure is the declaration-demand fixed point: the authored qualified references seed it and the compiler's generated demands (std.generated_provider: conversion routes, list and map heads, template heads, canonical operations, target support) extend it (namespace-reference-derived-closure); the ingest step realizes it by reading, and the seed's entry closure is read from the same demands in place of its import closure (declared_import_closure), which is the one seed change this layer owns.",
+          displaced_cost: "Measured 2026-11-16 (gunbc.plans.names_without_imports section 7): 110 bare sites in the native-seven closure, 304 in the gate closures and 4,974 across production bind today only through a stopgap table or not at all, and 42,011 qualified references already exist beside them; the program review of 2026-11-17 found that binding bare names by repository-wide spelling uniqueness would be an ambient namespace, which the 2026-10-15 ruling forbids. One spelling for every declaration reference removes the question and every table with it.",
+          first_slice: "The seed loads by qualified references: one native-seven module with its import lines deleted and its references spelled by path, loaded and typechecked by the seed and by v2 through the qualified door; its RED the same module with one reference left bare, refusing as unbound in both.",
+          red_control: "A bare head no lexical binder answers refuses as unbound, never falls to a table; a qualified reference to an absent path refuses naming the path; two providers for one path refuse naming both, and neither wins by load order; after the tables are deleted no occurrence resolution reads BoundAmbient and the census fold has no rows; a subject's demand closure equals the closure its former import list produced for every module in the native-seven closure, generated demands included, or the difference is listed by declaration with its cause.",
+          out_of_scope: "Declaring homes for names that have none (layer 1 and after); deleting the import grammar corpus-wide (import-grammar-and-lines-deleted); any shorter spelling or sugar.",
+          handback: "The qualified-only resolver with its discriminating claims, the four table arms deleted, the seed loading one module by its references, and the bare-name reading over the native-seven closure showing no site bound through a table."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 0 of gunbc.plans.names_without_imports: the one rule that replaces the ambient tables and is the semantics import deletion needs."),
+      centering: plan(text: "Seed loader slice only, on a fleet host under the memory envelope: run gunbc run --dry-run --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/test/claim/lexical_scope.dag unchanged (29 claims), then with the entry's import member lists stripped, then with its import lines deleted and its references spelled by path. Hand back the three verdict sets and nothing else; the ruling on the seed loader is the operator's from those three. Change no production source."),
+    ),
+    roadmap_node(
+      identity: "rn_9PXMHJ474EV2TEQ6MKEG198ZDJ",
+      id: "native-seven-names-homed",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 1: every name the native-seven closure uses has one declared home, and every declaration reference in the closure is spelled by its path",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 1 (section 3), and native-seven directly (gunbc.design_ruling::n7_requires_only_its_own_closure). The 54 non-roster names with no production declaration in the 161-module closure (2026-11-16 reading: starts_with 28 sites, first 28, split 27, replace 18, to_string 13, code_point 10, map_keys, sorted_map_keys, key_eq, sort_by, set_contains, empty_set, set_insert, map_get, flat_map and a tail of one to three sites) each get one declaration at a ruled home (std.host_text for host-text operations, std.algebra for lists, maps and sets, per the H1 to H4 rulings), one row each in roster_head_rows where the home's signature differs from the builtin's. Then the generator rewrites every declaration reference in the closure to its fully qualified path, with the current import semantics as its oracle, and the import lines leave those modules in the same landing (gunbc.design_ruling::declaration_references_are_fully_qualified). No import is added anywhere.",
+          displaced_cost: "Native-seven stops at the first unbound name per module, and 1,229 bare sites of names with no declaration sit in its closure; the waves so far homed layer 3 names (substring, char_at corpus-wide) while the closure still stops on split and starts_with. The program review of 2026-11-17 found that homing with an import at each site creates work layer 3 deletes; under the qualified rule no such bridge exists.",
+          first_slice: "The six names with ten or more sites (starts_with, first, split, replace, to_string, code_point): home declared, policy row where needed, their sites rewritten to the path in the closure, native-seven rerun and its first stop recorded before and after.",
+          red_control: "A name homed without its calling modules' claims green under both compilers is not homed; a home whose signature differs from the builtin's without a policy row is refused in review; a module in the closure that still carries an import line or a bare declaration reference at handback keeps this open; the bare-name reading over the closure after each landing shows the name moved from no-declaration to one home.",
+          out_of_scope: "Names and modules outside the native-seven closure (compiler-closure-names-homed-and-types-merged, corpus-names-homed-and-collisions-discharged); the resolver and loader rule itself (names-bind-to-the-unique-declaration), which lands first.",
+          handback: "Zero names with no declaration in the native-seven closure by the reading, every module in the closure import-free with every declaration reference qualified, and native-seven's recorded first stop no longer a name."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 1 of gunbc.plans.names_without_imports: the 54 names and one ambiguity between native-seven and its typed endpoint."),
+      centering: plan(text: "First six names only (starts_with, first, split, replace, to_string, code_point): declare each at its ruled home (std.host_text for host-text operations, std.algebra for lists) with a roster_head_rows policy row where the signature differs from the builtin's, rewrite their sites in the 161-module native-seven closure to the qualified path through roster_import_sweep, add no import anywhere, and rerun gunbc test //v2/test/claim/parse/expression_bodied_fn_decl_parse:all before and after. Hand back the first stop before and after, per name. A surprising stop is a valid handback, never a reason to touch a seventh name."),
+    ),
+    roadmap_node(
+      identity: "rn_T8N6SCYHTV6MAJQDQW7KVNG5G3",
+      id: "compiler-closure-names-homed-and-types-merged",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 2: the two compiler closures use only declared names, spelled by their paths; the dual std type declarations are merged on their own evidence",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 2 (section 3), and SelfHostCorpusEmitsCleanly over the two retained closures (gunbc.compiler_frontend_program_interlock). The 278 modules of v2.compiler.source_root_eval and v2.cli.compile_cli: the names with no declaration beyond layer 1's (2026-11-16 reading: 80 names, 2,316 sites, adding to_string 46 and sort_by 16) are homed the same way, and the generator rewrites every declaration reference in both closures to its path and removes their import lines (gunbc.design_ruling::declaration_references_are_fully_qualified). SEPARATELY, and not gating this handback: the dag std types redeclared under src/v2/std (String against v2.std.text, Int, UInt8 and PositiveInt against v2.std.integer, FilePath, Unit, SourceSpan, TerminationProof) are merged so that a compiler-side projection constructs or reads the one declaration and never redeclares it (kernel-type layer rule, 2026-10-18); under the qualified rule each duplicate has its own path and is a design debt, not an ambiguity, so the merges are accepted one type at a time on their own claims (the program review of 2026-11-17 asked that operation homing and type-authority merges not be fused).",
+          displaced_cost: "The emitter chain (second-generation onward) emits what resolves natively; a closure that still binds through tables or carries import lines cannot be emitted as one program under the ruled grammar.",
+          first_slice: "The homing half: the names with ten or more sites in the two closures beyond layer 1's, homed and their sites rewritten; the self-host instrument rerun before and after.",
+          red_control: "A name in either closure with no production declaration keeps this open; a module in either closure that still carries an import line or a bare declaration reference at handback keeps it open; a type merge that changes a declaration's signature without a policy row is refused in review; the ambiguous-import column of the reading is retired under the rule and is not an acceptance input.",
+          out_of_scope: "The rest of the production corpus (corpus-names-homed-and-collisions-discharged); emission itself; the type merges' own acceptance, which is per type and not this node's handback.",
+          handback: "The two closures at zero no-declaration names by the reading, every module in them import-free with every declaration reference qualified, and the self-host instrument at its previous or better stop."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 2 of gunbc.plans.names_without_imports: what the compiler closures need before they emit with one meaning."),
+    ),
+    roadmap_node(
+      identity: "rn_M4EY6JW75D1BTSJ8R9SFHG23NH",
+      id: "corpus-names-homed-and-collisions-discharged",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 3a: every production module uses only declared names, spelled by their paths, and the corpus is rewritten in one landing",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified. Across the 5,910 production modules: the 432 names with no declaration (2026-11-16 reading: 46,923 sites, led by concat 18,514, fold 4,860, to_string 4,521, map 4,205, filter 3,406, count 3,364, any 1,441, split 1,270, flat_map 1,139) homed through the policy table extended per name; then the generator run once over the corpus, test and fixture modules included, rewriting every declaration reference to its path and removing every import line, with the current import semantics as the oracle: the rewritten tree resolves and typechecks to the same bindings, module by module, or the difference is listed with its reason. Collisions are not a population under the rule: two declarations with one spelling have two paths, and the 1,617 import members the 2026-11-16 reading called ambiguous need no discharge.",
+          displaced_cost: "A corpus rewritten in pieces leaves two grammars live for the whole interval and every landing in it paying for both; one generated landing with an oracle is the replacement-migration doctrine applied (gunbc.design_argument::replacement_migration).",
+          first_slice: "The generator's oracle: for one production subtree, the rewritten modules' bindings equal the pre-rewrite bindings by declaration identity, with one planted divergence refused.",
+          red_control: "A production module with a bare head that has no declaration keeps this open; a module whose post-rewrite bindings differ from its pre-rewrite bindings by identity is listed with its reason or the landing refuses; a merge that changes a declaration's signature without a policy row is refused in review; the claim corpus is green under both compilers at the landing head.",
+          out_of_scope: "Deleting the import grammar (import-grammar-and-lines-deleted), which follows this landing so that a file with an import line can still be read while the oracle runs.",
+          handback: "The generator's corpus-wide run receipt, zero no-declaration names by the reading, zero import lines in the tree, and the claim corpus green under both compilers at the landing head."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 3a of gunbc.plans.names_without_imports: the corpus state that makes the import cut one landing."),
+    ),
+    roadmap_node(
+      identity: "rn_SR452WVJTR99AYEWSNT29J5Y6K",
+      id: "import-grammar-and-lines-deleted",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/compiler/parse.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 3b: the import concept is gone: no import production in either compiler's grammar once the corpus is rewritten",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted, gunbc.design_ruling::declaration_references_are_fully_qualified and gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded. After corpus-names-homed-and-collisions-discharged has rewritten the tree, the v2 grammar loses its import production and its module-header production: an import line or a module header refuses at parse with a located diagnostic naming the replacement (each declaration spells its own full path), and the seed's parser refuses them the same way (2026-10-15 rule 2: v1 mirrors v2). Loading is already by declaration demands from layer 0, so this node deletes grammar and nothing else.",
+          displaced_cost: "Two ways to see a name, an import closure deciding the compiled population by accident, and an import retry are each a second authority the design forbids (gunbc.design_argument::single_authority); every landing until the cut pays for keeping them agreed.",
+          first_slice: "The grammar production removed from v2 with a parse-refusal claim over a planted import line, and the same refusal in the seed.",
+          red_control: "A .dag file containing an import line or a module header refuses at parse in both compilers after the cut; a tree with neither parses, resolves and typechecks identically before and after the grammar change; the claim corpus is green under both compilers at the landing head.",
+          out_of_scope: "Any meaning change at a site (the policy table, per name, before this); the loader (layer 0); any shorter spelling or sugar.",
+          handback: "Both grammars without the production, the parse-refusal claims, and native-production-admission consuming this node."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 3b of gunbc.plans.names_without_imports: the cut that ends the import concept before v2 is accepted."),
     ),
 
     roadmap_node(
@@ -1444,6 +1529,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: picking the module takes judgment.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "A v2-emitted module passing its own discriminating tests is the first behavior receipt the promotion needs."),
+      centering: plan(text: "One module only, the smallest low-dependency module the compatible-corpus row's output names: emit it through the v2 door, build it in the real crate, run its own claims, then plant one broken variant and show the planted break fails with provenance naming the v2 generator. Hand back the receipt and the module's name; a module that will not build is the handback, not a reason to pick another."),
     ),
     roadmap_node(
       identity: "rn_1J8QK4XTB6PM09VZDR3HNW5CEY",
@@ -1496,6 +1582,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: far; needs generation three.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "admit_promotion returning promoted for a real candidate is the generator root cut (D9)."),
+    ),
+    roadmap_node(
+      identity: "rn_YQT00YD4K8DFY8K2S357ZYEN9Y",
+      id: "emitted-contracts-held",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/self_host_behavioral_equivalence_receipt.dag"),
+      line: ticket(t: fields(
+          headline: "Every rostered emitted module holds its own .dag contract on a discriminating corpus",
+          boundary: "The interlock milestone SelfHostEmittedContractsHeld (gunbc.compiler_frontend_program_interlock), read by gunbc.compiler_frontend_program_status from the latest deliberately taken behavioral-equivalence receipt identity-joined to the behavioral transport roster: every module the emitter roster names holds its own .dag contract when the emitted build is driven on a discriminating corpus. The seed is the regression oracle, never the specification (gunbc.design_ruling::v2_better_than_the_seed): a divergence is a v2 regression or a recorded seed correction, and matching bytes is not evidence.",
+          displaced_cost: "The milestone is a prerequisite of SelfHostSeedRetirement and until this change no work item discharged it, so the program could not say what remained between generation two and deleting the seed.",
+          first_slice: "Take one behavioral-equivalence receipt over the current emitter roster at a named head and read the milestone from it, whatever it says; an empty series (BehavioralEquivalenceSeriesEmpty) is the first red.",
+          red_control: "A module named by the roster with no receipt row, or a row whose contract run was not taken deliberately at the receipt's head, keeps the milestone Outstanding; a seed divergence with no disposition keeps it Outstanding; no row is minted from matching bytes.",
+          out_of_scope: "Admitting the successor (v1-emitter-fixed-point) and deleting the seed (v1-emitter-delete); widening the roster.",
+          handback: "SelfHostEmittedContractsHeld reads CLEAR in gunbc.compiler_frontend_program_status, with the receipt it was read from."
+        )),
+      parent: in_project(project: "v2-emitter-production", contribution: "A v2-built compiler is not a successor until every module it emits holds its own contract; this is the interlock prerequisite between generation two and seed retirement that had no work item."),
     ),
     roadmap_node(
       identity: "rn_3KTM8Q5VXB2NRJ7HDW9FZ0CPGA",
@@ -1696,7 +1798,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-products-v1-free",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Build and run every product without the old code present",
         boundary: "With the old runner gone and the hand-written queue worked through, the products build and run with the old directory absent. Anything that must stay gets an explicit reason.",
         displaced_cost: "Separates 'the products no longer need the old code' from 'the old runner is gone', so neither claim waits on the other's leftovers.",
@@ -1704,7 +1806,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A product that still reads or links anything from the old directory, without a stated reason, fails the check.",
         out_of_scope: "Not the repository-wide hand-written-Rust goal, and no deleting generated code.",
         handback: "The builds, the product runs, and the list of anything deliberately kept."
-      ), on: "2026-09-30", note: "Not yet centered: terminal.")),
+      ), on: "2026-09-30", note: "Not yet centered: terminal."), on: "2026-11-16", note: "This node's acceptance is the seed-deletion observation that SelfHostSeedRetirement (gunbc.compiler_frontend_program_status) needs before it can be read: the operator ruled the observation is the v1 deletion program's acceptance gate, not a separate instrument (gunbc.design_ruling::seed_deletion_observation_is_the_v1_programs_acceptance_gate). The handback's builds, product runs and kept-list are that evidence; the program's acceptance confirms and winds down the rest of v1. Serves gunbc.plans.v2_self_host.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v1-deletion-program", contribution: "The products build and run with no v1 code in their closure."),
     ),
@@ -2312,14 +2414,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-unique-on-chain",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: updated(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
           approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
           red_control: "A name answered two ways by two code paths is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "Every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
-        )),
+        ), on: "2026-11-16", note: "Operator ruling gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted restores import deletion as this project's goal, sequenced before v2's acceptance as the production route and after native-seven: the edge native-production-admission <- namespace-unique-on-chain is declared, and the handback's 'explicit import' arm ends when the cut lands. The intention is gunbc.plans.names_without_imports. The boundary text above records the 2026-11-08 reading and is not rewritten here."), on: "2026-11-17", note: "gunbc.design_ruling::declaration_references_are_fully_qualified: every declaration reference is spelled by its full path, always; a bare name is a lexical binder or unbound; the explicit-import arm of this node's handback is superseded and the ambiguity-discharge member closes as vacuous under the rule. The layer nodes are re-cut accordingly.")),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
 
@@ -2620,6 +2722,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "debt-payoff", contribution: "DP-M2 retired shell residue by moving spawns onto typed argv; one wall that change left standing is an SSH wall quoted at a direct-exec seam, where it can only restrict pathnames."),
     ),
     roadmap_node(
+      identity: "rn_01M7NQG5SWMS74ZGXDH6X55TQ8",
+      id: "extdeps-subject-ref-facts-host-census",
+      owner: "debt",
+      carriers: carrier(path: "src/v2/std/decl_index.dag"),
+      line: ticket(t: fields(
+          headline: "extdeps-subject-ref-facts: a host census reads an ExternalModelScope data declaration's subject as typed fields, so DP-M3b has subjects to resolve",
+          boundary: "A keyed decl_facts_at node (src/v2/std/decl_index.dag decl_facts_at) over an ExternalModelScope exposes only flat authored_string_lexemes: there is no subject/declaration/module_path field edge and record_field_projection is Absent, so a typed subject read cannot be built from it. Root cause measured by the DP-M3b worker (bright-wolf-535, PR #16609): marshal_decl_fact_node(DataItem) routes through marshal_data_initializer_projection, ctx.lookup_fn_node is None for extdeps scopes never loaded into the interpreter, so it falls to constructor_resolution_refused_projection, and marshal_plain_record_projection fails closed unless the type resolves in the importing module's type env. The existing resolver (src/v2/std/decl_ref_resolution_host.dag: v2.std.decl_ref_resolution_host, resolve_declaration_ref_live, declaration_ref_resolution_census_live) takes refs as input and discovers no subjects. The operator ruled DP-M3b option A on 2026-11-17 (A is fine), and the worker measured that A cannot be built inside DP-M3b. So a typed subject read needs a NEW host builtin (working name extdeps_subject_ref_facts): a BuiltinSignature added to the builtin_function_registry of src/v1/04_method.dag (type BuiltinSignature), which regenerates src/v1/stage0/src/v1_compiler_infer_method.rs; a primitive_identity_slug entry added to the roster of dag/std/primitive_projection.dag, which regenerates src/v1/stage0/src/std_primitive_projection.rs; the dispatch roster entry, which regenerates src/v1/stage0/src/v1_interpreter_dispatch_generated.rs; an eval in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts over decls_parse_only_fail_closed; the census data type and fn in src/v2/std/decl_index.dag beside DataDeclTypeFact and data_decl_type_facts; and a SeedGrowthJustification for the new seed. The three generated files are regenerated by the v1 compiler and never hand-edited; the dispatch bijection witnesses stay green: test.claim.v1_interpreter_primitive_dispatch_authority_acceptance, the surface witness in dag/gunbc/v1/v1_interpreter_primitive_surface, and the roster witness in test.claim.interpreter_dispatch_bijection_real_roster_witness.",
+          displaced_cost: "Without this census DP-M3b stays blocked: option A hands the resolver typed subject.declaration \{module_path, decl_name} values, but the only read available over an ExternalModelScope today is the untyped, flat authored_string_lexemes. Left undone, a reader guesses the subject positionally -- the failure mode gunbc.bare_name_resolved_by_proximity_standing_in_for_resolution refuses -- and the DP-M3 milestone's consumer half stalls with the 844 migrated subject refs never reaching the resolver that already exists.",
+          first_slice: "Declare the builtin end to end without hand-editing any generated file: add the BuiltinSignature to builtin_function_registry in src/v1/04_method.dag, the primitive_identity_slug entry in dag/std/primitive_projection.dag, the eval in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts, and the census data type plus fn in src/v2/std/decl_index.dag beside data_decl_type_facts; attach a SeedGrowthJustification (gunbc.seed_growth::SeedGrowthJustification) whose hand_authored_declarations is the seed census -- the new eval_extdeps_subject_ref_facts fn in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts, its BuiltinSignature in src/v1/04_method.dag, its primitive identity in dag/std/primitive_projection.dag, and its census type plus fn in src/v2/std/decl_index.dag (the three generated files are regenerated, not hand-authored rows); a reason; an owning_dissolution_lane; and a trigger, so the hand-written eval is a declared row and never a silent escape hatch per gunbc.design_argument::self_hosting; the trigger must name the condition that deletes the eval: an emitted v2 fold resolves an ExternalModelScope data declaration's subject in-DAG, i.e. marshal_data_initializer_projection no longer falls to constructor_resolution_refused_projection for extdeps scopes because the scope is loaded so ctx.lookup_fn_node resolves the subject type in the importing module's type env and record_field_projection is Present -- at which point the eval and its roster rows are deleted; regenerate src/v1/stage0/src/v1_compiler_infer_method.rs, src/v1/stage0/src/std_primitive_projection.rs and src/v1/stage0/src/v1_interpreter_dispatch_generated.rs through the v1 compiler; then land one claim that reads one ExternalModelScope data declaration and returns subject.declaration \{module_path, decl_name} as typed fields, red on base and green on head.",
+          red_control: "For an ExternalModelScope data declaration the census returns subject.declaration \{module_path, decl_name} as typed fields (a typed read of both), a non-literal subject row REFUSES rather than being guessed positionally, and the three generated files match the v1 compiler's regeneration with the dispatch bijection witnesses (authority, surface and roster) holding.",
+          out_of_scope: "This is the declaration of the census node only; no implementation lands in this plan PR. Resolution belongs to dp-m3-subject-ref-resolved, which consumes the typed subjects this census discovers -- this node discovers and types them and resolves nothing. The three generated files are never hand-edited, no subject resolution is added to the census, and DP-M3b's own ticket text is left untouched; the only change to it is the new dependency edge.",
+          handback: "Return the census builtin reading an ExternalModelScope data declaration's subject.declaration \{module_path, decl_name} as typed fields, the refusal on a non-literal subject row, the three regenerated files with the authority, surface and roster bijection witnesses green, and the SeedGrowthJustification -- the prerequisite dp-m3-subject-ref-resolved then resolves against."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M3b's option A read of typed subject refs cannot be built inside DP-M3b: the only read over an ExternalModelScope is the untyped authored_string_lexemes, so a host census must first return subject.declaration \{module_path, decl_name} as typed fields for the existing resolver to consume."),
+    ),
+    roadmap_node(
       identity: "rn_H3NLOAANZ5KMIP89PZHKFN2N5A",
       id: "dp-m3-subject-ref-resolved",
       owner: "debt",
@@ -2804,7 +2923,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "The roadmap serve entry runs as a native-served program, so a restart starts the stored built product instead of resolving and typing its closure again",
-        boundary: "srv1 lab items 9 and 13 (2026-11-04): restarting serve takes about 11 minutes, and each harness worker rests at about 6.7 GiB. Measured on fleet-converge run 43637222454 (serve_entry_verdict, 1436-module closure): resolve_entry_graph_inclusive is about 175 of 176 s of the pre-entry, peak RSS about 5.7 GiB. Serve runs on gunbc run, the v1 seed interpreter, so persisting a program image inside it is SeedFeatureCompletion and refused (gunbc.v1.v1_maintenance_standing::v1_seed_standing). The admitted route is native serving: the entry runs as a native serve driver (gunbc.native_serve), resolve and typing run once at build time, and the built product is already stored, keyed and re-verified by the seed's native product cache, which refuses a mismatched or corrupted product and rebuilds. Folding that cache's key into std.materialization_provider request_key is owed only when its own stated trigger holds (the provider serves the native artifact as its only producer).",
+        boundary: "srv1 lab items 9 and 13 (2026-11-04): restarting serve takes about 11 minutes, and each harness worker rests at about 6.7 GiB. Measured on fleet-converge run 43637222454 (serve_entry_verdict, 1436-module closure): resolve_entry_graph_inclusive is about 175 of 176 s of the pre-entry, peak RSS about 5.7 GiB. Serve runs on gunbc run, the v1 seed interpreter, so persisting a program image inside it is SeedFeatureCompletion and refused (gunbc.v1.v1_maintenance_standing::v1_seed_standing). The admitted route is native serving: the entry runs as a native serve driver (gunbc.native_serve), resolve and typing run once at build time, and the built product is already stored, keyed and re-verified by the seed's native product cache, which refuses a mismatched or corrupted product and rebuilds. Folding that cache's key into std.materialization_provider request_key is owed only when its own stated trigger holds (the provider serves the native artifact as its only producer). The seed-embedded descriptor gunbc.roadmap.roadmap_native_ingress.roadmap_native_ingress_program carries this node's realized state: startup is Absent -- the startup handler is deferred and owed on this node.",
         displaced_cost: "Every deploy holds the service down for the restart, and every worker's resting memory limits how many workers a host can run.",
         first_slice: "Run the roadmap serve entry natively off srv1 and name each refusal between it and serving; fix those at their earliest unjustified boundary.",
         red_control: "(1) The natively served roadmap entry answers a fixed request set with the same responses as the interpreted serve at the same revision; RED on main, where it does not serve natively. (2) A restart with an unchanged closure and compiler starts the stored product without resolve or typing, with the pre-entry receipt showing it. (3) A changed closure or compiler digest, or a corrupted stored product, rebuilds and never serves the stale product.",
@@ -2968,6 +3087,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "The slot roster matches the hosts that carry slots."),
     ),
     roadmap_node(
+      identity: "rn_20NKA9WYGMKXA5JPA4YM8KXD5X",
+      id: "deploy-release-roster-carries-every-owned-step",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/member_observe.dag"),
+      line: ticket(t: fields(
+        headline: "The release roster observes every member the deploy owns, so an all-kept plan clears the artifact gate in production",
+        boundary: "Found while landing the deploy-artifact closure gate (PR #16587, 2026-11-17). The gate (gunbc.live_deploy.apply_legs deploy_artifact_closure_gate) counts an artifact as present when the release plan verified it KEPT, through plan_kept_owned_artifacts. gunbc.live_deploy.member_observe deployment_member_roster does not carry two of the deploy's owned steps: the attempt-unit drain path unit (AttemptUnitDrainPathUnit) and the approval broker front door (ApprovalBrokerFrontDoor). The production verifier therefore never emits a KEEP row for them. A plan that keeps everything halts at the gate on their reads (the launcher snapshot directory; the broker release tree and its digest env file) even when they are installed. That is fail-closed, not a false admission. The witness test.claim.live_deploy.live_deploy_apply_plan_witness all_kept_roster appends both members by hand to show the gate's keep coverage, so that control does not exercise the production roster for these two.",
+        displaced_cost: "An unchanged redeploy of srv1 halts at the artifact gate until someone writes the two members into the plan by hand or forces a rewrite, and each halt costs a read of the refusal.",
+        first_slice: "Give each of the two member kinds its own desired and observed identity, grounded in what it is: the drain path unit is a systemd unit file, and the broker front door is a Tailscale serve route. gunbc.live_deploy.emit identity_member_of_step binds both as DirectoryRoot today, and member_observe reads a DirectoryRoot as a directory's standing, which verifies neither. Then add both to deployment_member_roster through that per-kind identity. Adding DirectoryRoot rows to the roster does not satisfy this node.",
+        red_control: "(1) Through the production observation path (desired_member_identity and observed_member_on_host over a supplied host reading), each member kind yields KeepMember when its installed identity equals the desired one, and a rewrite when it differs (a drifted unit file; a route serving another backend). RED on main, where neither kind has an observation of its own. (2) As a separate consumer check, the_all_kept_plan_clears_the_deploy_artifact_gate passes with the production deployment_member_roster and no hand-appended members. converged_effect_plan assigns KeepMember without observing, so (2) alone does not accept this node.",
+        out_of_scope: "Reader ordering after the tree converger (integration concern deploy-readers-must-order-after-tree-converger).",
+        handback: "The per-kind desired and observed identities with the upstream each is grounded in, the observation controls (keep and drift for each kind) passing and red on main, the gate consumer check on the production roster, and all_kept_roster deleted from the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A redeploy that changes nothing proceeds without a hand step."),
+    ),
+    roadmap_node(
       identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
       id: "factory-dogfood-route",
       owner: "harness",
@@ -2983,6 +3119,40 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       ), on: "2026-10-03", note: "Operator ruling 2026-10-03: the dogfood clock is what matters most for the first-external target.")),
       execution: bound(contract: dogfood_route_execution_contract()),
       parent: in_project(project: "factory", contribution: "The factory is proven by one request crossing every stage on the real route, not by each stage passing alone."),
+    ),
+    roadmap_node(
+      identity: "rn_8JYZHD6GVDME0EYZ3PX0QRBD0Z",
+      id: "dogfood-g1-shared-computation-record",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
+      line: ticket(t: fields(
+          headline: "Dogfood G1: the immutable subject and the shared computation are each established by their own record, read by the route's receipt",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G1: one attempt's verification runs through the materialization provider over the bounded store, and the receipt reads an immutable-subject record and a shared-computation record written by that run (the reader gunb-ai/gunbc#13097 declared as a frontier, shared_computation_observe_for_attempt, consumed by DogfoodRouteReceipt). Lands alone against main after factory-attempt-execution-on-fabric-lease, so there is one writer of attempt records to bind to; never as a stack.",
+          displaced_cost: "gunb-ai/gunbc#13097 carried this work and closed unmerged on 2026-10-09: a stacked PR whose base moved, a conflict in the generated emit file, and seven witness failures identical on main. Until the record exists the route's receipt is withheld at this stage and the dogfood window cannot start.",
+          first_slice: "The reader consumed: DogfoodRouteReceipt reads the shared-computation record of one real attempt, with SharedComputationAbsent typed by its closed cause, and refuses on an attempt that has none.",
+          red_control: "An attempt whose verification did not go through the provider yields SharedComputationAbsent with its cause, never a complete stage; a receipt read over a record from another attempt refuses; deleting the reader's consumer makes the route's acceptance red.",
+          out_of_scope: "Metering (G3, landed), result returned (G4, landed), isolated execution (G5, its own node); the belt-to-fabric cut itself.",
+          handback: "The two records written by one real attempt on the route, the receipt reading them, and the stage no longer owed."
+        )),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the one dogfood stage whose record was attempted and lost to a stacked base."),
+      centering: plan(text: "One real attempt only, after factory-attempt-execution-on-fabric-lease: verification through the materialization provider over the bounded store, the shared-computation record written by that run, DogfoodRouteReceipt reading it, SharedComputationAbsent typed on an attempt without one. Lands alone against main; never as a stack. Hand back the records and the receipt's reading."),
+    ),
+    roadmap_node(
+      identity: "rn_X05JQFPT0MQG81ASDVDNMXTXAF",
+      id: "dogfood-g5-isolated-execution-record",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
+      line: ticket(t: fields(
+          headline: "Dogfood G5: a record binds the granted unit's observed start and exit to its grant and fence, and cleanup returns both",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G5: one attempt runs as a capped systemd unit under a placement grant and a fence (the dogfood bar, operator ruling 2026-10-03; microVM isolation out of scope), and a record binds the unit's observed start and exit to that grant and fence; cleanup returns the grant and the fence and is its own record. The receipt reads both.",
+          displaced_cost: "Without the record the route can show a placed grant and a finished unit without being able to say they were the same attempt, so isolation is asserted, not observed; the stage is owed and the receipt withheld.",
+          first_slice: "One real attempt's unit start and exit observed and bound to its grant record, read by the receipt; its RED a unit record naming another attempt's grant, refused.",
+          red_control: "A unit record whose grant or fence names another attempt refuses; an attempt with a grant and no unit record is owed, never complete; cleanup that does not return the placed grant keeps the stage owed.",
+          out_of_scope: "MicroVM isolation (F5, microvm-runtime-durable-state); the G1 records; billing.",
+          handback: "The binding and cleanup records of one real attempt, the receipt reading them, and the stage no longer owed."
+        )),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the dogfood stage that had no record and no node."),
+      centering: plan(text: "One real attempt only, on srv2's capped-unit route: bind the unit's observed start and exit to its placement grant and fence in one record, have DogfoodRouteReceipt read it, and plant a record naming another attempt's grant to show the refusal. Hand back the record, the receipt's reading, and the planted refusal."),
     ),
     roadmap_node(
       identity: "rn_TCZ82BX9PRSBAW1Z4WVSFQT023",
@@ -3022,7 +3192,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_VQ8RGFT438E36PHK9WXJ5TCJMC",
       id: "v2-compiler-live",
       owner: "self-host",
-      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compiler_frontend_program_interlock.dag" },
+        Pointer { label: "plan", path: "dag/gunbc/plans/v2_self_host.dag" },
+      ],
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
           boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
@@ -3032,6 +3205,134 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "SelfHostSeedRetirement reads CLEAR in gunbc.compiler_frontend_program_status, and every member project's handback is met."
         )),
       parent: in_project(project: "gunbc-project-root", contribution: "Self-hosting is the root's identity. This program makes the self-hosted compiler the one that actually runs, and it ends when the old seed is gone."),
+    ),
+    roadmap_node(
+      identity: "rn_5A53SMVX18G72TGH0215TV1HYM",
+      id: "universe-ingest-replaces-file-acquisition",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/module_acquisition.dag"),
+      line: ticket(t: fields(
+          headline: "The bundle is ingested into one universe of declarations and the files are discarded",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded: one ingest step takes the source bundle, parses it, publishes every declaration by its full path into the universe, keeps a declaration-to-text mapping for literals and locations only, and discards the files; v2.compiler.module_acquisition and v2.compiler.source_authority become that step's realization, gunbc.source_layout and the two-tree layout become its mapping, and nothing after ingest names a file. Two providers for one path refuse at ingest. A test declaration is an ordinary declaration whose selection is a property of the subject.",
+          displaced_cost: "Every stage after acquisition today can name a file, a tree or a module header, so meaning depends on where a declaration was stored and the compiler carries file concerns everywhere; the operator's vision is a file-less system where things are purely named.",
+          first_slice: "One subject ingested from a bundle, every stage after it reading declarations by path only, with the text mapping answering one literal's location; its RED a stage that reads a path after ingest, refused in review by the phase-admission domain.",
+          red_control: "A declaration moved between files in the bundle changes no identity and no behavior; two bundles with the same declarations in different files yield the same universe; a duplicate path refuses at ingest naming both providers; no stage after ingest consumes a file path.",
+          out_of_scope: "Fracturing the universe (one universe for now); sugar for headers or shorter spellings.",
+          handback: "The ingest step executing on the native route with its controls, the stages after it free of file names, and the mapping as the only survivor of the files."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's first separation: code from the files that carried it."),
+    ),
+    roadmap_node(
+      identity: "rn_YXN3SJDH0F69CMYJSVDK1R9RA5",
+      id: "one-declaration-identity-carrier",
+      owner: "namespace",
+      carriers: carrier(path: "dag/std/decl_ref.dag"),
+      line: ticket(t: fields(
+          headline: "One structural declaration identity, rendered with dots, used by every consumer",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. std.decl_ref DeclarationRef (module path, declaration name, tagged member coordinate) and v2.std.qualified_name QualifiedName (a symbol sequence) become one carrier: a nonempty path plus a tagged member or type-parameter coordinate; equality, hashing, dependency edges, citations, generated-provider demands and resolver output all use it; dots are its one rendering, citations included, and `::` is retired from std.decl_ref's display key, the @ref grammar and the sweep. A path names exactly one thing (zero violations today).",
+          displaced_cost: "Two carriers for one identity, and two spellings for one path, are a fork by gunbc.design_argument::single_authority; std.decl_ref itself warns that its display key can collapse distinct references.",
+          first_slice: "The merged carrier with the equality and rendering laws as claims, and the sweep's citation check reading it; the @ref grammar accepting dots.",
+          red_control: "Two references equal by rendering and distinct by structure refuse to compare equal; a citation with `::` refuses after the cut; a path that is both a prefix and a declaration refuses.",
+          out_of_scope: "Shorter spellings or sugar.",
+          handback: "One carrier, its laws executing, `::` gone from the tree."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's identity law: one structure, one rendering."),
+    ),
+    roadmap_node(
+      identity: "rn_M9XZQ1K5Y7756T4C5FWQ8Z3CKS",
+      id: "sealed-phases-and-the-checked-carrier",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/normalized_tree.dag"),
+      line: ticket(t: fields(
+          headline: "Four sealed phases, and evaluation and emission consume only the checked carrier",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::phase_admission_is_a_conformance_pattern and the conformance domain conformance-phase-admission: the compiler has four phases, parsed, resolved, checked, emitted, each a sole_constructor carrier (ParseTree stops being a bare Node alias); a CheckedProgram exists whose constructor proves every reference resolves, every obligation is discharged, every target-required operation has a realization and no provider is unavailable; evaluation and emission accept nothing else. A partial analysis (GroundingNotDerived, an unresolved provider) may exist for tooling and never reaches a build.",
+          displaced_cost: "A bare Node can be handed to any stage as if a phase had established it, and partial facts reach emission; the alternative kept today is a roster of tolerated unknowns, which the operator ruled out as a ratchet.",
+          first_slice: "ParseTree sealed, with the RED a resolve called on a Node that no parse produced.",
+          red_control: "A stage constructed from a raw representation refuses at the type; a program with one not-derived grounding has no CheckedProgram; the evaluator and the emitter have no input type but CheckedProgram.",
+          out_of_scope: "What each phase establishes (its own module); the eight-phase ladder the audit sketched (four is the ruling).",
+          handback: "The four carriers sealed, CheckedProgram consumed by both the evaluator and the emitter, and the last roster of tolerated unknowns deleted."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's phase law: states are types and transitions are their only constructors."),
+    ),
+    roadmap_node(
+      identity: "rn_914G3PJ530KJHSZT5K1EV78SCE",
+      id: "typed-refusals-own-control-flow",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/diagnostic.dag"),
+      line: ticket(t: fields(
+          headline: "Production code branches on typed refusals; diagnostics render them",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. Every v2 production outcome that a caller branches on is a closed refusal type with its located evidence; a Diagnostic is a rendering of such a value for an audience and is read by no production module to decide anything. The 32 production modules under src/v2 that read diagnostics_fatal_reason today (2026-11-17 count) branch on the typed value instead.",
+          displaced_cost: "A rendered reason symbol stands in for a closed type at 32 sites, so message wording is semantics and a renamed reason is a silent behavior change.",
+          first_slice: "One resolve outcome made a closed type, its two production readers moved to it, with the RED a reason-symbol read that no longer compiles.",
+          red_control: "No production module under src/v2 reads diagnostics_fatal_reason or matches a rendered string; a refusal's wording can change with no claim changing.",
+          out_of_scope: "Diagnostic rendering policy (audience, wording).",
+          handback: "Zero production readers of reason symbols, the closed refusal types, and the renderer as their only consumer."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's failure law: typed, located, rendered after."),
+    ),
+    roadmap_node(
+      identity: "rn_88E7PHHNRJ71E3ZB8JHSM3FDM8",
+      id: "one-text-carrier",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/text.dag"),
+      line: ticket(t: fields(
+          headline: "One text carrier, a sequence of Unicode scalars, with the host crossing as its only wrapper",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. v2.std.text String (FreeMonoid<Char>) and the kernel String are one carrier for one meaning; bytes decode to it with stated fidelity; identifiers and symbols are not arbitrary text; a host string appears only at an explicit effect or wire boundary through the one declared crossing (gunbc.structural_realization_bindings UnicodeScalarSequenceUnfold); gunbc.rung_drop text_boundary_identity_wall is retired by that crossing executing on the native route.",
+          displaced_cost: "Two String declarations and an identity wall at the tokenizer mean the same source can carry two meanings of text, and every string operation has had to be homed twice.",
+          first_slice: "The tokenizer reading host text through the one crossing with its claims, and one of the two String declarations deleted in the native-seven closure.",
+          red_control: "A host string reaching a structural position without the crossing refuses; a second String declaration in the retained closures keeps this open; the rung drop is retired by its own restoration trigger, never by prose.",
+          out_of_scope: "Diagnostic text and path text roles beyond the crossing (later wrappers, if a consumer needs them).",
+          handback: "One String, the crossing executing natively, the drop retired."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's text law: one carrier, explicit crossings."),
+    ),
+    roadmap_node(
+      identity: "rn_BAE8SV9B7FFF0908MPZ9RHY2QG",
+      id: "operations-are-declarations",
+      owner: "self-host",
+      carriers: carrier(path: "dag/std/primitives.dag"),
+      line: ticket(t: fields(
+          headline: "An operation is a declaration with a realization row, and operators lower to references",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::operations_are_declarations_with_realizations: the five mechanisms that carry operations today (68 std.primitives contracts, 120 builtin_registry_surface_names, 40 primitive_projection rows, the CanonicalOperation enum consumed by infer, target_serialize and the three target models, and the seed's 134 v1_rt functions) converge on one shape, a declared fn with a per-target realization row as std.algebra fold_list already has; a surface operator lowers to a reference to the declared operation of its operand's algebra; the only primitives are v2.std.node's five connectives and six behaviors.",
+          displaced_cost: "One shape spelled five ways is five places meaning is decided; each wave that homes a name has had to touch several of them.",
+          first_slice: "CanonicalOperation's Add arm replaced by a reference to the declared add of the operand's algebra, with the checker, the serializer and one target consuming the declaration; the RED an operator whose algebra declares no such operation, refusing typed.",
+          red_control: "No enum, table or roster answers an operation by spelling; a target without a realization row for a demanded declaration refuses typed; the seed mirrors each move.",
+          out_of_scope: "Deleting the seed's runtime (dies with the seed); new operations.",
+          handback: "The five mechanisms reduced to declarations and realization rows, the operator lowering executing natively."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's operation law: declarations and realizations, nothing primitive but the substrate."),
+    ),
+    roadmap_node(
+      identity: "rn_MC7EJBANKKA6XYYEQJTXDVK1D9",
+      id: "one-standard-library",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/integer.dag"),
+      line: ticket(t: fields(
+          headline: "The retained compiler closures contain no two declarations for one concept",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. Every pair across dag/std and src/v2/std is classified: the same concept collapses to one declaration (integers, optionality, collection carriers, scalars, algebra); the same carrier in a different role gets a role wrapper over one carrier; a genuinely different concern is renamed into the compiler's own namespace so it is not called the language's standard type. v2.std is not a second standard library. Under the fully-qualified rule each pair is already distinct by path, so this is design debt with its own acceptance per type, not an ambiguity.",
+          displaced_cost: "Two authorities answer one semantic question, and every consumer of the pair chooses one by habit.",
+          first_slice: "Int: std.integer and v2.std.integer merged or the compiler's renamed, with the Oct 18 kernel-type layer rule's claims executing.",
+          red_control: "A second declaration for one classified concept in either retained closure keeps this open; a renamed compiler-internal type no longer spelled as a standard type.",
+          out_of_scope: "Types outside the two retained closures.",
+          handback: "The classification table executed: zero same-concept pairs in the retained closures."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's library law: one std."),
+    ),
+    roadmap_node(
+      identity: "rn_5CQTJHEEPD2TXTARM3W7CNR50D",
+      id: "external-specimen-compiles",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/instrument_targets.dag"),
+      line: ticket(t: fields(
+          headline: "A program outside the compiler's own closure compiles natively, using features the closure does not select",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. One specimen program that is not part of any compiler closure, chosen to exercise constructs the compiler's own source never uses, compiles, checks and runs through the native route with its claims green; it is an instrument row (gunbc.instrument_targets) judged by the emitted binary, never a lane handing the corpus to the seed. Native-seven is the first specimen of the native route and never the definition of the supported language.",
+          displaced_cost: "A self-hosting closure defines the supported language by accident: whatever the compiler happens to use works, and nothing else is known to.",
+          first_slice: "The specimen chosen and its unselected features listed against the closure's construct census; one construct passing natively.",
+          red_control: "A construct the specimen uses and the closure does not is refused early and precisely or passes; the specimen's claims are green on the native route; the row is judged by the emitted binary.",
+          out_of_scope: "Choosing more than one specimen; performance.",
+          handback: "The specimen's native run receipt and its construct list."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's completeness law: the language is what is specified, not what the compiler uses."),
     ),
     roadmap_node(
       identity: "rn_4DXSRQ0TDK36EBTJHKF9YFRJ3A",
@@ -3354,7 +3655,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "literal-elaboration",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
           boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550 open), maps (#12758 open).",
           displaced_cost: "An unelaborated literal refuses its whole file, and importers then fail as unbound.",
@@ -3362,7 +3663,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A map literal with duplicate keys of an extensional key type refuses (keys domain, std.algebra algebra_profile_equality_extensional).",
           out_of_scope: "Core type merges.",
           handback: "The plans' remaining PRs merged, with the specimens green."
-        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review."), on: "2026-11-16", note: "Re-read against GitHub: #12550 merged 2026-09-30 and #12758 merged 2026-10-01, so the first slice is landed and the boundary's two 'open' marks are stale. Not accepted here: the handback asks for the specimens green, which is a run fact this change did not take. Serves gunbc.plans.v2_self_host as a parent of native-seven.")),
       parent: in_project(project: "v2-frontend", contribution: "Literals and constructs elaborated from their annotation is what lets the std files the native seven import ingest at all."),
     ),
     roadmap_node(
@@ -3370,7 +3671,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shared-check-lets-and-matches",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Lets and match binders are judged by the one relation",
           boundary: "v2.compiler.infer judges let annotations and match binders through the #12566 inhabitance relation.",
           displaced_cost: "Binders typed inline pass wrong values the relation would refuse.",
@@ -3378,7 +3679,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A binder at the wrong type refuses. The same value at the right type is accepted.",
           out_of_scope: "Generic records; cross-module declarations.",
           handback: "The PRs merged, with the per-kind coverage rows moved to \"derived\"."
-        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open."), on: "2026-11-16", note: "Re-read against main e346a2c89daa and GitHub. #12582 merged 2026-09-30; #12637 closed UNMERGED 2026-10-06 and was superseded by #12566 (merged 2026-09-30, declared returns judged by the one relation); #12641 merged 2026-09-30. The first slice is therefore landed. What remains is the executed evidence that both binder kinds reach the inhabitance judgment through one reader: gunbc#15931 (one test file, three claims, closed unmerged 2026-11-08 by the keen-otter wind-down, head preserved at archive/keen-otter-2026-11-08/pr-15931) names the shared reader v2.compiler.infer infer_payload_binder_derived_type as the one-occurrence mutation; its PR body's seam infer_frame_with_binder_type is wrong (it constructs only the let row). Acceptance also states the rung on gunbc.recurring_failure_mode bind_and_match_binders_not_typed_from_their_dependency_sibling, which reads RungUnread after both halves climbed. The handback's per-kind coverage rows name no carrier in the tree; accepting records that as the stated divergence. Serves gunbc.plans.v2_self_host as a parent of native-seven, with slack against the emitter chain.")),
       parent: in_project(project: "v2-shared-type-check", contribution: "Lets and match binders are the next constructs the one relation must judge."),
     ),
     roadmap_node(
@@ -4915,6 +5216,251 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
     ),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // the schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
+    // binds its days, claims that name a leaf, the in-flight set and the realized durations derived
+    // from the log, the schedule from now, its bottlenecks and its offer, the leaf-grain frontier and
+    // the dispatch that carries a leaf, the typed handback, the projection every reader reads and the
+    // page that renders it. DECLARATION ONLY: the rows are the units, each one PR, each with its red
+    // control in its own ticket. No leaf is a node here: a leaf has no identity until it is claimed.
+    roadmap_node(
+      identity: "rn_01M7NPVR8MY69FQRA0RE37AHAB",
+      id: "roadmap-schedule-leaf-expansion",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A decomposition reads as leaf occurrences with the edges between them",
+        boundary: "roadmap_decompositions expands into leaf OCCURRENCES: one per leaf, a FindingsOf family at its declared assumed count carried as a simulation input, and dependency edges between occurrences -- stage k on stage k-1, and each waits_on row aimed into the child's stage. The expansion writes nothing; every schedule and every readiness below reads it.",
+        displaced_cost: "Without it a schedule can only count items, so an item with three parallel leaves holds the critical path for one leaf's days and the offer keeps naming work that cannot start. Every unit below reads this expansion.",
+        first_slice: "Expand one decomposition that has a FindingsOf family and two stages into its occurrences, with the occurrence edges, at a declared count.",
+        red_control: "A planted waits_on naming a stage the parent's decomposition does not have refuses by CONSUMING THE CARRIER'S EXISTING CLAIM: gunbc.roadmap.roadmap_decomposition's own well-formedness witness is what refuses, and the expansion calls it rather than re-checking a row the carrier has already admitted.",
+        out_of_scope: "No scheduling, no calendar, no in-flight set, no dispatch. No leaf is minted as a node in gunbc.roadmap.roadmap_authority: a leaf has no identity until it is claimed.",
+        handback: "The occurrence list for one decomposition at a declared count, the refusal output for the planted stage, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8N43DQ0V7XT2EZKX04",
+      id: "roadmap-schedule-list-scheduling",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "List scheduling that answers in days, lanes and a critical path",
+        boundary: "Over the expansion: longest remaining path first, a worker count taken as an INPUT, and a zero-day Join placed without a worker. It answers, per leaf, its start and finish day; the lane it sits in; how many leaves are in flight each day; and the critical path. Days stay abstract until the calendar unit binds them. The answer is COMPUTED from the decomposition carriers and the item event log; it MAY be cached, and a cache is derived and never authoritative, so every read recomputes it (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), which narrows @ref(gunbc.design_ruling::planning_scheduling_is_cut)). No schedule type, time-period record, forecast state or synchronized today list is written as such, and the worker count stays an input shown as an input. Its consumers are the bottleneck-and-offer row and the projection.",
+        displaced_cost: "Without it the days a decomposition carries are an input nobody can test against reality, and there is no critical path to define a bottleneck or an offer. Every later schedule unit reads this answer.",
+        first_slice: "Schedule two chains and one family at a declared count, under two worker counts, and print the two answers side by side.",
+        red_control: "A two-leaf chain under one worker finishes at the SUM of the two days; two independent leaves under two workers finish at the MAX of the two. Both answers come from one run.",
+        out_of_scope: "No calendar, no claimed leaves, no decision about who works. The worker count is shown as an input and never becomes a fact.",
+        handback: "The schedule output for both fixtures (start and finish per leaf, lanes, in-flight count per day, critical path), the two refusal outputs, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8PQK11YFYV0QV0SM74",
+      id: "roadmap-schedule-calendar-binding",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Day zero is the read date, and a week has five working days",
+        boundary: "The schedule's abstract days become dates: day 0 is the date the read was taken, and a week has five working days. The binding is kept out of the scheduler so the scheduler stays testable on days alone and the calendar is read separately. No date here is a dependency or a gate -- the dependency reading is the edges -- and no date is authoritative between reads: a cached date is derived and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)), and the dated clock stays @ref(gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc).",
+        displaced_cost: "Without it the days in the answer are not the days anyone will see: an item finishing on day 0 of a read taken on a Friday would read as a Friday finish.",
+        first_slice: "Bind one schedule answer to a read date and print the start and finish dates along its critical path.",
+        red_control: "A leaf finishing on a non-working day reads as the NEXT working day, never as the weekend; the same schedule read one week later moves every date by seven days and changes nothing else.",
+        out_of_scope: "No scheduling policy change: the order and the worker count come from the scheduler unit unchanged.",
+        handback: "The dated output for one read, the weekend output and the one-week-later output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8QQ2EYRW11GZWGRFTB",
+      id: "roadmap-claim-names-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "A claim names the leaf it claims, in the decomposition's own spelling",
+        boundary: "The Claimed payload names the LEAF PATH -- item, stage index, piece index, and the member index for a family at its declared count -- spelled as the decomposition spells it, the same three indexes the carrier's well-formedness check reads. A path the decomposition does not have refuses at append.",
+        displaced_cost: "Without it the in-flight set, the realized durations and the offer can only be spoken of per item, which is where the belt stops today: two workers cannot take one item's leaves side by side. A claim that names only its item is refused at append, from the first landing (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)); what the refusal leaves outstanding is tracked and prioritized rather than admitted.",
+        first_slice: "Append one Claimed naming a leaf path the decomposition has and one naming a path it does not, and show both outputs.",
+        red_control: "A planted Claimed whose path is not in the decomposition refuses AT APPEND, by consuming the carrier's existing claim rather than re-checking the spelling here.",
+        out_of_scope: "The ruled shape is not reopened here (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)): no migration arm is built, and a live item-level claim that predates the landing is re-recorded against its leaf or released -- the set of such claims is a work item of its own. No leaf becomes a node.",
+        handback: "The accepted append, the refused append output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8R27QGW6MFE9WB6G4F",
+      id: "roadmap-leaf-in-flight-set",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "Which leaves are in flight, derived and never written",
+        boundary: "The in-flight leaves are those with a Claimed and nothing after it: no Released, no HandedBack, no Retired, no acceptance. The set is DERIVED from the log and never written down, so it cannot go stale.",
+        displaced_cost: "Without it in flight is a list somebody maintains, and the first missed release makes it wrong: the offer and the highlight would both point at leaves nobody holds.",
+        first_slice: "Derive the in-flight set for one item over a planted log of claims, releases and acceptances.",
+        red_control: "A leaf claimed and then released is NOT in flight; the same log replayed without the release puts it back.",
+        out_of_scope: "No in-flight record is ever written; what a claim carries belongs to roadmap-claim-names-leaf.",
+        handback: "The derived set for the planted log with and without the release, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8S3EY06Q6JCZA2F57G",
+      id: "roadmap-leaf-realized-duration",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A completed leaf's realized duration, read from the log, replaces its prior",
+        boundary: "A leaf's claimed-to-accepted working days are read from the log. Where a realized value exists the schedule takes it and REPORTS WHICH VALUE IT USED; otherwise it takes the prior. Realized values replace the declared priors as they accumulate: the priors are simulation inputs.",
+        displaced_cost: "Without it the plan keeps quoting the day counts it started with, the estimates never meet the work, and the next round of estimates has no source.",
+        first_slice: "Fold one item's completed leaves into its schedule and print, per leaf, whether the realized value or the prior was used.",
+        red_control: "An accepted leaf with NO claim has no realized duration and the fold SAYS SO in its output -- it does not read as zero days and does not fall back to the prior silently.",
+        out_of_scope: "No change to the scheduler's order; no estimate is re-issued here, which is gunbc.roadmap.roadmap_effort_estimate's work.",
+        handback: "The fold output for a leaf with a realized duration and for an accepted leaf with no claim, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
+      id: "roadmap-schedule-from-now",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "The schedule read from today: in-flight leaves pinned, the rest scheduled around them",
+        boundary: "In-flight leaves are pinned at their claim day with their REMAINING days; only unclaimed leaves are scheduled around them, under the same policy and worker count. The answer is the schedule as of the read. A claimed leaf's day comes from the item event log, so the pin rests on a realized fact and not on a forecast; the rest is recomputed at the read, and any cache of it is derived and never authoritative (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)).",
+        displaced_cost: "Without it the schedule restarts every leaf at today and loses the week already spent: work in flight is scheduled a second time and everything behind it slips by the days already worked.",
+        first_slice: "Schedule one item with two in-flight leaves and four unclaimed leaves, and print the pinned rows apart from the scheduled ones.",
+        red_control: "A leaf claimed three days ago with five days of work finishes at DAY TWO of the read; a leaf whose remaining days cannot be worked out is refused rather than pinned at zero.",
+        out_of_scope: "No new scheduling policy; no bottlenecks and no offer, which is the next row's answer.",
+        handback: "The from-now output for the fixture with the pinned rows named, the day-two control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8VN1APM29K9AV9YE29",
+      id: "roadmap-schedule-bottlenecks-and-offer",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Bottlenecks and the offer, from the schedule as of today",
+        boundary: "A bottleneck is an item with an in-flight or startable leaf ON THE CRITICAL PATH. The offer is the unclaimed startable leaf with the longest remaining path, excluding items the belt withholds. Both are computed from the carriers and the log, may be cached as derived data that is never authoritative, and are recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)). The offer is shown on the projection beside the bottlenecks, so what is planned from the critical path stays visible to the operator.",
+        displaced_cost: "Without them the schedule is a picture nobody acts on: what to start next, and what is holding the line, are the two questions the projection and the page exist to answer.",
+        first_slice: "Compute bottlenecks and the offer for one fixture whose critical path runs through two items, and show both answers.",
+        red_control: "With the critical path through X and Y the offer is X's startable leaf, NOT an off-path leaf that happens to start the same day; an item the belt withholds is never offered.",
+        out_of_scope: "No dispatch and no capacity arithmetic: the dispatch row reads this offer.",
+        handback: "The bottleneck list and the offer for the fixture, the off-path control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
+      id: "roadmap-spawn-frontier-leaf-grain",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_readiness.dag"),
+      line: ticket(t: fields(
+        headline: "The spawn frontier at leaf grain, with the item predicate still as the gate",
+        boundary: "A leaf is ready when every leaf it depends on is ACCEPTED and its item is dispatchable by today's readiness (gunbc.roadmap.roadmap_readiness). The item predicate STAYS the gate: nothing starts a leaf whose item may not start.",
+        displaced_cost: "Without it the frontier is item-grain, so only the first leaf of an item is visible to the belt and the leaves waiting on a stage-1 sibling stay invisible until the whole item moves.",
+        first_slice: "Compute the leaf frontier for one item with two stages and print, per leaf, which dependency leaf is not yet accepted.",
+        red_control: "A leaf whose stage-1 sibling is unaccepted is NOT ready even when its item is dispatchable; a leaf whose item is not dispatchable is not ready even when every dependency leaf is accepted.",
+        out_of_scope: "No dispatch; the item readiness predicate itself does not change.",
+        handback: "The frontier output for the two planted cases, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8XJ9DVYGSNMZKP8WKJ",
+      id: "roadmap-dispatch-carries-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag"),
+      line: ticket(t: fields(
+        headline: "A dispatch names the leaf it dispatches, and one leaf has one dispatch",
+        boundary: "The live dispatch row carries the leaf path beside its node_id, and one leaf has one dispatch: two dispatches on one leaf refuse; two leaves of one item are admitted, each in its own dispatch. This is what makes a leaf addressable. The belt takes its desired members from the offered leaf, bounded by BeltCapacity, with the readiness predicate still the gate on what may start at all. That the offer is the belt's selection basis is the INTERPRETATION recorded in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read) -- the operator's \"the planning we did now is relevant\" read onto this unit's done-when -- an interpretation, not operator words, and correctable by the operator.",
+        displaced_cost: "Without it the belt cannot put two workers on one item's leaves at all: the item is the only addressable thing, and every schedule above this row stays a picture.",
+        first_slice: "Dispatch two leaves of one item in two dispatches, then a second dispatch on a leaf already dispatched, and show all three outputs.",
+        red_control: "Two dispatches on one leaf refuse; two leaves of one item in two dispatches are admitted -- both in the same run.",
+        out_of_scope: "No new dispatch machinery: the leaf path travels beside the node id it already carries. BeltCapacity's meaning does not change. Whether the offer is the belt's selection basis is not this row's call: it stands as the labelled INTERPRETATION in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), and the operator corrects it.",
+        handback: "The three outputs, the capacity bound as observed, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8Y40BD0A4SBDMW0J60",
+      id: "roadmap-typed-handback",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "The handback is typed, and only an accepted handback moves the carrier",
+        boundary: "The handback is typed: Close with its acceptance evidence; Split with a replacement decomposition, carried as an edit to the carrier on a branch; ReEstimate with its days; Findings with its members, for a probe leaf. It is accepted by the claim's return_to principal, and the carrier changes only through an accepted handback. A Split is accepted the way any work item is (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager), on @ref(gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation)), and no operator gate stands on a split that lengthens the critical path -- the view flags the moved path so the operator sees it rather than approves it.",
+        displaced_cost: "Without it the four things a handback can mean are one undifferentiated message, and any handback can rewrite a decomposition on the way past. The authority law says a carrier changes through an accepted change, and the handback is where that is enforced.",
+        first_slice: "Accept a Close and a Findings on two planted leaves, and refuse a Findings on a leaf whose evidence is a Builds.",
+        red_control: "A Findings handback from a leaf whose evidence is Builds refuses; a handback offered by a principal that is not the claim's return_to principal refuses; the carrier is unchanged after either refusal.",
+        out_of_scope: "No operator gate on a Split that lengthens the critical path (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)): it is accepted as any work item is, and this row's view only has to flag the moved path. A Split stays an edit on a branch, never an in-place rewrite.",
+        handback: "The accepted and refused handback outputs, the carrier unchanged on the refusals, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8ZNA89SDC0ZXCHA2DS",
+      id: "roadmap-work-item-projection",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "One projection row per work item, served as JSON from the daily workspace",
+        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per work item as JSON from the daily workspace, at the path projection.json beside standings.json -- the path a consumer fetches to find the projection, declared here because a reader detects the projection by fetching it. The row's shape is declared here, because it is what a consumer of the projection is built against: node, intention, layer, item_state; leaves -- one entry per leaf occurrence, each with its leaf path as the decomposition spells it, its start day and finish day from the schedule answer, and on_critical_path; in_flight -- the derived set, each entry with its leaf path, its claim's assignee and its claim's return_to; latest_event; acceptance_evidence; events -- the item's past events with the timestamp each one was recorded at (claimed, released, acceptance recorded, retired), read from the event log at the read and kept in no store of this row's own, so a consumer can draw the progress already made and not only the plan ahead; and read_on, the date the document was read, together with the inputs that read used (worker_count, the day priors, the assumed findings counts), each shown as an input and not as a fact. It IS planning_consolidation section 1's projection; every consumer reads this row and keeps no state of its own, and a field this row does not serve is not part of the projection.",
+        displaced_cost: "Without it each reader folds the log itself, and the readers are where the drift lives; there is no one place to read what is true about an item on the day of the read.",
+        first_slice: "Serve the projection for one item with leaves in flight, then the same item after a planted release, and show both rows against the shape above, field for field.",
+        red_control: "A row's in-flight leaves are the derived set and never a stored list, and a served row that omits a declared field of the shape above -- a leaf without its on_critical_path, an in-flight entry without its claim's assignee or return_to, an event without the timestamp it was recorded at, a row without read_on and its inputs -- is not the projection; the events a row carries are the event log's own rows at that read, never a copy this row keeps; a planted binding of this row to an intention that does not exist refuses at load, by the binding carrier's own check.",
+        out_of_scope: "No rendering; no operator to-do list on the row -- section 1's projection states, it does not nag. No reader outside this repository is named or bound here.",
+        handback: "The two JSON rows, the planted-binding refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR90N2HGC2XA1WMQFRFK",
+      id: "roadmap-timeline-page",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_page.dag"),
+      line: ticket(t: fields(
+        headline: "The timeline, rendered from the projection alone",
+        boundary: "gunbc.roadmap.roadmap_page carries the timeline: one row per item ordered by first start, leaves stacked where they run parallel, the in-flight strip, a read-day line at today, in-flight rows highlighted, bottlenecks in red, and the offer at the top. It renders the roadmap-work-item-projection row and nothing else -- no reader state, no second fold of the log.",
+        displaced_cost: "Without it the schedule is a dump nobody supervises a week of work with; a projection with no renderer is a file.",
+        first_slice: "Render the timeline for one read with two items, one of them in flight, and show the page apart from the JSON it came from.",
+        red_control: "Every mark on a row is explained by its projection row: the page reads the projection and nothing else, and a planted value that exists only in the page refuses.",
+        out_of_scope: "No schedule, in-flight set or offer is derived here; no consumer outside this repository is bound here.",
+        handback: "The rendered page for the fixture read, the planted-value refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR91VNF088PHY2G7X5PK",
+      id: "roadmap-return-to-principal-records-acceptance",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_operator_acceptance.dag"),
+      line: ticket(t: fields(
+        headline: "The claim's return_to principal may record the acceptance of that claim's own node",
+        boundary: "Acceptances keep being recorded under the operator's principal for now, and the later route gets its own row: the principal a claim carries in its return_to may author AcceptanceRecorded FOR THAT CLAIM'S NODE, under the same receipt law gunbc.roadmap.roadmap_operator_acceptance states. It is gated on the acceptance-guidance carrier planning_consolidation section 7 layer 4 names. This row is the return_to arm of rn_A0SYP0J1P3JE8W8OBX6M3BD777 (roadmap-operator-attested-acceptance) -- one receipt law, two admissible authors -- and it waits on that row.",
+        displaced_cost: "Without it every acceptance runs through one principal, so the principal a claim is returned to cannot attest to the work it accepted, and the operator stays in the path of every handback.",
+        first_slice: "Let a claim's return_to principal author AcceptanceRecorded for that claim's node under the same receipt, and show the accepted append.",
+        red_control: "An AcceptanceRecorded authored by a principal that is neither the operator nor the claim's return_to principal refuses AT APPEND, and the log is unchanged after the refusal.",
+        out_of_scope: "The operator's own attestation path does not change; no new claim type appears; acceptances recorded under the operator's principal stay the route until the guidance carrier says otherwise.",
+        handback: "The accepted append, the refused append output with the log unchanged, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -4934,7 +5480,31 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // child depends on parent, the direction the witness reads. roadmap-return-to-principal-records-acceptance
+    // is the return_to arm of roadmap-operator-attested-acceptance (rn_A0SYP0J1P3JE8W8OBX6M3BD777), so it
+    // waits on that row: the edge names it by NAME, because the graph's endpoint law reads the node field
+    // (id_exists compares e.parent against n.node), not the rn_ identity string.
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-operator-attested-acceptance"),
+    edge(child: "roadmap-schedule-list-scheduling", parent: "roadmap-schedule-leaf-expansion"),
+    edge(child: "roadmap-schedule-calendar-binding", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-leaf-in-flight-set", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),
+    edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),
+    edge(child: "roadmap-typed-handback", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-timeline-page", parent: "roadmap-work-item-projection"),
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-claim-names-leaf"),
+
     edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
     edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
     edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),
@@ -4981,7 +5551,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
     edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
 
     edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
     edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
@@ -5021,13 +5590,16 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-install-owned"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
     edge(child: "v1-emitter-fixed-point", parent: "emitter-produces-main-rs"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-emitter-delete", parent: "native-frontier-required-lane"),
+    edge(child: "emitted-contracts-held", parent: "second-generation"),
+    edge(child: "v1-emitter-delete", parent: "emitted-contracts-held"),
     edge(child: "pderive-source-slot-binding", parent: "declaration-identity-switchover"),
     edge(child: "primitive-identity-join", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-emitter-quarantine", parent: "native-production-admission"),
@@ -5042,6 +5614,40 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "second-generation", parent: "native-seven"),
     edge(child: "native-production-admission", parent: "native-frontier-required-lane"),
     edge(child: "native-production-admission", parent: "demand-d13-dependency-demand"),
+    edge(child: "native-production-admission", parent: "namespace-unique-on-chain"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-binding-kernel"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-reference-derived-closure"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "names-bind-to-the-unique-declaration"),
+    edge(child: "native-seven", parent: "native-seven-names-homed"),
+    edge(child: "compiler-closure-names-homed-and-types-merged", parent: "native-seven-names-homed"),
+    edge(child: "second-generation", parent: "compiler-closure-names-homed-and-types-merged"),
+    edge(child: "corpus-names-homed-and-collisions-discharged", parent: "compiler-closure-names-homed-and-types-merged"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "corpus-names-homed-and-collisions-discharged"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "names-bind-to-the-unique-declaration"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "namespace-ambiguity-discharge"),
+    edge(child: "native-production-admission", parent: "import-grammar-and-lines-deleted"),
+    edge(child: "dogfood-g1-shared-computation-record", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "dogfood-g5-isolated-execution-record", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "factory-dogfood-route", parent: "dogfood-g1-shared-computation-record"),
+    edge(child: "factory-dogfood-route", parent: "dogfood-g5-isolated-execution-record"),
+    edge(child: "fabric-worker-event-log", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "service-evidence-capture", parent: "factory-dogfood-route"),
+    edge(child: "factory-dogfood-route", parent: "ci-executed-coverage-receipt"),
+    edge(child: "factory", parent: "factory-dogfood-route"),
+    edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
+    edge(child: "factory", parent: "serve-held-open-response"),
+    edge(child: "fabric-worker-event-log", parent: "factory-dogfood-route"),
+    edge(child: "external-specimen-compiles", parent: "universe-ingest-replaces-file-acquisition"),
+    edge(child: "external-specimen-compiles", parent: "one-declaration-identity-carrier"),
+    edge(child: "external-specimen-compiles", parent: "sealed-phases-and-the-checked-carrier"),
+    edge(child: "external-specimen-compiles", parent: "typed-refusals-own-control-flow"),
+    edge(child: "external-specimen-compiles", parent: "one-text-carrier"),
+    edge(child: "external-specimen-compiles", parent: "operations-are-declarations"),
+    edge(child: "external-specimen-compiles", parent: "one-standard-library"),
+    edge(child: "external-specimen-compiles", parent: "v1-products-v1-free"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-reference-derived-producer-bounded"),
+    edge(child: "compiler-closure-names-homed-and-types-merged", parent: "declaration-identity-switchover"),
+    edge(child: "corpus-names-homed-and-collisions-discharged", parent: "namespace-v2-import-completion"),
     edge(child: "demand-m1c", parent: "demand-m1b"),
     edge(child: "demand-m2", parent: "demand-m1c"),
     edge(child: "demand-m3b", parent: "demand-m2"),
