@@ -188,7 +188,7 @@ fn repo_workspace_footprints() -> List<WorkspaceFootprint> {
       // target-private/ into #16602. `/target-*/` is kept dash-scoped rather than the looser
       // `/target*/` because no tool here creates a `targets/` or `targetish/` build tree, and
       // ignoring what no leaf produced is the over-general prohibition DESIGN declines to pay for.
-      cargo_workspace_footprint(target_dir_patterns: ["/target/", "/target-*/"], cargo_home_pattern: "/.cargo-home/"),
+      cargo_workspace_footprint(target_dir_patterns: ["/target/", "/target-codex/"], cargo_home_pattern: "/.cargo-home/"),
       tarpaulin_report_footprint(coverage_output_dir_pattern: "/coverage/"),
       jetbrains_workspace_footprint(),
       vscode_workspace_footprint(),

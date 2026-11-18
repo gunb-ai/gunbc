@@ -9,7 +9,7 @@
 # regenerable from committed source — cargo build output tree (compiled artifacts, incremental state)
 /target/
 # regenerable from committed source — cargo build output tree (compiled artifacts, incremental state)
-/target-*/
+/target-codex/
 # local cache; not project state — CARGO_HOME registry/cache; may include git checkouts
 /.cargo-home/
 
