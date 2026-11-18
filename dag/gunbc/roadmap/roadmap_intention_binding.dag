@@ -224,9 +224,13 @@ fn intention_key(b: IntentionBinding) -> String {
 
 // The projection gunbc.plans.planning_consolidation section 2 asks for, read from here: the work items
 // serving one intention, in layer order.
-fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
-  filter(roadmap_intention_bindings, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
+fn nodes_serving_from(rows: List<IntentionBinding>, intention: DeclarationRef) -> List<IntentionBinding> {
+  filter(rows, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
     |> sort_by(b => b.layer)
+}
+
+fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
+  nodes_serving_from(rows: roadmap_intention_bindings, intention: intention)
 }
 
 fn bindings_at_layer(intention: DeclarationRef, layer: Int) -> List<IntentionBinding> {
