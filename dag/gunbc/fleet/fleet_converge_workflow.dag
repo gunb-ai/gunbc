@@ -8817,8 +8817,8 @@ fn zesty_qbody_old() -> Int {
 }
 fn zesty_p22() -> ProcessExit {
   match expected_fleet_converge_yml() {
-    FleetConvergeYamlGenerated { value: _ } => ExitSuccess
-    FleetConvergeYamlGenerationRefused { reason: _ } => ExitFailure
+    FleetConvergeYamlGenerated { content: _ } => ExitSuccess
+    FleetConvergeYamlGenerationRefused { reason: _ } => ExitFailure { code: 1, reason: "refused" }
   }
 }
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
