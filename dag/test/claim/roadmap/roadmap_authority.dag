@@ -277,8 +277,9 @@ fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
 // the scenario its own property is about: the events that scenario needs, spelled by the log's own
 // emitter, decoded back by the reader's own decoder, and folded by the same fold the live load uses.
 // Nothing is stubbed and nothing is shared — 21 scenarios for 21 witnesses, because a witness is
-// answerable for the property it names (gunbc.design_argument::witness_is_the_unit_of_change), and a
-// shared mega-fixture would be a second home for the acceptance facts (single_authority).
+// answerable for the single interface it discriminates at (gunbc.design_argument::witness_one_interface),
+// and a shared mega-fixture would be a second home for the acceptance facts
+// (gunbc.design_argument::single_authority).
 //
 // A scenario is not a substitute for the real route. Two witnesses keep it: the committed fixture, read
 // by roadmap_events_read_dir so the actual directory walk runs through the checkout carve-out, and the
@@ -1095,7 +1096,7 @@ test fn witness_live_receipt_on_a_log_retired_node_refuses_frontier_sets() -> Bo
 // CLASSIFIED LIVE/STATE, NOT CODE, and kept. What this witness asks is not what an acceptance does but
 // WHICH rows have in fact been accepted -- a fact whose only home is the synced event log, reached through
 // Filesystem.List, which the hermetic floor refuses and which may not be mocked (a stubbed listing would
-// fabricate the log; gunbc.design_ruling::fail_closed). So it stays a wet/live witness, run by
+// fabricate the log; gunbc.design_argument::fail_closed). So it stays a wet/live witness, run by
 // claim_batch --wet over this entry, and it is EXCLUDED from the hermetic set by a typed carrier rather
 // than left as a silent gap: gunbc.rung_drop.roadmap_authority_accepted_parents_precede_dependents_live_state_only,
 // whose restoration trigger is the capability that would bring it back -- a live-probe home for roadmap

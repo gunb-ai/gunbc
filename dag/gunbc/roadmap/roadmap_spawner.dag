@@ -107,7 +107,7 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
 // hermetic witness brings the pairs its own scenario produced, because the only way to get them from
 // here is a Filesystem.List walk the hermetic floor refuses (and a mock of that effect would fabricate
 // the log the count is supposed to be about). The nullary below stays the single home of the live route
-// and delegates here — one law, two entry points (gunbc.design_ruling::single_authority).
+// and delegates here — one law, two entry points (gunbc.design_argument::single_authority).
 fn roadmap_rendered_ghost_count_over(pairs: List<ClosingContractTaskPair>, doc: RoadmapDocument) -> Int {
   let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
   doc_all_nodes(doc: doc)

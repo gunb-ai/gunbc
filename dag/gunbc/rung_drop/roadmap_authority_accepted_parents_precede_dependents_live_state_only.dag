@@ -20,7 +20,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // and refuses it for a reason this PR honours: the one mock that would make the witness green again is a
 // Filesystem.List stub, and a stubbed directory listing does not observe the log, it FABRICATES it -- the
 // ledger's whole authority rests on nobody being able to invent an acceptance history
-// (gunbc.design_ruling::fail_closed). A witness kept alive by a stub of the very corpus it reports on is
+// (gunbc.design_argument::fail_closed). A witness kept alive by a stub of the very corpus it reports on is
 // a guarantee rung painted on.
 //
 // WHAT IT IS NOW. Executed on the wet/live lane (claim_batch --wet over the same entry), where the real
