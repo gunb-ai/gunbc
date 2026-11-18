@@ -1426,20 +1426,22 @@ fn live_deploy_parse_ci_instance_subject(packed: String) -> CiInstanceSubject {
   let parts = split(s: packed, delimiter: live_deploy_ci_instance_subject_delimiter)
   if length(parts) != 2 {
     CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' is not '<host>:<instance_id>' (a colon cannot appear in a hostname or in an instance id)"], "") }
-  } else match list_head(xs: parts) {
-    Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
-    Present { value: host } =>
-      match list_head(xs: reverse(parts)) {
-        Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
-        Present { value: instance_id } =>
-          if string_length(s: host) == 0 {
-            CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
-          } else if string_length(s: instance_id) == 0 {
-            CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
-          } else {
-            CiInstanceSubjectParsed { host: host, instance_id: instance_id }
-          }
-      }
+  } else {
+    match list_head(xs: parts) {
+      Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
+      Present { value: host } =>
+        match list_head(xs: reverse(parts)) {
+          Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
+          Present { value: instance_id } =>
+            if string_length(s: host) == 0 {
+              CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
+            } else if string_length(s: instance_id) == 0 {
+              CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
+            } else {
+              CiInstanceSubjectParsed { host: host, instance_id: instance_id }
+            }
+        }
+    }
   }
 }
 
