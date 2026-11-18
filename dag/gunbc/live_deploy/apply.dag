@@ -182,6 +182,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.actions_run_binding {
   ActionsRunBinding, ActionsRunBound, ActionsRunUnbound,
+  ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read,
   admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
 import gunbc.fleet.fleet_converge_receipt {
@@ -1379,6 +1380,28 @@ fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> P
   match live_deploy_desired_apply_selection(instance_id: instance_id, access: access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
     DesiredApplySelected { deployment } => live_deploy_wet_with_access(deployment: deployment, access: access)
+  }
+}
+
+// THE ENV VAR THAT CARRIES THE INSTANCE TO A CI INSTANCE-SCOPED DEPLOY. A generated run step passes a
+// dispatch input to an entry ONLY through the environment (gunbc_run_command carries no --arg), so the
+// run's `instance` input is written to this variable by the step's env and read back here. One name,
+// written by the generator and read by this entry (gunbc.design_argument::single_authority).
+data live_deploy_ci_instance_id_env_name: String = "GUNBC_DEPLOY_INSTANCE_ID"
+
+// THE CI TRANSACTION'S INSTANCE-SCOPED DEPLOY ENTRY. The generated `desired-instance-deploy` job calls
+// THIS (not live_deploy_apply_desired_wet) because a run step reaches an entry only through the
+// environment, never an argument: it reads the run's instance input from the env and converges that ONE
+// roster row through the one CI deploy path (ci_deploy_srv1_access). An unset or empty variable is a
+// named refusal, never a fallback to another instance (gunbc.design_argument::fail_closed): this entry
+// has NO default instance, so the run deploys exactly the named one or refuses. A named instance that
+// is not a srv1 roster row is refused BY NAME by live_deploy_desired_apply_selection.
+fn live_deploy_apply_desired_wet_from_ci() -> ProcessExit {
+  match actions_variable_read(name: live_deploy_ci_instance_id_env_name) {
+    ActionsVariablePresent { value: instance_id } =>
+      live_deploy_apply_desired_wet(instance_id: instance_id, access: ci_deploy_srv1_access)
+    ActionsVariableAbsent { variable, detail } =>
+      exit_failure(reason: join(["the CI instance-scoped deploy named no instance: ", variable, " is ", detail, " -- there is no default instance to deploy"], ""))
   }
 }
 
