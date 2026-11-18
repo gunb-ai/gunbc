@@ -775,9 +775,12 @@ data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5
 // here is that an IPMI call counts IF AND ONLY IF it has a row in one of the three lists the fold reads --
 // arrival_candidate_channel_numbers (the walk's upper bound), this list, or arrival_counted_census_ops (the
 // map the census issues its calls FROM, so census calls cannot drift). A fourth kind of call added to the
-// door without a row here makes the fold too small, and the fold is not yet the shipped figure: it becomes
-// one only with the operator's ruling (gunbc.design_ruling ci_job_budgets_closed_to_growth), which is the
-// moment this roster stops being documentation and starts being a budget.
+// door without a row here makes the fold too small, and the fold IS the shipped figure now: the operator's
+// ruling gunbc.design_ruling srv15_arrival_converge_step_raised_to_21_minutes authorizes the step's 21
+// minutes and the job's 51 (the ban ci_job_budgets_closed_to_growth required that row), so this roster is a
+// budget, not documentation. The pairing claim
+// test.claim.fleet.fleet_converge_arrival_step_budget_witness the_shipped_raise_carries_its_ledger_row
+// refuses a shipped figure whose ruling row has been removed or re-pointed.
 data arrival_threshold_read_legs: List<NonEmptyStr> = ["ipmi.LanPrint"]
 
 fn arrival_ipmi_leg_bound() -> Second {
