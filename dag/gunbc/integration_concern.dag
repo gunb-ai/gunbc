@@ -3116,9 +3116,22 @@ data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = C
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 data h11ssl_unit3_intake_sighting_revision: CommitSha = "22649d22d2fd15332770e4c344fecc8c388b89f6"
+// The main revision the operator's reach report was received against (2026-11-16). The commit that
+// carries the sighting below is a descendant of this one; the revision recorded is the tree the report
+// was read against, not the sha of the commit that writes it down, which does not exist yet.
+data h11ssl_unit3_reach_report_sighting_revision: CommitSha = "2674c00724d7fcf446d1fd3b8d12228c360e6959"
 // The main revision the edge gate was found refusing a branch dispatch against: the session branch head
 // the read-only edge observation was dispatched from, and refused at.
 data h11ssl_unit3_edge_gate_refusal_revision: CommitSha = "2db279ccba934a574048371882c9f631c923a2d0"
+// The head review 96009 read when it surfaced the build-pool reservation as a second answer to "which
+// hosts hold a build slot" (2026-11-17). The revision recorded is the tree that review read, not the sha
+// of the commit that writes this sighting down, which does not exist yet.
+data h11ssl_unit3_build_pool_fork_sighting_revision: CommitSha = "091f3a9b924ba4ff63268fee3f289d8ef14a27c6"
+data h11ssl_unit3_census_standing_sighting_revision: CommitSha = "6be8eaef58a481519c839f9ade82e2ae027554f7"
+// The head that carries the build-pool carve rule (gunbc.runner.runner_slot_desired), read when the fork above was
+// closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
+// writes this down.
+data h11ssl_unit3_build_pool_carve_derived_revision: CommitSha = "5215eaaf821ef0bfb9e22e9b88932dd294deaa4b"
 // The MAIN revision the read-only edge observation ran against -- the ref the observe was dispatched at,
 // and therefore the model state its readings are a statement about.
 data h11ssl_unit3_edge_live_read_revision: CommitSha = "23523235c601a102e79a753294ea9f7c9c3a36d7"
@@ -3228,6 +3241,7 @@ data h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster: Int
       decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_authorized_keys_on_every_install_route"),
       decl_ref(module_path: "gunbc.host.host_authorized_keys_reconcile", decl_name: "host_authorized_keys_reconcile"),
       decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_seen_host_key_fingerprint"),
+      decl_ref(module_path: "gunbc.integration_concern", decl_name: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat"),
     ],
   },
   question: "What is the modeled effect that puts the fleet roster on a host an operator installed by hand, and does the hand-staged install route need a standing of its own so the gap is visible before an operator is locked out?",
@@ -3243,12 +3257,299 @@ data h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster: Int
       },
       account: "Sighted by smart-crane-730 on 2026-11-15 from srv1, read-only: inbound ssh to the unit's LAN address was refused for briansrls, ubuntu, gunbc and admin, so the hand install route seeded none of the fleet roster. No key was guessed, copied or probed; the reading and its limits are in artifacts/host-observations/h11ssl-unit3-lan-read-2026-11-15/.",
     },
+    tail: [ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.integration_concern", decl_name: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat"),
+        },
+        tail: [],
+      },
+      account: "Second sighting, of the SAME gap closing from the other side: the operator reports (2026-11-16) that all three fleet access principals' keys now sit on this unit's ubuntu account with passwordless sudo. That placement was made BY HAND on one box, and no read from this repository has confirmed it -- the probe from srv1 the same day is still refused, correctly, because srv1 holds none of those principals' private keys. This sighting does NOT dissolve the concern: its subject is the install ROUTE, which the model still does not hold, and a hand placement on one host is exactly what gunbc.design_ruling::fleet_authorized_keys_on_every_install_route refuses as a route. What it does change is only what this unit's reach refuses: the enrollment row stays HostKeyLoginRefused -- no read has logged in, and the address the report names is the one srv9 holds in the model -- while the report itself stands as an open row of this register, h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which names the dispatch that would ground it.",
+    }],
+  },
+  disposition: Open,
+}
+
+// AN UNCENSUSED HOST IS NOW FENCED WHERE WIDTH IS ADMITTED, AND STILL READS AS MEASURED-NOTHING ELSEWHERE.
+// Recorded rather than remembered: this PR fences the width path, and the folds themselves stay shaped as they are.
+data h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "compute_host_cpu_threads"),
+    requirement: "a ComputeHost whose hardware lists are EMPTY states that the fleet has NOT read that axis, and no fold turns that emptiness into a measurement of nothing. THE STANDING NOW EXISTS, PER AXIS: gunbc.fleet.fleet_intent::host_hardware_census_of answers processors and memory as ProcessorAxis | MemoryAxis (each Surveyed { rows } or Unread, asked once by processor_axis / memory_axis); the disk axis joins with its consumer, since no fold reads a ComputeHost's storage list today (gunbc.design_argument::consumption), and the four reads derive their refusal from their OWN axis rather than testing emptiness as their own sibling leaf (gunbc.design_argument::root_generalization) -- compute_host_cpu_threads answers CpuThreadsCensusUnread and exposes the fold as processor_rows_thread_total so the width axis reads the axis once, compute_host_ram_bytes_total answers HostRamCensusUnread, compute_host_primary_cpu answers PrimaryCpuCensusUnread so a refusal says no census was read instead of claiming the machine has no CPU, and compute_host_cpu_admitted_width's OWN empty-list check is replaced by the standing rather than kept beside it. Controls: test.claim.fleet.fleet_intent_memory_witness::unsurveyed_census_refuses_the_host_ram_read, ::unsurveyed_census_refuses_threads_and_primary_cpu, ::mtcollins1_memory_axis_is_unread_and_its_ram_read_refuses, ::srv1_memory_axis_is_surveyed_and_answers_a_measured_total, and test.claim.runner.runner_slot_allocation_witness::an_offer_with_no_processor_census_refuses_the_cores_axis_rather_than_measuring_zero_cores. gunbc.host.host_effect_realize::provision_build_cache_arch_unknown_host_fixture still builds the same shape on purpose -- a host known by identity whose processor inventory is empty, the shape a freshly-racked srvN has before its read lands -- and its claim is still that realization must REFUSE it. WHAT THIS SHAPE CANNOT YET SAY is \"the axis WAS read and it really holds nothing\": an empty list reads as Unread for every axis, so a host whose memory had been surveyed and found absent would need the axis standing DECLARED on the row rather than derived from its list; no host in this corpus makes that claim, so the shape is not stretched to cover one. WHAT THE STANDING DOES NOT CARRY is the READ: this unit's axes are unread, and a census-less offer sits in gunbc.ci.ci_fleet::fleet_owned_compute_offer_catalog only because every consumer of those four reads now refuses for the right reason",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.state_space_conflation", decl_name: "state_space_conflation"),
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "host_hardware_census_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "memory_axis"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "processor_rows_thread_total"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "compute_host_cpu_threads"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "compute_host_ram_bytes_total"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "compute_host_primary_cpu"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "compute_host_cpu_admitted_width"),
+      decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "host_deployment_standing_given"),
+    ],
+  },
+  question: "Who takes the READ that puts rows in this unit's axes -- the in-band dmidecode -t processor / -t baseboard and the lsblk / sfdisk reads its intake rows name -- and turns each Unread axis into Surveyed? And is a census-less offer standing in gunbc.ci.ci_fleet::fleet_owned_compute_offer_catalog a fleet policy or a one-off: this PR admits it on the ruling of the responsible session (smart-crane-730, review exchange on PR #16602, 2026-11-18, quoted in that PR's body) because the four reads now refuse for the right reason; nobody has ruled for census-less offers in general.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_build_pool_fork_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.state_space_conflation", decl_name: "state_space_conflation"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "provision_build_cache_arch_unknown_host_fixture"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "compute_host_cpu_admitted_width"),
+          },
+        ],
+      },
+      account: "Sighted 2026-11-17 in review 96030, read against head 091f3a9b924ba4ff63268fee3f289d8ef14a27c6. This unit is the first offer in the corpus whose processors are listed EMPTY, so the fold's init: 0 became a live answer: its cores axis read AxisAdmits with slots 0 -- a machine measured at no cores -- and a comment, not the machinery, promised the refusal. That PR fenced the width path only: the cores axis became AxisUnmeasured and the width refuses with a cause that names the unit, while the folds stayed unfenced and any future consumer of them inherited the same zero.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_census_standing_sighting_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "host_hardware_census_of"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "test.claim.fleet.fleet_intent_memory_witness", decl_name: "unsurveyed_census_refuses_the_host_ram_read"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "root_generalization"),
+            },
+          ],
+        },
+        account: "Re-read 2026-11-18 in review 96379, against head 6be8eaef58a481519c839f9ade82e2ae027554f7, which found the previous fence INCOMPLETE: only compute_host_cpu_admitted_width asked the census, so compute_host_cpu_threads still folded to hardware_thread_count(0), compute_host_ram_bytes_total still answered byte_size(0), and compute_host_primary_cpu's refusal sentence claimed the machine has no primary CPU rather than that nobody had read it. Recording that gap did not license it (gunbc.design_argument::continuous_generalization: recording neither satisfies an obligation nor authorizes a deviation) -- the review was right to call the catalog admission blocking. The first cut of the fix asked the question ONCE per host and answered Surveyed when ANY of the three lists had rows; re-read on 2026-11-18 that grain was itself wrong, and it made mtcollins1's empty memory list a MEASURED zero -- nobody read zero DIMMs on that board, its memory was never read -- so the standing is per axis (ProcessorAxis / MemoryAxis / StorageAxis) and each read refuses from its own axis. Consequence, stated rather than buried: mtcollins1_offer's RAM answer changes from a measured zero to HostRamCensusUnread, asserted in test.claim.runner.mtcollins1_runner_offer_witness::mtcollins1_RED_nominal_dram_total_reaches_neither_offer_nor_reader and in test.claim.fleet.fleet_intent_memory_witness::mtcollins1_memory_axis_is_unread_and_its_ram_read_refuses, with srv1 as the green half (::srv1_memory_axis_is_surveyed_and_answers_a_measured_total). The axis census of the catalog at that head: seven offers; srv1-srv4 and srv14 have all three axes populated; mtcollins1_runner_host has a read processor axis and unread memory and storage axes; supermicro_h11ssl_unit3_host has three unread axes and is the only offer whose processor reads newly refuse.",
+      },
+    ],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "host_hardware_census_of") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "compute_host_cpu_admitted_width"),
+        control: decl_ref(module_path: "test.claim.runner.runner_slot_allocation_witness", decl_name: "an_offer_with_no_processor_census_refuses_the_cores_axis_rather_than_measuring_zero_cores"),
+        statement: "the width axis keeps refusing an unread census, and refuses it for the named host -- it does not re-derive the refusal from an empty list of its own",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "compute_host_ram_bytes_total"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_intent_memory_witness", decl_name: "unsurveyed_census_refuses_the_host_ram_read"),
+        statement: "an unread MEMORY AXIS reaching the RAM read answers HostRamCensusUnread, never byte_size(0) -- the axis grain is what makes mtcollins1 a refusal and srv1 a measurement",
+      },
+    ],
+    next: climbs_when(capability: "a run takes the in-band census this unit's intake rows name (dmidecode -t processor and -t baseboard, lsblk and sfdisk) and admits it against this host, so each axis of gunbc.fleet.fleet_intent::host_hardware_census_of answers Surveyed with real rows and the offer's reads start measuring; and if a host ever needs \"read, and genuinely empty\", that is the moment the axis standing moves from derived to declared on the row"),
+  },
+}
+
+// AN INSTALL THAT ALREADY HAPPENED LEAVES NO PRE-INSTALL DISK CAPTURE.
+// This unit's supply rows are written, and the host is deliberately NOT in the population that turns a
+// supply row into fleet work. Written while that is true, with the reads that would dissolve it named.
+// This unit holds one CI runner slot back for the remote-build pool without being a member of that pool.
+// The asymmetry is a decision with a home and an owner, not a line in a capacity file.
+data h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+    requirement: "a host joins gunbc.compute.remote_build_hosts::remote_build_serving_hosts -- the ONE authority for which hosts serve remote builds -- only once its capacity ledger has a home the remote-build account can traverse; that module states the condition and why srv1 alone satisfies it. No width plan may imply a membership that roster does not grant",
+    standing: RequirementUnestablished {
+      decided_by: "the build lane (clever-raven-401), when this unit's ledger has a home -- which needs the disk and board reads this unit's intake module owes. The reservation entry in gunbc.runner.runner_capacity_plan is deleted the moment the roster names the host, or the moment the lane says the host will never serve build units; the reservation must not outlive the pending decision either way.The width plan already treats the entry as PENDING rather than membership: gunbc.runner.runner_capacity_plan::remote_build_pool_slot_reservation counts it only for a host this roster has admitted (read through remote_build_host_is_serving), so today it holds back no width, and it starts holding the ruling's slot back the moment the roster admits the host -- the join stays this list's decision, not the reservation's. The candidate fork between this list and that roster, the derivation that would close it, and the ruling that keeps srv1's plan untouched inside this enrollment, are the second sighting on this row.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "host_build_pool_reservation"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+      decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+      decl_ref(module_path: "gunbc.fleet.fleet_enrollment", decl_name: "fleet_enrollments"),
+    ],
+  },
+  question: "Does this box join the remote-build pool at all? It is enrolled for CI runner and inference serving, and its two reported T10 cards point at inference rather than builds -- and if it does not join, who removes the held slot: the change that held it, or the roster's owner when it declines?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "remote_build_ssh_dispatch_is_an_admitted_scaffold"),
+        },
+        tail: [],
+      },
+      account: "Sighted 2026-11-16 while wiring this unit into the width plan. The ruling carves one runner slot per joining host out of that host's CI width; this host is enrolled for CiRunnerParticipation and has never been measured, so the plan admits no positive width for it today, and the held slot is the plan refusing to spend that slot while the build lane's decision is open. The host is NOT in the serving roster, and the roster's own condition is not met by this board today. Holding the slot is the conservative direction: an unheld slot gets spent by a GitHub width and then has to be taken back out of a running plan.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_build_pool_fork_sighting_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+            },
+          ],
+        },
+        account: "Sighted 2026-11-17 in review 96009, read against head 091f3a9b924ba4ff63268fee3f289d8ef14a27c6, and ruled the same day by smart-crane-730 (msg_450aa9c1-089b-41dd-80ae-dbf0745b04fe): this shape stands for this enrollment, and the stronger derivation is a follow-up the build lane owns. THE DIVERGENCE: this list answers which hosts hold a build slot from a different place than gunbc.compute.remote_build_hosts::remote_build_serving_hosts answers which hosts serve remote builds, so it is a candidate fork of that roster, and the two can already disagree -- this unit is on one list and not the other. The width plan closes the fork for EFFECT rather than for existence: remote_build_pool_slot_reservation subtracts width only for a host remote_build_host_is_serving admits, so a row the roster has not admitted holds back no width. THE FOLLOW-UP the review named: derive this list from the roster itself, one slot per admitted host, which would close the divergence today -- and carried with it a consequence this enrollment must not spend, because the only host the roster admits today is srv1, so deriving it lowers srv1's spendable ceiling by one slot. That is a change to a measured host's plan inside the build lane's ledger, and it belongs to that lane, not to a new enrollment. Either way the fork closes when ONE authority answers both questions: the roster grants this unit's join and its reservation row is deleted, or the lane declines and this row is deleted.",
+      },
+      ConcernSighting {
+        revision: h11ssl_unit3_build_pool_carve_derived_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "host_build_pool_reservation"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "build_pool_carve_is_due"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+            },
+          ],
+        },
+        account: "SUPERSEDES THE SIGHTING ABOVE, AND CORRECTS ONE SENTENCE IN IT. main 5215eaaf821e brought gunbc.runner.runner_slot_desired: host_build_pool_reservation carves exactly gunbc_runner_slot_memory_max when build_pool_carve_is_due(rostered, carries_own_ledger) -- on the serving roster AND resolving no dashboard instance of its own -- and that one function is read by the CI memory envelope and by compute.host_capacity::host_capacity_build_seat. Two consequences. First, the capacity plan's hand-kept list was exactly the second place review 96009 called it, with an existing single authority sitting beside it. Second, the previous sighting's claim that deriving would lower srv1's spendable ceiling was FALSE: srv1 is on the roster AND resolves dashboard instances, so the carve is not due for it and no measured host's plan moves. Ruled by smart-crane-730 at 2026-11-17T04:34:45Z (msg_18413ff0-fd25-4d8f-81bb-0a14cf65d4f7), on the corrected facts: the list is deleted as a carrier; the plan converts THE SAME CARVE into the unit it plans in (measure_fit_count_floor over gunbc_runner_slot_memory_max, so a due carve is one held slot and an absent carve is none); nothing is added to the serving roster; this unit's pending join lives only on this row. The fork is closed by that, not by keeping two lists in step: one authority grants a carve, one reader spends it in slot units, and three claims in test.claim.runner.runner_capacity_plan_witness pin equality with the carve over every enrolled host, ken's zero while unrostered, and the bite -- a rostered host with no instance holds exactly one slot and that slot changes the width admission. What stays open is the ORIGINAL question, unchanged: does this box join the remote-build pool, which needs its ledger home, which needs the disk and board reads it still owes. And the dissolution is unchanged: when the SSH scaffold is replaced by work-exec-2's durable route, the carve goes with it and this row is deleted.",
+      },
+    ],
+  },
+  disposition: Open,
+}
+
+data h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "fleet_intent_known_hosts"),
+    requirement: "a host joins gunbc.fleet.fleet_intent::fleet_intent_known_hosts only once the fleet's per-host goal can be EVALUATED for it: gunbc.fleet.fleet_health::host_goal folds over that population and refuses the WHOLE fleet's check when a single rostered host has no fan-expectation row, and its telemetry path is board-family specific (an asrock/altrad8ud profile), which an H11SSL-i board does not have",
+    standing: RequirementUnestablished {
+      decided_by: "two reads and one decision. The reads: the fan read for this board (extdeps.bmc.supermicro_oem_fan GetZoneDuty, reached read-only through gunbc.machine_intake.fan_observe), which is what a HostFanTachExpectation row for this host needs, and the SMBIOS/hardware read that gives the board its own figures. The decision: which telemetry route an H11SSL-i answers, since the health goal's telemetry profile is board-family specific today. The reads are the same in-band dispatch this unit's other owed reads name.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "supermicro_h11ssl_unit3_host"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "supermicro_h11ssl_unit3_baseboard"),
+      decl_ref(module_path: "gunbc.fleet.fleet_health", decl_name: "host_goal"),
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    ],
+  },
+  question: "Is what keeps this unit out of fleet work the missing fan expectation, the missing telemetry profile for its board family, or both -- and does an H11SSL-i board need its own telemetry profile before ANY H11SSL host can hold fleet work, which would make this a family gap rather than a unit gap?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+        },
+        tail: [],
+      },
+      account: "Sighted 2026-11-16 while adding this unit's supply rows. The host row exists at catalog grain, and the host was NOT put into fleet_intent_known_hosts: that population is the difference between a machine the fleet has a supply statement about and one it will schedule work onto, and joining it today would refuse the fleet-wide health check for EVERY host, not just this one, because gunbc.fleet.fleet_health::host_goal refuses its whole fold on a single missing per-host row. The operator's fan report is the reason the fan read cannot be skipped: the board needs a floor the fleet has no row for, and a hand setting that reverts on power-off is not a state the fleet holds. Held behind the reads named in the requirement, not behind a date.",
+    },
     tail: [],
   },
   disposition: Open,
 }
 
-// AN INSTALL THAT ALREADY HAPPENED LEAVES NO PRE-INSTALL DISK CAPTURE.
+// A HAND-PLACED KEY POPULATION THE FLEET HAS NOT REPEATED, AT A CONTESTED ADDRESS.
+//
+// The operator's report of 2026-11-16 says this unit's ubuntu account now carries the three fleet access
+// principals' public keys, with passwordless sudo, and that ssh answers at 192.168.1.236. Nothing in this
+// repository has repeated any of it, and .236 is the address gunbc.fleet.fleet_intent_network::
+// srv9_host_lan_endpoint models as srv9's -- so an open row here, not an admission in the enrollment
+// ledger, is where the report belongs.
+data h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_enrollment", decl_name: "fleet_enrollments"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_connectivity_recovery", decl_name: "host_reach_admission_for_fleet_host"),
+      decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "ground_host_access"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_seen_host_key_fingerprint"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_address_standing"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint"),
+    ],
+  },
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "ground_host_access"),
+    requirement: "Access at a fleet host is consumed only as something the fleet REPEATED: a dispatch as one of the fleet access principals whose stdout and receipt the fleet holds, and an enrollment that mints HostKeyLoginAdmitted only from a read returning host-authored output. A hand placement plus an operator's word is neither, so this unit's reach stays refused and its account state stays ungrounded -- even though the placement is what gunbc.design_ruling::fleet_authorized_keys_on_every_install_route asks every install route to do.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "ground_host_access"),
+      },
+    },
+  },
+  question: "What read turns the operator's 2026-11-16 report into grounded access at this host, and which row owns 192.168.1.236 until the lease says otherwise?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: [
+        CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.fleet_enrollment", decl_name: "fleet_enrollments"),
+        },
+        CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_address_standing"),
+        },
+      ],
+      account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the operator's and fleet-automation's public keys were already on ubuntu@ken, node-orch@srv2's was added, ubuntu has passwordless sudo, and the box answers ssh at 192.168.1.236 -- the very address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's. The report changes no verdict here: this host's enrollment row stays HostKeyLoginRefused with the reason the roster states once, because gunbc.runner.runner_connectivity_recovery::host_reach_admission_for_fleet_host puts that verdict in front of sudo-bearing recovery effects, and an effect admitted on a report could be applied at srv9. The probes from srv1 (2026-11-15 and 2026-11-16) are refused because srv1 holds none of the three private keys: they describe srv1's credentials, not this box. WHAT DISSOLVES IT: one fleet-converge dispatch as the fleet-automation principal -- the route that can reach this host -- returning host-authored output naming the account and its key population, beside the lease/ARP read naming which MAC holds .236 and a host key confirmed from this unit's own console. The receipt's sha256 is this row's dissolution, and the enrollment row moves with it.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// A COOLING REQUIREMENT THAT IS TODAY A HAND SETTING ON ONE BOX.
+//
+// The reported cards need the fans held at full duty and the board parks them at an idle floor until asked;
+// the operator's hand setting reverts at every power-off. The fan layer has no row that can hold a duty
+// floor for this family, so the requirement is registered rather than minted as an invented expectation.
+data h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_converge_routes", decl_name: "supermicro_fan_converge_route"),
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_converge_routes", decl_name: "fan_converge_route_for_family"),
+      decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_bmc_firmware_family_standing"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+    ],
+  },
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    requirement: "A duty floor for this family has to be a row the fleet reads and converges -- the fan-mode read (mode and duty per zone) beside a board-profile figure for the idle floor, with the cooling lane's board-function and BMC fan-mode rows as its home -- not a setting an operator re-enters after each power-off. Until that row exists the reported cards run at the mercy of a hand setting that does not survive a power cycle, and the fleet's own fan check refuses to speak about a rostered host that has no expectation row.",
+    standing: RequirementUnestablished {
+      decided_by: "the cooling lane, not this one: a fan-mode read row for this board family beside a board-profile figure for its idle floor, which is what would settle both the shape and the number. Until that exists the requirement cannot be established from a duty percent reported by the operator with no receipt -- the tach-expectation grain pins rpm at a named tach header and accepts only receipt-backed figures, so minting an expectation from this report would invent a header and an rpm.",
+    },
+  },
+  question: "What read and what control carry a fan duty floor for this family, given the OEM fan protocol is undocumented in Supermicro's public manual -- and who owns the board-function and fan-mode rows that would hold it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: [
+        CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+        },
+        CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported"),
+        },
+      ],
+      account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the hand install could not bring the GPUs up because the board holds its fans at a 20% idle floor until something asks for more, the operator set fan zones A and B to 100% from the BMC's own control, and that setting reverts to the floor on every power-off. Nothing in this repository has read or written this board's fan control, and this row asks no one to: it names the requirement and leaves the mode row to the cooling lane, which owns the board-function and fan-mode grain this belongs to. The figures themselves stay transcribed-and-unclosed in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 data h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture: IntegrationConcern = IntegrationConcern {
   identity: "h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture",
   kind: SuspectedCapabilityGap {
@@ -3668,7 +3969,13 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   remote_build_converge_action_is_not_the_whole_write,
   group_membership_append_spelled_by_two_tools,
   machine_width_uint8_int_crossing_has_no_declared_route,
-  srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs, normalize_drops_fn_with_out_of_scope_capability]
+  srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs,
+  h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home,
+  h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer,
+  h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
+  h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
+  h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
+  normalize_drops_fn_with_out_of_scope_capability]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

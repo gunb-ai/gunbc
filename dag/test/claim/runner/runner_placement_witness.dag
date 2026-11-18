@@ -14,7 +14,7 @@ import gunbc.ci.ci_fleet { ComputeOffer, fleet_intent_offers }
 import gunbc.ci.ci_runner_placement { evaluate_operating_point, host_cpu_allocation, host_deployment_refusal_text, host_usable_ram_or_refusal, operating_curve, plan_derived_deployments, plan_derived_run_total, plan_refused_hosts, RefusedHostDeployment, require_complete_fleet_plan, resolve_session_slice, runner_deployment_plan, RunnerDeploymentPlan, runner_deployment_plan_under_placement, RunnerHostDeployment, runner_host_deployment_for, runner_image_baked_deployment_plan, samples_covered, SessionHostReservation, session_reservation_plan, session_slice_of, workload_class_cpu_weight, HostRunnerDeploymentRefusal, HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused, ZeroRunnerWidth, SessionReservationUnestablished, HostCpuAllocationResolution, HostCpuAllocationRefused, SessionOperatingPointSet, Regime1WorstCase, BatchLatencyTolerant, InteractiveLatencySensitive }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_host_budget { host_allocation_verdict, host_cpu_reserve_threads, HostAllocationVerdict }
-import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import gunbc.runner.runner_slot_allocation { committed_width_of, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width, gunbc_runner_slice_cap_for_width, host_cpu_admitted_width, host_width_facts }
 import gunbc.runner.runner_deploy_emit { expected_runner_deploy_manifest, expected_runner_deploy_manifest_json, manifest_host_doc, manifest_host_fields, runner_deploy_drifted, runner_deploy_manifest_json_for, runner_deploy_protocol, session_host_doc }
 import std.serialize { serialize_record_doc }
@@ -65,6 +65,7 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
           && match host_cpu_admitted_width(host: h.identity) {
             CpuWidthDerived { slots: n } => h.runner_count <= n
             CpuWidthOfferAbsent { host: _ } => false
+            CpuWidthCensusAbsent { host: _ } => false
             CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
           }
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
@@ -528,8 +529,9 @@ fn expected_allocation_for(offer: ComputeOffer) -> HostCpuAllocationResolution {
   let h = offer.supply.physical.identity
   let facts = host_width_facts(host: h)
   match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent => HostCpuAllocationRefused { reason: "no primary CPU" }
-    Present { value: cpu } =>
+    PrimaryCpuAbsentFromSurvey { host: _ } => HostCpuAllocationRefused { reason: "no primary CPU in the survey" }
+    PrimaryCpuCensusUnread { host: _ } => HostCpuAllocationRefused { reason: "no hardware census read" }
+    PrimaryCpuMeasured { cpu: cpu } =>
       match host_usable_ram_or_refusal(host: h, r: facts.usable_ram) {
         HostUsableRamUnresolved { reason: r } => HostCpuAllocationRefused { reason: r }
         HostUsableRamResolved { bytes: ram } =>
