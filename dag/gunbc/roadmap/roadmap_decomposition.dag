@@ -1603,18 +1603,18 @@ fn occurrences_at_stage(occs: List<Occurrence>, stage: Int) -> List<Occurrence> 
 // re-deriving `count(decomposition_for(..)) == 1`, so the concept is not forked into a second copy (single_authority).
 // It yields the node's one decomposition, or a typed NotUniquelyDecomposed located at the node.
 type UniqueDecomposition
-  = Found { d: WorkDecomposition }
-  | Rejected { cause: ExpansionRefusal }
+  = UniqueFound { d: WorkDecomposition }
+  | UniqueRejected { cause: ExpansionRefusal }
 
 fn unique_decomposition(item: RoadmapNodeId) -> UniqueDecomposition {
   let ds = decomposition_for(node: item)
   if count(ds) == 1 {
     match ds[0] {
-      Present { value: d } => Found { d: d }
-      Absent => Rejected { cause: NotUniquelyDecomposed { item: item } }
+      Present { value: d } => UniqueFound { d: d }
+      Absent => UniqueRejected { cause: NotUniquelyDecomposed { item: item } }
     }
   } else {
-    Rejected { cause: NotUniquelyDecomposed { item: item } }
+    UniqueRejected { cause: NotUniquelyDecomposed { item: item } }
   }
 }
 
@@ -1630,8 +1630,8 @@ type ParentResolution
 
 fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_count: Nat) -> ParentResolution {
   match unique_decomposition(item: item) {
-    Rejected { cause } => Rejected { cause: cause }
-    Found { d: pd } =>
+    UniqueRejected { cause } => Rejected { cause: cause }
+    UniqueFound { d: pd } =>
       if !declared_populations_positive(d: pd) {
         Rejected { cause: NonPositiveDeclaredCount { item: item } }
       } else {
@@ -1701,8 +1701,8 @@ fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion 
 // than one.
 fn expand_node(item: RoadmapNodeId, findings_count: Nat) -> Expansion {
   match unique_decomposition(item: item) {
-    Rejected { cause } => Refused { cause: cause }
-    Found { d: d } => expand_decomposition(d: d, findings_count: findings_count)
+    UniqueRejected { cause } => Refused { cause: cause }
+    UniqueFound { d: d } => expand_decomposition(d: d, findings_count: findings_count)
   }
 }
 
