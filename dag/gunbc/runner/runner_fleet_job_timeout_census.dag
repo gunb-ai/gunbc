@@ -177,9 +177,13 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
           match gunbc_drift_watch_job() {
             Present { value: row } =>
               match row.cron {
-                Present { value: cron } => [
-                  FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: drift_watch_workflow_of(row: row, cron: cron) }
-                ]
+                Present { value: cron } =>
+                  match outcome_accepted_value(drift_watch_workflow_of(row: row, cron: cron)) {
+                    Present { value: wf } => [
+                      FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: wf }
+                    ]
+                    Absent => []
+                  }
                 Absent => []
               }
             Absent => []
