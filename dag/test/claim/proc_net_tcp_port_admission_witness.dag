@@ -67,6 +67,21 @@ test fn decoder_refuses_an_out_of_range_port_word() -> Bool {
     && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:11170"))
 }
 
+// THE GUARD IS checked_port, NOT A FIELD-WIDTH CAP. base16 accepts a hex word of any length up to a
+// syntax ceiling, so the refusal of "11170" above cannot be the width: here a longer-but-in-range
+// word "0FFFF" (0x0FFFF == 65535, the upper bound) is admitted as a bound port. If the old field-width
+// cap were still what bounded the port, this longer word would be refused -- it is not, so the value
+// bound lives in checked_port, where the ruling puts it.
+test fn decoder_admits_a_bound_port_from_a_wider_in_range_hex_word() -> Bool {
+  match tcp_socket_row(line: kernel_row_with_local(local: "0100007F:0FFFF")) {
+    Absent => false
+    Present { value: row } => match row.local_port {
+      TcpPortBound { port: p } => p == 65535
+      TcpPortUnbound => false
+    }
+  }
+}
+
 // 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,
 // RFC 6335 §6); a row whose local port word is 0000 answers TcpPortUnbound -- the decoder never mints
 // Port 0.
