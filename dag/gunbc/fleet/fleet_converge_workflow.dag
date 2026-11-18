@@ -1226,19 +1226,27 @@ data fleet_converge_host_reset_return_step_if: String = fleet_converge_mode_step
 // THE JOB'S OWN if GATE, not just the step's. A job whose only step is skipped still occupies a
 // runner on the observer host for the length of a checkout and a build download, which is a standing
 // cost on every dispatch of every other mode.
-fn fleet_converge_host_reset_return_job() -> Job {
-  Job {
+fn fleet_converge_host_reset_return_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    concat(
+    lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+    [
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+  ],
+  ),
+    [
+    fleet_converge_host_reset_return_step(),
+    outcome_accepted(value: fleet_converge_host_reset_return_receipt_upload_step()),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: HostResetReturn) as String,
     name: none,
     runner: fleet_converge_reset_observer_runner_spec(),
-    environment: none,
-    steps: concat(
-      concat(
-        fleet_converge_event_sha_consumer_prelude_steps(),
-        [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]
-      ),
-      [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
-    ),
+    environment: none,steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostResetReturn)),
     env: none,
     outputs: none,
@@ -1253,7 +1261,9 @@ fn fleet_converge_host_reset_return_job() -> Job {
       }
     },
     permissions: none,
-  }
+  })
+    }
+  )
 }
 
 // THE OBSERVER LABEL IS HANDED TO THE PROCESS, and the step's env row is the only route it has:
@@ -1484,13 +1494,15 @@ data fleet_converge_dispatch_event_if: String = serialize_expression(expression:
 
 data fleet_converge_build_job_if: String = join(concat([fleet_converge_dispatch_event_if], map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], ""))), " && ")
 
-fn fleet_converge_build_job() -> Job {
-  Job {
+fn fleet_converge_build_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_build_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    environment: none,
-    steps: fleet_converge_build_job_steps(),
+    environment: none,steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
     env: none,
     outputs: Present {
@@ -1512,7 +1524,9 @@ fn fleet_converge_build_job() -> Job {
         id_token: none,
       }
     },
-  }
+  })
+    }
+  )
 }
 
 // ── THE PLAN-REVISION JOB ───────────────────────────────────────────────────────────────────
@@ -1616,9 +1630,11 @@ concat(
 }
 
 
-fn fleet_converge_plan_revision_job() -> Job {
-  let steps = fleet_converge_plan_revision_steps()
-  Job {
+fn fleet_converge_plan_revision_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_plan_revision_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_plan_revision_job_id as String,
     name: none,
     runner: gunbc_ci_runner_spec(),
@@ -1642,7 +1658,9 @@ fn fleet_converge_plan_revision_job() -> Job {
         id_token: none,
       }
     },
-  }
+      })
+    }
+  )
 }
 
 // THE ROUTE TO THE DEPLOY SLOT SWITCHES WITH THE ROOT, PER JOB, NOT BEFORE IT. The deploy slot's
@@ -5625,36 +5643,38 @@ fn fleet_converge_revision_job_image_download_steps() -> List<Step> {
   }
 }
 
-fn fleet_converge_microvm_controller_install_job() -> Job {
-  Job {
+fn fleet_converge_microvm_controller_install_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+    [
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+  ],
+    [
+    outcome_accepted(value: ci_fleet_wif_auth_step()),
+    fleet_converge_microvm_controller_install_admission_step(),
+    fleet_converge_srv1_root_mutation_approval_step(selects: fleet_converge_microvm_controller_install_selected_inputs),
+    outcome_accepted(value: fleet_converge_srv1_root_mutation_approval_receipt_upload_step()),
+  ],
+    [
+    outcome_accepted(value: fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
+          artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
+          run_id_expression: "${{ inputs.workspace_image_run_id }}")),
+  ],
+    lift_steps(fleet_converge_revision_job_image_download_steps()),
+    [
+    outcome_accepted(value: ci_fleet_key_agent_step()),
+    fleet_converge_microvm_controller_install_step(),
+    outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: Srv1RootMutation(MicrovmControllerInstall)) as String,
     name: none,
     runner: fleet_converge_administrator_edge_runner_spec(),
-    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
-    steps: concat(
-      fleet_converge_event_sha_consumer_prelude_steps(),
-      [
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-      ],
-      [
-        ci_fleet_wif_auth_step(),
-        fleet_converge_microvm_controller_install_admission_step(),
-        fleet_converge_srv1_root_mutation_approval_step(selects: fleet_converge_microvm_controller_install_selected_inputs),
-        fleet_converge_srv1_root_mutation_approval_receipt_upload_step(),
-      ],
-      [
-        fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
-          artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
-          run_id_expression: "${{ inputs.workspace_image_run_id }}"),
-      ],
-      fleet_converge_revision_job_image_download_steps(),
-      [
-        ci_fleet_key_agent_step(),
-        fleet_converge_microvm_controller_install_step(),
-        ci_fleet_key_agent_cleanup_step(),
-      ]
-    ),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: Srv1RootMutation(MicrovmControllerInstall))),
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
@@ -5669,26 +5689,30 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
       }
     },
     permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
-  }
+  })
+    }
+  )
 }
 
-fn fleet_converge_approval_broker_dark_install_job() -> Job {
-  Job {
+fn fleet_converge_approval_broker_dark_install_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+    [
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+  ],
+    fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_broker_dark_install_selected_inputs),
+    [
+    fleet_converge_approval_broker_dark_install_step(),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
-    steps: concat(
-      fleet_converge_event_sha_consumer_prelude_steps(),
-      [
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-      ],
-      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_broker_dark_install_selected_inputs),
-      [
-        fleet_converge_approval_broker_dark_install_step(),
-      ]
-    ),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall))),
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
@@ -5703,7 +5727,9 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
       }
     },
     permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
-  }
+  })
+    }
+  )
 }
 
 // ── THE ntfy RETIREMENT ON srv1 (approval_ntfy_retire) ────────────────────────────────────────
@@ -5741,25 +5767,27 @@ fn fleet_converge_approval_ntfy_retire_step() -> Outcome<Step> {
   )
 }
 
-fn fleet_converge_approval_ntfy_retire_job() -> Job {
-  Job {
+fn fleet_converge_approval_ntfy_retire_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+    [
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+  ],
+    fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_ntfy_retire_selected_inputs),
+    [
+    outcome_accepted(value: ci_fleet_key_agent_step()),
+    fleet_converge_approval_ntfy_retire_step(),
+    outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire)) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
-    steps: concat(
-      fleet_converge_event_sha_consumer_prelude_steps(),
-      [
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-      ],
-      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_ntfy_retire_selected_inputs),
-      [
-        ci_fleet_key_agent_step(),
-        fleet_converge_approval_ntfy_retire_step(),
-        ci_fleet_key_agent_cleanup_step(),
-      ]
-    ),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire))),
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
@@ -5774,7 +5802,9 @@ fn fleet_converge_approval_ntfy_retire_job() -> Job {
       }
     },
     permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
-  }
+  })
+    }
+  )
 }
 
 fn fleet_converge_spark_grants_step() -> Outcome<Step> {
@@ -6442,13 +6472,15 @@ fn fleet_converge_mtcollins1_boot_steps() -> List<Outcome<Step>> {
   fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: outcome_accepted(value: ci_fleet_key_agent_step()), boot_step: fleet_converge_mtcollins1_boot_step())
 }
 
-fn fleet_converge_mtcollins1_boot_job() -> Job {
-  Job {
+fn fleet_converge_mtcollins1_boot_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_mtcollins1_boot_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
     runner: fleet_converge_mtcollins1_boot_runner(),
-    environment: Present { value: fleet_converge_mtcollins1_boot_environment() },
-    steps: fleet_converge_mtcollins1_boot_steps(),
+    environment: Present { value: fleet_converge_mtcollins1_boot_environment() },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
     env: none,
     outputs: none,
@@ -6471,7 +6503,9 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     }
-  }
+  })
+    }
+  )
 }
 
 // THE CREDENTIAL PRELUDE, IN ORDER: the release binaries, then the credential-free D0 admission,
@@ -6817,55 +6851,57 @@ fn fleet_converge_rlm_receipt_step() -> Outcome<Step> {
   )
 }
 
-fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt) as String,
-    name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
-    environment: none,
-    steps: concat(
-      concat(
-        fleet_converge_event_sha_consumer_prelude_steps(),
-        [
-          ci_release_bins_download_step(),
-          ci_release_bins_unpack_verify_step(),
-          ci_fleet_wif_auth_step(),
-          ci_fleet_key_agent_step(),
-        ]
-      ),
-      [
-        fleet_converge_receipt_download_step(
+fn fleet_converge_rlm_launch_deployment_receipt_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    concat(
+    lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+    [
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    outcome_accepted(value: ci_fleet_wif_auth_step()),
+    outcome_accepted(value: ci_fleet_key_agent_step()),
+  ],
+  ),
+    [
+    outcome_accepted(value: fleet_converge_receipt_download_step(
           id: "rlm_plan_download",
           name: "Download fleet converge plan artifact (plan run)",
           artifact: gunbc_fleet_converge_plan_artifact_name,
           path: fleet_converge_plan_artifact_dir,
           run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
-        ),
-        fleet_converge_receipt_download_step(
+        )),
+    outcome_accepted(value: fleet_converge_receipt_download_step(
           id: "rlm_apply_download",
           name: "Download fleet converge apply receipt (apply run)",
           artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
           path: gunbc_fleet_converge_apply_receipt_artifact_dir,
           run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
-        ),
-        fleet_converge_receipt_download_step(
+        )),
+    outcome_accepted(value: fleet_converge_receipt_download_step(
           id: "rlm_dashboard_download",
           name: "Download live-deploy transaction receipt (dashboard run)",
           artifact: gunbc_live_deploy_receipt_artifact_name,
           path: gunbc_live_deploy_receipt_artifact_dir,
           run_id_expression: "${{ github.event.inputs.dashboard_workflow_run_id }}",
-        ),
-        fleet_converge_rlm_receipt_step(),
-        fleet_converge_receipt_upload_step(
+        )),
+    fleet_converge_rlm_receipt_step(),
+    outcome_accepted(value: fleet_converge_receipt_upload_step(
           id: "rlm_receipt_upload",
           name: "Upload roadmap launch deployment receipt",
           artifact: gunbc_rlm_launch_deployment_receipt_artifact_name,
           path: gunbc_rlm_launch_deployment_receipt_artifact_dir,
           if_condition: "always()",
-        ),
-        ci_fleet_key_agent_cleanup_step(),
-      ]
-    ),
+        )),
+    outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt) as String,
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: none,steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt)),
     env: none,
     outputs: none,
@@ -6888,7 +6924,9 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     }
-  }
+  })
+    }
+  )
 }
 
 // WHICH JOB CARRIES A MODE'S OWN WORK IS ONE AUTHORITY, AND THE JOB BUILDERS READ THEIR ID FROM IT.
@@ -6998,12 +7036,12 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
 // (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
 data fleet_converge_qualification_floor_step_if: String = fleet_converge_mode_step_if(mode: QualificationFloor)
 
-fn fleet_converge_qualification_floor_job() -> Job {
-  qualification_floor_job(
+fn fleet_converge_qualification_floor_job() -> Outcome<Job> {
+  outcome_accepted(value: qualification_floor_job(
     revision_input: fleet_converge_expected_revision_input,
     if_condition: join([fleet_converge_dispatch_event_if, " && ", fleet_converge_qualification_floor_step_if], ""),
     timeout_minutes: minute_count(m: compiler_gate_emit_build_timeout()),
-  )
+  ))
 }
 
 fn fleet_converge_jobs() -> List<Job> {
@@ -7145,9 +7183,11 @@ concat(
 }
 
 
-fn fleet_converge_branch_run_grant_await_job() -> Job {
-  let steps = fleet_converge_branch_run_grant_await_steps()
-  Job {
+fn fleet_converge_branch_run_grant_await_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_branch_run_grant_await_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_branch_run_grant_await_job_id as String,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
@@ -7169,7 +7209,9 @@ fn fleet_converge_branch_run_grant_await_job() -> Job {
         id_token: none,
       }
     },
-  }
+      })
+    }
+  )
 }
 
 // A JOB THAT NEEDS THE WAIT RUNS ONLY IF THE WAIT SUCCEEDED, OR WAS SKIPPED WHERE NO GRANT WAS REQUIRED.
@@ -8017,11 +8059,11 @@ fn fleet_converge_gcp_iam_apply_step() -> Outcome<Step> {
 // (gunbc.auth.approval_broker_placement approval_broker_host_under). Under a refused realization it is
 // still EMITTED, so a dispatch of this mode is not silently absent, but as a refused job whose only
 // step fails with the typed cause: no federation, no approval filing, no host it could be pinned to.
-fn fleet_converge_gcp_iam_converge_job() -> Job {
+fn fleet_converge_gcp_iam_converge_job() -> Outcome<Job> {
   fleet_converge_gcp_iam_converge_job_under(realization: prod_role_actuated_realization())
 }
 
-fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Job {
+fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Outcome<Job> {
   match approval_broker_host_under(realization: realization) {
     ApprovalBrokerHostResolved { host } => fleet_converge_gcp_iam_converge_job_on(host: host)
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_converge_refused_job(cause: cause)
@@ -8069,14 +8111,10 @@ fn fleet_converge_gcp_iam_refusal_script_admitted() -> Bool {
   }
 }
 
-fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal) -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
-    name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
-    environment: none,
-    steps: [
-      RunStep {
+fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: RunStep {
         name: Present { value: "REFUSED: the approval broker has no host (prod role unresolved)" },
         id: none,
         run: gcp_iam_converge_refusal_script_text(outcome: gcp_iam_converge_refusal_script(cause: cause)),
@@ -8086,8 +8124,14 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
         if_condition: none,
         continue_on_error: none,
         timeout_minutes: Present { value: 1 }
-      },
-    ],
+      }),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    environment: none,steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: GcpIamConverge)),
     env: none,
     outputs: none,
@@ -8104,32 +8148,34 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
         id_token: none,
       }
     }
-  }
+  })
+    }
+  )
 }
 
-fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
-    name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
-    environment: Present { value: gcp_iam_converge_environment as String },
-    steps: [
-      fleet_converge_event_sha_checkout_step(),
-      ci_release_bins_download_step(),
-      ci_release_bins_unpack_verify_step(),
-      ci_wif_auth_step_for(
+fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    outcome_accepted(value: ci_wif_auth_step_for(
         name: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)",
         provider_resource: gcp_iam_observe_wif_provider_resource(),
         service_account: iam_observe_service_account as String,
-      ),
+      )),
     fleet_converge_gcp_iam_request_step(),
-      fleet_converge_branch_run_grant_request_step(),
-      fleet_converge_gcp_iam_observe_reauth_step(),
-      fleet_converge_gcp_iam_apply_step(),
-      fleet_converge_branch_run_grant_apply_step(),
-      // The srv15 evidence read LAST, after every convergence step (review 95680 on #16528): the read is the
-      // pin's grounding, not a precondition of IAM convergence -- and the grant that lets it succeed is
-      // itself applied by this job's apply set, so a read placed before them deadlocks its own bootstrap
+    fleet_converge_branch_run_grant_request_step(),
+    outcome_accepted(value: fleet_converge_gcp_iam_observe_reauth_step()),
+    fleet_converge_gcp_iam_apply_step(),
+    fleet_converge_branch_run_grant_apply_step(),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+    environment: Present { value: gcp_iam_converge_environment as String },steps: zesty_stepsself applied by this job's apply set, so a read placed before them deadlocks its own bootstrap
       // (403 stops the run that would grant the read). Fail-closed stays: a 403 still reddens the job and
       // no receipt uploads; what changes is only that an evidence gap no longer blocks unrelated IAM
       // convergence that does not depend on it.
@@ -8159,7 +8205,9 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
         id_token: Present { value: PermWrite },
       }
     }
-  }
+  })
+    }
+  )
 }
 
 // THE EXECUTOR HOST AND THE MODE ARE NAMED BECAUSE OTHERS READ THEM: the mode check below reads the mode input, and a
@@ -8721,20 +8769,19 @@ fn fleet_converge_arrival_service_account_expression() -> String {
   arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
 }
 
-fn fleet_converge_arrival_converge_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
-    name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
-    environment: Present { value: fleet_converge_arrival_environment_expression() },
-    steps: [
-      fleet_converge_event_sha_checkout_step(),
-      ci_release_bins_download_step(),
-      ci_release_bins_unpack_verify_step(),
-      RunStep {
+fn fleet_converge_arrival_converge_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    bind_outcome(
+    o: gunbc_ci_arrival_admit_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
         name: Present { value: "Arrival admission (credential-free): store host srv1 and a population arrival_subject" },
         id: Present { value: "arrival_admit" },
-        run: gunbc_ci_arrival_admit_invoke(),
+        run: zesty_run,
         shell: none,
         env: Present { value: [
           kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
@@ -8744,16 +8791,21 @@ fn fleet_converge_arrival_converge_job() -> Job {
         if_condition: none,
         continue_on_error: none,
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
-      },
-      ci_wif_auth_step_for(
+      })
+    }
+  ),
+    outcome_accepted(value: ci_wif_auth_step_for(
         name: "WIF auth (OIDC -> dedicated arrival pool for the dispatch host -> its arrival SA, access token only)",
         provider_resource: fleet_converge_arrival_provider_resource_expression(),
         service_account: fleet_converge_arrival_service_account_expression(),
-      ),
-      RunStep {
+      )),
+    bind_outcome(
+    o: gunbc_ci_arrival_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
         name: Present { value: "arrival_converge under the standing grant and arrival interlock" },
         id: Present { value: "arrival_converge" },
-        run: gunbc_ci_arrival_converge_invoke(),
+        run: zesty_run,
         shell: none,
         env: Present { value: [
           kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -8764,8 +8816,16 @@ fn fleet_converge_arrival_converge_job() -> Job {
         if_condition: none,
         continue_on_error: none,
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
-      },
-    ],
+      })
+    }
+  ),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
+    environment: Present { value: fleet_converge_arrival_environment_expression() },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ArrivalConverge)),
     env: none,
     outputs: none,
@@ -8782,7 +8842,9 @@ fn fleet_converge_arrival_converge_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     },
-  }
+  })
+    }
+  )
 }
 
 // ── THE REVIEW SHEETS, CONVERGED WITH NO HUMAN IN THE LOOP (gunbc.review_sheet_federation) ─────
@@ -8852,23 +8914,33 @@ fn fleet_converge_review_sheet_writer_token_step() -> Step {
   }
 }
 
-fn fleet_converge_review_sheet_converge_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String, name: none,
-    runner: gunbc_ci_runner_spec(),
-    environment: Present { value: review_sheet_converge_environment as String },
-    steps: concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
-      fleet_converge_in_job_compiler_pair_build_step(name: "Build the compiler pair this converge runs (claim_executor + gunbc)"),
-      fleet_converge_review_sheet_writer_token_step(),
-      RunStep {
+fn fleet_converge_review_sheet_converge_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    [
+    outcome_accepted(value: fleet_converge_in_job_compiler_pair_build_step(name: "Build the compiler pair this converge runs (claim_executor + gunbc)")),
+    outcome_accepted(value: fleet_converge_review_sheet_writer_token_step()),
+    bind_outcome(
+    o: gunbc_ci_review_sheet_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
         name: Present { value: "Converge every review sheet kind (live Drive and Sheets, every write read back)" },
         id: Present { value: "review_sheet_converge" },
-        run: gunbc_ci_review_sheet_converge_invoke(), shell: none,
+        run: zesty_run, shell: none,
         env: Present { value: [kv(key: sheets_token_env, value: yaml_string(s: interpolate(expression: ContextAccess { context: Steps, path: [review_sheet_converge_writer_token_step_id, "outputs", "access_token"] })))] },
         working_directory: none, if_condition: none, continue_on_error: none,
         timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },
-      },
-    ]),
+      })
+    }
+  ),
+  ],
+  ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String, name: none,
+    runner: gunbc_ci_runner_spec(),
+    environment: Present { value: review_sheet_converge_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ReviewSheetConverge)),
     env: none, outputs: none,
     if_condition: Present { value: serialize_expression(expression: fleet_converge_review_sheet_event_admitted()) },
@@ -8885,37 +8957,46 @@ fn fleet_converge_review_sheet_converge_job() -> Job {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: none, id_token: Present { value: PermWrite },
     } },
-  }
+  })
+    }
+  )
 }
 
-fn fleet_converge_namecheap_observe_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: NamecheapObserve) as String, name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
-    environment: Present { value: namecheap_environment as String },
-    steps: [
-      fleet_converge_event_sha_checkout_step(),
-      ci_release_bins_download_step(),
-      ci_release_bins_unpack_verify_step(),
-      ci_wif_auth_step_for(
+fn fleet_converge_namecheap_observe_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    outcome_accepted(value: ci_wif_auth_step_for(
         name: "WIF auth (dedicated Namecheap reader)",
         provider_resource: namecheap_provider_resource(),
         service_account: namecheap_service_account as String,
-      ),
-      RunStep {
+      )),
+    bind_outcome(
+    o: gunbc_ci_namecheap_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
         name: Present { value: "Observe Namecheap getHosts with the Secret Manager credential" },
         id: Present { value: "namecheap_observe" },
-        run: gunbc_ci_namecheap_observe_invoke(), shell: none,
+        run: zesty_run, shell: none,
         env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
         working_directory: none, if_condition: none, continue_on_error: none,
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
-      },
-      fleet_converge_receipt_upload_step(
+      })
+    }
+  ),
+    outcome_accepted(value: fleet_converge_receipt_upload_step(
         id: "namecheap_secret_receipt", name: "Upload Namecheap read-only DNS observation",
         artifact: "namecheap-observation", path: namecheap_observation_receipt_path,
         if_condition: "success()",
-      ),
-    ],
+      )),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: NamecheapObserve) as String, name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: Present { value: namecheap_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: NamecheapObserve)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: NamecheapObserve) },
@@ -8925,7 +9006,9 @@ fn fleet_converge_namecheap_observe_job() -> Job {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
     } },
-  }
+  })
+    }
+  )
 }
 
 // The printer's identity pins this job to main and to its dedicated environment.
@@ -8997,12 +9080,14 @@ fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
 // lifetime covers only the post-decision delivery. The id_token: write permission on the job (below) stays:
 // the mint requests the OIDC assertion from the Actions sidecar at use time, not in a pre-poll step.
 
-fn fleet_converge_printer_job() -> Job {
-  Job {
+fn fleet_converge_printer_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: lift_steps(fleet_converge_printer_job_steps()), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
-    environment: Present { value: printer_environment as String },
-    steps: fleet_converge_printer_job_steps(),
+    environment: Present { value: printer_environment as String },steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
@@ -9013,7 +9098,9 @@ fn fleet_converge_printer_job() -> Job {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
     } },
-  }
+  })
+    }
+  )
 }
 
 // Image production and allocation preparation share the bounded host job; allocation uses reviewed apply.
@@ -9090,31 +9177,31 @@ fn fleet_converge_gcp_iam_bootstrap_concurrency() -> ConcurrencySpec {
   ConcurrencyMappingQueueNotMax { group: "gcp-iam-converge", cancel_in_progress: Present { value: CancelInProgressBool { value: false } }, explicit_single: none }
 }
 
-fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleRealizationRefusal) -> Job {
-  let refused = fleet_converge_gcp_iam_converge_refused_job(cause: cause)
-  Job { id: id as String, name: refused.name, runner: refused.runner, environment: refused.environment,
-    steps: refused.steps, needs: fleet_converge_job_needs(id: id), env: refused.env, outputs: refused.outputs,
-    if_condition: refused.if_condition, timeout_minutes: refused.timeout_minutes, continue_on_error: refused.continue_on_error,
-    concurrency: refused.concurrency, permissions: refused.permissions }
+fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleRealizationRefusal) -> Outcome<Job> {
+  bind_outcome(
+    o: fleet_converge_gcp_iam_converge_refused_job(cause: cause),
+    f: fn(refused) {
+      outcome_accepted(value: Job { id: id as String, name: refused.name, runner: refused.runner, environment: refused.environment,
+        steps: refused.steps, needs: fleet_converge_job_needs(id: id), env: refused.env, outputs: refused.outputs,
+        if_condition: refused.if_condition, timeout_minutes: refused.timeout_minutes, continue_on_error: refused.continue_on_error,
+        concurrency: refused.concurrency, permissions: refused.permissions })
+    }
+  )
 }
 
-fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
+fn fleet_converge_gcp_iam_bootstrap_request_job() -> Outcome<Job> {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
-      id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
-      environment: Present { value: gcp_iam_converge_environment as String },
-      steps: [
-        fleet_converge_event_sha_checkout_step(),
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-        ci_wif_auth_step_for(
+    ApprovalBrokerHostResolved { host } => bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    outcome_accepted(value: ci_wif_auth_step_for(
           name: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)",
           provider_resource: gcp_iam_observe_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
-        ),
-        RunStep {
+        )),
+    outcome_accepted(value: RunStep {
           name: Present { value: "GCP IAM bootstrap delta: classify the whole roster as iam-observe, file one request over exactly the missing cells, wait for the operator" },
           id: Present { value: "gcp_iam_bootstrap_request" },
           run: gunbc_ci_gcp_iam_bootstrap_delta_request_invoke(),
@@ -9124,8 +9211,14 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
           continue_on_error: none,
           timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
-        },
-      ],
+        }),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+      id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      environment: Present { value: gcp_iam_converge_environment as String },steps: zesty_steps,
       needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_request_job_id),
       env: none,
       outputs: Present { value: [kv(key: gcp_iam_bootstrap_delta_approved_output, value: yaml_string(s: concat(concat("${{ steps.gcp_iam_bootstrap_request.outputs.", gcp_iam_bootstrap_delta_approved_output), " }}")))] },
@@ -9134,7 +9227,9 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
       continue_on_error: none,
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
+    })
     }
+  )
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_request_job_id, cause: cause)
   }
 }
@@ -9142,32 +9237,40 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
 // THE GATED JOB re-derives the request as iam-observe -- through the bootstrap pool, whose principal
 // set the ceremony lets become iam-observe (gunbc.auth.gcp_iam_bootstrap_model
 // iam_bootstrap_delta_observer_trust) -- so the request it re-admits is the one the operator approved.
-fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
+fn fleet_converge_gcp_iam_bootstrap_job() -> Outcome<Job> {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
-      id: fleet_converge_gcp_iam_bootstrap_job_id as String,
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
-      environment: Present { value: gcp_iam_bootstrap_environment as String },
-      steps: [
-        fleet_converge_event_sha_checkout_step(),
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-        ci_wif_auth_step_for(
+    ApprovalBrokerHostResolved { host } => bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    outcome_accepted(value: ci_wif_auth_step_for(
           name: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-observe SA, access token only)",
           provider_resource: gcp_iam_bootstrap_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
-        ),
-        RunStep {
+        )),
+    bind_outcome(
+    o: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
           name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
           id: Present { value: "gcp_iam_bootstrap_apply" },
-          run: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
+          run: zesty_run,
           shell: none,
           // No IAM_BOOTSTRAP_ACCESS_TOKEN: the apply mints its iam-bootstrap credential AT USE (mint-at-use),
           // so the deleted wif_auth_iam_bootstrap auth step had no consumer left. WIF_ACCESS_TOKEN is the
           // independent iam-observe read token from the job's wif_auth step, kept for the read-back.
           env: Present { value: [
-            kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+            kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.acces)
+    }
+  ),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+      id: fleet_converge_gcp_iam_bootstrap_job_id as String,
+      name: none,
+      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      environment: Present { value: gcp_iam_bootstrap_environment as String },steps: zesty_steps_token }}")),
           ] },
           working_directory: none,
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
@@ -9183,7 +9286,9 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
       continue_on_error: none,
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
+    })
     }
+  )
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_job_id, cause: cause)
   }
 }
@@ -9430,28 +9535,30 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Outcome<Step> {
   )
 }
 
-fn fleet_converge_hostname_converge_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: HostnameConverge) as String,
-    name: Present { value: "hostname-converge" },
-    runner: fleet_converge_hostname_converge_runner_spec(),
-    environment: none,
-    steps: [
-      fleet_converge_event_sha_checkout_step(),
-      ci_release_bins_download_step(),
-      ci_release_bins_unpack_verify_step(),
-      fleet_converge_hostname_converge_plan_step(),
-      fleet_converge_hostname_converge_apply_step(),
-      fleet_converge_hostname_converge_read_back_step(),
-      fleet_converge_hostname_converge_readopt_step(),
-      fleet_converge_receipt_upload_step(
+fn fleet_converge_hostname_converge_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: [
+    outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+    fleet_converge_hostname_converge_plan_step(),
+    fleet_converge_hostname_converge_apply_step(),
+    fleet_converge_hostname_converge_read_back_step(),
+    fleet_converge_hostname_converge_readopt_step(),
+    outcome_accepted(value: fleet_converge_receipt_upload_step(
         id: "hostname_converge_receipt",
         name: "Upload the hostname converge receipt",
         artifact: "hostname-converge",
         path: hostname_converge_receipt_path,
         if_condition: "success()",
-      ),
-    ],
+      )),
+  ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: HostnameConverge) as String,
+    name: Present { value: "hostname-converge" },
+    runner: fleet_converge_hostname_converge_runner_spec(),
+    environment: none,steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostnameConverge)),
     env: none,
     outputs: none,
@@ -9466,7 +9573,9 @@ fn fleet_converge_hostname_converge_job() -> Job {
       group: fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name),
     ),
     permissions: none,
-  }
+  })
+    }
+  )
 }
 
 
