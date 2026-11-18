@@ -14,6 +14,7 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 // run.
 
 import std.types { Bool, Int, List, String }
+import std.integer { int_to_decimal_string }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
@@ -69,6 +70,8 @@ test fn a_chain_under_one_worker_finishes_at_the_sum_and_two_independent_leaves_
            })
         && join(critical_path_keys(a: c), ",") == join([path_key(p: p_at("rc.chain", 0, 0, 0)), path_key(p: p_at("rc.chain", 1, 0, 0))], ",")
         && c.critical_length == 5
+        // the in-flight count PER DAY, pinned: one leaf running on every day of the single lane.
+        && join(map(c.in_flight_per_day, n => int_to_decimal_string(value: n)), ",") == "1,1,1,1,1"
         // MAX: the two independent leaves run side by side (max(2, 5) = 5), each starting on day 0, on two lanes.
         && p.horizon == 5
         && (match scheduled_at(a: p, path: p_at("rc.par", 0, 0, 0)) {
@@ -80,6 +83,8 @@ test fn a_chain_under_one_worker_finishes_at_the_sum_and_two_independent_leaves_
              Absent => false
            })
         && p.critical_length == 5
+        // the in-flight count PER DAY, pinned: both leaves day 0 and 1, the long one alone for the rest.
+        && join(map(p.in_flight_per_day, n => int_to_decimal_string(value: n)), ",") == "2,2,1,1,1"
     }
   }
 }
@@ -119,6 +124,11 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
         // at four workers: stage 0 starts together on day 0, the tails wait for the barrier (day 4), horizon = 6.
         && f.horizon == 6
         && count(f.in_flight_per_day) == f.horizon
+        // Under one worker nothing overlaps: every day carries exactly one leaf. Under four, the per-day counts
+        // sum to the total working days of the expansion (2 + 3 + 4 + 4 + 1 + 2 = 16) -- the capacity the answer
+        // pays for, counted day by day.
+        && all(o.in_flight_per_day, n => n == 1)
+        && fold(f.in_flight_per_day, init: 0, f: fn(m, n) { m + n }) == 16
         && (match scheduled_at(a: f, path: p_at("slice", 0, 0, 0)) {
              Present { value: l } => l.start_day == 0
              Absent => false
