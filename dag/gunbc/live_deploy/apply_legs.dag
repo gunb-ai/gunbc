@@ -1390,6 +1390,11 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_belt_unit_leg(step: "belt-credential-recovery-timer", dest: deployment_belt_credential_recovery_timer_unit_path(names: n), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-standings-refresh-unit", dest: deployment_belt_standings_refresh_unit_path(names: n), file: live_deploy_belt_standings_refresh_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-standings-refresh-timer", dest: deployment_belt_standings_refresh_timer_unit_path(names: n), file: live_deploy_belt_standings_refresh_timer_unit_file(spec: spec)),
+      // The pair-delivery service+timer are DECLARED in emit.dag (their builders + emission witnesses stay in this
+      // PR), but their INSTALL legs are deliberately NOT registered here: an already-converged tick currently compares
+      // the gh head query to itself (the source-side observation — review 96121 — is a separate authority transition
+      // and lands in the stacked PR). Registering the legs would let a fleet converge install and RUN that unit, so
+      // the install legs move with the observation that makes the guard real. Nothing in this PR makes the unit run.
       apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),

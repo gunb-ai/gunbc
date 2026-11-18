@@ -1008,6 +1008,13 @@ data codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal: DesignRulin
   provenance: "Operator ruling on PR gunbc#16536 (DP-M2 slice 2, row shell-dag-codex-app-server-trip-script), escalation msg_aa1d82e8, decided 2026-11-15, explicit and not a timeout default, directed to session gentle-ram-388. Asked to choose between re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word to assert the typed CodexTripArgvRefused returned by gunbc.codex_app_server_press codex_press_account_trip_argv_admission, or leaving that row enrolled as expected-red, the operator answered, verbatim: \"Re-point pinned oracle to assert CodexTripArgvRefused.\" Endorsed by the witness owner session gentle-boar-614 (msg 902a0231), who withdrew his earlier hold on the re-point. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change."
 }
 
+data pair_delivery_shell_as_medium_steps_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pair_delivery_shell_as_medium_steps_admitted"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, 2026-11-18, to session neat-badger-614, answering 'Do you approve the restart and verify steps in #16623 running as shell scripts, as declared scaffolding, until each one's removal condition is met?': \"yes the two shell steps are okay\". RULED, in those words. This single ruling covers BOTH declared-scaffold legs on the release-pair delivery path in gunbc.live_deploy.release_pair_deliver_cli: (1) release_pair_verify_shell_scaffold / release_pair_verify_shell_dissolution_trigger -- the fleet consumer key-check verify runs as a multi-statement posix_sh program via posix_sh_program_command; DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization). (2) release_pair_restart_shell_scaffold / release_pair_restart_shell_dissolution_trigger -- the serve restart renders the single registered gunbc.live_deploy.operations::systemctl_restart_command (gunbc.auth.privileged_effect_registry:1376) to a String and posix_sh_program_command's it; DISSOLVES WHEN that authority returns an ArgvCommand under its existing privileged_effect_registry row. INTERPRETATION (mine, not the operator's words): the operator approved these two shell-as-medium STEPS as declared scaffolding only; it approves no NEW shell-as-medium leg, each leg still carries its own dissolution trigger, and each must be typed the moment its trigger is met. No second sudo restart builder is introduced."
+}
+
 data v2_landing_waits_on_the_namespace_program: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_landing_waits_on_the_namespace_program"),
   decided: "2026-11-16",
@@ -1239,6 +1246,7 @@ fn design_rulings() -> List<DesignRuling> {
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
+    pair_delivery_shell_as_medium_steps_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,
   ]
 }
