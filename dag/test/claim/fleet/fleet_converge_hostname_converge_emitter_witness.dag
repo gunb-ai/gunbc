@@ -17,6 +17,7 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
   ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType,
@@ -24,6 +25,7 @@ import extdeps.github.actions {
   workflow_dispatch_max_inputs,
 }
 import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_of,
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
   HostnameConverge,
@@ -442,12 +444,15 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
       },
     ],
   )
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: over) {
-    FleetConvergeYamlGenerationRefused { reason: r } =>
-      string_contains(s: r, pattern: "the_row_that_broke_the_file")
-        && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
-        && string_contains(s: r, pattern: "EVERY mode")
-    FleetConvergeYamlGenerated { content: _ } => false
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: over, wf: wf) {
+      FleetConvergeYamlGenerationRefused { reason: r } =>
+        string_contains(s: r, pattern: "the_row_that_broke_the_file")
+          && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
+          && string_contains(s: r, pattern: "EVERY mode")
+      FleetConvergeYamlGenerated { content: _ } => false
+    }
   }
 }
 
@@ -458,11 +463,14 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
 // boundary if the roster changes size -- and the roster sits exactly ON the cap today, which is the whole
 // reason this mode declares no input of its own.
 test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) {
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs, wf: wf) {
       FleetConvergeYamlGenerationRefused { reason: _ } => false
       FleetConvergeYamlGenerated { content: c } =>
         string_contains(s: c, pattern: "hostname-converge")
     }
+  }
 }
 
 // THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own

@@ -8648,7 +8648,7 @@ fn fleet_converge_yml_after_run_scoped_admission(wf: Workflow) -> FleetConvergeY
         " (GitHub rejects an empty closed choice; gunbc.design_argument::fail_closed: refuse, do not emit options: [])",
       ], "")
     }
-  } else { fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) }
+  } else { fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs, wf: wf) }
 }
 
 // THE SAME CEILING, APPLIED TO A ROSTER YOU CAN HAND IT. This used to compare
@@ -8667,6 +8667,7 @@ fn fleet_converge_yml_after_run_scoped_admission(wf: Workflow) -> FleetConvergeY
 // at 25; the emitter was the thing that should have said so).
 fn fleet_converge_yml_after_dispatch_input_capacity(
   inputs: List<DispatchInput>,
+  wf: Workflow,
 ) -> FleetConvergeYamlGenerationOutcome {
   if count(inputs) > workflow_dispatch_max_inputs {
     FleetConvergeYamlGenerationRefused {
