@@ -515,9 +515,7 @@ fn heal_job_holds_publication_credential(job: HealWorkflowPolicy) -> Outcome<Boo
   bind_outcome(
     o: heal_workflow_job(job: job),
     f: fn(candidate) {
-      outcome_accepted(value:
-        job_permissions_carry_write(permissions: candidate.permissions)
-          || job_federates_to_a_cloud_identity(job: candidate))
+      outcome_accepted(value: job_permissions_carry_write(permissions: candidate.permissions) || job_federates_to_a_cloud_identity(job: candidate))
     }
   )
 }
