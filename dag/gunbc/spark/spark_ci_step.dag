@@ -14,8 +14,8 @@ import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member 
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster, spark_administrator_password_secret_ref_at_version }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import v2.std.orchestration { Do, PipelineStep }
-import v2.workflow.gunbc_invoke_step_emit {
 import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
 }

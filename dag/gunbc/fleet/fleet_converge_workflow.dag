@@ -180,7 +180,7 @@ import std.list { distinct_by_key }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import product.host_identity { HostIdentity }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, diagnostics_reason_lexemes }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
@@ -1256,11 +1256,15 @@ fn fleet_converge_host_reset_return_job() -> Job {
 // environment or not at all. Carrying it matters because the entry must NOT re-derive its own
 // label from its hostname -- that would make the label and the machine one reading and disarm
 // the corroboration between them, which is what review 61761 found.
-fn fleet_converge_host_reset_return_step() -> Step {
+fn fleet_converge_host_reset_return_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_host_reset_return_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Host reset-return: drive the subject through its controller and measure the return from a peer" },
     id: Present { value: "host_reset_return" },
-    run: gunbc_ci_host_reset_return_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [kv(key: host_reset_observer_label_env as String, value: yaml_string(s: "${{ github.event.inputs.reset_observer }}"))]
@@ -1270,6 +1274,9 @@ fn fleet_converge_host_reset_return_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE RECEIPT IS UPLOADED ON FAILURE TOO, for the reason the boot-probe receipt beside it is: the
@@ -1429,11 +1436,15 @@ fn fleet_converge_build_job_capability_closure_holds() -> Bool {
 // make an omitted field silently select a machine and POWER-CYCLE ITS PAIRED SUBJECT. A default is
 // the right shape for a preference and the wrong one for an effect nobody asked for. Refusing costs
 // a re-dispatch; defaulting costs a reboot.
-fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
+fn fleet_converge_reset_observer_dispatch_admission_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_host_reset_dispatch_admission_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled" },
     id: Present { value: "reset_observer_dispatch_admission" },
-    run: gunbc_ci_host_reset_dispatch_admission_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -1446,6 +1457,9 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE SIXTEEN-BINARY BUILD RUNS FOR EVERY MODE THAT CONSUMES IT, and the boot no longer does (it
@@ -1541,11 +1555,15 @@ fn fleet_converge_plan_revision_download_step() -> Step {
   }
 }
 
-fn fleet_converge_plan_revision_resolve_step() -> Step {
+fn fleet_converge_plan_revision_resolve_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_plan_revision_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Admit the plan run's revision (receipt == GitHub's head_sha, on the default branch)" },
     id: Present { value: "plan_revision" },
-    run: gunbc_ci_fleet_converge_plan_revision_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -1558,15 +1576,22 @@ fn fleet_converge_plan_revision_resolve_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE READBACK: the checkout this job is about to execute is the tree the plan receipt names. Placed
 // after the plan artifact is on disk and before anything actuates.
-fn fleet_converge_checkout_verify_step(if_condition: String?) -> Step {
+fn fleet_converge_checkout_verify_step(if_condition: String?) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_checkout_verify_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Verify the checkout is the plan receipt's revision" },
     id: Present { value: "checkout_verify" },
-    run: gunbc_ci_fleet_converge_checkout_verify_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -1574,6 +1599,9 @@ fn fleet_converge_checkout_verify_step(if_condition: String?) -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_plan_revision_steps() -> List<Step> {
@@ -2006,11 +2034,15 @@ fn fleet_converge_plan_download_step() -> Step {
   }
 }
 
-fn fleet_converge_plan_step() -> Step {
+fn fleet_converge_plan_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_plan_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
     id: Present { value: "plan" },
-    run: gunbc_ci_fleet_converge_plan_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2023,6 +2055,9 @@ fn fleet_converge_plan_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission). The plan job compiles
@@ -2034,11 +2069,15 @@ fn fleet_converge_plan_step() -> Step {
 // demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
 // -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
 // swap pay no serve-entry fold (gunbc.design_argument::earliest_unjustified_boundary step 4).
-fn fleet_converge_serve_entry_verdict_step() -> Step {
+fn fleet_converge_serve_entry_verdict_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_record_plan_serve_entry_verdict_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Record the serve-entry compile verdict beside the plan artifact (gunbc.live_deploy.pre_swap_admission)" },
     id: Present { value: "serve_entry_verdict" },
-    run: gunbc_ci_record_plan_serve_entry_verdict_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -2046,17 +2085,24 @@ fn fleet_converge_serve_entry_verdict_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE LAUNCH-ENVIRONMENT PLAN CARRIES THE SAME TWO ENV ROWS AS THE FULL-HOST PLAN because it mints
 // the same run-bound plan receipt: RLM-2's join pairs a plan receipt with an apply receipt at one
 // expected revision, and a plan mode that skipped the expected-host or expected-revision binding
 // would produce a receipt naming a revision nobody selected.
-fn fleet_converge_launch_environment_plan_step() -> Step {
+fn fleet_converge_launch_environment_plan_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_launch_environment_plan_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)" },
     id: Present { value: "launch_environment_plan" },
-    run: gunbc_ci_fleet_converge_launch_environment_plan_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2069,14 +2115,21 @@ fn fleet_converge_launch_environment_plan_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // Commissioning retains the ordinary reviewed plan, host/revision binding, and artifact upload.
-fn fleet_converge_workspace_commissioning_plan_step() -> Step {
+fn fleet_converge_workspace_commissioning_plan_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fleet workspace slot commissioning plan" },
     id: Present { value: "workspace_commissioning_plan" },
-    run: gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2089,13 +2142,20 @@ fn fleet_converge_workspace_commissioning_plan_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_allocation_store_plan_step() -> Step {
+fn fleet_converge_allocation_store_plan_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_allocation_store_plan_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fleet allocation-store substrate plan" },
     id: Present { value: "allocation_store_plan" },
-    run: gunbc_ci_fleet_converge_allocation_store_plan_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -2103,13 +2163,20 @@ fn fleet_converge_allocation_store_plan_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_apply_step() -> Step {
+fn fleet_converge_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_converge_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fleet converge apply (CAS + generated apply.sh)" },
     id: Present { value: "apply" },
-    run: gunbc_ci_fleet_converge_apply_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2126,6 +2193,9 @@ fn fleet_converge_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // TYPED RECEIPT ARTIFACTS (RLM-2a). Each mutating run of the transaction uploads the receipt it
@@ -2138,11 +2208,15 @@ fn fleet_converge_apply_step() -> Step {
 // dispatched at all) or to a run that is not a completed successful fleet-converge dispatch
 // refuses here, by name, instead of surfacing as the download action's "Unable to download
 // artifact(s): Not Found" minutes into the job.
-fn fleet_converge_admit_plan_run_pointer_step(if_condition: String) -> Step {
+fn fleet_converge_admit_plan_run_pointer_step(if_condition: String) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_admit_plan_run_pointer_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Admit the plan run pointer before downloading from it" },
     id: Present { value: "admit_plan_run_pointer" },
-    run: gunbc_ci_admit_plan_run_pointer_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2155,13 +2229,20 @@ fn fleet_converge_admit_plan_run_pointer_step(if_condition: String) -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
+fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_admit_apply_run_pointer_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Admit the apply run pointer before downloading from it" },
     id: Present { value: "admit_apply_run_pointer" },
-    run: gunbc_ci_admit_apply_run_pointer_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2174,6 +2255,9 @@ fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE DISPATCH-INPUT FAIL-FAST (gunbc.fleet.fleet_converge_plan_revision): the inputs the
@@ -2181,11 +2265,15 @@ fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
 // filed and long before the fold's resolve is paid (run 39177393512: an empty plan_artifact_hash
 // bought a full-closure resolve and a ten-word refusal; gunbc.design_argument::earliest_unjustified_boundary puts the missing admission one
 // link before the ten-minute symptom, not a timeout on it).
-fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
+fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_admit_dashboard_deploy_inputs_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Refuse an undeployable dashboard_deploy dispatch by name, before approval and before the fold" },
     id: Present { value: "admit_dashboard_deploy_inputs" },
-    run: gunbc_ci_admit_dashboard_deploy_inputs_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2200,6 +2288,9 @@ fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE JOB'S FINAL RECEIPT ASSERTION, always run. The transaction mints a document on every terminal
@@ -2211,11 +2302,15 @@ fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
 // -- this step only reports whether the refusal receipt is there to carry it, and never turns a red
 // step into a second red step whose message says less. The directory and the conclusion arrive as
 // environment, named by the same data the writer uses.
-fn fleet_converge_dashboard_receipt_assert_step() -> Step {
+fn fleet_converge_dashboard_receipt_assert_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)" },
     id: Present { value: "dashboard_receipt_assert" },
-    run: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: gunbc_live_deploy_receipt_artifact_dir)),
@@ -2226,6 +2321,9 @@ fn fleet_converge_dashboard_receipt_assert_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String, path: String, if_condition: String) -> Step {
   UsesStep {
@@ -2248,11 +2346,15 @@ fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String
   }
 }
 
-fn fleet_converge_guest_image_observe_step() -> Step {
+fn fleet_converge_guest_image_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_guest_image_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM guest image: observe base artifacts and their digests" },
     id: Present { value: "guest_image_observe" },
-    run: gunbc_ci_runner_guest_image_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -2260,13 +2362,20 @@ fn fleet_converge_guest_image_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_guest_image_converge_step() -> Step {
+fn fleet_converge_guest_image_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_guest_image_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM guest image: build the image and digest what was built" },
     id: Present { value: "guest_image_converge" },
-    run: gunbc_ci_runner_guest_image_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -2274,6 +2383,9 @@ fn fleet_converge_guest_image_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // ONE UPLOAD FOR BOTH MODES, because both write the SAME receipt: the standing of one host's guest
@@ -2313,11 +2425,15 @@ fn fleet_converge_guest_image_receipt_upload_step() -> Step {
 // That makes this env binding load-bearing rather than decorative: omit it and the mode exits
 // ExpectedHostAbsent on every dispatch, which is exactly what it did between the binding landing and
 // this line being added.
-fn fleet_converge_microvm_host_converge_step() -> Step {
+fn fleet_converge_microvm_host_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_microvm_host_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM host: install the cited Firecracker release and re-observe" },
     id: Present { value: "microvm_host_converge" },
-    run: gunbc_ci_runner_microvm_host_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2329,6 +2445,9 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THIS MODE READS; IT INSTALLS NOTHING. The microVM network mutations are not granted to the job
@@ -2338,11 +2457,15 @@ fn fleet_converge_microvm_host_converge_step() -> Step {
 // records them as a ConvergedSlotNetwork receipt. It is its own dispatch rather than a step of the
 // host converge because the two fail for different reasons and an operator routinely wants one
 // without the other: a Firecracker release that will not verify says nothing about a tap's address.
-fn fleet_converge_microvm_network_observe_step() -> Step {
+fn fleet_converge_microvm_network_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_microvm_network_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM network: read the slot taps, ruleset and forwarding back into a receipt (installs nothing)" },
     id: Present { value: "microvm_network_observe" },
-    run: gunbc_ci_runner_microvm_network_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2354,6 +2477,9 @@ fn fleet_converge_microvm_network_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE RECEIPT UPLOADS ON FAILURE TOO, because a refusal is the reading worth having: it names which
@@ -2384,11 +2510,15 @@ fn fleet_converge_microvm_network_observe_receipt_upload_step() -> Step {
 // because the bytes it installs are rendered from a revision and the run refuses unless that
 // revision is the one the tree is checked out at -- a root-evaluated install whose content came from
 // an unnamed tree is content nobody admitted.
-fn fleet_converge_microvm_network_apply_step() -> Step {
+fn fleet_converge_microvm_network_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_microvm_network_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM network: stage and install the slot and host network files as the host administrator, then read the ruleset back" },
     id: Present { value: "microvm_network_apply" },
-    run: gunbc_ci_runner_microvm_network_apply_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2401,6 +2531,9 @@ fn fleet_converge_microvm_network_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE RECEIPT UPLOADS ON FAILURE TOO. A refusal here names which leg stopped the line -- the
@@ -2528,11 +2661,15 @@ fn fleet_converge_host_memory_observe_step() -> Step {
 // THE CONVERGE STEP HOLDS THE WHOLE CAP BRACKET (drain + operations + release) ON TOP OF THE RESOLVE
 // BUDGET, both read from the policy row runner_host_cap_drain_policy; the same figure goes to the driver in
 // its environment, which refuses BEFORE masking when it is less than the bracket needs.
-fn fleet_converge_runner_host_file_converge_step() -> Step {
+fn fleet_converge_runner_host_file_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_host_file_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back" },
     id: Present { value: "runner_host_file_converge" },
-    run: gunbc_ci_runner_host_file_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2547,6 +2684,9 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
+
+      })
+  )
 }
 
 // THE WITHDRAW STEP (gunbc.runner.runner_host_withdraw). THE SAME DECLARED BUDGET AS THE CONVERGE, read
@@ -2554,11 +2694,15 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
 // re-checks the declared budget against the policy row before masking anything (it reads the row; it
 // never copies a number). No cap files are written and there is NO re-admit tail: that is what makes a
 // withdrawal a withdrawal, and why the cap-release finalizer above is gated to the converge mode only.
-fn fleet_converge_runner_host_withdraw_step() -> Step {
+fn fleet_converge_runner_host_withdraw_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_host_withdraw_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner host withdraw: drain through the cap bracket's own legs, mask every slot, and LEAVE THE HOST OUT of admission, with the mask read back" },
     id: Present { value: "runner_host_withdraw" },
-    run: gunbc_ci_runner_host_withdraw_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2572,15 +2716,22 @@ fn fleet_converge_runner_host_withdraw_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
   }
+
+      })
+  )
 }
 
 // THE RESTORE STEP: unmask, activate and read admission back, on the units the RECORD lists -- the same
 // release legs the cap-release finalizer runs, chosen by the record rather than by the deploy's today.
-fn fleet_converge_runner_host_restore_step() -> Step {
+fn fleet_converge_runner_host_restore_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_host_restore_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner host restore: lift the withdrawal's mask on the recorded units, activate them, and read every slot back ADMITTING" },
     id: Present { value: "runner_host_restore" },
-    run: gunbc_ci_runner_host_restore_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2593,6 +2744,9 @@ fn fleet_converge_runner_host_restore_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE SPLIT PRECONDITION (operator ruling 2026-10-24, run 40085967610). The three host-file act modes
@@ -2646,11 +2800,15 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
 // status-check function, so the step also runs when the job is cancelled or times out (GitHub Actions
 // "Status check functions": always() causes the step to always execute and returns true even when
 // canceled). Its own timeout is the policy row's release allowance on top of the resolve budget.
-fn fleet_converge_runner_host_cap_release_step() -> Step {
+fn fleet_converge_runner_host_cap_release_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_host_cap_release_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner host cap bracket: re-admit this host's slots and read them back (always)" },
     id: Present { value: "runner_host_cap_release" },
-    run: gunbc_ci_runner_host_cap_release_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2666,6 +2824,9 @@ fn fleet_converge_runner_host_cap_release_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_runner_host_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
   }
+
+      })
+  )
 }
 
 // IT REUSES THE RUNNER-HOST STEP SHAPER rather than spelling a fifth Step literal: same population
@@ -2744,11 +2905,15 @@ data fleet_converge_host_credential_custody_converge_step_if: String = fleet_con
 
 data fleet_converge_tailscale_join_step_if: String = fleet_converge_mode_step_if(mode: TailscaleJoinConverge)
 
-fn fleet_converge_host_credential_custody_converge_step() -> Step {
+fn fleet_converge_host_credential_custody_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_host_credential_custody_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Host credential custody: deliver the chosen rostered credential from Secret Manager at its row's owner, group and mode, read owner, mode, directory, bytes and staging back" },
     id: Present { value: "host_credential_custody_converge" },
-    run: gunbc_ci_host_credential_custody_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2762,6 +2927,9 @@ fn fleet_converge_host_credential_custody_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
@@ -2789,11 +2957,15 @@ fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
 // BOTH the runner label and TAILSCALE_JOIN_HOST, and the wet entry refuses a host the fleet never
 // enrolled, a clock it cannot read, an expired key (loudly, before fetching anything), and every custody
 // or fetch refusal by cause. The read-back keeps srv1's router pointed at tailnet names, not LAN literals.
-fn fleet_converge_tailscale_join_step() -> Step {
+fn fleet_converge_tailscale_join_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_tailscale_join_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Tailscale fleet join: install if absent, tailscale up with the auth key from the root-only file (never argv), advertise the fleet tag, then read the tailnet name back resolving and answering from srv1" },
     id: Present { value: "tailscale_join_converge" },
-    run: gunbc_ci_tailscale_join_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -2807,6 +2979,9 @@ fn fleet_converge_tailscale_join_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_tailscale_join_receipt_upload_step() -> Step {
@@ -3067,11 +3242,15 @@ fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
 // THE PROBE TAKES THE SELECTED HOST FOR THE SAME REASON THE CONVERGE DOES: it reads the host
 // standing before booting anything, and that standing is now bound to the host the dispatch chose.
 // A boot verdict attributed to the wrong machine is worse than no verdict.
-fn fleet_converge_microvm_boot_probe_step() -> Step {
+fn fleet_converge_microvm_boot_probe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_runner_microvm_boot_probe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM: boot the guest image and read the serial console" },
     id: Present { value: "microvm_boot_probe" },
-    run: gunbc_ci_runner_microvm_boot_probe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -3083,17 +3262,24 @@ fn fleet_converge_microvm_boot_probe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // ONE RESERVATION OF THE SHAKEDOWN CELL BY ITS BROKER UNIT (gunbc.runner.runner_microvm_slot_reserve), run
 // BEFORE microvm_slot_start: the controller observes a reservation and never makes one. The step asks
 // systemd to start one fixed root unit and reads that invocation's receipt; its timeout is the
 // starter's declared wait bound rounded up to minutes, plus the step's own slack.
-fn fleet_converge_microvm_slot_reserve_step() -> Step {
+fn fleet_converge_microvm_slot_reserve_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_microvm_slot_reserve_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM: reserve the shakedown cell through its broker unit and read the reservation" },
     id: Present { value: "microvm_slot_reserve" },
-    run: gunbc_ci_microvm_slot_reserve_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -3105,6 +3291,9 @@ fn fleet_converge_microvm_slot_reserve_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: (second_count(s: microvm_slot_reserve_wait_bound) + 59) / 60 + gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_microvm_slot_reserve_receipt_upload_step() -> Step {
@@ -3129,11 +3318,15 @@ fn fleet_converge_microvm_slot_reserve_receipt_upload_step() -> Step {
 // ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT (gunbc.runner.runner_microvm_slot_start). The step
 // outlasts the attempt by construction: its timeout is the slot unit's own stop bound -- the VMM
 // deadline plus every teardown bound -- rounded up to minutes, plus the step's own slack.
-fn fleet_converge_microvm_slot_start_step() -> Step {
+fn fleet_converge_microvm_slot_start_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_microvm_slot_start_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Runner micro-VM: start the shakedown slot's controller unit once and read its receipt" },
     id: Present { value: "microvm_slot_start" },
-    run: gunbc_ci_microvm_slot_start_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -3145,6 +3338,9 @@ fn fleet_converge_microvm_slot_start_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: (second_count(s: microvm_slot_unit_timeout_stop()) + 59) / 60 + gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE START RECEIPT IS UPLOADED ON FAILURE TOO: a refused or quarantined attempt is exactly the
@@ -3191,11 +3387,15 @@ fn fleet_converge_microvm_boot_probe_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_org_actions_step() -> Step {
+fn fleet_converge_org_actions_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_org_actions_inspect_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Org Actions credential validation + read-only settings diff" },
     id: Present { value: "org_actions_observe" },
-    run: gunbc_ci_org_actions_inspect_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3205,6 +3405,9 @@ fn fleet_converge_org_actions_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE ORG RUNNER ROSTER READ RIDES THE SAME IN-RUN TOKEN AS org_actions_observe, and is a separate
@@ -3225,11 +3428,15 @@ fn fleet_converge_org_runner_roster_step_timeout_minutes() -> Int {
   fleet_converge_gunbc_run_step_timeout_minutes(phases: [organization_runner_roster_request_allowance, organization_runner_roster_request_allowance, organization_runner_roster_read_budget()])
 }
 
-fn fleet_converge_org_runner_roster_step() -> Step {
+fn fleet_converge_org_runner_roster_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_org_runner_roster_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Org runner roster: paginated read of GitHub self-hosted runner registrations" },
     id: Present { value: "org_runner_roster_observe" },
-    run: gunbc_ci_org_runner_roster_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3241,6 +3448,9 @@ fn fleet_converge_org_runner_roster_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_org_runner_roster_step_timeout_minutes() }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_org_runner_roster_receipt_upload_step() -> Step {
@@ -3262,11 +3472,15 @@ fn fleet_converge_org_runner_roster_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_app_control_plane_step() -> Step {
+fn fleet_converge_app_control_plane_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_app_control_plane_inspect_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "GitHub App control plane: registration + webhook config observation" },
     id: Present { value: "app_control_plane_observe" },
-    run: gunbc_ci_app_control_plane_inspect_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3276,6 +3490,9 @@ fn fleet_converge_app_control_plane_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // ── THE R2 OBJECT-WRITE MINT, AS TWO DISPATCH-ONLY MODES ──────────────────────────────────────
@@ -3385,11 +3602,15 @@ data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode
 
 data fleet_converge_fan_observe_ipmi_series_step_name: String = "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)"
 
-fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
+fn fleet_converge_mtcollins1_fan_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "mtcollins1_fan_observe" },
-    run: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3399,6 +3620,9 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_mtcollins1_fan_series_step_timeout_minutes() }
   }
+
+      })
+  )
 }
 
 // THE ONE BUDGET OF THE MT. COLLINS FAN SERIES STEP, whichever job carries it: the fan_observe mode's step and
@@ -3444,11 +3668,15 @@ fn fleet_converge_gunbc_run_step_timeout_minutes(phases: List<Second>) -> Int {
 // frontier), which the resolve budget carries.
 data fleet_converge_mtcollins1_kvm_observer_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1KvmObserverObserve)
 
-fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
+fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins KVM observer, no boot: under the unit hold, log in, establish the viewer, one still, release" },
     id: Present { value: "mtcollins1_kvm_observer_observe" },
-    run: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3459,17 +3687,24 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
   }
+
+      })
+  )
 }
 
 // THE PROBE'S always() RELEASE (gunbc.machine_intake.mtcollins1_kvm_observer_observe
 // mtcollins1_kvm_observer_release_wet): after the probe step whatever it did -- success, failure, cancel,
 // or its own timeout -- release the observer process this run started and the unit hold only if this run
 // holds it. It needs no credential, so it has no prelude and no token.
-fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
+fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_kvm_observer_release_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins KVM observer: release this run's observer and its unit hold (always; a no-op if nothing is held)" },
     id: Present { value: "mtcollins1_kvm_observer_release" },
-    run: gunbc_ci_mtcollins1_kvm_observer_release_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -3477,6 +3712,9 @@ fn fleet_converge_mtcollins1_kvm_observer_release_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [megarac_kvm_observer_release_allowance]) }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_kvm_observer_observe_upload_step() -> Step {
@@ -3585,11 +3823,15 @@ fn fleet_converge_workspace_checkpoint_restore_receipt_upload_step() -> Step {
 // its receipt; the window, not this bound, is what the receipt reports.
 data fleet_converge_workspace_transcript_rate_step_timeout_minutes: Duration = 30
 
-fn fleet_converge_workspace_transcript_rate_observe_step() -> Step {
+fn fleet_converge_workspace_transcript_rate_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_workspace_transcript_rate_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Workspace transcript append rate: size and mtime of every transcript file on srv1, sampled per interval over a declared window, content never read" },
     id: Present { value: "workspace_transcript_rate_observe" },
-    run: gunbc_ci_workspace_transcript_rate_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [kv(key: workspace_agent_state_slot_env as String, value: yaml_string(s: "${{ github.event.inputs.agent_state_slot }}"))] },
     working_directory: none,
@@ -3597,6 +3839,9 @@ fn fleet_converge_workspace_transcript_rate_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_workspace_transcript_rate_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_workspace_transcript_rate_observe_receipt_upload_step() -> Step {
@@ -3609,11 +3854,15 @@ fn fleet_converge_workspace_transcript_rate_observe_receipt_upload_step() -> Ste
   )
 }
 
-fn fleet_converge_fabric_writer_identity_observe_step() -> Step {
+fn fleet_converge_fabric_writer_identity_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fabric_writer_identity_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Fabric writer identity: the login this host presents at the fabric DB's served door (reads only)" },
     id: Present { value: "fabric_writer_identity_observe" },
-    run: gunbc_ci_fabric_writer_identity_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
@@ -3623,6 +3872,9 @@ fn fleet_converge_fabric_writer_identity_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_fabric_writer_identity_observe_receipt_upload_step() -> Step {
@@ -3635,11 +3887,15 @@ fn fleet_converge_fabric_writer_identity_observe_receipt_upload_step() -> Step {
   )
 }
 
-fn fleet_converge_app_key_version_verify_verdict_step() -> Step {
+fn fleet_converge_app_key_version_verify_verdict_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_app_key_version_verify_verdict_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "App key version verify: typed verdict and rotation-deadline standing" },
     id: Present { value: "app_key_version_verify_verdict" },
-    run: gunbc_ci_app_key_version_verify_verdict_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_app_key_verify_subject_env() },
     working_directory: none,
@@ -3647,6 +3903,9 @@ fn fleet_converge_app_key_version_verify_verdict_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_app_key_version_verify_receipt_upload_step() -> Step {
@@ -3708,11 +3967,15 @@ data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = join(["
 // single comparison rather than a disjunction.
 data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
 
-fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
+fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins vendor UI status mapping: fetch the virtual-media page and the scripts it names, commit the status-0 branch with its offsets (reads only)" },
     id: Present { value: "mtcollins1_ui_status_asset_observe" },
-    run: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3725,6 +3988,9 @@ fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
     // ladder, its bounded asset fetches and its logout, each counted once).
     timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_ui_status_asset_probe_bound()]) }
   }
+
+      })
+  )
 }
 
 // THE RECEIPT IS UPLOADED WHATEVER THE STEP DID, and `always()` is what makes that sentence true:
@@ -3760,11 +4026,15 @@ fn fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step() -> St
 // beyond the fleet key: it reaches no controller.
 data fleet_converge_mtcollins1_census_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusImagePublish)
 
-fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
+fn fleet_converge_mtcollins1_census_image_publish_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_census_image_publish_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins census image: over fleet SSH to srv2, reproduce the pinned image in scratch, then build and publish the current derivation create-only in /srv/bmc" },
     id: Present { value: "mtcollins1_census_image_publish" },
-    run: gunbc_ci_mtcollins1_census_image_publish_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -3772,6 +4042,9 @@ fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step {
@@ -3799,11 +4072,15 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
 // digest -- the fact the boot leg's runner_host_boot_medium row carries. Uploaded whatever the outcome.
 data fleet_converge_mtcollins1_runner_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1RunnerImagePublish)
 
-fn fleet_converge_mtcollins1_runner_image_publish_step() -> Step {
+fn fleet_converge_mtcollins1_runner_image_publish_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_runner_image_publish_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins runner image: over fleet SSH to srv2, build the derived runner image and publish it create-only in /srv/bmc" },
     id: Present { value: "mtcollins1_runner_image_publish" },
-    run: gunbc_ci_mtcollins1_runner_image_publish_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -3811,6 +4088,9 @@ fn fleet_converge_mtcollins1_runner_image_publish_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step {
@@ -3839,11 +4119,15 @@ fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step 
 // run exists to retain.
 data fleet_converge_mtcollins1_census_member_readback_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusMemberReadback)
 
-fn fleet_converge_mtcollins1_census_member_readback_step() -> Step {
+fn fleet_converge_mtcollins1_census_member_readback_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_census_member_readback_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins census image: read the published kernel and initrd back against the stock medium" },
     id: Present { value: "mtcollins1_census_member_readback" },
-    run: gunbc_ci_mtcollins1_census_member_readback_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -3851,6 +4135,9 @@ fn fleet_converge_mtcollins1_census_member_readback_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_census_member_readback_receipt_upload_step() -> Step {
@@ -3879,11 +4166,15 @@ fn fleet_converge_mtcollins1_census_member_readback_receipt_upload_step() -> Ste
 // The receipt is uploaded whatever the reading: a host that is not ready is the answer it exists for.
 data fleet_converge_mtcollins1_census_qemu_host_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusQemuHostObserve)
 
-fn fleet_converge_mtcollins1_census_qemu_host_observe_step() -> Step {
+fn fleet_converge_mtcollins1_census_qemu_host_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_census_qemu_host_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins census: read the QEMU, AAVMF and KVM standing of the selected host" },
     id: Present { value: "mtcollins1_census_qemu_host_observe" },
-    run: gunbc_ci_mtcollins1_census_qemu_host_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -3891,6 +4182,9 @@ fn fleet_converge_mtcollins1_census_qemu_host_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step() -> Step {
@@ -3918,11 +4212,15 @@ fn fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step() -> S
 // is the same standing; the upload carries a different artifact name so the two modes never share one.
 data fleet_converge_mtcollins1_census_qemu_toolchain_converge_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusQemuToolchainConverge)
 
-fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_step() -> Step {
+fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins census: place the pinned QEMU toolchain under the job user's root and read it back" },
     id: Present { value: "mtcollins1_census_qemu_toolchain_converge" },
-    run: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -3934,6 +4232,9 @@ fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step() -> Step {
@@ -3955,11 +4256,15 @@ fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step(
   }
 }
 
-fn fleet_converge_r2_mint_preflight_step() -> Step {
+fn fleet_converge_r2_mint_preflight_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_mint_preflight_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)" },
     id: Present { value: "r2_mint_preflight" },
-    run: gunbc_ci_r2_mint_preflight_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3969,6 +4274,9 @@ fn fleet_converge_r2_mint_preflight_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
@@ -3995,11 +4303,15 @@ fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
 // it answers a question -- is the account entitled, does each allocated bucket exist -- worth asking
 // on its own at any time. Fusing it into the mint would make that question unaskable without also
 // minting a non-idempotent token.
-fn fleet_converge_r2_bucket_ensure_step() -> Step {
+fn fleet_converge_r2_bucket_ensure_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_bucket_ensure_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 bucket ensure: entitlement + bucket existence per allocated purpose (create on absence, readback)" },
     id: Present { value: "r2_bucket_ensure" },
-    run: gunbc_ci_r2_bucket_ensure_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4009,6 +4321,9 @@ fn fleet_converge_r2_bucket_ensure_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // always(): a refusing run -- an unentitled account, a bucket in the wrong jurisdiction -- is the run
@@ -4035,11 +4350,15 @@ fn fleet_converge_r2_bucket_ensure_receipt_upload_step() -> Step {
 // THE BUCKET-ADMIN MINT IS THE OBJECT-WRITE MINT'S STEP AT ANOTHER PROFILE: same fold, same custody
 // bracket, same attempt-scoped orphan receipt, a disjoint container. It precedes r2_bucket_ensure,
 // which signs with the token this mints and refuses naming this mode until it is pinned.
-fn fleet_converge_r2_bucket_admin_mint_step() -> Step {
+fn fleet_converge_r2_bucket_admin_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_bucket_admin_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 bucket-admin token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_bucket_admin_mint" },
-    run: gunbc_ci_r2_bucket_admin_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4049,6 +4368,9 @@ fn fleet_converge_r2_bucket_admin_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
@@ -4073,11 +4395,15 @@ fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_r2_object_write_mint_step() -> Step {
+fn fleet_converge_r2_object_write_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_object_write_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 object-write token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_object_write_mint" },
-    run: gunbc_ci_r2_object_write_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4087,6 +4413,9 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
@@ -4131,11 +4460,15 @@ data fleet_converge_jit_dead_sweep_dry_run_step_if: String = fleet_converge_mode
 // the run signs from the gunbai-ci App key it stages itself and holds no fleet SSH key. The swept
 // host and the path of its capture envelope are dispatch inputs, never defaulted; the capture records a boot, which is not the current one: the
 // mode admits it only through an independent current-boot observation and refuses while no such route exists.
-fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
+fn fleet_converge_service_runner_lost_boot_sweep_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_service_runner_lost_boot_sweep_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "service runner lost-boot sweep (GATED until the operator's go): deregister runner registrations of a boot that is not the current one, read each back absent" },
     id: Present { value: "service_runner_lost_boot_sweep" },
-    run: gunbc_ci_service_runner_lost_boot_sweep_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4150,6 +4483,9 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(lost_boot_sweep_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
 // THE LOST-BOOT SWEEP'S DRY RUN (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_dry_run_wet;
@@ -4204,11 +4540,15 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
 // gunbai-ci installation token minted from the App key it stages over this run's identity (WIF_ACCESS_TOKEN, the
 // fleet identity step). The workflow is transport only
 // (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
-fn fleet_converge_service_slot_start_step() -> Step {
+fn fleet_converge_service_slot_start_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_service_slot_start_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "service-slot start: start one controller unit per member of the subject host's current service population, read each back active" },
     id: Present { value: "service_slot_start" },
-    run: gunbc_ci_service_slot_start_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4222,6 +4562,9 @@ fn fleet_converge_service_slot_start_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: 15 }
   }
+
+      })
+  )
 }
 
 // if-no-files-found is error: gunbc.runner.runner_service_slot_start service_slot_start_wet writes the receipt on
@@ -4253,11 +4596,15 @@ fn fleet_converge_service_slot_start_receipt_upload_step() -> Step {
 // is transport only (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
 data fleet_converge_qualification_attempt_step_if: String = fleet_converge_mode_step_if(mode: QualificationAttempt)
 
-fn fleet_converge_qualification_attempt_step() -> Step {
+fn fleet_converge_qualification_attempt_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_qualification_attempt_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "qualification attempt: pin, mint, dispatch the floor to the attempt's runner, collect, deregister, unpin" },
     id: Present { value: "qualification_attempt" },
-    run: gunbc_ci_qualification_attempt_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4271,6 +4618,9 @@ fn fleet_converge_qualification_attempt_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(m: compiler_gate_emit_build_timeout()) + 30 }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_qualification_attempt_receipt_upload_step() -> Step {
@@ -4322,11 +4672,15 @@ fn fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step() -> Step {
 // (reusing sweep_host) and its retired prefix are dispatch inputs, never defaulted. Deleting goes through the one
 // organization runner API route the corpus already uses (ensure_jit_runner_deregistered). The deleting arm is GATED
 // until the operator's go (its first real use is srv4's rename window, P9); until then only the read-only dry run runs.
-fn fleet_converge_jit_dead_sweep_step() -> Step {
+fn fleet_converge_jit_dead_sweep_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_jit_dead_sweep_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "JIT dead-registration sweep (GATED until the operator's go): retire a host's dead JIT registrations and its retired-name-prefix rows, reading each back absent" },
     id: Present { value: "jit_dead_registration_sweep" },
-    run: gunbc_ci_jit_dead_sweep_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4339,6 +4693,9 @@ fn fleet_converge_jit_dead_sweep_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_jit_dead_sweep_dry_run_step() -> Step {
@@ -4398,11 +4755,15 @@ fn fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_microvm_runner_group_ensure_step() -> Step {
+fn fleet_converge_microvm_runner_group_ensure_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_microvm_runner_group_ensure_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "microVM runner group: read, file one approval if absent, create restricted to the shakedown workflow, read back" },
     id: Present { value: "microvm_runner_group_ensure" },
-    run: gunbc_ci_microvm_runner_group_ensure_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4413,6 +4774,9 @@ fn fleet_converge_microvm_runner_group_ensure_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(microvm_runner_group_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
@@ -4434,11 +4798,15 @@ fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_approval_keyring_converge_step() -> Step {
+fn fleet_converge_approval_keyring_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_approval_keyring_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Materialize approval MAC keys on the approval broker host (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
     id: Present { value: "approval_keyring_converge" },
-    run: gunbc_ci_approval_keyring_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4449,15 +4817,22 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE HOST ADMISSION RUNS BEFORE ANY CREDENTIAL: after the release bins are verified and before the
 // WIF token and the fleet key, it refuses a dispatch naming any host but the store host.
-fn fleet_converge_mtcollins1_boot_admit_step() -> Step {
+fn fleet_converge_mtcollins1_boot_admit_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_boot_admit_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host" },
     id: Present { value: "mtcollins1_boot_admit" },
-    run: gunbc_ci_mtcollins1_boot_admit_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
@@ -4467,13 +4842,20 @@ fn fleet_converge_mtcollins1_boot_admit_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_mtcollins1_boot_step() -> Step {
+fn fleet_converge_mtcollins1_boot_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_boot_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)" },
     id: Present { value: "mtcollins1_boot" },
-    run: gunbc_ci_mtcollins1_boot_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4486,13 +4868,20 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Step {
+fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, PXE/controller handoff, release)" },
     id: Present { value: "mtcollins1_pxe_mac_discovery" },
-    run: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4503,13 +4892,20 @@ fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Step {
+fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Mt. Collins unit 1 controller cold reset under the unit hold (read, one IPMI cold reset attempt, watch availability lost then recovered, read; no chassis-power command)" },
     id: Present { value: "mtcollins1_bmc_cold_reset" },
-    run: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4520,6 +4916,9 @@ fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_bmc_cold_reset_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
@@ -4669,11 +5068,15 @@ fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
 // fold (gunbc.cloudflare.r2_token_mint_run mint_origin_token_and_store), same custody bracket, same
 // attempt-scoped orphan receipt, the containers gunbc.cloudflare.r2_origin fabric_workspace_standing
 // names. Like the bucket-admin mint they touch no host, so neither consumes the fleet SSH key.
-fn fleet_converge_r2_workspace_object_read_mint_step() -> Step {
+fn fleet_converge_r2_workspace_object_read_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_workspace_object_read_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 workspace object-read token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_workspace_object_read_mint" },
-    run: gunbc_ci_r2_workspace_object_read_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4683,6 +5086,9 @@ fn fleet_converge_r2_workspace_object_read_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_workspace_object_read_mint_receipt_upload_step() -> Step {
@@ -4707,11 +5113,15 @@ fn fleet_converge_r2_workspace_object_read_mint_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_r2_workspace_object_write_mint_step() -> Step {
+fn fleet_converge_r2_workspace_object_write_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_workspace_object_write_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 workspace object-write token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_workspace_object_write_mint" },
-    run: gunbc_ci_r2_workspace_object_write_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4721,6 +5131,9 @@ fn fleet_converge_r2_workspace_object_write_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
@@ -4745,11 +5158,15 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_r2_cache_object_read_mint_step() -> Step {
+fn fleet_converge_r2_cache_object_read_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_cache_object_read_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 cache-blobs object-read token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_cache_object_read_mint" },
-    run: gunbc_ci_r2_cache_object_read_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4759,6 +5176,9 @@ fn fleet_converge_r2_cache_object_read_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_cache_object_read_mint_receipt_upload_step() -> Step {
@@ -4783,11 +5203,15 @@ fn fleet_converge_r2_cache_object_read_mint_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_r2_cache_object_write_mint_step() -> Step {
+fn fleet_converge_r2_cache_object_write_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_cache_object_write_mint_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 cache-blobs object-write token mint (AccountTokens.Create + Secret Manager custody)" },
     id: Present { value: "r2_cache_object_write_mint" },
-    run: gunbc_ci_r2_cache_object_write_mint_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4797,6 +5221,9 @@ fn fleet_converge_r2_cache_object_write_mint_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_cache_object_write_mint_receipt_upload_step() -> Step {
@@ -4832,11 +5259,15 @@ fn fleet_converge_r2_cache_object_write_mint_receipt_upload_step() -> Step {
 // raising the aux value would multiply across every aux step, so this constant is this step.
 data fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes: Duration = 30
 
-fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
+fn fleet_converge_r2_conditional_put_race_probe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_r2_conditional_put_race_probe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "R2 If-Match race probe (two concurrent conditional PUTs per round on one entity tag)" },
     id: Present { value: "r2_conditional_put_race_probe" },
-    run: gunbc_ci_r2_conditional_put_race_probe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4846,6 +5277,9 @@ fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_r2_conditional_put_race_probe_receipt_upload_step() -> Step {
@@ -4962,11 +5396,15 @@ fn fleet_converge_apply_receipt_upload_step() -> Step {
 // THE DEPLOY PATH'S BUDGET PREFLIGHT STEP: the entry is gunbc.host.host_budget_preflight
 // admit_host_budget_declared; no environment of its own -- it READS the deployment's environment for
 // the disqualifying GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES rather than setting any.
-fn fleet_converge_host_budget_preflight_step() -> Step {
+fn fleet_converge_host_budget_preflight_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_host_budget_preflight_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Admit the host budget before the fold: a bound must constrain this process (gunbc.host.host_budget_preflight)" },
     id: Present { value: "host_budget_preflight" },
-    run: gunbc_ci_host_budget_preflight_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -4974,13 +5412,20 @@ fn fleet_converge_host_budget_preflight_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_dashboard_deploy_step() -> Step {
+fn fleet_converge_dashboard_deploy_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_live_deploy_transaction_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)" },
     id: Present { value: "dashboard_deploy" },
-    run: gunbc_ci_live_deploy_transaction_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -4995,6 +5440,9 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // QueueNotMax RATHER THAN QueueMax, and the two are not interchangeable here. QueueMax permits many
@@ -5037,11 +5485,15 @@ data fleet_converge_approval_broker_dark_install_selected_inputs: List<String> =
 // reason the dark install beside it takes no selection.
 data fleet_converge_approval_ntfy_retire_selected_inputs: List<String> = []
 
-fn fleet_converge_srv1_root_mutation_approval_step(selects: List<String>) -> Step {
+fn fleet_converge_srv1_root_mutation_approval_step(selects: List<String>) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_srv1_root_mutation_approval_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it" },
     id: Present { value: "srv1_root_mutation_approval" },
-    run: gunbc_ci_srv1_root_mutation_approval_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: concat([
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -5052,6 +5504,9 @@ fn fleet_converge_srv1_root_mutation_approval_step(selects: List<String>) -> Ste
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(srv1_root_mutation_approval_step_timeout_minutes()) }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_srv1_root_mutation_approval_receipt_upload_step() -> Step {
@@ -5213,11 +5668,15 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
 // control_plane_acknowledgement_minted_as_effect exists to refuse.
 data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: Srv1RootMutation(ApprovalBrokerDarkInstall))
 
-fn fleet_converge_approval_broker_dark_install_step() -> Step {
+fn fleet_converge_approval_broker_dark_install_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_approval_broker_dark_install_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Install the approval broker dark on the approval broker host (additive unit + slice; does not restart gunbc-roadmap.service)" },
     id: Present { value: "approval_broker_dark_install" },
-    run: gunbc_ci_approval_broker_dark_install_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -5225,6 +5684,9 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(gunbc_ci_approval_broker_dark_install_step_timeout()) }
   }
+
+      })
+  )
 }
 
 // IT SHARES fleet_host_mutation_concurrency_group_expression WITH dashboard-deploy, and sharing is
@@ -5244,11 +5706,15 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // broker install.
 data fleet_converge_microvm_controller_install_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: Srv1RootMutation(MicrovmControllerInstall))
 
-fn fleet_converge_microvm_controller_install_step() -> Step {
+fn fleet_converge_microvm_controller_install_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_microvm_controller_install_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)" },
     id: Present { value: "microvm_controller_install" },
-    run: gunbc_ci_microvm_controller_install_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -5256,17 +5722,24 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE TENANCY ADMISSION, before the operator is asked and before any key: the job's user, the deploy
 // group and the deploy slot's host half, read without the fleet key (gunbc.live_deploy.apply
 // microvm_controller_install_admission_wet). A refusal fails the step, so neither the approval, the
 // key nor the install runs.
-fn fleet_converge_microvm_controller_install_admission_step() -> Step {
+fn fleet_converge_microvm_controller_install_admission_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_microvm_controller_install_admission_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Deploy slot tenancy admission: read the deploy group and the slot's host half without the fleet key; nothing later runs unless the slot is the sole tenant of its uid" },
     id: Present { value: "microvm_controller_install_admission" },
-    run: gunbc_ci_microvm_controller_install_admission_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [kv(key: workload_identity_token_env as String, value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
     working_directory: none,
@@ -5274,6 +5747,9 @@ fn fleet_converge_microvm_controller_install_admission_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // The revision-job image is downloaded exactly when the controller install installs it: the same
@@ -5383,11 +5859,15 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
 // (work item adhoc-7b7b9aef) is the sign-off the retirement itself needs.
 data fleet_converge_approval_ntfy_retire_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: Srv1RootMutation(ApprovalNtfyRetire))
 
-fn fleet_converge_approval_ntfy_retire_step() -> Step {
+fn fleet_converge_approval_ntfy_retire_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_approval_ntfy_retire_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the group the account leaves behind, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean" },
     id: Present { value: "approval_ntfy_retire" },
-    run: gunbc_ci_approval_ntfy_retire_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -5395,6 +5875,9 @@ fn fleet_converge_approval_ntfy_retire_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_approval_ntfy_retire_job() -> Job {
@@ -5433,11 +5916,15 @@ fn fleet_converge_approval_ntfy_retire_job() -> Job {
   }
 }
 
-fn fleet_converge_spark_grants_step() -> Step {
+fn fleet_converge_spark_grants_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_grant_install_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
     id: Present { value: "spark_grants" },
-    run: gunbc_ci_spark_grant_install_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5450,13 +5937,20 @@ fn fleet_converge_spark_grants_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_spark_bootstrap_step() -> Step {
+fn fleet_converge_spark_bootstrap_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_bootstrap_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark managed-access bootstrap (creates gunbc-automation, installs the fleet key, proves key-only auth, lays the narrow grants; one target per run)" },
     id: Present { value: "spark_bootstrap" },
-    run: gunbc_ci_spark_bootstrap_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5469,17 +5963,24 @@ fn fleet_converge_spark_bootstrap_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE PAIR-SERVING APPLY. Same prelude as the bootstrap and the grant install -- the job's fleet-key
 // agent plus the per-target administrator credential materialized to one file -- so the three cannot
 // drift on how a Spark is reached or authenticated. The entry converges the promoted fabric groups'
 // vLLM units, workers before heads.
-fn fleet_converge_spark_serving_apply_step() -> Step {
+fn fleet_converge_spark_serving_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_serving_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)" },
     id: Present { value: "spark_serving_apply" },
-    run: gunbc_ci_spark_serving_apply_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5492,6 +5993,9 @@ fn fleet_converge_spark_serving_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE NATIVE ARM'S APPLY, UNDER ITS OWN MODE. The pair step converges the promoted fabric groups'
@@ -5503,11 +6007,15 @@ fn fleet_converge_spark_serving_apply_step() -> Step {
 // while the head crash-looped on DistStoreError. An earlier revision of this text said "workers
 // before the head" while the source did the opposite -- a generated description that contradicted the
 // thing it described, which is worse than none because an operator plans the blast radius from it.
-fn fleet_converge_spark_native_serving_apply_step() -> Step {
+fn fleet_converge_spark_native_serving_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_native_serving_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight that mutates nothing, the incumbent unit preserved, head before workers, a readback of the complete realization bound to each rank's own incarnation, then commit or roll the whole arm back)" },
     id: Present { value: "spark_native_serving_apply" },
-    run: gunbc_ci_spark_native_serving_apply_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5520,6 +6028,9 @@ fn fleet_converge_spark_native_serving_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // A MODE, NOT A JOB. This is a step inside the existing dispatch-only fleet job, gated by the same
@@ -5532,11 +6043,15 @@ fn fleet_converge_spark_native_serving_apply_step() -> Step {
 // executor is in no docker group, so the only modeled route to that daemon is the administrator
 // credential materialized inside this boundary. An authoring session cannot hold it, which is the
 // whole reason the probe is a dispatched mode rather than something anyone runs from a laptop.
-fn fleet_converge_spark_runtime_image_probe_step() -> Step {
+fn fleet_converge_spark_runtime_image_probe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_runtime_image_probe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark runtime image probe (pull the pinned image on the selected Spark and ask it, inside its own digest, what it registers and what it admits)" },
     id: Present { value: "spark_runtime_image_probe" },
-    run: gunbc_ci_spark_runtime_image_probe_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5549,16 +6064,23 @@ fn fleet_converge_spark_runtime_image_probe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE GRANT OBSERVE (gunbc.fleet.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet): every procured
 // Spark's sudo grant listing and sudoers drop-in shape, read by convergence (operator condition,
 // 2026-10-05). Read-only, so it takes no target and no administrator credential.
-fn fleet_converge_spark_grants_observe_step() -> Step {
+fn fleet_converge_spark_grants_observe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_grants_observe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark grant observe (every procured Spark's sudo grant listing and sudoers drop-in shape, read-only)" },
     id: Present { value: "spark_grants_observe" },
-    run: gunbc_ci_spark_grants_observe_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -5566,16 +6088,23 @@ fn fleet_converge_spark_grants_observe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE WIRELESS LINK CONVERGE (gunbc.fleet.fleet_wireless_link_converge). It shares the probe's prelude
 // because `iw set` and `nmcli connection modify` need root on a Spark, and the administrator
 // credential this job materializes is the only modeled route to it.
-fn fleet_converge_spark_wireless_link_converge_step() -> Step {
+fn fleet_converge_spark_wireless_link_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_spark_wireless_link_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Spark wireless link converge (Wi-Fi power save off at runtime and in the connection profile, with readback)" },
     id: Present { value: "spark_wireless_link_converge" },
-    run: gunbc_ci_spark_wireless_link_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -5588,6 +6117,9 @@ fn fleet_converge_spark_wireless_link_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // EVERY JOB CHECKS OUT R, THE REVISION THE OPERATOR NAMED, NOT WHATEVER main IS WHEN THE RUNNER
@@ -6000,11 +6532,15 @@ fn fleet_converge_fan_policy_phase_step_if_expression() -> Expression {
 
 data fleet_converge_fan_policy_phase_step_if: String = serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
 
-fn fleet_converge_fan_policy_phase_step() -> Step {
+fn fleet_converge_fan_policy_phase_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "fan_policy_phase" },
-    run: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6024,6 +6560,9 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_mtcollins1_fan_series_step_timeout_minutes() }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
@@ -6384,11 +6923,15 @@ fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
 // converge job carries, because the deployed-tree readback reaches srv1 through the sealed FleetSsh
 // locus. It downloads the three predecessor receipts by the run ids the operator typed and uploads
 // its own receipt with always(), so an Incomplete verdict is preserved as evidence.
-fn fleet_converge_rlm_receipt_step() -> Step {
+fn fleet_converge_rlm_receipt_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_rlm_launch_deployment_receipt_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Roadmap launch deployment receipt (rlm_launch_deployment_receipt_wet)" },
     id: Present { value: "rlm_receipt" },
-    run: gunbc_ci_rlm_launch_deployment_receipt_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -6403,6 +6946,9 @@ fn fleet_converge_rlm_receipt_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
@@ -6636,11 +7182,15 @@ data fleet_converge_branch_run_grant_await_job_id: NonEmptyStr = "branch-run-gra
 
 data fleet_converge_branch_run_grant_await_step_id: String = "branch_run_grant_await"
 
-fn fleet_converge_branch_run_grant_await_step() -> Step {
+fn fleet_converge_branch_run_grant_await_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_branch_run_grant_await_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
     id: Present { value: fleet_converge_branch_run_grant_await_step_id },
-    run: gunbc_ci_branch_run_grant_await_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
@@ -6650,6 +7200,9 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: 50 }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_branch_run_grant_await_build_step() -> Step {
@@ -6892,11 +7445,15 @@ data fleet_converge_flex_pass_step_if: String = fleet_converge_mode_step_if(mode
 // ONE PASS OF THE FLEX LOOP (gunbc.fleet.flex_pass_run): live Vast reads, screening, the plan, and the one
 // write the policy's actuation admits (Plan: none). The key is read from Secret Manager under this run's
 // fleet identity. Its receipt carries ids, prices, standings and walls -- no secret.
-fn fleet_converge_flex_pass_step() -> Step {
+fn fleet_converge_flex_pass_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_flex_pass_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Flex pass: Vast instances, charges and offers read; one planned write under the policy's actuation" },
     id: Present { value: "flex_pass" },
-    run: gunbc_ci_flex_pass_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6906,6 +7463,9 @@ fn fleet_converge_flex_pass_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_flex_pass_receipt_upload_step() -> Step {
@@ -6934,11 +7494,15 @@ data fleet_converge_flex_template_ensure_step_if: String = fleet_converge_mode_s
 // mutates the same Vast account the flex pass does, so it shares that pass's concurrency group. The key
 // is read from Secret Manager under this run's fleet identity. Its receipt carries names, hashes and
 // counts -- no secret.
-fn fleet_converge_flex_template_ensure_step() -> Step {
+fn fleet_converge_flex_template_ensure_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_flex_template_ensure_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Flex template ensure: secret-free Vast template by name, created if absent, read back" },
     id: Present { value: "flex_template_ensure" },
-    run: gunbc_ci_flex_template_ensure_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6948,6 +7512,9 @@ fn fleet_converge_flex_template_ensure_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_flex_template_ensure_receipt_upload_step() -> Step {
@@ -6973,11 +7540,15 @@ data fleet_converge_hetzner_cloud_server_read_step_if: String = fleet_converge_m
 
 // THE TOKEN'S FIRST USE, READ-ONLY: every acquired Hetzner Cloud server read through the project's
 // token, joined to its acquisition row. Its receipt carries ids, names and statuses -- no secret.
-fn fleet_converge_hetzner_cloud_server_read_step() -> Step {
+fn fleet_converge_hetzner_cloud_server_read_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hetzner_cloud_server_read_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Hetzner Cloud acquired-server read (GET /v1/servers/\{id\}; changes nothing)" },
     id: Present { value: "hetzner_cloud_server_read" },
-    run: gunbc_ci_hetzner_cloud_server_read_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth_hetzner_cloud_control.outputs.access_token }}")),
@@ -6987,6 +7558,9 @@ fn fleet_converge_hetzner_cloud_server_read_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
@@ -7018,11 +7592,15 @@ data fleet_converge_export_host_reader_converge_step_if: String = fleet_converge
 // lane, and its verification is the receipt the artifact carries.
 data fleet_converge_boot_medium_reader_probe_step_if: String = fleet_converge_mode_step_if(mode: BootMediumReaderProbe)
 
-fn fleet_converge_boot_medium_reader_probe_step() -> Step {
+fn fleet_converge_boot_medium_reader_probe_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_boot_medium_reader_probe_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Boot medium reader probe (srv2): reader login, forced-command RED, /srv/bmc read, locked-account and UsePAM facts" },
     id: Present { value: "boot_medium_reader_probe" },
-    run: gunbc_ci_boot_medium_reader_probe_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -7030,6 +7608,9 @@ fn fleet_converge_boot_medium_reader_probe_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_boot_medium_reader_probe_receipt_upload_step() -> Step {
@@ -7054,11 +7635,15 @@ fn fleet_converge_boot_medium_reader_probe_receipt_upload_step() -> Step {
 // THE BMC EXPORT HOST'S READER ROWS (gunbc.host.export_host_reader_converge): the export host is the
 // TARGET, reached over fleet SSH as its administrator from whichever runner executes; it is never the
 // dispatch's host input, and the mode serializes on the export host's own mutation group.
-fn fleet_converge_export_host_reader_converge_step() -> Step {
+fn fleet_converge_export_host_reader_converge_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_export_host_reader_converge_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Export host reader rows (srv2): account, key file, sshd drop-in; sshd -t, reload, fresh-login readback, rollback" },
     id: Present { value: "export_host_reader_converge" },
-    run: gunbc_ci_export_host_reader_converge_invoke(),
+    run: zesty_run,
     shell: none,
     env: none,
     working_directory: none,
@@ -7066,6 +7651,9 @@ fn fleet_converge_export_host_reader_converge_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
@@ -7138,11 +7726,15 @@ data fleet_converge_fleet_keypair_mint_step_if: String = fleet_converge_mode_ste
 
 // THE STEPS, BUILT FROM THE ROW: the run invokes the entry the subject names, and the upload reads the receipt
 // path the subject names. Neither can point at the other key.
-fn fleet_converge_fleet_keypair_mint_step(subject: FleetKeypairMintSubject) -> Step {
+fn fleet_converge_fleet_keypair_mint_step(subject: FleetKeypairMintSubject) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_keypair_mint_invoke(subject: subject),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: concat("Mint fleet keypair: ", concat(subject.lane as String, " (ed25519 in-run, in the runner's tmpfs; private half to Secret Manager only)")) },
     id: Present { value: fleet_converge_fleet_keypair_mint_step_id(subject: subject) },
-    run: gunbc_ci_fleet_keypair_mint_invoke(subject: subject),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -7152,6 +7744,9 @@ fn fleet_converge_fleet_keypair_mint_step(subject: FleetKeypairMintSubject) -> S
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 // THE STEP ID CARRIES THE LANE, so one log can contain both mints' steps (they are gated apart, but a job
@@ -7343,11 +7938,15 @@ fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr) -> List<Yam
   ]
 }
 
-fn fleet_converge_branch_run_grant_request_step() -> Step {
+fn fleet_converge_branch_run_grant_request_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_branch_run_grant_request_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator" },
     id: Present { value: "branch_run_grant_request" },
-    run: gunbc_ci_branch_run_grant_request_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr) },
     working_directory: none,
@@ -7355,13 +7954,20 @@ fn fleet_converge_branch_run_grant_request_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: branch_run_grant_step_timeout_minutes() }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_branch_run_grant_apply_step() -> Step {
+fn fleet_converge_branch_run_grant_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_branch_run_grant_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "Branch run grant: re-derive, re-admit the approval, add exactly the approved run cell as iam-converge, read back as iam-observe" },
     id: Present { value: "branch_run_grant_apply" },
-    run: gunbc_ci_branch_run_grant_apply_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: fleet_converge_gcp_iam_observe_reauth_step_id) },
     working_directory: none,
@@ -7369,13 +7975,20 @@ fn fleet_converge_branch_run_grant_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
   }
+
+      })
+  )
 }
 
-fn fleet_converge_gcp_iam_request_step() -> Step {
+fn fleet_converge_gcp_iam_request_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_gcp_iam_converge_request_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)" },
     id: Present { value: "gcp_iam_request" },
-    run: gunbc_ci_gcp_iam_converge_request_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -7385,6 +7998,9 @@ fn fleet_converge_gcp_iam_request_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
   }
+
+      })
+  )
 }
 
 // THE OBSERVE IDENTITY, FEDERATED AGAIN, ONLY NOW THAT THE OPERATOR HAS ANSWERED.
@@ -7451,11 +8067,15 @@ fn fleet_converge_srv15_read_wif_auth_step() -> Step {
   )
 }
 
-fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
+fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "srv15 arrival: read bmc-srv15-admin versions metadata with the job identity (typed receipt to the artifact; every refusal named, no fallback)" },
     id: Present { value: fleet_converge_srv15_versions_read_step_id as String },
-    run: gunbc_ci_srv15_bmc_secret_versions_read_invoke(),
+    run: zesty_run,
     shell: none,
     // THE SAME BINDING SHAPE ITS SIBLINGS CARRY (review artifact 95625): the WorkloadIdentityToken
     // arm of gunbc.auth.access_token_source READS the WIF_ACCESS_TOKEN variable. It binds THIS STEP'S
@@ -7479,6 +8099,9 @@ fn fleet_converge_srv15_bmc_secret_versions_read_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
+
+      })
+  )
 }
 
 fn fleet_converge_srv15_bmc_secret_versions_receipt_upload_step() -> Step {
@@ -7522,11 +8145,15 @@ fn fleet_converge_gcp_iam_observe_reauth_step() -> Step {
   }
 }
 
-fn fleet_converge_gcp_iam_apply_step() -> Step {
+fn fleet_converge_gcp_iam_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_gcp_iam_converge_apply_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "GCP IAM converge: re-plan, re-admit the approval, apply exactly the approved effects as iam-converge, read back as iam-observe" },
     id: Present { value: "gcp_iam_apply" },
-    run: gunbc_ci_gcp_iam_converge_apply_invoke(),
+    run: zesty_run,
     shell: none,
     // No IAM_CONVERGE_ACCESS_TOKEN: the apply mints its iam-converge credential AT USE (mint-at-use), so the
     // runner-side wif_auth_iam_converge auth step this replaced is GONE. WIF_ACCESS_TOKEN is the independent
@@ -7540,6 +8167,9 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
   }
+
+      })
+  )
 }
 
 // THE JOB RUNS WHERE THE APPROVAL BROKER RUNS, which follows the prod role
@@ -8852,11 +9482,15 @@ fn fleet_converge_hostname_converge_step_env() -> List<YamlKeyValue> {
   ]
 }
 
-fn fleet_converge_hostname_converge_plan_step() -> Step {
+fn fleet_converge_hostname_converge_plan_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_plan_target),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "hostname converge: dry plan (read the live name, fold it, refuse a three-way conflict)" },
     id: Present { value: "hostname_converge_plan" },
-    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_plan_target),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8864,13 +9498,20 @@ fn fleet_converge_hostname_converge_plan_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
+
+      })
+  )
 }
 
-fn fleet_converge_hostname_converge_apply_step() -> Step {
+fn fleet_converge_hostname_converge_apply_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_apply_target),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "hostname converge: wet apply (compare-and-set over the fleet SSH edge; needs confirm == converge)" },
     id: Present { value: "hostname_converge_apply" },
-    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_apply_target),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8878,15 +9519,22 @@ fn fleet_converge_hostname_converge_apply_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
+
+      })
+  )
 }
 
 // THE READ-BACK IS NOT THE APPLY'S OWN REPORT. It re-reads the live name and fails on a mismatch, so a
 // step that wrote the wrong name cannot pass by believing itself.
-fn fleet_converge_hostname_converge_read_back_step() -> Step {
+fn fleet_converge_hostname_converge_read_back_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_read_back_target),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "hostname converge: read the target's own name back, independently of the apply" },
     id: Present { value: "hostname_converge_read_back" },
-    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_read_back_target),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8894,13 +9542,20 @@ fn fleet_converge_hostname_converge_read_back_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
+
+      })
+  )
 }
 
-fn fleet_converge_hostname_converge_readopt_step() -> Step {
+fn fleet_converge_hostname_converge_readopt_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_readopt_target),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "hostname converge: re-adopt the committed hostname baseline (explicit, typed; refuses by default)" },
     id: Present { value: "hostname_converge_readopt" },
-    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_readopt_target),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_hostname_converge_step_env() },
     working_directory: none,
@@ -8908,15 +9563,22 @@ fn fleet_converge_hostname_converge_readopt_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes },
   }
+
+      })
+  )
 }
 
 // THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target, or
 // a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
-fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
+fn fleet_converge_hostname_converge_dispatch_admission_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_dispatch_admission_target),
+    f: fn(zesty_run) {
+      outcome_accepted(value:
   RunStep {
     name: Present { value: "hostname converge dispatch admission (refuses a peer that is the target, or an unallocated peer)" },
     id: Present { value: "hostname_converge_dispatch_admission" },
-    run: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_dispatch_admission_target),
+    run: zesty_run,
     shell: none,
     env: Present {
       value: [
@@ -8932,6 +9594,9 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
   }
+
+      })
+  )
 }
 
 fn fleet_converge_hostname_converge_job() -> Job {

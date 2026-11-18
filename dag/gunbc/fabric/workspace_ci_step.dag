@@ -14,8 +14,8 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
-import v2.workflow.gunbc_invoke_step_emit {
 import v2.std.diagnostic { Outcome }
+import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
 }
 

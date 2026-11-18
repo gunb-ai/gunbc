@@ -12,8 +12,8 @@ import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target 
 }
 import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
-import v2.workflow.gunbc_invoke_step_emit {
 import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_with_prelude_for_target,
 }
 

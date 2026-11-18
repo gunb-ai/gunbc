@@ -19,8 +19,8 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
-import gunbc.auth.github_app_credential_step {
 import v2.std.diagnostic { Outcome, bind_outcome }
+import gunbc.auth.github_app_credential_step {
   gunbc_ci_org_roster_read_app_token_prelude
 }
 

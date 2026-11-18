@@ -16,8 +16,8 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric.fabric_writer_identity_observe {
 import v2.std.diagnostic { Outcome }
+import gunbc.fabric.fabric_writer_identity_observe {
   fabric_writer_identity_receipt_path
 }
 

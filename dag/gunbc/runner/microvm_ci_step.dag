@@ -31,8 +31,8 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_receipt_path,
 }
 import v2.std.orchestration { Do, PipelineStep }
-import v2.workflow.gunbc_invoke_step_emit {
 import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
 }
