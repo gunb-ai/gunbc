@@ -297,6 +297,22 @@ data witness_run_receipts: List<RetainedExecutionResult> = [
     run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 10:03:50Z to 10:45:52Z, base 93ab1bb19a35, wall file sha256 569c7bab2066310d9f9c",
     conclusion: "claim route: 10 claims, 10 held, 0 did not hold, 0 unobserved, exit 0",
   },
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 12:16:20Z to 12:53:57Z, head 7d7fe2e355033274612fb2be8de033bdb75c76fe",
+    conclusion: "claim route: 11 claims, 11 held, 0 did not hold, 0 unobserved, exit 0 -- the 11th is this carrier's own guard row, witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran",
+  },
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 13:03:56Z to 13:41:13Z, head 0196e438f264c9bf1872dcaa4b6fc15c2c47da70 with main merged in (5cb9af6d8dfd), seed rebuilt at that revision by cargo build --release -p v1-compiler --bin gunbc --bin claim_batch in 7m22s finishing 13:03:46Z",
+    conclusion: "claim route: 11 claims, 11 held, 0 did not hold, 0 unobserved, exit 0",
+  },
 ]
 
 // A receipt that points into somebody else's module, or an empty one dressed up as evidence, is not a
