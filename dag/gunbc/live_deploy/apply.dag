@@ -1449,7 +1449,9 @@ fn live_deploy_ci_instance_receipt_identity_from_ci() -> ProcessExit {
     ActionsVariableAbsent { variable, detail } =>
       exit_failure(reason: join(["the CI instance-scoped deploy named no instance: ", variable, " is ", detail, " -- there is no default instance to receipt"], ""))
   }
-} the instance-scoped srv1 deploy
+}
+
+// THE ONE TYPED PARSER for the packed '<host>:<instance_id>' value the instance-scoped srv1 deploy
 // carries on the host-shaped `subject_host` dispatch input (a colon cannot appear in a hostname nor in
 // an instance id, so a well-formed value splits into EXACTLY two non-empty parts). It returns a host and
 // an instance, or a typed refusal -- NEVER a default (gunbc.design_argument::fail_closed). This is the
