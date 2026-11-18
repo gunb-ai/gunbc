@@ -7710,36 +7710,41 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
 // timeout is the SUM of the declared step timeouts rather than a constant, because this job builds its own
 // binary on a hosted runner and a hand-set ceiling would be a number somebody guessed; the fold is over the
 // same steps that will run.
-fn fleet_converge_fleet_keypair_mint_job() -> Job {
+fn fleet_converge_fleet_keypair_mint_job() -> Outcome<Job> {
   // THE PER-KEY STEPS, in roster order: each subject contributes its mint step and its receipt upload. A
   // fold rather than a map because map would give one list per key and this language's list append is the
   // only flattening available to this module -- and the ORDER is the roster's, so a reader comparing the
   // generated workflow against fleet_keypair_mint_subject_rows() finds them in the same sequence.
   let mint_steps = fold(fleet_keypair_mint_subject_rows(), init: [], f: fn(acc, s) { append(acc, items: [
     fleet_converge_fleet_keypair_mint_step(subject: s),
-    fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: s),
+    outcome_accepted(value: fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: s)),
   ]) })
-  let steps = concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
-    concat(
-      [
-        fleet_converge_hosted_gunbc_build_step(purpose: "the fleet keypair mint"),
-        fleet_converge_fleet_identity_auth_step(if_condition: outcome_accepted(value: fleet_converge_fleet_keypair_mint_step_if)),
-      ],
-      mint_steps,
+  bind_outcome(
+    o: sequence_outcome(
+      xs: concat(
+        lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+        concat(
+          [
+            outcome_accepted(value: fleet_converge_hosted_gunbc_build_step(purpose: "the fleet keypair mint")),
+            fleet_converge_fleet_identity_auth_step(if_condition: outcome_accepted(value: fleet_converge_fleet_keypair_mint_step_if)),
+          ],
+          mint_steps,
+        ),
+      ),
+      policy: StageDiagnosticPolicy { accumulation: ShortCircuit },
     ),
-  )
-  Job {
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_fleet_keypair_mint_job_id as String,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     environment: none,
-    steps: steps,
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_fleet_keypair_mint_job_id),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_fleet_keypair_mint_step_if },
-    timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
+    timeout_minutes: Present { value: fold(zesty_steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
@@ -7751,7 +7756,9 @@ fn fleet_converge_fleet_keypair_mint_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     },
-  }
+      })
+    }
+  )
 }
 
 // ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decision B 2026-09-25) ────────
@@ -9176,31 +9183,32 @@ fn fleet_converge_gcp_iam_bootstrap_concurrency() -> ConcurrencySpec {
   ConcurrencyMappingQueueNotMax { group: "gcp-iam-converge", cancel_in_progress: Present { value: CancelInProgressBool { value: false } }, explicit_single: none }
 }
 
-fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleRealizationRefusal) -> Job {
-  let refused = fleet_converge_gcp_iam_converge_refused_job(cause: cause)
-  Job { id: id as String, name: refused.name, runner: refused.runner, environment: refused.environment,
+fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleRealizationRefusal) -> Outcome<Job> {
+  bind_outcome(
+    o: fleet_converge_gcp_iam_converge_refused_job(cause: cause),
+    f: fn(refused) {
+      outcome_accepted(value: Job { id: id as String, name: refused.name, runner: refused.runner, environment: refused.environment,
     steps: refused.steps, needs: fleet_converge_job_needs(id: id), env: refused.env, outputs: refused.outputs,
     if_condition: refused.if_condition, timeout_minutes: refused.timeout_minutes, continue_on_error: refused.continue_on_error,
     concurrency: refused.concurrency, permissions: refused.permissions }
+      )
+    }
+  )
 }
 
-fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
+fn fleet_converge_gcp_iam_bootstrap_request_job() -> Outcome<Job> {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
-      id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
-      environment: Present { value: gcp_iam_converge_environment as String },
-      steps: [
-        fleet_converge_event_sha_checkout_step(),
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-        ci_wif_auth_step_for(
+    ApprovalBrokerHostResolved { host } => bind_outcome(
+      o: sequence_outcome(xs: [
+        outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+        outcome_accepted(value: ci_release_bins_download_step()),
+        outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+        outcome_accepted(value: ci_wif_auth_step_for(
           name: "WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)",
           provider_resource: gcp_iam_observe_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
-        ),
-        RunStep {
+        )),
+        outcome_accepted(value: RunStep {
           name: Present { value: "GCP IAM bootstrap delta: classify the whole roster as iam-observe, file one request over exactly the missing cells, wait for the operator" },
           id: Present { value: "gcp_iam_bootstrap_request" },
           run: gunbc_ci_gcp_iam_bootstrap_delta_request_invoke(),
@@ -9210,17 +9218,26 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
           continue_on_error: none,
           timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
-        },
-      ],
-      needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_request_job_id),
-      env: none,
-      outputs: Present { value: [kv(key: gcp_iam_bootstrap_delta_approved_output, value: yaml_string(s: concat(concat("${{ steps.gcp_iam_bootstrap_request.outputs.", gcp_iam_bootstrap_delta_approved_output), " }}")))] },
-      if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
-      timeout_minutes: Present { value: fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() },
-      continue_on_error: none,
-      concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
-      permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
-    }
+        }),
+      ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
+          id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
+          name: none,
+          runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+          environment: Present { value: gcp_iam_converge_environment as String },
+          steps: zesty_steps,
+          needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_request_job_id),
+          env: none,
+          outputs: Present { value: [kv(key: gcp_iam_bootstrap_delta_approved_output, value: yaml_string(s: concat(concat("${{ steps.gcp_iam_bootstrap_request.outputs.", gcp_iam_bootstrap_delta_approved_output), " }}")))] },
+          if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
+          timeout_minutes: Present { value: fleet_converge_gcp_iam_bootstrap_request_job_backstop_timeout_minutes() },
+          continue_on_error: none,
+          concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
+          permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
+        })
+      }
+    )
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_request_job_id, cause: cause)
   }
 }
@@ -9228,48 +9245,58 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
 // THE GATED JOB re-derives the request as iam-observe -- through the bootstrap pool, whose principal
 // set the ceremony lets become iam-observe (gunbc.auth.gcp_iam_bootstrap_model
 // iam_bootstrap_delta_observer_trust) -- so the request it re-admits is the one the operator approved.
-fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
+fn fleet_converge_gcp_iam_bootstrap_job() -> Outcome<Job> {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
-      id: fleet_converge_gcp_iam_bootstrap_job_id as String,
-      name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
-      environment: Present { value: gcp_iam_bootstrap_environment as String },
-      steps: [
-        fleet_converge_event_sha_checkout_step(),
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
-        ci_wif_auth_step_for(
+    ApprovalBrokerHostResolved { host } => bind_outcome(
+      o: sequence_outcome(xs: [
+        outcome_accepted(value: fleet_converge_event_sha_checkout_step()),
+        outcome_accepted(value: ci_release_bins_download_step()),
+        outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+        outcome_accepted(value: ci_wif_auth_step_for(
           name: "WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-observe SA, access token only)",
           provider_resource: gcp_iam_bootstrap_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
+        )),
+        bind_outcome(
+          o: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
+          f: fn(zesty_run) {
+            outcome_accepted(value: RunStep {
+              name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
+              id: Present { value: "gcp_iam_bootstrap_apply" },
+              run: zesty_run,
+              shell: none,
+              // No IAM_BOOTSTRAP_ACCESS_TOKEN: the apply mints its iam-bootstrap credential AT USE (mint-at-use),
+              // so the deleted wif_auth_iam_bootstrap auth step had no consumer left. WIF_ACCESS_TOKEN is the
+              // independent iam-observe read token from the job's wif_auth step, kept for the read-back.
+              env: Present { value: [
+                kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+              ] },
+              working_directory: none,
+              if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
+              continue_on_error: none,
+              timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
+            })
+          }
         ),
-        RunStep {
-          name: Present { value: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back" },
-          id: Present { value: "gcp_iam_bootstrap_apply" },
-          run: gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke(),
-          shell: none,
-          // No IAM_BOOTSTRAP_ACCESS_TOKEN: the apply mints its iam-bootstrap credential AT USE (mint-at-use),
-          // so the deleted wif_auth_iam_bootstrap auth step had no consumer left. WIF_ACCESS_TOKEN is the
-          // independent iam-observe read token from the job's wif_auth step, kept for the read-back.
-          env: Present { value: [
-            kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-          ] },
-          working_directory: none,
-          if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
+      ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
+          id: fleet_converge_gcp_iam_bootstrap_job_id as String,
+          name: none,
+          runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+          environment: Present { value: gcp_iam_bootstrap_environment as String },
+          steps: zesty_steps,
+          needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_job_id),
+          env: none,
+          outputs: none,
+          if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_apply_job_if },
+          timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 30 },
           continue_on_error: none,
-          timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 10 }
-        },
-      ],
-      needs: fleet_converge_job_needs(id: fleet_converge_gcp_iam_bootstrap_job_id),
-      env: none,
-      outputs: none,
-      if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_apply_job_if },
-      timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 30 },
-      continue_on_error: none,
-      concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
-      permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
-    }
+          concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
+          permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
+        })
+      }
+    )
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_job_id, cause: cause)
   }
 }
