@@ -92,7 +92,7 @@ fn gunbc_ci_remote_build_serving_observe_invoke() -> String {
   )
 }
 // PR 5(b) converge invoke. No org-roster prelude: the serving roster is the static
-// remote_build_serving_hosts row (srv1-only until 5(c)), not the live org roster, so the plan
+// remote_build_serving_hosts row, not the live org roster, so the plan
 // needs no minted installation token. The apply re-observes and requires settled before success.
 fn gunbc_ci_remote_build_serving_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
