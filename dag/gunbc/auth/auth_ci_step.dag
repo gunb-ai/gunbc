@@ -63,7 +63,7 @@ data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = gunbc_r
 // THE GRANT REQUEST FILES ONE APPROVAL, so it signs with the submission MAC key exactly as the IAM
 // converge's request does: the same prelude, which reads only the step's WIF_ACCESS_TOKEN. Without it
 // approval_file_stored_request refuses on an unset key path (grant run 43582572641, 2026-11-14).
-fn gunbc_ci_branch_run_grant_request_invoke() -> String {
+fn gunbc_ci_branch_run_grant_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "branch-run-grant", target: gunbc_ci_branch_run_grant_request_target)
 }
 
@@ -96,7 +96,7 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> Outcome<String> {
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
 
-fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
+fn gunbc_ci_gcp_iam_converge_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
 }
 
@@ -115,7 +115,7 @@ fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> Outcome<String> {
   )
 }
 
-fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
+fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-bootstrap-delta", target: gunbc_ci_gcp_iam_bootstrap_delta_request_target)
 }
 

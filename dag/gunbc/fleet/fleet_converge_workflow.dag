@@ -2581,8 +2581,8 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
 // Observe and converge are two modes rather than one flag so an operator can dispatch the read alone
 // and see what a converge would write before any root-evaluated file changes. Both reach the target
 // over the job's fleet-key agent as the declared administrator; the job user gains no grant.
-fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String, if_condition: String) -> Outcome<Step> {
-  fleet_converge_runner_host_file_step_within(id: id, name: name, invoke: outcome_accepted(value: invoke), if_condition: if_condition, timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes)
+fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: Outcome<String>, if_condition: String) -> Outcome<Step> {
+  fleet_converge_runner_host_file_step_within(id: id, name: name, invoke: invoke, if_condition: if_condition, timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes)
 }
 
 fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke: Outcome<String>, if_condition: String, timeout_minutes: Duration) -> Outcome<Step> {
@@ -3556,18 +3556,23 @@ fn fleet_converge_app_key_version_verify_env() -> List<YamlKeyValue> {
   )
 }
 
-fn fleet_converge_app_key_version_verify_mint_step() -> Step {
-  RunStep {
+fn fleet_converge_app_key_version_verify_mint_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_app_key_version_verify_mint_script(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
     name: Present { value: "App key version verify: mint an installation token with the exact version" },
     id: Present { value: "app_key_version_verify_mint" },
-    run: gunbc_ci_app_key_version_verify_mint_script(),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_app_key_version_verify_env() },
     working_directory: none,
     if_condition: Present { value: fleet_converge_app_key_version_verify_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
+  })
+    }
+  )
 }
 
 // THE MT. COLLINS FAN OBSERVATION MODE, WHICH IS READ-ONLY AND IS THE ONLY MODE IN THIS WORKFLOW
@@ -6656,7 +6661,7 @@ fn fleet_converge_job_work_steps() -> List<Outcome<Step>> {
     outcome_accepted(value: fleet_converge_org_runner_roster_receipt_upload_step()),
     fleet_converge_app_control_plane_step(),
     outcome_accepted(value: fleet_converge_app_control_plane_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_app_key_version_verify_mint_step()),
+    fleet_converge_app_key_version_verify_mint_step(),
     fleet_converge_app_key_version_verify_verdict_step(),
     outcome_accepted(value: fleet_converge_app_key_version_verify_receipt_upload_step()),
     fleet_converge_mtcollins1_fan_observe_step(),
@@ -7901,10 +7906,13 @@ fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr) -> List<Yam
 }
 
 fn fleet_converge_branch_run_grant_request_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_branch_run_grant_request_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
     name: Present { value: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator" },
     id: Present { value: "branch_run_grant_request" },
-    run: gunbc_ci_branch_run_grant_request_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: fleet_converge_branch_run_grant_env(observe_step_id: "wif_auth" as NonEmptyStr) },
     working_directory: none,
@@ -7912,6 +7920,8 @@ fn fleet_converge_branch_run_grant_request_step() -> Outcome<Step> {
     continue_on_error: none,
     timeout_minutes: Present { value: branch_run_grant_step_timeout_minutes() }
   })
+    }
+  )
 }
 
 fn fleet_converge_branch_run_grant_apply_step() -> Outcome<Step> {
@@ -7934,10 +7944,13 @@ fn fleet_converge_branch_run_grant_apply_step() -> Outcome<Step> {
 }
 
 fn fleet_converge_gcp_iam_request_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_gcp_iam_converge_request_invoke(),
+    f: fn(zesty_run) {
+      outcome_accepted(value: RunStep {
     name: Present { value: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)" },
     id: Present { value: "gcp_iam_request" },
-    run: gunbc_ci_gcp_iam_converge_request_invoke(),
+    run: zesty_run,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -7947,6 +7960,8 @@ fn fleet_converge_gcp_iam_request_step() -> Outcome<Step> {
     continue_on_error: none,
     timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
   })
+    }
+  )
 }
 
 // THE OBSERVE IDENTITY, FEDERATED AGAIN, ONLY NOW THAT THE OPERATOR HAS ANSWERED.
@@ -9648,17 +9663,17 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Outcome<Job> {
           provider_resource: gcp_iam_observe_wif_provider_resource(),
           service_account: iam_observe_service_account as String,
         )),
-        outcome_accepted(value: RunStep {
+        bind_outcome(o: gunbc_ci_gcp_iam_bootstrap_delta_request_invoke(), f: fn(zesty_run) { outcome_accepted(value: RunStep {
           name: Present { value: "GCP IAM bootstrap delta: classify the whole roster as iam-observe, file one request over exactly the missing cells, wait for the operator" },
           id: Present { value: "gcp_iam_bootstrap_request" },
-          run: gunbc_ci_gcp_iam_bootstrap_delta_request_invoke(),
+          run: zesty_run,
           shell: none,
           env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
           working_directory: none,
           if_condition: Present { value: fleet_converge_gcp_iam_bootstrap_step_if },
           continue_on_error: none,
           timeout_minutes: Present { value: gcp_iam_converge_step_timeout_minutes() }
-        }),
+        }) }),
       ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
       f: fn(zesty_steps) {
         outcome_accepted(value: Job {
