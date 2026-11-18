@@ -2905,8 +2905,12 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   // shorter ledger is not evidence of integration"; gunbc.design_argument::guarantee_ladder: "A witness no
   // lane executes is not a check ... the row is what makes the refusal real"). Disposition Open with its
   // owed rung named, which is what Triaged means here.
-  // What this change DOES establish, by execution: gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all on srv1 in a 40G systemd scope with GUNBC_MEMORY_BUDGET_BYTES=34359738368; executed 2026-11-18 07:41:47Z to 08:19:33Z at base 93ab1bb19a35 over a git-archive tree, claim bodies exactly as landed in a7b273bc4e5d0f52439289cece33093ccf06a855. The command reported 9 claims, 9 held, 0 red,
-  // exit 0. MEMBERSHIP now has an author other than attention: the wall compares the roster, arm by arm,
+  // What this change DOES establish, by execution: gunbc test
+  // //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, on srv1 in a 40G systemd scope with
+  // GUNBC_MEMORY_BUDGET_BYTES=34359738368, executed 2026-11-18 07:41:47Z to 08:19:33Z at base
+  // 93ab1bb19a35 over a git-archive tree with claim bodies exactly as landed in
+  // a7b273bc4e5d0f52439289cece33093ccf06a855 -- 9 claims, 9 held, 0 red, exit 0.
+  // MEMBERSHIP now has an author other than attention: the wall compares the roster, arm by arm,
   // against the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an
   // arm listed twice, and an entry the sum does not name are three separate reds rather than a count that
   // happens to match; the dispatch menu is that roster mapped through fleet_converge_workflow_mode_wire,
@@ -2927,9 +2931,9 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   // v2.workflow.required_floor.required_gate_authored_modules, which is operator-admitted
   // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling) and spends the CI budget that is
   // closed to growth; the consolidating session declined to spend it on one wall (bold-otter-603,
-  // 2026-11-18, verbatim: "Ruling routed and taken at my level: do NOT enroll it. A required_gate row is
-  // operator-admitted and spends the closed CI budget, and the honest standing (authored, executed by hand,
-  // green, enrolled in no lane, next rung named) is exactly what DESIGN asks for"). That decision is
+  // 2026-11-18, verbatim: "do NOT enroll it. A required_gate row is operator-admitted and spends the
+  // closed CI budget, and the honest standing (authored, executed by hand, green, enrolled in no lane,
+  // next rung named) is exactly what DESIGN asks for"). That decision is
   // recorded in this row's `next` and in the two comments that name its trigger, and deliberately NOT as a
   // row of gunbc.design_ruling: those rows carry an operator provenance, and borrowing that register for a
   // lane-level decision would itself be the fork this file is about.
