@@ -26,15 +26,16 @@ import product.host_identity { HostIdentity }
 // the row. That converger is remote-build PR 5 (a separate child, gunbc.compute-serve-setup); it adopts
 // srv1's existing home and creates the others.
 //
-// WHAT THIS PR (4) ALREADY SETTLES, independent of admission: the MODEL resolves every available roster
-// host's home by HOST (host_capacity_home / host_capacity_home_for_host, witnessed green), and the
-// per-host build-pool seat is derived from one CI runner slot (host_capacity_build_seat /
-// gunbc.runner.runner_slot_desired host_build_pool_reservation), with srv3/srv4's CI committed width
-// already down by that one slot. srv1 is listed now -- its home already exists (its dashboard instance
-// lives at /opt/gunbc, so it does not migrate). srv2, srv3 and srv4 are NOT listed: their /opt/gunbc
-// home is not on disk yet, so PR 5 admits each one the day it creates and reads that home back. srv2's
-// ledger switch from /home/briansrls to the host home is that converger's actuation -- no in-flight
-// reservation carries across the switch, so it should happen when srv2 has no builds in flight.
+// WHO IS LISTED, AND ON WHAT EVIDENCE. srv1 -- its home already existed (its dashboard instance lives at
+// /opt/gunbc, so it does not migrate). srv3 and srv4 -- admitted 2026-11-18 once the serving converger
+// (gunbc.compute.remote_build_serving_converge) had created their account, ledger home, store, checkout,
+// rustup, toolchain and serve binary and re-observed each host settled (fleet-converge runs 44198068780 and
+// 44203229183, confirmed for srv3 by the independent observe 44199766267). Listing them carves one CI runner
+// slot on each into its build pool (gunbc.runner.runner_slot_desired host_build_pool_reservation): they
+// carry no dashboard instance to hold their own reservation. srv2 is NOT listed: its runner is down and its
+// serving setup is unobserved. Its ledger switch from /home/briansrls to the host home is the converger's
+// actuation -- no in-flight reservation carries across the switch, so it should happen when srv2 has no
+// builds in flight.
 //
 // FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet
 // a place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
@@ -49,6 +50,8 @@ import product.host_identity { HostIdentity }
 fn remote_build_serving_hosts() -> List<HostIdentity> {
   [
     "srv1" as HostIdentity,
+    "srv3" as HostIdentity,
+    "srv4" as HostIdentity,
   ]
 }
 
