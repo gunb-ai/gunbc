@@ -224,7 +224,8 @@ fn host_allocation_tree(
   compile_pool: ByteSize,
   control_plane: ByteSize,
   served_deployment: ByteSize,
-  serving: ByteSize
+  serving: ByteSize,
+  build_pool: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -237,6 +238,7 @@ fn host_allocation_tree(
       child_node(name: "fabric_control_plane_pool", b: control_plane),
       child_node(name: "served_deployment_pool", b: served_deployment),
       child_node(name: "serving_pool", b: serving),
+      child_node(name: "build_pool", b: build_pool),
       child_node(name: "headroom", b: headroom),
     ],
   }
@@ -267,7 +269,8 @@ fn host_allocation_verdict(
   compile_pool: ByteSize,
   control_plane: HostFabricControlPlaneClaim,
   served_deployment: HostServedDeploymentClaim,
-  serving: Optional<ByteSize>
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
   match control_plane {
     ControlPlaneClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
@@ -275,13 +278,13 @@ fn host_allocation_verdict(
       host_allocation_verdict_served(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: byte_size(0),
-        served_deployment: served_deployment, serving: serving
+        served_deployment: served_deployment, serving: serving, build_pool: build_pool
       )
     ControlPlaneClaimResolved { memory: m } =>
       host_allocation_verdict_served(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: m,
-        served_deployment: served_deployment, serving: serving
+        served_deployment: served_deployment, serving: serving, build_pool: build_pool
       )
   }
 }
@@ -299,7 +302,8 @@ fn host_allocation_verdict_served(
   compile_pool: ByteSize,
   control_plane: ByteSize,
   served_deployment: HostServedDeploymentClaim,
-  serving: Optional<ByteSize>
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
   match served_deployment {
     ServedDeploymentClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
@@ -307,13 +311,13 @@ fn host_allocation_verdict_served(
       host_allocation_verdict_charged(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
-        served_deployment: byte_size(0), serving: serving
+        served_deployment: byte_size(0), serving: serving, build_pool: build_pool
       )
     ServedDeploymentClaimResolved { memory: m } =>
       host_allocation_verdict_charged(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
-        served_deployment: m, serving: serving
+        served_deployment: m, serving: serving, build_pool: build_pool
       )
   }
 }
@@ -327,7 +331,8 @@ fn host_allocation_verdict_charged(
   compile_pool: ByteSize,
   control_plane: ByteSize,
   served_deployment: ByteSize,
-  serving: Optional<ByteSize>
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
   // The serving engine's MemoryMax is charged as its own named child (serving_pool) and refuses in
   // ITS OWN name when unmeasured: an Absent reservation means a resident that holds host RAM has no
@@ -347,7 +352,8 @@ fn host_allocation_verdict_charged(
         compile_pool: compile_pool,
         control_plane: control_plane,
         served_deployment: served_deployment,
-        serving: s
+        serving: s,
+        build_pool: build_pool
       )) {
         HostAllocationConserves
       } else {
