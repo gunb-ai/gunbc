@@ -61,8 +61,14 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
   fleet_converge_approval_broker_dark_install_selected_inputs,
   fleet_converge_approval_ntfy_retire_job, fleet_converge_approval_ntfy_retire_selected_inputs,
-  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id
+  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id,
+  fleet_converge_desired_instance_deploy_job, fleet_converge_desired_instance_deploy_options,
 }
+import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, deployment_is_prod_role_holder }
+import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_live_desired_deployment }
+import gunbc.deployment_risk { prod_role_selection }
+import gunbc.fleet.fleet_intent { operator_host_srv1 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
 
 // THE GENERATOR AND THE AUTHORITY SPEAK THE SAME WIRE AND THE SAME JOB NAME: the dispatch vocabulary
 // carries the family as ONE constructor and delegates both names to the family module, so the string a
@@ -90,6 +96,7 @@ fn job_binds_its_mode_at_job_level(j: Job) -> Bool {
 
 test fn every_root_mutation_job_hands_its_mode_to_every_step() -> Bool {
   job_binds_its_mode_at_job_level(j: fleet_converge_dashboard_deploy_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_desired_instance_deploy_job())
     && job_binds_its_mode_at_job_level(j: fleet_converge_approval_broker_dark_install_job())
     && job_binds_its_mode_at_job_level(j: fleet_converge_microvm_controller_install_job())
     && job_binds_its_mode_at_job_level(j: fleet_converge_approval_ntfy_retire_job())
@@ -120,6 +127,7 @@ fn gated_before(j: Job, root_step: String) -> Bool {
 
 test fn every_srv1_root_mutation_job_runs_the_gate_before_its_root_step() -> Bool {
   gated_before(j: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
+    && gated_before(j: fleet_converge_desired_instance_deploy_job(), root_step: "desired_instance_deploy")
     && gated_before(j: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
     && gated_before(j: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
     && gated_before(j: fleet_converge_approval_ntfy_retire_job(), root_step: "approval_ntfy_retire")
@@ -235,4 +243,68 @@ test fn the_three_root_mutation_carrying_job_backstops_stay_inside_the_platform_
     && controller_minutes <= max_job_timeout_minutes
     && dark_install_minutes > 0
     && dark_install_minutes <= max_job_timeout_minutes
+}
+
+// ── THE INSTANCE-SCOPED DEPLOY (option C) ────────────────────────────────────────────────────
+// THE INSTANCE OPTIONS ARE THE LAB ALONE, DERIVED: the srv1 roster minus the prod-role holder. Today
+// srv1-production IS the holder (srv1-live / srv1_daily_workspace_deployment) and srv2-deploy is off-srv1,
+// so exactly srv1-lab-codex-feedback-v0 remains. This is the single_authority check -- nothing is spelled
+// by hand: the options come from desired_deployment_roster() and prod_role_selection.
+test fn the_instance_options_are_the_lab_alone_and_exclude_the_prod_role_holder() -> Bool {
+  let opts = fleet_converge_desired_instance_deploy_options(
+    selection: prod_role_selection,
+    rows: desired_deployment_roster(),
+    host: operator_host_srv1,
+  )
+  opts == [srv1_dashboard_lab_id as String]
+    && !any(opts, x => x == (srv1_dashboard_live_id as String))
+}
+
+// AN EMPTY ROSTER OFFERS NOTHING: the choice would be empty and the entry then has nothing valid to name
+// (the refusal side lives with the entry); this pins that the derivation yields [] rather than a fallback.
+test fn the_instance_options_over_an_empty_roster_are_empty() -> Bool {
+  fleet_converge_desired_instance_deploy_options(
+    selection: prod_role_selection,
+    rows: [],
+    host: operator_host_srv1,
+  ) == []
+}
+
+// THE SELECTION REACHES ONLY THE NAMED ROW, and an unknown id is refused -- the entry converges exactly the
+// one instance named, never another (positive control + red control in one).
+test fn the_selection_names_only_the_lab_and_refuses_an_unknown_id() -> Bool {
+  let named = match live_deploy_desired_apply_selection(instance_id: srv1_dashboard_lab_id as String, access: ci_deploy_srv1_access) {
+    DesiredApplySelected { deployment } => deployment.instance.instance_id == srv1_dashboard_lab_id
+    DesiredApplyRefused { reason: _ } => false
+  }
+  let unknown = match live_deploy_desired_apply_selection(instance_id: "srv1-not-a-roster-row", access: ci_deploy_srv1_access) {
+    DesiredApplyRefused { reason: _ } => true
+    DesiredApplySelected { deployment: _ } => false
+  }
+  named && unknown
+}
+
+// RED CONTROL -- THE PROD-ROLE HOLDER IS REFUSED AT THE ENTRY: the entry's guard reports the holder row
+// (srv1-live) as the holder and the lab as not, so live_deploy_apply_desired_wet_from_ci cannot be coaxed
+// into converging the prod-role row (no second deploy path for production).
+test fn the_entry_refuses_the_prod_role_holder_row_but_not_the_lab() -> Bool {
+  deployment_is_prod_role_holder(deployment: srv1_live_desired_deployment())
+    && !deployment_is_prod_role_holder(deployment: srv1_lab_desired_deployment())
+}
+
+// THE DEPLOY STEP CARRIES THE NAMED INSTANCE THROUGH THE ENV: the generated step (id desired_instance_deploy)
+// puts the instance env in, because a run step reaches its entry only through the environment.
+test fn the_deploy_step_carries_the_named_instance_env() -> Bool {
+  let steps = fleet_converge_desired_instance_deploy_job().steps
+  any(steps, st => match st {
+    RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: envv, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      i == "desired_instance_deploy" && match envv {
+        Absent => false
+        Present { value: kvs } => any(kvs, e => match e {
+          YamlKeyValue { key: k, value: _ } => k == live_deploy_ci_instance_id_env_name
+          _ => false
+        })
+      }
+    _ => false
+  })
 }

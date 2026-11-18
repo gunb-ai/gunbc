@@ -48,6 +48,7 @@ import gunbc.live_deploy.desired {
   DesiredRosterDuplicateInstanceId,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
+import gunbc.deployment_risk { prod_role_selection, ProdRoleHeldBy, NoProdRole }
 import gunbc.live_deploy.role_singleton_convergence {
   assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
@@ -1395,13 +1396,34 @@ data live_deploy_ci_instance_id_env_name: String = "GUNBC_DEPLOY_INSTANCE_ID"
 // roster row through the one CI deploy path (ci_deploy_srv1_access). An unset or empty variable is a
 // named refusal, never a fallback to another instance (gunbc.design_argument::fail_closed): this entry
 // has NO default instance, so the run deploys exactly the named one or refuses. A named instance that
-// is not a srv1 roster row is refused BY NAME by live_deploy_desired_apply_selection.
+// is not a srv1 roster row is refused BY NAME by live_deploy_desired_apply_selection. And the PROD-ROLE
+// HOLDER is refused here too: this mode is the NON-prod-role route, so even a hand-set instance env
+// cannot converge the holder -- it deploys only through the prod-role transaction, and this stays the
+// single deploy path for every other srv1 row (gunbc.design_argument::single_authority).
 fn live_deploy_apply_desired_wet_from_ci() -> ProcessExit {
   match actions_variable_read(name: live_deploy_ci_instance_id_env_name) {
     ActionsVariablePresent { value: instance_id } =>
-      live_deploy_apply_desired_wet(instance_id: instance_id, access: ci_deploy_srv1_access)
+      match live_deploy_desired_apply_selection(instance_id: instance_id, access: ci_deploy_srv1_access) {
+        DesiredApplyRefused { reason } => exit_failure(reason: reason)
+        DesiredApplySelected { deployment } =>
+          if deployment_is_prod_role_holder(deployment: deployment) {
+            exit_failure(reason: join(["live_deploy desired_instance_deploy: instance '", instance_id, "' is the prod-role holder; this mode converges only NON-prod-role srv1 rows (the holder deploys through the prod-role transaction) -- there is no second deploy path for production"], ""))
+          } else {
+            live_deploy_wet_with_access(deployment: deployment, access: ci_deploy_srv1_access)
+          }
+      }
     ActionsVariableAbsent { variable, detail } =>
       exit_failure(reason: join(["the CI instance-scoped deploy named no instance: ", variable, " is ", detail, " -- there is no default instance to deploy"], ""))
+  }
+}
+
+// IS THIS ROW THE PROD-ROLE HOLDER? DERIVED from prod_role_selection (never a hand name). True means the
+// row is what live_deploy_apply_prod_role_transaction_wet converges, so the instance-scoped mode must
+// refuse it -- otherwise this would be a SECOND deploy path for production.
+fn deployment_is_prod_role_holder(deployment: DesiredDeployment) -> Bool {
+  match prod_role_selection {
+    ProdRoleHeldBy { deployment: holder } => deployment.instance.deployment == holder
+    NoProdRole => false
   }
 }
 
