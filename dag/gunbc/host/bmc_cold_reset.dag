@@ -9,20 +9,33 @@ import extdeps.bmc.ipmi_session { IpmitoolReadDeadlineExpired, ipmitool_read_fai
 import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdReportedSent, McResetColdExitedNonzero, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_text }
 
 // A CONTROLLER COLD RESET ATTEMPT, JUDGED. The pure half of a cold reset (extdeps.bmc.ipmi McResetCold): what one
-// mc info poll says, how the watch decides that the controller's availability was lost and then recovered within a
-// bound, and what the two endpoint power readings make of it. Nothing here performs a read; a unit's route supplies
+// mc info poll says, how the watch decides that the controller's availability was lost, then recovered within a
+// bound, then STAYED available through a declared window, and what the two endpoint power readings make of it. Nothing here performs a read; a unit's route supplies
 // parsed live readings (gunbc.machine_intake.mtcollins1_bmc_cold_reset), and the bound is that unit's policy.
 //
 // WHAT THE STRONGEST RESULT CLAIMS, AND WHAT IT DOES NOT. ipmitool's reply only says what ipmitool reported
 // (extdeps.bmc.ipmitool_mc_reset). The strongest outcome here is that the controller answered available before the
-// attempt, was observed to lose availability after it (no response, or a decoded report of initialization), and
-// answered available again, with host power read the same at both endpoints. That is a RECOVERY AFTER THE ATTEMPT:
+// attempt, was observed to lose availability after it (no response, or a decoded report of initialization), answered
+// available again, and then answered available on every poll of the sustained window, with host power read the same
+// at both endpoints. That is a RECOVERY AFTER THE ATTEMPT, SUSTAINED THROUGH THE WINDOW:
 // it is not a proof that the controller restarted, and two equal endpoint power readings cannot see an off-on cycle
 // between them. IPMI v2.0 §20.2 promises neither an unaffected host nor an observable outage, so none is claimed.
+//
+// WHY ONE ANSWER IS NOT ENOUGH (gunbc#16659). Run 44210890542 was accepted on one loss followed by one answering poll,
+// and about 45 min later (run 44217632446) the controller was silent again on RMCP+. One answer observes that the
+// controller came back; it does not observe that it stays. So the watch has a third phase: after the recovering
+// answer, every poll of the window must answer available. A missing response or an initializing report inside it is
+// RecoveredThenLost; a failed probe or an undecodable answer inside it establishes nothing and refuses as
+// SustainNotEstablished. The window's length is the consumer's need, the unit's policy (for mtcollins1, one boot's
+// controller-dependent span: gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_sustain_window).
+// A controller that stays up through the window and relapses after it IS accepted, by design: the verdict says the
+// controller held for that span, and it is not a statement that the controller is healthy.
 
-// HOW LONG THE WATCH WAITS, in polls: for the controller's availability to be lost after the attempt, and then to
-// recover. Which counts a unit uses is that unit's policy.
-type ColdResetWatchBounds { drop_polls: Int, answer_polls: Int }
+// HOW LONG THE WATCH WAITS, in polls: for the controller's availability to be lost after the attempt, then to
+// recover, and how many answers after the recovering one make the sustained window. Which counts a unit uses is that
+// unit's policy. The window is never empty: the sustained phase ends on its first answer at the earliest, so a
+// sustain_polls below 1 cannot restore the one-answer acceptance.
+type ColdResetWatchBounds { drop_polls: Int, answer_polls: Int, sustain_polls: Int }
 
 // ── ONE POLL, PARSED ─────────────────────────────────────────────────────────────────────────────
 // Four distinct observations, kept apart because they support different conclusions:
@@ -125,7 +138,7 @@ fn cold_reset_baseline_text(poll: ColdResetPoll) -> String {
   }
 }
 
-// ── THE WATCH: availability lost, then recovered ─────────────────────────────────────────────────
+// ── THE WATCH: availability lost, then recovered, then sustained ─────────────────────────────────────────────────
 // THE LOSS THAT WAS OBSERVED, retained so the conclusion carries the observation that supports it.
 type ColdResetLoss
   = LossNoResponse { cause: NonEmptyStr }
@@ -141,9 +154,12 @@ fn cold_reset_loss_text(loss: ColdResetLoss) -> String {
 type ColdResetWatch
   = WatchingForLoss { polls: Int }
   | WatchingForRecovery { polls_to_loss: Int, loss: ColdResetLoss, polls: Int }
+  | WatchingSustained { polls_to_loss: Int, loss: ColdResetLoss, polls_to_recovery: Int, polls: Int }
 
 type ColdResetWatchEnd
-  = WatchRecovered { polls_to_loss: Int, loss: ColdResetLoss, polls_to_recovery: Int, report: IpmiMcInfoReport }
+  = WatchRecoveredSustained { polls_to_loss: Int, loss: ColdResetLoss, polls_to_recovery: Int, sustained_polls: Int, report: IpmiMcInfoReport }
+  | WatchRecoveredThenLost { polls_to_loss: Int, loss: ColdResetLoss, polls_to_recovery: Int, answered_polls: Int, relapse: ColdResetLoss }
+  | WatchSustainNotEstablished { polls_to_loss: Int, loss: ColdResetLoss, polls_to_recovery: Int, answered_polls: Int, last: ColdResetPoll }
   | WatchLossNotObserved { polls: Int, last: ColdResetPoll }
   | WatchRecoveryNotObserved { polls_to_loss: Int, loss: ColdResetLoss, polls: Int, last: ColdResetPoll }
 
@@ -153,9 +169,12 @@ type ColdResetWatchStep
 
 data cold_reset_watch_start: ColdResetWatch = WatchingForLoss { polls: 0 }
 
-// An undecodable poll or a failed probe establishes nothing in either phase: it is counted against the phase's bound
-// and the watch goes on. Only an evidenced missing response or a decoded initializing report establishes the loss,
-// and only a decoded available report establishes the recovery.
+// An undecodable poll or a failed probe establishes nothing in the first two phases: it is counted against the
+// phase's bound and the watch goes on. Only an evidenced missing response or a decoded initializing report
+// establishes the loss, and only a decoded available report establishes the recovery. In the sustained phase every
+// poll must be a decoded available report: the same evidence that established the loss, seen again, is a relapse,
+// and a poll that establishes nothing ends the window unestablished rather than being skipped, because the window
+// claims an answer at each of its polls.
 fn cold_reset_watch_step(watch: ColdResetWatch, poll: ColdResetPoll, bounds: ColdResetWatchBounds) -> ColdResetWatchStep {
   match watch {
     WatchingForLoss { polls: n } =>
@@ -171,7 +190,7 @@ fn cold_reset_watch_step(watch: ColdResetWatch, poll: ColdResetPoll, bounds: Col
       }
     WatchingForRecovery { polls_to_loss: d, loss: l, polls: n } =>
       match poll {
-        ControllerAvailable { report: r } => WatchEnded { end: WatchRecovered { polls_to_loss: d, loss: l, polls_to_recovery: n + 1, report: r } }
+        ControllerAvailable { report: _ } => WatchContinues { watch: WatchingSustained { polls_to_loss: d, loss: l, polls_to_recovery: n + 1, polls: 0 } }
         _ =>
           if n + 1 >= bounds.answer_polls {
             WatchEnded { end: WatchRecoveryNotObserved { polls_to_loss: d, loss: l, polls: n + 1, last: poll } }
@@ -179,30 +198,48 @@ fn cold_reset_watch_step(watch: ColdResetWatch, poll: ColdResetPoll, bounds: Col
             WatchContinues { watch: WatchingForRecovery { polls_to_loss: d, loss: l, polls: n + 1 } }
           }
       }
+    WatchingSustained { polls_to_loss: d, loss: l, polls_to_recovery: a, polls: n } =>
+      match poll {
+        ControllerAvailable { report: r } =>
+          if n + 1 >= bounds.sustain_polls {
+            WatchEnded { end: WatchRecoveredSustained { polls_to_loss: d, loss: l, polls_to_recovery: a, sustained_polls: n + 1, report: r } }
+          } else {
+            WatchContinues { watch: WatchingSustained { polls_to_loss: d, loss: l, polls_to_recovery: a, polls: n + 1 } }
+          }
+        ControllerNoResponse { cause: c } => WatchEnded { end: WatchRecoveredThenLost { polls_to_loss: d, loss: l, polls_to_recovery: a, answered_polls: n, relapse: LossNoResponse { cause: c } } }
+        ControllerInitializing { report: r } => WatchEnded { end: WatchRecoveredThenLost { polls_to_loss: d, loss: l, polls_to_recovery: a, answered_polls: n, relapse: LossInitializing { report: r } } }
+        _ => WatchEnded { end: WatchSustainNotEstablished { polls_to_loss: d, loss: l, polls_to_recovery: a, answered_polls: n, last: poll } }
+      }
   }
 }
 
 // ── THE VERDICT ON THE OBSERVATIONS ──────────────────────────────────────────────────────────────
-// - ColdResetRecoveredPowerEqual: available before, loss observed, recovery observed, power read the same at both
-//   endpoints. The strongest outcome, and still only what the header says it is.
+// - ColdResetSustainedPowerEqual: available before, loss observed, recovery observed, available at every poll of the
+//   sustained window, power read the same at both endpoints. The strongest outcome, and still only what the header
+//   says it is.
 // - ColdResetRecoveredUnattributed: the same, except the controller was NOT available before the attempt, so the
 //   observed recovery cannot be attributed to the attempt. Never accepted.
+// - ColdResetRecoveredThenLost: the controller came back and was lost again inside the window (gunbc#16659).
 // - the rest are refusals, each naming what was and was not observed.
 type ColdResetVerdict
-  = ColdResetRecoveredPowerEqual { power_on: Bool, loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int, report: IpmiMcInfoReport }
-  | ColdResetRecoveredUnattributed { baseline: ColdResetPoll, power_on: Bool, loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int }
+  = ColdResetSustainedPowerEqual { power_on: Bool, loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int, sustained_polls: Int, report: IpmiMcInfoReport }
+  | ColdResetRecoveredUnattributed { baseline: ColdResetPoll, power_on: Bool, loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int, sustained_polls: Int }
+  | ColdResetRecoveredThenLost { loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int, answered_polls: Int, relapse: ColdResetLoss }
+  | ColdResetSustainNotEstablished { loss: ColdResetLoss, polls_to_loss: Int, polls_to_recovery: Int, answered_polls: Int, last: ColdResetPoll }
   | ColdResetPowerChanged { before_on: Bool, after_on: Bool }
   | ColdResetPowerUnreadAfter { before_on: Bool, after: ChassisPowerObservation }
   | ColdResetRecoveryNotObserved { loss: ColdResetLoss, polls_to_loss: Int, polls: Int, last: ColdResetPoll }
   | ColdResetLossNotObserved { polls: Int, last: ColdResetPoll }
 
-// The power state after is read only once the watch saw a recovery; before that there is no answering controller
-// to read it from.
+// The power state after is read only once the watch saw the recovery sustained through the window; a controller that
+// was lost again, or whose window was not established, is not read for it.
 fn cold_reset_verdict(baseline: ColdResetPoll, before_on: Bool, end: ColdResetWatchEnd, after: ChassisPowerObservation?) -> ColdResetVerdict {
   match end {
     WatchLossNotObserved { polls: n, last: p } => ColdResetLossNotObserved { polls: n, last: p }
     WatchRecoveryNotObserved { polls_to_loss: d, loss: l, polls: n, last: p } => ColdResetRecoveryNotObserved { loss: l, polls_to_loss: d, polls: n, last: p }
-    WatchRecovered { polls_to_loss: d, loss: l, polls_to_recovery: a, report: r } =>
+    WatchRecoveredThenLost { polls_to_loss: d, loss: l, polls_to_recovery: a, answered_polls: k, relapse: x } => ColdResetRecoveredThenLost { loss: l, polls_to_loss: d, polls_to_recovery: a, answered_polls: k, relapse: x }
+    WatchSustainNotEstablished { polls_to_loss: d, loss: l, polls_to_recovery: a, answered_polls: k, last: p } => ColdResetSustainNotEstablished { loss: l, polls_to_loss: d, polls_to_recovery: a, answered_polls: k, last: p }
+    WatchRecoveredSustained { polls_to_loss: d, loss: l, polls_to_recovery: a, sustained_polls: k, report: r } =>
       match after {
         Absent => ColdResetPowerUnreadAfter { before_on: before_on, after: ChassisUnreadable }
         Present { value: obs } =>
@@ -211,9 +248,9 @@ fn cold_reset_verdict(baseline: ColdResetPoll, before_on: Bool, end: ColdResetWa
               if p != before_on {
                 ColdResetPowerChanged { before_on: before_on, after_on: p }
               } else if cold_reset_poll_available(poll: baseline) {
-                ColdResetRecoveredPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, report: r }
+                ColdResetSustainedPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, sustained_polls: k, report: r }
               } else {
-                ColdResetRecoveredUnattributed { baseline: baseline, power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a }
+                ColdResetRecoveredUnattributed { baseline: baseline, power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, sustained_polls: k }
               }
             ChassisStatusUndecodable { cause: _ } => ColdResetPowerUnreadAfter { before_on: before_on, after: obs }
             ChassisUnreadable => ColdResetPowerUnreadAfter { before_on: before_on, after: obs }
@@ -226,10 +263,14 @@ fn cold_reset_power_text(on: Bool) -> String { if on { "on" } else { "off" } }
 
 fn cold_reset_verdict_text(verdict: ColdResetVerdict) -> String {
   match verdict {
-    ColdResetRecoveredPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, report: r } =>
-      join(["recovered after the attempt: available before; availability lost after ", to_string(d), " poll(s) (", cold_reset_loss_text(loss: l), "); available again after ", to_string(a), " more (firmware ", ipmitool_mc_info_firmware_text(report: r) as String, "); host power read ", cold_reset_power_text(on: p), " at both endpoints (two readings, which cannot see an off-on cycle between them)"], "")
-    ColdResetRecoveredUnattributed { baseline: b, power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a } =>
-      join(["REFUSED: ", cold_reset_baseline_text(poll: b), " before the attempt, so its later recovery (lost after ", to_string(d), " poll(s), ", cold_reset_loss_text(loss: l), "; available after ", to_string(a), " more; power ", cold_reset_power_text(on: p), " at both endpoints) is not attributable to the attempt"], "")
+    ColdResetSustainedPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, sustained_polls: k, report: r } =>
+      join(["recovered after the attempt and stayed available through the window: available before; availability lost after ", to_string(d), " poll(s) (", cold_reset_loss_text(loss: l), "); available again after ", to_string(a), " more, then available on all ", to_string(k), " poll(s) of the window (firmware ", ipmitool_mc_info_firmware_text(report: r) as String, "); host power read ", cold_reset_power_text(on: p), " at both endpoints (two readings, which cannot see an off-on cycle between them); availability after the window is not observed"], "")
+    ColdResetRecoveredUnattributed { baseline: b, power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, sustained_polls: k } =>
+      join(["REFUSED: ", cold_reset_baseline_text(poll: b), " before the attempt, so its later recovery (lost after ", to_string(d), " poll(s), ", cold_reset_loss_text(loss: l), "; available after ", to_string(a), " more and on all ", to_string(k), " poll(s) of the window; power ", cold_reset_power_text(on: p), " at both endpoints) is not attributable to the attempt"], "")
+    ColdResetRecoveredThenLost { loss: l, polls_to_loss: d, polls_to_recovery: a, answered_polls: k, relapse: x } =>
+      join(["REFUSED: RECOVERED THEN LOST: availability lost after ", to_string(d), " poll(s) (", cold_reset_loss_text(loss: l), "), available again after ", to_string(a), " more, then lost again after ", to_string(k), " further answer(s) inside the window (", cold_reset_loss_text(loss: x), ")"], "")
+    ColdResetSustainNotEstablished { loss: l, polls_to_loss: d, polls_to_recovery: a, answered_polls: k, last: p } =>
+      join(["REFUSED: availability lost after ", to_string(d), " poll(s) (", cold_reset_loss_text(loss: l), ") and available again after ", to_string(a), " more, but the window was not established: after ", to_string(k), " further answer(s) a poll established nothing (", cold_reset_poll_text(poll: p), ")"], "")
     ColdResetPowerChanged { before_on: b, after_on: a } =>
       join(["REFUSED: host power read differently at the two endpoints (", cold_reset_power_text(on: b), " before, ", cold_reset_power_text(on: a), " after)"], "")
     ColdResetPowerUnreadAfter { before_on: b, after: o } =>
@@ -243,7 +284,7 @@ fn cold_reset_verdict_text(verdict: ColdResetVerdict) -> String {
 
 // ── THE ATTEMPT: what ipmitool reported, beside what was observed ────────────────────────────────
 // An attempt is accepted only when ipmitool reported sending AND the observations reached
-// ColdResetRecoveredPowerEqual. A nonzero or unrecognised reply leaves the effect UNCERTAIN: the request may still
+// ColdResetSustainedPowerEqual, which requires the sustained window. A nonzero or unrecognised reply leaves the effect UNCERTAIN: the request may still
 // have reached the controller, so it is never read as "not sent", and the watch still runs (read-only; nothing is
 // sent again). Whatever it observed is reported beside the reply.
 type ColdResetAcceptance
@@ -255,7 +296,7 @@ fn cold_reset_attempt_acceptance(reply: IpmitoolMcResetColdReply, verdict: ColdR
   match reply {
     McResetColdReportedSent =>
       match verdict {
-        ColdResetRecoveredPowerEqual { power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, report: _ } => ColdResetAttemptAccepted
+        ColdResetSustainedPowerEqual { power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, sustained_polls: _, report: _ } => ColdResetAttemptAccepted
         _ => ColdResetAttemptNotAccepted { reason: observed as NonEmptyStr }
       }
     _ => ColdResetAttemptNotAccepted { reason: join(["the reset was attempted and its effect is UNCERTAIN: ", ipmitool_mc_reset_cold_reply_text(reply: reply), "; observed afterwards: ", observed], "") as NonEmptyStr }

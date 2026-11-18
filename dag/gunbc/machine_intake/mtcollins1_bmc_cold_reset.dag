@@ -23,7 +23,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.bmc_cold_reset {
-  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved,
+  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecoveredSustained, WatchRecoveredThenLost, WatchSustainNotEstablished, WatchLossNotObserved, WatchRecoveryNotObserved,
   WatchEnded, WatchContinues, cold_reset_watch_start, cold_reset_watch_step, cold_reset_poll_of, cold_reset_baseline_text,
   ColdResetVerdict, cold_reset_verdict, cold_reset_verdict_text, cold_reset_power_text,
   ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
@@ -31,7 +31,8 @@ import gunbc.host.bmc_cold_reset {
 import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, UnitHoldProof, UnitHoldReleaseOutcome, boot_run_acquire_unit_hold, unit_hold_release_outcome, unit_hold_release_compose, unit_hold_proof_refusal }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_prelude_allowance }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_prelude_allowance, mtcollins1_boot_issue_allowance }
+import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance }
 import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
   mtcollins1_pxe_mac_discovery_host,
   mtcollins1_pxe_mac_discovery_release_line,
@@ -52,12 +53,14 @@ import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
 // more than that.
 //
 // THE SEQUENCE: under the unit hold, read mc info and chassis status; attempt the cold reset ONCE; watch for the
-// controller's availability to be lost and then recovered, within a declared bound; read chassis status again.
+// controller's availability to be lost and then recovered, within a declared bound, and then to stay available
+// through the sustained window (below); read chassis status again.
 // It refuses before any attempt when the power state before cannot be read. After the attempt, whatever ipmitool
 // reported, the read-only watch runs and nothing is sent again: a nonzero or unrecognised reply leaves the
 // effect UNCERTAIN, and is reported as attempted, never as "not sent". It is accepted only when ipmitool reported
-// sending and the watch saw the loss and the recovery of a controller that was available before, with host
-// power read the same at both endpoints (gunbc.host.bmc_cold_reset cold_reset_attempt_acceptance).
+// sending and the watch saw the loss and the recovery of a controller that was available before, and its answers
+// through the whole sustained window, with host power read the same at both endpoints
+// (gunbc.host.bmc_cold_reset cold_reset_attempt_acceptance).
 //
 // WHAT THE CONTROLS ESTABLISH. test.claim.host.bmc_cold_reset_witness exercises the pure judgment over parsed
 // observations, and its captured-bytes claim shows only that this unit's real mc info and chassis status bytes
@@ -88,9 +91,33 @@ data mtcollins1_bmc_cold_reset_receipt_absent_line: String = "mtcollins1-bmc-col
 // silent read fails at once, and at most the allowance below when every silent read runs to its timeout.
 // These counts are a policy bound chosen for a MegaRAC controller reinitializing, not a cited figure; a controller slower than
 // them refuses loudly (ColdResetRecoveryNotObserved), it is never waited on without limit.
-data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 6, answer_polls: 40 }
+//
+// THE SUSTAINED WINDOW (gunbc#16659; merry-fox-82 msg_19f1c5e6, option A). After the recovering answer, the controller
+// must answer available on every poll for at least W, where W is what the consumer needs: the span of one boot of this
+// unit during which it depends on the controller up to the media handoff -- the boot's prelude, its issue phase and the
+// MegaRAC media convergence (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_prelude_allowance and
+// mtcollins1_boot_issue_allowance, gunbc.machine_intake.megarac_media_attach megarac_convergence_allowance). W is
+// DERIVED from those three rows, so a change to any of them moves the window. The poll count is the least that
+// covers W at the poll interval: each poll sleeps the interval before it reads, so the window's polls span at least
+// that many intervals whatever each read costs.
+//
+// WHAT AN ACCEPTED VERDICT DOES NOT SAY. The one observation behind this window is that the controller fell silent
+// again about 45 min after an accepted reset (run 44217632446), and 45 min may well exceed W. A controller that stays
+// up through W and relapses after it IS accepted here, by design: the boot needs W, not more. The verdict is that the
+// controller held for one boot's controller span, and it is never a statement that the controller is healthy.
+fn mtcollins1_bmc_cold_reset_sustain_window() -> Second {
+  second(count: second_count(s: mtcollins1_boot_prelude_allowance) + second_count(s: mtcollins1_boot_issue_allowance) + second_count(s: megarac_convergence_allowance()))
+}
 
 data mtcollins1_bmc_cold_reset_poll_interval: Second = second(count: 15)
+
+fn mtcollins1_bmc_cold_reset_sustain_polls() -> Int {
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  (w + i - 1) / i
+}
+
+data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 6, answer_polls: 40, sustain_polls: mtcollins1_bmc_cold_reset_sustain_polls() }
 
 fn mtcollins1_bmc_cold_reset_read_ceiling() -> Second {
   second(count: (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int)
@@ -98,10 +125,10 @@ fn mtcollins1_bmc_cold_reset_read_ceiling() -> Second {
 
 // The step's budget, derived: the credential prelude, the four single reads (mc info and chassis status
 // before, the reset call, chassis status after), and every poll at its worst (interval plus a read that runs
-// to its timeout). The after mc info IS the answering poll, so it is not counted twice.
+// to its timeout), the sustained window's polls included.
 fn mtcollins1_bmc_cold_reset_allowance() -> Second {
   let ceiling = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling())
-  let polls = mtcollins1_bmc_cold_reset_bounds.drop_polls + mtcollins1_bmc_cold_reset_bounds.answer_polls
+  let polls = mtcollins1_bmc_cold_reset_bounds.drop_polls + mtcollins1_bmc_cold_reset_bounds.answer_polls + mtcollins1_bmc_cold_reset_bounds.sustain_polls
   second(count: (second_count(s: mtcollins1_boot_prelude_allowance)
     + 4 * ceiling
     + polls * (second_count(s: mtcollins1_bmc_cold_reset_poll_interval) + ceiling)) as Int)
@@ -284,10 +311,12 @@ fn mtcollins1_bmc_cold_reset_held(proof: UnitHoldProof, host: HostIdentity, bmc_
           let reply = mtcollins1_bmc_cold_reset_send(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
           let run = mtcollins1_bmc_cold_reset_watch_poll(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite, watch: cold_reset_watch_start, records: [])
           let end = run.end
-          // A FRESH after-read, taken only once the watch saw a recovery; never the baseline reading again.
+          // A FRESH after-read, taken only once the watch saw the recovery sustained; never the baseline reading again.
           let after = match end {
-            WatchRecovered { polls_to_loss: _, loss: _, polls_to_recovery: _, report: _ } =>
+            WatchRecoveredSustained { polls_to_loss: _, loss: _, polls_to_recovery: _, sustained_polls: _, report: _ } =>
               Present { value: mtcollins1_bmc_cold_reset_read_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite) }
+            WatchRecoveredThenLost { polls_to_loss: _, loss: _, polls_to_recovery: _, answered_polls: _, relapse: _ } => none
+            WatchSustainNotEstablished { polls_to_loss: _, loss: _, polls_to_recovery: _, answered_polls: _, last: _ } => none
             WatchLossNotObserved { polls: _, last: _ } => none
             WatchRecoveryNotObserved { polls_to_loss: _, loss: _, polls: _, last: _ } => none
           }

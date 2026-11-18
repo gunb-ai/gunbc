@@ -22,9 +22,9 @@ import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdRepo
 import gunbc.host.bmc_cold_reset {
   ColdResetWatchBounds, ColdResetPoll, ControllerAvailable, ControllerInitializing, ControllerNoResponse, ControllerProbeFailed, ControllerUndecodable, cold_reset_poll_of,
   ColdResetLoss, LossNoResponse, LossInitializing,
-  ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved, WatchEnded, WatchContinues,
+  ColdResetWatch, ColdResetWatchEnd, WatchRecoveredSustained, WatchRecoveredThenLost, WatchSustainNotEstablished, WatchLossNotObserved, WatchRecoveryNotObserved, WatchEnded, WatchContinues,
   cold_reset_watch_start, cold_reset_watch_step,
-  ColdResetVerdict, ColdResetRecoveredPowerEqual, ColdResetRecoveredUnattributed, ColdResetPowerChanged, ColdResetPowerUnreadAfter, ColdResetRecoveryNotObserved, ColdResetLossNotObserved,
+  ColdResetVerdict, ColdResetSustainedPowerEqual, ColdResetRecoveredUnattributed, ColdResetRecoveredThenLost, ColdResetSustainNotEstablished, ColdResetPowerChanged, ColdResetPowerUnreadAfter, ColdResetRecoveryNotObserved, ColdResetLossNotObserved,
   cold_reset_verdict, cold_reset_verdict_text, ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
 }
 
@@ -101,14 +101,19 @@ fn initializing() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerbo
 fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
 fn power_off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
 
-data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4 }
+data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain_polls: 2 }
+
+// THE SUSTAINED WINDOW AT THESE BOUNDS: two available answers after the recovering one.
+fn held() -> List<ColdResetPoll> { [available(), available()] }
 
 // Fold a poll sequence through the watch. Polls after the watch ended are never consulted, as in the live
 // route, which stops polling there. A sequence that runs out before the watch ends is Absent.
-fn watch(polls: List<ColdResetPoll>) -> ColdResetWatchEnd? {
+fn watch(polls: List<ColdResetPoll>) -> ColdResetWatchEnd? { watch_within(b: bounds, polls: polls) }
+
+fn watch_within(b: ColdResetWatchBounds, polls: List<ColdResetPoll>) -> ColdResetWatchEnd? {
   let last = fold(polls, init: WatchContinues { watch: cold_reset_watch_start }, f: (acc, p) => match acc {
     WatchEnded { end: e } => WatchEnded { end: e }
-    WatchContinues { watch: w } => cold_reset_watch_step(watch: w, poll: p, bounds: bounds)
+    WatchContinues { watch: w } => cold_reset_watch_step(watch: w, poll: p, bounds: b)
   })
   match last {
     WatchEnded { end: e } => Present { value: e }
@@ -129,20 +134,21 @@ fn verdict_of(before_on: Bool, polls: List<ColdResetPoll>, after: ChassisPowerOb
 
 fn recovered_power_equal(v: ColdResetVerdict?) -> Bool {
   match v {
-    Present { value: x } => match x { ColdResetRecoveredPowerEqual { power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, report: _ } => true  _ => false }
+    Present { value: x } => match x { ColdResetSustainedPowerEqual { power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, sustained_polls: _, report: _ } => true  _ => false }
     Absent => false
   }
 }
 
 // ── POSITIVE ────────────────────────────────────────────────────────────────────────────────────
-// Available before; available once more, no response twice, available again; power on at both endpoints: the
-// strongest outcome, with the counts the receipt prints and the loss it was established by.
+// Available before; available once more, no response twice, available again, then available through the window;
+// power on at both endpoints: the strongest outcome, with the counts the receipt prints and the loss it was
+// established by.
 test fn a_loss_and_recovery_after_the_attempt_with_equal_endpoint_power_is_the_strongest_outcome() -> Bool {
-  match verdict_of(before_on: true, polls: [available(), no_response(), no_response(), available()], after: Present { value: power_on() }) {
+  match verdict_of(before_on: true, polls: [available(), no_response(), no_response(), available()] + held(), after: Present { value: power_on() }) {
     Present { value: v } =>
       match v {
-        ColdResetRecoveredPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, report: _ } =>
-          p && d == 2 && a == 2 && match l { LossNoResponse { cause: _ } => true  _ => false }
+        ColdResetSustainedPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, sustained_polls: k, report: _ } =>
+          p && d == 2 && a == 2 && k == 2 && match l { LossNoResponse { cause: _ } => true  _ => false }
         _ => false
       }
     Absent => false
@@ -151,7 +157,7 @@ test fn a_loss_and_recovery_after_the_attempt_with_equal_endpoint_power_is_the_s
 
 // ── RED: endpoint power differs ─────────────────────────────────────────────────────────────────
 test fn a_power_reading_that_differs_at_the_endpoints_refuses_naming_both() -> Bool {
-  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: power_off() }) {
+  match verdict_of(before_on: true, polls: [no_response(), available()] + held(), after: Present { value: power_off() }) {
     Present { value: v } =>
       match v {
         ColdResetPowerChanged { before_on: b, after_on: a } => b && !a
@@ -159,7 +165,7 @@ test fn a_power_reading_that_differs_at_the_endpoints_refuses_naming_both() -> B
       }
     Absent => false
   }
-    && match verdict_of(before_on: false, polls: [no_response(), available()], after: Present { value: power_on() }) {
+    && match verdict_of(before_on: false, polls: [no_response(), available()] + held(), after: Present { value: power_on() }) {
          Present { value: v } => match v { ColdResetPowerChanged { before_on: b, after_on: a } => !b && a  _ => false }
          Absent => false
        }
@@ -167,11 +173,11 @@ test fn a_power_reading_that_differs_at_the_endpoints_refuses_naming_both() -> B
 
 // A power reading that cannot be decoded after the controller recovered is not "equal".
 test fn an_unreadable_power_state_after_recovery_refuses() -> Bool {
-  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: chassis_observation(success: false, stdout: "") }) {
+  match verdict_of(before_on: true, polls: [no_response(), available()] + held(), after: Present { value: chassis_observation(success: false, stdout: "") }) {
     Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: b, after: _ } => b  _ => false }
     Absent => false
   }
-    && match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: chassis_observation(success: true, stdout: "no power line here\n") }) {
+    && match verdict_of(before_on: true, polls: [no_response(), available()] + held(), after: Present { value: chassis_observation(success: true, stdout: "no power line here\n") }) {
          Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: _, after: _ } => true  _ => false }
          Absent => false
        }
@@ -190,7 +196,7 @@ test fn availability_lost_past_the_bound_refuses_and_a_late_recovery_does_not_re
     Absent => false
   }
     // Recovering on the last poll inside the bound is still the strongest outcome: the refusal is the count.
-    && recovered_power_equal(v: verdict_of(before_on: true, polls: [no_response(), no_response(), no_response(), no_response(), available()], after: Present { value: power_on() }))
+    && recovered_power_equal(v: verdict_of(before_on: true, polls: [no_response(), no_response(), no_response(), no_response(), available()] + held(), after: Present { value: power_on() }))
 }
 
 // A controller that never loses availability after the attempt shows no effect of it: refused, never accepted.
@@ -206,10 +212,10 @@ test fn a_controller_that_never_loses_availability_shows_no_effect() -> Bool {
 // is not ready), recorded as such, and it is not a recovery.
 test fn an_initializing_report_is_a_decoded_loss_and_never_a_recovery() -> Bool {
   match initializing() { ControllerInitializing { report: _ } => true  _ => false }
-    && match watch(polls: [initializing(), initializing(), available()]) {
+    && match watch(polls: [initializing(), initializing(), available()] + held()) {
          Present { value: e } =>
            match e {
-             WatchRecovered { polls_to_loss: d, loss: l, polls_to_recovery: a, report: _ } =>
+             WatchRecoveredSustained { polls_to_loss: d, loss: l, polls_to_recovery: a, sustained_polls: _, report: _ } =>
                d == 1 && a == 2 && match l { LossInitializing { report: _ } => true  _ => false }
              _ => false
            }
@@ -226,8 +232,8 @@ test fn an_undecodable_response_then_a_valid_answer_cannot_reach_a_recovery() ->
          Present { value: v } => match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
          Absent => false
        }
-    && match watch(polls: [no_response(), undecodable(), available()]) {
-         Present { value: e } => match e { WatchRecovered { polls_to_loss: _, loss: _, polls_to_recovery: a, report: _ } => a == 2  _ => false }
+    && match watch(polls: [no_response(), undecodable(), available()] + held()) {
+         Present { value: e } => match e { WatchRecoveredSustained { polls_to_loss: _, loss: _, polls_to_recovery: a, sustained_polls: _, report: _ } => a == 2  _ => false }
          Absent => false
        }
 }
@@ -268,8 +274,8 @@ test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recover
           && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
       Absent => false
     })
-    && match watch(polls: [credential_refused(), timed_out(), available()]) {
-         Present { value: e } => match e { WatchRecovered { polls_to_loss: d, loss: _, polls_to_recovery: a, report: _ } => d == 2 && a == 1  _ => false }
+    && match watch(polls: [credential_refused(), timed_out(), available()] + held()) {
+         Present { value: e } => match e { WatchRecoveredSustained { polls_to_loss: d, loss: _, polls_to_recovery: a, sustained_polls: _, report: _ } => d == 2 && a == 1  _ => false }
          Absent => false
        }
 }
@@ -395,19 +401,19 @@ test fn a_verbose_poll_with_stderr_noise_and_a_valid_report_decodes_available() 
 // the attempt having caused anything observable, so the same observations that are the strongest outcome over an
 // available baseline are ColdResetRecoveredUnattributed over an unavailable or undecodable one, and never accepted.
 test fn a_recovery_over_a_baseline_that_was_not_available_is_unattributed_and_never_accepted() -> Bool {
-  let polls = [no_response(), available()]
+  let polls = [no_response(), available()] + held()
   let over_unavailable = verdict_from(baseline: no_response(), before_on: true, polls: polls, after: Present { value: power_on() })
   let over_undecodable = verdict_from(baseline: undecodable(), before_on: true, polls: polls, after: Present { value: power_on() })
   recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_on() }))
     && match over_unavailable {
          Present { value: v } =>
-           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _ } => true  _ => false }
+           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, sustained_polls: _ } => true  _ => false }
              && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
          Absent => false
        }
     && match over_undecodable {
          Present { value: v } =>
-           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _ } => true  _ => false }
+           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, sustained_polls: _ } => true  _ => false }
              && string_contains(s: cold_reset_verdict_text(verdict: v), pattern: "baseline availability was not established (undecodable")
              && !string_contains(s: cold_reset_verdict_text(verdict: v), pattern: "was not available")
          Absent => false
@@ -430,7 +436,7 @@ test fn the_reply_reads_reported_sent_only_from_the_sent_line() -> Bool {
 // beside a nonzero or unrecognised reply are UNCERTAIN, not accepted, and not "not sent"; a reported send beside a
 // refused observation is not accepted.
 test fn an_attempt_is_accepted_only_when_reported_sent_and_recovered_with_equal_power() -> Bool {
-  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: power_on() }) {
+  match verdict_of(before_on: true, polls: [no_response(), available()] + held(), after: Present { value: power_on() }) {
     Present { value: v } =>
       match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => true  _ => false }
         && match cold_reset_attempt_acceptance(reply: ipmitool_mc_reset_cold_reply_of(success: false, exit_code: 124, stdout: "", stderr: ""), verdict: v) {
@@ -463,7 +469,64 @@ test fn this_units_real_mc_info_and_chassis_status_bytes_parse_to_available_and_
 // passed as the after-reading flips the outcome. This protects consumption inside the verdict; that the route
 // passes a FRESH reading is the matrix's power-lost-inside-the-window route claim.
 test fn only_the_after_reading_moves_the_verdict() -> Bool {
-  let polls = [available(), no_response(), available()]
+  let polls = [available(), no_response(), available()] + held()
   recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_on() }))
     && !recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_off() }))
+}
+
+// ── THE SUSTAINED WINDOW (gunbc#16659) ──────────────────────────────────────────────────────────
+fn is_accepted(v: ColdResetVerdict) -> Bool { match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => true  _ => false } }
+
+fn then_lost(v: ColdResetVerdict?, answered: Int) -> Bool {
+  match v {
+    Present { value: x } =>
+      match x { ColdResetRecoveredThenLost { loss: _, polls_to_loss: _, polls_to_recovery: _, answered_polls: k, relapse: _ } => k == answered  _ => false }
+        && !is_accepted(v: x)
+        && string_contains(s: cold_reset_verdict_text(verdict: x), pattern: "RECOVERED THEN LOST")
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED: one answer after the loss, then silence, is what run 44210890542 was accepted on and what
+// the controller did about 45 min later. It is RecoveredThenLost and never accepted, though the power after-reading
+// agrees; so is silence after some but not all of the window's answers, and a decoded initializing report inside it.
+// The control is the same prefix followed by the whole window, which is accepted: only the window moves the verdict.
+test fn one_answer_then_silence_is_recovered_then_lost_and_never_accepted() -> Bool {
+  then_lost(v: verdict_of(before_on: true, polls: [no_response(), available(), no_response()], after: Present { value: power_on() }), answered: 0)
+    && then_lost(v: verdict_of(before_on: true, polls: [no_response(), available(), available(), no_response()], after: Present { value: power_on() }), answered: 1)
+    && then_lost(v: verdict_of(before_on: true, polls: [no_response(), available(), initializing()], after: Present { value: power_on() }), answered: 0)
+    && match watch(polls: [no_response(), available(), initializing()]) {
+         Present { value: e } => match e { WatchRecoveredThenLost { polls_to_loss: _, loss: _, polls_to_recovery: _, answered_polls: _, relapse: x } => match x { LossInitializing { report: _ } => true  _ => false }  _ => false }
+         Absent => false
+       }
+    && match verdict_of(before_on: true, polls: [no_response(), available()] + held(), after: Present { value: power_on() }) {
+         Present { value: v } => is_accepted(v: v)
+         Absent => false
+       }
+}
+
+// A POLL THAT ESTABLISHES NOTHING INSIDE THE WINDOW ends it unestablished: the window claims an answer at each of its
+// polls, so a failed probe or an undecodable answer is neither skipped nor read as a relapse.
+test fn a_poll_that_establishes_nothing_inside_the_window_leaves_it_unestablished_and_never_accepted() -> Bool {
+  all([probe_failed(), undecodable(), timed_out_at_v()], f =>
+    match verdict_of(before_on: true, polls: [no_response(), available(), available(), f, available()], after: Present { value: power_on() }) {
+      Present { value: v } =>
+        match v { ColdResetSustainNotEstablished { loss: _, polls_to_loss: _, polls_to_recovery: _, answered_polls: k, last: _ } => k == 1  _ => false }
+          && !is_accepted(v: v)
+      Absent => false
+    })
+}
+
+// THE WINDOW IS NEVER EMPTY: a sequence that ends on the recovering answer has not ended the watch, and bounds asking
+// for no window still need one answer after the recovering one, so a sustain_polls of 0 cannot restore the one-answer
+// acceptance.
+test fn the_window_is_never_empty() -> Bool {
+  let none_asked = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain_polls: 0 }
+  match watch(polls: [no_response(), available()]) { Absent => true  Present { value: _ } => false }
+    && match watch(polls: [no_response(), available(), available()]) { Absent => true  Present { value: _ } => false }
+    && match watch_within(b: none_asked, polls: [no_response(), available()]) { Absent => true  Present { value: _ } => false }
+    && match watch_within(b: none_asked, polls: [no_response(), available(), available()]) {
+         Present { value: e } => match e { WatchRecoveredSustained { polls_to_loss: _, loss: _, polls_to_recovery: _, sustained_polls: k, report: _ } => k == 1  _ => false }
+         Absent => false
+       }
 }

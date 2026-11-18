@@ -21,10 +21,11 @@ import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_rep
 import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_set_privilege_prefix, ipmitool_lanplus_set_privilege_bare_suffix, ipmitool_lanplus_session_unestablished_line }
 import std.measure { measure_le }
-import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost }
+import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost, BmcControllerResetBegan, BmcControllerResetEnded }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
-import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval }
+import std.measure { second_count }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -2072,6 +2073,32 @@ fn matrix_cold_reset_mc_info_deadline_in_window(world: BmcWorld, call: Operation
   }
 }
 
+// RECOVERED THEN LOST (gunbc#16659). The controller resets as usual and comes back; the answer that shows it back is
+// the last one: a second reset begins a second after it and never ends. This is the shape run 44210890542 was
+// accepted on before the controller fell silent again. Only the first answer after the first reset ended schedules
+// the relapse, so the baseline read and the polls before it answer as the production controller does.
+fn matrix_cold_reset_resets_began(world: BmcWorld) -> Int {
+  let tally = fn(acc, e) { match e.event { BmcControllerResetBegan {} => acc + 1  _ => acc } }
+  fold(world.pending, init: fold(world.fired, init: 0, f: tally), f: tally)
+}
+
+fn matrix_cold_reset_reset_ended(world: BmcWorld) -> Bool {
+  any(world.fired, e => match e.event { BmcControllerResetEnded {} => true  _ => false })
+}
+
+fn matrix_cold_reset_mc_info_relapsing_after_one_answer(world: BmcWorld, call: OperationCall) -> BmcReply {
+  let reply = bmc_mc_info_reply(world: world, call: call)
+  if matrix_cold_reset_reset_ended(world: world) && !bmc_controller_resetting(world: world) && matrix_cold_reset_resets_began(world: world) == 1 {
+    match reply {
+      BmcReplied { stdout: out, world: w } =>
+        BmcReplied { stdout: out, world: bmc_with_pending(world: w, pending: concat(xs: w.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 1), event: BmcControllerResetBegan {} }]), fired: w.fired) }
+      _ => reply
+    }
+  } else {
+    reply
+  }
+}
+
 // Chassis status that never answers (the baseline read included).
 fn matrix_cold_reset_power_unreadable(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
@@ -2095,10 +2122,10 @@ test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fr
         && count(holds) >= 2
         && match holds.first() { Present { value: h } => h < attempt  Absent => false }
         && match holds.last() { Present { value: h } => h > last_ordinal(route: route, name: matrix_cold_reset_chassis_status)  Absent => false }
-        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
         && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
         && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
-        && string_contains(s: receipt, pattern: "more (firmware 0.45)")
+        && string_contains(s: receipt, pattern: join(["then available on all ", to_string(mtcollins1_bmc_cold_reset_bounds.sustain_polls), " poll(s) of the window (firmware 0.45)"], ""))
         && string_contains(s: receipt, pattern: "fan=unobserved")
         && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
         && string_contains(s: receipt, pattern: matrix_cold_reset_answered_record)
@@ -2286,7 +2313,7 @@ test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_
         && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
         && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
         && !string_contains(s: receipt, pattern: "poll=exit 124")
-        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
     }
     _ => false
   }
@@ -2385,4 +2412,34 @@ test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_reco
     }
     _ => false
   }
+}
+
+// ── THE SUSTAINED WINDOW ON THE ROUTE (gunbc#16659) ─────────────────────────────────────────────
+// THE DISCRIMINATING RED: the production route, its controller answering once after recovering and then silent. It
+// is refused as RECOVERED THEN LOST, the after power read is never taken, and nothing is sent again. Without the
+// window this exact route was the accepted one.
+test fn a_controller_that_answers_once_after_recovering_then_falls_silent_is_recovered_then_lost_and_never_accepted() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_relapsing_after_one_answer)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "RECOVERED THEN LOST")
+        && string_contains(s: receipt, pattern: "then lost again after 0 further answer(s) inside the window (no response")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+    }
+    _ => false
+  }
+}
+
+// THE WINDOW'S POLL COUNT IS THE LEAST THAT COVERS W AT THE POLL INTERVAL, W being the derived controller span of one
+// boot (gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_sustain_window): one poll fewer would
+// not cover it.
+test fn the_cold_reset_window_covers_one_boots_controller_span_with_the_fewest_polls() -> Bool {
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  let n = mtcollins1_bmc_cold_reset_bounds.sustain_polls
+  w > 0 && n * i >= w && (n - 1) * i < w
 }
