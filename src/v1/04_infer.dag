@@ -9345,11 +9345,15 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       // The width crossing decides ONLY the population its ruling reaches (see
       // resolved_width_cast_verdict); it is consulted after the grounded verdict and the identity
       // rule, and it can admit and never refuse, so no cast that walks the arms below today is
-      // disturbed by it.
-      let width_verdict = resolved_width_cast_verdict(src_node: src_node, source_declaration: source_declaration, target_declaration: target_declaration, source_indices: source_indices, env: env)
+      // disturbed by it. It is also ASKED only there: the call sits in the arm that needs it, not in
+      // a binding above the chain, because the walk it performs -- a declaration ref of the source,
+      // then that declaration's alias right-hand-side head -- is cost paid per cast over the whole
+      // corpus, and the two arms above answer most casts (every `x as Int` whose source already names
+      // Int, every grounded admit) without ever needing it. Same decision order, same verdicts; the
+      // only thing removed is the population that never reaches the arm.
       if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
-      else if (match width_verdict { GroundedCastAdmitted => true  _ => false }) { none }
+      else if (match resolved_width_cast_verdict(src_node: src_node, source_declaration: source_declaration, target_declaration: target_declaration, source_indices: source_indices, env: env) { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
         let cause = match grounded {
           GroundedCastRefused { cause: c } => c
