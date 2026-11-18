@@ -1,0 +1,65 @@
+module gunbc.ci.ci_budget_raise
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent, Optional }
+import std.list { first_where }
+import gunbc.design_ruling { DesignRuling }
+
+// A CI BUDGET IS CLOSED TO GROWTH (ruling gunbc.design_ruling ci_job_budgets_closed_to_growth): a job or step
+// timeout, or the row it derives from, may rise above its previously approved value only on the operator's explicit
+// sign-off, recorded as its own ruling row with the operator's words verbatim (the precedents:
+// printer_ci_budget_raised_for_the_four_hour_card, serve_entry_verdict_step_raised_to_45_minutes). Until now that
+// recording was a comment beside the budget, so a raise with no row behind it was writable and nothing refused it.
+// This carrier makes the row the budget's admission: a budget's approvals are declared beside it, in order, and the
+// derived value is admitted only under an approval that covers it.
+//
+// THE APPROVALS, oldest first:
+// - IntroducedWithTheStep: the value the budget first landed at. A new step's budget raises no approved value,
+//   so its introduction is not a raise; `carried_by` names the change that introduced it.
+// - RaisedBySignoff: a raise. Its sign-off is PENDING while the ruling row is staged and the operator's words are
+//   not yet in it, and SIGNED once they are; a pending sign-off admits nothing. A default-closed escalation is not
+//   a sign-off, and the row says whose words, when, and through whom.
+type BudgetSignoff
+  = SignoffPending { ruling: DesignRuling }
+  | SignoffSigned { ruling: DesignRuling }
+
+type BudgetApproval
+  = IntroducedWithTheStep { minutes: Int, carried_by: String }
+  | RaisedBySignoff { minutes: Int, signoff: BudgetSignoff }
+
+// THE ADMISSION. The derived value is admitted under the FIRST approval, oldest first, whose minutes cover it, so a
+// value inside an earlier approval needs no later raise. Covered by nothing: a raise with no row behind it, refused
+// naming the highest approved value. Covered first by a pending raise: refused until the operator's words are in.
+type BudgetAdmission
+  = BudgetAdmitted { minutes: Int, approval: BudgetApproval }
+  | BudgetRaiseSignoffPending { minutes: Int, ruling: DesignRuling }
+  | BudgetRaiseUnapproved { minutes: Int, highest_approved: Int }
+
+fn budget_approval_minutes(approval: BudgetApproval) -> Int {
+  match approval {
+    IntroducedWithTheStep { minutes: m, carried_by: _ } => m
+    RaisedBySignoff { minutes: m, signoff: _ } => m
+  }
+}
+
+fn budget_admission(minutes: Int, approvals: List<BudgetApproval>) -> BudgetAdmission {
+  match first_where(xs: approvals, keep: fn(a) { minutes <= budget_approval_minutes(approval: a) }) {
+    Absent => BudgetRaiseUnapproved { minutes: minutes, highest_approved: fold(approvals, init: 0, f: fn(acc, a) { if budget_approval_minutes(approval: a) > acc { budget_approval_minutes(approval: a) } else { acc } }) }
+    Present { value: a } =>
+      match a {
+        IntroducedWithTheStep { minutes: _, carried_by: _ } => BudgetAdmitted { minutes: minutes, approval: a }
+        RaisedBySignoff { minutes: _, signoff: s } =>
+          match s {
+            SignoffSigned { ruling: _ } => BudgetAdmitted { minutes: minutes, approval: a }
+            SignoffPending { ruling: r } => BudgetRaiseSignoffPending { minutes: minutes, ruling: r }
+          }
+      }
+  }
+}
+
+fn budget_admitted(admission: BudgetAdmission) -> Bool {
+  match admission {
+    BudgetAdmitted { minutes: _, approval: _ } => true
+    _ => false
+  }
+}

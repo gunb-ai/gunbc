@@ -1,0 +1,69 @@
+module test.claim.ci.ci_budget_raise_witness
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { declaration_ref_display_key }
+import std.measure { minute_count }
+import gunbc.design_ruling { DesignRuling, mtcollins1_bmc_cold_reset_step_raised_to_67_minutes, serve_entry_verdict_step_raised_to_45_minutes }
+import gunbc.ci.ci_budget_raise {
+  BudgetApproval, IntroducedWithTheStep, RaisedBySignoff, SignoffPending, SignoffSigned,
+  BudgetAdmission, BudgetAdmitted, BudgetRaiseSignoffPending, BudgetRaiseUnapproved,
+  budget_admission, budget_admitted,
+}
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_step_timeout_minutes, mtcollins1_bmc_cold_reset_step_budget_admission }
+
+// THE CONTROLS FOR A CI BUDGET RAISE (gunbc.ci.ci_budget_raise; ruling gunbc.design_ruling
+// ci_job_budgets_closed_to_growth). The approvals are SUPPLIED here, so each claim decides one shape of the admission
+// fold; the last claim reads the one production budget that cites a raise row today, the cold-reset step's.
+
+fn introduced(m: Int) -> BudgetApproval { IntroducedWithTheStep { minutes: m, carried_by: "a fixture step" } }
+
+fn names(r: DesignRuling, want: DesignRuling) -> Bool {
+  declaration_ref_display_key(ref: r.reference) == declaration_ref_display_key(ref: want.reference)
+}
+
+// THE DISCRIMINATING RED: a budget derived above everything approved, with no ruling row behind the raise, is refused
+// naming the highest approved value; the same budget at its introduced value is admitted.
+test fn a_raise_with_no_ruling_row_behind_it_refuses() -> Bool {
+  match budget_admission(minutes: 67, approvals: [introduced(m: 35)]) {
+    BudgetRaiseUnapproved { minutes: m, highest_approved: h } => m == 67 && h == 35
+    _ => false
+  }
+    && !budget_admitted(admission: budget_admission(minutes: 67, approvals: [introduced(m: 35)]))
+    && budget_admitted(admission: budget_admission(minutes: 35, approvals: [introduced(m: 35)]))
+    && !budget_admitted(admission: budget_admission(minutes: 1, approvals: []))
+}
+
+// A STAGED ROW IS NOT A SIGN-OFF: a raise whose ruling row is pending admits nothing above the earlier approval, and
+// the refusal names the row; a value inside the earlier approval needs no raise and is admitted under it.
+test fn a_raise_whose_signoff_is_pending_is_refused_naming_its_row() -> Bool {
+  let approvals = [introduced(m: 35), RaisedBySignoff { minutes: 67, signoff: SignoffPending { ruling: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes } }]
+  all([36, 67], m =>
+    match budget_admission(minutes: m, approvals: approvals) {
+      BudgetRaiseSignoffPending { minutes: x, ruling: r } => x == m && names(r: r, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes)
+      _ => false
+    })
+    && budget_admitted(admission: budget_admission(minutes: 35, approvals: approvals))
+    && match budget_admission(minutes: 68, approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => h == 67  _ => false }
+}
+
+// A SIGNED RAISE ADMITS, under the raise that covers it; above it, the next raise again needs its own row.
+test fn a_signed_raise_admits_and_a_further_raise_needs_its_own_row() -> Bool {
+  let approvals = [introduced(m: 30), RaisedBySignoff { minutes: 45, signoff: SignoffSigned { ruling: serve_entry_verdict_step_raised_to_45_minutes } }]
+  match budget_admission(minutes: 45, approvals: approvals) {
+    BudgetAdmitted { minutes: m, approval: a } =>
+      m == 45 && match a { RaisedBySignoff { minutes: x, signoff: s } => x == 45 && match s { SignoffSigned { ruling: r } => names(r: r, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }  _ => false }
+    _ => false
+  }
+    && match budget_admission(minutes: 46, approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => h == 45  _ => false }
+}
+
+// THE PRODUCTION BUDGET: the cold-reset step derives 67 minutes, and its admission waits on its staged ruling row;
+// it is never an unapproved raise. When the operator's words are in the row and its sign-off is SIGNED, this claim's
+// pending arm becomes the admitted one, in the same edit.
+test fn the_cold_reset_steps_67_minutes_wait_on_its_staged_ruling_row() -> Bool {
+  minute_count(m: mtcollins1_bmc_cold_reset_step_timeout_minutes()) == 67
+    && match mtcollins1_bmc_cold_reset_step_budget_admission() {
+         BudgetRaiseSignoffPending { minutes: m, ruling: r } => m == 67 && names(r: r, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes)
+         _ => false
+       }
+}
