@@ -8632,6 +8632,10 @@ type FleetConvergeYamlGenerationOutcome
 // capabilities has nothing worth checking a budget against.
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
+fn fleet_converge_probe_wf(wf: Workflow) -> FleetConvergeYamlGenerationOutcome {
+  FleetConvergeYamlGenerationRefused { reason: join(["WF_JOBS_COUNT=", to_string(count(wf.jobs))], "") }
+}
+
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
@@ -8642,16 +8646,7 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   // emitted at all, rather than a workflow whose chore plans deletions on a made-up count.
   // A fabricated keep (the former Err => 1000000 sentinel) let a broken census report nothing-due
   // as if retention had worked: an uncounted degradation no log would show.
-  match fleet_converge_release_bins_retention_census_refusal() {
-    Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
-    Absent => match fleet_converge_unfederated_run_scoped_refusal() {
-      Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
-      Absent => match fleet_converge_grant_wait_placement_refusal(jobs: wf.jobs) {
-        Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
-        Absent => fleet_converge_yml_after_run_scoped_admission(wf)
-      }
-    }
-  }
+  fleet_converge_probe_wf(wf)
   }
 }
 
