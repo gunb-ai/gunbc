@@ -54,17 +54,22 @@ fn step_id_of(s: Step) -> NonEmptyStr {
   }
 }
 
+// A step that declares NO timeout reads as -1 here, never as 0. Zero would be a lie in the dangerous
+// direction: GitHub's real default for an undeclared step is the JOB's ceiling (360 minutes), so an
+// undeclared step is the loosest budget in the file, and a claim that compared 0 against a bound would
+// pass it. -1 fails every "the figure is at least this" comparison and is caught by the explicit
+// existence claim below, so an undeclared budget is loud at the same moment it appears.
 fn step_timeout_of(s: Step) -> Int {
   match s {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
       match t {
         Present { value: m } => m
-        Absent => 0
+        Absent => -1
       }
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
       match t {
         Present { value: m } => m
-        Absent => 0
+        Absent => -1
       }
   }
 }
@@ -79,7 +84,7 @@ fn arrival_step_timeouts(job: Job, step_id: NonEmptyStr) -> List<Int> {
 fn arrival_job_timeout_minutes(job: Job) -> Int {
   match job.timeout_minutes {
     Present { value: m } => m
-    Absent => 0
+    Absent => -1  // undeclared is not zero; see step_timeout_of
   }
 }
 
@@ -88,6 +93,7 @@ fn arrival_job_timeout_minutes(job: Job) -> Int {
 test fn the_arrival_converge_step_carries_the_step_fold() -> Bool {
   let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1
+    && all(t, m => m >= 0)
     && any(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
     && all(t, m => m == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()]))
 }
@@ -98,6 +104,7 @@ test fn the_arrival_converge_step_carries_the_step_fold() -> Bool {
 test fn the_arrival_converge_step_is_not_on_the_flat_aux_figure() -> Bool {
   let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1
+    && all(t, m => m >= 0)
     && all(t, m => m > gunbc_ci_aux_step_timeout_minutes && m != gunbc_ci_aux_step_timeout_minutes)
 }
 
@@ -163,5 +170,19 @@ fn arrival_converge_ceiling_holds() -> Bool {
 // hide a change of character. Pinned so the arrival step's raise cannot be used as cover.
 test fn the_arrival_jobs_aux_steps_stay_on_the_aux_figure() -> Bool {
   let admit = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_admit")
-  admit.length() == 1 && all(admit, m => m == gunbc_ci_aux_step_timeout_minutes)
+  admit.length() == 1 && all(admit, m => m >= 0) && all(admit, m => m == gunbc_ci_aux_step_timeout_minutes)
+}
+
+// THE BUDGETS EXIST AS DECLARATIONS. Read with the -1 marker above, an undeclared step or job timeout is
+// RED here rather than silently the loosest budget in the file (GitHub's own default for an undeclared
+// step is the job's ceiling, not zero). This is the claim that makes the -1 marker load-bearing.
+test fn the_arrival_budgets_are_all_declared() -> Bool {
+  let job = fleet_converge_arrival_converge_job()
+  let converge = arrival_step_timeouts(job: job, step_id: "arrival_converge")
+  let admit = arrival_step_timeouts(job: job, step_id: "arrival_admit")
+  converge.length() == 1
+    && admit.length() == 1
+    && all(converge, m => m >= 0)
+    && all(admit, m => m >= 0)
+    && arrival_job_timeout_minutes(job: job) >= 0
 }
