@@ -11,7 +11,7 @@
 // RUN: gunbc run --claim-run --entry dag/test/claim/port_checked_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
 // EXPECT: the test fn answers true only when every bound holds.
 //    RED: if checked_port stopped reading port_min / port_max, the boundary assertions answer false.
-module gunbc.test.port_checked_admission_witness
+module test.claim.port_checked_admission_witness
 
 import std.types { Bool, Int, checked_port }
 
