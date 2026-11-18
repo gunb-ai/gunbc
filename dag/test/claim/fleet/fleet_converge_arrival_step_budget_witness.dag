@@ -8,13 +8,17 @@ module test.claim.fleet.fleet_converge_arrival_step_budget_witness
 // no interlock acquired and nothing to release -- one day out of srv15's install window, spent on loading.
 // The mode is named in the roadmap at gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation,
 // and fan_observe and the runner-host read steps already moved off the flat figure after the same kill.
-// These claims hold the arrival lane's replacement: the step's budget fold over the door's declared phases,
-// the job's derived backstop under the platform ceiling, and -- while the operator's sign-off is pending --
-// the SHIPPED figures held at the flat allowance they have always had. The last is the fail-closed half:
-// gunbc.design_ruling::ci_job_budgets_closed_to_growth is not satisfied by computing a number, so this PR
-// models the raise and refuses to ship it. Flipping the two call sites belongs in the same change that
-// fills the ruling row, and the pairing claim goes RED if either moves alone.
-
+// These claims hold the arrival lane's replacement in two halves. Modelled and checked, but NOT shipped:
+// the step's budget fold over the door's declared phases, the job's derived backstop, and the predicate
+// that refuses generation if that backstop would pass the platform ceiling. Shipped and unchanged: the
+// figures the job carries today. gunbc.design_ruling::ci_job_budgets_closed_to_growth is not satisfied by
+// computing a number -- the operator's sign-off happens outside the diff -- so this PR models the raise and
+// refuses to apply it, and applying it is a later change that carries the ruling row with it.
+//
+// No claim here reads state out of a ruling row's prose: review 96500 is right that a word like PENDING is
+// not a control bit, and an invariant belongs in a typed carrier (gunbc.design_argument::source_annotations).
+// The typed carrier is gunbc.ci.ci_budget_raise budget_admission (BudgetAdmitted / BudgetRaiseSignoffPending
+// / BudgetRaiseUnapproved); when it lands, the emitter gates on it and these claims read that, not text.
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_converge_job,
   fleet_converge_arrival_converge_step_timeout_minutes,
@@ -92,8 +96,6 @@ fn arrival_job_timeout_minutes(job: Job) -> Int {
   }
 }
 
-// The converge step's timeout IS the fold, read off the job that runs it.
-// RED if the fold's call site is edited away while the figure stays plausible.
 // THE FOLD IS THE PHASES IT DECLARES -- a reading of the function, not of the shipped job, so it holds
 // whether or not the raise has been admitted. Every term is a declared row: the Secret Manager read bound,
 // the door's IPMI legs, the prior-life capture's legs, and the generic fold that adds the resolve allowance.
@@ -103,9 +105,6 @@ test fn the_step_fold_is_the_phases_it_declares() -> Bool {
     && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
 }
 
-// RED: put the step back on gunbc_ci_aux_step_timeout_minutes. That is the figure that killed
-// 44249358201 in load, with the door's first BMC call still queued; the step must outlive the closure's
-// load by the door's whole BMC wall, so it is strictly greater than the aux figure, not merely different.
 // THE SHIPPED FIGURE IS THE ALLOWANCE, NOT THE FOLD, until the sign-off exists. The fold is computed and
 // ceiling-checked, but applying it is a budget raise, and the row that would authorize it
 // (srv15_arrival_converge_step_raised_to_21_minutes) records that the operator's words have not been given.
@@ -117,30 +116,12 @@ test fn the_arrival_converge_step_ships_the_allowance_not_the_fold() -> Bool {
     && all(t, m => m == gunbc_ci_aux_step_timeout_minutes)
 }
 
-// THE PAIRING, AND IT CUTS BOTH WAYS. While the row says the sign-off is pending, the shipped step figure
-// must still be the allowance: a call site flipped ahead of the words is RED here. Once the row carries the
-// operator's words, the same claim is RED unless the call site has been flipped to the fold: the permission
-// and the number move together, or not at all.
-test fn the_raise_and_its_ruling_row_move_together() -> Bool {
-  let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
-  let row_is_pending = string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.decided, pattern: "PENDING")
-    && string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.provenance, pattern: "PENDING")
-  let shipped_is_allowance = t.length() == 1
-    && all(t, m => m >= 0)
-    && all(t, m => m == gunbc_ci_aux_step_timeout_minutes)
-  let shipped_is_raised_fold = t.length() == 1
-    && all(t, m => m >= 0)
-    && all(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
-    && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
-  (row_is_pending && shipped_is_allowance) || (!row_is_pending && shipped_is_raised_fold)
-}
-
-// THE ROW NAMES, IN THE OPERATOR'S OWN FIGURES, WHAT THE FOLD PRODUCES. Asserted against the fold's
-// integers as well, so a leg added to a roster moves the fold and turns this RED until the row is rewritten
-// and re-signed: a sign-off given on one number cannot be spent on another. (The figures are literals here
-// because the language renders no Int to Text; the fold claims pin the same numbers as integers, and all
-// four readings hold together or the claim is red.)
-test fn the_staged_row_names_the_figures_the_fold_produces() -> Bool {
+// A DOCUMENTATION CHECK, NOT A GATE. If the ledger carries a ruling row for this raise, the figures it
+// states in prose are the figures the fold produces. The claim asserts a property OF the text; it reads no
+// state OUT of it, and it is the only claim in this file that quotes a row at all. The fold's integers are
+// asserted alongside, so a leg added to a roster moves the fold and turns this RED, forcing the row to be
+// rewritten and re-signed: a sign-off given on 21 and 51 cannot be spent on other numbers.
+test fn a_ruling_row_names_the_figures_the_fold_produces() -> Bool {
   string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.provenance, pattern: "step 5 -> 21 minutes")
     && string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.provenance, pattern: "backstop 25 -> 51 minutes")
     && fleet_converge_arrival_converge_step_timeout_minutes() == 21
@@ -178,24 +159,21 @@ test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
             + length(xs: arrival_counted_census_ops)) * (second_count(s: arrival_ipmi_leg_bound()) as Int))
 }
 
-// THE JOB'S BACKSTOP IS THE SUM OF ITS STEPS, and the projection carries that sum, not the old
-// aux + 20. RED: put the job back on aux + 20 -- a step with room and a job that kills it earlier is the
-// same refusal with a different line number.
-// The job's backstop is DERIVED the same way the boot job's is -- prelude, artifact transfer, the three
-// 5-minute neighbours, and the step budget -- and it is larger than the flat sum the file used to carry.
-// But it is not SHIPPED while the sign-off is pending, so the pairing holds for the job as well as the
-// step: pending means the old figure, granted means the derived one, and a change that moves only one of
-// the two is RED.
-test fn the_derived_job_backstop_covers_its_steps_and_ships_only_with_the_row() -> Bool {
+// THE JOB'S BACKSTOP IS DERIVED -- prelude, artifact transfer, the three 5-minute neighbours, the step
+// fold -- and it is bigger than the flat sum the file has always carried. It is NOT shipped in this change:
+// the projection still carries aux + 20, because applying the derived figure is a budget raise and the
+// sign-off for it has not been given. Both halves are pinned, so a flip in either direction without the
+// ruling row is RED, and so is a derived figure that stops covering its steps.
+test fn the_derived_job_backstop_covers_its_steps_but_is_not_shipped() -> Bool {
   let shipped = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
   let derived = fleet_converge_arrival_converge_job_backstop_timeout_minutes()
-  let row_is_pending = string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.decided, pattern: "PENDING")
-  derived > 0
-    && shipped > 0
-    && derived >= (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
-        + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
-    && (row_is_pending && shipped == gunbc_ci_aux_step_timeout_minutes + 20
-        || !row_is_pending && shipped == derived)
+  let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
+  shipped > 0
+    && shipped == gunbc_ci_aux_step_timeout_minutes + 20
+    && derived > 0
+    && derived == steps
+    && derived > shipped
 }
 
 // THE CEILING IS CHECKED, NEVER CLAMPED: the job's backstop sits under
