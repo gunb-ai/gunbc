@@ -144,16 +144,21 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
       result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
       close: SnapshotNotOpened }
     Absent => {
-      let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
-      // The append-time claim-grain guard (roadmap_decomposition::roadmap_claimed_grain_admissible) CANNOT
-      // be applied here: roadmap_issue_command sits in roadmap_decomposition's upstream closure (the guard's
-      // own module, roadmap_decomposition, is reached from roadmap_authority, which imports this module), so
-      // importing the guard here closes a cycle. The guard's executing consumers are roadmap_event_cli and
-      // roadmap_serve (both can import decomposition, and both call the guard before appending). The served
-      // assign route now calls issue_command_event + roadmap_claimed_grain_admissible + roadmap_event_append
-      // directly, bypassing this apply path for AssignIssue. This AssignIssue arm in issue_command_apply
-      // remains for any caller that does not need the guard (there is none today).
-      roadmap_event_append(layout: layout, event: event, operation: operation as String)
+      // CLAIMED REFUSES HERE: the grain guard cannot be imported into this module (cycle:
+      // roadmap_authority imports roadmap_decomposition which imports this module). Rather than
+      // silently append an unguarded Claimed (fail_closed: "do not hide the deficit by installing
+      // a second path"), this path REFUSES. Callers that need a Claimed (roadmap_serve, roadmap_event_cli)
+      // guard before appending through roadmap_event_append directly.
+      match command {
+        AssignIssue { subject: _, assignee: _, return_to: _, grain: _ } => CarrierClosed {
+          result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema),
+            step: "guard-cycle", reason: "a Claimed must pass the grain guard before appending; callers guard at the route (roadmap_serve, roadmap_event_cli)" },
+          close: SnapshotNotOpened }
+        _ => {
+          let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
+          roadmap_event_append(layout: layout, event: event, operation: operation as String)
+        }
+      }
     }
   }
 }
