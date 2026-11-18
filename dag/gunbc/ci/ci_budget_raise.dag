@@ -4,68 +4,109 @@ import std.types { Bool, List, String }
 import std.measure { Minute, minute, measure_le }
 import std.optional { Present, Absent, Optional }
 import std.list { first_where }
-import gunbc.design_ruling { DesignRuling }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import gunbc.design_ruling { DesignRuling, serve_entry_verdict_step_raised_to_45_minutes }
 
 // A CI BUDGET IS CLOSED TO GROWTH (ruling gunbc.design_ruling ci_job_budgets_closed_to_growth): a job or step
 // timeout, or the row it derives from, may rise above its previously approved value only on the operator's explicit
-// sign-off, recorded as its own ruling row with the operator's words verbatim (the precedents:
-// printer_ci_budget_raised_for_the_four_hour_card, serve_entry_verdict_step_raised_to_45_minutes). Until now that
-// recording was a comment beside the budget, so a raise with no row behind it was writable and nothing refused it.
-// This carrier makes the row the budget's admission, and the admission the value the budget RUNS AT: a budget's
-// approvals are declared beside it, oldest first, the value it requires is admitted only under an approval that
-// covers it, and the emitted budget is budget_admitted_minutes -- never the required value on its own.
+// sign-off, recorded as its own ruling row with the operator's words verbatim. Until now that recording was a comment
+// beside the budget, so a raise with no row behind it was writable and nothing refused it. This carrier makes the
+// sign-off the budget's admission, and the admission the value the budget RUNS AT: the emitted budget is
+// budget_admitted_minutes, never the required value on its own.
 //
-// THE APPROVALS, oldest first:
-// - IntroducedWithTheStep: the value the budget first landed at. A new step's budget raises no approved value,
-//   so its introduction is not a raise; `carried_by` names the change that introduced it.
-// - RaisedBySignoff: a raise, carrying the ruling row with the operator's words. There is no pending form: a row in
-//   gunbc.design_ruling exists only once the operator's words do, so a raise that has been asked for and not
-//   answered has NO approval here, and its admission refuses as BudgetRaiseUnapproved (reviews 96483 on
-//   gunb-ai/gunbc#16668 and 96505 on gunb-ai/gunbc#16691). The request lives where it was put to the operator.
-type BudgetApproval
-  = IntroducedWithTheStep { minutes: Minute, carried_by: String }
-  | RaisedBySignoff { minutes: Minute, ruling: DesignRuling }
+// A CI BUDGET is named by its own declaration (`budget`: the data row or function a workflow emits from), so a
+// sign-off is bound to the budget it raised and not to whichever budget cites it.
 
-// THE ADMISSION. The required value is admitted under the FIRST approval, oldest first, whose minutes cover it, so a
-// value inside an earlier approval needs no later raise. Covered by nothing: a raise with no row behind it, refused
-// naming the highest approved value -- the value the budget runs at instead (budget_admitted_minutes).
+// WHAT A RULING GRANTED, TYPED. One ruling may raise several budgets (the printer card raised a job and a step), so
+// a grant is one (ruling, budget, minutes) row, and its minutes are the value the operator signed off -- the
+// admission derives coverage from here, never from the citing budget. SOLE CONSTRUCTOR: a grant is written only in
+// this module, beside the ruling it transcribes, so a budget cannot mint its own grant, and a grant naming the wrong
+// budget or a larger figure is a reviewed edit to this ledger, not a line in a consumer (merry-fox-82 msg_32aa04b6 on
+// gunb-ai/gunbc#16668, F1). The rows are typed transcriptions of rulings whose prose states the figure; a grant is
+// added in the change that carries the ruling, never before the operator's words exist.
+type BudgetRaiseGrant sole_constructor {
+  ruling: DesignRuling
+  budget: DeclarationRef
+  raised_to: Minute
+}
+
+// serve_entry_verdict_step_raised_to_45_minutes: "that one step, 30 -> 45 minutes". The one precedent transcribed
+// today; it is the real ruling the negative controls cite (test.claim.ci.ci_budget_raise_witness). The printer card's
+// ruling fits the same shape as two grants (its job backstop 319 and its converge step 289) and is transcribed when
+// that budget reads its admission.
+data serve_entry_verdict_step_raised_to_45_minutes_grant: BudgetRaiseGrant = BudgetRaiseGrant {
+  ruling: serve_entry_verdict_step_raised_to_45_minutes,
+  budget: decl_ref(module_path: "gunbc.fleet.fleet_workflow_steps", decl_name: "gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes"),
+  raised_to: minute(count: 45),
+}
+
+// A BUDGET'S APPROVALS: exactly ONE introduction -- the value the budget first landed at, which raises nothing --
+// and its raises, oldest first, each a grant. A second introduction is unwritable (the field is single), so a raise
+// cannot be disguised as one.
+type BudgetIntroduction {
+  minutes: Minute
+  carried_by: String
+}
+
+type StepBudgetApprovals {
+  budget: DeclarationRef
+  introduced: BudgetIntroduction
+  raises: List<BudgetRaiseGrant>
+}
+
+type BudgetCoverage
+  = CoveredByIntroduction { introduced: BudgetIntroduction }
+  | CoveredByGrant { grant: BudgetRaiseGrant }
+
+// THE ADMISSION.
+// - A raise citing a grant for ANOTHER budget is refused, naming it: a ruling about another budget is not coverage,
+//   and listing it is an authoring error that must not pass silently.
+// - Otherwise the required value is admitted under the introduction if it covers it, else under the FIRST grant,
+//   oldest first, whose signed-off minutes cover it.
+// - Covered by nothing: refused naming the highest approved value -- the value the budget runs at instead.
 type BudgetAdmission
-  = BudgetAdmitted { minutes: Minute, approval: BudgetApproval }
+  = BudgetAdmitted { minutes: Minute, coverage: BudgetCoverage }
+  | BudgetRaiseGrantForAnotherBudget { minutes: Minute, grant: BudgetRaiseGrant }
   | BudgetRaiseUnapproved { minutes: Minute, highest_approved: Minute }
 
-fn budget_approval_minutes(approval: BudgetApproval) -> Minute {
-  match approval {
-    IntroducedWithTheStep { minutes: m, carried_by: _ } => m
-    RaisedBySignoff { minutes: m, ruling: _ } => m
-  }
+fn budget_ref_key(r: DeclarationRef) -> String { declaration_ref_display_key(ref: r) }
+
+fn budget_highest_approved(approvals: StepBudgetApprovals) -> Minute {
+  fold(approvals.raises, init: approvals.introduced.minutes, f: fn(acc, g) { if measure_le(a: g.raised_to, b: acc) { acc } else { g.raised_to } })
 }
 
-fn budget_highest_approved(approvals: List<BudgetApproval>) -> Minute {
-  fold(approvals, init: minute(count: 0), f: fn(acc, a) { if measure_le(a: budget_approval_minutes(approval: a), b: acc) { acc } else { budget_approval_minutes(approval: a) } })
-}
-
-fn budget_admission(minutes: Minute, approvals: List<BudgetApproval>) -> BudgetAdmission {
-  match first_where(xs: approvals, keep: fn(a) { measure_le(a: minutes, b: budget_approval_minutes(approval: a)) }) {
-    Absent => BudgetRaiseUnapproved { minutes: minutes, highest_approved: budget_highest_approved(approvals: approvals) }
-    Present { value: a } => BudgetAdmitted { minutes: minutes, approval: a }
+fn budget_admission(minutes: Minute, approvals: StepBudgetApprovals) -> BudgetAdmission {
+  let key = budget_ref_key(r: approvals.budget)
+  match first_where(xs: approvals.raises, keep: fn(g) { budget_ref_key(r: g.budget) != key }) {
+    Present { value: g } => BudgetRaiseGrantForAnotherBudget { minutes: minutes, grant: g }
+    Absent =>
+      if measure_le(a: minutes, b: approvals.introduced.minutes) {
+        BudgetAdmitted { minutes: minutes, coverage: CoveredByIntroduction { introduced: approvals.introduced } }
+      } else {
+        match first_where(xs: approvals.raises, keep: fn(g) { measure_le(a: minutes, b: g.raised_to) }) {
+          Present { value: g } => BudgetAdmitted { minutes: minutes, coverage: CoveredByGrant { grant: g } }
+          Absent => BudgetRaiseUnapproved { minutes: minutes, highest_approved: budget_highest_approved(approvals: approvals) }
+        }
+      }
   }
 }
 
 fn budget_admitted(admission: BudgetAdmission) -> Bool {
   match admission {
-    BudgetAdmitted { minutes: _, approval: _ } => true
-    BudgetRaiseUnapproved { minutes: _, highest_approved: _ } => false
+    BudgetAdmitted { minutes: _, coverage: _ } => true
+    _ => false
   }
 }
 
-// THE VALUE THE BUDGET RUNS AT. Admitted: the required value. Unapproved: the highest approved value -- the budget
-// stays where it was last approved, so an unsigned raise never reaches a generated workflow. That value is NOT a claim
-// that it covers the required one: a consumer whose work needs the required value must read the admission and refuse
-// while it is unapproved, never run its work under the smaller figure (gunbc.machine_intake.mtcollins1_bmc_cold_reset
-// is the first such consumer).
-fn budget_admitted_minutes(admission: BudgetAdmission) -> Minute {
+// THE VALUE THE BUDGET RUNS AT. Admitted: the required value. Not admitted: the introduction -- the one value that
+// stands without any grant -- so neither an unsigned raise nor a grant for another budget reaches a generated
+// workflow. That value is NOT a claim that it covers the required one: a consumer whose work needs the required value
+// must read the admission and refuse while it is not admitted, never run its work under the smaller figure
+// (gunbc.machine_intake.mtcollins1_bmc_cold_reset is the first such consumer).
+fn budget_admitted_minutes(admission: BudgetAdmission, approvals: StepBudgetApprovals) -> Minute {
   match admission {
-    BudgetAdmitted { minutes: m, approval: _ } => m
+    BudgetAdmitted { minutes: m, coverage: _ } => m
     BudgetRaiseUnapproved { minutes: _, highest_approved: h } => h
+    BudgetRaiseGrantForAnotherBudget { minutes: _, grant: _ } => approvals.introduced.minutes
   }
 }

@@ -24,7 +24,7 @@ import std.measure { measure_le }
 import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost, BmcControllerResetBegan, BmcControllerResetEnded }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
-import gunbc.ci.ci_budget_raise { BudgetAdmission, BudgetAdmitted, IntroducedWithTheStep }
+import gunbc.ci.ci_budget_raise { BudgetAdmission, BudgetAdmitted, CoveredByIntroduction, BudgetIntroduction }
 import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_wet_admitted, mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval, mtcollins1_bmc_cold_reset_read_ceiling, mtcollins1_bmc_cold_reset_window_allowance }
 import std.measure { second_count }
 import gunbc.bmc_dry_realization { sleep_delay_seconds_operation }
@@ -1982,7 +1982,7 @@ fn matrix_cold_reset_run(overrides: List<OperationBinding<MtCollins1BootWorld>>)
 fn matrix_cold_reset_supplied_admitted_budget() -> BudgetAdmission {
   BudgetAdmitted {
     minutes: mtcollins1_bmc_cold_reset_step_required_minutes(),
-    approval: IntroducedWithTheStep { minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), carried_by: "matrix fixture: the step budget as it stands once its raise is signed" },
+    coverage: CoveredByIntroduction { introduced: BudgetIntroduction { minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), carried_by: "matrix fixture: the step budget as it stands once its raise is signed" } },
   }
 }
 

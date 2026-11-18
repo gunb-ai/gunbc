@@ -29,8 +29,10 @@ import gunbc.machine_intake.megarac_boot_media_attach { megarac_attach_boot_imag
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.managed_host_boot { AdmittedBootSubject }
 import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_held, mtcollins1_bmc_cold_reset_send, mtcollins1_bmc_cold_reset_wet_admitted }
-import gunbc.ci.ci_budget_raise { BudgetAdmitted, IntroducedWithTheStep }
+import gunbc.ci.ci_budget_raise { BudgetAdmitted, CoveredByIntroduction, BudgetIntroduction, BudgetRaiseGrant }
+import gunbc.design_ruling { serve_entry_verdict_step_raised_to_45_minutes }
 import std.measure { minute }
+import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.boot_medium { BootMedium }
 import gunbc.runner.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
@@ -169,8 +171,19 @@ fn cold_reset_the_held_sequence_with_a_forged_proof_from_outside(s: AdmittedUnit
 // admitted budget would run the watch the production admission refuses. Its seal admits only the entry and the
 // acceptance matrix's runner; this call, from anywhere else, is refused at compile time.
 fn cold_reset_route_under_a_supplied_admitted_budget_from_outside() -> String {
-  let _x = mtcollins1_bmc_cold_reset_wet_admitted(budget: BudgetAdmitted { minutes: minute(count: 67), approval: IntroducedWithTheStep { minutes: minute(count: 67), carried_by: "forger" } })
+  let _x = mtcollins1_bmc_cold_reset_wet_admitted(budget: BudgetAdmitted { minutes: minute(count: 67), coverage: CoveredByIntroduction { introduced: BudgetIntroduction { minutes: minute(count: 67), carried_by: "forger" } } })
   ""
+}
+
+// A SIGN-OFF CANNOT BE MINTED BY THE BUDGET THAT WANTS IT (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668, F1): a
+// grant is written only in gunbc.ci.ci_budget_raise, so this one -- an unrelated ruling dressed as the cold-reset
+// step's raise to 67, which would admit the step and lift the entry's refusal -- is refused at the literal.
+fn forged_cold_reset_step_budget_grant() -> BudgetRaiseGrant {
+  BudgetRaiseGrant {
+    ruling: serve_entry_verdict_step_raised_to_45_minutes,
+    budget: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"),
+    raised_to: minute(count: 67),
+  }
 }
 
 fn cold_reset_send_from_outside() -> String {

@@ -123,3 +123,11 @@ test fn the_cold_reset_route_under_a_supplied_budget_refuses_every_caller_but_th
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_wet_admitted") >= 1
 }
+
+// A CI BUDGET RAISE GRANT CANNOT BE AUTHORED OUTSIDE ITS LEDGER (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668,
+// F1): gunbc.ci.ci_budget_raise BudgetRaiseGrant is sole_constructor, so a grant binding an unrelated ruling to the
+// cold-reset step at 67 -- the forgery that would admit the step and lift its entry refusal -- is refused at the
+// literal.
+test fn a_forged_budget_raise_grant_is_refused_at_the_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "BudgetRaiseGrant") >= 1
+}
