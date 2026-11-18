@@ -433,16 +433,26 @@ test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_row
   )
   any(
     xs: unit_missing,
-    where: item =>
-      string_contains(s: item.input as String, pattern: "managed-host row")
+    where: item => string_contains(s: item.input as String, pattern: "managed-host row")
   )
     && !any(
-      xs: executor_missing,
+      xs: unit_missing,
       where: item =>
-        string_contains(s: item.input as String, pattern: "managed-host row")
-          || string_contains(s: item.input as String, pattern: "write-controller row")
+        string_contains(s: item.input as String, pattern: "write-controller row")
           || string_contains(s: item.input as String, pattern: "firmware release capability row")
           || string_contains(s: item.input as String, pattern: "dated target-disk reading")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "write-controller row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "firmware release capability row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "dated target-disk reading")
     )
 }
 
