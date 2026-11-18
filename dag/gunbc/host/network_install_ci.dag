@@ -192,6 +192,23 @@ type NetworkInstallCiResolution
   = NetworkInstallCiReady { plan: NetworkInstallCiPlan }
   | NetworkInstallCiIncomplete { missing: List<NetworkInstallCiMissing> }
 
+// THE ROUTING DECISION, alone and executable. Which identity the committed lookups are keyed by, and which
+// identity is only carried, is decided exactly once — here — and the entry's dispatch consumes its result.
+// A conflated dispatch is refused by this function, before any lookup runs.
+type NetworkInstallCiRouting
+  = NetworkInstallCiRouted { lookup: HostIdentity, executor: HostIdentity }
+  | NetworkInstallCiConflated { refusal: String }
+
+fn network_install_ci_identity_route(host: HostIdentity, install_unit: HostIdentity) -> NetworkInstallCiRouting {
+  if (host as String) == (install_unit as String) {
+    NetworkInstallCiConflated {
+      refusal: network_install_ci_conflation_refusal(host: host, install_unit: install_unit),
+    }
+  } else {
+    NetworkInstallCiRouted { lookup: install_unit, executor: host }
+  }
+}
+
 // THE ENTRY. The clock first and once; then the subject; then the resolution; then the run.
 fn network_install_ci_run() -> ProcessExit {
   match observer_clock_read() {
@@ -290,22 +307,23 @@ fn network_install_ci_conflation_refusal(host: HostIdentity, install_unit: HostI
 // The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
 // performs an effect, so the whole account and plan are assertable without a live environment.
 fn network_install_ci_dispatch(host: HostIdentity, install_unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
-  if (host as String) == (install_unit as String) {
-    exit_failure(reason: network_install_ci_conflation_refusal(host: host, install_unit: install_unit))
-  } else {
-    let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
-    match network_install_ci_resolve(
-      host: install_unit, executor: host, dispatch_id: dispatch_id, decided_at: decided_at,
-      password_file: network_install_ci_password_file(),
-      edge_context: edge_effects.context, edge_view: edge_effects.view,
-    ) {
-      NetworkInstallCiIncomplete { missing: missing } =>
-        network_install_ci_write(
-          body: network_install_ci_incomplete_receipt(host: install_unit, executor: host, dispatch_id: dispatch_id, missing: missing),
-          host: install_unit,
-          succeeded: false
-        )
-      NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+  match network_install_ci_identity_route(host: host, install_unit: install_unit) {
+    NetworkInstallCiConflated { refusal: refusal } => exit_failure(reason: refusal)
+    NetworkInstallCiRouted { lookup: lookup, executor: executor } => {
+      let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
+      match network_install_ci_resolve(
+        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+        password_file: network_install_ci_password_file(),
+        edge_context: edge_effects.context, edge_view: edge_effects.view,
+      ) {
+        NetworkInstallCiIncomplete { missing: missing } =>
+          network_install_ci_write(
+            body: network_install_ci_incomplete_receipt(host: lookup, executor: executor, dispatch_id: dispatch_id, missing: missing),
+            host: lookup,
+            succeeded: false
+          )
+        NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+      }
     }
   }
 }
