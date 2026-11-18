@@ -46,7 +46,7 @@ import gunbc.machine_intake.megarac_media_row_reading { boot_run_43040335415_pre
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd_at_the_current_build }
 import gunbc.machine_intake.mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
-  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs, with_worker,
   worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
 }
 import v2.std.operation_realization {
@@ -2628,6 +2628,49 @@ test fn a_readable_but_stalled_clock_refuses_at_its_poll_inside_the_window_allow
         && !string_contains(s: receipt, pattern: "paced window poll(s)")
         && !string_contains(s: receipt, pattern: "stayed available through the window")
         && span >= 0
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
+    _ => false
+  }
+}
+
+// F2, THE SLOW CLOCK: every mc info runs to the read ceiling, and /proc/uptime does not count the reads -- each read
+// pulls the worker's uptime origin back by the time it took -- so each window sample advances exactly the pacing
+// interval while each poll takes the interval plus a full read. The pace guard admits it (it bounds the clock's
+// progress from below only), and the window ends only when this slow clock reaches W, after far more wall time than W.
+fn matrix_cold_reset_mc_info_unclocked_at_ceiling() -> OperationBinding<MtCollins1BootWorld> {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let lifted = bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: bmc_mc_info_reply)
+  OperationBinding {
+    at: bmc_ipmi_operation(operation: "McInfo"),
+    handler: fn(state, call) {
+      match lifted(state, call) {
+        OperationObserved { observation: o, state: st, elapsed: _ } =>
+          OperationObserved {
+            observation: o,
+            state: with_worker(w: st, worker: ModeledWorker { next_pid: st.worker.next_pid, processes: st.worker.processes, uptime_at_origin: st.worker.uptime_at_origin - c, principal: st.worker.principal }),
+            elapsed: second(count: c),
+          }
+        other => other
+      }
+    },
+  }
+}
+
+// The side chat's control: the slow clock ends inside the declared window allowance, accepting (it reaches W on the
+// last paced poll before the ceiling) after more wall time than W + 2 read ceilings + 1 interval, the bound 568a88f0
+// declared and this execution overruns.
+test fn a_clock_advancing_exactly_the_pace_while_reads_run_to_the_ceiling_ends_inside_the_window_allowance() -> Bool {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_unclocked_at_ceiling()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && span > w + 2 * c + i
         && span <= matrix_cold_reset_window_allowance_seconds()
     }
     _ => false
