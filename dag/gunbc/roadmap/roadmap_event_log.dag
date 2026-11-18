@@ -740,7 +740,7 @@ fn roadmap_claim_grain_decode(doc: JsonValue) -> ClaimGrain? {
 // All three fields blank: Pathless (for items with no decomposition; the guard refuses it on decomposed items).
 // All three set: parsed as three non-negative integers, minted as a Leaf.
 // A blank mixed with a number, a non-decimal, a negative, or an out-of-range value: Malformed.
-union ClaimGrainParse
+type ClaimGrainParse
   = Parsed { grain: ClaimGrain }
   | Malformed { field: String, why: String }
 
