@@ -100,6 +100,8 @@ import gunbc.roadmap.roadmap_event_carrier {
   EventsRead,
   EventsReadRefused,
   roadmap_events_read_dir,
+  roadmap_events_read_all_synced,
+  RoadmapEventCarrierLayout,
   RoadmapAllEventsRead,
   AllEventsRead,
   AllEventsReadRefused,
@@ -440,6 +442,20 @@ fn scenario_pairs(envs: List<RoadmapEventEnvelope>) -> ClosingContractTaskPairsP
   }
 }
 
+// THE ACTIVE FRONTIER OVER A SCENARIO — the same projection the live route renders, with the scenario's
+// accepted/withheld sets where the live route would have put the directory walk's.
+fn scenario_active_nodes(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNode> {
+  active_roadmap_nodes_for_accepted(accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs))
+}
+
+fn scenario_active_edges(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEdge> {
+  active_roadmap_edges_for_accepted(accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs))
+}
+
+fn scenario_active_id_exists(envs: List<RoadmapEventEnvelope>, id: RoadmapNodeId) -> Bool {
+  scenario_active_nodes(envs: envs) |> any(n => n.node == id)
+}
+
 fn id_exists(id: RoadmapNodeId) -> Bool {
   nodes() |> any(n => n.node == id)
 }
@@ -548,8 +564,15 @@ fn red_ticket() -> RoadmapItem {
 }
 
 test fn witness_declared_graph_has_justified_size() -> Bool {
-  count(nodes()) > 0 && count(edges()) > 0
-    && count(active_nodes()) > 0 && count(active_edges()) > 0
+  // THE SCENARIO: nothing accepted, nothing withdrawn — the frontier is the declared graph itself. This
+  // witness asks whether a graph of this size is justified and whether the note names the lane; the live
+  // event log has no bearing on either, so it is not read.
+  match scenario_envelopes(label: "declared-graph-has-justified-size", events: []) {
+    Absent => false
+    Present { value: envs } =>
+      count(nodes()) > 0 && count(edges()) > 0
+        && count(scenario_active_nodes(envs: envs)) > 0 && count(scenario_active_edges(envs: envs)) > 0
+  }
 }
 
 test fn witness_declared_node_ids_are_unique() -> Bool {
@@ -612,20 +635,164 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   }
 }
 
+// ─── THE COMMITTED FIXTURE ───────────────────────────────────────────────────
+// A SMALL LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
+// through the floor's checkout carve-out rather than being mocked. Its bytes are THIS table rendered by
+// the log's own emitter: gunbc.roadmap.roadmap_authority_fixture_gen writes them, and
+// witness_acceptance_receipts_are_valid_and_unique re-encodes every file and reddens on a byte of drift,
+// so the fixture cannot rot away from the encoder it was generated with.
+//
+// Regenerate (from a checkout, wet lane — it is the only lane that may write):
+//   mkdir -p fixtures/roadmap_authority/events/{namespace-occurrence-transport,2-scm-git-upstream-model,roadmap-authority-scenario-absent-node}
+//   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/roadmap_authority.dag --wet \
+//     --functions roadmap_authority_fixture_emit
+data roadmap_authority_fixture_root: String = "fixtures/roadmap_authority/events"
+data roadmap_authority_fixture_worktree: String = "fixtures/roadmap_authority"
+
+type RoadmapAuthorityFixtureFile {
+  node: RoadmapNodeId
+  name: String
+  event: RoadmapEvent
+}
+
+// THE ROW THE AUTHORITY DOES NOT DECLARE. The fixture carries an acceptance for it precisely so the
+// fail-closed path is exercised by the committed route, not argued about: a log may name a node the
+// plan has never heard of, and nothing may be admitted on it — and nothing may crash on it either.
+fn roadmap_authority_fixture_absent_node() -> RoadmapNodeId {
+  tnid(s: "roadmap-authority-scenario-absent-node")
+}
+
+fn roadmap_authority_fixture_files() -> List<RoadmapAuthorityFixtureFile> {
+  let accepted_row = tnid(s: "namespace-occurrence-transport")
+  let superseded_row = tnid(s: "2-scm-git-upstream-model")
+  let absent_row = roadmap_authority_fixture_absent_node()
+  let opening = scenario_event(node: accepted_row, parent: Absent, kind: scenario_acceptance_kind(id: accepted_row))
+  let granted = scenario_event(node: superseded_row, parent: Absent, kind: scenario_acceptance_kind(id: superseded_row))
+  let taken_back = scenario_event(
+    node: superseded_row,
+    parent: Present { value: roadmap_event_id(e: granted) },
+    kind: scenario_revocation_kind(id: superseded_row, disposition: AcceptanceNodeRemainsSuperseded {}),
+  )
+  let ended = scenario_event(
+    node: superseded_row,
+    parent: Present { value: roadmap_event_id(e: taken_back) },
+    kind: RoadmapEventKind.Retired { reason: "the scenario closed the node" as NonEmptyStr },
+  )
+  // The absent row is given a digest copied from a DECLARED row, so the only thing wrong with it is the
+  // thing under test: the authority does not declare the node the receipt is about.
+  let borrowed = scenario_receipt(id: accepted_row)
+  let stranger = scenario_event(
+    node: absent_row,
+    parent: Absent,
+    kind: RoadmapEventKind.AcceptanceRecordedEvent {
+      receipt: RoadmapAcceptanceReceipt {
+        node: absent_row,
+        criteria_digest: borrowed.criteria_digest,
+        red_control: borrowed.red_control,
+        handback: borrowed.handback,
+        accepted_by: borrowed.accepted_by,
+        accepted_on: borrowed.accepted_on,
+      },
+      evidence: scenario_evidence(),
+    },
+  )
+  [
+    RoadmapAuthorityFixtureFile { node: accepted_row, name: "01-acceptance.json", event: opening },
+    RoadmapAuthorityFixtureFile { node: superseded_row, name: "01-acceptance.json", event: granted },
+    RoadmapAuthorityFixtureFile { node: superseded_row, name: "02-revocation.json", event: taken_back },
+    RoadmapAuthorityFixtureFile { node: superseded_row, name: "03-retired.json", event: ended },
+    RoadmapAuthorityFixtureFile { node: absent_row, name: "01-acceptance.json", event: stranger },
+  ]
+}
+
+// THE BYTES THE GENERATOR WRITES, in one place so the witness and the generator cannot disagree.
+fn roadmap_authority_fixture_bytes(f: RoadmapAuthorityFixtureFile) -> String {
+  roadmap_event_wire_text(env: roadmap_event_envelope(e: f.event))
+}
+
+fn roadmap_authority_fixture_path(f: RoadmapAuthorityFixtureFile) -> String {
+  join([roadmap_authority_fixture_root, "/", f.node as String, "/", f.name], "")
+}
+
+// THE WRITE, wet lane only. It exists so the committed fixture is produced by the encoder rather than
+// transcribed by hand; the witness re-encodes every file, so an edit here without a regeneration reddens.
+fn roadmap_authority_fixture_emit() -> Bool {
+  all(roadmap_authority_fixture_files(), f => {
+    let w = Filesystem.Write(path: roadmap_authority_fixture_path(f: f), content: roadmap_authority_fixture_bytes(f: f))
+    w.success
+  })
+}
+
+// THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
+fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_read_dir(dir: roadmap_authority_fixture_root) {
+    AllEventsRead { envelopes: envs } => Present { value: envs }
+    AllEventsReadRefused { step: _, reason: _ } => Absent
+  }
+}
+
+// THE SAME DIRECTORY THROUGH THE LIVE ROUTE: the live route builds its own path out of the layout and
+// calls the same one reader. Aimed at the fixture it must answer identically.
+fn roadmap_authority_fixture_live_route_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout {
+    repo_root: roadmap_authority_fixture_worktree,
+    worktree: roadmap_authority_fixture_worktree,
+    git_program: "git",
+    directory_program: "install",
+    remote: "origin",
+  }) {
+    AllEventsRead { envelopes: envs } => Present { value: envs }
+    AllEventsReadRefused { step: _, reason: _ } => Absent
+  }
+}
+
+// THE LOG'S OWN RETIRED SET, read off the fixture rather than assumed.
+fn roadmap_authority_fixture_retired(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match roadmap_retired_node_ids_of(envs: envs) {
+    RetiredNodeIdsLoaded { ids: ids } => ids
+    RetiredNodeIdsRefused { detail: _ } => []
+  }
+}
+
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
-      count(receipts) > 0
-        && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
-        && all(receipts, r => id_exists(id: r.node))
-        && all(receipts, r => all(declared_node(id: r.node as String), n =>
-          match receipt_node_match_verdict(r: r, rn: n, retired: fixture_retired_node_ids()) {
-            ReceiptMatchesNode => true
-            LiveReceiptOnRetiredNode { node: _ } => false
-            ReceiptDoesNotMatchNode => false
-          }
-        ))
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+  // THE COMMITTED ROUTE, END TO END: the real Filesystem.List walk over the checked-in fixture, the real
+  // decode, the real fold — then the claim this witness is for, that the log's receipts are valid and
+  // one-per-node. The fixture deliberately also carries a row the authority does not declare; that row
+  // is the fail-closed half of the claim, and it is answered with types, never a crash.
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: envs } => {
+      // NO DRIFT FROM THE ENCODER: every committed file re-encoded from the table above must be byte
+      // for byte the file on disk. A hand-edit here reddens before any projection is consulted.
+      all(roadmap_authority_fixture_files(), f => {
+        let r = Filesystem.Read(path: roadmap_authority_fixture_path(f: f))
+        r.success && r.content == roadmap_authority_fixture_bytes(f: f)
+      })
+      && match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+        RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+        RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
+          let declared_receipts = receipts |> filter(r => id_exists(id: r.node))
+          let absent_receipts = receipts |> filter(r => !id_exists(id: r.node))
+          count(declared_receipts) > 0
+            && all(declared_receipts, r => count(declared_receipts |> filter(x => x.node == r.node)) == 1)
+            && all(declared_receipts, r => all(declared_node(id: r.node as String), n =>
+              match receipt_node_match_verdict(r: r, rn: n, retired: fixture_retired_node_ids()) {
+                ReceiptMatchesNode => true
+                LiveReceiptOnRetiredNode { node: _ } => false
+                ReceiptDoesNotMatchNode => false
+              }
+            ))
+            // THE ABSENT ROW IS IN THE LOG AND ANSWERS WITH NOTHING ADMITTED.
+            && count(absent_receipts) == 1
+            && all(absent_receipts, r => !id_exists(id: r.node))
+            && !scenario_active_id_exists(envs: envs, id: roadmap_authority_fixture_absent_node())
+            && !(scenario_accepted(envs: envs) |> any(a => a == roadmap_authority_fixture_absent_node()))
+            && !(scenario_withheld(envs: envs) |> any(w => w == roadmap_authority_fixture_absent_node()))
+        }
+      }
+    }
   }
 }
 
@@ -649,12 +816,18 @@ test fn witness_live_receipt_on_retired_node_refuses_with_typed_cause() -> Bool 
 }
 
 test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
-  !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
-    && match live_withheld_node_ids() {
-      Absent => false
-      Present { value: withheld } =>
-        withheld |> any(w => w == tnid(s: "entry-graph-union-construction"))
-    }
+  // THE SCENARIO: that node is accepted, then revoked under the disposition that leaves it superseded.
+  // A revoked-but-superseded acceptance must NOT put the row back on the frontier -- it stays withheld.
+  let gone = tnid(s: "entry-graph-union-construction")
+  match scenario_envelopes(label: gone, events: scenario_chain(node: gone, kinds: [
+    scenario_acceptance_kind(id: gone),
+    scenario_revocation_kind(id: gone, disposition: AcceptanceNodeRemainsSuperseded {}),
+  ])) {
+    Absent => false
+    Present { value: envs } =>
+      !scenario_active_id_exists(envs: envs, id: gone)
+        && scenario_withheld(envs: envs) |> any(w => w == gone)
+  }
 }
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
@@ -693,19 +866,38 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
 // read `SupersededLine { by: … }` off the row; the row no longer states an ending, and the retired
 // set — the log's own — is passed in, so the verdict cannot be manufactured by editing a plan row.
 test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool {
-  match remains_superseded_revocations_join(
-    history: live_acceptance_event_history(),
-    nodes: declared_roadmap_nodes(),
-    retired: fixture_retired_node_ids(),
-  ) {
-    RemainsSupersededRevocationsJoined =>
-      all(
-        declared_node(id: "entry-graph-union-construction"),
-        n => roadmap_node_ids_contain(ids: fixture_retired_node_ids(), node: n.node),
-      )
-    RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
-    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
-    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+  // THE SAME-READER WITNESS. Two routes reach the event log: the committed route names a directory and
+  // the live route assembles one from the carrier layout -- and BOTH call roadmap_events_read_dir, the
+  // one walk and the one decode (dag/gunbc/roadmap/roadmap_event_carrier.dag). Aimed at the same
+  // directory they must answer with the same envelopes; if either route grew its own walk, or its own
+  // parser, this reddens while every scenario witness above stays green. Then the join this witness is
+  // named for runs over what that reader returned: a revocation that leaves a node off the plan joins
+  // only a node THE LOG RETIRED, and the retired set here is the log's own, not a caller's assertion.
+  let superseded_row = tnid(s: "2-scm-git-upstream-model")
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: committed } => match roadmap_authority_fixture_live_route_envelopes() {
+      Absent => false
+      Present { value: live } =>
+        count(committed) == 5
+          && live == committed
+          && match remains_superseded_revocations_join(
+            history: scenario_event_history(envs: live),
+            nodes: declared_roadmap_nodes(),
+            retired: roadmap_authority_fixture_retired(envs: live),
+          ) {
+            RemainsSupersededRevocationsJoined =>
+              all(
+                declared_node(id: "2-scm-git-upstream-model"),
+                n => roadmap_node_ids_contain(
+                  ids: roadmap_authority_fixture_retired(envs: live), node: n.node),
+              )
+            RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
+            RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+            RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+          }
+          && !(scenario_accepted(envs: live) |> any(a => a == superseded_row))
+    }
   }
 }
 
@@ -869,15 +1061,23 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
 }
 
 test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
-  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
-    RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
-      let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
-      let victims = declared_node(id: "namespace-occurrence-transport")
-      count(rs) == 1
-        && count(victims) == 1
-        && all(victims, n => node_accepted(receipts: rs, rn: n))
-        && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+  // THE SCENARIO: one acceptance of one row. The log holds exactly that receipt; the row is accepted on
+  // it; and the same receipt spelled TWICE accepts nothing — a node cannot be accepted twice over.
+  let subject = "namespace-occurrence-transport"
+  match scenario_envelopes(label: subject, events: [
+    scenario_event(node: subject, parent: Absent, kind: scenario_acceptance_kind(id: subject)),
+  ]) {
+    Absent => false
+    Present { value: envs } => match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+      RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+      RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
+        let rs = all_receipts |> filter(r => r.node == subject)
+        let victims = declared_node(id: subject)
+        count(rs) == 1
+          && count(victims) == 1
+          && all(victims, n => node_accepted(receipts: rs, rn: n))
+          && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+      }
     }
   }
 }
@@ -904,39 +1104,72 @@ fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
 }
 
 test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
-  let prior = live_acceptance_event_history()
-  let current = prior
-    |> filter(e =>
-      match e {
-        AcceptanceRecorded { receipt: r } => r.node != tnid(s: "namespace-occurrence-transport")
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
-      }
-    )
-  !acceptance_history_extends_prior(prior: prior, current: current)
+  // THE SCENARIO: two accepted rows, then the same history with one acceptance quietly gone and no
+  // withdrawal to account for it. That is the shape of a silent history deletion, and the fold must
+  // refuse it rather than let the plan shrink by one row.
+  let kept = "namespace-occurrence-transport"
+  let vanished = "2-scm-git-upstream-model"
+  match scenario_envelopes(label: "vanished-receipt", events: [
+    scenario_event(node: kept, parent: Absent, kind: scenario_acceptance_kind(id: kept)),
+    scenario_event(node: vanished, parent: Absent, kind: scenario_acceptance_kind(id: vanished)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      let current = prior |> filter(e =>
+        match e {
+          AcceptanceRecorded { receipt: r } => r.node != tnid(s: vanished)
+          AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
+        }
+      )
+      count(prior) == 2 && count(current) == 1 && !acceptance_history_extends_prior(prior: prior, current: current)
+    }
+  }
 }
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
-  let prior = live_acceptance_event_history()
-  match project_live_acceptance_receipts(history: prior) {
-    LiveAcceptanceReceiptsReplayRefused => false
-    LiveAcceptanceReceiptsReplayed { live: live } => {
-  let receipt = first(
-    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
-  let current = concat(prior, [
-    AcceptanceRevoked {
-      exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier {},
-      reason: "fixture revocation witness" as NonEmptyStr,
-      revoked_by: "operator" as NonEmptyStr,
-      revoked_on: "2026-08-04" as NonEmptyStr,
-    },
-  ])
-  acceptance_history_extends_prior(prior: prior, current: current)
-    && acceptance_history_integrity_holds(
-      history: current,
-      prior_history: prior,
-    )
+  // THE SCENARIO: one accepted row and one row the log says nothing about. The accepted one can be
+  // withdrawn by an explicit revocation naming its exact prior receipt; the absent one has no receipt to
+  // name, and asking for it answers with a TYPE (the empty case) rather than the crash this witness used
+  // to have -- first(...) on an absent node used to reach for a `node` field on an Optional.
+  let accepted_row = tnid(s: "namespace-occurrence-transport")
+  let absent_row = tnid(s: "roadmap-authority-scenario-absent-node")
+  match scenario_envelopes(label: "explicit-revocation-authorizes-vanished-receipt", events: [
+    scenario_event(node: accepted_row, parent: Absent, kind: scenario_acceptance_kind(id: accepted_row)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      match project_live_acceptance_receipts(history: prior) {
+        LiveAcceptanceReceiptsReplayRefused => false
+        LiveAcceptanceReceiptsReplayed { live: live } => {
+          // THE ABSENT NODE ANSWERS TYPED: nothing to revoke, said with a Bool, never a field lookup.
+          match first(live |> filter(r => r.node == absent_row)) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match first(live |> filter(r => r.node == accepted_row)) {
+            // No receipt for a row the scenario accepted is the scenario's own bug; refuse, typed.
+            Absent => false
+            Present { value: receipt } => {
+              let current = concat(prior, [
+                AcceptanceRevoked {
+                  exact_prior_receipt: receipt,
+                  disposition: AcceptanceNodeReopensActiveFrontier {},
+                  reason: "the scenario took the acceptance back" as NonEmptyStr,
+                  revoked_by: "operator" as NonEmptyStr,
+                  revoked_on: "2026-08-04" as NonEmptyStr,
+                },
+              ])
+              acceptance_history_extends_prior(prior: prior, current: current)
+                && acceptance_history_integrity_holds(
+                  history: current,
+                  prior_history: prior,
+                )
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -972,9 +1205,21 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
     && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
     && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
     && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
-    && match live_accepted_node_ids() {
+    // THE SCENARIO, twice: an unrelated acceptance must leave all four exit lines uncounted, and one
+    // accepted exit line must be counted -- so the count is shown to track the frontier rather than to
+    // read a constant. Neither case is the live log's business; the four rows being open is claimed by
+    // the assertions above, which still run against the declared graph.
+    && match scenario_envelopes(label: "exit-finish-lines-open", events: [
+      scenario_event(node: "namespace-occurrence-transport", parent: Absent, kind: scenario_acceptance_kind(id: "namespace-occurrence-transport")),
+    ]) {
       Absent => false
-      Present { value: accepted } => v1_finish_lines_accepted_count(accepted: accepted) == 0
+      Present { value: open_envs } => v1_finish_lines_accepted_count(accepted: scenario_accepted(envs: open_envs)) == 0
+        && match scenario_envelopes(label: "exit-finish-line-accepted", events: [
+          scenario_event(node: "v1-emitter-fixed-point", parent: Absent, kind: scenario_acceptance_kind(id: "v1-emitter-fixed-point")),
+        ]) {
+          Absent => false
+          Present { value: closed_envs } => v1_finish_lines_accepted_count(accepted: scenario_accepted(envs: closed_envs)) == 1
+        }
     }
 }
 
@@ -1120,15 +1365,31 @@ test fn witness_shell_batch_chain_is_explicit() -> Bool {
 // removed the native-SCM program and its open P1 slice: every accepted row is still declared and
 // inactive, and nothing open is left in the family.
 test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: the six accepted SCM rows, spelled as the log spells an acceptance. The declared half
+  // of this witness is untouched and stays live-reading of the .dag graph itself -- six rows on that
+  // carrier, and the three withdrawn ids still absent. What the scenario carries is the frontier fact:
+  // an accepted row is off the plan, and it stays declared history.
+  let sequence = [
+    "2-scm-git-upstream-model",
+    "2-scm-mercurial-upstream-model",
+    "2-scm-pijul-upstream-model",
+    "2-claim-indexed-evidence",
+    "2-scm-compatibility-shape",
+    "2-scm-p0-landing-spine",
+  ]
+  match scenario_envelopes(
+    label: "accepted-scm-sequence",
+    events: map(sequence, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
     Absent => false
-    Present { value: accepted } =>
+    Present { value: envs } => {
+      let accepted = scenario_accepted(envs: envs)
       node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
-        && all(["2-scm-git-upstream-model", "2-scm-mercurial-upstream-model", "2-scm-pijul-upstream-model", "2-claim-indexed-evidence", "2-scm-compatibility-shape", "2-scm-p0-landing-spine"], id =>
-          id_exists(id: id) && !active_id_exists(id: id) && (accepted |> any(a => a == id)))
+        && all(sequence, id =>
+          id_exists(id: id) && !scenario_active_id_exists(envs: envs, id: id) && (accepted |> any(a => a == id)))
         && !id_exists(id: "2-scm-p1-proof-kernel")
         && !id_exists(id: "2-scm-native-authority-program")
         && !id_exists(id: "dag-scm-program")
+    }
   }
 }
 
