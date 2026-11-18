@@ -15,7 +15,7 @@ module test.claim.roadmap.roadmap_schedule_calendar_witness
 // LOCAL RECIPE (claims are executed, not parsed):
 //   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry dag/test/claim/roadmap/roadmap_schedule_calendar_witness.dag \
-//     --functions first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path,red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend,red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else,a_working_day_span_that_crosses_the_weekend_is_not_counted_across_it,a_dated_leaf_start_and_finish_never_collapse_onto_the_same_date,a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads,binding_a_schedule_that_was_never_scheduled_is_refused
+//     --functions first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path,red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend,red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else,a_working_day_span_that_crosses_the_weekend_is_not_counted_across_it,a_three_week_span_counts_weekends_by_the_seven_day_week,a_dated_leaf_start_and_finish_never_collapse_onto_the_same_date,a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads,binding_a_schedule_that_was_never_scheduled_is_refused
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
@@ -173,6 +173,26 @@ fn a_working_day_span_that_crosses_the_weekend_is_not_counted_across_it() -> Boo
       && is_working_day(date: a.finish_date)
   }
   all_durations_are_working_days && leaf_a_spans_the_weekend && !any_weekend_date(bound: bound)
+}
+
+// THE ORACLE'S OWN REFERENT, three weeks long. working_days_between is the witness's INDEPENDENT check on the
+// binding, so it must be right on its own -- DESIGN fail_closed: "a test's oracle needs an independent referent."
+// A SINGLE leaf of fifteen WORKING days read on a Monday spans TWENTY-ONE calendar days and crosses THREE weekends;
+// counting those weekends by the five-day working week (total/5) silently returns thirteen, and only the seven-day
+// week (total/7) gives fifteen. Fifteen is asserted against the twenty-one-day calendar distance and the printed
+// Monday -> Monday, so a wrong oracle -- or a wrong binding -- fails here where the one-week cases cannot tell.
+fn a_three_week_span_counts_weekends_by_the_seven_day_week() -> Bool {
+  let chain = decomposition(node: "cal.threeweeks", waits_on: [], stages: [[leaf(label: "long", days: 15)]])
+  let sched = schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: 1)
+  match first_where(dated_critical_path(bound: bind_critical_path(schedule: sched, read_date: read_monday())), d => d.finish_day == 15) {
+    Absent => false
+    Present { value: l } =>
+      (l.finish_day - l.start_day) == 15
+      && days_between(from: l.start_date, to: l.finish_date) == 21
+      && working_days_between(start: l.start_date, finish: l.finish_date) == 15
+      && date_text(date: l.start_date) == "2026-11-16"
+      && date_text(date: l.finish_date) == "2026-12-07"
+  }
 }
 
 // A DATED LEAF START AND FINISH NEVER COLLAPSE ONTO THE SAME DATE. The old calendar-day model printed a 3-working-
