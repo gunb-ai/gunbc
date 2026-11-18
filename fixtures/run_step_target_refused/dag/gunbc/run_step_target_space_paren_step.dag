@@ -1,0 +1,12 @@
+module gunbc.run_step_target_space_paren_step
+
+import std.types { Int }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE RED (space before the paren): a space between the callee and its argument list. A substring prefilter keyed
+// on `gunbc_run_step_target(` never scanned this module at all, so the typo passed. The AST walk keys on the
+// IDENTIFIER and parses the call regardless of whitespace, so the misspelled entry refuses as DeclarationAbsent.
+data run_step_target_space_paren: Int = gunbc_run_step_target (
+  module: "gunbc.run_step_target_fixture_home",
+  function: "run_step_target_space_paren_TYPO",
+)

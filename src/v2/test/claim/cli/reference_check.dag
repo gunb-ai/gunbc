@@ -137,3 +137,25 @@ test fn a_run_step_target_naming_an_absent_module_refuses_holds() -> Bool {
   run_step_target_refused_fragment("gunbc/run_step_target_absent_module_step.dag")
     && run_step_target_refused_fragment("gunbc.run_step_target_never_declared")
 }
+
+// THE RED (function-first): the entry written before the module is still parsed (labeled children, order-free) and
+// its misspelled entry refuses located -- a fixed-order matcher would have skipped it and let the typo pass.
+test fn a_function_first_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_function_first_step.dag")
+    && run_step_target_refused_fragment("run_step_target_function_first_TYPO")
+    && run_step_target_refused_fragment("RunStepTargetDeclarationAbsent")
+}
+
+// THE RED (space before the paren): a call written `gunbc_run_step_target (` is still walked (the prefilter keys on
+// the identifier, not the identifier plus `(`), and its misspelled entry refuses.
+test fn a_space_before_paren_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_space_paren_step.dag")
+    && run_step_target_refused_fragment("run_step_target_space_paren_TYPO")
+}
+
+// THE RED (through a wrapper): the real constructor call inside a wrapper -- its arguments are parameters, not
+// literals -- is found by recursing into the function body and refused closed as a non-literal argument.
+test fn a_wrapper_forwarded_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_wrapper_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetArgumentNotLiteral")
+}
