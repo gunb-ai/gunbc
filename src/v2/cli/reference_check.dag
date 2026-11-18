@@ -156,7 +156,7 @@ fn reference_walk_counted(walk: ReferenceWalk) -> ReferenceWalk {
 // with neither contains nothing to extract, and a substring cannot false-negative.
 fn reference_walk_read(env: AcquisitionEnv, caller: String, file: String, content: String, walk: ReferenceWalk) -> ReferenceWalk {
   let has_marker = string_contains(s: content, pattern: annotation_reference_marker)
-  let has_target = string_contains(s: content, pattern: gunbc_run_step_target_constructor_name)
+  let has_target = run_step_target_text_contains_constructor(text: content)
   if !has_marker && !has_target {
     walk
   } else {
@@ -194,10 +194,58 @@ fn reference_walk_go(env: AcquisitionEnv, pending: List<String>, walk: Reference
 // not a site; only the real constructor resolves here. Both arguments must be string literals: a non-literal
 // entry is exactly the un-checkable route this check exists to close, so it refuses typed rather than being
 // skipped (never-skip is why the mint subject now carries a typed mint_target rather than two loose strings).
-data gunbc_run_step_target_home_module: String = "gunbc.ci.ci_run_step_target"
-data gunbc_run_step_target_constructor_name: String = "gunbc_run_step_target"
-data run_step_target_module_label: String = "module"
-data run_step_target_function_label: String = "function"
+// The run-step-target constructor row: each row names a constructor that builds a LATER RUN-TIME ROUTE from
+// literal (module, declaration) strings -- the class this check must resolve so a typo refuses in the required
+// job, not at CI run time. Enrolment is DATA: a new run-time-entry constructor is a new row here, not a new
+// branch in the extractor and not a second extractor (DESIGN root_generalization: "a new ordinary case is data
+// rather than control flow"). The row is deliberately NOT "every DeclarationRef literal": an integration_concern
+// or recurring_failure_mode row legitimately cites a declaration that existed at the recorded revision, so
+// resolving those corpus-wide would refuse CORRECT history -- they are provenance records, not run-time routes.
+// The terminal rung-3 form (a typed declaration reference resolved at compile time, DESIGN guarantee_ladder)
+// retires this row entirely; until then its one member is the run-step target constructor.
+type RunStepTargetConstructor {
+  home_module: String
+  constructor_name: String
+  module_label: String
+  function_label: String
+}
+
+data run_step_target_constructors: List<RunStepTargetConstructor> = [
+  RunStepTargetConstructor {
+    home_module: "gunbc.ci.ci_run_step_target",
+    constructor_name: "gunbc_run_step_target",
+    module_label: "module",
+    function_label: "function",
+  },
+]
+
+// The enrolled constructor whose declared name is `name`, if any row names it (identity from the row, not a
+// hand-written constant). Consulted by the AST walk so a call's head matches the ROW, not one spelling.
+fn run_step_target_row_named(name: String) -> Optional<RunStepTargetConstructor> {
+  fold_list(xs: run_step_target_constructors, empty: Absent, cons: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if name == row.constructor_name { Present { value: row } } else { Absent }
+    }
+  })
+}
+
+// Does any token spell an enrolled constructor's name? The prefilter keys on the bare IDENTIFIER (not the
+// identifier plus `(`), so a call written `gunbc_run_step_target (` is still a candidate; the decision is AST-only.
+// File-level prefilter: does the source text spell any enrolled constructor's name?
+fn run_step_target_text_contains_constructor(text: String) -> Bool {
+  fold_list(xs: run_step_target_constructors, empty: false, cons: fn(acc, row) {
+    if acc { true } else { string_contains(s: text, pattern: row.constructor_name) }
+  })
+}
+
+// Seed `base` with every enrolled constructor's declaring home, so the context loader pulls in each home the
+// callee-identity check resolves against (the set of checked constructors is the row, not a hard-coded module).
+fn run_step_target_home_seeded(base: Map<String, Bool>) -> Map<String, Bool> {
+  fold_list(xs: run_step_target_constructors, empty: base, cons: fn(acc, row) {
+    map_insert(m: acc, key: row.home_module, value: true)
+  })
+}
 
 type RunStepTargetArg
   = RunStepTargetLiteral { value: String }
@@ -207,6 +255,7 @@ type RunStepTargetSite {
   file: String
   caller: String
   start: Int
+  constructor: RunStepTargetConstructor
   module_arg: RunStepTargetArg
   function_arg: RunStepTargetArg
 }
@@ -235,7 +284,11 @@ fn reference_walk_target_sites(walk: ReferenceWalk, file: String, caller: String
 // The prefilter keys on the constructor IDENTIFIER, not the identifier plus `(`, so a call written
 // `gunbc_run_step_target (` (a space before the paren) is still a candidate. The decision itself is AST-only.
 fn run_step_target_text_spells_constructor(tokens: List<Token>) -> Bool {
-  fold_list(xs: tokens, empty: false, cons: fn(acc, tok) { if acc { true } else { tok.lexeme == gunbc_run_step_target_constructor_name } })
+  fold_list(xs: run_step_target_constructors, empty: false, cons: fn(a, row) {
+    if a { true } else {
+      fold_list(xs: tokens, empty: false, cons: fn(b, tok) { if b { true } else { tok.lexeme == row.constructor_name } })
+    }
+  })
 }
 
 // A labeled child of an already-parsed call node, read by the label's LEXEME (so a keyword label matches
@@ -275,18 +328,19 @@ fn run_step_target_arg_of_label(node: Node, label: String) -> RunStepTargetArg {
 fn run_step_target_site_of_call(caller: String, file: String, node: Node) -> Optional<RunStepTargetSite> {
   match application_head_read(site: node) {
     ApplicationHeadFound { head: _, head_identity: AtomHead { identity: id }, operands: _ } =>
-      if symbol_lexeme(sym: id) == gunbc_run_step_target_constructor_name {
-        Present {
-          value: RunStepTargetSite {
-            file: file,
-            caller: caller,
-            start: node_occurrence_id_ceiling(node: node, floor: 0),
-            module_arg: run_step_target_arg_of_label(node: node, label: run_step_target_module_label),
-            function_arg: run_step_target_arg_of_label(node: node, label: run_step_target_function_label)
+      match run_step_target_row_named(name: symbol_lexeme(sym: id)) {
+        Present { value: row } =>
+          Present {
+            value: RunStepTargetSite {
+              file: file,
+              caller: caller,
+              start: node_occurrence_id_ceiling(node: node, floor: 0),
+              constructor: row,
+              module_arg: run_step_target_arg_of_label(node: node, label: row.module_label),
+              function_arg: run_step_target_arg_of_label(node: node, label: row.function_label)
+            }
           }
-        }
-      } else {
-        Absent
+        Absent => Absent
       }
     _ => Absent
   }
@@ -463,7 +517,7 @@ fn reference_site_judged(site: ReferenceSite, targets: CitedTargets, resolution:
 // be resolved through ITS imports), the named target module when the argument is a literal, and always the
 // constructor's home (so a caller's import of the constructor has a loaded home to resolve to).
 fn run_step_target_cited_module_names(target_sites: List<RunStepTargetSite>) -> Map<String, Bool> {
-  fold_list(xs: target_sites, empty: map_insert(m: empty_map(), key: gunbc_run_step_target_home_module, value: true), cons: fn(acc, s) {
+  fold_list(xs: target_sites, empty: run_step_target_home_seeded(base: empty_map()), cons: fn(acc, s) {
     let with_caller = map_insert(m: acc, key: s.caller, value: true)
     match s.module_arg {
       RunStepTargetLiteral { value: v } => map_insert(m: with_caller, key: v, value: true)
@@ -475,7 +529,8 @@ fn run_step_target_cited_module_names(target_sites: List<RunStepTargetSite>) -> 
 // The declaration names whose re-export homes the context loader must pull in: every targeted entry name, plus
 // the constructor name itself (so a caller that IMPORTS the constructor resolves that import to its home).
 fn run_step_target_decl_names(target_sites: List<RunStepTargetSite>) -> List<String> {
-  let with_constructor: List<String> = [ gunbc_run_step_target_constructor_name ]
+  let with_constructor: List<String> =
+    fold_list(xs: run_step_target_constructors, empty: [], cons: fn(a, row) { list_snoc_item(xs: a, item: row.constructor_name) })
   fold_list(xs: target_sites, empty: with_constructor, cons: fn(acc, s) {
     match s.function_arg {
       RunStepTargetLiteral { value: v } => list_snoc_item(xs: acc, item: v)
@@ -494,9 +549,9 @@ fn run_step_target_arg_text(arg: RunStepTargetArg) -> String {
 fn run_step_target_site_head(site: RunStepTargetSite) -> String {
   concat(
     site.file, "@", int_to_decimal_string(value: site.start), ": ",
-    gunbc_run_step_target_constructor_name, "(",
-    run_step_target_module_label, ": ", run_step_target_arg_text(arg: site.module_arg), ", ",
-    run_step_target_function_label, ": ", run_step_target_arg_text(arg: site.function_arg), ")"
+    site.constructor.constructor_name, "(",
+    site.constructor.module_label, ": ", run_step_target_arg_text(arg: site.module_arg), ", ",
+    site.constructor.function_label, ": ", run_step_target_arg_text(arg: site.function_arg), ")"
   )
 }
 
@@ -508,7 +563,7 @@ fn run_step_refused_has(refused: List<String>, module_name: String) -> Bool {
 }
 
 fn run_step_target_site_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
-  match run_step_target_callee_verdict(caller: site.caller, context: context) {
+  match run_step_target_callee_verdict(caller: site.caller, constructor: site.constructor, context: context) {
     RunStepTargetIsConstructor => run_step_target_entry_line(site: site, targets: targets, refused: refused, context: context)
     RunStepTargetNotConstructor => Absent
     RunStepTargetCalleeUnconfirmed { reason: reason } =>
@@ -529,10 +584,10 @@ type RunStepTargetCalleeVerdict
   | RunStepTargetNotConstructor
   | RunStepTargetCalleeUnconfirmed { reason: String }
 
-fn run_step_target_callee_verdict(caller: String, context: ResolutionContext) -> RunStepTargetCalleeVerdict {
-  match resolve_declaration_ref(ref: decl_ref(module_path: gunbc_run_step_target_home_module, decl_name: gunbc_run_step_target_constructor_name), context: context) {
+fn run_step_target_callee_verdict(caller: String, constructor: RunStepTargetConstructor, context: ResolutionContext) -> RunStepTargetCalleeVerdict {
+  match resolve_declaration_ref(ref: decl_ref(module_path: constructor.home_module, decl_name: constructor.constructor_name), context: context) {
     DeclarationRefResolved { declaration_identity: canon } =>
-      match resolve_declaration_ref(ref: decl_ref(module_path: caller, decl_name: gunbc_run_step_target_constructor_name), context: context) {
+      match resolve_declaration_ref(ref: decl_ref(module_path: caller, decl_name: constructor.constructor_name), context: context) {
         DeclarationRefResolved { declaration_identity: site_id } =>
           if site_id == canon {
             RunStepTargetIsConstructor
@@ -544,7 +599,7 @@ fn run_step_target_callee_verdict(caller: String, context: ResolutionContext) ->
         _ => RunStepTargetNotConstructor
       }
     _ =>
-      RunStepTargetCalleeUnconfirmed { reason: concat("the constructor home ", gunbc_run_step_target_home_module, " did not normalize into the resolution context, so no run-step target could be confirmed against it") }
+      RunStepTargetCalleeUnconfirmed { reason: concat("the constructor home ", constructor.home_module, " did not normalize into the resolution context, so no run-step target could be confirmed against it") }
   }
 }
 
@@ -554,10 +609,10 @@ fn run_step_target_callee_verdict(caller: String, context: ResolutionContext) ->
 fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
   match site.module_arg {
     RunStepTargetNotLiteral { text: mt } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", run_step_target_module_label, ": argument is not a string literal (", mt, "), so its entry cannot be checked") }
+      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.module_label, ": argument is not a string literal (", mt, "), so its entry cannot be checked") }
     RunStepTargetLiteral { value: module_name } => match site.function_arg {
       RunStepTargetNotLiteral { text: ft } =>
-        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", run_step_target_function_label, ": argument is not a string literal (", ft, "), so its entry cannot be checked") }
+        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.function_label, ": argument is not a string literal (", ft, "), so its entry cannot be checked") }
       RunStepTargetLiteral { value: function_name } =>
         match map_lookup(m: targets.standing, key: module_name) {
           Present { value: CitedModuleUnread { cause: cause } } =>
@@ -581,7 +636,7 @@ fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, functio
         Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: the target module ", module_name, " is not in the target universe, so it was never a run-time entry") }
       }
     DeclarationRefDeclarationAbsent { reference: _ } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", run_step_target_function_label, " named ", function_name) }
+      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
     DeclarationRefFieldAbsent { reference: _ } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetFieldAbsent: a run-step target names a whole declaration, not a field") }
     DeclarationRefContested { reference: _, claimants: claimants } =>
@@ -614,7 +669,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
   // The queued run-step callers and the constructor home must be in the load so their roots are walkable and the
   // callee identity resolvable; only pulled in when there ARE callers, so a pure-@ref run pays nothing for targets.
   let caller_set = fold_list(xs: target_callers, empty: cited_module_names(sites: supported), cons: fn(acc, c) { map_insert(m: acc, key: c.caller, value: true) })
-  let module_set = if is_empty(xs: target_callers) { caller_set } else { map_insert(m: caller_set, key: gunbc_run_step_target_home_module, value: true) }
+  let module_set = if is_empty(xs: target_callers) { caller_set } else { run_step_target_home_seeded(base: caller_set) }
   let pending = map_support_keys(m: module_set)
   if is_empty(xs: pending) {
     unsupported
