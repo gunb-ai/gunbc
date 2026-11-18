@@ -176,7 +176,7 @@ fn withdraw_legs(target: SshTarget, context: FleetSshExecutionContext, key: Stri
     BracketNotAcquired { refusal: r } =>
       WithdrawalRefused { refusal: WithdrawalRefusalOwnershipUnproven { cause: bracket_refusal_wire(r: r) }, left: read_back_host_state(target: target, context: context, units: units) }
     BracketAcquired { owned: owned } =>
-      match drain_until_quiescent_over(target: target, context: context, observed: units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+      match drain_until_quiescent_over(target: target, context: context, host: host, observed: units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
         BracketDrained { certified: cs } => complete_withdraw(target: target, context: context, key: key, host: host, units: units, owned: owned, certified: cs)
         BracketAdmissionNotClosed { listeners: ls, causes: cs } =>
           undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainNotClosed { listeners: ls, causes: cs })

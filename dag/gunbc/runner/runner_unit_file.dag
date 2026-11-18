@@ -11,6 +11,8 @@ import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpo
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
+import extdeps.systemd { SystemdUnitProperty, RestartPolicyProperty, systemd_unit_property_wire }
+import extdeps.systemd.systemctl { systemctl_set_property_assignment }
 import extdeps.github.github { default_api_base }
 import extdeps.github.actions_jit_runner {
   github_jit_config_path_prefix,
@@ -213,6 +215,28 @@ data runner_labels_json_env_name: String = "LABELS_JSON"
 // the two cannot drift apart.
 data runner_unit_restart_delay: Second = second(5)
 
+// THE POLICY THE UNIT IS AUTHORED WITH, named once so it can be put back. The unit restarts after
+// every job (the JIT one-shot contract above), and a drain that overrides Restart= for the length of
+// a bracket (gunbc.runner.runner_host_cap_bracket restart_inhibit_over) has to restore THIS value,
+// not a copy someone kept -- a slot left with Restart=no serves one job and never comes back, which
+// is a quieter failure than the drain refusing.
+data runner_unit_restart_policy: NonEmptyStr = "always" as NonEmptyStr
+
+// THE OVERRIDE A DRAIN PUTS ON THAT POLICY, and the assignment as ONE value shared by the command that
+// runs it and the sudoers line that authorizes it (gunbc.executor_privileged_operation's rule that the
+// grant and the argv are one authoring rendered twice). systemctl(1): set-property changes the property at
+// runtime for the loaded unit; the runtime drop-in it writes is replaced by the unit's own file at the
+// next daemon-reload, which is why a bracket that overrides Restart= has to put the authored value back
+// itself rather than rely on that.
+data runner_slot_restart_inhibit_value: NonEmptyStr = "no" as NonEmptyStr
+
+fn restart_property_assignment(value: NonEmptyStr) -> String {
+  systemctl_set_property_assignment(
+    property: systemd_unit_property_wire(property: RestartPolicyProperty),
+    value: value,
+  )
+}
+
 // THE CAPABILITY PAIR THE DEPRIV DROP-IN RENDERS when the unit's user must drop to a job user.
 // A non-root process cannot setuid; systemd's ambient-capability grant is the modeled mechanism,
 // and it is exactly CAP_SETUID and CAP_SETGID -- nothing more. The bounding set is narrowed to
@@ -380,7 +404,7 @@ fn runner_unit_file(
               concat(
                 [
                   ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
-                  Restart { policy: "always" as NonEmptyStr },
+                  Restart { policy: runner_unit_restart_policy },
                   RestartSec { duration: to_string(second_count(runner_unit_restart_delay)) as NonEmptyStr },
                 ],
                 concat(

@@ -19,6 +19,8 @@ import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
 import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner.runner_slot_retirement { HostDrainUnnamed, host_drain_interruption_authorization }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.runner.runner_host_cap_bracket { cap_write_gate_of, CapWriteGate, CapWriteAdmitted, CapWriteRefused, runner_host_cap_admission_closure, read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -38,6 +40,19 @@ import gunbc.runner.runner_host_cap_bracket {
   RosterBusy,
   RosterUnread,
   RosterDisagrees,
+  DrainAction,
+  ActionInhibitRestart,
+  ActionStopInhibitedListener,
+  ActionAwaitLiveJob,
+  ActionHold,
+  drain_action_of,
+  restart_policy_reading_of_text,
+  restart_policy_is_inhibited,
+  restart_inhibit_needed,
+  restart_release_step_of,
+  ReleasePutBack,
+  ReleaseNothingToPutBack,
+  ReleaseRefused,
   ListenerRosterReading,
   AdmissionMaskRosterAndNoWorker,
   listener_roster_reading_of,
@@ -1543,4 +1558,92 @@ test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
     _ => false
   }
   typed_ok && deact_ok && failed_ok && stopped_ok && masked_deact_ok && masked_stopped_ok && unknown_refused_ok
+}
+
+// ── THE DRAIN'S LEG ON A LIVE HOST (roadmap node fleet-no-route-masks-a-running-unit) ─────────────
+// The control that node's first_slice asks for: over a host whose runner unit is RUNNING, the drain must
+// take the slot out of service WITHOUT masking that running unit, and a unit already stopped must still be
+// masked (the second half is the existing mask-leg controls, which this change does not touch). What the
+// drain decides for one slot is `drain_action_of`, so that is what these pin.
+//
+// RED ON THE DRAIN THAT HAS NO STOP LEG: an open idle listener is inhibited and then stopped, not waited
+// on until the bound refuses; a live job is inhibited and waited on, never stopped.
+
+// an idle listener the roster certifies: first the restart override, then -- only once that override has
+// been READ BACK as in effect -- the stop
+test fn an_open_idle_listener_is_inhibited_and_then_stopped() -> Bool {
+  let listener = SlotDrainReading { unit: u(n: "01"), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterNotBusy { joined: minted_ne(n: "01", tag: slot_current_mint_tag) } } }
+  let srv3 = host_drain_interruption_authorization(host: operator_host_srv3)
+  (match drain_action_of(r: listener, restart_inhibited: false, drain: srv3) { ActionInhibitRestart { unit: un } => un == u(n: "01") _ => false })
+    && (match drain_action_of(r: listener, restart_inhibited: true, drain: srv3) { ActionStopInhibitedListener { unit: un } => un == u(n: "01") _ => false })
+}
+
+// a slot with a Runner.Worker in its cgroup is somebody's build: the drain closes the path back up and
+// waits. It is never the stop, whether or not the override is already on.
+test fn a_live_job_is_inhibited_and_waited_on_and_never_stopped() -> Bool {
+  let busy = SlotDrainReading { unit: u(n: "02"), admission: AdmissionOpen, run: RunWorkerLive }
+  let srv3 = host_drain_interruption_authorization(host: operator_host_srv3)
+  (match drain_action_of(r: busy, restart_inhibited: false, drain: srv3) { ActionInhibitRestart { unit: un } => un == u(n: "02") _ => false })
+    && (match drain_action_of(r: busy, restart_inhibited: true, drain: srv3) { ActionAwaitLiveJob { unit: un } => un == u(n: "02") _ => false })
+}
+
+// THE LEG STAYS AS NARROW AS IT WAS: a listener the roster will not certify -- unread, busy, or
+// disagreeing with the host -- is held, not stopped, exactly as before the leg existed. Stopping one of
+// those is cancelling a job on the word of nothing.
+test fn a_busy_registration_is_held_or_waited_on_and_never_stopped() -> Bool {
+  let readings = [
+    SlotDrainReading { unit: u(n: "04"), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterBusy { joined: minted_ne(n: "04", tag: slot_current_mint_tag) } } },
+    SlotDrainReading { unit: u(n: "12"), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterBusy { joined: minted_ne(n: "12", tag: slot_current_mint_tag) } } },
+  ]
+  let srv3 = host_drain_interruption_authorization(host: operator_host_srv3)
+  all(readings, r => match drain_action_of(r: r, restart_inhibited: false, drain: srv3) {
+    ActionStopInhibitedListener { unit: _ } => false
+    ActionInhibitRestart { unit: _ } => true
+    _ => false
+  })
+    && all(readings, r => match drain_action_of(r: r, restart_inhibited: true, drain: srv3) {
+      ActionStopInhibitedListener { unit: _ } => false
+      ActionAwaitLiveJob { unit: _ } => true
+      _ => false
+    })
+}
+
+// THE SCOPE OF THE OPERATOR'S DECISION, AS A RED CONTROL. srv3-03 is in the enumerated scope of
+// srv3_host_drain_interruption_authorization; srv3-14 is not (the width-cut row names it, the drain row
+// does not, and the drain does not read that row). Same reading, same inhibited override, opposite action:
+// inside is stopped, outside is held -- and with no row for the host at all, even the inside unit is held.
+// So the leg cannot reach a unit the operator never enumerated, and a host with no decision keeps the
+// behaviour that has no stop leg.
+test fn the_drain_stop_reaches_only_the_units_the_operator_enumerated() -> Bool {
+  let srv3 = host_drain_interruption_authorization(host: operator_host_srv3)
+  let inside = SlotDrainReading { unit: u(n: "03"), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterUnread { cause: "the org roster does not list a JIT registration" } } }
+  let outside = SlotDrainReading { unit: u(n: "14"), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterUnread { cause: "the org roster does not list a JIT registration" } } }
+  (match drain_action_of(r: inside, restart_inhibited: true, drain: srv3) { ActionStopInhibitedListener { unit: un } => un == u(n: "03") _ => false })
+    && (match drain_action_of(r: inside, restart_inhibited: false, drain: srv3) { ActionInhibitRestart { unit: un } => un == u(n: "03") _ => false })
+    && (match drain_action_of(r: outside, restart_inhibited: true, drain: srv3) { ActionHold { unit: un } => un == u(n: "14") _ => false })
+    && (match drain_action_of(r: outside, restart_inhibited: false, drain: srv3) { ActionHold { unit: un } => un == u(n: "14") _ => false })
+    && (match drain_action_of(r: inside, restart_inhibited: true, drain: HostDrainUnnamed) { ActionHold { unit: un } => un == u(n: "03") _ => false })
+    && (match drain_action_of(r: outside, restart_inhibited: true, drain: HostDrainUnnamed) { ActionHold { unit: un } => un == u(n: "14") _ => false })
+}
+
+// the override is judged by what the unit READS BACK, not by the write's exit status: the real shape of
+// `systemctl show -p Restart` is what decides, and an answer with no Restart= line is not an answer.
+test fn the_restart_override_is_judged_by_the_read_back() -> Bool {
+  let off = restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Id=actions-runner@srv4-01.service\nRestart=no\n")
+  let on = restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Id=actions-runner@srv4-01.service\nRestart=always\n")
+  let missing = restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Id=actions-runner@srv4-01.service\n")
+  restart_policy_is_inhibited(r: off)
+    && !restart_policy_is_inhibited(r: on)
+    && !restart_inhibit_needed(reading: off)
+    && restart_inhibit_needed(reading: on)
+    && !restart_inhibit_needed(reading: missing)
+}
+
+// releasing owes the authored policy back ONLY when the unit does not already read it, and refuses when
+// the policy is unread: a slot is never reported restored on an unread answer.
+test fn releasing_the_override_owes_the_authored_policy_back_or_refuses() -> Bool {
+  (match restart_release_step_of(reading: restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Restart=always\n")) { ReleaseNothingToPutBack => true _ => false })
+    && (match restart_release_step_of(reading: restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Restart=no\n")) { ReleasePutBack { from: "no" } => true _ => false })
+    && (match restart_release_step_of(reading: restart_policy_reading_of_text(unit: u(n: "01"), stdout: "Restart=on-failure\n")) { ReleasePutBack { from: "on-failure" } => true _ => false })
+    && (match restart_release_step_of(reading: restart_policy_reading_of_text(unit: u(n: "01"), stdout: "")) { ReleaseRefused { cause: _ } => true _ => false })
 }

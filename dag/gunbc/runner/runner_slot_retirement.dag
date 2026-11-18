@@ -382,6 +382,78 @@ data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthoriza
 // srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
 // joined rather than rewritten, the same composition host_interruption_reason applies to the fabric
 // reassignment.
+// THE HOST DRAIN IS ITS OWN PERMISSION, AND IT IS NOT THE WIDTH DECISION. The cap bracket takes a whole
+// host out of admission: it stops every slot it owns, INCLUDING the ones the width decision keeps and
+// re-admits minutes later. The width rows deliberately do not reach those units -- srv4's names 13-21,
+// srv3's names 14-21 -- and the drain must not inherit a permission it was not given. Without a row here
+// the drain cannot take an uncorroborated listener out of service at all, which is what run 44232633417
+// timed out on: srv4's slots are JIT, their current registrations are absent from the org roster, so no
+// roster reading corroborates idleness, and 13 kept slots sat active for 5415s.
+//
+// WHAT THE OPERATOR DECIDED, in their words relayed the same day as the width cut: "yeah you can drain
+// the hosts, np". That is permission to interrupt, not a measurement that nothing was running -- the
+// distinction this module already draws (proposition 1 vs proposition 2) -- and the scope is enumerated
+// unit by unit like the others, so a later width change cannot widen it. srv4-06 and srv4-07 are NOT in
+// srv4's scope: they stood masked when the drain was scoped, so the bracket does not own them and this
+// row does not reach them.
+data srv4_host_drain_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv4-01.service" as NonEmptyStr,
+    "actions-runner@srv4-02.service" as NonEmptyStr,
+    "actions-runner@srv4-03.service" as NonEmptyStr,
+    "actions-runner@srv4-04.service" as NonEmptyStr,
+    "actions-runner@srv4-05.service" as NonEmptyStr,
+    "actions-runner@srv4-08.service" as NonEmptyStr,
+    "actions-runner@srv4-09.service" as NonEmptyStr,
+    "actions-runner@srv4-10.service" as NonEmptyStr,
+    "actions-runner@srv4-11.service" as NonEmptyStr,
+    "actions-runner@srv4-12.service" as NonEmptyStr,
+    "actions-runner@srv4-13.service" as NonEmptyStr,
+    "actions-runner@srv4-14.service" as NonEmptyStr,
+    "actions-runner@srv4-15.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-11-18 (relayed by session clever-raven-401, msg_dd355648-562b-4f67-9aa9-fee2e5255448, quoting the operator verbatim: 'yeah you can drain the hosts, np'), scoped to srv4's committed CI slots 01-05 and 08-15: the cap bracket's host drain may stop these listeners, which may be holding a job, in order to apply the committed width 15; the decision does not extend to srv4-06, srv4-07, srv4's sessions, the deployment service, or anything else the host runs" as NonEmptyStr,
+}
+
+// srv3's is the same decision on the same day, scoped to the 13 slots its width cut keeps. It is minted
+// here rather than derived from srv3_width_cut_2026_11_18_interruption_authorization: that row names the
+// RETIREES (14-21) and reaching the kept population through it would be a prefix-style widening of a
+// permission whose whole point is that it names units one by one.
+data srv3_host_drain_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv3-01.service" as NonEmptyStr,
+    "actions-runner@srv3-02.service" as NonEmptyStr,
+    "actions-runner@srv3-03.service" as NonEmptyStr,
+    "actions-runner@srv3-04.service" as NonEmptyStr,
+    "actions-runner@srv3-05.service" as NonEmptyStr,
+    "actions-runner@srv3-06.service" as NonEmptyStr,
+    "actions-runner@srv3-07.service" as NonEmptyStr,
+    "actions-runner@srv3-08.service" as NonEmptyStr,
+    "actions-runner@srv3-09.service" as NonEmptyStr,
+    "actions-runner@srv3-10.service" as NonEmptyStr,
+    "actions-runner@srv3-11.service" as NonEmptyStr,
+    "actions-runner@srv3-12.service" as NonEmptyStr,
+    "actions-runner@srv3-13.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-11-18 (relayed by session clever-raven-401, msg_dd355648-562b-4f67-9aa9-fee2e5255448, quoting the operator verbatim: 'yeah you can drain the hosts, np'), scoped to srv3's committed CI slots 01-13: the cap bracket's host drain may stop these listeners, which may be holding a job, in order to apply the committed width 13 of gunb-ai/gunbc#16665; the decision does not extend to srv3-14..21, which the width-cut row names, nor to srv3's sessions or its serving engine" as NonEmptyStr,
+}
+
+// WHICH DRAIN ROW A HOST HAS. Unnamed is not a hole: a host with no row here simply never gets an
+// authorized stop of an uncorroborated listener, and the drain waits and refuses instead.
+type HostDrainAuthorization
+  = HostDrainNamed { authorization: InterruptionAuthorization }
+  | HostDrainUnnamed
+
+fn host_drain_interruption_authorization(host: HostIdentity) -> HostDrainAuthorization {
+  if (host as String) == (operator_host_srv4 as String) {
+    HostDrainNamed { authorization: srv4_host_drain_interruption_authorization }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    HostDrainNamed { authorization: srv3_host_drain_interruption_authorization }
+  } else {
+    HostDrainUnnamed
+  }
+}
+
 data srv1_width_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: concat(srv1_transition_interruption_authorization.scope, srv1_width_cut_2026_10_16_interruption_authorization.scope),
   operator_reason: join([

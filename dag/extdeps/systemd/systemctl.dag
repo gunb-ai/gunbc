@@ -285,12 +285,20 @@ fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
 
 data systemctl_set_property_verb: NonEmptyStr = "set-property" as NonEmptyStr
 
+// THE ASSIGNMENT TEXT set-property takes, rendered ONCE. The sudoers line that authorizes the call and
+// the argv that runs it are both this string (gunbc.executor_privileged_operation's rule that a grant and
+// the command it permits are one authoring rendered twice), so a grant that does not match what is run
+// cannot be written.
+fn systemctl_set_property_assignment(property: NonEmptyStr, value: NonEmptyStr) -> String {
+  concat(property as String, concat("=", value as String))
+}
+
 fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
   [
     "systemctl",
     systemctl_set_property_verb as String,
     unit as String,
-    concat(property as String, concat("=", value as String)),
+    systemctl_set_property_assignment(property: property, value: value),
   ]
 }
 
