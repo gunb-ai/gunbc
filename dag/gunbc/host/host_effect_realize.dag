@@ -195,7 +195,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host.host_converge { HostConverge }
@@ -3510,8 +3510,10 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
   match effect_intent.target {
     HostOs { node: host } =>
       match compute_host_primary_cpu(host: host) {
-        Present { value: cpu } => Present { value: cpu.catalog.architecture }
-        Absent => none
+        PrimaryCpuMeasured { cpu: cpu } => Present { value: cpu.catalog.architecture }
+        // No arch is invented for a host with no CPU row, and none for a host nobody has surveyed.
+        PrimaryCpuAbsentFromSurvey { host: _ } => none
+        PrimaryCpuCensusUnread { host: _ } => none
       }
     BmcController { node: _ } => none
     RunnerLocalHost => none

@@ -28,7 +28,7 @@ import gunbc.live_deploy.served_slice_charge {
   ServedDeploymentClaimUnmeasured,
 }
 import gunbc.ci.ci_fleet { ComputeOffer }
-import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.fleet.fleet_container {
   FleetContainerType,
@@ -489,9 +489,12 @@ fn fleet_host_plan_for_offer(
   oomd: OomdEnforcementEvidence
 ) -> FleetHostPlan {
   match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent =>
+    // The reason names WHICH kind of absence this is: an unread census is not a machine without a CPU (review 96379).
+    PrimaryCpuCensusUnread { host: _ } =>
+      FleetHostPlanUnsound { reason: "no hardware census has been read for this host: refuse to derive a host plan from a board nobody has surveyed (fail closed)" }
+    PrimaryCpuAbsentFromSurvey { host: _ } =>
       FleetHostPlanUnsound { reason: "compute offer has no primary CPU facts: refuse to derive a host plan without a measured core count (the CPU-core runner cap needs nproc; fail closed)" }
-    Present { value: cpu } =>
+    PrimaryCpuMeasured { cpu: cpu } =>
       fleet_host_plan_for(
         name: offer.supply.physical.identity,
         host: host_usable_ram_ceiling_bytes(host: offer.supply.physical.identity),
