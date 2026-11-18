@@ -10,18 +10,38 @@ module gunbc.roadmap.roadmap_authority_fixture_writer
 // typed contract, and the test module's only contact with it is (a) handing over path/content pairs and (b)
 // interrogating the guard.
 //
-// WHY THIS IS NOT gunbc.instruments.generated_artifact_gate::write_generated_artifact. That is the sanctioned
-// route, and it is closed on purpose: it refuses any path it has not rostered
-// (gunbc.generated_artifact GeneratedArtifactPathUnrostered), because its roster is a CLOSED ENUM of
-// compiler and CI artifacts -- each variant carries an artifact_location, a consumer disposition that has to
-// answer why the file must survive in a git checkout, and a producer row that must resolve to a live
-// declaration. Putting roadmap acceptance-event bytes onto that roster is a claim about what those bytes are
-// FOR, and I am not going to invent that claim as a side effect of a test-infrastructure PR. The rung is
-// lowered instead, by name, with the capability that would raise it:
-// gunbc.rung_drop.roadmap_authority_fixture_not_rostered_as_generated_artifact. Composing the same modelled
-// primitives the sanctioned route composes (extdeps.tools.gnu_coreutils mkdir_parents_command over
-// gunbc.command_runner's LocalExec transport, then Filesystem.Write) is the honest middle: no new semantics,
-// and no second gate.
+// WHY THIS IS NOT gunbc.instruments.generated_artifact_gate::write_generated_artifact, AND WHY THAT
+// IS NOT A SECOND PATH. The gate is the sanctioned route FOR ITS OWN ROSTER: it selects from
+// gunbc.generated_artifact::generated_artifact_registry and refuses anything unrostered
+// (gunbc.generated_artifact GeneratedArtifactPathUnrostered). That roster is a CLOSED POPULATION --
+// the files the repo's own build, CI and toolchain read as INPUTS (workflows, .gitignore, the stage0
+// mirrors, the iOS oracle fixtures), each carrying an artifact_location, a RepoConsumer disposition
+// answering why the file must survive in a git checkout, and a producer row that must resolve to a
+// live declaration. Adding a variant is not a local edit: it is a new member of that population, so
+// every exhaustive match over GeneratedArtifact gains an arm, plus a registry row, a generator arm, a
+// commit policy, a ledger row and a docs-projection arm. Ruling roadmap acceptance-event bytes onto it
+// is a claim about what those bytes are FOR, and that ruling is not this change's to make -- it is the
+// kind of decision that belongs in gunbc.design_ruling, not smuggled in beside a test-infrastructure PR.
+//
+// SO THIS TAKES THE WRITE PATH EVERY OTHER FILE-WRITING MODULE TAKES. Filesystem.Write is the ordinary
+// route for a module that writes a file -- hundreds of modules across dag/ and src/v2 take it, among
+// them gunbc.std.durable_append_log and the product store modules -- and gunbc.command_runner's
+// LocalExec is the ordinary transport for the one mkdir -p that must precede it, because
+// Filesystem.Write creates no parent directory and returns FALSE SILENTLY when the parent is missing
+// (measured: the first wet run wrote nothing and said only false). That is not a route parallel to the
+// gate; the gate is one of the users of these same two primitives. What the gate gets from its roster
+// -- which prefix may be written, and that a refused write is never reported as success -- is supplied
+// HERE for the one prefix this emitter may touch: roadmap_authority_fixture_guard is the prefix
+// admission, RoadmapAuthorityFixtureWrite is the refusal, and the guard is itself interrogated by a
+// witness rather than trusted by assertion. The how_to_work tells for "a second path beside a modelled
+// route" is about an artifact that will not survive the terminal architecture; this fixture is read by
+// the interpreter's own Filesystem.Read as the oracle for the encoder's bytes, which is exactly the
+// shape of the fixture rows the gate already carries.
+//
+// IF THE FIXTURE IS RULED GATE-GOVERNED, THE ROSTER ROW OWNS BOTH STEPS. That row would supply the
+// prefix admission and the parent-directory step, and this module collapses to
+// roadmap_authority_fixture_bytes plus a call to write_generated_artifact -- the cheaper shape, and the
+// one to take once such a ruling exists. It is not taken here because the ruling does not.
 //
 // EVERY STEP ANSWERS WITH A TYPE, INCLUDING THE FAILURE. The first wet run of the generator returned false
 // five times over five files and nothing noticed: a Bool cannot say which file, which step, or why, and
@@ -70,7 +90,7 @@ type RoadmapAuthorityFixtureEmit =
     FixtureEmitComplete { written: List<String> }
   | FixtureEmitRefused { path: String, step: String, reason: String }
 
-data FixtureWriteTarget {
+type FixtureWriteTarget {
   path: String
   content: String
 }
