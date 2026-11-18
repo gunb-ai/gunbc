@@ -8869,6 +8869,13 @@ fn zesty_g3() -> ProcessExit {
     ExitSuccess
   }
 }
+fn zesty_z0() -> ProcessExit {
+  if 1 > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
