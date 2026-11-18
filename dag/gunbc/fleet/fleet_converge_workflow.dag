@@ -15,7 +15,7 @@ import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invo
 import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
-import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name }
+import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
@@ -5205,7 +5205,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
 // prod_role_selection), so this mode can never open a second deploy path for production.
 data fleet_converge_desired_instance_deploy_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: Srv1RootMutation(DesiredInstanceDeploy))
 
-data fleet_converge_desired_instance_deploy_selected_inputs: List<String> = ["instance", "plan_workflow_run_id", "apply_workflow_run_id", "plan_artifact_hash", "expected_revision"]
+data fleet_converge_desired_instance_deploy_selected_inputs: List<String> = ["subject_host", "plan_workflow_run_id", "apply_workflow_run_id", "plan_artifact_hash", "expected_revision"]
 
 fn fleet_converge_desired_instance_deploy_step() -> Step {
   RunStep {
@@ -5218,7 +5218,7 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
       kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
       kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
-      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.instance }}")),
+      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
     ] },
     working_directory: none,
     if_condition: none,
@@ -7824,10 +7824,10 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
 
 data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
     name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg. desired_instance_deploy ONLY: the value is PACKED '<host>:<instance_id>' (e.g. srv1:srv1-lab-codex-feedback-v0) -- the host still means the host, and the ONE instance to converge rides on it after the colon; the options list carries those packed rows, derived from the srv1 roster minus the prod-role holder. A typed parser reads both halves and the deploy refuses a malformed value, a host that is not the instance's own roster host, or the prod-role holder." },
     required: false,
     default: none,
-    type: InputChoice { options: fleet_converge_enrolled_host_options },
+    type: InputChoice { options: concat(fleet_converge_enrolled_host_options, fleet_converge_desired_instance_deploy_options(selection: prod_role_selection, rows: desired_deployment_roster(), host: operator_host_srv1)) },
   }
 
 data fleet_converge_mode_input: DispatchInput = DispatchInput {
@@ -7888,16 +7888,19 @@ data apply_workflow_run_id_mode_readings: List<DispatchFieldModeReading> = [
 // which refuses emission when count exceeds the limit. The mode description being long was a
 // misattribution: a 25-input file with the long description dispatched. Per-mode contracts stay
 // on this module; keep the input description short anyway.
-// THE INSTANCE OPTIONS offered to the instance-scoped srv1 deploy mode (Srv1RootMutation(DesiredInstanceDeploy)),
-// DERIVED from the roster rather than a hand list (gunbc.design_argument::single_authority): the srv1 roster
-// rows, MINUS the prod-role holder. The job runs with srv1 access, so only srv1 rows are convergible by it;
-// the prod-role holder -- DERIVED from prod_role_selection, never named here -- is deployed by the prod-role
-// transaction (live_deploy_apply_prod_role_transaction_wet), so offering it in this mode would open a SECOND
-// deploy path for production (the same single-path rule that keeps the lab off the prod-role route). With the
+// THE PACKED '<host>:<instance_id>' OPTIONS offered to the instance-scoped srv1 deploy mode
+// (Srv1RootMutation(DesiredInstanceDeploy)), DERIVED from the roster rather than a hand list
+// (gunbc.design_argument::single_authority): the srv1 roster rows, MINUS the prod-role holder. They ride
+// on the host-shaped `subject_host` input (the workflow_dispatch input budget is at GitHub's ceiling, so
+// the instance cannot be its own row -- it packs after a colon the host cannot contain). The job runs
+// with srv1 access, so only srv1 rows are convergible by it; the prod-role holder -- DERIVED from
+// prod_role_selection, never named here -- is deployed by the prod-role transaction
+// (live_deploy_apply_prod_role_transaction_wet), so offering it in this mode would open a SECOND deploy
+// path for production (the same single-path rule that keeps the lab off the prod-role route). With the
 // current model this resolves to srv1-lab-codex-feedback-v0 ALONE: srv1-production IS the prod-role holder
-// (srv1_daily_workspace_deployment) and srv2-deploy is not srv1. An empty option set (no srv1 non-holder row)
-// yields a run that can name no instance, which live_deploy_apply_desired_wet_from_ci refuses -- never a
-// fallback to another instance (gunbc.design_argument::fail_closed).
+// (srv1_daily_workspace_deployment) and srv2-deploy is not srv1. An empty option set (no srv1 non-holder
+// row) yields a run that can name no instance, which live_deploy_desired_instance_deploy_decide refuses --
+// never a fallback to another instance (gunbc.design_argument::fail_closed).
 fn fleet_converge_desired_instance_deploy_options(
   selection: ProdRoleSelection,
   rows: List<DesiredDeployment>,
@@ -7911,7 +7914,7 @@ fn fleet_converge_desired_instance_deploy_options(
     filter(rows, row =>
       (row.target.host.identity == host)
         && match holder { Present { value: d } => !(row.instance.deployment == d) Absent => true }),
-    row => row.instance.instance_id as String,
+    row => join([row.target.host.identity as String, live_deploy_ci_instance_subject_delimiter, row.instance.instance_id as String], ""),
   )
 }
 
@@ -7921,13 +7924,6 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
 
   fleet_converge_host_input,
   fleet_converge_subject_host_input,
-  DispatchInput {
-    name: "instance",
-    description: Present { value: "desired_instance_deploy only: the ONE srv1 roster row to converge, by its instance id. Options are the srv1 non-prod-role roster rows derived from desired_deployment_roster() and prod_role_selection -- the prod-role holder is never offered (it deploys through the prod-role transaction). The deploy entry refuses an unnameable or non-roster id; there is no default instance" },
-    required: false,
-    default: none,
-    type: InputChoice { options: fleet_converge_desired_instance_deploy_options(selection: prod_role_selection, rows: desired_deployment_roster(), host: operator_host_srv1) },
-  },
   DispatchInput {
     name: "arrival_subject",
     description: Present { value: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1" },

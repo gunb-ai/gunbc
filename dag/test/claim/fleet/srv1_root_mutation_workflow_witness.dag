@@ -27,7 +27,7 @@ import gunbc.fleet.fleet_workflow_steps {
   gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes,
   gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count,
 }
-import extdeps.github.actions { Job, Step, RunStep, UsesStep }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep, InputChoice, InputString }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
@@ -64,7 +64,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation, fleet_converge_mode_job_id,
   fleet_converge_desired_instance_deploy_job, fleet_converge_desired_instance_deploy_options,
 }
-import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, deployment_is_prod_role_holder }
+import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder, live_deploy_parse_ci_instance_subject, CiInstanceSubject, CiInstanceSubjectParsed, CiInstanceSubjectRefused, live_deploy_desired_instance_deploy_decide, InstanceScopedDeployDecision, InstanceScopedDeployAdmitted, InstanceScopedDeployRefused }
 import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_production_desired_deployment }
 import gunbc.deployment_risk { prod_role_selection }
 import gunbc.fleet.fleet_intent { operator_host_srv1 }
@@ -256,8 +256,10 @@ test fn the_instance_options_are_the_lab_alone_and_exclude_the_prod_role_holder(
     rows: desired_deployment_roster(),
     host: operator_host_srv1,
   )
-  opts == [srv1_dashboard_lab_id as String]
-    && !any(opts, x => x == (srv1_dashboard_live_id as String))
+  let lab_packed = join([operator_host_srv1 as String, live_deploy_ci_instance_subject_delimiter, srv1_dashboard_lab_id as String], "")
+  let holder_packed = join([operator_host_srv1 as String, live_deploy_ci_instance_subject_delimiter, srv1_dashboard_live_id as String], "")
+  opts == [lab_packed]
+    && !any(opts, x => x == holder_packed)
 }
 
 // AN EMPTY ROSTER OFFERS NOTHING: the choice would be empty and the entry then has nothing valid to name
@@ -307,4 +309,66 @@ test fn the_deploy_step_carries_the_named_instance_env() -> Bool {
       }
     _ => false
   })
+}
+
+// THE PACKED POSITIVE CONTROL: the well-formed '<host>:<instance_id>' for the lab (host derived from the
+// lab's own roster row, never spelled) is ADMITTED and reaches the lab deployment -- the only srv1 row this
+// mode may converge.
+test fn the_packed_lab_subject_is_admitted() -> Bool {
+  let packed = join([operator_host_srv1 as String, live_deploy_ci_instance_subject_delimiter, srv1_dashboard_lab_id as String], "")
+  match live_deploy_desired_instance_deploy_decide(packed: packed, access: ci_deploy_srv1_access) {
+    InstanceScopedDeployAdmitted { deployment: d } => d.instance.instance_id == srv1_dashboard_lab_id
+    InstanceScopedDeployRefused { reason: _ } => false
+  }
+}
+
+// RED CONTROL -- A MALFORMED PACKED SUBJECT REFUSES, each shape with its own typed refusal (never a
+// default): no colon, two colons, empty host, empty instance.
+test fn a_malformed_packed_subject_refuses_every_shape() -> Bool {
+  let no_colon = match live_deploy_parse_ci_instance_subject(packed: "srv1-lab-codex-feedback-v0") {
+    CiInstanceSubjectRefused { reason: _ } => true CiInstanceSubjectParsed { host: _, instance_id: _ } => false
+  }
+  let two_colons = match live_deploy_parse_ci_instance_subject(packed: "srv1:foo:bar") {
+    CiInstanceSubjectRefused { reason: _ } => true CiInstanceSubjectParsed { host: _, instance_id: _ } => false
+  }
+  let empty_host = match live_deploy_parse_ci_instance_subject(packed: ":srv1-lab-codex-feedback-v0") {
+    CiInstanceSubjectRefused { reason: _ } => true CiInstanceSubjectParsed { host: _, instance_id: _ } => false
+  }
+  let empty_instance = match live_deploy_parse_ci_instance_subject(packed: "srv1:") {
+    CiInstanceSubjectRefused { reason: _ } => true CiInstanceSubjectParsed { host: _, instance_id: _ } => false
+  }
+  no_colon && two_colons && empty_host && empty_instance
+}
+
+// RED CONTROL -- A HOST THAT IS NOT THE INSTANCE'S OWN ROSTER HOST REFUSES: the packed host is a machine
+// the lab does not live on, so the deploy cannot be pointed at a different box under a correct instance id.
+test fn a_packed_host_that_is_not_the_roster_host_refuses() -> Bool {
+  let packed = join(["srv9-not-the-host", live_deploy_ci_instance_subject_delimiter, srv1_dashboard_lab_id as String], "")
+  match live_deploy_desired_instance_deploy_decide(packed: packed, access: ci_deploy_srv1_access) {
+    InstanceScopedDeployRefused { reason } => string_contains(s: reason, pattern: "is not the roster host")
+    InstanceScopedDeployAdmitted { deployment: _ } => false
+  }
+}
+
+// RED CONTROL -- THE PROD-ROLE HOLDER REFUSES EVEN IN THE PACKED SHAPE: srv1-live on its own host parses
+// and selects, but the holder arm refuses (distinct reason), so this stays the single non-prod-role path.
+test fn the_prod_role_holder_refuses_even_in_the_packed_shape() -> Bool {
+  let packed = join([operator_host_srv1 as String, live_deploy_ci_instance_subject_delimiter, srv1_dashboard_live_id as String], "")
+  match live_deploy_desired_instance_deploy_decide(packed: packed, access: ci_deploy_srv1_access) {
+    InstanceScopedDeployRefused { reason } => string_contains(s: reason, pattern: "prod-role holder")
+    InstanceScopedDeployAdmitted { deployment: _ } => false
+  }
+}
+
+// THE CARRYING INPUT OFFERS THE PACKED LAB ROW: the host-shaped subject_host options are the union of the
+// enrolled host labels and the packed deploy rows, so an operator can actually submit srv1:srv1-lab... even
+// though the workflow_dispatch budget forbids a separate instance row.
+test fn the_subject_host_input_offers_the_packed_lab_option() -> Bool {
+  let lab_packed = join([operator_host_srv1 as String, live_deploy_ci_instance_subject_delimiter, srv1_dashboard_lab_id as String], "")
+  let opts = match fleet_converge_subject_host_input.type {
+    InputChoice { options: o } => o
+    InputString => []
+  }
+  any(opts, o => o == lab_packed)
+    && any(opts, o => o == (operator_host_srv1 as String))
 }

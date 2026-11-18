@@ -1384,36 +1384,91 @@ fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> P
   }
 }
 
-// THE ENV VAR THAT CARRIES THE INSTANCE TO A CI INSTANCE-SCOPED DEPLOY. A generated run step passes a
-// dispatch input to an entry ONLY through the environment (gunbc_run_command carries no --arg), so the
-// run's `instance` input is written to this variable by the step's env and read back here. One name,
-// written by the generator and read by this entry (gunbc.design_argument::single_authority).
+// THE ENV VAR THAT CARRIES THE PACKED '<host>:<instance_id>' SUBJECT TO A CI INSTANCE-SCOPED DEPLOY. A
+// generated run step passes a dispatch input to an entry ONLY through the environment (gunbc_run_command
+// carries no --arg), so the run's host-shaped `subject_host` input -- packed '<host>:<instance_id>' for
+// this mode -- is written to this variable by the step's env and parsed back here. One name, written by
+// the generator and read by this entry (gunbc.design_argument::single_authority).
 data live_deploy_ci_instance_id_env_name: String = "GUNBC_DEPLOY_INSTANCE_ID"
 
 // THE CI TRANSACTION'S INSTANCE-SCOPED DEPLOY ENTRY. The generated `desired-instance-deploy` job calls
 // THIS (not live_deploy_apply_desired_wet) because a run step reaches an entry only through the
-// environment, never an argument: it reads the run's instance input from the env and converges that ONE
-// roster row through the one CI deploy path (ci_deploy_srv1_access). An unset or empty variable is a
-// named refusal, never a fallback to another instance (gunbc.design_argument::fail_closed): this entry
-// has NO default instance, so the run deploys exactly the named one or refuses. A named instance that
-// is not a srv1 roster row is refused BY NAME by live_deploy_desired_apply_selection. And the PROD-ROLE
-// HOLDER is refused here too: this mode is the NON-prod-role route, so even a hand-set instance env
-// cannot converge the holder -- it deploys only through the prod-role transaction, and this stays the
-// single deploy path for every other srv1 row (gunbc.design_argument::single_authority).
+// environment, never an argument: it reads the run's packed subject from the env and converges that ONE
+// roster row through the one CI deploy path (ci_deploy_srv1_access), by delegating every decision to
+// live_deploy_desired_instance_deploy_decide. An unset variable is a named refusal, never a fallback to
+// another instance (gunbc.design_argument::fail_closed): this entry has NO default instance, so the run
+// deploys exactly the named one or refuses.
 fn live_deploy_apply_desired_wet_from_ci() -> ProcessExit {
   match actions_variable_read(name: live_deploy_ci_instance_id_env_name) {
-    ActionsVariablePresent { value: instance_id } =>
-      match live_deploy_desired_apply_selection(instance_id: instance_id, access: ci_deploy_srv1_access) {
-        DesiredApplyRefused { reason } => exit_failure(reason: reason)
-        DesiredApplySelected { deployment } =>
-          if deployment_is_prod_role_holder(deployment: deployment) {
-            exit_failure(reason: join(["live_deploy desired_instance_deploy: instance '", instance_id, "' is the prod-role holder; this mode converges only NON-prod-role srv1 rows (the holder deploys through the prod-role transaction) -- there is no second deploy path for production"], ""))
-          } else {
-            live_deploy_wet_with_access(deployment: deployment, access: ci_deploy_srv1_access)
-          }
+    ActionsVariablePresent { value: packed } =>
+      match live_deploy_desired_instance_deploy_decide(packed: packed, access: ci_deploy_srv1_access) {
+        InstanceScopedDeployRefused { reason } => exit_failure(reason: reason)
+        InstanceScopedDeployAdmitted { deployment: deployment } =>
+          live_deploy_wet_with_access(deployment: deployment, access: ci_deploy_srv1_access)
       }
     ActionsVariableAbsent { variable, detail } =>
       exit_failure(reason: join(["the CI instance-scoped deploy named no instance: ", variable, " is ", detail, " -- there is no default instance to deploy"], ""))
+  }
+}
+
+// THE ONE TYPED PARSER for the packed '<host>:<instance_id>' value the instance-scoped srv1 deploy
+// carries on the host-shaped `subject_host` dispatch input (a colon cannot appear in a hostname nor in
+// an instance id, so a well-formed value splits into EXACTLY two non-empty parts). It returns a host and
+// an instance, or a typed refusal -- NEVER a default (gunbc.design_argument::fail_closed). This is the
+// single authority for the shape; the run step writes the raw field and this reads it back.
+type CiInstanceSubject
+  = CiInstanceSubjectParsed { host: String, instance_id: String }
+  | CiInstanceSubjectRefused { reason: String }
+
+data live_deploy_ci_instance_subject_delimiter: String = ":"
+
+fn live_deploy_parse_ci_instance_subject(packed: String) -> CiInstanceSubject {
+  let parts = split(s: packed, delimiter: live_deploy_ci_instance_subject_delimiter)
+  if length(parts) != 2 {
+    CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' is not '<host>:<instance_id>' (a colon cannot appear in a hostname or in an instance id)"], "") }
+  } else match list_head(xs: parts) {
+    Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
+    Present { value: host } =>
+      match list_head(xs: reverse(parts)) {
+        Absent => CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
+        Present { value: instance_id } =>
+          if string_length(s: host) == 0 {
+            CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty host"], "") }
+          } else if string_length(s: instance_id) == 0 {
+            CiInstanceSubjectRefused { reason: join(["the instance-scoped deploy value '", packed, "' carries an empty instance id"], "") }
+          } else {
+            CiInstanceSubjectParsed { host: host, instance_id: instance_id }
+          }
+      }
+  }
+}
+
+// THE ONE DECISION behind live_deploy_apply_desired_wet_from_ci, factored so a witness can drive it with
+// fixtures and no CI environment. It folds, in order: the typed parse; the one roster selection (an
+// unknown id, or a row whose host the access cannot reach, is refused BY NAME); the packed host MUST equal
+// the row's OWN host from the roster -- a host that does not match its instance is refused, so the host
+// field can never be pointed at a machine the instance does not live on; and the PROD-ROLE HOLDER is
+// refused -- this stays the single NON-prod-role srv1 deploy path (gunbc.design_argument::single_authority).
+// Every distinct condition carries its own reason; no arm defaults (gunbc.design_argument::fail_closed).
+type InstanceScopedDeployDecision
+  = InstanceScopedDeployAdmitted { deployment: DesiredDeployment }
+  | InstanceScopedDeployRefused { reason: String }
+
+fn live_deploy_desired_instance_deploy_decide(packed: String, access: DeployAccess) -> InstanceScopedDeployDecision {
+  match live_deploy_parse_ci_instance_subject(packed: packed) {
+    CiInstanceSubjectRefused { reason } => InstanceScopedDeployRefused { reason: reason }
+    CiInstanceSubjectParsed { host: host, instance_id: instance_id } =>
+      match live_deploy_desired_apply_selection(instance_id: instance_id, access: access) {
+        DesiredApplyRefused { reason } => InstanceScopedDeployRefused { reason: reason }
+        DesiredApplySelected { deployment: deployment } =>
+          if host != (deployment.target.host.identity as String) {
+            InstanceScopedDeployRefused { reason: join(["live_deploy desired_instance_deploy: packed host '", host, "' is not the roster host '", deployment.target.host.identity as String, "' of instance '", instance_id, "' -- the host field cannot name a machine the instance does not live on"], "") }
+          } else if deployment_is_prod_role_holder(deployment: deployment) {
+            InstanceScopedDeployRefused { reason: join(["live_deploy desired_instance_deploy: instance '", instance_id, "' is the prod-role holder; this mode converges only NON-prod-role srv1 rows (the holder deploys through the prod-role transaction) -- there is no second deploy path for production"], "") }
+          } else {
+            InstanceScopedDeployAdmitted { deployment: deployment }
+          }
+      }
   }
 }
 
