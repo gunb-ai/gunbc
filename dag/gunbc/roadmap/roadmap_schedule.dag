@@ -27,10 +27,12 @@ module gunbc.roadmap.roadmap_schedule
 // stage edges already carry, and it never appears as a scheduled leaf.
 //
 // The worker count is shown as an input and NEVER becomes a fact: it is echoed back inside the answer labelled
-// `workers`, typed as `PositiveInt` (std.integer: `Nat where gt_zero`) so a zero or negative count is not a
-// value a caller can write at a literal site; the runtime refusal below stays as the wall against the tracked
-// residue (pin.dag's frontier row `feature:refinement-evidence-at-non-literal-positions`: the positivity wall
-// holds at literal sites only, so a non-literal at a refined position still compiles).
+// `workers`, carried by the concurrency carrier this repo already decided on -- `roadmap_belt::BeltCapacity`
+// (`max_concurrent`), the same one `roadmap_forecast::ScheduleForecastAssumptions.worker_concurrency_cap` takes --
+// because "how many run at once" is one quantity with one authority (`single_authority`). A capacity that is not
+// positive refuses by name, in step with that lane's own `WorkerConcurrencyCapInvalid`: this unit does NOT re-type
+// another lane's carrier (making `BeltCapacity.max_concurrent` a `PositiveInt` would be a change to the belt
+// authority, outside this ticket's boundary), and it does not mint a second cap scalar.
 //
 // single_authority: occurrences, their edges, their LeafPaths and their count sources are IMPORTED from the
 // expansion; their working-day priors are read back through the SAME carrier via piece_member_days. Nothing here
@@ -44,7 +46,8 @@ module gunbc.roadmap.roadmap_schedule
 
 import std.types { Bool, Int, List, String, Map }
 import std.algebra { empty_map, map_insert, map_lookup, map_contains_key }
-import std.integer { nat_to_int, PositiveInt }
+import std.integer { nat_to_int }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
@@ -70,7 +73,7 @@ type ScheduledLeaf {
 
 // THE SCHEDULE ANSWER, the computed fields bundled so callers read them without matching the coproduct.
 type ScheduleAnswer {
-  workers: PositiveInt
+  workers: BeltCapacity
   leaves: List<ScheduledLeaf>
   in_flight_per_day: List<Int>
   // feature:roadmap-schedule-day-measure  dissolve-on: roadmap-schedule-calendar-binding binds the day grain (the
@@ -85,6 +88,22 @@ type ScheduleAnswer {
 // `horizon` is the last finish day; `critical_path` is the longest remaining path as a chain of LeafPaths and
 // `critical_length` its total days.
 //
+// WHY THIS IS NOT THE FORECAST'S CRITICAL PATH (conformance: "Diverges with no reason -- the only red").
+// gunbc.roadmap.roadmap_forecast already answers a critical-path question and cites the method row
+// `critical_path_method_used`; this unit does not re-answer it, and the two quantities are distinguishable:
+//   * the forecast projects a THREE-POINT CALIBRATION over ROADMAP ITEM nodes -- `NodeScheduleForecast` per
+//     `RoadmapNodeId`, durations held as `std.measure` milliseconds measured against a `ForecastAnchorObservation`,
+//     with `critical_path_minimum` and `capacity_constrained_minimum` as statistical LOWER BOUNDS;
+//   * this unit places the LEAF OCCURRENCES of one admitted expansion deterministically, from the working-day priors
+//     the carrier declares, and answers per-leaf start/finish, lane, in-flight per day and the dependency chain that
+//     decides the finish. No anchor, no calibration population, no milliseconds: days stay abstract until
+//     roadmap-schedule-calendar-binding binds them.
+// What IS shared rather than re-decided: the concurrency carrier (`roadmap_belt::BeltCapacity`), the cap-invalid
+// refusal's name and shape, the `path_key`/`LeafPath` carrier, and the composition law the rank obeys -- sequence
+// sums and parallel takes the larger, which is `std.realization_measurement::time_measure_seq` /
+// `time_measure_par` (`schedule_batch_critical_path`); this module's pass is the fixpoint over THIS occurrence graph
+// that turns that law into a per-node priority, which no existing row computes.
+//
 // THE REFUSAL IS A COPRODUCT, NOT A SENTENCE (fail_closed: "A failure arm refuses, never widens, and every
 // degradation is typed, located and countable"; source_annotations: "Prose is not forbidden; unclassified prose
 // is"). Five distinct causes can refuse this answer, and a consumer -- roadmap-schedule-bottlenecks-and-offer, then
@@ -97,7 +116,7 @@ type ScheduleAnswer {
 // imported `Expansion`.
 type ScheduleRefusal
   = OverRefusedExpansion { cause: ExpansionRefusal }
-  | NonPositiveWorkerCount { count: Int }
+  | ConcurrencyCapInvalid { cap: BeltCapacity }
   | NoWorkingDayPrior { paths: List<LeafPath> }
   | CyclicOccurrenceGraph
   | UnplacedOccurrences { paths: List<LeafPath> }
@@ -119,8 +138,8 @@ type Schedule
 // carrier's day quantity when it lands. Consume-never-fork.
 data schedule_day_grain_frontier: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.roadmap.roadmap_schedule", decl_name: "ScheduledLeaf"),
-  reason: "start_day and finish_day are bare Int counts of working days, not a day-typed magnitude; ScheduleAnswer.horizon and .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days, carry the same grain",
-  dissolution: unbound_dissolution(description: "feature:roadmap-schedule-day-measure -- a working-day carrier exists to consume (std.measure stops at Minute: Nanosecond, Microsecond, Millisecond, Second, Minute -- there is no Day, and a working day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); roadmap-schedule-calendar-binding binds the day grain to a calendar, and then ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and .critical_length become that carrier and this row deletes. Consume-never-fork"),
+  reason: "start_day and finish_day are bare Int counts of WORKING DAYS, not a day-typed magnitude; ScheduleAnswer.horizon and .critical_length, and the days read through roadmap_decomposition::piece_member_days into SchedNode.days, carry the same grain",
+  dissolution: unbound_dissolution(description: "feature:roadmap-schedule-day-measure -- a CALENDAR-DAY / working-day carrier exists to consume. A Time axis exists (std.measure: Nanosecond through Minute; std.realization_measurement composes durations as Measure<Time, S, Nat>, and roadmap_forecast holds its calibrated durations as milliseconds) -- what does NOT exist is a working-day/calendar-day row, and these counts are not SI-scaled quantities: they are abstract working days until roadmap-schedule-calendar-binding binds them, so converting them to an existing SI-scaled row would fabricate a calibration the carrier has not stated (the same position extdeps.pin::pin_frontier_rows takes for its day count: 'there is no Day, and a calendar day is not an SI scale of seconds ... Consume-never-fork'). When the calendar lane lands, ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and .critical_length become that carrier and this row deletes."),
 )
 
 // An occurrence reduced for scheduling: its carrier LeafPath, the string key the maps are keyed by, its working-day
@@ -363,14 +382,14 @@ fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
 // working-day prior on the carrier it is read against; the occurrence graph has a cycle; the run leaves occurrences
 // unplaced (a partial schedule is never returned as a complete one). Each is a `ScheduleRefusal` arm, located by the
 // carrier paths it carries -- never a sentence a consumer has to parse.
-fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedule {
-  let worker_count: Int = nat_to_int(n: workers)
+fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedule {
+  let worker_count: Int = workers.max_concurrent
   match e {
     Refused { cause: cause } =>
       NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
     Expanded { occurrences: occs, edges: edges } => {
       if worker_count <= 0 {
-        NotScheduled { refusal: NonPositiveWorkerCount { count: worker_count } }
+        NotScheduled { refusal: ConcurrencyCapInvalid { cap: workers } }
       } else {
         // EVERY occurrence's working-day prior is read back through its OWN carrier path. An occurrence whose path
         // is not on the decomposition being read against has NO day count, and one is never minted for it
@@ -452,7 +471,7 @@ type ScheduleRead
 
 // THE ONE READ CONSUMERS USE (roadmap-schedule-bottlenecks-and-offer, then roadmap-work-item-projection): hand it the
 // decomposition, its expansion, the worker count, and whatever you last cached; it recomputes and answers.
-fn schedule_read(d: WorkDecomposition, e: Expansion, workers: PositiveInt, cached: Schedule) -> ScheduleRead {
+fn schedule_read(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, cached: Schedule) -> ScheduleRead {
   match schedule(d: d, e: e, workers: workers) {
     NotScheduled { refusal: refusal } => ReadRefused { refusal: refusal }
     Scheduled { answer: fresh } => match cached {
@@ -484,7 +503,7 @@ fn schedule_read(d: WorkDecomposition, e: Expansion, workers: PositiveInt, cache
 // critical length, and the shapes of the in-flight series and of the critical path (spelled through the one
 // path_key, never a restated key format).
 fn stale_answer_fields(fresh: ScheduleAnswer, held: ScheduleAnswer) -> Int {
-  let w = if fresh.workers == held.workers { 0 } else { 1 }
+  let w = if fresh.workers.max_concurrent == held.workers.max_concurrent { 0 } else { 1 }
   let h = if fresh.horizon == held.horizon { 0 } else { 1 }
   let c = if fresh.critical_length == held.critical_length { 0 } else { 1 }
   let f = if count(fresh.in_flight_per_day) == count(held.in_flight_per_day) { 0 } else { 1 }

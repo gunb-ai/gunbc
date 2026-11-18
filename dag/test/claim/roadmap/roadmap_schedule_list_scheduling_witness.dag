@@ -14,7 +14,7 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 // run.
 
 import std.types { Bool, Int, List, String }
-import std.integer { nat_to_int }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
@@ -29,6 +29,12 @@ import gunbc.roadmap.roadmap_schedule {
 
 // A carrier LeafPath for a decomposition node's (stage, piece, member), built from the SAME LeafPath the carrier
 // emits (item via nid, indexes as Nat) -- located in a schedule only through path_key, never a hand-written key.
+// THE CONCURRENCY INPUT, carried by the lane's own carrier (gunbc.roadmap.roadmap_belt BeltCapacity -- the same one
+// roadmap_forecast's worker_concurrency_cap assumption takes), not by a fresh count this witness invents.
+fn lanes(count: Int) -> BeltCapacity {
+  BeltCapacity { max_concurrent: count }
+}
+
 fn p_at(node: String, stage: Nat, piece: Nat, member: Nat) -> LeafPath {
   LeafPath { item: nid(s: node), stage: stage, piece: piece, member: member }
 }
@@ -43,8 +49,8 @@ test fn a_chain_under_one_worker_finishes_at_the_sum_and_two_independent_leaves_
   let par = decomposition(node: "rc.par", waits_on: [], stages: [
     [leaf(label: "short", days: 2), leaf(label: "long", days: 5)],
   ])
-  let cs = schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: 1)
-  let ps = schedule(d: par, e: expand_decomposition(d: par, findings_count: 1), workers: 2)
+  let cs = schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: lanes(1))
+  let ps = schedule(d: par, e: expand_decomposition(d: par, findings_count: 1), workers: lanes(2))
   match schedule_answer(s: cs) {
     Absent => false
     Present { value: c } => match schedule_answer(s: ps) {
@@ -89,8 +95,8 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
     [leaf(label: "tail A", days: 1), leaf(label: "tail B", days: 2)],
   ])
   let e = expand_decomposition(d: slice, findings_count: 1)
-  let one = schedule(d: slice, e: e, workers: 1)
-  let four = schedule(d: slice, e: e, workers: 4)
+  let one = schedule(d: slice, e: e, workers: lanes(1))
+  let four = schedule(d: slice, e: e, workers: lanes(4))
   let crit = join([path_key(p: p_at("slice", 0, 2, 0)), path_key(p: p_at("slice", 1, 1, 0))], ",")
   match schedule_answer(s: one) {
     Absent => false
@@ -141,7 +147,7 @@ test fn an_assumed_occurrence_is_scheduled_and_its_source_stays_visible() -> Boo
     [findings_family(label: "findings", days: 3, probe: "the probe", owner: "af-owner")],
   ])
   let e = expand_decomposition(d: af, findings_count: 3)
-  let s = schedule(d: af, e: e, workers: 2)
+  let s = schedule(d: af, e: e, workers: lanes(2))
   match schedule_answer(s: s) {
     Absent => false
     Present { value: a } =>
@@ -172,18 +178,28 @@ test fn a_refused_expansion_refuses_and_a_positive_worker_count_is_echoed_as_an_
   ])
   let refused_expansion = expand_decomposition(d: ill_formed, findings_count: 1)
   // (1) a positive worker count schedules, and the count is ECHOED back inside the answer as the input it is.
-  (match schedule_refusal(s: schedule(d: chain, e: admitted, workers: 1)) {
+  (match schedule_refusal(s: schedule(d: chain, e: admitted, workers: lanes(1))) {
      Present { value: _ } => false
      Absent => true
    })
-    && (match schedule_answer(s: schedule(d: chain, e: admitted, workers: 4)) {
+    && (match schedule_answer(s: schedule(d: chain, e: admitted, workers: lanes(4))) {
          Absent => false
-         Present { value: a } => nat_to_int(n: a.workers) == 4
+         Present { value: a } => a.workers.max_concurrent == 4
        })
-  // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion.
+  // (2) a capacity that is not positive refuses with the NAMED arm, carrying the capacity it was given -- the same
+  // condition the concurrency lane refuses as `WorkerConcurrencyCapInvalid`; this unit does not mint a second shape
+  // for it and does not re-decide the carrier's type.
+    && (match schedule_refusal(s: schedule(d: chain, e: admitted, workers: BeltCapacity { max_concurrent: 0 })) {
+         Present { value: refusal } => match refusal {
+           ConcurrencyCapInvalid { cap: cap } => cap.max_concurrent == 0
+           _ => false
+         }
+         Absent => false
+       })
+  // (3) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion.
     // the refusal is the ARM the parent's own refusal feeds -- `OverRefusedExpansion`, carrying the parent's
     // `ExpansionRefusal` row rather than a sentence about it.
-    && (match schedule_refusal(s: schedule(d: ill_formed, e: refused_expansion, workers: 2)) {
+    && (match schedule_refusal(s: schedule(d: ill_formed, e: refused_expansion, workers: lanes(2))) {
          Present { value: refusal } => match refusal {
            OverRefusedExpansion { cause: _ } => true
            _ => false
@@ -204,7 +220,7 @@ test fn a_stale_cache_is_superseded_and_the_recomputed_answer_is_what_the_read_s
     [leaf(label: "second", days: 3)],
   ])
   let e = expand_decomposition(d: chain, findings_count: 1)
-  let real = schedule(d: chain, e: e, workers: 1)
+  let real = schedule(d: chain, e: e, workers: lanes(1))
   // A decomposition that waits on a parent it does not have is not well-formed, so its expansion refuses, and a
   // schedule computed over it refuses: that refusal is what a caller might be holding as its cache.
   let bad = decomposition(node: "rr.bad", waits_on: [waits(item: "rr.nowhere", from_stage: 0, into_stage: 0)], stages: [
@@ -218,8 +234,8 @@ test fn a_stale_cache_is_superseded_and_the_recomputed_answer_is_what_the_read_s
       // A cache wrong ON PURPOSE: the same leaves, but a horizon and a critical length of 99 -- an answer cached
       // under other inputs. None of it is served: the read SUPERSEDES it and says what was stale (no leaf moved;
       // TWO aggregate fields no longer match), and the answer it hands back is the recomputed one.
-      && (match schedule_read(d: chain, e: e, workers: 1, cached: as_cache(a: ScheduleAnswer {
-             workers: 1,
+      && (match schedule_read(d: chain, e: e, workers: lanes(1), cached: as_cache(a: ScheduleAnswer {
+             workers: lanes(1),
              leaves: r.leaves,
              in_flight_per_day: r.in_flight_per_day,
              horizon: 99,
@@ -232,18 +248,18 @@ test fn a_stale_cache_is_superseded_and_the_recomputed_answer_is_what_the_read_s
            })
       // A cache taken FROM the recomputation matches: nothing is stale -- and the read still RECOMPUTED the answer
       // rather than handing back what it was given.
-      && (match schedule_read(d: chain, e: e, workers: 1, cached: as_cache(a: r)) {
+      && (match schedule_read(d: chain, e: e, workers: lanes(1), cached: as_cache(a: r)) {
             CacheMatches { answer: a } => a.horizon == 5 && a.critical_length == 5
             _ => false
           })
       // A caller holding a REFUSAL holds no usable answer: it gets the fresh answer, and the read did not schedule
       // merely because an answer happened to be cached.
-      && (match schedule_read(d: chain, e: e, workers: 1, cached: schedule(d: bad, e: refused, workers: 1)) {
+      && (match schedule_read(d: chain, e: e, workers: lanes(1), cached: schedule(d: bad, e: refused, workers: lanes(1))) {
             CacheHeldNothing { answer: a } => a.horizon == 5 && scheduled_leaf_count(a: a) == 2
             _ => false
           })
       // And when the RECOMPUTATION itself refuses, the read refuses: a cached answer is never a reason to answer.
-      && (match schedule_read_refusal(r: schedule_read(d: bad, e: refused, workers: 1, cached: as_cache(a: r))) {
+      && (match schedule_read_refusal(r: schedule_read(d: bad, e: refused, workers: lanes(1), cached: as_cache(a: r))) {
            Present { value: _ } => true
            Absent => false
          })
@@ -262,8 +278,8 @@ test fn a_cache_held_from_another_input_reports_every_stale_leaf() -> Bool {
     [leaf(label: "A", days: 2), reading_family(label: "B", days: 5, members: 1, on: "2026-11-18", basis: "the one named member", owner: "sl-owner")],
   ])
   let r = schedule_read(
-    d: pair, e: expand_decomposition(d: pair, findings_count: 1), workers: 1,
-    cached: schedule(d: other, e: expand_decomposition(d: other, findings_count: 1), workers: 2)
+    d: pair, e: expand_decomposition(d: pair, findings_count: 1), workers: lanes(1),
+    cached: schedule(d: other, e: expand_decomposition(d: other, findings_count: 1), workers: lanes(2))
   )
   // 2 leaves of the fresh answer are absent from the cache, and both cached leaves are gone from the fresh answer:
   // 4 stale leaves, plus at least one aggregate field (the worker count differs). The served answer is the fresh one.
@@ -286,7 +302,7 @@ test fn an_occurrence_whose_carrier_path_is_not_on_the_decomposition_read_refuse
   let narrow = decomposition(node: "mp.narrow", waits_on: [], stages: [
     [leaf(label: "first", days: 2)],
   ])
-  let s = schedule(d: narrow, e: expand_decomposition(d: wide, findings_count: 1), workers: 1)
+  let s = schedule(d: narrow, e: expand_decomposition(d: wide, findings_count: 1), workers: lanes(1))
   // The refusal is the arm that carries the carrier paths THEMSELVES -- no prose to parse -- and it carries exactly
   // the one path the narrow carrier does not have.
   (match schedule_refusal(s: s) {
@@ -297,7 +313,7 @@ test fn an_occurrence_whose_carrier_path_is_not_on_the_decomposition_read_refuse
      Absent => false
    })
     // The same expansion read against ITS OWN carrier schedules: the refusal is the mismatch, not the shape.
-    && (match schedule_refusal(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: 1)) {
+    && (match schedule_refusal(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: lanes(1))) {
          Present { value: _ } => false
          Absent => true
        })
