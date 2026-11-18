@@ -1,0 +1,20 @@
+module gunbc.run_step_target_fixture_step
+
+import std.types { Int }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE HOLDING CONTROL: a run-step target whose (module, function) pair names a real declaration in a module the
+// step does not even import. The check resolves the pair through the SAME context it builds for @ref markers.
+data run_step_target_fixture_target: Int = gunbc_run_step_target(
+  module: "gunbc.run_step_target_fixture_home",
+  function: "run_step_target_fixture_entry",
+)
+
+// INERT CONTROL: a constructor call written in a COMMENT is not in the code channel, so the check's semantic-token
+// scan never sees it and it cannot become a site. The bogus pair below must NOT refuse -- a substring of the
+// spelling in a comment is not evidence of a run-time entry.
+// gunbc_run_step_target(module: "gunbc.no_such_module", function: "no_such_entry")
+fn run_step_target_fixture_step_value() -> Int {
+  // and here, inside a body comment, again: gunbc_run_step_target(module: "nope", function: "nope")
+  1
+}

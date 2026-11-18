@@ -2897,7 +2897,62 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
     },
     tail: [],
   },
-  disposition: Open,
+  // TRIAGED, NOT CLOSED (smart-dove-204, 2026-11-18). The hazard this row describes -- a mode joins the
+  // closed sum and its facts, is left out of the roster, and nothing turns red -- IS STILL LIVE, and this
+  // row says so rather than reporting a rung the executed evidence does not establish: the wall authored
+  // here is run by hand and is enrolled in no lane, so on the required path a dropped mode is still silent
+  // (gunbc.design_argument::continuous_generalization: "A completed work item, a merged abstraction or a
+  // shorter ledger is not evidence of integration"; gunbc.design_argument::guarantee_ladder: "A witness no
+  // lane executes is not a check ... the row is what makes the refusal real"). Open, with its owed rung
+  // named, which is what Triaged means here.
+  // Whether the wall ran is NOT claimed in this comment. Each execution is a RetainedExecutionResult row
+  // in test.claim.fleet.fleet_converge_roster_closed_sum_witness::witness_run_receipts -- command, host,
+  // memory budget, window, revision and verdict -- guarded by that module's
+  // witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran; a receipt is read there, not
+  // restated here (gunbc.design_argument::source_annotations: a receipt, a status and a count belong in a
+  // carrier a pass can read, and a reader may not treat a comment as evidence that a machine claim holds).
+  // What the wall establishes, as opposed to what it counts: it compares the roster, arm by arm, against
+  // the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an arm
+  // listed twice, and an entry the sum does not name are three separate reds rather than a total that
+  // happens to match; the dispatch menu is that roster mapped through fleet_converge_workflow_mode_wire,
+  // walled in the same module, so the menu cannot drift from the roster either. The question's FIRST branch
+  // was tried before the second was taken: the std value-level enumeration of a sum's variants,
+  // coproduct_nullary_inhabitants, constructs a value per arm and therefore REFUSES any sum with a payload
+  // arm ("payload arm is not nullary", src/v1/stage0/src/coproduct_reflection.rs), and this sum has one --
+  // Srv1RootMutation carries Srv1RootMutationMode -- so it yields a refusal, not a member list, and cannot
+  // author the roster. Both halves are pinned as rows rather than remembered: the refusal over this sum,
+  // and the enumeration working where it can (the nested all-nullary arm, whose constructed inhabitants
+  // agree with the arm keys read for it). The nested arm is in scope because the roster lists each of its
+  // modes as its own entry, so one can go unrostered exactly as #16583's MtCollins1PcieRetimerReset would
+  // have. A fixture (one arm dropped, one repeated, and an honest twin) is what makes this a wall and not a
+  // tautology. The roster keeps its hand-written ORDER deliberately -- a menu whose option order shifted
+  // whenever an arm happened to be declared elsewhere would be the worse artifact -- which is why the
+  // witness branch, not derivation, is the shape taken.
+  // WHY IT IS NOT ENROLLED, and where that is recorded. Enrollment means a row of
+  // v2.workflow.required_floor.required_gate_authored_modules, which is operator-admitted
+  // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling) and spends the CI budget that is
+  // closed to growth. The consolidating session declined to spend one on a single wall: bold-otter-603,
+  // 2026-11-18, message msg_bad251bc-81ad-4853-8c6f-a68269259804, which rules the standing
+  // authored-executed-by-hand-green-enrolled-nowhere-with-its-next-rung-named to be what DESIGN asks for.
+  // That decision is cited here and in the two comments that name its trigger, and deliberately NOT kept as
+  // a row of gunbc.design_ruling: those rows carry an operator provenance, and borrowing that register for
+  // a lane-level decision would itself be the fork this file is about.
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"),
+        statement: "the roster holds every arm of the closed sum FleetConvergeWorkflowMode exactly once, counting the Srv1RootMutation arm once per arm of Srv1RootMutationMode with that count read from the declaration index rather than written, and holds no entry the sum does not name -- enforced today for whoever executes the wall, and by nothing on the required path",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_options"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_dispatch_mode_options_are_roster_wires_without_repetition"),
+        statement: "the workflow_dispatch mode menu is exactly the roster's wire strings, once each, in the roster's hand-kept order -- so a mode missing from the roster is undispatchable rather than silently absent, and the order an operator sees stays a decision rather than an accident of declaration order",
+      },
+    ],
+    next: climbs_when(capability: "the wall is enrolled on an executing lane, so that deleting one entry from fleet_converge_workflow_modes reddens the required path rather than only whoever runs it; the trigger is gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose population the native compiler is to judge, which lifts every wall in this standing together rather than one wall by petition"),
+  },
 }
 
 // THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE. The run-step emitter refuses
@@ -3874,6 +3929,35 @@ data srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs: IntegrationConcern
   disposition: Open,
 }
 
+// Recorded by lane jolly-cat-157 (run-step target decl_name check, PR #16675), per parent directive
+// msg_390d61fd: a fail-open seen in its own right, NOT fixed in that PR (which stopped at the pre-normalize
+// parse so a real capability entry is no longer refused). The fix owed is for normalize/finish, not the check.
+data normalize_drops_fn_with_out_of_scope_capability: IntegrationConcern = IntegrationConcern {
+  identity: "normalize_drops_fn_with_out_of_scope_capability",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped"),
+    requirement: "a module that declares a top-level fn whose `uses` clause names an out-of-scope capability must refuse, not have the fn node silently dropped: today the ImportScoped normalize/finish route lets a real run-time entry vanish from the active roots while the module reports an Accepted tree, a fail-open (DESIGN gunbc.design_argument::fail_closed: a failure arm refuses, never widens)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped"),
+    tail: [decl_ref(module_path: "v2.compiler.live_resolution_context", decl_name: "live_context_finish")],
+  },
+  question: "Should normalize_scoped, or the ImportScoped live_context_finish, refuse a module whose fn has an out-of-scope `uses` capability rather than dropping the fn node and returning an Accepted tree that is missing that entry?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "182b850af64d33b827bb14fb5f94875bbd26ddb2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.live_resolution_context", decl_name: "live_context_finish") }],
+      },
+      account: "Found while resolving run-step target entries in v2.cli.reference_check. Reading entry existence off the normalized/active roots (ImportScoped finish), 27 real capability entries -- `fn name() -> ProcessExit uses <capability>` -- answered RunStepTargetDeclarationAbsent although the fn is declared in the target module and the module read cleanly: the capability-using fn node is dropped rather than the module refusing. The check was switched to read the pre-normalize parse tree (PR #16675); the drop itself is NOT fixed here. Sample entries verified present in source yet absent from the normalized root: gcp_iam_converge_request_wet (dag/gunbc/auth/gcp_iam_converge_run.dag:194) and approval_keyring_converge_wet (dag/gunbc/auth/approval_keyring_converge.dag:319).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
@@ -3890,7 +3974,8 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer,
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
-  h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing]
+  h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
+  normalize_drops_fn_with_out_of_scope_capability]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

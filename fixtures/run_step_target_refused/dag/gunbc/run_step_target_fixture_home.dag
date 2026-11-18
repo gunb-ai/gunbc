@@ -1,0 +1,10 @@
+module gunbc.run_step_target_fixture_home
+
+import std.types { Int }
+
+// THE TARGET MODULE a valid run-step target names. `run_step_target_fixture_entry` is the declaration the entry
+// half of a well-formed target resolves to; renaming it turns the holding control red without editing the caller,
+// which is the whole point of a resolved reference.
+fn run_step_target_fixture_entry() -> Int {
+  7
+}

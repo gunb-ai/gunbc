@@ -747,8 +747,24 @@ fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
     // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
     // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
     // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
+    //
+    // The relying glyph span must carry its OWN sighting, so the pattern pins `sighting: Present`, NOT `Absent`.
+    // This is not a preference -- it is what makes the arm reachable at all. An `IdentifiedByMarking` exists only
+    // when a reliance mints it, and every minter (@ref(product.electrical.identification::only_reading) /
+    // @ref(product.electrical.identification::no_dissent) / @ref(product.electrical.identification::prefer_checkable))
+    // routes through @ref(product.electrical.identification::reliance_may_rest_on) ->
+    // @ref(product.electrical.identification::every_glyph_bound), which returns false for any span whose `sighting`
+    // is `Absent`. So no `IdentifiedByMarking` can ever rely on an `Absent` span: the predicate was first authored
+    // while `count` silently dropped it, so the unsatisfiable `Absent` was never executed; once #16693 made the
+    // predicate evaluate (`count_where`), it returned 0 for every pi3ch480 row and `== 1` could never hold. The four
+    // pi3ch480 rows (U66/U67/U535/U536) ARE genuine observing receipts: each is a single `IdentifiedByMarking` minted
+    // by @ref(product.electrical.identification::identify_by_marking), whose relied-on reading is a PI3CH transcription
+    // read off pixels the board roster attributes to that very part (`sighting: Present`), with an empty `rest` and
+    // an `e1_photographs` CapturedFrame citation (verdict `Checkable`). Scoping the claim to that observed shape keeps
+    // the predicate's full force -- IdentifiedByMarking, the PI3CH transcription, the empty rest, and the Checkable
+    // citation are all still required -- and removes the one clause that could only ever be false (@ref(gunbc.design_argument::epistemic_humility)).
     IdentifiedByMarking { row: _, observation } => match observation_relied_on(o: observation) {
-      MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Absent }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } =>
+      MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Present { value: _ } }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } =>
       (t as String).contains("PI3CH") && count(rest) == 0
         && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
              Checkable { } => true
