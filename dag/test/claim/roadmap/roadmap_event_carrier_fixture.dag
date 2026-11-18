@@ -37,27 +37,34 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  callers pass is a `/tmp` template — the witness mints `/tmp/gunbc_carrier_foreign.XXXXXX`, the two controls mint
 //  their own parents. The instance roots the wet routes use are throwaway /tmp directories too — the witness mints
 //  them with `shell.Mktemp.Dir` — though that is a convention rather than a property the fixture may rely on, since
-//  at least one claim hands a root that does not exist at all in order to watch a refusal happen. The template
-//  parameter is not restricted, and the order matters: `roadmap_event_carrier_mint_scratch` hands whatever template it is given straight
-//  to `shell.Mktemp.DirWithTemplate` BEFORE the `/tmp` shape check runs, and when that check refuses it returns
-//  `RoadmapEventCarrierMintRefused` without removing the directory mktemp just created — so a caller who passed
-//  `/var/tmp/...` would leave a directory on disk. Reclaim is therefore attempted, not guaranteed: the
-//  seal-planting arm does remove what it made, and if that removal itself fails the detail says so. Confinement to
-//  scratch space is the rule this file is written to, not one the exported mint enforces yet: every template the
-//  checked-in callers pass is a `/tmp` template, and none of them targets `/var/lib/gunbc`, a production partition,
-//  a srv1/srv2/srv3 realization, or a service instance. But the same create-before-admit order that leaks a
-//  `/var/tmp` directory applies to any template, so a caller who passed a production path would have a directory
-//  created there before the refusal arrived. That ordering is a tracked failure class, not a note to self:
+//  at least one claim hands a root that does not exist at all in order to watch a refusal happen. The template parameter IS restricted, and the
+//  order is the enforced one. `roadmap_event_carrier_mint_scratch` admits the template — its location and its shape,
+//  through `roadmap_carrier_template_is_admissible`, a predicate over text that needs nothing on disk — BEFORE
+//  `shell.Mktemp.DirWithTemplate` is called, and a template outside `/tmp/` is refused there with nothing created.
+//  Nothing reached through the exported mint creates a directory before that decision, so no caller can have a
+//  production path brought into existence on their behalf and then refused: `/var/lib/gunbc`, a production partition,
+//  a srv1/srv2/srv3 realization and a service instance are each refused before anything exists. Confinement to
+//  scratch space is therefore no longer a convention honoured by which templates callers happen to pass — it is what
+//  the code refuses to do. What remains ATTEMPTED rather than guaranteed is the AFTER half: a template that passes the
+//  admission can still be refused for what it turned out to be (not readable, not owned by this uid, seal not
+//  plantable), and each of those refusals reclaims what it made and reports a failed reclamation by name, so a
+//  refusal can never imply a tidy-up that did not occur.
+//
+//  HISTORICAL SPECIMEN, NOT CURRENT BEHAVIOUR. Until this change the order was the opposite: the mint handed whatever
+//  template it was given to `shell.Mktemp.DirWithTemplate` first, applied the `/tmp` shape check to the path that came
+//  back, and returned `RoadmapEventCarrierMintRefused` without removing the directory mktemp had just created — so a
+//  caller who passed `/var/tmp/...` left a directory on disk, while the seal-planting arm did remove its own. One
+//  function, two refusal postures, opposite residue. That ordering is a tracked failure class, not a note to self:
 //  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
-//  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and with the
-//  capability that closes this instance — which splits in two, because this file's own gate
-//  `roadmap_carrier_root_is_minted_scratch` ends with `roadmap_carrier_path_is_present` and can therefore speak only
-//  about a path that already exists. BEFORE creation: admit the template and its location, a predicate over the
-//  requested path that needs nothing on disk. AFTER creation: verify the minted directory and reclaim on any later
-//  refusal. The two are not equivalent — pre-create rejection enforces the production boundary, because nothing
-//  unauthorized ever comes into existence, while reclaiming after the refusal closes only the leak. Until that row's
-//  trigger lands, this paragraph states an obligation honoured by the checked-in callers and by review, not a check
-//  the code performs. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and the control
+//  that pins it is `a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind` at the foot of this
+//  file. The distinction the row insists on is the reason the admission is its own earlier decision rather than a
+//  clause of the post-create check: pre-create rejection enforces the PRODUCTION BOUNDARY, because nothing
+//  unauthorized ever comes into existence, while reclaiming after a refusal closes only the LEAK. The post-create
+//  gate could not have carried both, because `roadmap_carrier_root_is_minted_scratch` ends with
+//  `roadmap_carrier_path_is_present` and can therefore speak only about a path that already exists.
+//
+//  It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +85,7 @@ import extdeps.shell.exec
 // under LC_ALL=C, whose command words extdeps.tools.ls owns — decoded through the folds
 // extdeps.filesystem.filesystem_io provides for it. See roadmap_carrier_observe_entry for why a `test` probe
 // may not answer them.
-import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_numeric_entries_command }
+import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_entry_of_line, ls_long_numeric_entries_command, ls_long_numeric_listing_command }
 import extdeps.filesystem.filesystem_io { FilesystemEntryAbsentByLookup, FilesystemEntryPresentByLookup, FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -760,82 +767,172 @@ test fn the_shape_admission_refuses_a_foreign_root_a_parent_escape_the_bare_pref
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  THE THIRD CONTROL, beside the two sweep controls above it. WHAT IT HOLDS: a template the admission does not
-//  accept must be refused WITHOUT leaving a directory behind. Not "refused loudly" — the three refusal arms were
-//  always loud, and loudness is what hid this defect, because a reader auditing error handling sees three correct
+//  THE THIRD CONTROL: WHAT A REFUSAL LEAVES BEHIND. A template the admission does not accept must be refused, and no
+//  directory may exist under the control's own parent when the call returns. Not "refused loudly" -- the refusal arms
+//  were always loud, and loudness is what hid this defect: a reader auditing error handling sees three correct
 //  refusals and walks past the one thing wrong with them, which is that the create happened first. The row this
-//  control came from is gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect,
-//  and its harm is exactly a refusal that implies a tidy-up nobody performed.
+//  control came from is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect).
 //
-//  WHY THE SHAPE OF THIS CLAIM IS WHAT IT IS. The expectation is stated independently of which repair lands, per
-//  the class row: a pre-create guard must refuse with NOTHING created, and a cleanup-after-refusal repair must
-//  refuse with the directory GONE by the time the call returns. Both satisfy "no leftover"; neither is allowed to
-//  earn green by asserting that a directory existed at the moment of refusal, which describes today's broken state
-//  rather than either repair. So the claim asks only: did it refuse, was the refusal not the mktemp arm, and does
-//  anything still sit at the path it named?
+//  WHY A PRIVATE PARENT INSTEAD OF SCANNING /var/tmp. The first version of this control listed the shared /var/tmp
+//  and filtered by stem. It went red -- but for the wrong reason: an entry belonging to another session made the
+//  listing unclassifiable, and an unclassifiable listing is its own red arm, so a leak that was there was reported by
+//  a code path that had not seen it. A control whose failure can be caused by a neighbour is not a control. It now
+//  creates its OWN empty parent under /var/tmp, which is writable, unshared, and small enough that "no entries" is a
+//  claim about this mint rather than about the state of the machine.
 //
-//  THE PREMISE, GUARDED LOUDLY. If mktemp itself fails the control has learned nothing, so that arm FAILS the claim
-//  by name rather than passing: a control that can go green because its premise was never established is the thing
-//  gunbc.design_argument::fail_closed forbids. The parent is /var/tmp, measured 2026-11-17 on the box that runs
-//  this witness as mode 1777 drwxrwxrwt root:root with the witness running as uid 1000, so creation succeeds there
-//  and the admission is what decides. Never /var/lib/gunbc: the row must not prove its point by committing the harm
-//  it records, and its parent does not exist, so mktemp would fail first and the control would go red for the wrong
-//  reason.
+//  THE SCAN IS CALIBRATED BEFORE IT IS TRUSTED, IN THE SAME RUN. A listing helper that always reported "nothing
+//  there" would pass every absence assertion ever written against it -- and absence assertions are all this control
+//  has. So before the mint is called, the control CREATES a directory it knows the name of, requires the scan to
+//  report exactly that one entry, removes it, and requires the scan to report none. Both directions of the same
+//  observation are witnessed before either is relied on. Without that step the claim would be one silent bug in a
+//  listing parser away from certifying a leak as cleanliness.
+//
+//  WHAT GREEN MEANS, STATED BEFORE THE CODE THAT COMPUTES IT. Four things, each observed: the control's parent was
+//  created; the scan saw the calibration entry and then its absence; the mint refused via the PRE-CREATE ADMISSION
+//  arm -- recognised by that arm's own leading words, never by "not one of the others"; and the scan sees nothing
+//  under the parent afterwards. Every other outcome is red, including the tidy ones: a post-create refusal that
+//  reclaimed perfectly is the class row's OTHER rung (leak closed, production boundary not enforced) and this claim
+//  does not certify that rung; mktemp failing means the premise did not hold; a mint means the boundary did not hold;
+//  a diagnostic matching none of the arms is unknown, which is red. Cleanup never manufactures a green -- the
+//  settlement runs after the verdict is computed and its result is not combined with it.
 
-data leak_control_template: String = "/var/tmp/gunbc_carrier_leak_control.XXXXXX"
+data leak_control_parent_template: String = "/var/tmp/gunbc_carrier_leak_parent.XXXXXX"
+
+data leak_control_stem: String = "gunbc_carrier_leak_control."
+
+data leak_control_calibration_name: String = "gunbc_carrier_leak_calibration"
 
 data mktemp_arm_words: String = "mktemp could not mint a scratch from template "
 
 data minted_arm_words: String = "the directory minted at "
 
-data leaked_through_words: String = "MINTED_OUTSIDE_SHAPE:"
+data seal_arm_words: String = "the fixture could not plant its ownership seal inside "
 
-fn leak_control_path_of(detail: String, words: String) -> String {
-  substring(s: detail, start: string_length(s: words), end: string_length(s: detail))
+data precreate_arm_words: String = "the template "
+
+// Which of the mint's outcomes occurred. The result TYPE decides first; the detail's leading words only separate the
+// refusal arms that share a type. No path is ever cut out of a diagnostic string -- the detail's wording is the mint's
+// business, and a control that parsed it would break silently, in the direction of green, the moment the mint improved
+// its prose. That is not hypothetical: an earlier version of this control did exactly that, and handed the resulting
+// "path" -- the real path plus a sentence of diagnostics -- to a recursive delete.
+type LeakControlOutcome
+  = Refused_before_create { detail: String }
+  | Refused_after_create { detail: String }
+  | Refused_by_mktemp { detail: String }
+  | Refused_by_seal { detail: String }
+  | Refused_unrecognized { detail: String }
+  | Minted_outside_the_shape { path: String }
+
+type RoadmapCarrierEntryScan
+  = EntryScanRead { entries: List<String> }
+  | EntryScanUnreadable { diagnostic: String }
+
+fn stem_entry_is_unclassifiable(entry: LsLongEntry) -> Bool {
+  match entry {
+    LsLongEntryRead { name: _, directory: _, ownership: _, mode: _ } => false
+    LsLongEntryRefused { name: _, reason: _ } => true
+  }
+}
+
+fn stem_entry_name(entry: LsLongEntry) -> String {
+  match entry {
+    LsLongEntryRead { name: n, directory: _, ownership: _, mode: _ } => n
+    LsLongEntryRefused { name: n, reason: _ } => n
+  }
+}
+
+// Every entry in a directory this control owns, as ONE listing: `ls -l -n -a --`, the same numeric-long reading the
+// sweep uses, so the control cannot disagree with the fixture about what absent means. A name absent from a listing
+// that SUCCEEDED is absent from the directory. The block-total line carries no mode and is skipped; "." and ".." are
+// not entries of interest; any other line that will not parse makes the whole reading UNREADABLE rather than empty --
+// reading a failed listing as an empty one is the exit-1 fail-open this fixture documents above.
+fn roadmap_carrier_entries_of(directory: String) -> RoadmapCarrierEntryScan {
+  let command = ls_long_numeric_listing_command(directory: directory)
+  let run = shell.Exec.RunArgv(program: "env" as NonEmptyStr, arguments: concat(["LC_ALL=C", command.program.invocation as String], command.arguments))
+  if run.exit_code != 0 {
+    EntryScanUnreadable { diagnostic: join(["ls of ", directory, " exited ", "\{run.exit_code}", ": ", run.stderr], "") }
+  } else {
+    let lines = filter(split(s: run.stdout, delimiter: "\n"), l => trim(s: l) != "" && !starts_with(s: trim(s: l), prefix: "total "))
+    let entries = map(lines, l => ls_long_entry_of_line(line: trim(s: l)))
+    if count(filter(entries, e => stem_entry_is_unclassifiable(entry: e))) > 0 {
+      EntryScanUnreadable { diagnostic: join(["the listing of ", directory, " printed a line that is neither a block total nor a parsable entry"], "") }
+    } else {
+      EntryScanRead {
+        entries: filter(
+          map(entries, e => stem_entry_name(entry: e)),
+          n => n != "." && n != "..",
+        ),
+      }
+    }
+  }
+}
+
+fn leak_control_entry_words(entries: List<String>) -> String {
+  join(entries, ", ")
 }
 
 test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind() -> Bool {
-  let mint = roadmap_event_carrier_mint_scratch(template: leak_control_template as NonEmptyStr)
-  let detail: String = match mint {
-    RoadmapEventCarrierMintRefused { detail: d } => d
-    RoadmapEventCarrierMinted { scratch: s } => concat(leaked_through_words, s.path)
+  //  THE PARENT IS LIVE PREMISE IN BOTH RUNS: the control creates it whether or not the mint is reached, so the
+  //  /var/tmp measurement below (mode 1777 drwxrwxrwt root:root on the box that runs this witness, witness at uid
+  //  1000, measured 2026-11-17) is load-bearing for red and green alike. Never /var/lib/gunbc -- the row this control
+  //  serves must not prove its point by committing the harm it records, and that path's parent does not exist.
+  let parent = shell.Mktemp.DirWithTemplate(template: leak_control_parent_template as FilePath)
+  let root: String = parent.path as String
+  let calibration_path = join([root, "/", leak_control_calibration_name], "")
+  let leak_template = join([root, "/", leak_control_stem, "XXXXXX"], "")
+  let parent_made = claim(join(["the control could not create its own private parent under /var/tmp, so it can observe nothing at all: mktemp -d ", leak_control_parent_template], ""), parent.success)
+  //  CALIBRATION BOTH WAYS, before the mint is called and before any absence is asserted.
+  let made_calibration = claim(join(["the calibration directory could not be created at ", calibration_path, "; the scan is therefore untested"], ""), shell.Mkdir.NewOwnerOnly(path: calibration_path as FilePath).success)
+  let saw_present = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the calibration listing was unreadable, so absence could not be certified later either: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the scan did not see the calibration directory it was handed -- it reported [", leak_control_entry_words(entries: seen), "] instead of exactly [", leak_control_calibration_name, "]"], ""), count(seen) == 1 && starts_with(s: leak_control_entry_words(entries: seen), prefix: leak_control_calibration_name))
   }
-  let verdict = if starts_with(s: detail, prefix: leaked_through_words) {
-    claim(
-      concat(
-        "a template outside the admitted shape was MINTED rather than refused; the scratch sits at ",
-        leak_control_path_of(detail: detail, words: leaked_through_words),
-      ),
-      false,
-    )
-  } else if starts_with(s: detail, prefix: mktemp_arm_words) {
-    claim(
-      concat(
-        "the control's premise is unestablished: mktemp itself refused, so the admission was never reached and /var/tmp ",
-        "is not writable as this control assumes -- ",
-        detail,
-      ),
-      false,
-    )
-  } else if starts_with(s: detail, prefix: minted_arm_words) {
-    claim(
-      concat(
-        "the admission refused AFTER creating, and the directory survives at ",
-        leak_control_path_of(detail: detail, words: minted_arm_words),
-      ),
-      false,
-    )
-  } else {
-    claim("the admission refused without creating, and nothing was left to reclaim", true)
+  let _calibration_removed = shell.Remove.RecursiveForce(path: calibration_path as FilePath)
+  let saw_absent = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the post-calibration listing was unreadable: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the scan still reports [", leak_control_entry_words(entries: seen), "] after the calibration directory was removed; it cannot be trusted to report absence"], ""), count(seen) == 0)
   }
-  //  Clean up what this control may have made, but never let the cleanup decide: verdict is already computed, and a
-  //  failed removal is reported by the next run's own probe rather than silently rescuing this one.
-  let cleaned = if starts_with(s: detail, prefix: minted_arm_words) {
-    shell.Remove.RecursiveForce(path: leak_control_path_of(detail: detail, words: minted_arm_words) as FilePath).success
-  } else if starts_with(s: detail, prefix: leaked_through_words) {
-    shell.Remove.RecursiveForce(path: leak_control_path_of(detail: detail, words: leaked_through_words) as FilePath).success
-  } else {
-    true
+  //  THE CALL UNDER TEST. Classification is by result type, then by each arm's own leading words; the fallback is
+  //  unrecognized and can only be red. The bug this replaces sat in that fallback: a seal-failure diagnostic matched
+  //  none of the three words then tested, fell into the else, and was classified as the pre-create admission.
+  let mint = roadmap_event_carrier_mint_scratch(template: leak_template as NonEmptyStr)
+  let outcome = match mint {
+    RoadmapEventCarrierMinted { scratch: s } => Minted_outside_the_shape { path: s.path }
+    RoadmapEventCarrierMintRefused { detail: d } =>
+      if starts_with(s: d, prefix: precreate_arm_words) {
+        Refused_before_create { detail: d }
+      } else if starts_with(s: d, prefix: mktemp_arm_words) {
+        Refused_by_mktemp { detail: d }
+      } else if starts_with(s: d, prefix: minted_arm_words) {
+        Refused_after_create { detail: d }
+      } else if starts_with(s: d, prefix: seal_arm_words) {
+        Refused_by_seal { detail: d }
+      } else {
+        Refused_unrecognized { detail: d }
+      }
   }
-  verdict && cleaned
+  let arm = match outcome {
+    Refused_before_create { detail: d } => join(["the pre-create admission: ", d], "")
+    Refused_after_create { detail: d } => join(["the post-create shape refusal, which claims to have reclaimed: ", d], "")
+    Refused_by_mktemp { detail: d } => join(["mktemp itself, so the admission was never reached: ", d], "")
+    Refused_by_seal { detail: d } => join(["the ownership seal could not be planted, so the create was reached: ", d], "")
+    Refused_unrecognized { detail: d } => join(["a diagnostic matching none of the mint's arms, which cannot be certified: ", d], "")
+    Minted_outside_the_shape { path: s } => join(["NOT REFUSED -- the template was minted at ", s], "")
+  }
+  let refused_by_the_admission = match outcome {
+    Refused_before_create { detail: _ } => true
+    Refused_after_create { detail: _ } => false
+    Refused_by_mktemp { detail: _ } => false
+    Refused_by_seal { detail: _ } => false
+    Refused_unrecognized { detail: _ } => false
+    Minted_outside_the_shape { path: _ } => false
+  }
+  let leftover_verdict = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the control could not read its own parent after the mint, so it cannot certify that nothing was left: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the mint refused via [", arm, "] and the scan sees [", leak_control_entry_words(entries: seen), "] under the control's own parent"], ""), refused_by_the_admission && count(seen) == 0)
+  }
+  //  The settlement cannot move the verdict: it runs after every claim above is computed, and its result is
+  //  deliberately not combined with theirs.
+  let _settlement = shell.Remove.RecursiveForce(path: root as FilePath)
+  parent_made && made_calibration && saw_present && saw_absent && leftover_verdict
 }
