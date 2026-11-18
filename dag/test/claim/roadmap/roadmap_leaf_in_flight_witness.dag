@@ -28,12 +28,13 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
   Claimed, Released, HandedBack, Retired, Progress,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent,
-  RoadmapEventEnvelope, RoadmapEventDecoded, RoadmapEventUndecodable,
+  RoadmapEventEnvelope, RoadmapEventDecoded, RoadmapEventUndecodable, RoadmapNodeStanding,
   LeafInFlightRead, LeafInFlightEntry, LeafClosedByEntry, InFlightLeaves, InFlightRefused,
   InFlightClaimGrainUnreadable, InFlightLineUnreadable,
   InFlightEventOfAnotherItem, InFlightLeafOfAnotherItem, InFlightHistoryUnordered,
   NoPullRequest, roadmap_event_envelope, roadmap_event_wire_text, roadmap_leaf_in_flight_set,
   roadmap_event_decode, roadmap_node_standing, roadmap_node_standing_key,
+  roadmap_standing_is_terminal,
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -695,7 +696,68 @@ fn reversed(lines: List<String>, out: List<String>) -> List<String> {
 // decoder. A line that would not decode yields no envelopes at all, which lands the node Open and
 // fails the witness rather than quietly agreeing with it.
 fn standing_key(kinds: List<RoadmapEventKind>) -> String {
-  roadmap_node_standing_key(s: roadmap_node_standing(envs: envs_of(lines: planted_log(kinds: kinds), out: [])))
+  standing_key_of(lines: planted_log(kinds: kinds))
+}
+
+fn standing_key_of(lines: List<String>) -> String {
+  roadmap_node_standing_key(s: roadmap_node_standing(envs: envs_of(lines: lines, out: [])))
+}
+
+// THE IMPLICATION, ASKED OF EVERY HISTORY IN A TABLE — because checking agreement on one chosen case is
+// validation where a single authority was available, and this read's standing is not its own to have
+// (gunbc.design_argument::fail_closed). Wherever the authority calls the standing terminal, this read
+// holds NOTHING: a leaf may be held only where the node stands open for work. The decode is checked
+// rather than trusted, so a planter that drifted out of the wire form could not make the check vacuous
+// by yielding no envelopes and thus an open node.
+fn leaf_and_standing_agree(kinds: List<RoadmapEventKind>) -> Bool {
+  let lines = planted_log(kinds: kinds)
+  let envs = envs_of(lines: lines, out: [])
+  let standing = roadmap_node_standing(envs: envs)
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: lines)
+  count(envs) == count(lines) && nothing_held_if_terminal(standing: standing, read: read)
+}
+
+// The implication itself, in its own function body: a terminal standing this read still holds a leaf
+// under is the drift this whole exchange is about, and a non-terminal standing says nothing here.
+fn nothing_held_if_terminal(standing: RoadmapNodeStanding, read: LeafInFlightRead) -> Bool {
+  if roadmap_standing_is_terminal(standing: standing) { holds_nothing(read: read) } else { true }
+}
+
+// Six histories, both terminal hands, both closer kinds, the release-after-acceptance that started this,
+// a remains-superseded revocation that must NOT open the door, and a claim landing after the final hand.
+test fn no_leaf_is_in_flight_under_a_standing_the_authority_calls_terminal() -> Bool {
+  leaf_and_standing_agree(kinds: [claim_of_a(0)])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), Released])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), accepted()])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), retired()])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), accepted(), Released, claim_of_b(0)])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), accepted(), revocation(reopens: false), claim_of_b(0)])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), retired(), revocation(reopens: true), Released, claim_of_b(0)])
+    && leaf_and_standing_agree(kinds: [claim_of_a(0), claim_of_b(1), retired(), claim_of_c(member: 2)])
+}
+
+// THE FOLD FOLLOWS THE CAUSE, NOT THE FILE. Written tip-first the log is the same log: the same holds
+// come out, and the standing the authority reports for the scrambled file is the standing it reports for
+// the causal one — which is the executed check that this read's own walk of the chain and the
+// authority's walk cannot drift apart on file layout.
+test fn a_log_written_the_other_way_round_derives_the_same_set_and_the_same_standing() -> Bool {
+  let kinds = [claim_of_a(0), claim_of_b(1), Released, claim_of_a(1)]
+  let causal = planted_log(kinds: kinds)
+  let scrambled = reversed(lines: causal, out: [])
+  let forward = roadmap_leaf_in_flight_set(node: item(), lines: causal)
+  let backward = roadmap_leaf_in_flight_set(node: item(), lines: scrambled)
+  holds_only(read: forward, member: 1)
+    && holds_only(read: backward, member: 1)
+    && held_by(read: backward, member: 1, holder: session_a())
+    && closed_count(read: backward) == 2
+    && closed_count(read: forward) == 2
+    && standing_key_of(lines: causal) == standing_key_of(lines: scrambled)
+    && standing_key_of(lines: scrambled) == "claimed"
+}
+
+// A THIRD HOLDER CLAIMING A THIRD LEAF, for the table above.
+fn claim_of_c(member: Int) -> RoadmapEventKind {
+  claim_of(session_a(), session_b(), AtPath { path: leaf(member: member) })
 }
 
 fn envs_of(lines: List<String>, out: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
