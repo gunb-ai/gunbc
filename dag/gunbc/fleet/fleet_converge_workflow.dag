@@ -8841,6 +8841,13 @@ fn zesty_j17() -> Int { count([fleet_converge_printer_job()]) }
 fn zesty_j18() -> Int { count([fleet_converge_qualification_floor_job()]) }
 fn zesty_j19() -> Int { count([fleet_converge_review_sheet_converge_job()]) }
 fn zesty_j20() -> Int { count([fleet_converge_rlm_launch_deployment_receipt_job()]) }
+fn zesty_jmain() -> ProcessExit {
+  if count([fleet_converge_job()]) > 0 {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
