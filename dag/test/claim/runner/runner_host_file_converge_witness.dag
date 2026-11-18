@@ -2348,6 +2348,7 @@ test fn the_pre_join_host_refuses_the_administrator_target_srv14() -> Bool {
       TargetAnchorRowAbsent { host: _ } => true
       TargetEndpointUnparseable { reason: _ } => false
       FirstContactHopSupersededByAnchor { host: _ } => false
+      FirstContactModeNotAdmitted { host: _ } => false
     }
   }
 }
