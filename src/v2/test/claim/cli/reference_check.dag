@@ -1,12 +1,13 @@
 module v2.test.claim.cli.reference_check
 
 import std.types { Bool }
-import std.algebra { Cons, Empty, is_empty, string_contains }
+import std.algebra { Cons, Empty, is_empty, string_contains, fold_list }
 import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller }
+import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.live_resolution_context { live_context_load_empty }
-import v2.compiler.module_acquisition { SourceRootBinding }
+import v2.compiler.module_acquisition { SourceRootBinding, population_member, PopulationMember }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.text { String }
 
@@ -209,4 +210,36 @@ test fn every_registered_run_step_target_in_the_repository_resolves_holds() -> B
   let report = check_references(bindings: bindings)
   report.held && !string_contains(s: report.text, pattern: "RunStepTarget")
 }
+
+// CHEAP DIAGNOSTIC (evidence only, never enrolled): are the whole-corpus refusals an ACQUISITION failure (the
+// target module is not a readable population member under [dag, src/v2]) or a LOAD/NORMALIZE failure (it is
+// readable but never became a resolution root)? A readable-but-refused module means the single context is not
+// reaching it; an unread module means the population binding does not. This decides the fix.
+fn probe_run_step_target_readable(name: String) -> Bool {
+  match population_member(layout: repository_storage_layout(), bindings: [
+    SourceRootBinding { tree: DagTree, host_directory: "dag" },
+    SourceRootBinding { tree: V2Tree, host_directory: "src/v2" }
+  ], name: name) {
+    PopulationMemberRead { member: _ } => true
+    PopulationMemberRefused { cause: _ } => false
+  }
+}
+
+test fn probe_refused_run_step_target_modules_are_population_readable_holds() -> Bool {
+  fold_list(
+    xs: [
+      "gunbc.cloudflare.r2_bucket_ensure", "gunbc.cloudflare.r2_token_mint_run", "gunbc.fleet.approval_ntfy_retirement",
+      "gunbc.fleet.flex_pass_run", "gunbc.fleet.hetzner_cloud_server_control", "gunbc.fleet.org_actions_inspection",
+      "gunbc.fleet.organization_runner_roster_read", "gunbc.fleet.srv1_root_mutation_approval_run", "gunbc.heal_publication",
+      "gunbc.host.host_reset_return_run", "gunbc.live_deploy.apply", "gunbc.live_deploy.pre_swap_admission",
+      "gunbc.machine_intake.arrival_run", "gunbc.machine_intake.mtcollins1_boot_run", "gunbc.machine_intake.mtcollins1_kvm_observer_observe",
+      "gunbc.machine_intake.mtcollins1_sol_notice", "gunbc.runner.runner_group_restriction_ensure_run",
+      "gunbc.runner.runner_jit_dead_sweep_run", "gunbc.runner.runner_lost_boot_sweep_run", "gunbc.runner.runner_microvm_network_apply",
+      "gunbc.runner.runner_qualification_attempt_run", "gunbc.runner.runner_service_slot_start", "product.fabric.flex_vast_template_control"
+    ],
+    empty: true,
+    cons: fn(acc, name) { acc && probe_run_step_target_readable(name: name) }
+  )
+}
+
 
