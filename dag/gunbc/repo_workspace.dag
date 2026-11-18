@@ -178,7 +178,17 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
 fn repo_workspace_footprints() -> List<WorkspaceFootprint> {
   concat(
     [
-      cargo_workspace_footprint(target_dir_patterns: ["/target/", "/target-codex/"], cargo_home_pattern: "/.cargo-home/"),
+      // ONE ARM FOR THE WHOLE CARGO TARGET-DIR FAMILY, not one leaf per name. Cargo's default is
+      // exactly `target/` (extdeps.rust.cargo, cited upstream); every build-output tree a session or
+      // tool adds here follows the `target-<lane>` convention -- target-codex (the codex tool),
+      // target-private (a session's private build root, added to stop one lane relinking another's
+      // binary) -- so the two facts "the default" and "the dashed lane prefix" cover every dir
+      // really created. A third lane (target-<anything>) is then DATA for `/target-*/`, not a new
+      // leaf: enumerating names is the rule-written-per-case that leaked 1312 artifacts of a
+      // target-private/ into #16602. `/target-*/` is kept dash-scoped rather than the looser
+      // `/target*/` because no tool here creates a `targets/` or `targetish/` build tree, and
+      // ignoring what no leaf produced is the over-general prohibition DESIGN declines to pay for.
+      cargo_workspace_footprint(target_dir_patterns: ["/target/", "/target-*/"], cargo_home_pattern: "/.cargo-home/"),
       tarpaulin_report_footprint(coverage_output_dir_pattern: "/coverage/"),
       jetbrains_workspace_footprint(),
       vscode_workspace_footprint(),

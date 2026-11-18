@@ -5,7 +5,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn witness_has_cargo_patterns() -> Bool {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: "/target/")
-    && string_contains(s: eg, pattern: "/target-codex/")
+    && string_contains(s: eg, pattern: "/target-*/")
+}
+
+// THE CARGO TARGET-DIR FAMILY IS IGNORED BY THE PREDICATE, not merely spelled in the file. The
+// incident that prompted this arm was a target-private/ of build artifacts reaching a commit, so the
+// private-lane convention is precisely what must be covered -- and covered WITHOUT swallowing a
+// directory that merely begins with the word. `target/` is cargo's own default (extdeps.rust.cargo);
+// `target-*` is every lane a session or tool adds (target-codex, target-private, and any future
+// lane). The three negatives are the discriminating half: a nested `worktrees/target-private/` stays
+// trackable because the leading `/` anchors the arm to the root, and `targets/` / `targetish/` stay
+// trackable because the arm is dash-scoped and not the looser `/target*/` -- that discrimination IS
+// the least-general claim (gunbc.design_argument::root_generalization, epistemic_humility).
+test fn witness_cargo_target_dirs_are_ignored() -> Bool {
+  path_is_ignored(path: "target")
+    && path_is_ignored(path: "target/debug/libgunbc.rlib")
+    && path_is_ignored(path: "target-codex/release/gunbc")
+    && path_is_ignored(path: "target-private/debug/artifact")
+    && !path_is_ignored(path: "worktrees/target-private/debug/artifact")
+    && !path_is_ignored(path: "targets/notes.md")
+    && !path_is_ignored(path: "targetish/plan.md")
 }
 
 test fn witness_has_editor_and_os_patterns() -> Bool {
