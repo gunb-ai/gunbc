@@ -196,7 +196,8 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
-fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> Outcome<String> {  bind_outcome(
+fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> Outcome<String> {
+  bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
     claim_run: false),
     f: fn(zesty_c) {
@@ -204,11 +205,13 @@ fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> O
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
     zesty_c, "\n",
   ], ""))
-      }
+    }
   )
+}
 
 
-fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcome(
+fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {
+  bind_outcome(
     o: gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_approval_keyring_converge_prelude(),
       source_roots: witness_layer_roots,
@@ -221,6 +224,7 @@ fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcom
     concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
     zesty_c
   ))
-      }
+    }
   )
+}
 

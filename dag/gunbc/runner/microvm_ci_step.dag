@@ -190,7 +190,8 @@ data gunbc_ci_microvm_runner_group_ensure_shell_emit_scaffold: Disposition = Sca
   }
 }
 data gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_microvm_runner_group_ensure_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: the org-admin installation token prelude (gunbc_ci_org_admin_app_token_prelude) followed by ONE pinned submission-MAC secret version fetched over curl through the shared auth header and SM decode, a 0600 file under RUNNER_TEMP with the mint's cleanup extended in the EXIT trap. The pipeline steps are modeled (gunbc_ci_microvm_runner_group_ensure_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
-fn gunbc_ci_microvm_runner_group_ensure_invoke() -> Outcome<String> {  bind_outcome(
+fn gunbc_ci_microvm_runner_group_ensure_invoke() -> Outcome<String> {
+  bind_outcome(
     o: gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_microvm_runner_group_ensure_prelude(),
       source_roots: witness_layer_roots,
@@ -203,6 +204,7 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> Outcome<String> {  bind_outc
     concat("# ", concat(dissolution_description(condition: gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger), "\n")),
     zesty_c
   ))
-      }
+    }
   )
+}
 
