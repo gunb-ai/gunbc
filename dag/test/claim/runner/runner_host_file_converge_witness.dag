@@ -2336,8 +2336,8 @@ test fn the_job_user_is_read_from_the_loaded_environment_and_masked_slots_are_no
 
 // srv14 (butch) has NO anchor row until it joins the tailnet -- its lease is a DHCP OBSERVATION and
 // the key at it is the FIRST-CONTACT hop, which ONLY hostname_converge and tailscale_join_converge may
-// dial (gunbc.fleet.fleet_known_hosts_anchor::first_contact_admitted_mode_wires; custody witness
-// custody_refuses_the_pre_anchor_host_on_its_own_mode_wire). So the RUNNER converge, an anchored mode,
+// dial (the FirstContactAdmission token sum in gunbc.fleet.fleet_known_hosts_anchor; custody witness
+// custody_refuses_the_pre_anchor_host_without_a_token). So the RUNNER converge, an anchored mode,
 // REFUSES srv14 pre-join -- no actuation can reach a host whose only reach is the lease. When the flip
 // PR adds srv14's tailnet row, THIS claim goes red on purpose and is updated to expect the tailnet
 // target (name derived, never a literal) -- that is the post-join flip, not a regression.
@@ -2347,7 +2347,6 @@ test fn the_pre_join_host_refuses_the_administrator_target_srv14() -> Bool {
     SshTargetRefused { endpoint: _, refusal: refusal } => match refusal {
       TargetAnchorRowAbsent { host: _ } => true
       TargetEndpointUnparseable { reason: _ } => false
-      FirstContactModeNotAdmitted { mode: _, host: _ } => false
       FirstContactHopSupersededByAnchor { host: _ } => false
     }
   }

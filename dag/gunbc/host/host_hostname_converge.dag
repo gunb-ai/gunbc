@@ -48,6 +48,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetResolved,
   fleet_ssh_target_at_standard_port,
   first_contact_ssh_target,
+  FirstContactAdmission,
 }
 import gunbc.fleet.fleet_converge_mode_wires { hostname_converge_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -695,13 +696,14 @@ fn hostname_converge_bind_transport(
 // claim fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host), principal:
 // OPERATOR) is verbatim main's route at 1a78eac11c93 (witness-pinned:
 // host_credential_custody_converge_witness hostname_and_custody_targets_are_unchanged_for_anchored_hosts).
-// Only an UNANCHORED host with a pinned key, reached by an admitted mode wire, is admitted over the
+// Only an UNANCHORED host with a pinned key, reached by a token-holding mode, is admitted over the
 // hop; the hop rows retire at the flip, after which even srv14 falls through to the probe route.
 fn hostname_converge_transport_target(target: HostIdentity) -> SshTargetResolution {
   match first_contact_ssh_target(
     host: target,
     principal: host_identity_operator_principal_name(),
-    mode_wire: hostname_converge_mode,
+    // The token, held by exactly this mode (review 96277): the type, not a string, is the admission.
+    admission: Present { value: FirstContactAdmission.HostnameMode },
   ) {
     SshTargetResolved { target: ssh_target } => SshTargetResolved { target: ssh_target }
     SshTargetRefused { endpoint: _, refusal: _ } => fleet_ssh_target_at_standard_port(

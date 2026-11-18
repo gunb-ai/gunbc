@@ -153,7 +153,7 @@ test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses(
     && srv14_host_lan_endpoint.locality == Lan
     && srv14_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv14 }
     && !any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String))
-    && all(first_contact_known_host_rows(), r => any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+    && all(first_contact_known_host_rows(), r => any(known_hosts_file_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
     && !any(fleet_intent_network, e => e.label == "srv11-host-lan")
     && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10"
 }

@@ -245,13 +245,15 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
 // (gunbc.spark.fabric_reach): a leg that reaches a Spark over the rail matches the same pinned key
 // at a second endpoint, so neither path is ever trust-on-first-use.
 fn fleet_known_hosts_rows() -> List<KnownHostKeyRow> {
-  concat(concat(fleet_host_key_enrollments, fabric_rail_known_host_rows()), first_contact_known_host_rows())
+  concat(fleet_host_key_enrollments, fabric_rail_known_host_rows())
 }
 
-// THE FIRST-CONTACT ROWS. They sit in the VERIFICATION registry (a ssh to the lease address must
-// still match a pinned key -- never trust-on-first-use) but are never ANCHORS: anchored_host_key_row
-// skips exactly this shape, so no actuation may be driven by them (see the hop comment on
-// first_contact_lan_keys in gunbc.fleet.fleet_host_key_enrollment).
+// THE FIRST-CONTACT ROWS live in their OWN LIST, never in fleet_known_hosts_rows(). That is the
+// declared separation of anchor vs hop -- a sum declared by STRUCTURE, not a predicate that re-renders
+// addresses to tell the two apart (review 96277): a hop row cannot become an anchor because the anchor
+// lookup only ever reads the enrollment registry, and the verification file (known_hosts_file_rows)
+// is where BOTH kinds must appear: a ssh to the lease address must still match a pinned key -- never
+// trust-on-first-use. See the hop comment on first_contact_lan_keys in gunbc.fleet.fleet_host_key_enrollment.
 fn first_contact_known_host_rows() -> List<KnownHostKeyRow> {
   flat_map(first_contact_lan_keys, o =>
     match lan_endpoint_host_key_row(observation: o) {
@@ -261,79 +263,65 @@ fn first_contact_known_host_rows() -> List<KnownHostKeyRow> {
   )
 }
 
-// A row is FIRST-CONTACT-SHAPED when it restates an enrolled hop key AT the host's lease address.
-// The same host+key at any other address (the tailnet row of the flip PR, for instance) is NOT this
-// shape -- it is a real anchor. Once the hop's key data retires, no row is ever this shape again.
-fn is_first_contact_row(row: KnownHostKeyRow) -> Bool {
-  length(filter(first_contact_lan_keys, o =>
-    host_identity_eq(a: o.host, b: row.host)
-      && o.public_key_base64 == row.public_key_base64
-      && match host_lan_address(host: o.host) {
-           Absent => false
-           Present { value: a } => render_network_host(host: row.address.host) == (a as String)
-         }
-  )) > 0
+// The rows the installed known_hosts file must carry: the anchored registry PLUS the first-contact
+// pins. Every consumer that VERIFIES a host key reads this; every consumer that DECIDES reachability
+// reads anchored_host_key_row / fleet_known_hosts_rows. The two questions never share a list.
+fn known_hosts_file_rows() -> List<KnownHostKeyRow> {
+  concat(fleet_known_hosts_rows(), first_contact_known_host_rows())
 }
 
-// THE FIRST-CONTACT TARGET -- admitted ONLY by hostname_converge and tailscale_join_converge while
-// the host has no anchored row. Address and key come from ONE derivation (lan_endpoint_host_key_row),
-// so the address dialed and the key verified cannot disagree -- the same discipline anchored_ssh_target
-// enforces for anchored modes. Every other mode calls anchored_ssh_target and REFUSES pre-anchor.
-// THE FIRST-CONTACT HOP ADMITS ONLY THE MODES THAT MAKE A HOST JOINABLE: hostname_converge sets the
-// hostname the join needs, tailscale_join_converge creates the tailnet anchor this list is retired by.
-// One datum, read by every hop dialer; witnesses check it against the workflow's mode facts (so a
-// renamed wire that stops matching FAILS) and that no other mode dials the lease.
-data first_contact_admitted_mode_wires: List<String> = [
-  hostname_converge_wire as String,
-  tailscale_join_converge_wire as String,
-]
+// AN ADMISSION TOKEN, not a wire string (review 96277, DESIGN fail_closed: "stronger than catching a
+// wrong state is making it unwritable"). A String mode argument could be forged by any current or
+// future caller; this closed sum has exactly two variants, each constructible only by the ONE mode
+// that owns it -- hostname_converge (bind_transport) and tailscale_join_converge (its custody hop).
+// A mode that has no token to offer passes Absent and is refused: the parameter type IS the admission
+// list, and the refusal is a value, not a panic.
+type FirstContactAdmission = HostnameMode | TailscaleJoinMode
 
-fn mode_admits_first_contact(mode_wire: String) -> Bool {
-  length(filter(first_contact_admitted_mode_wires, fn(w) { w == mode_wire })) > 0
-}
-
+// THE FIRST-CONTACT TARGET -- admitted ONLY by the two token holders above, and ONLY while the host
+// has no anchored row (the anchor check is inside this function, so no mode, in any order, dials a
+// lease while an anchor exists -- review 96260/96272). Address and key come from ONE derivation
+// (lan_endpoint_host_key_row), so the address dialed and the key verified cannot disagree -- the same
+// discipline anchored_ssh_target enforces for anchored modes. Every other mode calls
+// anchored_ssh_target and REFUSES pre-anchor.
 fn first_contact_ssh_target(
   host: HostIdentity,
   principal: NonEmptyStr,
-  mode_wire: String,
+  admission: Optional<FirstContactAdmission>,
 ) -> SshTargetResolution {
-  if !mode_admits_first_contact(mode_wire) {
-    SshTargetRefused {
-      endpoint: host as String,
-      refusal: FirstContactModeNotAdmitted { mode: mode_wire, host: host as String },
-    }
-  } else {
-  // THE HOP IS FOR PRE-ANCHOR HOSTS ONLY, and the hop function itself enforces it: a host the registry
-  // already anchors is refused the hop (no window in which any mode, in any order, dials a lease while
-  // an anchor row exists -- review 96260/96272). Callers therefore need no anchor-check of their own.
-  match anchored_host_key_row(host: host) {
-    Present { value: _ } =>
-      SshTargetRefused { endpoint: host as String, refusal: FirstContactHopSupersededByAnchor { host: host as String } }
+  match admission {
     Absent =>
-  match fold(first_contact_lan_keys, init: none, f: fn(acc, o) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if host_identity_eq(a: o.host, b: host) { Present { value: o } } else { none }
-    }
-  }) {
-    Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
-    Present { value: o } =>
-      match lan_endpoint_host_key_row(observation: o) {
+      SshTargetRefused { endpoint: host as String, refusal: FirstContactModeNotAdmitted { host: host as String } }
+    Present { value: _ } =>
+      // The token is consumed here: its only purpose was to make this call possible.
+      match anchored_host_key_row(host: host) {
+        Present { value: _ } =>
+          SshTargetRefused { endpoint: host as String, refusal: FirstContactHopSupersededByAnchor { host: host as String } }
+        Absent =>
+      match fold(first_contact_lan_keys, init: none, f: fn(acc, o) {
+        match acc {
+          Present { value: v } => Present { value: v }
+          Absent => if host_identity_eq(a: o.host, b: host) { Present { value: o } } else { none }
+        }
+      }) {
         Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
-        Present { value: row } =>
-          SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
+        Present { value: o } =>
+          match lan_endpoint_host_key_row(observation: o) {
+            Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
+            Present { value: row } =>
+              SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
+          }
       }
-  }
-  }
+      }
   }
 }
 
 fn fleet_known_hosts_fragment() -> String {
-  canonical_known_hosts_fragment(rows: fleet_known_hosts_rows())
+  canonical_known_hosts_fragment(rows: known_hosts_file_rows())
 }
 
 fn fleet_known_hosts_registry_identity() -> ContentHash {
-  canonical_known_hosts_identity(rows: fleet_known_hosts_rows())
+  canonical_known_hosts_identity(rows: known_hosts_file_rows())
 }
 
 // The filename carries the registry digest, so the path is a claim the readback then verifies. The
@@ -452,7 +440,7 @@ fn materialize_known_hosts_anchor(attempt: FleetSshAttemptIdentity, rows: List<K
 }
 
 fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome {
-  materialize_known_hosts_anchor(attempt: attempt, rows: fleet_known_hosts_rows())
+  materialize_known_hosts_anchor(attempt: attempt, rows: known_hosts_file_rows())
 }
 
 // The one projection consumers need: the anchor path, reachable ONLY from an outcome that carries an
@@ -738,7 +726,7 @@ fn ssh_target_port_options(target: SshTarget) -> List<SshClientOption> {
 type SshTargetRefusal
   = TargetEndpointUnparseable { reason: NetworkHostParseRefusal }
   | TargetAnchorRowAbsent { host: String }
-  | FirstContactModeNotAdmitted { mode: String, host: String }
+  | FirstContactModeNotAdmitted { host: String }
   | FirstContactHopSupersededByAnchor { host: String }
 
 type SshTargetResolution
@@ -760,7 +748,7 @@ fn anchored_host_key_row(host: HostIdentity) -> KnownHostKeyRow? {
   fold(fleet_known_hosts_rows(), init: none, f: fn(acc, k) {
     match acc {
       Present { value: r } => Present { value: r }
-      Absent => if host_identity_eq(a: k.host, b: host) && !is_first_contact_row(row: k) { Present { value: k } } else { none }
+      Absent => if host_identity_eq(a: k.host, b: host) { Present { value: k } } else { none }
     }
   })
 }
@@ -784,8 +772,8 @@ fn ssh_target_refusal_text(endpoint: String, refusal: SshTargetRefusal) -> Strin
       join(["fleet ssh target refused: endpoint `", endpoint, "` is not a host (", network_host_parse_refusal_wire(refusal: why), ")"], "")
     TargetAnchorRowAbsent { host: h } =>
       join(["fleet ssh target refused: host `", h, "` has no known-hosts anchor row, and an ssh may only connect at the anchored address (the anchor gate is the authority for the address)"], "")
-    FirstContactModeNotAdmitted { mode: m, host: h } =>
-      join(["fleet ssh target refused: mode `", m, "` may not use the first-contact hop for host `", h, "` -- only the join-making modes in first_contact_admitted_mode_wires reach a pre-anchor host"], "")
+    FirstContactModeNotAdmitted { host: h } =>
+      join(["fleet ssh target refused: host `", h, "` may only be reached through the first-contact hop by a mode holding an admission token -- the join-making modes alone hold one (FirstContactAdmission)"], "")
     FirstContactHopSupersededByAnchor { host: h } =>
       join(["fleet ssh target refused: host `", h, "` is already anchored; the first-contact hop admits nothing while an anchor row exists"], "")
   }

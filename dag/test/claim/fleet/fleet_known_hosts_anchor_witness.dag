@@ -22,8 +22,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   anchored_host_key_row,
   first_contact_known_host_rows,
   first_contact_ssh_target,
-  fleet_known_hosts_rows,
-  mode_admits_first_contact,
+  fleet_known_hosts_rows, known_hosts_file_rows,
+  FirstContactAdmission, FirstContactModeNotAdmitted,
   SshTargetRefused,
   SshTargetResolved,
   canonical_known_hosts_fragment,
@@ -211,9 +211,14 @@ test fn w_the_fleet_path_is_the_generalized_path_at_the_fleet_registry() -> Bool
 // make a host joinable -- checked here against the workflow's own mode facts, so a renamed wire that
 // stops matching the hop list FAILS.
 
+// The hop rows are IN the file the host verifies against (known_hosts_file_rows = anchored registry
+// + hop rows), and they are NOT anchors -- anchored_host_key_row reads only the enrollment registry,
+// never this list (a_host_with_only_a_hop_has_no_anchored_row proves the separation).
 test fn the_hop_rows_join_the_verification_registry() -> Bool {
   all(first_contact_known_host_rows(), r =>
-    any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+    any(known_hosts_file_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+    && !any(first_contact_known_host_rows(), r =>
+      any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
 }
 
 // KEYED, not counted (still-fox-404): a second host's datum must not redden a claim about BUTCH's key,
@@ -237,24 +242,28 @@ test fn a_host_with_only_a_hop_has_no_anchored_row() -> Bool {
   }
 }
 
-test fn the_hop_admits_exactly_the_join_making_mode_wires() -> Bool {
-  match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", mode_wire: fleet_converge_mode_facts(mode: HostnameConverge).wire as String) {
+// ADMISSION IS THE TOKEN TYPE, NOT A STRING (review 96277): the two join-making modes hold the only
+// two constructible tokens; any other caller (custody, runner converge -- today and forever) offers
+// Absent and is refused the hop. The claim that the workflow's mode facts still spell the two wires
+// lives beside this one (fleet_converge_mode_facts vs the leaf datums), so a renamed wire still fails.
+test fn the_hop_admits_only_the_token_holding_modes() -> Bool {
+  match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: FirstContactAdmission.HostnameMode }) {
     SshTargetResolved { target: _ } => true
     SshTargetRefused { endpoint: _, refusal: _ } => false
   }
-    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", mode_wire: fleet_converge_mode_facts(mode: TailscaleJoinConverge).wire as String) {
+    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: FirstContactAdmission.TailscaleJoinMode }) {
       SshTargetResolved { target: _ } => true
       SshTargetRefused { endpoint: _, refusal: _ } => false
     }
-    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", mode_wire: fleet_converge_mode_facts(mode: RunnerHostFileConverge).wire as String) {
+    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: none) {
       SshTargetResolved { target: _ } => false
-      SshTargetRefused { endpoint: _, refusal: _ } => true
+      SshTargetRefused { endpoint: _, refusal: FirstContactModeNotAdmitted { host: _ } } => true
+      SshTargetRefused { endpoint: _, refusal: _ } => false
     }
-    && !mode_admits_first_contact(mode_wire: fleet_converge_mode_facts(mode: RunnerHostFileConverge).wire as String)
 }
 
 test fn the_hop_admits_nothing_for_a_host_with_no_pinned_key() -> Bool {
-  match first_contact_ssh_target(host: "srv1" as HostIdentity, principal: "ubuntu", mode_wire: fleet_converge_mode_facts(mode: TailscaleJoinConverge).wire as String) {
+  match first_contact_ssh_target(host: "not-a-fleet-host" as HostIdentity, principal: "ubuntu", admission: Present { value: FirstContactAdmission.TailscaleJoinMode }) {
     SshTargetResolved { target: _ } => false
     SshTargetRefused { endpoint: _, refusal: _ } => true
   }
