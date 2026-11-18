@@ -1,0 +1,130 @@
+module gunbc.roadmap.roadmap_effort_estimate
+
+import std.types { String, Int, Bool, List }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
+
+// THE CLOCK IS THE ESTIMATE, NOT THE MILESTONE (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc,
+// operator 2026-11-17, reversing the private-only placement; the shape is the operator's own from the private
+// plan, 2026-11-03). One row per estimate, keyed by the roadmap node that stands for the milestone: when it was
+// made, when the work starts, when it is realistically done, when it is pessimistically done, and the basis the
+// numbers rest on. A row is appended and never edited, so the first estimate and the actual acceptance (read
+// from the roadmap event log, never written here) stay readable side by side. Overdue is derived: the latest
+// estimate's realistic date has passed and the node has no acceptance. No date here is a dependency or a gate
+// (gunbc.design_ruling::planning_scheduling_is_cut still forbids that); the dependency reading is the edges.
+type EffortEstimate {
+  subject: RoadmapNodeId
+  made_on: Iso8601CivilDate
+  start: Iso8601CivilDate
+  done: Iso8601CivilDate
+  done_pessimistic: Iso8601CivilDate
+  basis: String
+}
+
+fn d(y: Int, m: Int, day: Int) -> Iso8601CivilDate { Iso8601CivilDate { year: y, month: m, day: day } }
+
+fn estimate(subject: String, made: Iso8601CivilDate, start: Iso8601CivilDate, done: Iso8601CivilDate, pessimistic: Iso8601CivilDate, basis: String) -> EffortEstimate {
+  EffortEstimate { subject: nid(s: subject), made_on: made, start: start, done: done, done_pessimistic: pessimistic, basis: basis }
+}
+
+// THE CALIBRATION THE FIRST ROUND RESTS ON (measured 2026-11-17 from GitHub and main's committed event log): a hard
+// compiler node takes 10 to 16 weeks (namespace-structural-observations first PR 2026-08-04, accepted 2026-10-11;
+// native-seven 90 pull requests over 16 weeks since 2026-07-25 and not passing; v2-emitter-direct-rust-door first
+// PR 2026-08-02, an acceptance returned 2026-10-12, open after 15 weeks); an easy node about a week
+// (v2-emitter-producer-provenance). Acceptances on main: 17 ever, one since September. The private plan's undated
+// effort numbers for the whole v2 program sum to 39 active days, more than ten times below what one node consumed.
+// Every row below assumes the acceptance process is fixed first and the per-name waves are replaced by generator
+// sweeps; at the measured wave pace the namespace program does not finish.
+data roadmap_effort_estimates: List<EffortEstimate> = [
+  estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 1, day: 26), pessimistic: d(y: 2027, m: 3, day: 9),
+    basis: "54 names homed by generator sweep (native-seven-names-homed), one resolver vertical (declaration-provider-outcomes), one harness node (native-test-verdict-realization), two receipts; 6 to 10 weeks against the 16 already spent, pessimistic the same 16 again"),
+  estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 9, day: 30), pessimistic: d(y: 2027, m: 12, day: 31),
+    basis: "five serial hard emitter nodes (direct-rust-door 15 weeks in, compatible-corpus-module, first-behavioral-module, crate-partition, then this) at 8 to 16 weeks each, serial by their edges; adding workers shortens nothing here"),
+  estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 9, day: 30), done: d(y: 2027, m: 12, day: 31), pessimistic: d(y: 2028, m: 6, day: 30),
+    basis: "the self-host milestone: after second-generation, five more serial landings (native bootstrap, fixed point, emitter delete, interpreter quarantine and delete) at 4 to 8 weeks each"),
+  estimate(subject: "import-grammar-and-lines-deleted", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 24), done: d(y: 2027, m: 6, day: 30), pessimistic: d(y: 2027, m: 11, day: 30),
+    basis: "names without imports through the corpus cut: layer 0 is two hard nodes including the seed loader; layers 1 to 3 are generator-driven; runs in parallel with the emitter chain and gates production admission, not second-generation"),
+  estimate(subject: "external-specimen-compiles", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 12, day: 31), done: d(y: 2028, m: 9, day: 30), pessimistic: d(y: 2029, m: 6, day: 30),
+    basis: "the vision milestone's last node: eight cross-cutting refactors at 8 to 16 weeks each, partly parallel, after self-host"),
+  estimate(subject: "factory-dogfood-route", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 3, day: 31), pessimistic: d(y: 2027, m: 8, day: 31),
+    basis: "four hard nodes: the belt-to-fabric cut, the G1 and G5 records, exact-head verification; the lab pair half landed on 2026-11-16"),
+  estimate(subject: "service-evidence-capture", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 3, day: 31), done: d(y: 2027, m: 12, day: 31), pessimistic: d(y: 2028, m: 12, day: 31),
+    basis: "the first customer service rests on the dogfood window plus health admission, credential drills and the isolation bar; the private strategy delays real customers indefinitely, so the pessimistic date is a floor, not a plan"),
+  estimate(subject: "debt-payoff", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 16), done: d(y: 2027, m: 1, day: 12), pessimistic: d(y: 2027, m: 3, day: 31),
+    basis: "the 2026 batch: seven nodes, three landed in the week of 2026-11-16; acceptance-bound, 4 to 8 weeks if acceptances flow"),
+  estimate(subject: "factory-attempt-execution-on-fabric-lease", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 15), pessimistic: d(y: 2027, m: 3, day: 31),
+    basis: "planning consolidation's realization half: the acceptance guidance, the closed binding, the realization-home decision and the projection; mostly plan and carrier work, 2 to 3 months"),
+  // SECOND ROUND, SAME DAY (operator, 2026-11-17: the aggregate is read over the units; honest accounting at unit
+  // grain is all that matters). Prior: the operator's scratch list-scheduling simulation over the 36 open units of the
+  // v2 cone, 2026-11-17, not in the tree -- its duration classes (receipt 5 working days, generator sweep 15, join 10,
+  // v1 preparation 30, namespace 40, hard compiler node 60 = the measured 12-week median) are the falsifiable part and
+  // are named here so the assumption can be checked against them. The longest serial chain runs the six emitter nodes
+  // from direct-rust-door through second-generation and then the bootstrap, fixed point and deletions. These dates are
+  // a prior the operator's own staffing choices could move, not a measurement about the work.
+  estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 4, day: 27), pessimistic: d(y: 2027, m: 9, day: 21),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 115 wide, day 220 narrow; the first-round January date holds only if native-seven's four parents are taken before the emitter chain"),
+  estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 250, bound by the longest serial chain: six hard emitter nodes at 60 working days each; more parallelism does not move it, only decomposing those nodes into parallel units does"),
+  estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 2, day: 28),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 450 narrow, day 440 wide; the first-round end-of-2027 date assumed 4 to 8 weeks per deletion step, the simulation's v1 class is 30 working days and the chain after second-generation is seven serial units"),
+  // THIRD ROUND, SAME DAY (operator, 2026-11-17: with the limit set by planning, dependency and decomposition rather than
+  // by any workforce, the floor is the longest serial chain -- the six serial emitter nodes at 60 working days each, then
+  // the bootstrap, the fixed point and the deletions). Same prior as the second round: the operator's scratch
+  // list-scheduling simulation, 2026-11-17, not in the tree. These rows are the dates DECOMPOSITION has to beat, not
+  // dates to staff toward; the axis each milestone splits along is recorded in gunbc.plans.planning_consolidation.
+  estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 23), pessimistic: d(y: 2027, m: 4, day: 27),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 70, bound by its own four parents at 40 working days (declaration-provider-outcomes and the derived closure), not by parallelism"),
+  estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 250, unchanged from the narrow pass because the chain is serial; the date moves only if the six emitter nodes are decomposed per grammar production (126 productions, join per node)"),
+  estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 7, day: 25), pessimistic: d(y: 2029, m: 2, day: 28),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 440, the longest serial chain; two weeks better than the narrow pass"),
+  estimate(subject: "import-grammar-and-lines-deleted", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 24), done: d(y: 2027, m: 6, day: 29), pessimistic: d(y: 2027, m: 11, day: 30),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 160; its own chain (closure, rule, layers 1 to 3) at 40 working days each, beside the emitter chain"),
+  estimate(subject: "factory-dogfood-route", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 5, day: 4), pessimistic: d(y: 2027, m: 8, day: 31),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 120 (the execution cut, then G1 and G5, then the route); the factory terminal at day 250 behind the work-execution chain"),
+  estimate(subject: "external-specimen-compiles", made: d(y: 2026, m: 11, day: 17), start: d(y: 2028, m: 7, day: 25), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 6, day: 30),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 450, ten days after self-host, since the seven vision separations proceed beside the chain and only the specimen waits on everything"),
+]
+
+fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  a.year < b.year || (a.year == b.year && (a.month < b.month || (a.month == b.month && a.day <= b.day)))
+}
+
+fn estimate_has_node(e: EffortEstimate) -> Bool {
+  count(filter(declared_roadmap_nodes(), n => n.node == e.subject)) == 1
+}
+
+fn estimates_all_have_nodes() -> Bool {
+  all(roadmap_effort_estimates, e => estimate_has_node(e: e))
+}
+
+fn estimates_are_ordered() -> Bool {
+  all(roadmap_effort_estimates, e => date_le(a: e.made_on, b: e.done) && date_le(a: e.start, b: e.done) && date_le(a: e.done, b: e.done_pessimistic))
+}
+
+fn estimates_for(subject: RoadmapNodeId) -> List<EffortEstimate> {
+  filter(roadmap_effort_estimates, e => e.subject == subject)
+}
+
+// Consumption frontier (gunbc.design_argument::consumption). latest_estimate and
+// overdue are read by no production consumer on this branch; their only reader here is
+// their own witness, which is not a consumer under the rule. They are a declared frontier:
+// consumed by the named later change `roadmap-work-item-projection` (declared in #16650,
+// stacked on this branch), whose per-node row carries a node's latest estimate and its
+// `overdue`, which `roadmap-timeline-page` then renders. Trigger: #16650 landing
+// `roadmap-work-item-projection`. The node ids are named here as the consuming change,
+// not linked as a graph edge -- this branch does not carry that node.
+// The latest estimate for a subject: the last appended, since rows are appended in order and never edited.
+fn latest_estimate(subject: RoadmapNodeId) -> Optional<EffortEstimate> {
+  fold(estimates_for(subject: subject), init: optional_absent(), f: fn(acc, e) { optional_present(value: e) })
+}
+
+// Overdue is derived: the latest realistic date has passed and the caller found no acceptance for the subject.
+fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> Bool {
+  match latest_estimate(subject: subject) {
+    Present { value: e } => !accepted && date_le(a: e.done, b: today) && !(e.done.year == today.year && e.done.month == today.month && e.done.day == today.day)
+    Absent => false
+  }
+}
