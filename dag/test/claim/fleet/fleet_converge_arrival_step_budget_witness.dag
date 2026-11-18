@@ -8,21 +8,14 @@ module test.claim.fleet.fleet_converge_arrival_step_budget_witness
 // no interlock acquired and nothing to release -- one day out of srv15's install window, spent on loading.
 // The mode is named in the roadmap at gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation,
 // and fan_observe and the runner-host read steps already moved off the flat figure after the same kill.
-// These claims hold the arrival lane's replacement in two halves. Modelled and checked, but NOT shipped:
-// the step's budget fold over the door's declared phases, the job's derived backstop, and the predicate
-// that refuses generation if that backstop would pass the platform ceiling. Shipped and unchanged: the
-// figures the job carries today. gunbc.design_ruling::ci_job_budgets_closed_to_growth is not satisfied by
-// computing a number -- the operator's sign-off happens outside the diff -- so this PR models the raise and
-// refuses to apply it, and applying it is a later change that carries the ruling row with it.
-//
-// No claim in this file reads a ruling row -- not its prose, not its absence (reviews 96500, 96505: a word
-// like PENDING is not a control bit, and grading a hand-typed sentence is not grading a model). The figures
-// are pinned as integers, from the fold. What authorizes shipping them is a DesignRuling row that does not
-// exist yet and is not named here: gunbc.design_ruling ci_job_budgets_closed_to_growth says the operator's
-// explicit sign-off must be recorded before a CI time budget moves, and no such record exists. Where the
-// unmet need itself is tracked: gunbc.recurring_failure_mode
-// gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation, which owns the fact that a gunbc run step
-// pays corpus-denominated cost before its entry is entered.
+// The arrival-converge budget, held in both directions. The fold over the door's declared legs (21 minutes
+// for the step, a derived 51 for the job) is computed, ceiling-checked, and SHIPPED -- shipped because
+// gunbc.design_ruling srv15_arrival_converge_step_raised_to_21_minutes is in the ledger with the operator's
+// words, which is what gunbc.design_ruling ci_job_budgets_closed_to_growth requires before a CI time budget
+// moves. The claims refuse either drift: a raised figure with no row behind it, and a ledger row whose
+// figures the emitter does not carry. They read the ruling as a carrier (its reference and governs
+// DeclarationRefs), never as prose -- reviews 96500 and 96505: a word like PENDING is not a control bit, and
+// grading a hand-typed sentence is not grading a model.
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_converge_job,
   fleet_converge_arrival_converge_step_timeout_minutes,
@@ -108,15 +101,37 @@ test fn the_step_fold_is_the_phases_it_declares() -> Bool {
     && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
 }
 
-// THE SHIPPED FIGURE IS THE ALLOWANCE, NOT THE FOLD. The fold is computed and ceiling-checked, but applying
-// it is a CI time-budget raise, and the operator's sign-off for it has not been given or recorded. This is
-// what keeps the PR from shipping the raise it models.
-test fn the_arrival_converge_step_ships_the_allowance_not_the_fold() -> Bool {
+// THE SHIPPED FIGURE IS THE FOLD. Read off the job that runs it, not off a copy of the number: the step's
+// emitted timeout equals what fleet_converge_arrival_converge_step_timeout_minutes computes from the
+// declared legs, and is strictly above the allowance it used to carry -- the allowance is the figure that
+// killed run 44249358201 at 05m00s with the door's first BMC call still queued.
+test fn the_arrival_converge_step_ships_the_fold() -> Bool {
   let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1
     && all(t, m => m >= 0)
-    && all(t, m => m == gunbc_ci_aux_step_timeout_minutes)
+    && all(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+    && all(t, m => m > gunbc_ci_aux_step_timeout_minutes)
 }
+
+// THE RAISE AND ITS PERMISSION TRAVEL TOGETHER, read as carriers. If the step and job figures are raised,
+// the ledger must hold the ruling row that authorizes them, governing the CI contract; if that row is ever
+// removed or re-pointed, the raised figures go RED and the lane must either restore the row or come back
+// down (coming down needs no sign-off). Nothing here inspects a string inside a ruling.
+test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
+  let rows = filter(
+    xs: design_rulings(),
+    keep: r => declaration_ref_display_key(ref: r.reference) == "gunbc.design_ruling::srv15_arrival_converge_step_raised_to_21_minutes"
+  )
+  let step = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
+  let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
+  rows.length() == 1
+    && declaration_ref_display_key(ref: rows[0].governs) == "gunbc.design_document::ci_contract_blocks"
+    && step.length() == 1
+    && all(step, m => m >= 0)
+    && all(step, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+    && job == fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+}
+
 
 // THE FOLD COVERS ITS PHASES, each counted once: the resolve allowance plus the credential read plus both
 // leg rosters, in seconds, is inside the minute figure the step carries. This is the claim that fails if a
@@ -149,21 +164,18 @@ test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
             + length(xs: arrival_counted_census_ops)) * (second_count(s: arrival_ipmi_leg_bound()) as Int))
 }
 
-// THE JOB'S BACKSTOP IS DERIVED -- prelude, artifact transfer, the three 5-minute neighbours, the step
-// fold -- and it is bigger than the flat sum the file has always carried. It is NOT shipped in this change:
-// the projection still carries aux + 20, because applying the derived figure is a budget raise and the
-// sign-off for it has not been given. Both halves are pinned, so a flip in either direction without the
-// ruling row is RED, and so is a derived figure that stops covering its steps.
-test fn the_derived_job_backstop_covers_its_steps_but_is_not_shipped() -> Bool {
+// THE JOB'S BACKSTOP IS DERIVED -- prelude, artifact transfer, the three 5-minute neighbours, and the step
+// fold -- and it is what the job carries. It must still cover its own steps, and it must not have slid back
+// to the flat sum the file used to emit.
+test fn the_derived_job_backstop_is_shipped_and_covers_its_steps() -> Bool {
   let shipped = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
   let derived = fleet_converge_arrival_converge_job_backstop_timeout_minutes()
   let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
       + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
   shipped > 0
-    && shipped == gunbc_ci_aux_step_timeout_minutes + 20
-    && derived > 0
+    && shipped == derived
     && derived == steps
-    && derived > shipped
+    && shipped != gunbc_ci_aux_step_timeout_minutes + 20
 }
 
 // THE CEILING IS CHECKED, NEVER CLAMPED: the job's backstop sits under
