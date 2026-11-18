@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.optional { Present, Absent, Optional }
 import std.measure { Second, second, second_count, Minute, minute, minute_count, second_to_millisecond }
 import extdeps.linux.proc_uptime { proc_uptime_read }
-import gunbc.ci.ci_budget_raise { StepBudgetApprovals, BudgetIntroduction, BudgetAdmission, BudgetAdmitted, BudgetRaiseUnapproved, BudgetRaiseGrantForAnotherBudget, budget_admission, budget_admitted_minutes }
+import gunbc.ci.ci_budget_raise { StepBudgetApprovals, BudgetIntroduction, BudgetAdmission, BudgetAdmitted, BudgetRaiseUnapproved, BudgetRaiseGrantForAnotherBudget, budget_admission, budget_admitted_minutes, mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -178,16 +178,14 @@ fn mtcollins1_bmc_cold_reset_step_required_minutes() -> Minute {
 // THE STEP'S APPROVALS (ruling gunbc.design_ruling ci_job_budgets_closed_to_growth; admitted by
 // gunbc.ci.ci_budget_raise). The budget is named by the declaration the workflow emits from, so a grant for any other
 // budget is refused rather than counted. It was introduced at 35 min with the mode (gunb-ai/gunbc#16529), a new step
-// and not a raise. The sustained window (gunbc#16659) requires 67 (mtcollins1_bmc_cold_reset_step_required_minutes).
-// That raise needs the operator's explicit sign-off, and a ruling row exists only once the operator's words do, so
-// `raises` is empty: the admission of 67 refuses as BudgetRaiseUnapproved naming 35 (the request, its arithmetic and
-// evidence, is on gunb-ai/gunbc#16668). The change that carries the words adds the gunbc.design_ruling row, enrolls it
-// in design_rulings(), adds its grant to gunbc.ci.ci_budget_raise (this budget, raised_to 67), and lists that grant
-// here -- which both admits 67 and lifts the entry's refusal below.
+// and not a raise. The sustained window (gunbc#16659) requires 67 (mtcollins1_bmc_cold_reset_step_required_minutes);
+// the operator signed that raise off (gunbc.design_ruling mtcollins1_bmc_cold_reset_step_raised_to_67_minutes), and
+// its grant is the one raise, so the admission of 67 is BudgetAdmitted under that grant and the entry runs the watch.
+// A further raise needs its own ruling and grant.
 data mtcollins1_bmc_cold_reset_step_budget_approvals: StepBudgetApprovals = StepBudgetApprovals {
   budget: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"),
   introduced: BudgetIntroduction { minutes: minute(count: 35), carried_by: "gunb-ai/gunbc#16529 (the MtCollins1BmcColdReset mode)" },
-  raises: [],
+  raises: [mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant],
 }
 
 fn mtcollins1_bmc_cold_reset_step_budget_admission() -> BudgetAdmission {
@@ -195,10 +193,9 @@ fn mtcollins1_bmc_cold_reset_step_budget_admission() -> BudgetAdmission {
 }
 
 // THE STEP'S TIMEOUT, as emitted into the generated workflow (gunbc.fleet.fleet_converge_workflow): the ADMITTED
-// value, never the required one on its own -- 35 while the raise is unapproved, so a regen ships no raise. 35 does
-// NOT cover the window the watch permits (4020 s), and is never run as if it did: while the admission refuses, the
-// entry refuses before the hold, so at this budget the step's only work is that typed refusal and its receipt
-// (ColdResetStepBudgetUnapproved). No shorter window is fitted into 35.
+// value, never the required one on its own -- 67 under the signed grant. Were the admission ever to refuse (a required
+// value above every grant), this would fall back to the highest approved value, and the entry would refuse before the
+// hold rather than run the watch under it (ColdResetStepBudgetUnapproved); no shorter window is fitted into a budget.
 fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {
   budget_admitted_minutes(admission: mtcollins1_bmc_cold_reset_step_budget_admission(), approvals: mtcollins1_bmc_cold_reset_step_budget_approvals)
 }
@@ -422,16 +419,15 @@ fn cold_reset_stage_exit(stage: ColdResetStage) -> ProcessExit {
 }
 
 // ── THE ENTRY ────────────────────────────────────────────────────────────────────────────────────
-// The step's entry (gunbc.machine_intake.mtcollins1_boot_step): the route under the PRODUCTION budget admission. At
-// this revision that admission is BudgetRaiseUnapproved{67, highest 35}, so the entry refuses before any credential
-// read, hold or controller contact (ColdResetStepBudgetUnapproved); the change that signs the raise appends its
-// approval and the same call admits, with no edit here.
+// The step's entry (gunbc.machine_intake.mtcollins1_boot_step): the route under the PRODUCTION budget admission --
+// BudgetAdmitted{67} under the signed grant, so the entry runs the watch. A required value above every grant would
+// make the same call refuse before any credential read, hold or controller contact (ColdResetStepBudgetUnapproved).
 fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
   mtcollins1_bmc_cold_reset_wet_admitted(budget: mtcollins1_bmc_cold_reset_step_budget_admission())
 }
 
 // THE ROUTE UNDER A GIVEN BUDGET ADMISSION. It takes a SUPPLIED admission only so the acceptance matrix can execute
-// the watch the production admission does not yet admit; it is not a second production entry. The seal says so: its
+// the refusal the production admission no longer produces; it is not a second production entry. The seal says so: its
 // callers are the entry above and the matrix's one runner, nothing else. The hold and the held sequence admit this
 // function in the entry's place, one name for one name (boot_run_acquire_unit_hold, mtcollins1_bmc_cold_reset_held,
 // gunbc.auth.privileged_effect_registry), so no caller is added to either seal.

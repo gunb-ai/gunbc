@@ -176,13 +176,13 @@ fn cold_reset_route_under_a_supplied_admitted_budget_from_outside() -> String {
 }
 
 // A SIGN-OFF CANNOT BE MINTED BY THE BUDGET THAT WANTS IT (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668, F1): a
-// grant is written only in gunbc.ci.ci_budget_raise, so this one -- an unrelated ruling dressed as the cold-reset
-// step's raise to 67, which would admit the step and lift the entry's refusal -- is refused at the literal.
+// grant is written only in gunbc.ci.ci_budget_raise, so this one -- an unrelated ruling dressed as a raise of the
+// cold-reset step past its signed 67, which would admit that larger budget -- is refused at the literal.
 fn forged_cold_reset_step_budget_grant() -> BudgetRaiseGrant {
   BudgetRaiseGrant {
     ruling: serve_entry_verdict_step_raised_to_45_minutes,
     budget: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"),
-    raised_to: minute(count: 67),
+    raised_to: minute(count: 600),
   }
 }
 
