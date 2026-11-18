@@ -3733,8 +3733,8 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
-      - name: Refuse an undeployable dashboard_deploy dispatch by name, before approval and before the fold
-        id: admit_dashboard_deploy_inputs
+      - name: Refuse an undeployable desired_instance_deploy dispatch by name, before approval and before the fold (admit_dashboard_deploy_dispatch_inputs, the shared transaction gate; labelled for this mode)
+        id: admit_desired_instance_deploy_inputs
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function admit_dashboard_deploy_dispatch_inputs
@@ -3846,6 +3846,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/host/host_budget_preflight.dag --function admit_host_budget_declared
         timeout-minutes: 5
+      - name: Resolve the per-instance live-deploy receipt name and dir from the packed subject (live_deploy_ci_instance_receipt_identity_from_ci; never the srv1-live constant)
+        id: desired_instance_receipt_identity
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_ci_instance_receipt_identity_from_ci
+          cat "$ROOT/target/live-deploy-desired-instance-deploy-identity-receipt/live_deploy_receipt.json"
+        env:
+          GUNBC_DEPLOY_INSTANCE_ID: ${{ github.event.inputs.subject_host }}
       - name: Deploy the named srv1 instance (live_deploy_apply_desired_wet_from_ci, receipted; the instance arrives via env)
         id: desired_instance_deploy
         run: |-
@@ -3865,16 +3873,16 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply_receipt.dag --function assert_dashboard_deploy_receipts
         env:
-          GUNBC_LIVE_DEPLOY_RECEIPT_DIR: target/live-deploy-srv1-live-receipt
+          GUNBC_LIVE_DEPLOY_RECEIPT_DIR: ${{ steps.desired_instance_receipt_identity.outputs.receipt_dir }}
           GUNBC_DEPLOY_STEP_CONCLUSION: ${{ steps.desired_instance_deploy.conclusion }}
         if: always()
         timeout-minutes: 30
-      - name: Upload live-deploy transaction receipt
+      - name: Upload the per-instance live-deploy receipt (name and dir from the resolve step, never the srv1-live constant)
         id: desired_instance_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: live-deploy-srv1-live-receipt
-          path: target/live-deploy-srv1-live-receipt
+          name: ${{ steps.desired_instance_receipt_identity.outputs.receipt_name }}
+          path: ${{ steps.desired_instance_receipt_identity.outputs.receipt_dir }}
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
