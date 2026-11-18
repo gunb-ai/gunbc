@@ -1,0 +1,141 @@
+module test.claim.carrier_body_under_scalar_declared_return_witness
+
+// Witness: a CARRIER (or any nominal structured head) under a SCALAR declared type refuses.
+//
+// gunbc.recurring_failure_mode a_carrier_body_under_a_scalar_declared_return_is_accepted: a fn declared
+// `-> String` whose body's trailing expression is `outcome_accepted(value: "x")` -- a value of
+// `Outcome<String>`, the Accepted/Rejected carrier -- was ACCEPTED at phase=closure_typecheck with zero
+// blocking errors, as was the same value at a `String` parameter and at a record's `String` field. The
+// run aborted later, unlocated, in a primitive cast ("cannot cast Outcome (runtime carrier Variant) to
+// NonEmptyStr", NoSuchField{type_name: Outcome}), naming neither the lying declaration nor the trusting
+// consumer: the checker's judgment and the runtime disagreed with nothing joining them, which is the
+// floor of gunbc.design_argument::guarantee_ladder (values inhabit their declared types) failing.
+//
+// THE BOUNDARY, and why this arm is the general form rather than a third leaf. The judgment was keyed on
+// the KIND OF THE OFFENDING VALUE, not on the formal: v1.compiler.infer kernel_value_declared_type_mismatch_bounded
+// opens by exiting whenever the produced value's authored name is not a kernel type, so an actual that is
+// not a kernel leaves the inhabitance judgment before any declared head is consulted; the pair then fell
+// through v1.compiler.infer declared_type_conformance_diags_core's abstention at `!both_ground` and
+// through this relation's InhabitanceUnmodeled. That is the dispositioning
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel records -- it names
+// that guard and states that a second relation keyed on carriers would BE the fork the row exists to
+// prevent. So the repair is the general form in the ONE relation: when the declared head exposes as a
+// kernel scalar (through a where-refinement too, by the authority v1.compiler.infer
+// declared_head_is_kernel_scalar_through_refinement already uses), the produced value inhabits it only if
+// it is that kernel or a spelling the earlier arms admit; any other nominal structured head -- product or
+// coproduct, unapplied or applied -- is a different declaration with no route to the kernel, and is
+// refused by v1.compiler.infer structured_value_at_kernel_scalar_declared_type as
+// InhabitanceRefusedReason RefusedStructuredAtScalar. The same pair is refused at the fn body, the
+// record field, the let and the call argument because all four positions are judged by that one relation,
+// which is why this row does not add a carrier-shaped leaf beside
+// gunbc.recurring_failure_mode declared_return_disagrees_with_the_generic_it_returns and
+// gunbc.recurring_failure_mode list_typed_value_element_mismatch_admitted -- those two judge the
+// position-level return agreement and the element/generic-argument arm, which this change does not touch.
+//
+// THE THREE RED claims assert the required refusal for the three shapes the row reports: declared return,
+// parameter, record field. THE POSITIVE CONTROLS are the discriminating half: the SAME carrier at the
+// SAME three positions, declared as `Outcome<String>` instead of `String`, stays clean -- so a red on a
+// RED claim is the judgment, not a blanket refusal of structured heads. The kernel-at-its-own-refinement
+// control (an EpochMs at an EpochMs formal) keeps the general form from refusing a kernel under a
+// where-refinement of itself, and the harness control (a String under `-> Int`) proves this census route
+// judges the return seam at all, so an accepted RED is a defect here and not an unreachable harness.
+import std.types { Bool, Int, String }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+  compile_dag_diagnostic_census
+}
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The carrier the row reports, spelled in the fixture rather than imported from v2.std.diagnostic: the
+// judgment reads a head's declaration, not the module a value was authored in, so a same-file carrier
+// exercises the same boundary as `v2.std.diagnostic.Outcome` without pulling that closure into a claim.
+
+// THE THREE RED SHAPES: the carrier written at a position declared String.
+data carrier_at_string_return_source: String = "module probe_carrier_at_string_return\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn probe() -> String { outcome_accepted(value: \"x\") }\n"
+
+data carrier_at_string_argument_source: String = "module probe_carrier_at_string_argument\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn takes(x: String) -> Int { 1 }\nfn probe() -> Int { takes(x: outcome_accepted(value: \"x\")) }\n"
+
+data carrier_at_string_record_field_source: String = "module probe_carrier_at_string_record_field\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\ntype Box { text: String }\nfn probe() -> Box { Box { text: outcome_accepted(value: \"x\") } }\n"
+
+// THE DISCRIMINATING CONTROLS: the same carrier, at the same three positions, declared as the carrier.
+data carrier_at_carrier_return_source: String = "module probe_carrier_at_carrier_return\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn probe() -> Outcome<String> { outcome_accepted(value: \"x\") }\n"
+
+data carrier_at_carrier_argument_source: String = "module probe_carrier_at_carrier_argument\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\nfn takes(o: Outcome<String>) -> Int { 1 }\nfn probe() -> Int { takes(o: outcome_accepted(value: \"x\")) }\n"
+
+data carrier_at_carrier_record_field_source: String = "module probe_carrier_at_carrier_record_field\nimport std.types { String, Int }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\ntype Box { outcome: Outcome<String> }\nfn probe() -> Box { Box { outcome: outcome_accepted(value: \"x\") } }\n"
+
+// The kernel at its own position, at each of the three positions: a kernel scalar under a
+// where-refinement of itself must stay clean, which is what keeps the general form from collapsing into
+// "refuse everything structured at everything".
+data string_at_string_return_source: String = "module probe_string_at_string_return\nimport std.types { String }\nfn probe() -> String { \"x\" }\n"
+
+data string_at_string_argument_source: String = "module probe_string_at_string_argument\nimport std.types { String }\nfn takes(x: String) -> Int { 1 }\nfn probe() -> Int { takes(x: \"x\") }\n"
+
+data string_at_string_record_field_source: String = "module probe_string_at_string_record_field\nimport std.types { String }\ntype Box { text: String }\nfn probe() -> Box { Box { text: \"x\" } }\n"
+
+data epoch_ms_at_epoch_ms_argument_source: String = "module probe_epoch_ms_at_epoch_ms_argument\nimport std.types { EpochMs }\nfn take(read_at_millis: EpochMs) -> EpochMs { read_at_millis }\nfn probe(e: EpochMs) -> EpochMs { take(read_at_millis: e) }\n"
+
+// The wall-is-not-idle control: the pair the wall already refuses, through this same census route.
+data string_at_int_return_source: String = "module probe_string_at_int_return\nimport std.types { String, Int }\nfn probe() -> Int { \"x\" }\n"
+
+test fn a_carrier_at_a_string_declared_return_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_string_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_carrier_at_a_string_parameter_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_string_argument_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_carrier_at_a_string_record_field_refuses() -> Bool {
+  blocking_of_class(source: carrier_at_string_record_field_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_carrier_at_a_carrier_declared_return_is_clean() -> Bool {
+  blocking_total(source: carrier_at_carrier_return_source) == 0
+}
+
+test fn a_carrier_at_a_carrier_parameter_is_clean() -> Bool {
+  blocking_total(source: carrier_at_carrier_argument_source) == 0
+}
+
+test fn a_carrier_at_a_carrier_record_field_is_clean() -> Bool {
+  blocking_total(source: carrier_at_carrier_record_field_source) == 0
+}
+
+test fn a_string_at_a_string_declared_return_is_clean() -> Bool {
+  blocking_total(source: string_at_string_return_source) == 0
+}
+
+test fn a_string_at_a_string_parameter_is_clean() -> Bool {
+  blocking_total(source: string_at_string_argument_source) == 0
+}
+
+test fn a_string_at_a_string_record_field_is_clean() -> Bool {
+  blocking_total(source: string_at_string_record_field_source) == 0
+}
+
+test fn an_epoch_ms_at_an_epoch_ms_parameter_is_clean() -> Bool {
+  blocking_total(source: epoch_ms_at_epoch_ms_argument_source) == 0
+}
+
+test fn the_harness_refuses_a_string_at_an_int_declared_return() -> Bool {
+  blocking_of_class(source: string_at_int_return_source, wanted: "TypeMismatch") >= 1
+}

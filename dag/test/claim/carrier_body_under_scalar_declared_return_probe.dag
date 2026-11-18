@@ -176,7 +176,9 @@ test fn carrier_under_scalar_three_shape_probe_reports_observed_counts() -> Proc
   let step7: String = step(prev: step6, label: "C+", c: census_c_control)
   let blocking_a: List<CompileDiagnosticCensusRow> = census_blocking_rows(rows: rows_of_census(c: census_a))
   let blocking_c: List<CompileDiagnosticCensusRow> = census_blocking_rows(rows: rows_of_census(c: census_c))
+  let blocking_b: List<CompileDiagnosticCensusRow> = census_blocking_rows(rows: rows_of_census(c: census_b))
   let note: String = concat(concat(" || A rows=", row_text(rows: blocking_a, rest: "")), concat(" || C rows=", row_text(rows: blocking_c, rest: "")))
+  let note_b: String = concat(concat(note, " || B rows="), row_text(rows: blocking_b, rest: ""))
   // THE ANSWER IS ENCODED IN THE EXIT CODE as seven digits, because claim_batch prints the code and
   // not the reason: digits are A, A+, idle, B, B+, C, C+ blocking-row counts (-1 shows as the digit
   // sequence borrowing, so read the code as the decimal expansion of the seven counts, each 0..9).
@@ -190,6 +192,6 @@ test fn carrier_under_scalar_three_shape_probe_reports_observed_counts() -> Proc
   let code_value: Int = ((((((d1 * 10) + d2) * 10 + d3) * 10 + d4) * 10 + d5) * 10 + d6) * 10 + d7
   ExitFailure {
     code: code_value,
-    reason: concat(step7, note)
+    reason: concat(step7, note_b)
   }
 }

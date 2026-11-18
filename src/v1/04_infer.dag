@@ -5543,6 +5543,19 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedValueAtNever }
+  } else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    // Placed HERE, before the abstaining arms, deliberately: everything after this point can only
+    // ABSTAIN a pair it cannot name (UndecidableGenericFormal, UndecidableFormalUnresolved,
+    // UndecidableProducedIdentityErased) or walk arguments of an application pair. An abstention is not
+    // a verdict of inhabitance, and the declared head is already known by the time this arm is reached:
+    // a kernel scalar with a positively-resolved structured head in hand is a refusal, not an unknown.
+    // The product half keeps its own located reason -- the reason a witness and a reader already know --
+    // and the general arm adds the head kinds the product half never covered.
+    if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+      InhabitanceRefused { reason: RefusedProductAtScalar }
+    } else {
+      InhabitanceRefused { reason: RefusedStructuredAtScalar }
+    }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
   } else if declared_name == "" {
@@ -5568,8 +5581,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductAtScalar }
-  } else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedStructuredAtScalar }
   } else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductCoproductHeadMismatch }
   } else {
@@ -5854,12 +5865,41 @@ fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferS
 // direct call argument are judged by the ONE relation -- not by a second relation keyed on carriers,
 // which is the fork that row exists to prevent.
 fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
   if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope) {
     false
-  } else if nominal_product_head_name(n: produced, scope: scope) != "" {
-    true
+  } else if alias_identity_in_judgment(
+      left: declared, right: produced, source_indices: source_indices,
+      text: TextJudgedIn { env: scope.type_env }) {
+    // An alias of the kernel IS the kernel (alias_identity_in_judgment's own judgment) -- the earlier
+    // arm's verdict, consulted here only so this arm cannot pre-empt it from its position.
+    false
+  } else if produced_is_kernel_grounded_carrier_or_its_alias(
+      declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
+    // Nat's Succ/Zero carriers stand under their own row (kernel-grounded arithmetic carriers); refusing
+    // them here would contradict the arm that admits them.
+    false
+  } else if declared_realizes_as_kernel_numeric(
+      declared: declared, produced: produced, source_indices: source_indices) {
+    false
+  } else if is_container_type(name: qualified_last_segment(name: produced_name)) {
+    // A container at a scalar is container_element_nominal_brand_mismatch's and
+    // collection_versus_established_identity's judgment, each with its own located reason.
+    false
   } else {
-    nominal_coproduct_head_name(n: produced, scope: scope) != ""
+    let exposure = expected_type_head_exposure(formal: produced, scope: scope)
+    if type_head_exposure_is_product(exposure: exposure) || type_head_exposure_is_coproduct(exposure: exposure) {
+      true
+    } else {
+      // The exposure view reports an APPLIED head as ApplicationHead rather than peeling it to its
+      // declaration's connective, so an applied carrier (`Outcome<String>`) is named by the two head-name
+      // authorities, which do peel an application to its constructor's declaration -- the same reach the
+      // product-versus-coproduct arm records for its own shapes (#13198).
+      nominal_product_head_name(n: produced, scope: scope) != ""
+        || nominal_coproduct_head_name(n: produced, scope: scope) != ""
+    }
   }
 }
 
