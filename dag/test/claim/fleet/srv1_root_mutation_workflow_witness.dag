@@ -253,7 +253,6 @@ test fn the_three_root_mutation_carrying_job_backstops_stay_inside_the_platform_
 // by hand: the options come from desired_deployment_roster() and prod_role_selection.
 test fn the_instance_options_are_the_lab_alone_and_exclude_the_prod_role_holder() -> Bool {
   let opts = fleet_converge_desired_instance_deploy_options(
-    selection: prod_role_selection,
     rows: desired_deployment_roster(),
     host: operator_host_srv1,
   )
@@ -267,7 +266,6 @@ test fn the_instance_options_are_the_lab_alone_and_exclude_the_prod_role_holder(
 // (the refusal side lives with the entry); this pins that the derivation yields [] rather than a fallback.
 test fn the_instance_options_over_an_empty_roster_are_empty() -> Bool {
   fleet_converge_desired_instance_deploy_options(
-    selection: prod_role_selection,
     rows: [],
     host: operator_host_srv1,
   ) == []

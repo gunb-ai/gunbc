@@ -15,7 +15,7 @@ import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invo
 import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
-import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter }
+import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
@@ -83,7 +83,6 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization, DesiredDeployment, desired_deployment_roster }
-import gunbc.deployment_risk { ProdRoleSelection, ProdRoleHeldBy, NoProdRole, prod_role_selection }
 import extdeps.github.expressions {
   Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression,
   FilteredContextAccess, FilterSegment, FilterKey, FilterAll, BoolLiteral, NullLiteral, NumberLiteral,
@@ -7881,7 +7880,7 @@ data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
     description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg. desired_instance_deploy ONLY: the value is PACKED '<host>:<instance_id>' (e.g. srv1:srv1-lab-codex-feedback-v0) -- the host still means the host, and the ONE instance to converge rides on it after the colon; the options list carries those packed rows, derived from the srv1 roster minus the prod-role holder. A typed parser reads both halves and the deploy refuses a malformed value, a host that is not the instance's own roster host, or the prod-role holder." },
     required: false,
     default: none,
-    type: InputChoice { options: concat(fleet_converge_enrolled_host_options, fleet_converge_desired_instance_deploy_options(selection: prod_role_selection, rows: desired_deployment_roster(), host: operator_host_srv1)) },
+    type: InputChoice { options: concat(fleet_converge_enrolled_host_options, fleet_converge_desired_instance_deploy_options(rows: desired_deployment_roster(), host: operator_host_srv1)) },
   }
 
 data fleet_converge_mode_input: DispatchInput = DispatchInput {
@@ -7954,20 +7953,17 @@ data apply_workflow_run_id_mode_readings: List<DispatchFieldModeReading> = [
 // current model this resolves to srv1-lab-codex-feedback-v0 ALONE: srv1-production IS the prod-role holder
 // (srv1_daily_workspace_deployment) and srv2-deploy is not srv1. An empty option set (no srv1 non-holder
 // row) yields a run that can name no instance, which live_deploy_desired_instance_deploy_decide refuses --
-// never a fallback to another instance (gunbc.design_argument::fail_closed).
+// never a fallback to another instance (gunbc.design_argument::fail_closed). The prod-role question is asked
+// ONCE -- through the ONE predicate deployment_is_prod_role_holder (apply.dag), the same one the runtime
+// refusal uses -- so the dispatch menu and the refusal can never disagree about which row is the holder
+// (gunbc.design_argument::single_authority; a second inline match here would be a fork of that decision).
 fn fleet_converge_desired_instance_deploy_options(
-  selection: ProdRoleSelection,
   rows: List<DesiredDeployment>,
   host: HostIdentity,
 ) -> List<String> {
-  let holder = match selection {
-    ProdRoleHeldBy { deployment: d } => Present { value: d }
-    NoProdRole => none
-  }
   map(
     filter(rows, row =>
-      (row.target.host.identity == host)
-        && match holder { Present { value: d } => !(row.instance.deployment == d) Absent => true }),
+      (row.target.host.identity == host) && !deployment_is_prod_role_holder(deployment: row)),
     row => join([row.target.host.identity as String, live_deploy_ci_instance_subject_delimiter, row.instance.instance_id as String], ""),
   )
 }
