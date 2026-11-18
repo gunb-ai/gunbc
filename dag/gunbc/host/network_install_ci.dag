@@ -270,7 +270,7 @@ fn network_install_ci_unit_refusal(variable: NonEmptyStr, detail: NonEmptyStr) -
 // both slots is either a mis-set input or a silent widening, and neither earns a disk write.
 fn network_install_ci_conflation_refusal(host: HostIdentity, unit: HostIdentity) -> String {
   concat(
-    network-install: the dispatch conflates executor and unit (host: ",
+    "network-install: the dispatch conflates executor and unit (host: ",
     concat(
       host as String,
       concat(
