@@ -66,6 +66,7 @@ type GeneratedArtifact
   | ApproveIosOperationErrorsSwiftArtifact
   | ApproveIosEnrolmentMachineTestsSwiftArtifact
   | ApproveIosOperationErrorsTestsSwiftArtifact
+  | VscodeDagSyntaxArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -89,6 +90,7 @@ type RepoConsumer
   | CrossLanguageClientTest
   | XcodeProjectGenerator
   | SwiftCompiler
+  | VSCodeExtension
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -192,6 +194,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
       }
     PlanArtifact { plan } =>
       ArtifactLocation { directory: plan_doc_directory, name: plan_doc_name(slug: plan.slug) }
+    VscodeDagSyntaxArtifact => ArtifactLocation { directory: "editor/vscode-dag/syntaxes", name: "dag.tmLanguage.json" }
   }
 }
 
@@ -275,6 +278,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
+    VscodeDagSyntaxArtifact => CommitRequired { consumer: VSCodeExtension }
   }
 }
 
@@ -339,6 +343,7 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     ApproveIosOperationErrorsSwiftArtifact => false
     ApproveIosEnrolmentMachineTestsSwiftArtifact => false
     ApproveIosOperationErrorsTestsSwiftArtifact => false
+    VscodeDagSyntaxArtifact => false
   }
 }
 
@@ -354,6 +359,7 @@ fn artifact_is_commit_required_project_documentation(a: GeneratedArtifact) -> Bo
       CrossLanguageClientTest => false
       XcodeProjectGenerator => false
       SwiftCompiler => false
+      VSCodeExtension => false
     }
     NotCommitted => false
   }
@@ -413,6 +419,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
+    VscodeDagSyntaxArtifact => match b { VscodeDagSyntaxArtifact => true _ => false }
   }
 }
 
@@ -496,6 +503,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
     RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
     PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
+    VscodeDagSyntaxArtifact  => decl_ref( module_path: "gunbc.vscode_dag_syntax_emit", decl_name: "expected_vscode_dag_tm_language_json" )
   }
 }
 

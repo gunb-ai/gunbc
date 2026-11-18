@@ -159,6 +159,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
     PlanArtifact { plan: _ } => []
+    VscodeDagSyntaxArtifact => []
   }
 }
 

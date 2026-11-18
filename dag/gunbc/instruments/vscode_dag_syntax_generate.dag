@@ -1,0 +1,35 @@
+module gunbc.instruments.vscode_dag_syntax_generate
+
+import std.process {
+    ProcessExit,
+    ExitSuccess,
+    exit_failure
+}
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+import gunbc.generated_artifact {
+    VscodeDagSyntaxArtifact,
+    artifact_path
+}
+
+import gunbc.vscode_dag_syntax_emit {
+    expected_vscode_dag_tm_language_json
+}
+
+fn main() -> ProcessExit {
+    let path = artifact_path(a: VscodeDagSyntaxArtifact)
+    let content = expected_vscode_dag_tm_language_json()
+    let written = Filesystem.Write(path: path, content: content)
+
+    if written.success {
+        ExitSuccess
+    } else {
+        exit_failure(
+            reason: concat(
+                concat("write failed for ", path),
+                concat(": ", written.error)
+            )
+        )
+    }
+}

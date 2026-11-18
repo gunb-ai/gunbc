@@ -10,9 +10,10 @@ import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_prot
 import gunbc.approve_ios_swift_enrolment_machine { expected_approve_ios_enrolment_machine_swift, expected_approve_ios_enrolment_machine_tests_swift }
 import gunbc.approve_ios_swift_operation_errors { expected_approve_ios_operation_errors_swift, expected_approve_ios_operation_errors_tests_swift }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler, VscodeDagSyntaxArtifact, VSCodeExtension }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
+import gunbc.vscode_dag_syntax_emit { expected_vscode_dag_tm_language_json }
 import gunbc.generated_workflow_provenance {
   generated_workflow_provenance_header,
   GeneratedWorkflowProvenanceHeaderProduced,
@@ -50,6 +51,7 @@ import gunbc.fabric.fci1_bounded_execution_context_emit {
   Fci1BoundedExecutionContextEmitted,
   Fci1BoundedExecutionContextEmissionRefused,
 }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 
 type ArtifactGenerationOutcome
   = ArtifactGenerated { content: String }
@@ -163,6 +165,7 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       PlanGenerated { content } => artifact_generated(content: content)
       PlanGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
+    VscodeDagSyntaxArtifact => artifact_generated( content: expected_vscode_dag_tm_language_json() )
   }
 }
 
@@ -189,6 +192,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       CommitRequired { consumer: CrossLanguageClientTest } => generated
       CommitRequired { consumer: XcodeProjectGenerator } => generated
       CommitRequired { consumer: SwiftCompiler } => generated
+      CommitRequired { consumer: VSCodeExtension } => generated
       NotCommitted => generated
     }
   }
@@ -269,6 +273,14 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
       ArtifactGenerationRefused { reason: _ } => false
     }
     PlanArtifact { plan: _ } => true
+        VscodeDagSyntaxArtifact => match generated {
+      ArtifactGenerated { content } =>
+        match parse_json_document(s: content) {
+          JsonDocumentParsed { value: _ } => true
+          JsonDocumentUnreadable { gap: _ } => false
+        }
+      ArtifactGenerationRefused { reason: _ } => false
+    }
   }
 }
 

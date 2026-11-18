@@ -322,6 +322,97 @@ fn grammar_has_string_region(document: JsonValue) -> Bool {
     }
 }
 
+fn grammar_rule_includes(rule: JsonValue, reference: String) -> Bool {
+    match json_object_unique_member(v: rule, key: "patterns") {
+        JsonMemberFound { value: JsonArray { elements } } =>
+            any(elements, entry =>
+                grammar_string_field_is(
+                    object: entry,
+                    key: "include",
+                    expected: reference
+                )
+            )
+        _ => false
+    }
+}
+
+fn grammar_has_code_region(
+    document: JsonValue,
+    group: String,
+    scope: String,
+    open: String,
+    close: String
+) -> Bool {
+    match json_object_unique_member(v: document, key: "repository") {
+        JsonMemberFound { value: repository } =>
+            match json_object_unique_member(v: repository, key: group) {
+                JsonMemberFound { value: entry } =>
+                    match json_object_unique_member(v: entry, key: "patterns") {
+                        JsonMemberFound { value: JsonArray { elements } } =>
+                            any(elements, rule =>
+                                grammar_string_field_is(
+                                    object: rule,
+                                    key: "name",
+                                    expected: scope
+                                )
+                                && grammar_string_field_is(
+                                    object: rule,
+                                    key: "contentName",
+                                    expected: "source.dag"
+                                )
+                                && grammar_string_field_is(
+                                    object: rule,
+                                    key: "begin",
+                                    expected: open
+                                )
+                                && grammar_string_field_is(
+                                    object: rule,
+                                    key: "end",
+                                    expected: close
+                                )
+                                && grammar_rule_includes(
+                                    rule: rule,
+                                    reference: "#interpolation-braces"
+                                )
+                                && grammar_rule_includes(
+                                    rule: rule,
+                                    reference: "$self"
+                                )
+                            )
+                        _ => false
+                    }
+                _ => false
+            }
+        _ => false
+    }
+}
+
+fn grammar_strings_include_interpolation(document: JsonValue) -> Bool {
+    match json_object_unique_member(v: document, key: "repository") {
+        JsonMemberFound { value: repository } =>
+            match json_object_unique_member(v: repository, key: "strings") {
+                JsonMemberFound { value: strings } =>
+                    match json_object_unique_member(v: strings, key: "patterns") {
+                        JsonMemberFound { value: JsonArray { elements } } =>
+                            any(elements, rule =>
+                                grammar_string_field_is(
+                                    object: rule,
+                                    key: "name",
+                                    expected: "string.quoted.double.dag"
+                                )
+                                && grammar_rule_includes(
+                                    rule: rule,
+                                    reference: "#interpolation"
+                                )
+                            )
+                        _ => false
+                    }
+                _ => false
+            }
+        _ => false
+    }
+}
+
 test fn emitted_textmate_grammar_is_parseable_and_has_required_fields() -> Bool {
     match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
         JsonDocumentParsed { value } =>
@@ -430,6 +521,35 @@ test fn emitted_grammar_includes_string_region_and_escapes() -> Bool {
                     )
                 _ => false
             })
+        JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn emitted_grammar_has_interpolation_region() -> Bool {
+    match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
+        JsonDocumentParsed { value } =>
+            grammar_strings_include_interpolation(document: value)
+            && grammar_has_code_region(
+                document: value,
+                group: "interpolation",
+                scope: "meta.interpolation.dag",
+                open: "\\\{(?!(?!(?>[A-Za-z_]|(?>\\(|(?>!|-)))))",
+                close: "\\}"
+            )
+        JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn emitted_grammar_has_recursive_interpolation_braces() -> Bool {
+    match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
+        JsonDocumentParsed { value } =>
+            grammar_has_code_region(
+                document: value,
+                group: "interpolation-braces",
+                scope: "meta.braces.dag",
+                open: "\\{",
+                close: "\\}"
+            )
         JsonDocumentUnreadable { gap: _ } => false
     }
 }

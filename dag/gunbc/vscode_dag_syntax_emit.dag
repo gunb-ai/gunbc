@@ -5,6 +5,11 @@ import std.algebra { fold_list, list_snoc_item }
 import std.coercion { unicode_scalar_fold }
 
 import v2.std.compilers.lexing {
+    LexMode,
+    SequencePattern,
+    ModeTransitionTokenRule,
+    PushLexMode,
+    PopLexMode,
     DelimitedPattern,
     RepeatPattern,
     ChoicePattern,
@@ -30,6 +35,8 @@ import v2.std.compilers.lexing {
 import v2.extdeps.languages.dag {
     dag_lex_rules,
 }
+
+import v2.std.node { Symbol }
 
 import extdeps.languages.json.emit {
     serialize_json,
@@ -137,6 +144,198 @@ fn dag_number_textmate_rules() -> List<JsonValue> {
     )
 }
 
+fn textmate_code_region(
+    scope: String,
+    open: LexPattern,
+    close: LexPattern
+) -> JsonValue {
+    json_object(members: [
+        json_kv(key: "name", value: json_string(s: scope)),
+        json_kv(key: "contentName", value: json_string(s: "source.dag")),
+        json_kv(
+            key: "begin",
+            value: json_string(s: lex_pattern_textmate_regex(pattern: open))
+        ),
+        json_kv(
+            key: "end",
+            value: json_string(s: lex_pattern_textmate_regex(pattern: close))
+        ),
+        json_kv(key: "patterns", value: json_array(elements: [
+            json_object(members: [
+                json_kv(
+                    key: "include",
+                    value: json_string(s: "#interpolation-braces")
+                )
+            ]),
+            json_object(members: [
+                json_kv(key: "include", value: json_string(s: "$self"))
+            ])
+        ]))
+    ])
+}
+
+fn dag_interpolation_regions_for_mode(
+    mode: LexMode,
+    open: LexPattern
+) -> List<JsonValue> {
+    fold_list(
+        xs: mode.rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                ModeTransitionTokenRule {
+                    token_class,
+                    pattern: SequencePattern {
+                        left: close,
+                        right: _
+                    },
+                    transition: PopLexMode
+                } =>
+                    if token_class == ^dag_token_string_template_tail {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_code_region(
+                                scope: "meta.interpolation.dag",
+                                open: open,
+                                close: close
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
+fn dag_interpolation_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                ModeTransitionTokenRule {
+                    token_class,
+                    pattern: SequencePattern {
+                        left: _,
+                        right: SequencePattern {
+                            left: _,
+                            right: open
+                        }
+                    },
+                    transition: PushLexMode { mode: target }
+                } =>
+                    if token_class == ^dag_token_string_template_head {
+                        fold_list(
+                            xs: dag_lex_rules().modes,
+                            empty: acc,
+                            cons: fn(regions, mode) {
+                                if mode.mode == target {
+                                    fold_list(
+                                        xs: dag_interpolation_regions_for_mode(
+                                            mode: mode,
+                                            open: open
+                                        ),
+                                        empty: regions,
+                                        cons: fn(items, region) {
+                                            list_snoc_item(
+                                                xs: items,
+                                                item: region
+                                            )
+                                        }
+                                    )
+                                } else {
+                                    regions
+                                }
+                            }
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
+fn dag_brace_regions_for_mode(
+    mode: LexMode,
+    open: LexPattern
+) -> List<JsonValue> {
+    fold_list(
+        xs: mode.rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                ModeTransitionTokenRule {
+                    token_class,
+                    pattern: close,
+                    transition: PopLexMode
+                } =>
+                    if token_class == ^dag_token_rbrace {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_code_region(
+                                scope: "meta.braces.dag",
+                                open: open,
+                                close: close
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
+fn dag_interpolation_brace_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().modes,
+        empty: [],
+        cons: fn(acc, mode) {
+            if mode.mode == ^dag_lex_mode_template_brace {
+                fold_list(
+                    xs: mode.rules,
+                    empty: acc,
+                    cons: fn(regions, rule) {
+                        match rule {
+                            ModeTransitionTokenRule {
+                                token_class,
+                                pattern: open,
+                                transition: PushLexMode { mode: target }
+                            } =>
+                                if token_class == ^dag_token_lbrace
+                                    && target == mode.mode {
+                                    fold_list(
+                                        xs: dag_brace_regions_for_mode(
+                                            mode: mode,
+                                            open: open
+                                        ),
+                                        empty: regions,
+                                        cons: fn(items, region) {
+                                            list_snoc_item(
+                                                xs: items,
+                                                item: region
+                                            )
+                                        }
+                                    )
+                                } else {
+                                    regions
+                                }
+                            _ => regions
+                        }
+                    }
+                )
+            } else {
+                acc
+            }
+        }
+    )
+}
+
 fn dag_string_textmate_rules() -> List<JsonValue> {
     fold_list(
         xs: dag_lex_rules().rules,
@@ -188,7 +387,15 @@ fn dag_string_textmate_rules() -> List<JsonValue> {
                                         textmate_match_rule(
                                             scope: "constant.character.escape.dag",
                                             pattern: escapes
-                                        )
+                                        ),
+                                        json_object(members: [
+                                            json_kv(
+                                                key: "include",
+                                                value: json_string(
+                                                    s: "#interpolation"
+                                                )
+                                            )
+                                        ])
                                     ])
                                 )
                             ])
@@ -221,10 +428,29 @@ fn expected_vscode_dag_tm_language_json() -> String {
                     json_kv(key: "include", value: json_string(s: "#constants"))
                 ]),
                 json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#identifiers"))
+                ]),
+                json_object(members: [
                     json_kv(key: "include", value: json_string(s: "#numbers"))
                 ])
             ])),
             json_kv(key: "repository", value: json_object(members: [
+                json_kv(key: "interpolation", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(
+                            elements: dag_interpolation_textmate_rules()
+                        )
+                    )
+                ])),
+                json_kv(key: "interpolation-braces", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(
+                            elements: dag_interpolation_brace_textmate_rules()
+                        )
+                    )
+                ])),
                 json_kv(key: "strings", value: json_object(members: [
                     json_kv(
                         key: "patterns",
@@ -235,6 +461,14 @@ fn expected_vscode_dag_tm_language_json() -> String {
                     json_kv(
                         key: "patterns",
                         value: json_array(elements: dag_comment_textmate_rules())
+                    )
+                ])),
+                json_kv(key: "identifiers", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(
+                            elements: dag_identifier_textmate_rules()
+                        )
                     )
                 ])),
                 json_kv(key: "numbers", value: json_object(members: [
@@ -369,6 +603,30 @@ fn lex_pattern_textmate_regex(pattern: LexPattern) -> String {
             },
             not_followed_by: fn(element) {
                 join(["(?!", element, ")"], "")
+            }
+        }
+    )
+}
+
+fn dag_identifier_textmate_rules() -> List<JsonValue> {
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                TokenRule { token_class, pattern } =>
+                    if token_class == ^dag_token_ident {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_match_rule(
+                                scope: "variable.other.dag",
+                                pattern: pattern
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
             }
         }
     )
