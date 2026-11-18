@@ -376,7 +376,7 @@ data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthoriza
     "actions-runner@srv3-20.service" as NonEmptyStr,
     "actions-runner@srv3-21.service" as NonEmptyStr,
   ],
-  operator_reason: "operator decision 2026-11-18 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided msg_c20ceb2b-75c7-4ab0-a8a7-ec30cd24703c), scoped to srv3 surplus internal CI slots 14-21: the retirees of the cut to 13 (remote-build build-pool carve and the earlier engine charge) may be interrupted; the decision does not extend to srv3's committed slots, its sessions or its serving engine",
+  operator_reason: "operator decision 2026-11-18 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided msg_c20ceb2b-75c7-4ab0-a8a7-ec30cd24703c), scoped to srv3 surplus internal CI slots 14-21: the retirees of the cut to 13 (remote-build build-pool carve and the earlier engine charge) may be interrupted; the decision does not extend to srv3's committed slots, its sessions or its serving engine" as NonEmptyStr,
 }
 
 // srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
