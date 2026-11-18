@@ -67,28 +67,28 @@ data roadmap_effort_estimates: List<EffortEstimate> = [
   // which is a staffing choice the operator makes, not a fact about the work. Producer: simulate.py in the
   // session's scratch (the classes are declared in it and are the falsifiable part).
   estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 4, day: 27), pessimistic: d(y: 2027, m: 9, day: 21),
-    basis: "simulation: day 115 with five workers (native-seven's parents staffed beside the emitter chain), day 220 with three workers critical-path-first; the first-round January date holds only if its parents are staffed first"),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 115 wide, day 220 narrow; the first-round January date holds only if native-seven's four parents are taken before the emitter chain"),
   estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
-    basis: "simulation: day 250 at three workers, bound by six serial hard emitter nodes at 60 working days each; more workers do not move it, only decomposing those nodes into parallel units does"),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 250, bound by the longest serial chain: six hard emitter nodes at 60 working days each; more parallelism does not move it, only decomposing those nodes into parallel units does"),
   estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 2, day: 28),
-    basis: "simulation: day 450 at three workers (day 440 at five); the first-round end-of-2027 date assumed 4 to 8 weeks per deletion step, the simulation's v1 class is 30 working days and the chain after second-generation is seven serial units"),
+    basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 450 narrow, day 440 wide; the first-round end-of-2027 date assumed 4 to 8 weeks per deletion step, the simulation's v1 class is 30 working days and the chain after second-generation is seven serial units"),
   // THIRD ROUND, SAME DAY, UNBOUNDED WORKERS (operator, 2026-11-17: assume 100 to 200 workers; the bottleneck is planning,
   // dependency and decomposition). With workers unbounded the simulation keeps 5.3 items in flight on average and never
   // more than 20, and the makespan equals the critical path: the six serial emitter nodes at 60 working days each, then
   // the bootstrap, the fixed point and the deletions. These rows are therefore the dates DECOMPOSITION has to beat, not
   // dates to staff toward; the axis each milestone splits along is recorded in gunbc.plans.planning_consolidation.
   estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 23), pessimistic: d(y: 2027, m: 4, day: 27),
-    basis: "unbounded workers: day 70, bound by its own four parents at 40 working days (declaration-provider-outcomes and the derived closure), not by seats"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 70, bound by its own four parents at 40 working days (declaration-provider-outcomes and the derived closure), not by parallelism"),
   estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
-    basis: "unbounded workers: day 250, unchanged from three workers because the chain is serial; the date moves only if the six emitter nodes are decomposed per grammar production (126 productions, join per node)"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 250, unchanged from the narrow pass because the chain is serial; the date moves only if the six emitter nodes are decomposed per grammar production (126 productions, join per node)"),
   estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 7, day: 25), pessimistic: d(y: 2029, m: 2, day: 28),
-    basis: "unbounded workers: day 440, the critical path; two weeks better than three workers"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 440, the longest serial chain; two weeks better than the narrow pass"),
   estimate(subject: "import-grammar-and-lines-deleted", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 24), done: d(y: 2027, m: 6, day: 29), pessimistic: d(y: 2027, m: 11, day: 30),
-    basis: "unbounded workers: day 160; its own chain (closure, rule, layers 1 to 3) at 40 working days each, beside the emitter chain"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 160; its own chain (closure, rule, layers 1 to 3) at 40 working days each, beside the emitter chain"),
   estimate(subject: "factory-dogfood-route", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 5, day: 4), pessimistic: d(y: 2027, m: 8, day: 31),
-    basis: "unbounded workers: day 120 (the execution cut, then G1 and G5 in parallel, then the route); the factory terminal at day 250 behind the work-execution chain"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 120 (the execution cut, then G1 and G5, then the route); the factory terminal at day 250 behind the work-execution chain"),
   estimate(subject: "external-specimen-compiles", made: d(y: 2026, m: 11, day: 17), start: d(y: 2028, m: 7, day: 25), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 6, day: 30),
-    basis: "unbounded workers: day 450, ten days after self-host, since the seven vision separations run in parallel beside the chain and only the specimen waits on everything"),
+    basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 450, ten days after self-host, since the seven vision separations proceed beside the chain and only the specimen waits on everything"),
 ]
 
 fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {

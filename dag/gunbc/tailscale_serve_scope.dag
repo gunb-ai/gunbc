@@ -33,11 +33,6 @@ fn tailscale_serve_service() -> TailscaleServeService {
   ServeCli
 }
 
-// The read question the deploy gate asks about a serve MAPPING is NOT decided here: ServeCli is the
-// CLI SURFACE that applies `tailscale serve --bg <backend>`, never the target the mapping serves.
-// What a mapping reads is decided from the ENDPOINT's BACKEND — extdeps.tailscale.serve
-// tailscale_serve_backend_target, consumed by gunbc.live_deploy.deploy_artifact_read_sets.
-
 fn tailscale_serve_scope(node: NetworkEndpoint) -> TailscaleServeScope {
   TailscaleServeScope { node: node, service: tailscale_serve_service() }
 }

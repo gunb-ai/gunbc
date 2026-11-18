@@ -2,7 +2,8 @@ module extdeps.tailscale.join
 
 // UPSTREAM FACTS AND TYPED argv FOR THE ONE THING A HOST MUST DO TO BE ON THE TAILNET AT ALL: JOIN IT.
 //
-// gunbc.tailscale_join_converge is the fleet-side converge that reads these rows; this module is the
+// @ref(gunbc.tailscale_join_converge::tailscale_join_host) is the fleet-side converge that reads these
+// rows; this module is the
 // upstream surface only -- what `tailscale up` takes, what a join's success is made of, and what an auth
 // key is allowed to be. Nothing here names a host, a tag the fleet happens to use, a Secret Manager
 // secret, or a window: those are product facts (gunbc.tailscale_fleet_auth_key, gunbc.fleet.fleet_tailnet).

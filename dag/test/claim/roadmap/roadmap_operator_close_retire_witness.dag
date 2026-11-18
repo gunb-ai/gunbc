@@ -35,7 +35,8 @@ import std.types {
   NonEmptyStr,
   List,
   EpochSecs,
-  Email
+  Email,
+  FilePath
 }
 
 import std.integer {
@@ -77,10 +78,7 @@ import test.claim.fabric.fabric_storage_fixture {
   fabric_wet_store,
   FabricWetStoreReady,
   FabricWetStoreUnready,
-  fabric_fixture_instance,
-  fabric_wet_scenario,
-  FabricWetScenarioReady,
-  FabricWetScenarioUnready
+  fabric_fixture_instance
 }
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_carrier {
@@ -249,6 +247,26 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear,
   launch_fixture_doc
 }
+import test.claim.roadmap.roadmap_event_carrier_fixture {
+  RoadmapEventCarrierReady,
+  RoadmapEventCarrierRefused,
+  RoadmapEventCarrierMinted,
+  RoadmapEventCarrierMintRefused,
+  RoadmapEventCarrierScratch,
+  roadmap_event_carrier_mint_scratch,
+  roadmap_event_carrier_provision,
+  roadmap_event_carrier_run_scoped,
+  roadmap_event_carrier_sweep,
+  roadmap_carrier_path_is_absent,
+  roadmap_carrier_path_is_present,
+  roadmap_carrier_seal_path,
+  roadmap_carrier_teardown_is_complete,
+  RoadmapCarrierScopedMintRefused,
+  RoadmapCarrierScopedRan,
+  RoadmapCarrierSweepDone,
+  RoadmapCarrierSweepFailed,
+  RoadmapCarrierSweepRefused,
+}
 import gunbc.roadmap.roadmap_provider_events {
   ProviderCompleted
 }
@@ -277,15 +295,55 @@ fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
 // The wet harness hands the test the INSTANCE the event carrier lives under: the close route's
 // only durable effect is an event append through the modeled route, and the carrier's home is the
 // instance, not a fabric partition.
-fn wet(fn_with: fn(HostDashboardInstance) -> Bool) -> Bool {
-  match fabric_wet_scenario(template: "/tmp/gunbc_operator_close_witness.XXXXXX" as NonEmptyStr) {
-    FabricWetScenarioUnready { detail: d } => claim("the wet scenario could not be made: " + d, false)
-    FabricWetScenarioReady { instance: instance, root: _ } =>
-      match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
-        FabricWetStoreUnready { area: a, detail: d } => claim("the fabric store is not ready at " + (a as String) + ": " + d, false)
-        FabricWetStoreReady { store: _ } => fn_with(instance)
-      }
+//
+// THE SCENARIO COMPOSITION, AND THE ONLY ONE IN THIS FILE. `wet_owned` mints the scenario, hands the body both
+// the instance and THE ROOT THAT WAS JUST MINTED for it, and sweeps that root on every arm — judged true, judged
+// false, or never standing at all — because a witness that leaves its scratch behind is a witness the next run
+// reads. The leak was real: `/tmp/gunbc_operator_close_witness.XXXXXX` accumulated one directory per claim per
+// run until this line existed. `wet` is the same composition for a body with no use for the root; it delegates,
+// so this file has one mint, one sweep, and one set of rules (gunbc.design_argument::root_generalization). The
+// sweep deletes only a root the fixture's own ownership predicate proves was minted under /tmp, never a path it
+// was handed unproven.
+type RoadmapWitnessWetRun { result: Bool, swept: Bool, root: String }
+
+// THE SCENARIO COMPOSITION, AND THE ONLY ONE IN THIS FILE. `wet_owned` mints the scratch THROUGH THE FIXTURE'S
+// MINT (`roadmap_event_carrier_mint_scratch`, which is the only thing in this route that produces a
+// `RoadmapEventCarrierScratch`), builds the instance `fabric_fixture_instance` builds from it, opens the fabric
+// store over that instance, hands the body the instance AND THE SCRATCH, and sweeps the scratch on every arm —
+// judged true, judged false, or never standing at all. The scratch travels as a value rather than as text because
+// the sweep is a recursive delete, and a recursive delete that takes a String deletes whatever a caller can name:
+// `/tmp/another-job` is a String too. `wet` is the same composition for a body with no use for the scratch, and
+// it delegates, so this file has one mint, one sweep and one set of rules
+// (gunbc.design_argument::root_generalization). A failed sweep fails the verdict — a leak the witness did not
+// notice is the same leak as a leak it never tried to clean.
+fn wet_owned(fn_with: fn(HostDashboardInstance, RoadmapEventCarrierScratch) -> Bool) -> RoadmapWitnessWetRun {
+  match roadmap_event_carrier_run_scoped(template: "/tmp/gunbc_operator_close_witness.XXXXXX" as NonEmptyStr, body: fn(scratch) { wet_owned_judgement(fn_with: fn_with, scratch: scratch) }) {
+    RoadmapCarrierScopedMintRefused { detail: d } => {
+      let _unjudged = claim("the wet scenario could not be minted: " + d, false)
+      RoadmapWitnessWetRun { result: false, swept: true, root: "" }
+    }
+    RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: root, torn_down: torn_down } => RoadmapWitnessWetRun { result: judged, swept: torn_down, root: root }
   }
+}
+
+// WHAT HAPPENS INSIDE THE FIXTURE'S SCOPE: the instance `fabric_fixture_instance` builds from the scratch, the
+// fabric store opened over that instance, and the caller's judgement on top of both. It returns the caller's Bool
+// and nothing else, because the sweep is no longer this file's step to take — the fixture takes it after this
+// returns, whatever came back.
+fn wet_owned_judgement(fn_with: fn(HostDashboardInstance, RoadmapEventCarrierScratch) -> Bool, scratch: RoadmapEventCarrierScratch) -> Bool {
+  let instance: HostDashboardInstance = fabric_fixture_instance(root: scratch.path)
+  match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
+    FabricWetStoreUnready { area: a, detail: d } => {
+      let _unjudged = claim("the fabric store is not ready at " + (a as String) + ": " + d, false)
+      false
+    }
+    FabricWetStoreReady { store: _ } => fn_with(instance, scratch)
+  }
+}
+
+fn wet(fn_with: fn(HostDashboardInstance) -> Bool) -> Bool {
+  let run = wet_owned(fn_with: fn(instance, scratch) { fn_with(instance) })
+  run.result && run.swept
 }
 
 fn merged_readback(number: Int) -> OperatorPrReadback {
@@ -838,38 +896,194 @@ test fn a_retired_nodes_lineage_is_terminal_to_the_belt() -> Bool {
 // (DESIGN §4c/§5, review 91811). The DISCRIMINATING control is an OPEN node in the SAME instance whose
 // lineage the gate leaves alone (Absent), so the refusal is proven a retirement rule and not a blanket
 // launch veto that would pass even when nothing is retired.
-test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  if !directory.success { claim("the temp dir for the launch-gate row could not be made", false) }
-  else {
-    let instance = fabric_fixture_instance(root: directory.path as String)
-    let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-    let gate_history = roadmap_operator_close_history(layout: close_layout(refused_carrier_instance()))
-    match issue_command_apply(layout: layout,
-      command: RetireNode { subject: IssueCommandSubject {
-        node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
-        author: opr_principal(),
-        operation: "op-launch-gate" as NonEmptyStr,
-        expected: none },
-        reason: "ended at the launch gate" as NonEmptyStr },
-      recorded_at: "2026-11-04T08:00:00Z") {
-      CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
-        let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
-          Present { value: LaunchNodeRetired { by: _, reason } } =>
-            claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
-          Present { value: _ } => claim("a retired node was refused with a refusal other than the typed LaunchNodeRetired", false)
-          Absent => claim("a retired node's launch was admitted instead of refused", false)
+//
+// THE WORLD IT IS WITNESSED OVER IS A REAL EVENT LOG. The retire reaches the gate through
+// gunbc.roadmap.roadmap_issue_command.issue_command_apply over the carrier that
+// test.claim.roadmap.roadmap_event_carrier_fixture stood up, so the refusal is read off a COMMITTED event
+// tail — a git object in a repository the fixture provisioned — and not off a value handed to the fold.
+//
+// THE HISTORY THE GATE IS JUDGED OVER IS THE HISTORY THE GATE READS. belt_dispatch_node_for_instance_over is
+// the only production route to this seam, and it reads the acceptance history as
+// roadmap_operator_close_history over the SAME instance whose lineage it is judging; the claim judges over
+// that history too. A history read from some other carrier is a different gate: an unreadable acceptance
+// status makes EVERY node's terminality unreadable (roadmap_operator_node_closed answers ClosedStatusUnreadable),
+// so it refuses the open control as well and witnesses a blanket veto rather than a retirement rule. Where a
+// REFUSED carrier is the point, this file already says it — a_retired_node_is_not_open_to_the_belt_even_over_a_refused_carrier
+// and a_retired_nodes_lineage_is_terminal_to_the_belt both judge over one and expect the refusal.
+fn launch_gate_refusal_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
+    match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+      RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
+        "the wet event carrier could not be stood up at " + step + ": " + detail,
+        false,
+      )
+      RoadmapEventCarrierReady { instance: _, layout: layout } => {
+        let gate_history = roadmap_operator_close_history(layout: layout)
+        match issue_command_apply(layout: layout,
+          command: RetireNode { subject: IssueCommandSubject {
+            node: "node-launch-gate-retired" as NonEmptyStr as RoadmapNodeId,
+            author: opr_principal(),
+            operation: "op-launch-gate" as NonEmptyStr,
+            expected: none },
+            reason: "ended at the launch gate" as NonEmptyStr },
+          recorded_at: "2026-11-04T08:00:00Z") {
+          CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+            let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
+              Present { value: LaunchNodeRetired { by: _, reason } } =>
+                claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
+              Present { value: _ } => claim("a retired node was refused with a refusal other than the typed LaunchNodeRetired", false)
+              Absent => claim("a retired node's launch was admitted instead of refused", false)
+            }
+            let open_free = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-open", history: gate_history) {
+              Absent => claim("the gate leaves an open, non-retired node's launch alone (a retirement rule, not a veto)", true)
+              Present { value: _ } => claim("the gate refused an open, non-retired node's launch", false)
+            }
+            refused && open_free
+          }
+          _ => claim("the retire write law refused the seed event for the launch-gate row", false)
         }
-        let open_free = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-open", history: gate_history) {
-          Absent => claim("the gate leaves an open, non-retired node's launch alone (a retirement rule, not a veto)", true)
-          Present { value: _ } => claim("the gate refused an open, non-retired node's launch", false)
-        }
-        refused && open_free
       }
-      _ => claim("the retire write law refused the seed event for the launch-gate row", false)
+    }
+}
+
+// THE REGISTERED CLAIM. Its body is `launch_gate_refusal_witness`, and it runs inside the one scenario
+// composition this file has — which also sweeps the scratch the run minted, and a sweep that fails fails it.
+test fn the_launch_gate_refuses_a_retired_node_and_leaves_an_open_node_alone() -> Bool {
+  let run = wet_owned(fn_with: fn(instance, scratch) { launch_gate_refusal_witness(instance: instance, scratch: scratch) })
+  run.result && run.swept
+}
+
+// THE CONTROL THE SWEEP NEEDS, through the same composition: the claim judged true AND the scratch it minted gone
+// afterwards, AND the sweep itself reporting success. A cleanup that is not asserted is a cleanup that is not
+// witnessed, and the leak this replaces was measured rather than imagined — three
+// `/tmp/gunbc_operator_close_witness.*` directories sat in /tmp from three runs of this claim before the sweep
+// existed, and the review found them by reading the receipt.
+test fn the_wet_carrier_scenario_is_swept_after_the_launch_gate_claim() -> Bool {
+  let run = wet_owned(fn_with: fn(instance, scratch) { launch_gate_refusal_witness(instance: instance, scratch: scratch) })
+  claim("the launch-gate claim judged true over the committed log", run.result)
+    && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
+    && claim("the sweep of that scratch reported success", run.swept)
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
+}
+
+// THE POSITIVE ARM OF THE OWNERSHIP CONTRACT. The refusal control below is only worth anything if the gate admits
+// the instance it is actually handed: an admission test that refuses everything is indistinguishable from a
+// correct one. So this claims the other direction — the instance `fabric_fixture_instance` minted under the
+// scratch, provisioned against that same scratch, comes back READY, carrying the layout of THAT instance and the
+// scratch it was minted into. It also names the failure out loud: if the gate were ever tightened so that the
+// scenario's own instance no longer passes, this is the claim that goes red first, rather than the launch-gate
+// claim quietly never reaching the append.
+test fn the_wet_carrier_admits_the_scenario_instance_it_was_handed() -> Bool {
+  let run = wet_owned(fn_with: fn(instance, scratch) {
+    match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+      RoadmapEventCarrierReady { layout: layout, scratch: returned } => claim("the ownership gate admitted the instance the composition minted for it", true)
+        && claim("the layout it handed back is that instance's own layout", (layout.repo_root as String) == (instance.repo_root as String))
+        && claim("the carrier reports the scratch it was minted into", returned.path == scratch.path)
+      RoadmapEventCarrierRefused { step: step, detail: detail } => claim("the ownership gate refused the very instance the composition minted, at " + step + ": " + detail, false)
+    }
+  })
+  run.result && run.swept
+    && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
+}
+
+// THE OWNERSHIP CONTRACT, WITNESSED ON THE REFUSAL ARM. An instance minted under a FOREIGN scratch — real paths,
+// real directories, just not this run's — must be refused at `ownership`, and refused BEFORE the mutation, which
+// is the half a claim that only inspects the refusal would never see: the foreign tree has to stay EMPTY. The
+// foreign scratch is minted through the same fixture mint (so it is a scratch, not text someone typed) and swept
+// by this claim, and its sweep result is part of the verdict. Without the contract this claim cannot pass:
+// provisioning would `git init` into the foreign tree and report Ready.
+fn carrier_ownership_refusal_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
+  match roadmap_event_carrier_mint_scratch(template: "/tmp/gunbc_carrier_foreign.XXXXXX" as NonEmptyStr) {
+    RoadmapEventCarrierMintRefused { detail: detail } => claim("the foreign scratch could not be minted: " + detail, false)
+    RoadmapEventCarrierMinted { scratch: foreign } => {
+      let foreign_instance: HostDashboardInstance = fabric_fixture_instance(root: foreign.path)
+      let verdict = match roadmap_event_carrier_provision(instance: foreign_instance, scratch: scratch) {
+        RoadmapEventCarrierRefused { step: step, detail: _ } => claim("the fixture refused an instance it does not own, at " + step, step == "ownership")
+        RoadmapEventCarrierReady { scratch: _ } => claim("the fixture stood a carrier up over an instance minted outside the scratch it was given", false)
+      }
+      let untouched = roadmap_carrier_path_is_absent(concat(foreign.path, "/source"))
+      let foreign_swept = roadmap_carrier_teardown_is_complete(scratch: foreign, sweep: roadmap_event_carrier_sweep(scratch: foreign))
+      claim("the carrier the route must refuse was refused", verdict)
+        && claim("the foreign tree the fixture had no right to touch was never created", untouched)
+        && claim("the foreign scratch this claim minted was swept", foreign_swept)
     }
   }
 }
+
+test fn the_wet_carrier_refuses_an_instance_it_does_not_own_and_sweeps_its_scenario() -> Bool {
+  let run = wet_owned(fn_with: fn(instance, scratch) { carrier_ownership_refusal_witness(instance: instance, scratch: scratch) })
+  claim("the ownership refusal was judged", run.result)
+    && claim("the run reported the scenario scratch it minted", string_length(s: run.root) > 0)
+    && claim("the sweep of that scratch reported success", run.swept)
+    && claim("the scenario root it minted is gone once the run swept it", roadmap_carrier_path_is_absent(run.root))
+}
+
+// THE FORGED TOKEN, WITNESSED INERT. The control above hands the fixture a scratch that is REAL but belongs to
+// another run; this one hands it a scratch that is nothing but text assembled into the token's shape, naming a
+// directory minted OUTSIDE the fixture by `shell.Mktemp.Dir` — a real `/tmp` directory, with the shape the older
+// ownership predicate accepted (under `/tmp/`, no dot segments, in fact a directory), which is precisely why
+// "exists and looks like a scratch" was never provenance. A record literal is not a credential: the language has
+// no non-exported declarations, so `RoadmapEventCarrierScratch` can be written by anyone, and this claim is the
+// proof that writing it buys nothing. Both mutation doors have to refuse it, by name, and the unowned tree has to
+// be sitting there untouched afterwards — no carrier inside it, and still present — with the control doing its own
+// cleanup so it does not leave the leak it is testing for.
+// THE LEAK THE AUTHORITY CHECK COULD HAVE BOUGHT. The seal exists to stop the fixture deleting what it does not
+// own; the failure it nearly created is the mirror image — the fixture declining to delete what it DOES own. A body
+// that removes only the seal directory and returns true leaves the sweep with no seal to find, so the sweep refuses
+// at provenance, and any predicate that reads 'refused' as 'clean' passes a claim whose scenario is still sitting
+// in /tmp. That leak is paid for by the very check added to prevent leaks, which is the kind of progress worth
+// testing for rather than admiring: this claim mints a scratch legitimately through the scoped run, sabotages only
+// the seal, and demands that the run report the teardown INCOMPLETE, that the root is really still there, that the
+// sweep refused at provenance rather than claiming a delete it could not make, and that the control then cleans up
+// the leak it just proved — because a control that leaks while demonstrating a leak has proved nothing.
+test fn the_wet_carrier_does_not_call_a_leaked_scratch_clean() -> Bool {
+  match roadmap_event_carrier_run_scoped(template: "/tmp/gunbc_carrier_leaktest.XXXXXX" as NonEmptyStr, body: fn(scratch) { claim("the control removed the seal from the scratch the fixture minted", shell.Remove.RecursiveForce(path: roadmap_carrier_seal_path(root: scratch.path) as FilePath).success) }) {
+    RoadmapCarrierScopedMintRefused { detail: d } => claim("the fixture could not mint the leak-test scratch: " + d, false)
+    RoadmapCarrierScopedRan { judged: judged, sweep: sweep, root: root, torn_down: torn_down } => {
+      let refused_provenance = match sweep {
+        RoadmapCarrierSweepRefused { step: step, detail: _ } => claim("the sweep refused to tear down what it had minted, at " + step, step == "provenance")
+        RoadmapCarrierSweepDone { path: gone } => claim("the sweep claimed it deleted a scratch whose seal was gone: " + gone, false)
+        RoadmapCarrierSweepFailed { path: failed } => claim("the sweep's delete failed on the leak-test scratch: " + failed, false)
+      }
+      let still_there = roadmap_carrier_path_is_present(path: root)
+      let cleanup = shell.Remove.RecursiveForce(path: root as FilePath).success
+      claim("the body's judgement held, so only the teardown could fail the run", judged)
+        && claim("the scoped run did NOT report the teardown complete", !torn_down)
+        && claim("the minted root really was still there", still_there)
+        && refused_provenance
+        && claim("the control cleaned up the leak it proved", cleanup)
+    }
+  }
+}
+
+test fn the_wet_carrier_refuses_to_provision_or_sweep_a_tree_it_never_minted() -> Bool {
+  let made = shell.Mktemp.Dir()
+  let unowned: String = made.path as String
+  if !made.success {
+    claim("the control could not mint an unowned directory outside the fixture", false)
+  } else {
+    let forged = RoadmapEventCarrierScratch { path: unowned, template: "/tmp/gunbc_carrier_unowned" }
+    let unowned_instance: HostDashboardInstance = fabric_fixture_instance(root: unowned)
+    let provision_refused = match roadmap_event_carrier_provision(instance: unowned_instance, scratch: forged) {
+      RoadmapEventCarrierRefused { step: step, detail: _ } => claim("the fixture refused a tree it never minted, at " + step, step == "provenance")
+      RoadmapEventCarrierReady { scratch: _ } => claim("the fixture provisioned a carrier into a directory it never minted", false)
+    }
+    let delete_refused = match roadmap_event_carrier_sweep(scratch: forged) {
+      RoadmapCarrierSweepRefused { step: step, detail: _ } => claim("the sweep refused a tree it never minted, at " + step, step == "provenance")
+      RoadmapCarrierSweepDone { path: gone } => claim("the sweep DELETED a directory the fixture never minted: " + gone, false)
+      RoadmapCarrierSweepFailed { path: failed } => claim("the sweep attempted to delete a directory the fixture never minted: " + failed, false)
+    }
+    let still_there = roadmap_carrier_path_is_present(path: unowned)
+    let no_carrier = roadmap_carrier_path_is_absent(path: concat(unowned, "/source"))
+    let cleaned = shell.Remove.RecursiveForce(path: made.path).success
+    claim("the forged token could not make the fixture provision into it", provision_refused)
+      && claim("the forged token could not make the fixture delete it", delete_refused)
+      && claim("the unowned directory was still there after both refusals", still_there)
+      && claim("no carrier repository appeared inside it", no_carrier)
+      && claim("the control cleaned up the directory IT minted", cleaned)
+  }
+}
+
 
 // ── THE RETIREMENT FOLD: ANY STANDING, HONEST, FINAL ─────────────────────────────────────────────
 

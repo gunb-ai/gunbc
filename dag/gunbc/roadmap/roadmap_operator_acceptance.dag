@@ -32,6 +32,7 @@
 module gunbc.roadmap.roadmap_operator_acceptance
 
 import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.algebra { trim }
 import std.nat { Nat, Zero }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.integer { nat_to_int }
@@ -68,7 +69,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds,
   RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members,
-  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_problems,
+  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_event_node,
+  roadmap_acceptance_migration_problems, roadmap_migration_retirement_ids,
+  roadmap_cutover_string_lists_agree,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
@@ -812,24 +815,99 @@ fn roadmap_acceptance_migration_verify_instance(
   }
 }
 
+// THE ROSTER IS CHECKED, NOT CONSUMED. `retired_roster` arrives from a file the operator's export wrote, and it
+// decides both which nodes the retired read interrogates and which nodes the comparison has standing over. A
+// name quietly dropped from that file would take the node out of BOTH — and a migration whose retirement of it
+// never arrived would verify. So the file is not the authority on its own contents: the model names the
+// retirements (`roadmap_migration_retirement_ids`), the verdict runs on the model's list, and the file is checked
+// against it, refusing before anything is certified. Whether two lists are the same roster is decided by the ONE
+// predicate the cutover gate already uses for that question (`roadmap_cutover_string_lists_agree`) — this mints
+// no second meaning of "the same roster" (gunbc.design_argument::single_authority); it only names the offenders,
+// because an operator in front of a refused step needs to know which name to go and look at.
+fn roadmap_migration_roster_refusals(supplied: List<String>, model_roster: List<String>) -> List<String> {
+  // A blank entry first, and the check stops there. "a,,b" is not "a,b" with a cosmetic extra comma: it is a
+  // roster with a position that names nothing, and the positional agreement below would be running over a list
+  // the file never held. One refusal through the same list the operator already reads — never a warning beside
+  // the verdict, and never a silently dropped component (gunbc.design_argument::fail_closed).
+  let blank = count(filter(supplied, n => trim(n) == ""))
+  if blank > 0 {
+    [join(["the supplied retired roster holds ", to_string(value: blank), " empty of ",
+      to_string(value: count(supplied)), " comma-separated entries — a blank name is not a roster entry, and ",
+      "dropping it would let \"a,,b\" stand for \"a,b\""], "")]
+  } else if roadmap_cutover_string_lists_agree(left: supplied, right: model_roster) {
+    [] as List<String>
+  } else {
+    let omitted = filter(model_roster, n => !any(supplied, s => s == n))
+    let added = filter(supplied, s => !any(model_roster, n => n == s))
+    let duplicated = fold(supplied, init: [] as List<String>,
+      f: (acc, s) => if any(acc, a => a == s) { acc }
+        else if count(filter(supplied, o => o == s)) > 1 { concat(acc, [s]) } else { acc })
+    let offenders = concat(
+      concat(
+        map(omitted, n => concat(concat("the supplied retired roster omits ", n),
+          ", which the model retires — that node would leave both the retired read and the scope of the comparison")),
+        map(added, s => concat(concat("the supplied retired roster names ", s),
+          ", which the model does not retire — the roster is the model's, not the file's"))),
+      map(duplicated, s => concat(concat("the supplied retired roster names ", s), " twice")))
+    if count(offenders) > 0 {
+      offenders
+    } else {
+      [join(["the supplied retired roster is not the roster the model holds: ", to_string(value: count(supplied)),
+        " name(s) against the model's ", to_string(value: count(model_roster)),
+        " — the roster step 0 wrote is matched name for name, in order"], "")]
+    }
+  }
+}
+
+// THE WET HALF, AND ONLY IT. `roadmap_operator_close_history` is the single host act inside the verdict: it is
+// the log's own reader, and the nodes it says are closed are the fact the comparison below stands over. The read
+// is taken here and handed down as a value, so the decision itself is a fold over values. That seam is not
+// decoration: until now the branch that CERTIFIES could not be reached from a claim at all (the read refuses
+// before it), so the counts the operator is told — among them `retired_named` — were unexecuted code. A
+// declaration whose only route of execution is a production host is a declaration nobody has seen answer
+// (gunbc.design_argument::consumption); the claim holding this route open is
+// test.claim.roadmap.roadmap_acceptance_evidence_witness::the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_holds.
 fn roadmap_acceptance_migration_verdict(
   wanted: List<RoadmapAcceptanceEvent>, log_events: List<RoadmapAcceptanceEvent>,
   envelopes: List<RoadmapEventEnvelope>, layout: RoadmapEventCarrierLayout,
   retired_ids: List<RoadmapNodeId>, retired_roster: String
 ) -> RoadmapAcceptanceMigrationOutcome {
-  let held_ids = map(log_events, e => roadmap_acceptance_migration_identity(e: e))
   let history = roadmap_operator_close_history(layout: layout)
   // What the LOG's own reader says is closed: the nodes whose live receipt its fold establishes. The
   // manifest's own sequence is replayed separately, inside the comparison below — two folds over two
   // sources, so a lost acceptance or an un-applied revocation is a disagreement, never a silence.
-  let closed_nodes = map(
-    filter(log_events, e =>
-      roadmap_operator_node_closed(node: roadmap_acceptance_migration_event_node(e: e) as NonEmptyStr as RoadmapNodeId, history: history) == AcceptanceFound),
-    e => roadmap_acceptance_migration_event_node(e: e))
-  let roster = filter(split(s: retired_roster, delimiter: ","), n => count(n) > 0)
-  let not_retired = filter(roster, n => !roadmap_node_ids_contain(ids: retired_ids, node: n as NonEmptyStr as RoadmapNodeId))
-  let problems = roadmap_acceptance_migration_problems(
-    wanted: wanted, held: log_events, closed_nodes: closed_nodes, not_retired: not_retired)
+  roadmap_acceptance_migration_decide(
+    wanted: wanted, log_events: log_events, envelopes: envelopes,
+    closed_nodes: map(
+      filter(log_events, e =>
+        roadmap_operator_node_closed(node: roadmap_acceptance_migration_event_node(e: e) as NonEmptyStr as RoadmapNodeId, history: history) == AcceptanceFound),
+      e => roadmap_acceptance_migration_event_node(e: e)),
+    retired_ids: retired_ids, retired_roster: retired_roster)
+}
+
+// THE DECISION, over values: the manifest's sequence, the log's folded events, the nodes the log's own reader
+// closed, the retirements the log carries, and the roster the operator's export supplied. Nothing here touches a
+// host, which is what makes the certified outcome constructible by a witness.
+fn roadmap_acceptance_migration_decide(
+  wanted: List<RoadmapAcceptanceEvent>, log_events: List<RoadmapAcceptanceEvent>,
+  envelopes: List<RoadmapEventEnvelope>, closed_nodes: List<String>,
+  retired_ids: List<RoadmapNodeId>, retired_roster: String
+) -> RoadmapAcceptanceMigrationOutcome {
+  let held_ids = map(log_events, e => roadmap_acceptance_migration_identity(e: e))
+  // The file is checked against the model's roster and then set aside: everything below runs on `model_roster`,
+  // so a file that drops, adds, repeats or reorders a name cannot move the retired read or the scope of the
+  // comparison. The refusal is folded into `problems`, so it renders through the same MIGRATION REFUSED the
+  // operator already knows and cannot be skipped by a caller that reads only the verdict token.
+  // The RAW split: an empty entry is a refusal in `roadmap_migration_roster_refusals`, never a component dropped
+  // here — see the same choice at the verdict.
+  let supplied_roster = split(s: retired_roster, delimiter: ",")
+  let model_roster = roadmap_migration_retirement_ids()
+  let roster_refusals = roadmap_migration_roster_refusals(supplied: supplied_roster, model_roster: model_roster)
+  let not_retired = filter(
+    model_roster, n => !roadmap_node_ids_contain(ids: retired_ids, node: n as NonEmptyStr as RoadmapNodeId))
+  let problems = concat(roster_refusals, roadmap_acceptance_migration_problems(
+    wanted: wanted, held: log_events, closed_nodes: closed_nodes, not_retired: not_retired,
+    migration_roster: model_roster))
   let event_lines = map(
     filter(envelopes, env => match env.event.kind {
       AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
@@ -848,7 +926,15 @@ fn roadmap_acceptance_migration_verdict(
       manifest_events: count(wanted),
       accepted_events: count(filter(wanted, e => match e { AcceptanceRecorded { receipt: _ } => true AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false })),
       revoked_events: count(filter(wanted, e => match e { AcceptanceRecorded { receipt: _ } => false AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true })),
-      retired_named: count(roster),
+      // The count the operator is told was retired is the MODEL's roster: the list the retired read above
+      // interrogated and the list the roster check admitted. It read `count(roster)` until now — a name this
+      // function stopped binding when the supplied file stopped being the authority it counts. Nothing in this
+      // module or its imports is called `roster`; the module kept resolving only because a seed over the file
+      // refuses at function lookup without ever checking bodies, and no claim had entered this branch. The first
+      // claim that constructs MigrationVerified
+      // (test.claim.roadmap.roadmap_acceptance_evidence_witness::the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_holds)
+      // is red at the head before this line.
+      retired_named: count(model_roster),
       held_events: count(held_ids),
       event_lines: event_lines
     }
@@ -892,14 +978,5 @@ fn roadmap_acceptance_migration_refusal_report(cause: RoadmapMigrationRefusal) -
         "MIGRATION REFUSED: ", to_string(value: wanted), " manifest events, ",
         to_string(value: held), " held, ", to_string(value: count(problems)), " disagreement(s):"], "")],
         concat(map(problems, pr => join(["  ", pr], "")), event_lines)), "\n")
-  }
-}
-
-// The node an acceptance event is about — the receipt's own field, never a second naming of it.
-fn roadmap_acceptance_migration_event_node(e: RoadmapAcceptanceEvent) -> String {
-  match e {
-    AcceptanceRecorded { receipt } => receipt.node as String
-    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-      exact_prior_receipt.node as String
   }
 }

@@ -1,0 +1,1036 @@
+module test.claim.compute.remote_build_serving_converge_witness
+
+// PR 5(a): the read-only observe arm's receipt COMPOSITION. It lives in the converge module
+// so importing it forces the whole observe entry (the fleet-converge workflow --function) to
+// type-check; the cells prove the receipt carries the host/probe header and the terminal
+// state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
+// only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
+// controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+
+import std.optional { Present, Absent }
+import std.algebra { string_contains, non_empty_to_list }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.list { first_duplicate_by_key, first_where }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
+import gunbc.compute.remote_build_serving_setup {
+  remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
+  ServingLegFailure, serving_forced_command_line,
+  ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
+  serving_store_dir_mode_octal,
+}
+import extdeps.access.posix { file_mode_octal }
+import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
+
+fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationEstablished { observed: text }
+}
+
+fn est_ok() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
+// The elevation precondition (review 95915). est_elevation() = the sudo grant works;
+// refused_elevation() = 'sudo -n' refused, so every sudo-dependent leg must become unread
+// (Indeterminate) rather than "confirmed absent".
+fn est_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: true }
+}
+
+fn refused_elevation() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: "sudo -n refused" } }
+}
+
+fn est_absent() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationEstablished { observed: false }
+}
+
+// The executor plan-time pin, and matched pins so the ONLY drift in a drifted fixture is the one
+// the cell breaks (here: a confirmed-absent store dir). The three string legs stand equal to the
+// pin, and every ledger row reads its declared owner/group/mode, so no spurious deviation.
+fn pin_sha() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+fn pin_rev() -> String { "0123456789abcdef0123456789abcdef01234567" }
+fn pin_arch() -> String { "aarch64" }
+fn pin_ok() -> ServingPlanInput {
+  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: pin_arch(), local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+}
+fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved> {
+  map(d.ledger_dirs, t => ServingLedgerRowObserved {
+    path: owned_directory_path(t: t),
+    user: est_s(owned_directory_owner(t: t).user as String),
+    group: est_s(owned_directory_owner(t: t).group as String),
+    mode: est_s(serving_ledger_declared_mode_octal(t: t)),
+  })
+}
+
+// The store-mode legs, derived from the SAME declared store-dir mode the desired state carries (never a
+// bare octal reauthored per cell), so a "correct" fixture proves the mode and only the mode drifts.
+fn store_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: serving_store_dir_mode_octal(d: d))
+}
+
+fn store_mode_absent() -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: "")
+}
+
+fn store_mode_refused(item: String) -> ObservationAttempt<String, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: item, cause: "stat failed" } }
+}
+
+// A host that is correct except a confirmed-absent store directory: a real drift, whose
+// assessment carries the secret forced-command line in its structured deviation but which the
+// receipt must render by NAME only.
+fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(dline),
+    store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// A converged /etc/group carries BOTH required groups at their declared gids: the ledger group
+// (gunbc-compute @ 1006, with the members) and the account's own PRIMARY group (gunbc-build @ 1005).
+// Fixtures that mean "everything but <the one tested drift> is correct" must include both, or the
+// observe reports a spurious GroupAbsent and the plan picks up an extra groupadd the cell didn't mean.
+fn converged_groups() -> String {
+  "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
+}
+
+// The authorized_keys content AS THE DESIRED STATE DECLARES IT, so a fixture that breaks some other leg
+// keeps this leg matched and tests only the leg it means to break (the refused-elevation cell below is
+// about elevation, not about keys). An absent desired line renders as the empty string — never as a
+// fabricated command line (gunbc.design_argument::fail_closed: "no plausible output is fabricated").
+fn forced_line(d: RemoteBuildServingDesired) -> String {
+  match d.forced_command_line {
+    Present { value: line } => line
+    Absent => ""
+  }
+}
+
+// How a cell reads a decision: by WHICH ARM it is, never by a Bool tag. A ConvergePlan carries the only
+// non-empty write list there is; the other three arms have nothing to execute — the empty list below is
+// not a field that was left empty, it is the absence of the arm that could carry one.
+fn plan_writes(plan: ConvergeDecision) -> List<ConvergeAction> {
+  match plan {
+    ConvergePlan { writes: ws } => non_empty_to_list(ws)
+    ConvergeSettled => []
+    ConvergeUnhandled { items: _ } => []
+    ConvergeRefused { reason: _ } => []
+  }
+}
+
+fn plan_is_refused(plan: ConvergeDecision) -> Bool {
+  match plan {
+    ConvergeRefused { reason: _ } => true
+    ConvergeSettled => false
+    ConvergeUnhandled { items: _ } => false
+    ConvergePlan { writes: _ } => false
+  }
+}
+
+fn plan_is_unhandled(plan: ConvergeDecision) -> Bool {
+  match plan {
+    ConvergeUnhandled { items: _ } => true
+    ConvergeSettled => false
+    ConvergePlan { writes: _ } => false
+    ConvergeRefused { reason: _ } => false
+  }
+}
+
+// The header names the host and the probed_at context; the body names the terminal state.
+test fn the_receipt_body_names_the_host_and_the_drift() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "2026-11-16T00:00:00Z", context_receipt: "fleet ssh receipt\n", assessment: a)
+      string_contains(s: body, pattern: "srv1.example") && string_contains(s: body, pattern: "remote-build-serving-plan: drift")
+    }
+  }
+    }
+  }
+}
+
+// LEAK CONTROL: the receipt must carry the unmet item by NAME but never the value of the
+// secret forced-command line (the candidate public key / command). A naive renderer that
+// printed deviations' observed/desired strings would leak the key into a CI artifact.
+test fn the_receipt_body_leaks_no_forced_command_material() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "store.root") && string_contains(s: body, pattern: line) == false
+    }
+  }
+    }
+  }
+}
+
+// An already-converged host's receipt is the settled/adopt wording — the observe reports the
+// host as a no-op rather than planning to rebuild it.
+test fn a_converged_host_receipt_reports_settled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      ), pin: pin_ok())
+      let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
+      string_contains(s: body, pattern: "remote-build-serving-plan: settled")
+    }
+  }
+    }
+  }
+}
+
+fn refused_b() -> ObservationAttempt<Bool, ServingLegFailure> {
+  ObservationRefused { cause: ServingLegFailure { item: "store.root", cause: "ssh refused" } }
+}
+
+// converge_plan: a host that is correct except a confirmed-absent store dir plans exactly ONE write
+// (that directory), records nothing unhandled, and is not refused. The single-drift fixture means the
+// count is a real assertion, not a "some writes appeared" — a spurious deviation would inflate it.
+test fn diverged_store_plans_a_matching_write() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: drifted_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 1
+    }
+  }
+    }
+  }
+}
+
+// THE red control: an unread leg makes the assessment indeterminate, and the plan then writes
+// NOTHING and refuses. An apply must never write an item it never observed — a host nobody fully
+// read is not a host to mutate (std.goal_assessment paragraph ONE; gunbc.design_argument::fail_closed).
+test fn unread_leg_plans_nothing_and_refuses() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: refused_b(), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+    }
+  }
+}
+
+// The no-arch-arm guarantee: an arch mismatch is a divergence with NO remediation arm, so the plan
+// records host.arch as unhandled (the wet apply then refuses rather than installing an off-arch
+// binary) and plans no writes. host.arch must never be silently "fixed".
+test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
+      plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+    }
+  }
+}
+
+// ── review 5b: write ordering + dedupe, and uid/gid-mismatch refusal ───────────────────────────────
+
+// A write list is ordered iff no element has a rank lower than the max seen so far. converge_plan
+// re-derives order by action KIND (groups, account, membership, dirs+ledger, ak, checkout, rustup, toolchain, binary), so on
+// a fresh host useradd always precedes the checkout / authorized_keys / store writes that depend on it —
+// instead of the reverse-deviation-order the fold's prepend produced.
+type WRankState { prev: Int, bad: Int }
+
+fn writes_sorted_by_kind(ws: List<ConvergeAction>) -> Bool {
+  let st = fold(ws, init: WRankState { prev: -1, bad: 0 }, f: (s, a) => {
+    let r = converge_kind_rank(a)
+    if r < s.prev { WRankState { prev: s.prev, bad: s.bad + 1 } } else { WRankState { prev: r, bad: s.bad } }
+  })
+  st.bad == 0
+}
+
+// Count EnsureGroup writes by name+gid / by name / at all, and whether the account's EnsureAccount names
+// the account's OWN primary group. These drive the fresh-host red control (review 95905 follow-up): the
+// two groups are created at their OWN gids and never cross-paired.
+fn all_group_writes(ws: List<ConvergeAction>) -> Int {
+  length(filter(ws, a => match a { EnsureGroup { name: _, gid: _ } => true  _ => false }))
+}
+
+fn group_writes_at(ws: List<ConvergeAction>, name: String, gid: Int) -> Int {
+  length(filter(ws, a => match a { EnsureGroup { name: n, gid: g } => n == name && g == gid  _ => false }))
+}
+
+fn has_account_primary(ws: List<ConvergeAction>, pg: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureAccount { name: _, uid: _, gid: _, primary_group: p, home: _, shell: _, supplementary: _ } => p == pg
+    _ => false
+  })) > 0
+}
+
+// A fresh host: the account is absent (empty /etc/passwd), NEITHER required group exists, and the store
+// dirs + checkout + serve binary + authorized_keys + toolchain are CONFIRMED-ABSENT — so the plan must
+// create, in dependency order, both groups (at their own gids), the account (primary group = its own), the
+// ledger-group membership, the dirs (account home, ~/.ssh, <instance>/bin), the authorized_keys file, the
+// checkout, the PINNED toolchain, and the binary. B5 (side-chat review of 2026-11-16): this is a REAL
+// absent-subject observation — the value legs (serve_binary_sha256, checkout_revision, and the two
+// stat-mode legs) carry NO value at all, because their subjects were confirmed absent and A1 skips those
+// reads. The old fixture supplied a matching hash and revision HERE while declaring the subjects absent:
+// it masked the A1 defect (a fresh host assessed Indeterminate through the real observe, which this
+// fixture pretended was fine). With honest legs, the plan below is Diverged-and-runnable, not Indeterminate.
+fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(""),
+    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
+    serve_binary_sha256: Absent, checkout_revision: Absent,
+    authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// A TRULY FRESH HOST (no account, so no rustup) plans the rustup bootstrap: the pinned rustup-init for
+// the target's own triple, its digest taken from the published release row (never from the download),
+// installed into the account's declared homes, ordered after the checkout and before the toolchain
+// install it enables. This is the real fresh-host observation srv3 and srv4 returned on 2026-11-17.
+fn rustup_write(ws: List<ConvergeAction>) -> ConvergeAction? {
+  first_where(ws, keep: a => match a {
+    EnsureRustup { installer_url: _, expected_sha256: _, as_user: _, rustup_home: _, cargo_home: _ } => true
+    _ => false
+  })
+}
+
+fn rank_of_rustup(ws: List<ConvergeAction>) -> Int {
+  match rustup_write(ws) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+test fn fresh_host_plans_the_verified_rustup_bootstrap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => match rustup_init_release(version: serving_rustup_init_version, triple: "aarch64-unknown-linux-gnu") {
+      Absent => false
+      Present { value: r } => {
+        let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+        let ws = plan_writes(converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent()))
+        let carries = match rustup_write(ws) {
+          Absent => false
+          Present { value: w } => match w {
+            EnsureRustup { installer_url: u, expected_sha256: h, as_user: usr, rustup_home: rh, cargo_home: ch } =>
+              u == (rustup_init_url(r: r) as String) && string_contains(s: u, pattern: "/aarch64-unknown-linux-gnu/")
+                && h == (r.sha256 as String) && usr == d.account_name && rh == d.rustup_home && ch == d.cargo_home
+            _ => false
+          }
+        }
+        carries
+          && rank_of_checkout(ws: ws) < rank_of_rustup(ws: ws)
+          && rank_of_rustup(ws: ws) < rank_of_toolchain(ws: ws)
+          && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name)
+          && writes_sorted_by_kind(ws)
+      }
+    }
+  }
+}
+
+// RED: a machine with no published rustup-init triple is unhandled with no writes; the plan never
+// downloads an installer it holds no digest for. The executor is on the same machine, so the only
+// thing refusing is the missing triple.
+test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: "riscv64", local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(), account_name: d.account_name, passwd: est_s(""), group: est_s("root:x:0:\n"), authorized_keys: est_s(""),
+        store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+        checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
+        serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
+        target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
+      )
+      let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
+      match plan {
+        ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
+          && any(us, x => x == "toolchain: rustup absent and no rustup-init triple for machine riscv64")
+        _ => false
+      }
+    }
+  }
+}
+
+// An account that already HAS rustup and only lacks the pinned channel plans the toolchain install
+// and no bootstrap: the two arms of the rustup gate.
+test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(), account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()), authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
+      length(ws) == 1 && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name) && rank_of_rustup(ws: ws) == -1
+    }
+  }
+}
+
+// ORDER + DEDUPE red control: a fresh host's writes (groups, account, membership, dirs, authorized_keys,
+// checkout, rustup, toolchain, binary) are in NON-DECREASING rank order (a reverse-fold order would set bad>0), and carry no duplicate identity.
+test fn fresh_host_writes_are_ordered_by_action_kind_and_deduped() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(line, d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      let ws = plan_writes(plan)
+      match first_duplicate_by_key(xs: ws, key: converge_action_key) {
+        // A fresh host must get groupadd for the account's OWN group at account_gid AND for the ledger
+        // group at group_gid (both proven absent), with NO write pairing a group name with the OTHER
+        // group's gid (the merge bug review 95905 flagged: creating gunbc-compute at 1005). Exactly two
+        // group writes; the account's primary group is its own; all writes in kind order; no duplicates.
+        none => plan_is_refused(plan) == false
+          && writes_sorted_by_kind(ws)
+          && all_group_writes(ws) == 2
+          && group_writes_at(ws, d.account_group_name, d.account_gid) == 1
+          && group_writes_at(ws, d.group_name, d.group_gid) == 1
+          && group_writes_at(ws, d.account_group_name, d.group_gid) == 0
+          && group_writes_at(ws, d.group_name, d.account_gid) == 0
+          && has_account_primary(ws, d.account_group_name)
+        Present { value: _ } => false
+      }
+    }
+  }
+    }
+  }
+}
+
+// UID-MISMATCH red control (review 5b #3 / review 95905 #2): an EXISTING account with the wrong uid is not
+// a useradd away from fixed — useradd refuses an existing name, usermod -u would orphan its files. So the
+// plan records it UNHANDLED and writes NOTHING; the wet apply's unhandled gate then refuses the host and
+// mutates nothing (a human reconciles), rather than applying every other write and failing only at
+// re-observe. A genuinely ABSENT account (PresentAbsent) IS handled by the account arm; a MISMATCH is not.
+test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+  match d.forced_command_line {
+    Absent => false
+    Present { value: line } => {
+      let o = serving_observed_from_reads(
+        elevation: est_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:9999:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(line),
+        store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+        serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+    }
+  }
+}
+
+// ── elevation precondition red control (review 95915, carried into 5(b)) ──────────
+// If 'sudo -n' refused, observe reports every sudo-dependent item unread (Indeterminate); the apply
+// must therefore plan NOTHING and refuse, so it can never write over files it never read. Paired with
+// fresh_host (established elevation plans the writes): the elevation field is load-bearing on the
+// apply side too, not just the observe.
+test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let o = serving_observed_from_reads(
+        elevation: refused_elevation(),
+        account_name: d.account_name,
+        passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+        group: est_s(converged_groups()),
+        authorized_keys: est_s(forced_line(d)),
+        store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+        checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
+        serve_binary_sha256: Absent, checkout_revision: Absent,
+        authorized_keys_mode: Absent, serve_binary_mode: Absent,
+        target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+      )
+      let a = serving_assess(d: d, o: o, pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// ── the execute path is typed to the plan arm (review 95922 #2 / review 95928) ───────
+// 'A refusal or an unhandled divergence executes nothing' is not a gate the caller remembers: the
+// executor takes the ConvergePlan arm's non-empty FreeSemigroup, and the other arms carry no such
+// value. This cell is the discriminating half of that claim — the SAME desired state, with ONE
+// deviation changed, flips between 'carries write work' (a confirmed-absent store dir) and 'carries
+// none' (an unhandled host.arch, a refused elevation leg). A refactor that let an unhandled item ride
+// into a plan, or a refusal carry writes, reddens THIS cell while diverged_store_plans_a_matching_write
+// stays green: that gap is exactly the defect this control exists to catch.
+test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let unhandled = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: est_elevation(),
+          account_name: d.account_name,
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+          serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+          target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
+      let refused = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: refused_elevation(),
+          account_name: d.account_name,
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+          serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+          target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let planned = converge_plan(
+        d: d,
+        a: serving_assess(d: d, o: serving_observed_from_reads(
+          elevation: est_elevation(),
+          account_name: d.account_name,
+          passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+          group: est_s(converged_groups()),
+          authorized_keys: est_s(line),
+          store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+          serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+          target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+        ), pin: pin_ok()),
+        pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      // The two non-plan arms must offer the executor nothing, and the plan arm must offer it
+      // something — otherwise the two assertions above are vacuous.
+      plan_is_unhandled(unhandled) && length(plan_writes(unhandled)) == 0
+        && plan_is_refused(refused) && length(plan_writes(refused)) == 0
+        && length(plan_writes(planned)) == 1
+    }
+  }
+}
+
+// ── review 95935: the desired-state modes + shell, observed and planned ────────────
+
+// A host that is correct in EVERY respect (all pins, account, group, keys, ledger, both store dirs
+// present at the declared mode) except the ONE fact a caller names. The two control pairs below build
+// off this so a reddening can only be the fact under test, never a stray deviation. store-root-mode is
+// driven by 'store_root_mode'; the account shell by 'passwd'.
+fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mode: ObservationAttempt<String, ServingLegFailure>) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_root_mode, store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(passwd),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+// Whether the write list contains an EnsureDirectory on PATH carrying exactly MODE. The declared mode is
+// asserted HERE (on the planned action) so a per-arm literal that ignored d.store_dir_mode reddens it.
+fn has_ensure_directory_mode(ws: List<ConvergeAction>, path: String, mode: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureDirectory { path: p, owner_user: _, owner_group: _, mode: m } => p == path && file_mode_octal(mode: m) == mode
+    _ => false
+  })) > 0
+}
+
+// The login shell the planned useradd (EnsureAccount) would write, or none when no EnsureAccount is planned.
+fn account_write_shell(ws: List<ConvergeAction>) -> String? {
+  match first_where(ws, keep: a => match a { EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, shell: _, supplementary: _ } => true  _ => false }) {
+    Absent => Absent
+    Present { value: a } => match a {
+      EnsureAccount { name: _, uid: _, gid: _, primary_group: _, home: _, shell: sh, supplementary: _ } => Present { value: sh }
+      _ => Absent
+    }
+  }
+}
+
+// GREEN (review 95935): a store directory that EXISTS at the wrong mode is no longer invisible to the
+// observe (it used to be a bare 'test -d'). It raises a deviation that routes to EnsureDirectory carrying
+// the DECLARED store-dir mode — the same authority the desired state carries, not a per-arm "0755".
+test fn store_mode_drift_plans_ensure_directory_at_declared_mode() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let declared = serving_store_dir_mode_octal(d: d)
+      // "0700" parses as an octal mode but differs from the declared 0755: a genuine MODE drift on a present dir.
+      let a = serving_assess(d: d, o: fully_matched_store(d: d, line: line, store_root_mode: est_s(text: "0700")), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false
+        && plan_is_unhandled(plan) == false
+        && length(plan_writes(plan)) == 1
+        && has_ensure_directory_mode(ws: plan_writes(plan), path: d.store_root, mode: declared)
+    }
+  }
+}
+
+// THE red control: the SAME host with the store dir at the DECLARED mode is settled — it plans NOTHING.
+// If the mode check were absent (the old 'test -d' only), the green cell above would go green AND this
+// would too; the pair together prove the mode leg, not the presence leg, is what produced the write.
+test fn store_mode_matched_plans_no_store_directory() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let a = serving_assess(d: d, o: fully_matched_store(d: d, line: line, store_root_mode: store_mode_ok(d: d)), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// GREEN (review 95935): an EXISTING account (its passwd row came back) whose login shell differs from the
+// account model's is UNHANDLED — the plan records it and writes NOTHING, so the wet apply REFUSES rather
+// than running usermod on a live account (fail_closed: never mutate a running system's account behind its back).
+test fn wrong_shell_on_existing_account_is_unhandled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      // uid/gid match (1005/1005), only the shell (field 7) is /bin/sh — the ONLY deviation is the shell.
+      let a = serving_assess(d: d, o: fully_matched_passwd(d: d, line: line, passwd: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/sh\n"), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// THE red control: the SAME host with the account's shell at the model's declared path is settled — NOT
+// unhandled, and plans nothing. Proves the unhandled verdict above came from the SHELL, not from the row.
+test fn declared_shell_on_existing_account_is_settled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let a = serving_assess(d: d, o: fully_matched_passwd(d: d, line: line, passwd: "gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// GREEN (review 95935): the plan's useradd carries the login shell FROM THE ACCOUNT MODEL (d.account_shell),
+// never a reauthored literal — so a fresh account is created with the model's shell. The write arm's old
+// hardcoded "-s /bin/bash" is gone; this is what replaced it, read off the desired state.
+test fn planned_useradd_carries_the_model_shell() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      match account_write_shell(ws: plan_writes(plan)) {
+        Absent => false
+        Present { value: sh } => sh == d.account_shell
+      }
+    }
+  }
+}
+
+// THE red control: the model's shell is a NON-EMPTY concrete path (/bin/bash), and the planned shell EQUALS
+// it while the plan is NOT otherwise the wrong-shell refusal — i.e. the shell is genuinely sourced, not the
+// empty string an unwired field would yield. A plan that dropped the shell ("" ) or a literal that drifted
+// from the model reddens this while the green cell above stays green.
+test fn planned_useradd_shell_is_the_model_value_not_empty() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      d.account_shell != ""
+        && match account_write_shell(ws: plan_writes(plan)) {
+             Absent => false
+             Present { value: sh } => sh == d.account_shell && sh != ""
+           }
+    }
+  }
+}
+
+// GREEN + red in one (review 95935, cause carried per review 96096): the checkout's VERDICT is the detach,
+// but a failed fetch that blocks the detach NAMES THE FETCH, with the fetch's own cause; a failed detach
+// with a good fetch names the detach and its cause; and a good detach is done no matter what the fetch
+// did. The clone result is irrelevant to all four.
+fn checkout_cause_of(step: ConvergeStep) -> String {
+  match step {
+    StepDone => ""
+    StepFailed { cause: c } => c
+  }
+}
+
+test fn checkout_cause_names_the_fetch_only_when_it_blocked_the_detach() -> Bool {
+  let fetch_failed = StepFailed { cause: "exit 128: fatal: couldn't find remote ref deadbeef" }
+  let detach_failed = StepFailed { cause: "exit 1: error: pathspec did not match" }
+  let both = checkout_cause_of(step: converge_checkout_step(fetch: fetch_failed, detach: detach_failed))
+  let fetch_named = string_contains(s: both, pattern: "fetch") && string_contains(s: both, pattern: "couldn't find remote ref")
+  let only_detach = checkout_cause_of(step: converge_checkout_step(fetch: StepDone, detach: detach_failed))
+  let detach_named = string_contains(s: only_detach, pattern: "detach")
+    && string_contains(s: only_detach, pattern: "pathspec did not match")
+    && string_contains(s: only_detach, pattern: "fetch") == false
+  // The detach is the verdict: a good detach is done even when the fetch failed.
+  let detach_is_verdict = match converge_checkout_step(fetch: fetch_failed, detach: StepDone) {
+    StepDone => true
+    StepFailed { cause: _ } => false
+  } && match converge_checkout_step(fetch: StepDone, detach: StepDone) {
+    StepDone => true
+    StepFailed { cause: _ } => false
+  }
+  fetch_named && detach_named && detach_is_verdict
+}
+
+// ── side-chat review of 2026-11-16, finding B1: the toolchain has a remediation ─────────────────────
+//
+// PresentAbsent "toolchain" used to fall to unhandled and ServingPlanInput.toolchain_channel was
+// never consumed — a fresh host could never settle, and the pin's channel governed nothing. It now
+// plans EnsureToolchain at its own rank: after the account and the checkout it depends on, before
+// the serve binary; and NOTHING builds a release (the executor's own binary rides the install arm —
+// see converge_install_binary's upload_path).
+
+fn has_toolchain_write(ws: List<ConvergeAction>, channel: String, as_user: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureToolchain { channel: c, as_user: u } => c == channel && u == as_user
+    _ => false
+  })) == 1
+}
+
+fn rank_of_toolchain(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => match a {
+    EnsureToolchain { channel: _, as_user: _ } => true
+    _ => false
+  }) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+fn rank_of_checkout(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => match a {
+    EnsureCheckout { dir: _, clone_url: _, revision: _, as_user: _ } => true
+    _ => false
+  }) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+fn rank_of_serve_binary(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => match a {
+    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true
+    _ => false
+  }) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+fn rank_of_directory_on(ws: List<ConvergeAction>, path: String) -> Int {
+  match first_where(ws, keep: a => match a {
+    EnsureDirectory { path: p, owner_user: _, owner_group: _, mode: _ } => p == path
+    _ => false
+  }) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+fn plan_is_settled(plan: ConvergeDecision) -> Bool {
+  match plan { ConvergeSettled => true  _ => false }
+}
+
+test fn fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      let ws = plan_writes(plan)
+      // Diverged-and-runnable, never Indeterminate, and it carries the toolchain write.
+      length(ws) > 0
+        && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name)
+        && 0 <= rank_of_checkout(ws: ws) && rank_of_checkout(ws: ws) < rank_of_toolchain(ws: ws)
+        && rank_of_toolchain(ws: ws) < rank_of_serve_binary(ws: ws)
+        && writes_sorted_by_kind(ws)
+    }
+  }
+}
+
+// ── side-chat review of 2026-11-16, finding B2: the installs' parents are planned, from the desired state ──
+
+fn has_directory_write(ws: List<ConvergeAction>, path: String, owner: String, mode: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureDirectory { path: p, owner_user: ou, owner_group: _, mode: m } => p == path && ou == owner && file_mode_octal(mode: m) == mode
+    _ => false
+  })) == 1
+}
+
+fn rank_of_authorized_keys(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => match a {
+    EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => true
+    _ => false
+  }) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+test fn fresh_host_plans_the_parents_before_the_installs_they_parent() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      let ws = plan_writes(plan)
+      // Both parents are planned with the DESIRED state's declared owner and mode — the octal string
+      // the write carries is file_mode_octal of the declared FileMode, so a per-arm literal that
+      // ignored d.account_ssh_dir_mode / d.serve_binary_dir_mode reddens this cell.
+      has_directory_write(ws: ws, path: d.account_ssh_dir, owner: d.account_name, mode: file_mode_octal(mode: d.account_ssh_dir_mode))
+        && has_directory_write(ws: ws, path: d.serve_binary_dir, owner: d.serve_binary_dir_owner_user, mode: file_mode_octal(mode: d.serve_binary_dir_mode))
+        && 0 <= rank_of_directory_on(ws: ws, path: d.account_ssh_dir) && rank_of_directory_on(ws: ws, path: d.account_ssh_dir) < rank_of_authorized_keys(ws: ws)
+        && 0 <= rank_of_directory_on(ws: ws, path: d.serve_binary_dir) && rank_of_directory_on(ws: ws, path: d.serve_binary_dir) < rank_of_serve_binary(ws: ws)
+    }
+  }
+}
+
+// ── side-chat review of 2026-11-16, finding B3; review 96096: ONE execution fold, with causes ──
+//
+// converge_execute_plan stops at the FIRST failed write so no later write runs against an absent
+// prerequisite; the failed write's cause and the skipped suffix land in the receipt. The fold is
+// converge_execute_with, parameterized by the write-runner: the wet apply passes converge_run_write over
+// the fleet SSH edge, and these claims pass an injected runner, so they exercise the fold the apply runs.
+
+fn b3_group() -> ConvergeAction {
+  EnsureGroup { name: "gunbc-compute", gid: 1006 }
+}
+
+fn b3_ak(ak_path: String) -> ConvergeAction {
+  EnsureAuthorizedKeys { path: ak_path, owner_user: "gunbc-build", content: "ssh-ed25519 AAAAtest" }
+}
+
+fn b3_checkout() -> ConvergeAction {
+  EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/repo", revision: "deadbeef", as_user: "gunbc-build" }
+}
+
+fn b3_toolchain() -> ConvergeAction {
+  EnsureToolchain { channel: "1.90.0", as_user: "gunbc-build" }
+}
+
+fn b3_binary() -> ConvergeAction {
+  InstallServeBinary { upload_path: "target/release/gunbc", install_path: "/srv/gunbc/bin/gunbc", expected_sha256: "abc" }
+}
+
+fn b3_order(ak_path: String) -> List<ConvergeAction> {
+  [b3_group(), b3_ak(ak_path: ak_path), b3_checkout(), b3_toolchain(), b3_binary()]
+}
+
+data b3_injected_cause: String = "exit 1: install: cannot change owner of '/home/gunbc-build/.ssh/authorized_keys': Operation not permitted"
+
+// The injected write-runner: the write keyed `failing` fails with b3_injected_cause, every other settles.
+fn b3_run_failing(failing: String, a: ConvergeAction) -> ConvergeWriteOutcome {
+  let key = converge_action_key(a)
+  if key == failing { WriteFailed { failure: ConvergeWriteFailure { key: key, cause: b3_injected_cause } } } else { WriteSettled }
+}
+
+test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  // The failing write itself IS attempted, with its cause kept; everything ordered after it is skipped.
+  let failed_with_cause = match m.failed {
+    Cons { head: f, tail: more } => f.key == ak_key && f.cause == b3_injected_cause && length(more) == 0
+    Empty => false
+  }
+  failed_with_cause
+    && m.skipped == map([b3_checkout(), b3_toolchain(), b3_binary()], a => converge_action_key(a))
+    && m.attempted == [converge_action_key(b3_group()), ak_key]
+}
+
+test fn execution_with_no_failure_attempts_everything() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  m.failed == [] && m.skipped == [] && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+}
+
+// Review 96096 (fail_closed): the receipt names the failed write WITH ITS CAUSE, not only its key, and
+// still names the skipped writes. A settled pass adds no execution lines.
+test fn the_apply_receipt_names_the_failed_write_and_its_cause() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
+  let lines = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a)))
+  let clean = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a)))
+  string_contains(s: lines, pattern: ak_key)
+    && string_contains(s: lines, pattern: "Operation not permitted")
+    && string_contains(s: lines, pattern: converge_action_key(b3_toolchain()))
+    && clean == ""
+}
+
+// ── side-chat review of 2026-11-16, finding B4: an EXTRA ledger-group member is unhandled, not "fixed" ──
+//
+// serving_group_deviations flags a group whose members are not EXACTLY the declared roster, but the
+// only remediation is usermod -aG; no removal is modelled (removing a member could evict someone a
+// human added on purpose). So an extra member must route to unhandled — and an unhandled plan carries
+// NO writes: the red control is that the apply refuses this host rather than half-fixing it.
+
+fn converged_groups_with_intruder() -> String {
+  "gunbc-compute:x:1006:briansrls,gunbc-build,intruder\ngunbc-build:x:1005:\n"
+}
+
+fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(group_text),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      // GREEN half: the exact roster plans nothing (this deviation is absent).
+      let settled = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      // RED half: ONE extra observed member — everything else identical — is UNHANDLED with zero writes.
+      let extra = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups_with_intruder()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_settled(settled) && plan_is_unhandled(extra) && length(plan_writes(extra)) == 0
+    }
+  }
+}

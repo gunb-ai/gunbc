@@ -3,7 +3,7 @@ module test.claim.machine_intake.mtcollins1_pxe_mac_discovery_step_wet_witness
 import std.types { String, Bool }
 import std.algebra { string_contains }
 import extdeps.shell
-import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_pxe_mac_discovery_invoke }
+import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_pxe_mac_discovery_invoke, gunbc_ci_mtcollins1_bmc_cold_reset_invoke }
 
 // THE RENDERED DISCOVERY STEP, EXECUTED. Each GHA run step is a fresh shell, and gunbc_run_command reads
 // $ROOT under set -u, so a prelude that fetched the credential but never assigned ROOT would die with
@@ -18,11 +18,21 @@ import gunbc.machine_intake.mtcollins1_boot_step { gunbc_ci_mtcollins1_pxe_mac_d
 // strip=1 deletes the ROOT assignment line first: the discriminating RED, which must die unbound before
 // the binary.
 fn run_discovery_step(binary_rc: String, strip_root: String, no_write: String) -> String {
-  shell.Exec.RunArgv(program: "sh", arguments: ["-c", discovery_driver(), "sh", gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(), binary_rc, strip_root, no_write]).stdout
+  run_receipted_step(invoke: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(), receipt_name: "mtcollins1-pxe-mac-discovery-receipt.txt", binary_rc: binary_rc, strip_root: strip_root, no_write: no_write)
+}
+
+// THE SAME DRIVER FOR EVERY RECEIPTED BOOT-JOB STEP (gunbc.machine_intake.mtcollins1_boot_step receipted_run_invoke):
+// the receipt's file name is the fifth positional argument, so the stand-in entry writes where that step reads.
+fn run_receipted_step(invoke: String, receipt_name: String, binary_rc: String, strip_root: String, no_write: String) -> String {
+  shell.Exec.RunArgv(program: "sh", arguments: ["-c", discovery_driver(), "sh", invoke, binary_rc, strip_root, no_write, receipt_name]).stdout
+}
+
+fn run_cold_reset_step(binary_rc: String, no_write: String) -> String {
+  run_receipted_step(invoke: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(), receipt_name: "mtcollins1-bmc-cold-reset-receipt.txt", binary_rc: binary_rc, strip_root: "0", no_write: no_write)
 }
 
 fn discovery_driver() -> String {
-  "set -u\nT=$(mktemp -d) || exit 90\nmkdir -p \"$T/bin\" \"$T/work/target/release\" \"$T/tmp\"\nprintf '%s\\n' '#!/bin/sh' 'while [ $# -gt 0 ]; do if [ \"$1\" = -o ]; then : > \"$2\"; fi; shift; done' > \"$T/bin/curl\"\nprintf '%s\\n' '#!/bin/sh' 'printf cred' > \"$T/bin/python3\"\nprintf '%s\\n' '#!/bin/sh' 'echo reached > \"$MARK\"' '[ -n \"$NOWRITE\" ] || echo RECEIPT-SENTINEL > \"$(dirname \"$0\")/../mtcollins1-pxe-mac-discovery-receipt.txt\"' 'exit \"$FAKE_GUNBC_RC\"' > \"$T/work/target/release/gunbc\"\nchmod +x \"$T/bin/curl\" \"$T/bin/python3\" \"$T/work/target/release/gunbc\"\nif [ -n \"$4\" ]; then echo STALE-OLD-RECEIPT > \"$T/work/target/mtcollins1-pxe-mac-discovery-receipt.txt\"; fi\nif [ \"$3\" = 1 ]; then printf '%s\\n' \"$1\" | sed '/^ROOT=/d' > \"$T/script.sh\"; else printf '%s\\n' \"$1\" > \"$T/script.sh\"; fi\n(cd \"$T/work\" && env -u ROOT PATH=\"$T/bin:$PATH\" RUNNER_TEMP=\"$T/tmp\" WIF_ACCESS_TOKEN=x MARK=\"$T/mark\" FAKE_GUNBC_RC=\"$2\" NOWRITE=\"$4\" bash \"$T/script.sh\" > \"$T/out\" 2>&1)\nrc=$?\nleft=$(ls \"$T/tmp\" | wc -l | tr -d ' ')\nmark=no; [ -f \"$T/mark\" ] && mark=yes\ncat \"$T/out\"\nprintf 'rc=%s mark=%s leftover=%s\\n' \"$rc\" \"$mark\" \"$left\"\nrm -rf \"$T\"\n"
+  "set -u\nRECEIPT_NAME=\"$5\"\nexport RECEIPT_NAME\nT=$(mktemp -d) || exit 90\nmkdir -p \"$T/bin\" \"$T/work/target/release\" \"$T/tmp\"\nprintf '%s\\n' '#!/bin/sh' 'while [ $# -gt 0 ]; do if [ \"$1\" = -o ]; then : > \"$2\"; fi; shift; done' > \"$T/bin/curl\"\nprintf '%s\\n' '#!/bin/sh' 'printf cred' > \"$T/bin/python3\"\nprintf '%s\\n' '#!/bin/sh' 'echo reached > \"$MARK\"' '[ -n \"$NOWRITE\" ] || echo RECEIPT-SENTINEL > \"$(dirname \"$0\")/../$RECEIPT_NAME\"' 'exit \"$FAKE_GUNBC_RC\"' > \"$T/work/target/release/gunbc\"\nchmod +x \"$T/bin/curl\" \"$T/bin/python3\" \"$T/work/target/release/gunbc\"\nif [ -n \"$4\" ]; then echo STALE-OLD-RECEIPT > \"$T/work/target/$5\"; fi\nif [ \"$3\" = 1 ]; then printf '%s\\n' \"$1\" | sed '/^ROOT=/d' > \"$T/script.sh\"; else printf '%s\\n' \"$1\" > \"$T/script.sh\"; fi\n(cd \"$T/work\" && env -u ROOT PATH=\"$T/bin:$PATH\" RUNNER_TEMP=\"$T/tmp\" WIF_ACCESS_TOKEN=x MARK=\"$T/mark\" FAKE_GUNBC_RC=\"$2\" NOWRITE=\"$4\" bash \"$T/script.sh\" > \"$T/out\" 2>&1)\nrc=$?\nleft=$(ls \"$T/tmp\" | wc -l | tr -d ' ')\nmark=no; [ -f \"$T/mark\" ] && mark=yes\ncat \"$T/out\"\nprintf 'rc=%s mark=%s leftover=%s\\n' \"$rc\" \"$mark\" \"$left\"\nrm -rf \"$T\"\n"
 }
 
 test fn the_discovery_step_with_root_unset_reaches_the_entry_and_cleans_up_on_success() -> Bool {
@@ -53,4 +63,18 @@ test fn the_discovery_step_prints_the_receipt_the_entry_wrote_on_failure() -> Bo
 test fn the_discovery_step_names_an_absent_receipt_and_never_prints_a_stale_one_and_keeps_the_exit() -> Bool {
   let r = run_discovery_step(binary_rc: "9", strip_root: "0", no_write: "1")
   string_contains(s: r, pattern: "receipt ABSENT") && !string_contains(s: r, pattern: "STALE-OLD-RECEIPT") && string_contains(s: r, pattern: "rc=9 mark=yes")
+}
+
+// THE COLD-RESET STEP IS THE SAME RECEIPTED SHAPE, executed: it reaches its entry, prints the receipt the entry
+// wrote, keeps the entry's exit status, and names an absent receipt rather than printing a stale one.
+test fn the_cold_reset_step_reaches_its_entry_prints_its_receipt_and_keeps_its_exit() -> Bool {
+  let ok = run_cold_reset_step(binary_rc: "0", no_write: "")
+  let failed = run_cold_reset_step(binary_rc: "7", no_write: "")
+  string_contains(s: ok, pattern: "RECEIPT-SENTINEL") && string_contains(s: ok, pattern: "rc=0 mark=yes leftover=0")
+    && string_contains(s: failed, pattern: "RECEIPT-SENTINEL") && string_contains(s: failed, pattern: "rc=7 mark=yes leftover=0")
+}
+
+test fn the_cold_reset_step_names_an_absent_receipt_and_never_prints_a_stale_one() -> Bool {
+  let r = run_cold_reset_step(binary_rc: "9", no_write: "1")
+  string_contains(s: r, pattern: "mtcollins1-bmc-cold-reset-receipt ABSENT") && !string_contains(s: r, pattern: "STALE-OLD-RECEIPT") && string_contains(s: r, pattern: "rc=9 mark=yes")
 }

@@ -1097,6 +1097,11 @@ data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
   decided: "2026-11-18",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
   provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked whether the ctrl session dashboard embeds the same timeline page the daily workspace serves or consumes only the one-row-per-item projection and draws its own view. Operator words, verbatim: \"yeah someone is working on that stuff, i will try not to add too much if anything from ctrl, that's my goal at least\". RULED, in those words: the ctrl dashboard renders the same page and adds nothing, or as little as possible, of its own. INTERPRETATION (not operator words): one renderer in gunbc.roadmap.roadmap_page; ctrl keeps no planning state and no second view until something is actually missing, and that missing thing is then added to the page here (gunbc.design_ruling::planning_execution_is_anchored_on_fabric keeps ctrl a side path)."
+data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "codex_app_server_trip_pinned_oracle_repointed_to_direct_argv"),
+  decided: "2026-11-17",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator ruling on the pinned Codex check, escalation msg_87d2aff1-c358-4b5f-b17c-11b7504962e2, decided 2026-11-17, relayed verbatim by manager session neat-badger-614 (msg_81ee26ff) and directed to session quiet-wolf-155. Asked whether re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word from refusing the adversarial CODEX_HOME to asserting it survives as one argv value with no shell control word is authorized, the operator answered, verbatim: \"yes the codex pinned check is fine to ignore\". Read by the manager as approval to change the pin: the old CodexTripArgvRefused expectation no longer binds. WHAT IT DECIDES: that arm is re-pointed from pinning a refusal to pinning that the value crosses as one argv element and renders no separate shell word, per node dp-m2-codex-direct-argv-policy. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change.",
 }
 
 fn design_rulings() -> List<DesignRuling> {
@@ -1232,6 +1237,7 @@ fn design_rulings() -> List<DesignRuling> {
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
+    codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,
   ]
 }
 
