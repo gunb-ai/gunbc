@@ -642,7 +642,10 @@ fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, pr
 fn publication_candidate_holds_publication_credential(profile: RepositoryCiProfile) -> Bool {
   match profile.heal {
     Absent => false
-    Present { value: policy } => heal_job_holds_publication_credential(job: policy)
+    Present { value: policy } => match heal_job_holds_publication_credential(job: policy) {
+      Accepted { value: holds } => holds
+      Rejected { diagnostics: _ } => true
+    }
   }
 }
 
