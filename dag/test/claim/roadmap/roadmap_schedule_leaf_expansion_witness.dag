@@ -1,0 +1,97 @@
+module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
+
+// THE DECLARATION of the leaf-expansion unit (roadmap-schedule-leaf-expansion), read against its carrier
+// gunbc.roadmap.roadmap_decomposition. A decomposition reads as a FLAT LIST of leaf OCCURRENCES -- one per
+// leaf member, keyed by the single carrier LeafPath (item, stage, piece, member) -- each occurrence tagged
+// with where its member count came from. A Leaf's member and a family with a DECLARED population sit at a
+// DECLARED count; a FindingsOf family declares no count, so its members sit at an ASSUMED count that is a
+// SIMULATION INPUT handed to the expansion, never a value the carrier holds. The expansion WRITES NOTHING:
+// it reads rows already in the carrier and emits occurrences and their edges.
+//
+// THE RED CONTROL, named the way the unit names its own: a planted waits_on naming a stage the parent does
+// not have REFUSES -- and it refuses by CONSUMING THE CARRIER'S OWN CLAIM (decomposition_dependencies_well_formed),
+// which the expansion CALLS rather than re-checks. The same row aimed at a stage the parent HAS is admitted.
+
+import std.types { Bool, Int, List, String }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_decomposition {
+  Expansion, decomposition_for, expand_decomposition, is_expanded, is_refused,
+  expanded_occurrences, expanded_edges, occurrence_is_declared, occurrence_is_assumed,
+  occurrence_is_offered_claimable, decomposition_has_leaf_path, decomposition_dependencies_well_formed,
+  decomposition, waits, leaf,
+}
+
+// The single decomposition of `node`, read from the carrier and expanded at a declared findings count. A node
+// with no single decomposition reads as Refused: the witness only ever calls this on real rows.
+fn expansion_of(node: String, findings_count: Int) -> Expansion {
+  let ds = decomposition_for(node: nid(s: node))
+  if count(ds) != 1 {
+    Refused { cause: "witness precondition: the node does not hold exactly one decomposition" }
+  } else {
+    match ds[0] {
+      Absent => Refused { cause: "witness precondition: absent decomposition" }
+      Present { value: d } => expand_decomposition(d: d, findings_count: findings_count)
+    }
+  }
+}
+
+// THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
+// FindingsOf family at stage 1, an acceptance join at stage 2, and no parent waits_on. At a declared count of
+// three it expands to ONE declared occurrence (the probe leaf) and THREE assumed occurrences (the FindingsOf
+// family, one per assumed member); the join carries nothing. Each of the three findings occurrences waits on
+// the probe leaf (the stage-1-on-stage-0 barrier), so three occurrence edges result. Every DECLARED occurrence
+// resolves under the carrier's own decomposition_has_leaf_path; no ASSUMED occurrence is ever offered claimable.
+test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_with_their_edges() -> Bool {
+  let e = expansion_of(node: "literal-elaboration", findings_count: 3)
+  let occs = expanded_occurrences(e)
+  let edges = expanded_edges(e)
+  is_expanded(e)
+    && count(occs) == 4
+    && count(filter(occs, o => occurrence_is_declared(o))) == 1
+    && count(filter(occs, o => occurrence_is_assumed(o))) == 3
+    && all(filter(occs, o => occurrence_is_declared(o)), o => decomposition_has_leaf_path(path: o.path))
+    && count(filter(filter(occs, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
+    && count(edges) == 3
+}
+
+// THE ASSUMED COUNT IS A SIMULATION INPUT, NEVER A CLAIM. At a different declared count (five) the FindingsOf
+// family grows to five assumed members, all still drawn from the input -- and NONE of them is ever offered as
+// claimable, because the carrier declares no count for a FindingsOf family and decomposition_has_leaf_path
+// itself refuses one. Only DECLARED occurrences are offerable.
+test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
+  let e = expansion_of(node: "literal-elaboration", findings_count: 5)
+  let occs = expanded_occurrences(e)
+  is_expanded(e)
+    && count(filter(occs, o => occurrence_is_assumed(o))) == 5
+    && count(filter(filter(occs, o => occurrence_is_assumed(o)), o => occurrence_is_offered_claimable(o))) == 0
+}
+
+// THE RED CONTROL. A planted waits_on naming a stage its parent does not have REFUSES -- by CONSUMING the
+// carrier's existing claim: the expansion CALLS decomposition_dependencies_well_formed and refuses on its
+// verdict rather than re-checking any row. The dependency here is the one the calendar-binding unit declares
+// on list-scheduling; aimed at a stage list-scheduling does not have (from_stage 99), the carrier rejects it
+// and so does the expansion; aimed at a stage it does have (from_stage 0), the carrier admits it and the
+// expansion admits it and emits the aimed edge into the child's own stage.
+test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_carriers_own_claim() -> Bool {
+  let parent = "roadmap-schedule-list-scheduling"
+  let child = "roadmap-schedule-calendar-binding"
+  let beyond = decomposition(node: child, waits_on: [
+    waits(item: parent, from_stage: 99, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted leaf", days: 1),
+    ],
+  ])
+  let admitted = decomposition(node: child, waits_on: [
+    waits(item: parent, from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted leaf", days: 1),
+    ],
+  ])
+  is_refused(expand_decomposition(d: beyond, findings_count: 3))
+    && is_expanded(expand_decomposition(d: admitted, findings_count: 3))
+    && !decomposition_dependencies_well_formed(d: beyond)
+    && decomposition_dependencies_well_formed(d: admitted)
+    && count(expanded_edges(expand_decomposition(d: admitted, findings_count: 3))) >= 1
+}

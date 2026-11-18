@@ -1424,3 +1424,209 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
 ]
+
+// =================== roadmap-schedule-leaf-expansion: decomposition -> leaf OCCURRENCES ===================
+// A decomposition reads as leaf OCCURRENCES with the dependency EDGES between them: one occurrence per leaf
+// at member 0, one per member of a produced/read family at its DECLARED count, and one per member of a
+// FindingsOf family at a SIMULATION-input count -- an ASSUMED count the carrier itself declares none of.
+// The edge relation is stage k depending on stage k-1, plus every waits_on row aimed into the child's own
+// stage. The expansion WRITES NOTHING: the schedule and readiness units below read it. It mints no
+// gunbc.roadmap.roadmap_authority node -- a leaf has no identity until claimed. Occurrences are keyed by the
+// single carrier LeafPath (imported from gunbc.roadmap.roadmap_model above); nothing here re-spells that tuple.
+//
+// The expansion's ONE fail-closed gate is the carrier's OWN well-formedness claim,
+// decomposition_dependencies_well_formed: a planted waits_on naming a stage the parent's decomposition does
+// not have refuses there, and the expansion CALLS that claim rather than re-checking a row the carrier has
+// already admitted.
+//
+// Index arithmetic and comparison run in Int (the carrier's own index law, as decomposition_has_leaf_path
+// does); a LeafPath index is read back with nat_to_int, and an Int crosses into the Nat field position only
+// where an occurrence is BUILT. No negative index is ever produced (enumerate-free: every index counts up
+// from zero under a positive bound).
+
+// The count an occurrence's member index is drawn from: DECLARED by the carrier, or ASSUMED (a simulation
+// input the carrier never declared, used only for a FindingsOf family whose count is unknown until its
+// probe runs). This is the carrier's single declared-vs-assumed distinction; a FindingsOf member is never
+// DECLARED, so it is never offered as claimable.
+type OccurrenceCount = Declared | Assumed
+
+type Occurrence {
+  path: LeafPath
+  count_source: OccurrenceCount
+}
+
+// An edge between two occurrences: `to` waits on `from`.
+type OccurrenceEdge {
+  from: LeafPath
+  to: LeafPath
+}
+
+// The expansion is fail-closed: it either holds the occurrences and their edges, or a located refusal naming
+// the carrier claim that refused.
+type Expansion {
+  Expanded {
+    occurrences: List<Occurrence>
+    edges: List<OccurrenceEdge>
+  }
+  Refused {
+    cause: String
+  }
+}
+
+// members drawn from `first` up to `last` with the given count source. An empty (or inverted) range yields
+// none; every produced member index is >= 0, so its Nat field is always inhabited soundly.
+fn members_occurrences(item: RoadmapNodeId, stage: Int, piece: Int, first: Int, last: Int, source: OccurrenceCount) -> List<Occurrence> {
+  if last <= first {
+    []
+  } else {
+    concat(
+      [Occurrence { path: LeafPath { item: item, stage: stage, piece: piece, member: first }, count_source: source }],
+      members_occurrences(item: item, stage: stage, piece: piece, first: first + 1, last: last, source: source),
+    )
+  }
+}
+
+fn piece_occurrences(item: RoadmapNodeId, stage: Int, piece_index: Int, p: WorkPiece, findings_count: Int) -> List<Occurrence> {
+  match p {
+    Leaf { label, days, evidence } => [Occurrence { path: LeafPath { item: item, stage: stage, piece: piece_index, member: 0 }, count_source: Declared }]
+    Family { label, days, population, owner } =>
+      if population_is_findings(p: population) {
+        members_occurrences(item: item, stage: stage, piece: piece_index, first: 0, last: findings_count, source: Assumed)
+      } else {
+        members_occurrences(item: item, stage: stage, piece: piece_index, first: 0, last: population_members(p: population), source: Declared)
+      }
+    Join { label } => []
+    Decision { label, alternatives } => []
+    Composite { label, stages } => []
+  }
+}
+
+// Walk a stage's pieces by Int index, so the piece index that keys each occurrence is a counted Int (never a
+// negative), and read the piece through the carrier's own Option-indexed list.
+fn stage_pieces_occurrences(item: RoadmapNodeId, stage: Int, st: WorkStage, piece_index: Int, findings_count: Int) -> List<Occurrence> {
+  if piece_index >= count(st.pieces) {
+    []
+  } else {
+    match st.pieces[piece_index] {
+      Absent => stage_pieces_occurrences(item: item, stage: stage, st: st, piece_index: piece_index + 1, findings_count: findings_count)
+      Present { value: p } => concat(
+        piece_occurrences(item: item, stage: stage, piece_index: piece_index, p: p, findings_count: findings_count),
+        stage_pieces_occurrences(item: item, stage: stage, st: st, piece_index: piece_index + 1, findings_count: findings_count),
+      )
+    }
+  }
+}
+
+fn stage_occurrences(item: RoadmapNodeId, stage_index: Int, st: WorkStage, findings_count: Int) -> List<Occurrence> {
+  stage_pieces_occurrences(item: item, stage: stage_index, st: st, piece_index: 0, findings_count: findings_count)
+}
+
+fn stages_from_index_occurrences(d: WorkDecomposition, index: Int, findings_count: Int) -> List<Occurrence> {
+  if index >= count(d.stages) {
+    []
+  } else {
+    match d.stages[index] {
+      Absent => stages_from_index_occurrences(d: d, index: index + 1, findings_count: findings_count)
+      Present { value: st } => concat(
+        stage_occurrences(item: d.node, stage_index: index, st: st, findings_count: findings_count),
+        stages_from_index_occurrences(d: d, index: index + 1, findings_count: findings_count),
+      )
+    }
+  }
+}
+
+fn all_occurrences(d: WorkDecomposition, findings_count: Int) -> List<Occurrence> {
+  stages_from_index_occurrences(d: d, index: 0, findings_count: findings_count)
+}
+
+fn occurrences_at_stage(occs: List<Occurrence>, stage: Int) -> List<Occurrence> {
+  filter(occs, o => nat_to_int(n: o.path.stage) == stage)
+}
+
+// One stage of `item`'s OWN decomposition (the global carrier rows), read at the same findings count.
+fn one_stage_occurrences(item: RoadmapNodeId, stage_index: Int, findings_count: Int) -> List<Occurrence> {
+  let ds = decomposition_for(node: item)
+  if count(ds) != 1 {
+    []
+  } else {
+    match ds[0] {
+      Absent => []
+      Present { value: d } => match d.stages[stage_index] {
+        Absent => []
+        Present { value: st } => stage_occurrences(item: item, stage_index: stage_index, st: st, findings_count: findings_count)
+      }
+    }
+  }
+}
+
+// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1.
+fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
+  flat_map(occs, o =>
+    if nat_to_int(n: o.path.stage) <= 0 {
+      []
+    } else {
+      map(occurrences_at_stage(occs: occs, stage: nat_to_int(n: o.path.stage) - 1), u => OccurrenceEdge { from: u.path, to: o.path })
+    }
+  )
+}
+
+// Each waits_on row is aimed into the child's own stage: a child occurrence at the row's into_stage waits on
+// every occurrence of the named parent at the row's from_stage.
+fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: Int) -> List<OccurrenceEdge> {
+  flat_map(d.waits_on, w =>
+    flat_map(occurrences_at_stage(occs: occs, stage: w.into_stage), c =>
+      map(one_stage_occurrences(item: w.item, stage_index: w.from_stage, findings_count: findings_count), p => OccurrenceEdge { from: p.path, to: c.path })
+    )
+  )
+}
+
+// THE expansion. It asks the carrier's own well-formedness claim first (fail_closed, single_authority): when
+// that claim refuses -- a stage dependency naming a stage its parent's decomposition does not have, or an
+// undeclared edge or a non-decomposed parent -- the expansion refuses with the carrier's claim as the located
+// cause, and re-checks no row. Only over an admitted decomposition does it read out the occurrences and their
+// edges. A non-positive findings count refuses: it would silently drop a FindingsOf family's assumed members.
+fn expand_decomposition(d: WorkDecomposition, findings_count: Int) -> Expansion {
+  if !decomposition_dependencies_well_formed(d: d) {
+    Refused { cause: "roadmap-schedule-leaf-expansion refuses: the carrier's decomposition_dependencies_well_formed claim rejects this decomposition (a stage dependency names a stage its parent's decomposition does not have)" }
+  } else if findings_count <= 0 {
+    Refused { cause: "roadmap-schedule-leaf-expansion refuses: a FindingsOf family's assumed count must be a positive simulation input, never a value that drops its members" }
+  } else {
+    let occs = all_occurrences(d: d, findings_count: findings_count)
+    Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), waits_on_edges(d: d, occs: occs, findings_count: findings_count)) }
+  }
+}
+
+fn is_expanded(e: Expansion) -> Bool {
+  match e { Expanded { occurrences, edges } => true, Refused { cause } => false }
+}
+
+fn is_refused(e: Expansion) -> Bool {
+  match e { Expanded { occurrences, edges } => false, Refused { cause } => true }
+}
+
+fn expanded_occurrences(e: Expansion) -> List<Occurrence> {
+  match e { Expanded { occurrences, edges } => occurrences, Refused { cause } => [] }
+}
+
+fn expanded_edges(e: Expansion) -> List<OccurrenceEdge> {
+  match e { Expanded { occurrences, edges } => edges, Refused { cause } => [] }
+}
+
+fn occurrence_is_declared(o: Occurrence) -> Bool {
+  o.count_source == Declared
+}
+
+fn occurrence_is_assumed(o: Occurrence) -> Bool {
+  o.count_source == Assumed
+}
+
+// An occurrence is OFFERED CLAIMABLE only when its member index is DRAWN FROM A DECLARED count. An ASSUMED
+// FindingsOf member is never offered as claimable: the carrier declares no count for it, and
+// decomposition_has_leaf_path itself refuses a FindingsOf member.
+fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
+  o.count_source == Declared
+}
+
+fn claimable_paths(e: Expansion) -> List<LeafPath> {
+  filter(expanded_occurrences(e: e), o => occurrence_is_offered_claimable(o: o)) |> map(o => o.path)
+}
