@@ -2972,15 +2972,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-emit-match-binding-keeps-its-type",
       owner: "self-host",
       carriers: carrier(path: "src/v1/04_infer.dag"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
         boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). The cause, measured in PR #16534 against a pattern-side substitution pass: the seed's kernel Optional mint (v1.compiler.infer kernel_optional_type_node) declared no type parameter and typed Present.value unbound, so the existing generic substitution received an empty slot map. Scrutinee expansion in src/v1/04_patterns.dag is not at fault and needs no second substitution pass. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
         displaced_cost: "Every program that matches on a variant and converts the bound value cannot be emitted natively, so native serving and any other native target is blocked by an ordinary pattern the rest of the compiler accepts.",
-        first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal. PR #16534 carries this slice.",
+        first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal.",
         red_control: "The generic-binding fixtures emit natively and the non-generic control keeps emitting, RED on main where each refuses at emit; the mint-shape witness's fixtures declare the module the kernel binding names (std.optional), its conforming control requires a completed fixture compile, and a declaration spelled without its type parameter refuses with KernelMintShapeMismatch through that route. A recurring_failure_mode row records the class with its rung and receipts.",
         out_of_scope: "Other native-emission refusals in the roadmap serve entry's closure; each is found and fixed under demand-serve-program-image.",
         handback: "The fix site and reason, the generic-binding and mint-shape controls passing on a seed built from heal's mirror and failing on main, the failure-mode row, and the roadmap serve entry's next refusal, if any."
-      )),
+      ), on: "2026-11-15", note: "PR #16534 carries this slice.")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Native emission accepts what typecheck accepts for variant bindings."),
     ),
