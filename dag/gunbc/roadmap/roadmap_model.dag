@@ -42,8 +42,10 @@ type LeafPath { item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat }
 
 // THE CLAIM GRAIN: what a Claimed names. Pathless = whole-item; AtPath = one leaf.
 // Moved here (like LeafPath) so both roadmap_issue_command and roadmap_decomposition can
-// reach it without a cycle. AdmittedGrain wraps a grain that passed the guard: only
-// roadmap_claimed_grain_admissible constructs it, so an unguarded Claimed cannot reach the append.
+// reach it without a cycle. AdmittedGrain wraps a grain that passed the guard: it documents
+// the guard-already-ran state. The enforcement is machine-checked (not naming convention):
+// the roster witness (roadmap_claim_grain_witness::every_claimed_append_producer_routes_through_the_guard)
+// fails if any Claimed APPEND site does not route through the guard first.
 type ClaimGrain
   = Pathless
   | AtPath { path: LeafPath }

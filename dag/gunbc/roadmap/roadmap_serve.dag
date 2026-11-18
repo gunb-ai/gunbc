@@ -1100,7 +1100,7 @@ fn serve_issue_assign_permitted(
               Parsed { grain } => {
                 match roadmap_claimed_grain_admissible(node: node_id as NonEmptyStr as RoadmapNodeId, grain: grain) {
                   Refused { reason } => serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["assignment refused: ", roadmap_claimed_grain_refusal_text(reason)], ""))
-                  Admitted { admitted } => {
+                  Admitted { grain: admitted } => {
                     let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
                       command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
                         author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
