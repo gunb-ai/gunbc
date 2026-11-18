@@ -645,9 +645,13 @@ fn fleet_converge_spark_target_description() -> String {
 // that wall is authored, executed, and green (9 claims, 9 held, 0 red -- gunbc test
 // //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, 2026-11-18), and it is enrolled in NO
 // lane, so nothing on the required path turns red yet if a mode is dropped here. Until one is, a
-// dropped mode goes red for whoever runs that target and nobody else. The rung above that is one
-// operator-ruled row naming this module in v2.workflow.required_floor.required_gate_authored_modules;
-// when it lands, this paragraph may say "mechanically prevented", and not before. What keeps this list
+// dropped mode goes red for whoever runs that target and nobody else. The standing is a ruling, not an
+// oversight (taken 2026-11-18 in the consolidating lane): a required_gate row is operator-admitted and
+// spends the closed CI budget, so this wall is authored-executed-green-enrolled-nowhere rather than
+// bought a row of v2.workflow.required_floor.required_gate_authored_modules for itself. The trigger that
+// lifts it, together with every wall in the same standing, is gunbc.rung_drop.v1_required_lanes_withdrawn
+// -- the withdrawn v1 required lanes whose population the native compiler is to judge; when that lands
+// this paragraph may say "mechanically prevented", and not before. What keeps this list
 // hand-kept is that it is a LIST AT ALL, with an order: the language's only value-level enumeration of a
 // sum's members, v2.std.node_reflection.coproduct_nullary_inhabitants, constructs one value per arm and
 // so refuses any sum with a payload-bearing arm, which Srv1RootMutation is -- so there is nothing for

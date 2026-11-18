@@ -56,12 +56,15 @@ module test.claim.fleet.fleet_converge_roster_closed_sum_witness
 // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling; gunbc.design_argument::
 // guarantee_ladder wants the reported rung to equal the executed one). This module is authored and it
 // has been executed -- `gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all`,
-// 9 claims / 9 held / 0 red on 2026-11-18 -- but it is enrolled in NO lane: not a row of
-// v2.workflow.required_floor.required_gate_authored_modules, and not a step-bound witness of
-// gunbc.instruments.ci_run_step_roster. So today this wall judges whoever runs it, and nothing else:
-// a mode dropped from the roster is still silently dispatchable on the required path. The rung above
-// that is one operator-ruled row naming this module, at its own name and not a family prefix. Do not
-// read the rows below as a standing gate until that row exists.
+// 9 claims / 9 held / 0 red on 2026-11-18 -- but it is enrolled in NO lane, so today this wall judges
+// whoever runs it, and nothing else: a mode dropped from the roster is still silently dispatchable on
+// the required path. That standing is a ruling, not an oversight, taken 2026-11-18 by the consolidating
+// session: a required_gate row is operator-admitted and spends the closed CI budget, and the honest
+// standing is authored-executed-green-enrolled-nowhere with its next rung named rather than a one-off
+// row bought for a single wall. The trigger that lifts it, and every wall in the same standing with it,
+// is gunbc.rung_drop.v1_required_lanes_withdrawn -- the withdrawal of the v1 required lanes whose
+// population the native compiler is to judge -- so this climbs with the rest and not by petition. Do
+// not read the rows below as a standing gate before that happens.
 
 import std.algebra { bag_eq }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }

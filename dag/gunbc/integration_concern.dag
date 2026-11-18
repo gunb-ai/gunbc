@@ -2919,9 +2919,10 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   // v2.workflow.required_floor.required_gate_authored_modules, no step of
   // gunbc.instruments.ci_run_step_roster -- so it judges whoever executes the command below and nobody
   // else, and a mode dropped from the roster is still dispatchable in silence on the required path.
-  // The rung above this one is a single operator-ruled enrollment row naming the module at its own name
-  // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling), which has been asked for and
-  // not taken here.
+  // That standing was ruled, not overlooked, on 2026-11-18: a required_gate row is operator-admitted and
+  // spends the closed CI budget (gunbc.design_document::required_gate_rows_grow_by_operator_ruling), so
+  // no row was bought for one wall. Its trigger, shared with every wall in the same standing, is
+  // gunbc.rung_drop.v1_required_lanes_withdrawn.
   disposition: Integrated { evidence: IntegrationEvidence {
     integrated_at: "a7b273bc4e5d0f52439289cece33093ccf06a855" as CommitSha,
     superseded: [],
