@@ -14,6 +14,7 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 // run.
 
 import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
@@ -23,6 +24,7 @@ import gunbc.roadmap.roadmap_schedule {
   schedule, schedule_read, ScheduleAnswer,
   schedule_is_scheduled, schedule_answer, scheduled_at, critical_path_keys, path_key,
   scheduled_leaf_count, as_cache, occurrence_count_is_assumed,
+  schedule_read_answer, schedule_read_stale_leaves, schedule_read_stale_answer_fields, schedule_read_refused,
 }
 
 // A carrier LeafPath for a decomposition node's (stage, piece, member), built from the SAME LeafPath the carrier
@@ -173,31 +175,103 @@ test fn a_nonpositive_worker_count_and_a_refused_expansion_are_each_refused() ->
     && !schedule_is_scheduled(s: schedule(d: ill_formed, e: refused_expansion, workers: 2))
 }
 
-// COMPUTED, CACHED, RE-READ (gunbc.schedule_answers_are_computed_cached_and_re_read): a cache is derived and never
-// authoritative. Hand the read a DELIBERATELY WRONG cached answer (horizon 99) and it still returns the freshly
-// computed one (horizon 5), discarding the cache.
-test fn a_stale_cache_is_ignored_and_the_answer_is_recomputed_on_every_read() -> Bool {
+// COMPUTED, CACHED, RE-READ (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is
+// COMPUTED from the carriers; a cache MAY be held; a cache is DERIVED and NEVER authoritative; the answer is
+// RECOMPUTED ON READ. The four arms of one read are checked here -- a cache that is WRONG on its aggregates is
+// SUPERSEDED and the divergence counted; a cache that agrees says so; a caller holding no usable answer gets the
+// fresh one; and a read whose own recomputation refuses serves no cached answer. What the read hands back is the
+// recomputed answer in every arm.
+test fn a_stale_cache_is_superseded_and_the_recomputed_answer_is_what_the_read_serves() -> Bool {
   let chain = decomposition(node: "rr.chain", waits_on: [], stages: [
     [leaf(label: "first", days: 2)],
     [leaf(label: "second", days: 3)],
   ])
   let e = expand_decomposition(d: chain, findings_count: 1)
   let real = schedule(d: chain, e: e, workers: 1)
+  // A decomposition that waits on a parent it does not have is not well-formed, so its expansion refuses, and a
+  // schedule computed over it refuses: that refusal is what a caller might be holding as its cache.
+  let bad = decomposition(node: "rr.bad", waits_on: [waits(item: "rr.nowhere", from_stage: 0, into_stage: 0)], stages: [
+    [leaf(label: "first", days: 2)],
+  ])
+  let refused = expand_decomposition(d: bad, findings_count: 1)
   match schedule_answer(s: real) {
     Absent => false
     Present { value: r } =>
-      // the stale cache is wrong on purpose: same shape, but a horizon and critical length of 99.
       r.horizon == 5
-      && (match schedule_answer(s: schedule_read(d: chain, e: e, workers: 1, cached: as_cache(ScheduleAnswer {
+      // A cache wrong ON PURPOSE: the same leaves, but a horizon and a critical length of 99 -- an answer cached
+      // under other inputs. None of it is served: the read SUPERSEDES it and says what was stale (no leaf moved;
+      // TWO aggregate fields no longer match), and the answer it hands back is the recomputed one.
+      && (match schedule_read(d: chain, e: e, workers: 1, cached: as_cache(a: ScheduleAnswer {
              workers: 1,
              leaves: r.leaves,
              in_flight_per_day: r.in_flight_per_day,
              horizon: 99,
              critical_path: r.critical_path,
              critical_length: 99,
-           }))) {
-             Present { value: rr } => rr.horizon == 5 && rr.critical_length == 5
-             Absent => false
+           })) {
+             CacheSuperseded { answer: a, stale_leaves: ls, stale_answer_fields: fs } =>
+               a.horizon == 5 && a.critical_length == 5 && ls == 0 && fs == 2
+             _ => false
            })
+      // A cache taken FROM the recomputation matches: nothing is stale -- and the read still RECOMPUTED the answer
+      // rather than handing back what it was given.
+      && (match schedule_read(d: chain, e: e, workers: 1, cached: as_cache(a: r)) {
+            CacheMatches { answer: a } => a.horizon == 5 && a.critical_length == 5
+            _ => false
+          })
+      // A caller holding a REFUSAL holds no usable answer: it gets the fresh answer, and the read did not schedule
+      // merely because an answer happened to be cached.
+      && (match schedule_read(d: chain, e: e, workers: 1, cached: schedule(d: bad, e: refused, workers: 1)) {
+            CacheHeldNothing { answer: a } => a.horizon == 5 && scheduled_leaf_count(a: a) == 2
+            _ => false
+          })
+      // And when the RECOMPUTATION itself refuses, the read refuses: a cached answer is never a reason to answer.
+      && schedule_read_refused(r: schedule_read(d: bad, e: refused, workers: 1, cached: as_cache(a: r)))
   }
+}
+
+// THE STALE LEAVES ARE COUNTED, IN BOTH DIRECTIONS: a cache held from another input (another decomposition, another
+// worker count) shares no placement with the answer the read recomputes, so every leaf in either direction is
+// reported stale -- a cache that is merely IRRELEVANT cannot pass as a matching one.
+test fn a_cache_held_from_another_input_reports_every_stale_leaf() -> Bool {
+  let pair = decomposition(node: "sl.pair", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  let other = decomposition(node: "sl.other", waits_on: [], stages: [
+    [leaf(label: "A", days: 2), reading_family(label: "B", days: 5, members: 1, on: "2026-11-18", basis: "the one named member", owner: "sl-owner")],
+  ])
+  let r = schedule_read(
+    d: pair, e: expand_decomposition(d: pair, findings_count: 1), workers: 1,
+    cached: schedule(d: other, e: expand_decomposition(d: other, findings_count: 1), workers: 2)
+  )
+  // 2 leaves of the fresh answer are absent from the cache, and both cached leaves are gone from the fresh answer:
+  // 4 stale leaves, plus at least one aggregate field (the worker count differs). The served answer is the fresh one.
+  match r {
+    CacheSuperseded { answer: a, stale_leaves: ls, stale_answer_fields: fs } =>
+      ls == 4 && fs >= 1 && a.horizon == 5 && scheduled_leaf_count(a: a) == 2
+    _ => false
+  } && schedule_read_stale_leaves(r: r) == 4
+}
+
+// FAIL CLOSED ON THE DAY PRIOR. An occurrence whose carrier path is NOT on the decomposition it is read against has
+// no working-day prior, and one is NEVER minted for it: a zero there would place a leaf at zero duration and report
+// it as Scheduled, which is a fabricated default. The expansion over a two-piece stage is read against a carrier
+// that holds only the first piece -- the mismatch a consumer creates by pairing an expansion with the wrong
+// decomposition -- and the answer refuses, NAMING the path that carries no prior.
+test fn an_occurrence_whose_carrier_path_is_not_on_the_decomposition_read_refuses_and_names_the_path() -> Bool {
+  let wide = decomposition(node: "mp.wide", waits_on: [], stages: [
+    [leaf(label: "first", days: 2), leaf(label: "second", days: 3)],
+  ])
+  let narrow = decomposition(node: "mp.narrow", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+  ])
+  let s = schedule(d: narrow, e: expand_decomposition(d: wide, findings_count: 1), workers: 1)
+  !schedule_is_scheduled(s: s)
+    && (match s {
+         NotScheduled { cause: c } => string_contains(s: c, pattern: path_key(p: p_at("mp.wide", 0, 1, 0)))
+         Scheduled { answer: _ } => false
+       })
+    // The same expansion read against ITS OWN carrier schedules: the refusal is the mismatch, not the shape.
+    && schedule_is_scheduled(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: 1))
 }

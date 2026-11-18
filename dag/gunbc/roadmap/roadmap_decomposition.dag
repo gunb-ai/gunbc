@@ -1749,22 +1749,31 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 
 // The working-day PRIOR a leaf OCCURRENCE carries, read straight off the decomposition the expansion was run on,
 // through its single carrier LeafPath -- the schedule's "how long does this leaf take" question answered by
-// reading the SAME WorkPiece.days the expansion walked, never by copying it (single_authority). A member of a
-// family takes the family's per-member days; a Join, Decision or Composite carries no duration, so it reads as
-// zero days -- the Join is the zero-day barrier the scheduler places without a worker. A path the decomposition
-// does not have reads as zero: nothing here mints a day count for a leaf that is not there. It is keyed off the
+// reading the SAME WorkPiece.days the expansion walked, never by copying it (single_authority). It is keyed off the
 // decomposition VALUE (the one expand_decomposition was handed), so a planted decomposition reads its own days.
-fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int {
+//
+// FAIL CLOSED: a path the decomposition does NOT have answers `Absent` -- NO day, never a zero. Returning 0 there
+// would mint a zero-day leaf for a path the carrier does not have, which is a fabricated default (the caller would
+// schedule a leaf out of nothing). The caller reads this and refuses; `roadmap_schedule::schedule` is the caller and
+// its refusal is named there. A path that IS on the carrier answers its own day count: a Leaf occurrence exists
+// only at member 0 (the same member rule `decomposition_has_leaf_path` states for a bound node, and the member the
+// expansion minted); a family answers the family's PER-MEMBER days for every member index the expansion emitted --
+// how many members exist is the expansion's authority (the declared population, or the assumed findings count it
+// was handed), this reads only the duration the piece carries; a Join, Decision or Composite carries no duration at
+// leaf grain, so it answers the LEGITIMATE zero: a Join is the day-zero barrier, and the expansion emits no
+// occurrence for any of the three, so no scheduled leaf ever reads these arms.
+fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int? {
   match d.stages[nat_to_int(n: path.stage)] {
-    Absent => 0
+    Absent => none
     Present { value: st } => match st.pieces[nat_to_int(n: path.piece)] {
-      Absent => 0
+      Absent => none
       Present { value: p } => match p {
-        Leaf { label, days, evidence } => days
-        Family { label, days, population, owner } => days
-        Join { label } => 0
-        Decision { label, alternatives } => 0
-        Composite { label, stages } => 0
+        Leaf { label, days, evidence } =>
+          if nat_to_int(n: path.member) == 0 { Present { value: days } } else { none }
+        Family { label, days, population, owner } => Present { value: days }
+        Join { label } => Present { value: 0 }
+        Decision { label, alternatives } => Present { value: 0 }
+        Composite { label, stages } => Present { value: 0 }
       }
     }
   }
