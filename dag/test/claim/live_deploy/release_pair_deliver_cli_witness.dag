@@ -22,9 +22,17 @@ import gunbc.live_deploy.release_pair_delivery {
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
-  release_pair_deliver_serving,
+  release_pair_deliver_serving, ServingMapped, ServingRefused, release_pair_serving_poison_reason,
+  release_pair_source_head_verdict, SourceHeadObserved, SourceHeadRefused,
+  release_pair_source_head_mismatch_reason, release_pair_source_head_unobservable_reason,
+  release_pair_source_placement_decision, PlacementCloneMissing, PlacementReuse, PlacementPresentAtOtherHead, PlacementAdd,
+  release_pair_delivery_clone_missing_prefix, release_pair_source_placed_at_other_head_prefix,
+  release_pair_delivery_clone_present, release_pair_source_fetch_verdict, release_pair_source_add_verdict, ActionPlaced, ActionRefused,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObserved, DeployedTreeUnobservable, DeployedScopeMatchesCommit, TreeCommandFailed,
 }
 
 data head_hex: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567"
@@ -143,29 +151,31 @@ test fn witness_serving_bound_carries_tree_revision_hex() -> Bool {
     Absent => false
     Present { value: r } =>
       match release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() }) {
-        RevisionBoundAtEmission { revision: c } => (c as String) == (head_hex as String)
-        RevisionNotInstalled => false
+        ServingMapped { binding: RevisionBoundAtEmission { revision: c } } => (c as String) == (head_hex as String)
+        ServingMapped { binding: RevisionNotInstalled } => false
+        ServingRefused { reason: _ } => false
       }
   }
 }
 
-// Unobserved binding is fail-closed poison, never a usable binding (gunbc.design_argument::fail_closed).
+// Unobserved binding is a REFUSAL in its own right (review 96348), never a usable binding and never a benign
+// RevisionNotInstalled the fold would read as "proceed to a fresh fetch" (gunbc.design_argument::fail_closed).
 test fn witness_serving_unobserved_is_poison() -> Bool {
   match release_pair_deliver_serving(ReleaseBindingUnobserved { cause: "no deployed tree" }) {
-    RevisionNotInstalled => true
-    RevisionBoundAtEmission { revision: _ } => false
+    ServingRefused { reason: why } => (why as String) == (release_pair_serving_poison_reason as String)
+    ServingMapped { binding: _ } => false
   }
 }
 
-// A drifted (mixed) binding is also poison here: the serve gate refuses it upstream, so a bound arm must
-// never be fabricated from a mixed tree. Discriminating control for the bound-arm mapping above.
+// A drifted (mixed) binding is likewise a REFUSAL: the bound arm must never be fabricated from a mixed tree.
+// Discriminating control for the bound-arm mapping above.
 test fn witness_serving_mixed_is_poison() -> Bool {
   match git_object_id_from_untagged_hex(hex: head_hex as String) {
     Absent => false
     Present { value: r } =>
       match release_pair_deliver_serving(ReleaseMixed { tree_revision: r, process_revision: "deadbeef" as CommitSha }) {
-        RevisionNotInstalled => true
-        RevisionBoundAtEmission { revision: _ } => false
+        ServingRefused { reason: _ } => true
+        ServingMapped { binding: _ } => false
       }
   }
 }
@@ -201,13 +211,16 @@ test fn witness_converged_pair_short_circuits_to_waits() -> Bool {
   match git_object_id_from_untagged_hex(hex: head_hex as String) {
     Absent => false
     Present { value: r } =>
-      let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() })
-      match release_pair_converged_noop(serving: serving, head: head_hex) {
-        Present { value: noop } => match noop {
-          PlanWaits { kept: _, reason: _ } => true
-          _ => false
-        }
-        none => false
+      match release_pair_deliver_serving(ReleaseBoundToTree { revision: r, surface: srv_surface() }) {
+        ServingMapped { binding: serving } =>
+          match release_pair_converged_noop(serving: serving, head: head_hex) {
+            Present { value: noop } => match noop {
+              PlanWaits { kept: _, reason: _ } => true
+              _ => false
+            }
+            none => false
+          }
+        ServingRefused { reason: _ } => false
       }
   }
 }
@@ -223,16 +236,243 @@ test fn witness_diverged_or_uninstalled_pair_must_fetch() -> Bool {
         Absent => false
         Present { value: b } =>
           // Observed tree sits on b, the head to deploy is head_hex: NOT converged, so the fetch must run (none).
-          let serving = release_pair_deliver_serving(ReleaseBoundToTree { revision: b, surface: srv_surface() })
-          let diverged_proceeds = match release_pair_converged_noop(serving: serving, head: head_hex) {
-            none => true
-            Present { value: _ } => false
+          match release_pair_deliver_serving(ReleaseBoundToTree { revision: b, surface: srv_surface() }) {
+            ServingMapped { binding: serving } =>
+              let diverged_proceeds = match release_pair_converged_noop(serving: serving, head: head_hex) {
+                none => true
+                Present { value: _ } => false
+              }
+              let uninstalled_proceeds = match release_pair_converged_noop(serving: RevisionNotInstalled, head: head_hex) {
+                none => true
+                Present { value: _ } => false
+              }
+              diverged_proceeds && uninstalled_proceeds
+            ServingRefused { reason: _ } => false
           }
-          let uninstalled_proceeds = match release_pair_converged_noop(serving: RevisionNotInstalled, head: head_hex) {
-            none => true
-            Present { value: _ } => false
-          }
-          diverged_proceeds && uninstalled_proceeds
       }
   }
+}
+
+// ============================================================================
+// SOURCE-SIDE F1 (item-2): the delivered source head is the head OBSERVED from a placed DELIVERY-CLONE tree
+// (<base_root>/delivery-repo, fetched + worktree-added), NEVER the gh head query and never /opt/gunbc/gunbc. The pure
+// verdict release_pair_source_head_verdict folds an observed DeployedTreeObservation against the requested head; the
+// wiring turns a Refused verdict into PlanKeepsLastGood before anything installs. Positive + two RED controls below.
+// ============================================================================
+
+// Positive control: a placed tree whose observed revision equals the requested head is ACCEPTED and carries that
+// revision into the source receipt (never the query value).
+test fn witness_source_head_matches_requested() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_head_verdict(
+        observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        SourceHeadObserved { revision: src } => (src as String) == (head_hex as String)
+        SourceHeadRefused { reason: _ } => false
+      }
+  }
+}
+
+// RED CONTROL: a placed tree sitting on a DIFFERENT revision than the requested head refuses RED with the mismatch
+// reason -- the source receipt can never name a head the placed delivery tree does not actually hold. Widen the
+// verdict to trust the requested head (the pre-fix defect) and this reddens.
+test fn witness_source_head_mismatch_refuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: other_head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_head_verdict(
+        observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        SourceHeadRefused { reason: reason } => (reason as String) == (release_pair_source_head_mismatch_reason as String)
+        SourceHeadObserved { revision: _ } => false
+      }
+  }
+}
+
+// RED CONTROL: an UNOBSERVABLE placed tree (the observation leg could not be read over the fleet locus) refuses RED
+// with the unobservable reason -- a missing reading is never mistaken for a matching head.
+test fn witness_source_head_unobservable_refuses() -> Bool {
+  match release_pair_source_head_verdict(
+    observed: DeployedTreeUnobservable { cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" } },
+    requested: head_hex as CommitSha,
+  ) {
+    SourceHeadRefused { reason: reason } => (reason as String) == (release_pair_source_head_unobservable_reason as String)
+    SourceHeadObserved { revision: _ } => false
+  }
+}
+
+// ============================================================================
+// IDEMPOTENT PLACEMENT (review 96353): the actuator observes the target source tree at the per-revision locus BEFORE
+// adding, so a re-run after a later-leg failure REUSES an already-correct placement, a tree at another head is REFUSED
+// (never silently clobbered), an absent tree is ADDED, and an unseeded delivery clone REFUSES with its own reason
+// (seeding is a deploy step under the operator gate -- never bootstrapped here). Every condition is its own variant +
+// reason; 'unobservable' belongs only to the observe step (release_pair_source_head_verdict), never to placement.
+// ============================================================================
+
+// RED CONTROL: an unseeded delivery clone refuses with its own typed reason, even if a tree at the right head were
+// (impossibly) observed -- a missing placement origin can never be mistaken for a deliverable source. Reuses the reason
+// the decision builds from the same inputs so the assertion is exact without a string predicate.
+test fn witness_delivery_clone_missing_refuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: false,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementCloneMissing { reason: reason } =>
+          (reason as String) == (join([release_pair_delivery_clone_missing_prefix as String, "/srv/pair/delivery-repo"], "") as String)
+        PlacementReuse { revision: _ } => false
+        PlacementPresentAtOtherHead { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// Positive control: a placed tree already at the requested head is REUSED (no add), carrying that head into the receipt.
+test fn witness_source_placement_present_match_reuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementReuse { revision: src } => (src as String) == (head_hex as String)
+        PlacementCloneMissing { reason: _ } => false
+        PlacementPresentAtOtherHead { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// RED CONTROL: a placed tree at a DIFFERENT head is REFUSED (never removed or overwritten silently), with a reason naming
+// the actual head and the requested one. Reconstructs the decision's own reason string for an exact assertion.
+test fn witness_source_placement_present_other_head_refuses() -> Bool {
+  match git_object_id_from_untagged_hex(hex: other_head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      match release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      ) {
+        PlacementPresentAtOtherHead { reason: reason } =>
+          (reason as String) == (join([release_pair_source_placed_at_other_head_prefix as String, other_head_hex as String, ", not ", head_hex as String], "") as String)
+        PlacementReuse { revision: _ } => false
+        PlacementCloneMissing { reason: _ } => false
+        PlacementAdd => false
+      }
+  }
+}
+
+// Positive control: an absent placed tree (the pre-observation could not read it) routes to PlacementAdd -- the actuator
+// will fetch + worktree-add, and the observe step then validates the result.
+test fn witness_source_placement_absent_adds() -> Bool {
+  match release_pair_source_placement_decision(
+    clone_present: true,
+    clone_path: "/srv/pair/delivery-repo",
+    pre_observed: DeployedTreeUnobservable { cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" } },
+    requested: head_hex as CommitSha,
+  ) {
+    PlacementAdd => true
+    PlacementReuse { revision: _ } => false
+    PlacementPresentAtOtherHead { reason: _ } => false
+    PlacementCloneMissing { reason: _ } => false
+  }
+}
+
+// Idempotency: after a later-leg failure, a re-run observes the SAME already-placed tree and must reach the SAME
+// PlacementReuse -- never a refusal and never a re-add. Two identical calls must both reuse the requested head.
+test fn witness_source_placement_rerun_is_idempotent() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } =>
+      let first = release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      )
+      let second = release_pair_source_placement_decision(
+        clone_present: true,
+        clone_path: "/srv/pair/delivery-repo",
+        pre_observed: DeployedTreeObserved { revision: r, tree: r, content: DeployedScopeMatchesCommit },
+        requested: head_hex as CommitSha,
+      )
+      match first {
+        PlacementReuse { revision: a } => match second {
+          PlacementReuse { revision: b } => (a as String) == (b as String)
+          _ => false
+        }
+        _ => false
+      }
+  }
+}
+
+// ============================================================================
+// FAIL-CLOSED PLACEMENT ACTIONS (review 96360): the clone-probe has NO wildcard success (only ProcessOutputPresent is
+// "seeded"); a REFUSED fetch or worktree-add refuses with its OWN typed reason, never collapsing into the observe step's
+// 'unobservable' or a misleading 'tree at another head'. Each is witnessed over all three ProcessOutcome variants.
+// ============================================================================
+
+// RED CONTROL: the delivery clone counts as present ONLY on ProcessOutputPresent (the probe printed a head). The old
+// wildcard success made ProcessOutputAbsent / ProcessRefused read as "seeded" and route to a fetch; both must read NOT
+// present so the decision emits PlacementCloneMissing ("delivery clone not seeded / not readable at <path>").
+test fn witness_delivery_clone_present_requires_output() -> Bool {
+  let present = release_pair_delivery_clone_present(outcome: ProcessOutputPresent { text: head_hex as String })
+  let absent_is_present = release_pair_delivery_clone_present(outcome: ProcessOutputAbsent)
+  let refused_is_present = release_pair_delivery_clone_present(outcome: ProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" })
+  present && (!absent_is_present) && (!refused_is_present)
+}
+
+// RED CONTROL: a refused clone-side FETCH refuses with its own reason naming the revision and the command's stderr; exit-0
+// (stdout present OR absent -- git fetch writes progress to stderr) is placement progress, not a refusal.
+test fn witness_source_fetch_refused_reason_is_own() -> Bool {
+  let refused = match release_pair_source_fetch_verdict(
+    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: couldn't find remote ref" },
+    rev: head_hex as String,
+  ) {
+    ActionRefused { reason: r } => (r as String) == (join(["fetch of ", head_hex as String, " refused: ", "fatal: couldn't find remote ref"], "") as String)
+    ActionPlaced => false
+  }
+  let ok_present = match release_pair_source_fetch_verdict(outcome: ProcessOutputPresent { text: "" }, rev: head_hex as String) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  let ok_absent = match release_pair_source_fetch_verdict(outcome: ProcessOutputAbsent, rev: head_hex as String) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  refused && ok_present && ok_absent
+}
+
+// RED CONTROL: a refused WORKTREE-ADD refuses with its own reason naming the command's stderr (distinct from fetch and from
+// 'unobservable'); exit-0 (stdout present OR absent) is placement progress. A silent discard would surface the failure later
+// as a misleading 'tree at another head'.
+test fn witness_source_add_refused_reason_is_own() -> Bool {
+  let refused = match release_pair_source_add_verdict(
+    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: already registered" },
+  ) {
+    ActionRefused { reason: r } => (r as String) == (join(["worktree add refused: ", "fatal: already registered"], "") as String)
+    ActionPlaced => false
+  }
+  let ok_present = match release_pair_source_add_verdict(outcome: ProcessOutputPresent { text: "" }) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  let ok_absent = match release_pair_source_add_verdict(outcome: ProcessOutputAbsent) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  refused && ok_present && ok_absent
 }
