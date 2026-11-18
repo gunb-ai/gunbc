@@ -5707,7 +5707,7 @@ fn fleet_converge_microvm_controller_install_job() -> Outcome<Job> {
         ],
           lift_steps(fleet_converge_revision_job_image_download_steps()),
           [
-          outcome_accepted(value: ci_fleet_key_agent_step()),
+          ci_fleet_key_agent_step(),
           fleet_converge_microvm_controller_install_step(),
           outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
         ],
@@ -5824,7 +5824,7 @@ fn fleet_converge_approval_ntfy_retire_job() -> Outcome<Job> {
         ],
           fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_ntfy_retire_selected_inputs),
           [
-          outcome_accepted(value: ci_fleet_key_agent_step()),
+          ci_fleet_key_agent_step(),
           fleet_converge_approval_ntfy_retire_step(),
           outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
         ],
@@ -6521,7 +6521,7 @@ concat(
 
 
 fn fleet_converge_mtcollins1_boot_steps() -> List<Outcome<Step>> {
-  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: outcome_accepted(value: ci_fleet_key_agent_step()), boot_step: fleet_converge_mtcollins1_boot_step())
+  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: ci_fleet_key_agent_step(), boot_step: fleet_converge_mtcollins1_boot_step())
 }
 
 fn fleet_converge_mtcollins1_boot_job() -> Outcome<Job> {
@@ -6573,16 +6573,16 @@ concat(
     outcome_accepted(value: ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
     fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
   ],
-    lift_steps(fleet_converge_post_mint_credential_steps()),
+    fleet_converge_post_mint_credential_steps(),
   )
 }
 
 
 // The credential steps after the mint: the granted-account sign-ins, then the fleet key, which reads
 // the fleet identity to fetch the key.
-fn fleet_converge_post_mint_credential_steps() -> List<Step> {
+fn fleet_converge_post_mint_credential_steps() -> List<Outcome<Step>> {
   concat(
-    fleet_converge_granted_account_auth_steps(),
+    lift_steps(fleet_converge_granted_account_auth_steps()),
     [ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if })],
   )
 }
@@ -6590,7 +6590,7 @@ fn fleet_converge_post_mint_credential_steps() -> List<Step> {
 // Every step of the job that runs after the mint and may read it.
 fn fleet_converge_fleet_identity_reader_candidates() -> List<Outcome<Step>> {
 concat(
-    lift_steps(fleet_converge_post_mint_credential_steps()),
+    fleet_converge_post_mint_credential_steps(),
     fleet_converge_job_work_steps(),
   )
 }
@@ -6929,7 +6929,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Outcome<Job> {
           outcome_accepted(value: ci_release_bins_download_step()),
           outcome_accepted(value: ci_release_bins_unpack_verify_step()),
           outcome_accepted(value: ci_fleet_wif_auth_step()),
-          outcome_accepted(value: ci_fleet_key_agent_step()),
+          ci_fleet_key_agent_step(),
         ],
         ),
           [
@@ -9035,25 +9035,11 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
 
 fn zesty_qjobs() -> Int { count(fleet_converge_jobs()) }
 
-// The accepted jobs become a plain Workflow via let (never an Accepted{value: <fresh record>},
-// which is the shape the runtime mis-evaluates), then the census gate and the admission/projection
-// chain run against that plain Workflow -- identical bytes to the merge-base `data` path.
+// The accepted jobs become a plain Workflow through the ONE builder (fleet_converge_assemble_workflow),
+// then the census gate and the admission/projection chain run against it -- identical bytes to the
+// merge-base `data` path.
 fn fleet_converge_render_jobs(jobs: List<Job>) -> FleetConvergeYamlGenerationOutcome {
-  let wf = Workflow {
-  name: "fleet-converge",
-  run_name: Present { value: fleet_converge_run_title(mode: "${{ inputs.mode }}", host: "${{ inputs.host }}", nonce: "${{ inputs.transaction_nonce }}") },
-  on: [
-    WorkflowDispatch {
-      inputs: fleet_converge_dispatch_inputs,
-    },
-    Schedule { cron: review_sheet_converge_cron },
-    Push { branches: [gunbc_default_branch_name], paths: review_sheet_converge_source_paths },
-  ],
-  concurrency: none,
-  env: none,
-  permissions: none,
-  jobs: jobs,
-  }
+  let wf = fleet_converge_assemble_workflow(jobs: jobs)
   // THE CENSUS GATE, FIRST (review 96120; gunbc.design_argument::fail_closed). The release-bins
   // retention chore deletes cached entries, and the only number that bounds what it keeps is the
   // census. If the census is not computable -- or computes zero, or negative -- no workflow is

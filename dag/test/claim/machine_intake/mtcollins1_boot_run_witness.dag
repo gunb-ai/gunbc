@@ -27,6 +27,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_run_record }
 
@@ -603,16 +604,26 @@ test fn a_branch_boot_awaits_its_grant_before_the_fleet_key() -> Bool {
     && !string_contains(s: fleet_converge_mtcollins1_boot_wif_provider_resource(), pattern: "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__")
 }
 test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
-  let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
-  string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
-    && !string_contains(s: inputs, pattern: "expected_revision")
+  match outcome_accepted_value(ci_fleet_key_agent_step()) {
+    Present { value: key_step } => {
+      let inputs = step_inputs_text(s: key_step)
+      string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
+        && !string_contains(s: inputs, pattern: "expected_revision")
+    }
+    Absent => false
+  }
 }
 
 test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool {
-  let inputs = step_inputs_text(s: fleet_converge_mtcollins1_boot_step())
-  string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
-    && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
-    && !string_contains(s: inputs, pattern: "expected_revision")
+  match outcome_accepted_value(fleet_converge_mtcollins1_boot_step()) {
+    Present { value: boot_step } => {
+      let inputs = step_inputs_text(s: boot_step)
+      string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
+        && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
+        && !string_contains(s: inputs, pattern: "expected_revision")
+    }
+    Absent => false
+  }
 }
 
 // THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can

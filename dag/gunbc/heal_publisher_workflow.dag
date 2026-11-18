@@ -833,13 +833,13 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
 // the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
 // go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
 // commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_cgroup_prelude_script() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: heal_publisher_cgroup_prelude(),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }
 
@@ -847,9 +847,9 @@ fn heal_publisher_cgroup_prelude_script() -> String {
 // publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
 // the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
 // repository by its own federation record, as one rendered fragment ahead of its own invocation.
-fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: concat(
         heal_publisher_cgroup_prelude(),
         github_app_installation_token_prelude(
@@ -858,6 +858,6 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
       ),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }
