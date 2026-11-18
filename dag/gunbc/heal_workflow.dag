@@ -55,6 +55,7 @@ import gunbc.heal_candidate {
   heal_candidate_run_id_env
 }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+import v2.std.diagnostic { Outcome, bind_outcome }
 
 // THE PULL REQUEST'S OWN HALF OF HEAL, IN ITS OWN WORKFLOW (gunbc#10958 Phase A).
 //
@@ -660,7 +661,7 @@ fn gunbc_ci_stage0_round_invoke() -> String {
   concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --regen-affected-scope --source-root dag --source-root src/v2")
 }
 
-fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
+fn gunbc_ci_heal_candidate_stage0_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_heal_candidate_stage0_target,

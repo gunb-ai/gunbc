@@ -9,13 +9,14 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.printer_workflow_run",
   function: "run",
 )
 
-fn gunbc_ci_printer_workflow_invoke() -> String {
+fn gunbc_ci_printer_workflow_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(source_roots: witness_layer_roots,
     target: gunbc_ci_printer_workflow_target,
     claim_run: false, receipt_rel: printer_workflow_receipt_path)

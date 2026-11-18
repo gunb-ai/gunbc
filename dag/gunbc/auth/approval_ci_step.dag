@@ -37,6 +37,7 @@ import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statem
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
 import gunbc.ci.ci_run_step_target {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_run_step_target,
   GunbcRunStepTarget,
 }
@@ -89,7 +90,7 @@ data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = gunbc_run_step_t
 // named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
 // asserting it installed would be the control-plane fact standing in for the subject observation
 // that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
-fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
+fn gunbc_ci_approval_broker_dark_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_approval_broker_dark_install_target,
@@ -101,7 +102,7 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
 // THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
 // install's annotation gives: the fold writes its own readback receipt to the step summary, and a
 // run-step receipt would be the installer asserting it retired.
-fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
+fn gunbc_ci_approval_ntfy_retire_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_approval_ntfy_retire_target,

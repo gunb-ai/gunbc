@@ -25,6 +25,7 @@ import gunbc.runner.runner_host_withdraw {
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path, gunbc_ci_remote_build_serving_apply_receipt_path }
 import v2.workflow.gunbc_invoke_step_emit {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
 }
@@ -75,7 +76,7 @@ data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = gunbc
   module: "gunbc.runner.runner_host_medium_publish",
   function: "mtcollins1_runner_image_publish_wet",
 )
-fn gunbc_ci_runner_host_file_observe_invoke() -> String {
+fn gunbc_ci_runner_host_file_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_file_observe_target,
@@ -83,7 +84,7 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
-fn gunbc_ci_remote_build_serving_observe_invoke() -> String {
+fn gunbc_ci_remote_build_serving_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_remote_build_serving_observe_target,
@@ -94,7 +95,7 @@ fn gunbc_ci_remote_build_serving_observe_invoke() -> String {
 // PR 5(b) converge invoke. No org-roster prelude: the serving roster is the static
 // remote_build_serving_hosts row, not the live org roster, so the plan
 // needs no minted installation token. The apply re-observes and requires settled before success.
-fn gunbc_ci_remote_build_serving_converge_invoke() -> String {
+fn gunbc_ci_remote_build_serving_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_remote_build_serving_converge_target,
@@ -113,7 +114,7 @@ fn gunbc_ci_runner_host_file_converge_invoke() -> String {
     receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
-fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+fn gunbc_ci_runner_host_cap_release_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_cap_release_target,
@@ -149,7 +150,7 @@ fn gunbc_ci_runner_host_restore_invoke() -> String {
     receipt_rel: gunbc_ci_runner_host_restore_receipt_path
   )
 }
-fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
+fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_browser_toolchain_converge_target,
@@ -157,7 +158,7 @@ fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
     receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+fn gunbc_ci_runner_user_session_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_user_session_converge_target,
@@ -165,7 +166,7 @@ fn gunbc_ci_runner_user_session_converge_invoke() -> String {
     receipt_rel: "target/runner-user-session-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
+fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_gpu_container_toolchain_converge_target,
@@ -173,7 +174,7 @@ fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
     receipt_rel: "target/runner-gpu-container-toolchain-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
+fn gunbc_ci_runner_password_session_tool_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_password_session_tool_converge_target,
@@ -182,7 +183,7 @@ fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
   )
 }
 // The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
-fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_runner_image_publish_target,

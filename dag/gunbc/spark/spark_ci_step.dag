@@ -15,6 +15,7 @@ import gunbc.spark.credential_workflow { spark_administrator_credential_roster, 
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import v2.std.orchestration { Do, PipelineStep }
 import v2.workflow.gunbc_invoke_step_emit {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
 }
@@ -212,7 +213,7 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
   spark_serving_retired_refuse_script
 }
 
-fn gunbc_ci_spark_grants_observe_invoke() -> String {
+fn gunbc_ci_spark_grants_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_grants_observe_target,

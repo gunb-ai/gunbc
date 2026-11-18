@@ -13,6 +13,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import v2.workflow.gunbc_invoke_step_emit {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_run_command_for_target,
   gunbc_invoke_root_stamp_script,
 }

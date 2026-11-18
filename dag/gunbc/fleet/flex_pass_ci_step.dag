@@ -16,13 +16,14 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_flex_pass_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.flex_pass_run",
   function: "pass",
 )
 
-fn gunbc_ci_flex_pass_invoke() -> String {
+fn gunbc_ci_flex_pass_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_flex_pass_target,

@@ -35,6 +35,7 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.auth.branch_dispatch_federation { branch_run_key_variable }
+import v2.std.diagnostic { Outcome }
 
 // THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
 //
@@ -252,7 +253,7 @@ data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = gunbc_run_ste
   function: "broker",
 )
 
-fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
+fn gunbc_ci_branch_run_grant_broker_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_broker_target,

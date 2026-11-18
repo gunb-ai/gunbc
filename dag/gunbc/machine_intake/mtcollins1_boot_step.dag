@@ -60,6 +60,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice_facts {
 }
 import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import v2.std.diagnostic { Outcome, bind_outcome }
 
 // The mtcollins1 boot step: its targets, the bash_build boot runner with the SOL notice watcher, and
 // the boot admission. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the
@@ -109,7 +110,7 @@ data gunbc_ci_site_pxe_edge_receipt_cite_target: GunbcRunStepTarget = gunbc_run_
   function: "site_pxe_edge_receipt_cite_step",
 )
 
-fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> String {
+fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_receipt_admit_target,
@@ -357,7 +358,7 @@ fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
 
 // The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
 // boot's wet entry re-runs.
-fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
+fn gunbc_ci_mtcollins1_boot_admit_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_boot_admit_target,

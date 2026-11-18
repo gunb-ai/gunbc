@@ -48,6 +48,7 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
 import gunbc.machine_intake.mtcollins1_fan_observe {
+import v2.std.diagnostic { Outcome, bind_outcome }
   mtcollins1_fan_boot_phase_outcome_observed,
   mtcollins1_fan_boot_phase_outcome_output,
   mtcollins1_fan_boot_phase_outcome_refused,

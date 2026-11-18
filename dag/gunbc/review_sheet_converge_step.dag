@@ -5,6 +5,7 @@ import v2.workflow.gunbc_invoke_step_emit {
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_run_step_target {
+import v2.std.diagnostic { Outcome }
   gunbc_run_step_target,
   GunbcRunStepTarget,
 }
@@ -16,7 +17,7 @@ data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = gunbc_run_step_
   function: "converge_drive_half_cli",
 )
 
-fn gunbc_ci_review_sheet_converge_invoke() -> String {
+fn gunbc_ci_review_sheet_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_review_sheet_converge_target,

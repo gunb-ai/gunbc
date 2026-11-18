@@ -17,6 +17,7 @@ import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 import v2.workflow.gunbc_invoke_step_emit {
+import v2.std.diagnostic { Outcome }
   gunbc_run_step_script_for_target,
 }
 
@@ -27,7 +28,7 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = gunbc
 // The census image publish needs no credential prelude: it reaches srv2 over fleet SSH (the mode
 // consumes the fleet key, gunbc.fleet.fleet_converge_workflow) and no controller, so its step is the plain
 // gunbc run.
-fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
+fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_image_publish_target,
@@ -41,7 +42,7 @@ data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = gun
 )
 // The member readback reaches srv2 over fleet SSH (the mode consumes the fleet key, see
 // gunbc.fleet.fleet_converge_workflow) and touches no controller or credential: no prelude.
-fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> String {
+fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_member_readback_target,
@@ -54,7 +55,7 @@ data gunbc_ci_mtcollins1_census_qemu_host_observe_target: GunbcRunStepTarget = g
   function: "mtcollins1_census_qemu_host_observe_wet",
 )
 // The QEMU host observe runs locally on the selected runner and reads only: no fleet key, no prelude.
-fn gunbc_ci_mtcollins1_census_qemu_host_observe_invoke() -> String {
+fn gunbc_ci_mtcollins1_census_qemu_host_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_qemu_host_observe_target,
@@ -67,7 +68,7 @@ data gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target: GunbcRunStepTarg
   function: "mtcollins1_census_qemu_toolchain_converge_wet",
 )
 // The toolchain converge runs locally on the selected runner as the job user: no fleet key, no prelude.
-fn gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke() -> String {
+fn gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,

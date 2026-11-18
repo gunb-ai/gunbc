@@ -16,6 +16,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
+import v2.std.diagnostic { Outcome, bind_outcome }
 
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
 // (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
@@ -54,7 +55,7 @@ data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = gunbc_run_step_
 
 // Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
 // enroll applies the committed registry; both srv1-dispatched, receipts catted.
-fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
+fn gunbc_ci_fleet_host_key_scan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_scan_target,
@@ -63,7 +64,7 @@ fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
+fn gunbc_ci_fleet_host_key_enroll_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_enroll_target,

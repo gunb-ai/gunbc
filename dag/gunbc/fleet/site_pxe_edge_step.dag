@@ -15,6 +15,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_site_pxe_edge_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.site_pxe_edge_converge",
@@ -26,7 +27,7 @@ data gunbc_ci_site_pxe_edge_converge_target: GunbcRunStepTarget = gunbc_run_step
   function: "site_pxe_edge_converge_ci_wet",
 )
 
-fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
+fn gunbc_ci_site_pxe_edge_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_observe_target,
@@ -35,7 +36,7 @@ fn gunbc_ci_site_pxe_edge_observe_invoke() -> String {
   )
 }
 
-fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
+fn gunbc_ci_site_pxe_edge_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_converge_target,

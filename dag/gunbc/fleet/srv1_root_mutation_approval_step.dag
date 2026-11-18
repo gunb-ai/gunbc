@@ -25,6 +25,7 @@ import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunb
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_run_step_target {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_run_step_target,
   GunbcRunStepTarget,
 }

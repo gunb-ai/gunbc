@@ -9,13 +9,14 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.namecheap.observe",
   function: "namecheap_observe_ci_wet",
 )
 
-fn gunbc_ci_namecheap_observe_invoke() -> String {
+fn gunbc_ci_namecheap_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_namecheap_observe_target,

@@ -20,6 +20,7 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
 import gunbc.auth.github_app_credential_step {
+import v2.std.diagnostic { Outcome, bind_outcome }
   gunbc_ci_org_roster_read_app_token_prelude
 }
 
@@ -70,7 +71,7 @@ data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = 
 // release BEFORE any mutation and refuses when it cannot name the release it would install, so a
 // deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
 // — gunbc#8676 deleted the invocation, never the operation.
-fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
+fn gunbc_ci_live_deploy_apply_srv1_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_apply_srv1_target,
@@ -88,7 +89,7 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   )
 }
 
-fn gunbc_ci_microvm_controller_install_invoke() -> String {
+fn gunbc_ci_microvm_controller_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_controller_install_target,
@@ -112,7 +113,7 @@ fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
   )
 }
 
-fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
+fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_assert_dashboard_deploy_receipts_target,
@@ -121,7 +122,7 @@ fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
   )
 }
 
-fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
+fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_record_plan_serve_entry_verdict_target,
