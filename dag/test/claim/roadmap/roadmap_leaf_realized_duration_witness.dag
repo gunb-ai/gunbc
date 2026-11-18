@@ -499,14 +499,14 @@ fn a_pathless_claim_names_no_leaf_yields_no_realized_value_and_is_counted_visibl
            })) == 3
         // Counted VISIBLY: the number reaches the printed answer, so a reader sees that a claim named no leaf
         // rather than wondering why nothing was realized.
-        && string_contains(s: realized_schedule_output(fold: fold), pattern: "1 Pathless claims")
+        && string_contains(s: realized_schedule_output(fold: Folded { fold: fold }), pattern: "1 Pathless claims")
         // ...and it was not mistaken for a claim that arrived after the item was retired.
         && fold.retired_standing_claims == 0
   }
 }
 
 // A CLAIM RECORDED AFTER THE ITEM WAS RETIRED STARTS NO CLOCK, and is counted -- because whether a claim counted at
-// all is the STANDING FOLD's question, asked here of gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc and
+// all is the STANDING FOLD's question, asked here of gunbc.roadmap.roadmap_event_log::roadmap_node_standing and
 // roadmap_standing_is_retired and never answered locally. The fixture claims the first leaf, retires the item, then
 // claims the second: the first claim stands (it was recorded before the retirement), the second starts nothing, is
 // COUNTED in retired_standing_claims, is NOT passed off as Pathless, and does NOT become the second leaf's first
