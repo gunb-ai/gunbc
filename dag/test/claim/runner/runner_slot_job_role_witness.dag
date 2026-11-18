@@ -5,6 +5,7 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
@@ -280,13 +281,20 @@ fn runs_on_text(spec: RunnerSpec) -> String {
 
 test fn witness_only_the_administrator_edge_job_selects_the_deploy_slot() -> Bool {
   let host_pinned = runs_on_text(spec: fleet_converge_host_pinned_runner_spec())
-  let install = runs_on_text(spec: fleet_converge_microvm_controller_install_job().runner)
-  host_pinned != ""
-    && !string_contains(s: host_pinned, pattern: deploy_slot_runner_group_name as String)
-    && runs_on_text(spec: fleet_converge_dashboard_deploy_job().runner) == host_pinned
-    && string_contains(s: install, pattern: "github.event.inputs.host == 'srv1'")
-    && string_contains(s: install, pattern: concat("\"", concat(deploy_slot_runner_group_name as String, "\"")))
-    && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
+  match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) {
+    Present { value: ji } => match outcome_accepted_value(fleet_converge_dashboard_deploy_job()) {
+      Present { value: jd } =>
+        let install = runs_on_text(spec: ji.runner)
+        host_pinned != ""
+          && !string_contains(s: host_pinned, pattern: deploy_slot_runner_group_name as String)
+          && runs_on_text(spec: jd.runner) == host_pinned
+          && string_contains(s: install, pattern: "github.event.inputs.host == 'srv1'")
+          && string_contains(s: install, pattern: concat("\"", concat(deploy_slot_runner_group_name as String, "\"")))
+          && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 // THE ADMISSION STEP CAN MINT THE TOKEN ITS TENANCY READ NEEDS. The step runs the roster reader's
