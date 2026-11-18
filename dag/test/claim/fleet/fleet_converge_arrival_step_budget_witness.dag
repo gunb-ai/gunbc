@@ -34,7 +34,7 @@ import gunbc.machine_intake.prior_life_capture_live {
   live_prior_life_ipmi_legs, live_prior_life_redfish_single_call_legs, live_ipmi_leg_bound,
   live_prior_life_legs_bound, live_redfish_read_budget, live_log_services_read_bound,
 }
-import extdeps.github.actions { Step, RunStep, UsesStep, max_job_timeout_minutes }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep, max_job_timeout_minutes }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { second_count }
@@ -44,12 +44,12 @@ fn step_id_of(s: Step) -> NonEmptyStr {
     RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match i {
         Present { value: v } => v
-        Absent => ""
+        Absent => "<unnamed>"
       }
     UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match i {
         Present { value: v } => v
-        Absent => ""
+        Absent => "<unnamed>"
       }
   }
 }
@@ -71,13 +71,13 @@ fn step_timeout_of(s: Step) -> Int {
 
 // The timeouts of the arrival job's steps that carry a given id: exactly one row per step, so a claim
 // that sees length 1 is a claim about ONE step, not about a name that matches nothing.
-fn arrival_step_timeouts(step_id: NonEmptyStr) -> List<Int> {
-  fold(fleet_converge_arrival_converge_job().steps, init: [], f: (acc, s) =>
+fn arrival_step_timeouts(job: Job, step_id: NonEmptyStr) -> List<Int> {
+  fold(job.steps, init: [], f: (acc, s) =>
     if step_id_of(s) == step_id { acc + [step_timeout_of(s: s)] } else { acc })
 }
 
-fn arrival_job_timeout_minutes() -> Int {
-  match fleet_converge_arrival_converge_job().timeout_minutes {
+fn arrival_job_timeout_minutes(job: Job) -> Int {
+  match job.timeout_minutes {
     Present { value: m } => m
     Absent => 0
   }
@@ -86,7 +86,7 @@ fn arrival_job_timeout_minutes() -> Int {
 // The converge step's timeout IS the fold, read off the job that runs it.
 // RED if the fold's call site is edited away while the figure stays plausible.
 test fn the_arrival_converge_step_carries_the_step_fold() -> Bool {
-  let t = arrival_step_timeouts(step_id: "arrival_converge")
+  let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1
     && any(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
     && all(t, m => m == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()]))
@@ -96,7 +96,7 @@ test fn the_arrival_converge_step_carries_the_step_fold() -> Bool {
 // 44249358201 in load, with the door's first BMC call still queued; the step must outlive the closure's
 // load by the door's whole BMC wall, so it is strictly greater than the aux figure, not merely different.
 test fn the_arrival_converge_step_is_not_on_the_flat_aux_figure() -> Bool {
-  let t = arrival_step_timeouts(step_id: "arrival_converge")
+  let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1
     && all(t, m => m > gunbc_ci_aux_step_timeout_minutes && m != gunbc_ci_aux_step_timeout_minutes)
 }
@@ -136,7 +136,7 @@ test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
 // aux + 20. RED: put the job back on aux + 20 -- a step with room and a job that kills it earlier is the
 // same refusal with a different line number.
 test fn the_arrival_job_backstop_covers_its_steps_and_is_not_the_flat_sum() -> Bool {
-  let job = arrival_job_timeout_minutes()
+  let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
   let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
       + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
   job > 0
@@ -151,7 +151,7 @@ test fn the_arrival_job_backstop_covers_its_steps_and_is_not_the_flat_sum() -> B
 // refuses with a named reason -- the claim goes RED at the same moment, which is the point.
 test fn the_arrival_job_backstop_holds_under_the_platform_ceiling() -> Bool {
   arrival_converge_ceiling_holds()
-    && arrival_job_timeout_minutes() <= max_job_timeout_minutes
+    && arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job()) <= max_job_timeout_minutes
 }
 
 fn arrival_converge_ceiling_holds() -> Bool {
@@ -162,6 +162,6 @@ fn arrival_converge_ceiling_holds() -> Bool {
 // on the aux figure -- they print nothing and read nothing from the controller, so widening them would
 // hide a change of character. Pinned so the arrival step's raise cannot be used as cover.
 test fn the_arrival_jobs_aux_steps_stay_on_the_aux_figure() -> Bool {
-  let admit = arrival_step_timeouts(step_id: "arrival_admit")
+  let admit = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_admit")
   admit.length() == 1 && all(admit, m => m == gunbc_ci_aux_step_timeout_minutes)
 }
