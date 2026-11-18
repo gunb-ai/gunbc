@@ -13,6 +13,7 @@ import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_183527,
+  operator_host_6ce85c,
 }
 import gunbc.hostname_allocation {
   HostnameAllocation,
@@ -430,3 +431,50 @@ test fn witness_a_colliding_registry_resolves_no_selector() -> Bool {
     HostSelectorUnknown { selector: _ } => false
   }
 }
+
+// THE H11 PENDING DRAW (host-6ce85c, operator 2026-11-18 "draw a name for that one ... and apply it"). The
+// accepted rename TARGET the rename transition reads is `next_name`, and it must be exactly what the
+// allocator yields for the recorded ticket -- NOT a name reverse-picked to fit. This pins three things at once:
+// the pending draw reproduces, the entropy receipt is the 12-digit ticket 630127021373 (a fresh draw, the same
+// provenance shape srv1-srv4/mtcollins1 carry), and its yield is the FirstOnly "dan".
+test fn witness_h11_pending_draw_is_dan_at_the_recorded_ticket() -> Bool {
+  let reproduces = match filter(fleet_machine_registry, r => (r.fleet_slot as String) == (operator_host_6ce85c as String)).first() {
+    Present { value: r } => pending_draw_reproduces(row: r, rows: fleet_machine_registry)
+    Absent => false
+  }
+  let ticket_and_name = match next_name_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
+    Present { value: n } => match n {
+      DrawnHumanName { name: h, draw: d } =>
+        d.entropy == 630127021373 &&
+        (human_name_canonical_hostname(name: h) as String) == "dan"
+      LegacyHostname { label: _ } => false
+    }
+    Absent => false
+  }
+  reproduces && ticket_and_name
+}
+
+// THE DRAW DID NOT OVERWRITE THE LIVE NAME IN PLACE: a pending rename leaves `name` at the legacy spelling
+// the host answers to today (h11-a16), so the canonical hostname still projects to it, and "dan" is RESERVED
+// (a secondary key) but NOT yet answerable as a selector. This is what makes the live steps (hostname_converge
+// / tailscale) converge onto `next_name` while the host still boots as h11-a16 -- the flip transition moves
+// next_name into name, and only then does "dan" resolve.
+test fn witness_h11_current_name_still_legacy_and_dan_reserved_not_resolved() -> Bool {
+  let still_legacy = match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
+    Present { value: label } => (label as String) == "h11-a16"
+    Absent => false
+  }
+  let not_resolved = match resolve_host_selector(selector: "dan") {
+    HostSelectorUnknown { selector: s } => s == "dan"
+    HostSelectorRegistryRefused { key: _ } => false
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+  }
+  let h11 = filter(fleet_machine_registry, r => (r.fleet_slot as String) == (operator_host_6ce85c as String)).first()
+  let reserved = match h11 {
+    Present { value: r } => any(allocation_reserved_forms(allocation: r), f => f == "dan")
+    Absent => false
+  }
+  still_legacy && not_resolved && reserved
+}
+

@@ -454,6 +454,8 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "namespace-legacy-choice-retirement", waits_on: [
     waits(item: "v1-interpreter-delete", from_stage: 1, into_stage: 0),
     waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
+    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 0),
+    waits(item: "declaration-identity-switchover", from_stage: 0, into_stage: 0),
   ], stages: [
     [
       leaf(label: "delete name-string matching", days: 5),
