@@ -1226,19 +1226,28 @@ data fleet_converge_host_reset_return_step_if: String = fleet_converge_mode_step
 // THE JOB'S OWN if GATE, not just the step's. A job whose only step is skipped still occupies a
 // runner on the observer host for the length of a checkout and a build download, which is a standing
 // cost on every dispatch of every other mode.
-fn fleet_converge_host_reset_return_job() -> Job {
-  Job {
+fn fleet_converge_host_reset_return_job() -> Outcome<Job> {
+  bind_outcome(
+      o: sequence_outcome(xs: concat(
+          concat(
+          lift_steps(fleet_converge_event_sha_consumer_prelude_steps()),
+          [
+          outcome_accepted(value: ci_release_bins_download_step()),
+          outcome_accepted(value: ci_release_bins_unpack_verify_step()),
+        ],
+        ),
+          [
+          fleet_converge_host_reset_return_step(),
+          outcome_accepted(value: fleet_converge_host_reset_return_receipt_upload_step()),
+        ],
+        ), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: HostResetReturn) as String,
     name: none,
     runner: fleet_converge_reset_observer_runner_spec(),
     environment: none,
-    steps: concat(
-      concat(
-        fleet_converge_event_sha_consumer_prelude_steps(),
-        [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()]
-      ),
-      [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
-    ),
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostResetReturn)),
     env: none,
     outputs: none,
@@ -1254,6 +1263,9 @@ fn fleet_converge_host_reset_return_job() -> Job {
     },
     permissions: none,
   }
+      )
+    }
+  )
 }
 
 // THE OBSERVER LABEL IS HANDED TO THE PROCESS, and the step's env row is the only route it has:
@@ -1484,13 +1496,16 @@ data fleet_converge_dispatch_event_if: String = serialize_expression(expression:
 
 data fleet_converge_build_job_if: String = join(concat([fleet_converge_dispatch_event_if], map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], ""))), " && ")
 
-fn fleet_converge_build_job() -> Job {
-  Job {
+fn fleet_converge_build_job() -> Outcome<Job> {
+  bind_outcome(
+      o: sequence_outcome(xs: fleet_converge_build_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
     environment: none,
-    steps: fleet_converge_build_job_steps(),
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
     env: none,
     outputs: Present {
@@ -1513,6 +1528,9 @@ fn fleet_converge_build_job() -> Job {
       }
     },
   }
+      )
+    }
+  )
 }
 
 // ── THE PLAN-REVISION JOB ───────────────────────────────────────────────────────────────────
@@ -6442,13 +6460,16 @@ fn fleet_converge_mtcollins1_boot_steps() -> List<Outcome<Step>> {
   fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: outcome_accepted(value: ci_fleet_key_agent_step()), boot_step: fleet_converge_mtcollins1_boot_step())
 }
 
-fn fleet_converge_mtcollins1_boot_job() -> Job {
-  Job {
+fn fleet_converge_mtcollins1_boot_job() -> Outcome<Job> {
+  bind_outcome(
+      o: sequence_outcome(xs: fleet_converge_mtcollins1_boot_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
     runner: fleet_converge_mtcollins1_boot_runner(),
     environment: Present { value: fleet_converge_mtcollins1_boot_environment() },
-    steps: fleet_converge_mtcollins1_boot_steps(),
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
     env: none,
     outputs: none,
@@ -6472,6 +6493,9 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
       }
     }
   }
+      )
+    }
+  )
 }
 
 // THE CREDENTIAL PRELUDE, IN ORDER: the release binaries, then the credential-free D0 admission,
@@ -8997,12 +9021,15 @@ fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
 // lifetime covers only the post-decision delivery. The id_token: write permission on the job (below) stays:
 // the mint requests the OIDC assertion from the Actions sidecar at use time, not in a pre-poll step.
 
-fn fleet_converge_printer_job() -> Job {
-  Job {
+fn fleet_converge_printer_job() -> Outcome<Job> {
+  bind_outcome(
+      o: sequence_outcome(xs: lift_steps(fleet_converge_printer_job_steps()), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+      f: fn(zesty_steps) {
+        outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
     environment: Present { value: printer_environment as String },
-    steps: fleet_converge_printer_job_steps(),
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
@@ -9014,6 +9041,9 @@ fn fleet_converge_printer_job() -> Job {
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
     } },
   }
+      )
+    }
+  )
 }
 
 // Image production and allocation preparation share the bounded host job; allocation uses reviewed apply.
