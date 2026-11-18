@@ -45,6 +45,11 @@ import gunbc.live_deploy.release_binding {
   PairServeRefused,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+}
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
@@ -388,6 +393,35 @@ fn release_pair_serving_poison_refused(binding: DeployedReleaseBinding) -> Bool 
     ReleaseMixed { tree_revision: _, process_revision: _ } => true
     ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => true
     ReleaseBindingUnobserved { cause: _ } => true
+  }
+}
+
+// REVIEW 96121 (SOURCE-SIDE F1). The delivered pair's SOURCE half is the head OBSERVED from a PLACED source tree,
+// never the value of the gh origin/main head query. The placement leg adds the tree detached from the delivery clone
+// at the requested revision; the source head we deliver is that tree's OWN observed HEAD (a GitObjectId read by the
+// canonical observer, rendered through the single extdeps.git.object_store hex authority), and it must EQUAL the
+// revision we asked to place. A placed tree whose observed HEAD differs from the requested revision is a REFUSAL
+// (red) -- we never install a pair whose source we could not confirm; and a tree whose HEAD cannot be observed is
+// likewise a refusal, because with no observation there is no bound source to deliver (fail_closed). The exit code
+// follows the variant, not the reason text.
+type SourceHeadVerdict
+  = SourceHeadObserved { revision: CommitSha }
+  | SourceHeadRefused { reason: NonEmptyStr }
+
+data release_pair_source_head_mismatch_reason: NonEmptyStr = "the placed source tree's observed HEAD does not equal the requested revision; refusing to deliver a pair on an unverified source"
+data release_pair_source_head_unobservable_reason: NonEmptyStr = "the placed source tree's HEAD could not be observed; refusing to deliver a pair on an unobserved source"
+
+fn release_pair_source_head_verdict(observed: DeployedTreeObservation, requested: CommitSha) -> SourceHeadVerdict {
+  match observed {
+    DeployedTreeObserved { revision: oid, tree: _, content: _ } =>
+      let observed_hex = git_object_id_wire_hex(oid: oid)
+      if observed_hex == (requested as String) {
+        SourceHeadObserved { revision: requested }
+      } else {
+        SourceHeadRefused { reason: release_pair_source_head_mismatch_reason }
+      }
+    DeployedTreeUnobservable { cause: _ } =>
+      SourceHeadRefused { reason: release_pair_source_head_unobservable_reason }
   }
 }
 
