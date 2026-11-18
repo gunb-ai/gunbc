@@ -13,6 +13,10 @@ import gunbc.roadmap.roadmap_event_log {
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
 }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
+import gunbc.roadmap.roadmap_decomposition {
+  roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admissible, Refused, ClaimedGrainRefusal,
+  LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
+}
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
 // comment text or the observation clock. Native forms receive it before submission, just as JS does.
@@ -137,6 +141,17 @@ fn issue_command_acceptance_evidence_law(receipt: RoadmapAcceptanceReceipt, evid
     }
   }
 }
+// The guard's typed refusal, rendered for the append-refusal reason. Names the ruled rule so an operator
+// sees which law refused the claim.
+fn issue_command_grain_refusal_text(reason: ClaimedGrainRefusal) -> String {
+  match reason {
+    LeafPathUnknown { path: _ } => "the claimed leaf is not one the item's decomposition has"
+    LeafWrongItem { path: _, expected: _ } => "the claimed leaf belongs to a different item than the one being claimed"
+    PathlessOnDecomposed { node: _ } => "the item has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"
+    DecompositionAmbiguous { node: _, count: _ } => "the item has more than one decomposition, so no claim is admitted until exactly one is declared"
+  }
+}
+
 fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
   let event = issue_command_event(command: command, recorded_at: recorded_at)
   match issue_command_receipt_disagreement(command: command, event: event) {
@@ -145,7 +160,19 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
       close: SnapshotNotOpened }
     Absent => {
       let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
-      roadmap_event_append(layout: layout, event: event, operation: operation as String)
+      // THE GUARD, at the append. A Claimed is checked against the item's decomposition BEFORE the log is
+      // opened, and a Refused verdict surfaces as the same EventAppendRefused shape the receipt check uses
+      // (step "claim-grain"), so the caller sees a typed refusal rather than a silent drop. A whole-item
+      // (Pathless) claim on a decomposed item is refused here -- the operator's ruling, enforced at append;
+      // a claim on an undecomposed item (the live dashboard case, whose nodes carry no decomposition) stays
+      // admissible. Naming a leaf on a decomposed item through THIS command is roadmap-dispatch-carries-
+      // leaf's work; the CLI (roadmap_event_cli) is the route that mints a Leaf grain today.
+      match match event.kind { Claimed { grain } => roadmap_claimed_grain_admissible(node: event.node, grain: grain)  _ => Admissible } {
+        Refused { reason } => CarrierClosed {
+          result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "claim-grain", reason: issue_command_grain_refusal_text(reason) },
+          close: SnapshotNotOpened }
+        Admissible => roadmap_event_append(layout: layout, event: event, operation: operation as String)
+      }
     }
   }
 }

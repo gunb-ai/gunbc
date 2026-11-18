@@ -1,0 +1,91 @@
+module test.claim.roadmap.roadmap_claim_grain_witness
+
+// THE GUARD HAS AN EXECUTING CONSUMER, and this is it. roadmap_claimed_grain_admissible (in
+// gunbc.roadmap.roadmap_decomposition, beside the predicate it consumes) decides whether a Claimed of a
+// given grain may be recorded against a node. The Claimed append producers route through it; this witness
+// drives it over REAL decompositions in roadmap_decompositions so the decision is verified by EXECUTION,
+// not by parsing. It is the discriminating input the ticket's red_control names: a Claimed whose path is
+// not in the decomposition refuses, and the refusals are the typed ones (fail_closed), never a bool a
+// caller could invert.
+//
+// The corpus facts this leans on (roadmap_decomposition.dag):
+//   node "emitter-produces-main-rs" has exactly one decomposition with
+//     stage 0: [ leaf(...) ]                          -> (0,0,0) is a leaf
+//     stage 1: [ findings_family(...) ]               -> (1,0,m) names NO leaf: a FindingsOf population
+//                                                        carries no count until produced/read, so a member
+//                                                        index there is not a leaf
+//   (0,1,0) / (2,0,0) are out of range -> no element -> no leaf.
+//   node "v1-emitter-fixed-point" is a DIFFERENT decomposed node, used to plant a leaf of one item onto
+//     another (leaf-wrong-item).
+//   an undecomposed node has no leaf to name, so a Pathless claim there is admitted.
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_event_log { ClaimGrain, Pathless, Leaf }
+import gunbc.roadmap.roadmap_decomposition {
+  roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admissible, Refused, ClaimedGrainRefusal,
+  LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
+}
+
+fn node_of(s: String) -> RoadmapNodeId {
+  s as NonEmptyStr as RoadmapNodeId
+}
+
+// A refusal as a stable tag, so the assertions below read as the RULED names, not as a structural match
+// a future refactor could satisfy by accident. Admissible is its own tag; every refusal carries its typed
+// reason name, and there is no wildcard arm -- adding a refusal variant without naming it here would fail
+// to typecheck, which is exactly the fail-closed discipline the ticket is built on.
+fn refusal_tag(v: ClaimedGrainVerdict) -> String {
+  match v {
+    Admissible => "admissible"
+    Refused { reason } => match reason {
+      LeafPathUnknown { path: _ } => "leaf-path-unknown"
+      LeafWrongItem { path: _, expected: _ } => "leaf-wrong-item"
+      PathlessOnDecomposed { node: _ } => "pathless-on-decomposed"
+      DecompositionAmbiguous { node: _, count: _ } => "decomposition-ambiguous"
+    }
+  }
+}
+
+// The ticket's first_slice, executed: one Claimed naming a leaf the decomposition HAS is Admissible, and
+// one naming a path it does NOT have refuses. Plus the ruled arms the guard is specced to make.
+test fn claim_grain_guard_admits_a_real_leaf() -> Bool {
+  let item = node_of("emitter-produces-main-rs")
+  let v = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
+  refusal_tag(v) == "admissible"
+}
+
+// red_control: a planted Claimed whose path is not in the decomposition refuses, typed leaf-path-unknown.
+// (1,0,0) is a FindingsOf member -- a population with no count -- and (2,0,0) is an out-of-range stage.
+test fn claim_grain_guard_refuses_unknown_paths() -> Bool {
+  let item = node_of("emitter-produces-main-rs")
+  let findings = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 1, piece: 0, member: 0 } })
+  let oob = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 2, piece: 0, member: 0 } })
+  let oob_piece = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 1, member: 0 } })
+  refusal_tag(findings) == "leaf-path-unknown"
+    && refusal_tag(oob) == "leaf-path-unknown"
+    && refusal_tag(oob_piece) == "leaf-path-unknown"
+}
+
+// first-landing ruling: on an item that HAS a decomposition, a Pathless claim refuses (it names no leaf).
+test fn claim_grain_guard_refuses_pathless_on_decomposed() -> Bool {
+  let item = node_of("emitter-produces-main-rs")
+  let v = roadmap_claimed_grain_admissible(node: item, grain: Pathless)
+  refusal_tag(v) == "pathless-on-decomposed"
+}
+
+// A leaf of one item cannot be claimed against another: the leaf's item must be the node being claimed.
+test fn claim_grain_guard_refuses_wrong_item() -> Bool {
+  let item = node_of("emitter-produces-main-rs")
+  let other = node_of("v1-emitter-fixed-point")
+  let v = roadmap_claimed_grain_admissible(node: other, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
+  refusal_tag(v) == "leaf-wrong-item"
+}
+
+// Count 0 (no decomposition): there is no leaf to name, so a Pathless claim is admitted (the ruling's
+// scope was multi-leaf items; an item with no decomposition has no leaf, and its claims are tracked, not
+// refused). Tightening Pathless on undecomposed items is roadmap-dispatch-carries-leaf's job, not this one.
+test fn claim_grain_guard_admits_pathless_when_undecomposed() -> Bool {
+  let v = roadmap_claimed_grain_admissible(node: node_of("roadmap-claim-names-leaf"), grain: Pathless)
+  refusal_tag(v) == "admissible"
+}
