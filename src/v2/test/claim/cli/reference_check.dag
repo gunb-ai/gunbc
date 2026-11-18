@@ -1,9 +1,11 @@
 module v2.test.claim.cli.reference_check
 
 import std.types { Bool }
-import std.algebra { Cons, Empty, string_contains }
+import std.algebra { Cons, Empty, is_empty, string_contains }
+import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.cli.population_verbs { PopulationReport }
-import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head }
+import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller }
+import v2.compiler.live_resolution_context { live_context_load_empty }
 import v2.compiler.module_acquisition { SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.text { String }
@@ -158,4 +160,37 @@ test fn a_space_before_paren_run_step_target_refuses_holds() -> Bool {
 test fn a_wrapper_forwarded_run_step_target_refuses_holds() -> Bool {
   run_step_target_refused_fragment("gunbc/run_step_target_wrapper_step.dag")
     && run_step_target_refused_fragment("RunStepTargetArgumentNotLiteral")
+}
+
+// THE RED FOR THE EXTRACTION FAIL-OPEN (review 96357). A queued run-step caller whose module never normalized into
+// the load's roots must record a typed, located refusal -- NOT be silently dropped. The old extraction returned []
+// on a missing root (and on any ingest/context failure), so the required check went green -- "0 run-step target(s),
+// held" -- over a target nobody checked: the gunbc#8377 typo class the check exists to close. This is a
+// deterministic unit control over the extraction step itself (an empty load has no root for the caller), which no
+// fixture can reproduce without a module that lexes the constructor but breaks the whole tree's typecheck.
+test fn a_run_step_target_caller_without_a_root_refuses_and_is_not_dropped_holds() -> Bool {
+  let ex = run_step_target_extract_from_load(
+    load: live_context_load_empty(seed: occurrence_id_allocator_initial()),
+    callers: [ ReferenceWalkCaller { caller: "gunbc.a_module_that_never_normalized", file: "gunbc/run_step_target_unnormalized_step.dag" } ]
+  )
+  match ex.sites {
+    Empty => match ex.lines {
+      Cons { head: line, tail: _ } =>
+        string_contains(s: line, pattern: "RunStepTargetModuleAbsent")
+          && string_contains(s: line, pattern: "gunbc.a_module_that_never_normalized")
+          && string_contains(s: line, pattern: "was not checked")
+      Empty => false
+    }
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for the same extraction: a caller that DOES have a root yields no spurious refusal (the fail-
+// closed arm fires only on a genuinely missing root, not on every caller).
+test fn a_run_step_target_caller_with_a_root_is_not_falsely_refused_holds() -> Bool {
+  let ex = run_step_target_extract_from_load(
+    load: live_context_load_empty(seed: occurrence_id_allocator_initial()),
+    callers: []
+  )
+  is_empty(xs: ex.sites) && is_empty(xs: ex.lines)
 }

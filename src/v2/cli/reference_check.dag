@@ -19,7 +19,7 @@ import std.annotation_reference {
 }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.live_resolution_context { live_context_finish, live_context_hop_homes, live_context_load_empty, live_context_load_modules }
+import v2.compiler.live_resolution_context { LiveContextLoad, live_context_finish, live_context_hop_homes, live_context_load_empty, live_context_load_modules }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,
@@ -38,7 +38,7 @@ import v2.compiler.module_acquisition {
 import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, module_file_key, source_root_set_from_ingest }
 import v2.compiler.tokenize { tokenize_artifact_prepared }
-import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text, dag_string_literal_value_optional }
+import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text, dag_string_literal_value_optional, qualified_name_from_module_node }
 import v2.std.compilers.body_lowering { application_head_read, ApplicationHeadFound, ApplicationHeadRefused, NotApplicationHead, AtomHead }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.compilers.lexing { LexArtifact, Token, UnboundSourceAnnotation, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_all }
@@ -299,36 +299,39 @@ fn run_step_target_sites_in_root(caller: String, file: String, root: Node) -> Li
   })
 }
 
-// THE AST WALK. Fold each candidate caller's already-normalized root (loaded once here, only for the callers
-// that spell the constructor plus the constructor home, so there is no whole-corpus AST parse and no new
-// effect). The caller roots are the corpus's own normalized fold, so this reads call syntax through the one
-// grammar -- not a token matcher. Identity of the callee and resolution of the entry are judged later, in the
-// shared context, exactly as before.
-fn run_step_target_ast_sites(env: AcquisitionEnv, callers: List<ReferenceWalkCaller>) -> List<RunStepTargetSite> {
-  match callers {
-    Empty => []
-    Cons { head: _, tail: _ } =>
-      let names = fold_list(xs: callers, empty: map_insert(m: empty_map(), key: gunbc_run_step_target_home_module, value: true), cons: fn(acc, c) { map_insert(m: acc, key: c.caller, value: true) })
-      let targets = cited_targets_read(env: env, pending: map_support_keys(m: names), acc: cited_targets_empty())
-      let lm = dag_language_model()
-      match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
-        Rejected { diagnostics: _ } => []
-        Accepted { value: scope, diagnostics: _ } => {
-          let named = live_context_load_modules(load: live_context_load_empty(seed: occurrence_id_allocator_initial()), by_name: targets.by_name, modules: targets.readable, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
-          let live = live_context_finish(load: named, lm: lm, active_roots: source_root_set_from_ingest(ingest: targets.ingest), policy: ImportScoped)
-          match live.context {
-            Rejected { diagnostics: _ } => []
-            Accepted { value: ctx, diagnostics: _ } =>
-              fold_list(xs: callers, empty: [], cons: fn(acc, c) {
-                match map_lookup(m: ctx.roots.by_name, key: qualified_name_from_dotted_string(dotted: c.caller)) {
-                  Present { value: tree } => list_append(left: acc, right: run_step_target_sites_in_root(caller: c.caller, file: c.file, root: tree.root))
-                  Absent => acc
-                }
-              })
-          }
+// A QUEUED CALLER THAT YIELDS NO SITE IS NEVER SILENTLY DROPPED. The AST walk reads a queued caller's
+// already-normalized root from a load the CALLER supplies (built once in reference_verdicts), so it reads call
+// syntax through the corpus's one grammar and never a second token matcher. A caller that spells the constructor
+// identifier but whose module never normalized into the load's roots (an unreadable file, a refused read) yields
+// no root -- and that is a TARGET NOBODY CHECKED, the exact fail-open this check exists to close, so it records a
+// typed, located refusal instead of contributing nothing (DESIGN fail_closed: every path succeeds fully or fails
+// with a typed, located diagnostic; a silent widen is a hard reject).
+type RunStepTargetExtraction {
+  sites: List<RunStepTargetSite>
+  lines: List<String>
+}
+
+// Correlate each queued caller to its normalized root by the root's OWN qualified name (the same projection
+// validate_module_roots uses to key the context's roots), so a caller present in the load is walked and one
+// absent is refused. No whole-corpus AST parse: only the queued callers and their roots are touched.
+fn run_step_target_extract_from_load(load: LiveContextLoad, callers: List<ReferenceWalkCaller>) -> RunStepTargetExtraction {
+  let by_name = fold_list(xs: load.roots, empty: empty_map(), cons: fn(acc, tree) {
+    match qualified_name_from_module_node(root: tree.root) {
+      Accepted { value: qn, diagnostics: _ } => map_insert(m: acc, key: qn, value: tree)
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+  fold_list(xs: callers, empty: RunStepTargetExtraction { sites: [], lines: [] }, cons: fn(acc, c) {
+    match map_lookup(m: by_name, key: qualified_name_from_dotted_string(dotted: c.caller)) {
+      Present { value: tree } =>
+        RunStepTargetExtraction { sites: list_append(left: acc.sites, right: run_step_target_sites_in_root(caller: c.caller, file: c.file, root: tree.root)), lines: acc.lines }
+      Absent =>
+        RunStepTargetExtraction {
+          sites: acc.sites,
+          lines: list_snoc_item(xs: acc.lines, item: concat(c.file, ": RunStepTargetModuleAbsent: the module spelling ", gunbc_run_step_target_constructor_name, " did not normalize into the resolution roots, so its run-step target was not checked"))
         }
-      }
-  }
+    }
+  })
 }
 
 
@@ -499,25 +502,43 @@ fn run_step_target_site_head(site: RunStepTargetSite) -> String {
 // to the one constructor's declaring home -- otherwise the call lexically names the constructor but is not it
 // (a same-named local, or imported from elsewhere) and is not a site at all (condition 1, closed_grounded_substrate).
 fn run_step_target_site_line(site: RunStepTargetSite, targets: CitedTargets, context: ResolutionContext) -> Optional<String> {
-  match run_step_target_callee_is_constructor(caller: site.caller, context: context) {
-    true => run_step_target_entry_line(site: site, targets: targets, context: context)
-    false => Absent
+  match run_step_target_callee_verdict(caller: site.caller, context: context) {
+    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, targets: targets, context: context)
+    RunStepTargetNotConstructor => Absent
+    RunStepTargetCalleeUnconfirmed { reason: reason } =>
+      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetCalleeUnconfirmed: ", reason) }
   }
 }
 
-// The callee is the run-step-target constructor iff resolving it through the caller's imports in THIS context
-// yields the SAME declaring identity as resolving the constructor from its own home module -- grounded on
-// declaration identity, not on spelling (condition 1, closed_grounded_substrate). A same-named local fn, or a
-// same-named fn imported from elsewhere, resolves to a DIFFERENT declaring home and is therefore not a site.
-fn run_step_target_callee_is_constructor(caller: String, context: ResolutionContext) -> Bool {
-  match resolve_declaration_ref(ref: decl_ref(module_path: caller, decl_name: gunbc_run_step_target_constructor_name), context: context) {
-    DeclarationRefResolved { declaration_identity: site_id } =>
-      match resolve_declaration_ref(ref: decl_ref(module_path: gunbc_run_step_target_home_module, decl_name: gunbc_run_step_target_constructor_name), context: context) {
-        DeclarationRefResolved { declaration_identity: canon } =>
-          site_id.qualified_name == canon.qualified_name && site_id.name == canon.name
-        _ => false
+// Whether a call lexically spelling the constructor IS the constructor is THREE-valued, not boolean (fail_closed).
+// CONFIRMED when resolving the callee through the caller's imports yields the SAME declaring identity as the
+// constructor in its own home -- grounded on declaration identity, not spelling (condition 1,
+// closed_grounded_substrate). NOT-A-SITE when the callee resolves to a DIFFERENT declaring home (a same-named
+// local fn, or one imported from elsewhere) -- correctly skipped. UNCONFIRMED when the check itself cannot be
+// made: the constructor's home did not normalize into the context, so nothing can be confirmed against it. That
+// is an environment failure, and it REFUSES every site rather than letting the whole feature report "0 targets,
+// held" over a home nobody could read.
+type RunStepTargetCalleeVerdict
+  = RunStepTargetIsConstructor
+  | RunStepTargetNotConstructor
+  | RunStepTargetCalleeUnconfirmed { reason: String }
+
+fn run_step_target_callee_verdict(caller: String, context: ResolutionContext) -> RunStepTargetCalleeVerdict {
+  match resolve_declaration_ref(ref: decl_ref(module_path: gunbc_run_step_target_home_module, decl_name: gunbc_run_step_target_constructor_name), context: context) {
+    DeclarationRefResolved { declaration_identity: canon } =>
+      match resolve_declaration_ref(ref: decl_ref(module_path: caller, decl_name: gunbc_run_step_target_constructor_name), context: context) {
+        DeclarationRefResolved { declaration_identity: site_id } =>
+          if site_id.qualified_name == canon.qualified_name && site_id.name == canon.name {
+            RunStepTargetIsConstructor
+          } else {
+            RunStepTargetNotConstructor
+          }
+        DeclarationRefContested { reference: _, claimants: _ } =>
+          RunStepTargetCalleeUnconfirmed { reason: "the callee name is contested in its caller module, so its identity could not be confirmed against the constructor" }
+        _ => RunStepTargetNotConstructor
       }
-    _ => false
+    _ =>
+      RunStepTargetCalleeUnconfirmed { reason: concat("the constructor home ", gunbc_run_step_target_home_module, " did not normalize into the resolution context, so no run-step target could be confirmed against it") }
   }
 }
 
@@ -563,37 +584,51 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
   fold_list(xs: sites, empty: kept, cons: fn(acc, s) { if reference_site_supported(site: s) { list_snoc_item(xs: acc, item: s) } else { acc } })
 }
 
-// The target universe is built ONCE from the union of every module any site names: the @ref-cited modules, and
-// for the run-step-target sites their caller module (to resolve the callee through its imports), their named
-// target module, and the constructor home. Cost follows the demands (the cited modules + the run-step callers
-// and targets), never the corpus: there is no whole-corpus scan here (the fast-lane constraint,
-// gunbc.ci.ci_run_step_target), and both site kinds resolve against the SAME native context.
+// The target universe is built ONCE -- ONE resolution context, finished a single time -- from the union of every
+// module any site names: the @ref-cited modules, and for the run-step-target sites their caller module (to walk
+// their ASTs and to resolve the callee through their imports) and the constructor home. The run-step sites are
+// EXTRACTED from the load's roots BEFORE the finish (their ASTs need only normalized roots), which is what lets
+// their named target modules then join the same load, so both site kinds resolve against the SAME native context
+// and there is no second ingest or context to fail open. Cost follows the demands (the cited modules + the run-step
+// callers and targets), never the corpus: no whole-corpus scan (the fast-lane constraint, gunbc.ci.ci_run_step_target).
+// EVERY queued run-step caller is accounted for: one whose module never normalized yields a typed, located refusal
+// (run_step_target_extract_from_load), and a home that will not resolve makes every site an unconfirmed refusal
+// (run_step_target_callee_verdict) -- never a silent "0 targets, held".
 fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_callers: List<ReferenceWalkCaller>) -> ReferenceVerdicts {
-  let target_sites = run_step_target_ast_sites(env: env, callers: target_callers)
-  let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, targets: length(xs: target_sites), lines: [] }, cons: fn(acc, s) {
+  let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, targets: 0, lines: [] }, cons: fn(acc, s) {
     if reference_site_supported(site: s) { acc } else {
       ReferenceVerdicts { resolved: acc.resolved, targets: acc.targets, lines: list_snoc_item(xs: acc.lines, item: concat(site_head(site: s), ": UnsupportedTarget: type-parameter references are not resolved by this version")) }
     }
   })
-  // The run-step-target fold seeds from the unsupported-reference verdicts so their located UnsupportedTarget
-  // lines are carried into the report, and records the target count once (the push preserves it across both folds).
-  let target_seed = ReferenceVerdicts { resolved: unsupported.resolved, targets: length(xs: target_sites), lines: unsupported.lines }
   let supported = supported_sites(sites: sites)
-  let module_set = fold_list(xs: map_support_keys(m: run_step_target_cited_module_names(target_sites: target_sites)), empty: cited_module_names(sites: supported), cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
+  // The queued run-step callers and the constructor home must be in the load so their roots are walkable and the
+  // callee identity resolvable; only pulled in when there ARE callers, so a pure-@ref run pays nothing for targets.
+  let caller_set = fold_list(xs: target_callers, empty: cited_module_names(sites: supported), cons: fn(acc, c) { map_insert(m: acc, key: c.caller, value: true) })
+  let module_set = if is_empty(xs: target_callers) { caller_set } else { map_insert(m: caller_set, key: gunbc_run_step_target_home_module, value: true) }
   let pending = map_support_keys(m: module_set)
   if is_empty(xs: pending) {
     unsupported
   } else {
     let targets = cited_targets_read(env: env, pending: pending, acc: cited_targets_empty())
-    let names = fold_list(xs: run_step_target_decl_names(target_sites: target_sites), empty: cited_decl_names(sites: supported), cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
     match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
+      // The whole batch could not even form an ingest scope: refuse every @ref site AND every queued run-step
+      // caller, located, so no caller is certified by an empty scan.
       Rejected { diagnostics: _ } =>
-        fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules' ingest scope could not be formed") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
+        fold_list(xs: supported, empty: fold_list(xs: target_callers, empty: unsupported, cons: fn(acc, c) { reference_verdicts_push(acc: acc, line: Present { value: concat(c.file, ": RunStepTargetUnread: the cited modules' ingest scope could not be formed, so its run-step target was not checked") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
       Accepted { value: scope, diagnostics: _ } => {
         let lm = dag_language_model()
         let named = live_context_load_modules(load: live_context_load_empty(seed: occurrence_id_allocator_initial()), by_name: targets.by_name, modules: targets.readable, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
-        let with_homes = cited_targets_read(env: env, pending: live_context_hop_homes(load: named, names: names), acc: targets)
-        let loaded = live_context_load_modules(load: named, by_name: with_homes.by_name, modules: live_context_hop_homes(load: named, names: names), lex: env.lex, prepared: env.grammar, ingest_scope: scope)
+        // Extract run-step sites from the load's roots (one grammar, no token matcher, no separate context). A
+        // caller that spelled the constructor but never normalized arrives as a located refusal line here.
+        let extracted = run_step_target_extract_from_load(load: named, callers: target_callers)
+        let target_sites = extracted.sites
+        let target_seed = ReferenceVerdicts { resolved: unsupported.resolved, targets: length(xs: target_sites), lines: list_append(left: unsupported.lines, right: extracted.lines) }
+        let names = fold_list(xs: run_step_target_decl_names(target_sites: target_sites), empty: cited_decl_names(sites: supported), cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
+        // The named target modules (from the extracted literals) and the re-export hop homes join the SAME load,
+        // so their entries resolve against the one context this function then finishes.
+        let extra = list_append(left: live_context_hop_homes(load: named, names: names), right: map_support_keys(m: run_step_target_cited_module_names(target_sites: target_sites)))
+        let with_homes = cited_targets_read(env: env, pending: extra, acc: targets)
+        let loaded = live_context_load_modules(load: named, by_name: with_homes.by_name, modules: extra, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
         let live = live_context_finish(load: loaded, lm: lm, active_roots: source_root_set_from_ingest(ingest: with_homes.ingest), policy: ImportScoped)
         match live.context {
           Rejected { diagnostics: _ } =>
