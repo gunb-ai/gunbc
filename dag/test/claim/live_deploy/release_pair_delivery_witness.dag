@@ -16,7 +16,7 @@ module test.claim.live_deploy.release_pair_delivery_witness
 // is a PairRefused arm that keeps the last-good pair serving, which is exactly what the red control demands.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
-import std.algebra { fold_list }
+import std.algebra { fold_list, list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.release_pair_delivery {
   release_pair_incoming_serve_source,
@@ -37,7 +37,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary,
 }
 import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_set }
-import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared, DeclaredRead }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
 
@@ -84,8 +84,10 @@ fn member(p: String, xs: List<String>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { if acc { true } else if x == p { true } else { false } })
 }
 
+fn read_path(r: DeclaredRead) -> String { r.path }
+
 fn declared_containing(rs: ArtifactReadSet, p: String) -> Bool {
-  match rs { Declared { paths: ps } => member(p: p, xs: ps), _ => false }
+  match rs { Declared { reads: reads } => member(p: p, xs: list_map(xs: reads, f: read_path)), _ => false }
 }
 
 // ── the good head: one main head installs BOTH halves as one unit ─────────────────────────────────────────────
