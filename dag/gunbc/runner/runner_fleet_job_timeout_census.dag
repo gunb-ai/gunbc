@@ -81,7 +81,8 @@ import gunbc.heal_publisher_workflow { heal_publisher_census_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow_of }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
-import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
+import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow_of }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.ci.repository_ci_profile {
   gunbc_heal_job, gunbc_drift_watch_job, gunbc_repository_ci_profile
@@ -186,7 +187,10 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
         )
       )
     ),
-    [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow }]
+    match outcome_accepted_value(branch_run_grant_broker_workflow_of()) {
+      Present { value: broker_wf } => [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: broker_wf }]
+      Absent => []
+    }
   )
 }
 
