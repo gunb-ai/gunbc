@@ -19,9 +19,9 @@ import std.annotation_reference {
 }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.body_lowering_fold { body_lower_unwrap_captured }
 import v2.compiler.live_resolution_context { LiveContextLoad, live_context_finish, live_context_hop_homes, live_context_load_empty, live_context_load_modules }
 import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,
@@ -37,12 +37,12 @@ import v2.compiler.module_acquisition {
   enumerate_bound_modules,
   population_member,
 }
-import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
+import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome, program_assembly_phase_tokenize }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, module_file_key, source_root_set_from_ingest }
-import v2.compiler.tokenize { tokenize_artifact_prepared }
-import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text, dag_string_literal_value_optional, qualified_name_from_module_node, dag_node_is_fn_decl, dag_surface_kw_then_ident_from_captured }
+import v2.compiler.tokenize { tokenize_artifact_prepared, PreparedLexRules }
+import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_decoded_text, dag_string_literal_value_optional, qualified_name_from_module_node, dag_node_is_fn_decl, dag_surface_kw_then_ident_from_captured, parse_production_captured_child_optional }
 import v2.std.compilers.body_lowering { application_head_read, ApplicationHeadFound, ApplicationHeadRefused, NotApplicationHead, AtomHead }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.compilers.lexing { LexArtifact, Token, UnboundSourceAnnotation, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_all }
 import v2.std.decl_ref_resolution {
   DeclarationRefContested,
@@ -559,9 +559,9 @@ fn run_step_target_site_head(site: RunStepTargetSite) -> String {
 // Judge one run-step-target site. First the callee must resolve, through the caller's imports in THIS context,
 // to the one constructor's declaring home -- otherwise the call lexically names the constructor but is not it
 // (a same-named local, or imported from elsewhere) and is not a site at all (condition 1, closed_grounded_substrate).
-fn run_step_target_site_line(site: RunStepTargetSite, context: ResolutionContext, roots: Map<QualifiedName, Node>, standing: Map<String, CitedModule>) -> Optional<String> {
+fn run_step_target_site_line(site: RunStepTargetSite, context: ResolutionContext, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>) -> Optional<String> {
   match run_step_target_callee_verdict(caller: site.caller, constructor: site.constructor, context: context) {
-    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, roots: roots, standing: standing)
+    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, lex: lex, grammar: grammar, standing: standing)
     RunStepTargetNotConstructor => Absent
     RunStepTargetCalleeUnconfirmed { reason: reason } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetCalleeUnconfirmed: ", reason) }
@@ -608,16 +608,17 @@ fn run_step_target_callee_verdict(caller: String, constructor: RunStepTargetCons
 
 // With the callee confirmed to be the constructor, the (module, function) pair must name a real declaration.
 // A non-literal argument refuses typed at the site (never skipped -- it is the un-checkable route). Existence is
-// read OFF THE TARGET MODULE'S ALREADY-PARSED ROOT in this very load -- NOT by normalizing the target in the
-// bounded resolution context. A run-step target is a run-time ENTRY, typically a capability-using
-// `fn e() -> ProcessExit uses ...`; the fast-lane ImportScoped finish PRUNES such entries from the ACTIVE roots,
-// so the resolver answers ModuleAbsent for entries that are real (the inverse of the gunbc#8377 class this closes).
-// But the load keeps EVERY module it read in its roots BEFORE finish, so the target's own parsed tree is present
-// and its top-level fn declarations are read directly through the same node-query accessors the call-site walk
-// uses -- no host builtin, no normalize, no resolver. (fn_arrow_decl_facts_live is NOT used here: it is a
-// self-host-only host seam, unrealized in the v2-native-cli binary that runs this check.) The scan keys on the
-// fn-declaration PRODUCTION (dag_node_is_fn_decl), not a spelling, so a same-named data or type does not satisfy it.
-fn run_step_target_entry_line(site: RunStepTargetSite, roots: Map<QualifiedName, Node>, standing: Map<String, CitedModule>) -> Optional<String> {
+// read by RUNNING THE FRONT END'S OWN PARSE STAGE over the target module's standing read and scanning its RAW
+// (pre-normalize) tree -- NOT by normalizing the target in the bounded resolution context. A run-step target is a
+// run-time ENTRY, typically a capability-using `fn e() -> ProcessExit uses ...`. ImportScoped finish PRUNES such
+// entries from the ACTIVE roots (resolver answers ModuleAbsent for real entries), and normalize_scoped DROPS the
+// whole fn whose `uses` capability is out of scope -- both downstream of the parse, so stopping AT the parse is
+// what keeps a real entry from being refused. The parse is the very `program_assembly_phase_tokenize` +
+// `parse_module_prepared_seeded` the canonical front end composes before `normalize_scoped` (realized natively:
+// normalize consumes its output), given a fresh scope so it is an isolated per-file parse of one standing read.
+// The scan keys on the fn-declaration PRODUCTION (dag_node_is_fn_decl), not a spelling, so a same-named data or
+// type does not satisfy it.
+fn run_step_target_entry_line(site: RunStepTargetSite, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>) -> Optional<String> {
   match site.module_arg {
     RunStepTargetNotLiteral { text: mt } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.module_label, ": argument is not a string literal (", mt, "), so its entry cannot be checked") }
@@ -625,68 +626,66 @@ fn run_step_target_entry_line(site: RunStepTargetSite, roots: Map<QualifiedName,
       RunStepTargetNotLiteral { text: ft } =>
         Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.function_label, ": argument is not a string literal (", ft, "), so its entry cannot be checked") }
       RunStepTargetLiteral { value: function_name } =>
-        run_step_target_existence_refusal(site: site, module_name: module_name, function_name: function_name, roots: roots, standing: standing)
+        run_step_target_existence_refusal(site: site, module_name: module_name, function_name: function_name, lex: lex, grammar: grammar, standing: standing)
     }
   }
 }
 
-// Existence of the (module, function) entry, fail-closed on three distinct causes, each located at the site:
-//  - the module was never read (not in the population) -> RunStepTargetModuleAbsent, carrying the acquisition cause;
-//  - the module was read but did not normalize into an indexable root -> RunStepTargetModuleUnindexed (its own
-//    name, not ModuleAbsent: a different failure needing a different remedy, gunbc.design_argument::single_authority);
-//  - the module's root declares no fn of that name -> RunStepTargetDeclarationAbsent.
+// Existence of the (module, function) entry, fail-closed on distinct causes, each located at the site:
+//  - the module was never read (absent from the standing population, or read-then-Unread) ->
+//    RunStepTargetModuleAbsent, carrying the acquisition cause;
+//  - the module was read but its source no longer tokenizes or parses -> RunStepTargetModuleUnreadable (its own
+//    name: a different failure needing a different remedy than a missing module or a missing name, which is why it
+//    is not folded into either -- gunbc.design_argument::single_authority);
+//  - the module parses but declares no top-level fn of that name -> RunStepTargetDeclarationAbsent.
 // The read/unread cause comes from the SAME standing map the @ref path builds (cited_targets_read), so both kinds
-// of demand agree on whether a module is even in the population.
-fn run_step_target_existence_refusal(site: RunStepTargetSite, module_name: String, function_name: String, roots: Map<QualifiedName, Node>, standing: Map<String, CitedModule>) -> Optional<String> {
+// of demand agree on whether a module is even in the population; the existence read is the front end's own parse.
+fn run_step_target_existence_refusal(site: RunStepTargetSite, module_name: String, function_name: String, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>) -> Optional<String> {
   match map_lookup(m: standing, key: module_name) {
     Present { value: CitedModuleUnread { cause: cause } } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: no registered storage root contains ", module_name, " (", cause, "), so it was never a run-time entry") }
     Absent =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: no registered storage root contains ", module_name, ", so it was never a run-time entry") }
-    Present { value: CitedModuleRead { read: _ } } =>
-      match map_lookup(m: roots, key: qualified_name_from_dotted_string(dotted: module_name)) {
-        Absent =>
-          Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnindexed: the target module ", module_name, " was read but its source did not normalize into an indexable root, so its ", site.constructor.function_label, " could not be verified") }
-        Present { value: root } =>
-          if run_step_target_root_declares_fn(root: root, fn_name: function_name) {
-            Absent
-          } else {
-            Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
-          }
+    Present { value: CitedModuleRead { read: read } } =>
+      match program_assembly_phase_tokenize(read: read, lex: lex) {
+        Rejected { diagnostics: _ } =>
+          Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnreadable: the target module ", module_name, " was read but its source did not tokenize, so its ", site.constructor.function_label, " could not be verified") }
+        Accepted { value: token_stream, diagnostics: _ } => match parse_module_prepared_seeded(tokens: token_stream, prepared: grammar, seed: occurrence_id_allocator_initial()) {
+          Rejected { diagnostics: _ } =>
+            Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnreadable: the target module ", module_name, " was read but its source did not parse, so its ", site.constructor.function_label, " could not be verified") }
+          Accepted { value: artifact, diagnostics: _ } =>
+            if run_step_target_parse_tree_declares_fn(tree: artifact.tree, fn_name: function_name) {
+              Absent
+            } else {
+              Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
+            }
+        }
       }
   }
 }
 
-// Does this module root declare a top-level fn named fn_name? node_subtree_nodes filtered by dag_node_is_fn_decl
-// IS the top-level scan: the grammar mints no nested fn DECLARATIONS (a lambda is an fn expression under a
-// different production), so every fn-declaration production node in a module's tree is a top-level entry. Keying
-// on the production, not a spelling, is what keeps a same-named data/type from satisfying it.
-fn run_step_target_root_declares_fn(root: Node, fn_name: String) -> Bool {
-  fold_list(xs: node_subtree_nodes(root: root), empty: false, cons: fn(acc, node) {
+// Does this module's RAW PARSE tree declare a top-level fn named fn_name? node_subtree_nodes filtered by
+// dag_node_is_fn_decl IS the top-level scan: the grammar mints no nested fn DECLARATIONS (a lambda is an fn
+// expression under a different production), so every fn-declaration production node in a module's tree is a
+// top-level entry. Keying on the production, not a spelling, is what keeps a same-named data/type from satisfying
+// it. This runs on the PRE-NORMALIZE tree, so a capability entry that ImportScoped finish would prune still counts.
+fn run_step_target_parse_tree_declares_fn(tree: Node, fn_name: String) -> Bool {
+  fold_list(xs: node_subtree_nodes(root: tree), empty: false, cons: fn(acc, node) {
     if acc { true } else { dag_node_is_fn_decl(node: node) && run_step_target_fn_decl_named(node: node, name: fn_name) }
   })
 }
 
+// The fn-declaration's own name, read off the PARSE production: its captured child (the parse-stage projection)
+// decoded as the `fn <ident>` keyword-then-identifier pair. parse_production_captured_child_optional -- not the
+// body-lowering accessor -- because the tree is the raw parse output, before any shell was lowered.
 fn run_step_target_fn_decl_named(node: Node, name: String) -> Bool {
-  match body_lower_unwrap_captured(shell: node) {
+  match parse_production_captured_child_optional(node: node) {
     Absent => false
     Present { value: captured } => match dag_surface_kw_then_ident_from_captured(captured: captured) {
       Absent => false
       Present { value: sym } => symbol_lexeme(sym: sym) == name
     }
   }
-}
-
-// Index the load's roots by their module's qualified name (the SAME projection the caller walk uses), so a
-// run-step target -- pruned from the ACTIVE roots by ImportScoped finish but still present in the load's roots
-// before finish -- can be found and scanned directly.
-fn run_step_target_roots_by_name(load: LiveContextLoad) -> Map<QualifiedName, Node> {
-  fold_list(xs: normalized_tree_roots_to_nodes(load.roots), empty: empty_map(), cons: fn(acc, node) {
-    match qualified_name_from_module_node(root: node) {
-      Accepted { value: qn, diagnostics: _ } => map_insert(m: acc, key: qn, value: node)
-      Rejected { diagnostics: _ } => acc
-    }
-  })
 }
 
 fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
@@ -706,10 +705,10 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 // (run_step_target_callee_verdict) -- never a silent "0 targets, held".
 // NAMED-FUNCTION RECURSION over the run-step target sites, mirroring the @ref read path (cited_targets_read) so
 // the whole verdict build is one uniform named-function shape rather than a mix of recursion and closures.
-fn run_step_target_verdicts(context: ResolutionContext, roots: Map<QualifiedName, Node>, standing: Map<String, CitedModule>, pending: List<RunStepTargetSite>, acc: ReferenceVerdicts) -> ReferenceVerdicts {
+fn run_step_target_verdicts(context: ResolutionContext, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>, pending: List<RunStepTargetSite>, acc: ReferenceVerdicts) -> ReferenceVerdicts {
   match pending {
     Empty => acc
-    Cons { head: s, tail: rest } => run_step_target_verdicts(context: context, roots: roots, standing: standing, pending: rest, acc: reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, context: context, roots: roots, standing: standing)))
+    Cons { head: s, tail: rest } => run_step_target_verdicts(context: context, lex: lex, grammar: grammar, standing: standing, pending: rest, acc: reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, context: context, lex: lex, grammar: grammar, standing: standing)))
   }
 }
 
@@ -768,7 +767,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
             // resolver sees), read through the same node accessors the call-site walk uses -- no host builtin, no
             // normalize. The per-site verdict still runs by named recursion (run_step_target_verdicts) so the shape
             // matches the @ref read path; the roots map is built once here, in a named-function position.
-            fold_list(xs: supported, empty: run_step_target_verdicts(context: context, roots: run_step_target_roots_by_name(load: loaded_final), standing: with_target_homes.standing, pending: target_sites, acc: target_seed), cons: fn(acc, s) {
+            fold_list(xs: supported, empty: run_step_target_verdicts(context: context, lex: env.lex, grammar: env.grammar, standing: with_target_homes.standing, pending: target_sites, acc: target_seed), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
             })
         }
