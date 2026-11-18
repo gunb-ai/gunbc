@@ -14,7 +14,8 @@ import gunbc.runner.runner_qualification_ci_step { gunbc_ci_qualification_attemp
 import product.fabric.flex_template_ci_step { gunbc_ci_flex_template_ensure_invoke }
 import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_invoke }
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
-import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
+import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
+import gunbc.live_deploy.apply { live_deploy_ci_instance_id_env_name }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
@@ -221,7 +222,7 @@ import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_e
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env, srv1_root_mutation_mode_env }
-import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire }
+import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire, DesiredInstanceDeploy }
 import gunbc.runner.runner_service_slot_start { service_slot_start_artifact_glob }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.runner.runner_jit_dead_sweep_run { jit_dead_sweep_artifact_glob, jit_dead_sweep_host_env_name }
@@ -1506,7 +1507,7 @@ fn fleet_converge_build_job() -> Job {
 // (it cannot wait on `build`, which needs its answer), downloads the plan artifact by the run id the
 // dispatch names, and runs gunbc.fleet.fleet_converge_plan_revision resolve_plan_revision, whose
 // admitted revision is this job's one output.
-data fleet_converge_plan_revision_step_if: String = fleet_converge_any_mode_step_if(modes: [FleetApply, Srv1RootMutation(DashboardDeploy)])
+data fleet_converge_plan_revision_step_if: String = fleet_converge_any_mode_step_if(modes: [FleetApply, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(DesiredInstanceDeploy)])
 
 fn fleet_converge_plan_revision_pair_build_step() -> Step {
   RunStep {
@@ -5190,6 +5191,122 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
   }
 }
 
+// ── THE INSTANCE-SCOPED DEPLOY (option C, Srv1RootMutation(DesiredInstanceDeploy)) ──────────────
+// WHY IT EXISTS: the dashboard deploy beside it converges the PROD-ROLE HOLDER (prod_role_selection), which
+// is NOT the lab; the lab srv1-lab-codex-feedback-v0 has no CI deploy path. This mode converges the ONE
+// srv1 roster row named by the run's `instance` input, through the same modeled apply fold but WITHOUT the
+// prod-role selection -- a named row, not a role. It reuses the dashboard job's plan-first admission
+// VERBATIM (admit inputs, root-mutation approval, plan/apply run pointers, receipt downloads, budget
+// preflight, exactly-one-receipt assert, receipt upload): one admission shape, not two (Q1, via the manager).
+// It differs only in the deploy step's ENTRY -- live_deploy_apply_desired_wet_from_ci, which reads the
+// instance id from the env (a run step reaches an entry only through the environment) -- and in carrying the
+// instance to the operator's approval as a selected input so the human approves the exact row. The prod-role
+// holder is never an option here (fleet_converge_desired_instance_deploy_options derives it from
+// prod_role_selection), so this mode can never open a second deploy path for production.
+data fleet_converge_desired_instance_deploy_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: Srv1RootMutation(DesiredInstanceDeploy))
+
+data fleet_converge_desired_instance_deploy_selected_inputs: List<String> = ["instance", "plan_workflow_run_id", "apply_workflow_run_id", "plan_artifact_hash", "expected_revision"]
+
+fn fleet_converge_desired_instance_deploy_step() -> Step {
+  RunStep {
+    name: Present { value: "Deploy the named srv1 instance (live_deploy_apply_desired_wet_from_ci, receipted; the instance arrives via env)" },
+    id: Present { value: "desired_instance_deploy" },
+    run: gunbc_ci_desired_instance_deploy_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+      kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+      kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
+      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.instance }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+// THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION, same fold as the dashboard's (it counts the live-deploy
+// apply receipt in the shared dir; apply XOR named refusal, zero never). Only the concluded step differs.
+fn fleet_converge_desired_instance_deploy_receipt_assert_step() -> Step {
+  RunStep {
+    name: Present { value: "Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)" },
+    id: Present { value: "desired_instance_deploy_receipt_assert" },
+    run: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: gunbc_live_deploy_receipt_artifact_dir)),
+      kv(key: live_deploy_deploy_conclusion_env_name, value: yaml_string(s: "${{ steps.desired_instance_deploy.conclusion }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_desired_instance_deploy_job() -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DesiredInstanceDeploy)) as String,
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
+    steps: concat(
+      fleet_converge_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+      ],
+      fleet_converge_admit_dashboard_deploy_inputs_step(),
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_desired_instance_deploy_selected_inputs),
+      fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
+      [
+        fleet_converge_receipt_download_step(
+          id: "desired_instance_plan_receipt_download",
+          name: "Download the plan artifact (carries the plan receipt) from the plan run",
+          artifact: gunbc_fleet_converge_plan_artifact_name,
+          path: fleet_converge_plan_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
+        ),
+        fleet_converge_admit_apply_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
+        fleet_converge_receipt_download_step(
+          id: "desired_instance_apply_receipt_download",
+          name: "Download the fleet apply receipt from the apply run",
+          artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
+          path: fleet_converge_apply_receipt_dir,
+          run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
+        ),
+        fleet_converge_checkout_verify_step(if_condition: none),
+        fleet_converge_host_budget_preflight_step(),
+        fleet_converge_desired_instance_deploy_step(),
+        fleet_converge_desired_instance_deploy_receipt_assert_step(),
+        fleet_converge_receipt_upload_step(
+          id: "desired_instance_receipt_upload",
+          name: "Upload live-deploy transaction receipt",
+          artifact: gunbc_live_deploy_receipt_artifact_name,
+          path: gunbc_live_deploy_receipt_artifact_dir,
+          if_condition: "always()",
+        ),
+      ]
+    ),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DesiredInstanceDeploy))),
+    env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
+    outputs: none,
+    if_condition: Present { value: fleet_converge_desired_instance_deploy_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
+  }
+}
+
 // ── THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1) ────────────────────────────────────
 // WHY THIS MODE EXISTS AT ALL: gunbc.live_deploy.apply approval_broker_dark_install_wet binds
 // ci_deploy_srv1_access, whose expected principal is ghrunner. An operator invoking the same fold
@@ -6543,6 +6660,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostnameConverge), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DesiredInstanceDeploy)), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire)), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: Srv1RootMutation(MicrovmControllerInstall)), needs: [fleet_converge_release_bins_job_id as String] },
@@ -6606,6 +6724,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_host_reset_return_job(),
     fleet_converge_hostname_converge_job(),
     fleet_converge_dashboard_deploy_job(),
+    fleet_converge_desired_instance_deploy_job(),
     fleet_converge_approval_broker_dark_install_job(),
     fleet_converge_approval_ntfy_retire_job(),
     fleet_converge_microvm_controller_install_job(),
@@ -7754,6 +7873,7 @@ data mtcollins1_boot_site_pxe_edge_run_reading: DispatchFieldModeReading = Dispa
 
 data apply_workflow_run_id_mode_readings: List<DispatchFieldModeReading> = [
   DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: Srv1RootMutation(DashboardDeploy), reading: FleetApplyRunPointer },
+  DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: Srv1RootMutation(DesiredInstanceDeploy), reading: FleetApplyRunPointer },
   DispatchFieldModeReading { field: apply_workflow_run_id_field, mode: RlmLaunchDeploymentReceipt, reading: FleetApplyRunPointer },
   mtcollins1_boot_site_pxe_edge_run_reading,
 ]
