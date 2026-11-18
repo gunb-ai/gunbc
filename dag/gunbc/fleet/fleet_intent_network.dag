@@ -33,7 +33,7 @@ import product.network_topology {
 }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_mtcollins1,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_mtcollins1, operator_host_e2d4b7,
 }
 
 
@@ -191,9 +191,37 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv9-host-lan",
-  subject: EndpointHost { host: operator_host_srv9 },
+// srv9 (router label spark-0c75) IS SOLD, and its .236 LAN endpoint row is RETIRED here. The sale is a
+// modeled datum, not a rumour: @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) records
+// the operator's ruling of 2026-10-10 ("Group B (srv9-srv12) is sold too: every one of the eight procured
+// units is now sold, and none may remain a reachable fleet host"), and
+// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries spark-0c75 at former slot srv9 as a
+// sold asset. The scoped cut @ref(gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts) already removed
+// srv9-srv12 from this topology's endpoint roster, which is why no mode could dispatch to them; what stayed
+// behind was this declaration, existing only to be cited by the intake module. Deleting it removes the last
+// model-level claim that .236 belongs to a sold host. Procurement and inventory containment of the sold unit
+// stays the serving lane's, as that drop records.
+//
+// KEN (H11SSL unit3, host-e2d4b7) AT THE SAME ADDRESS -- A DATED LEASE OBSERVATION, NOT A RESERVATION.
+// Three sightings, none of them a router reservation, all pinned in
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation: srv1's neighbour table paired the install
+// NIC ac:1f:6b:e6:75:eb with .236 in state STALE; the LAN spelling the operator calls the box by,
+// h11-new.mynetworksettings.com, answered with .236 from this container at 2026-11-16T00:53:00Z and ssh
+// answers there; and the operator's report of 2026-11-16 puts this unit's ssh answer at that address. This
+// row does NOT confirm the address and does not discharge the owed reads: the lease table read naming which
+// MAC holds .236, an in-band address read on the installed OS, and a host key confirmed from this unit's own
+// console are still owed, and are carried as the read_obligation on
+// @ref(gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_install_nic_address_standing).
+// It is a lease, so it is dynamic: nothing durable may bind to it, and reach for this host anchors on its
+// tailnet name once the fleet join lands. Nothing acts on it today -- ken has no HostPrimaryNetworkDesired
+// row (gunbc.host.host_primary_network), is not a harness replica (gunbc.harness.harness_wire), the runner
+// deploy path names only srv14 (gunbc.runner.runner_host_deploy), and its enrollment keeps HostKeyLoginRefused
+// (gunbc.fleet.fleet_enrollment), so no sudo-bearing effect can be aimed at this address from the model.
+// Writing it is honest only because srv9's row above is gone in the same change: two hosts on one address is
+// exactly the drift the retirement prevents.
+data ken_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "ken-host-lan",
+  subject: EndpointHost { host: operator_host_e2d4b7 },
   address: "192.168.1.236",
   role: HostOperatingSystem,
   locality: Lan,
@@ -304,6 +332,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
     srv14_host_lan_endpoint,
+    ken_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,

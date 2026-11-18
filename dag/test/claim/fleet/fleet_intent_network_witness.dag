@@ -9,10 +9,15 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv10, operator_host_srv11, operator_host_srv9,
 }
 import gunbc.fleet.fleet_intent_network {
-  fleet_intent_network, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv10_host_lan_endpoint, srv11_host_lan_endpoint, srv12_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint, srv9_host_lan_endpoint,
+  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv10_host_lan_endpoint, srv11_host_lan_endpoint, srv12_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_e2d4b7,
+}
+import product.host_identity { host_identity_eq }
 import product.network_topology {
   BmcManagement,
+  Lan,
   BmcOutOfBand,
   ContainerRunner,
   EndpointAsset,
@@ -122,18 +127,23 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
 
-// The sold Group B slots are no longer in the topology (rung drop serving_fixtures_name_sold_group_b_hosts), but their
-// endpoint rows stay as fixtures for serving; this pins them against the transcribed reservation values. The Spark host slots were enrolled, each bound to its own identity, at the address its CR1000A
-// static reservation carries in gunbc.spark.dgx_procurement, with the role split asserted so a model
+// The sold Group B slots are no longer in the topology (rung drop serving_fixtures_name_sold_group_b_hosts).
+// srv10 and srv11 keep their endpoint rows as fixtures for serving; this pins them against the transcribed
+// reservation values. The Spark host slots were enrolled, each bound to its own identity, at the address its
+// CR1000A static reservation carries in gunbc.spark.dgx_procurement, with the role split asserted so a model
 // that collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
 // It pins the corpus against the transcribed reservation authority -- a citation check, not a
 // readback from the host.
+//
+// srv9 is GONE from this claim on 2026-11-18, and the claim's name went with it: srv9 (spark-0c75) is sold
+// (gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10), and its .236 endpoint row is retired
+// because a live machine -- ken, host-e2d4b7 -- is now observed at that address. A fixture row that maps a
+// sold host to an address a live host answers at is not neutral test data: it is the exact shape that makes a
+// later reader conclude the address belongs to the sold cage. The claim was renamed rather than silently
+// narrowed, so the rung drop's comment and any later audit see that this fixture population shrank.
 
-test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses() -> Bool {
-  srv9_host_lan_endpoint.address == "192.168.1.236"
-    && srv9_host_lan_endpoint.role == HostOperatingSystem
-    && srv9_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv9 }
-    && srv10_host_lan_endpoint.address == "192.168.1.237"
+test fn fleet_intent_network_srv10_and_srv11_enrolled_at_their_reserved_addresses() -> Bool {
+  srv10_host_lan_endpoint.address == "192.168.1.237"
     && srv10_host_lan_endpoint.role == HostOperatingSystem
     && srv10_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv10 }
     && srv11_host_lan_endpoint.address == "192.168.1.238"
@@ -141,6 +151,33 @@ test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses(
     && srv11_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv11 }
     && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10" && operator_host_srv11 == "srv11"
 }
+
+// THE RETIREMENT, MADE CHECKABLE. srv9 keeps its identity row -- retiring an endpoint is not deleting a host
+// from the register, and this pins that the two did not move together -- while its LAN address answer is gone
+// and the only topology row naming 192.168.1.236 belongs to ken, host-e2d4b7. A model that re-added a sold
+// cage at that address, or that left both hosts claiming it, reds here. The claim also pins ken's row's shape
+// (host-attached, LAN-locality, host-OS role), because a row filed under some other role would answer
+// host_lan_address differently and is exactly the kind of slip a fixture edit introduces.
+test fn fleet_intent_network_sold_srv9_holds_no_lan_address_and_ken_holds_it_once() -> Bool {
+  host_lan_address(host: operator_host_srv9) == none
+    && host_lan_address(host: operator_host_e2d4b7) == Present { value: "192.168.1.236" }
+    && ken_host_lan_endpoint.role == HostOperatingSystem
+    && ken_host_lan_endpoint.locality == Lan
+    && ken_host_lan_endpoint.subject == EndpointHost { host: operator_host_e2d4b7 }
+    && fold(fleet_intent_network.endpoints, init: true, f: (acc, e) =>
+      if e.address == "192.168.1.236"
+      then acc
+        && (match e.subject {
+             EndpointHost { host: h } => host_identity_eq(a: h, b: operator_host_e2d4b7)
+             EndpointAsset { asset: _ } => false
+             EndpointSubjectUnregistered => false
+           })
+      else acc)
+}
+
+// THE OBSERVATION-VS-INTENT DISTINCTION for ken_host_lan_endpoint is witnessed where the standing lives:
+// dag/test/claim/machine_intake/supermicro_h11ssl_unit3_intake_witness.dag, which pins that the row this
+// address points at keeps its read_obligation and that the claimant is a dated observation, not a reservation.
 
 // THE BINDING review 59815 REQUIRED, MADE EXECUTABLE. Before the repair the printer endpoint and the
 // printer asset were joined only by the label string "printer-01-lan", so the two could drift with

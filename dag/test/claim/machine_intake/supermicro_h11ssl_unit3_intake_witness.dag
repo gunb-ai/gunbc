@@ -21,6 +21,7 @@ import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_flee
 import gunbc.runner.runner_broker_progress_watchdog { HostReachAdmitted, HostReachRefused }
 import gunbc.fleet.fleet_fan_tach_expectation { fleet_fan_tach_expectations, HostFanTachExpectation }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts, supermicro_h11ssl_unit3_host, ComputeHost }
+import gunbc.fleet.fleet_intent_network { ken_host_lan_endpoint }
 import gunbc.integration_concern {
   ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
   RequirementEstablished,
@@ -129,10 +130,13 @@ test fn witness_bmc_address_is_not_the_install_nic_address() -> Bool {
   )
 }
 
-// THE INSTALL NIC CLAIMS NO NETWORK ENDPOINT. Its address stands only as a stale neighbour pairing, and
-// the standing must name whom that address is already modelled as belonging to -- otherwise a later
-// reader (or a later row) treats the pairing as a lease.
-test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> Bool {
+// THE INSTALL NIC CLAIMS NO NETWORK ENDPOINT ROW OF ITS OWN. Its address stands only as a stale neighbour
+// pairing, and the standing must name the row that holds that address -- otherwise a later reader (or a
+// later row) treats the pairing as a lease. As of 2026-11-18 the named row is
+// gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, a dated OBSERVATION of this unit; before that it
+// was srv9's endpoint row, and the pairing was a collision between two hosts. Either way the standing is the
+// unconfirmed arm and the obligation stays non-empty, which is what this claim actually holds.
+test fn witness_install_nic_address_is_unconfirmed_and_names_the_row_that_holds_it() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry {
       address: seen,
@@ -140,7 +144,7 @@ test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> 
       read_obligation: owed,
     } =>
       ipv4_address_eq(a: seen, b: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236))
-        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
         && (text(owed) != "")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
@@ -359,14 +363,14 @@ test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satis
   }
 }
 
-// THE NAME SIGHTING AND THE ADDRESS STANDING AGREE, and both point at the address srv9's endpoint row
-// already claims. Two rows about one address that disagree would be exactly the fork the register exists
-// to catch, so the agreement is asserted rather than assumed.
+// THE NAME SIGHTING AND THE ADDRESS STANDING AGREE, and both point at the address the model now holds as
+// ken_host_lan_endpoint. Two rows about one address that disagree would be exactly the fork the register
+// exists to catch, so the agreement is asserted rather than assumed.
 test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: claimed_by, read_obligation: _ } =>
       ipv4_address_eq(a: supermicro_h11ssl_unit3_lan_name_sighting.answered_with, b: seen)
-        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
 }
@@ -523,8 +527,10 @@ test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
 // lets the fleet dispatch at a host (gunbc.runner.runner_connectivity_recovery::
 // host_reach_admission_for_fleet_host). The operator reported on 2026-11-16 that the three fleet access
 // principals' keys sit on this unit's ubuntu account with passwordless sudo -- and the same report puts
-// the unit's ssh answer at the address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as
-// srv9's. So an effect admitted on that word could be applied at a DIFFERENT machine than the row names.
+// the unit's ssh answer at an address the model held as srv9's endpoint row (now retired as sold) and
+// holds now only as the dated observation gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint. Nothing
+// read says WHICH machine answers there, so an effect admitted on the report could still be applied at a
+// different machine than the row names.
 // The claims here hold the line the rework drew: this host's row is refused, the transport gate is shut,
 // and the report stands in the register as an open row that names the read which would ground it. None of
 // this says the report is false; it says the model has not repeated it.
@@ -575,19 +581,41 @@ test fn an_opened_gate_dissolves_the_no_read_row_or_reds() -> Bool {
   }
 }
 
-// The unit is REPORTED to answer ssh on the very address a fleet authority claims for srv9. The link
-// between those facts is a citation, not a paragraph: the row that reports the address must name, as a
-// declaration, the authority that claims the same address for another host. The address VALUE is not
-// re-stated here -- witness_the_lan_name_sighting_and_the_address_standing_name_one_address already binds
-// the two sightings of it -- so this claim checks only the link, and retires when the lease read lands.
-test fn the_address_under_conflict_names_the_authority_that_claims_it() -> Bool {
+// The unit is REPORTED to answer ssh at an address the model holds only as a dated observation. The link
+// between those facts is a citation, not a paragraph: the standing must name, as a declaration, the row that
+// holds the address. It used to name srv9's endpoint row -- a claim for ANOTHER host, which made this a
+// collision; that row was retired when srv9 (spark-0c75) was sold, and the row named now is
+// ken_host_lan_endpoint, which reserves nothing. The address VALUE is not re-stated here --
+// witness_the_lan_name_sighting_and_the_address_standing_name_one_address already binds the two sightings of
+// it -- so this claim checks only the link, and retires when the lease read lands.
+test fn the_address_standing_names_the_row_that_holds_the_address() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: _, claimed_by_authority: conflict, read_obligation: _ } =>
       (conflict.module_path as String) == "gunbc.fleet.fleet_intent_network"
-        && (conflict.decl_name as String) == "srv9_host_lan_endpoint"
+        && (conflict.decl_name as String) == "ken_host_lan_endpoint"
     // Once the lease/ARP read lands the standing moves to its confirmed variant and there is no
     // competing authority left to name: the claim retires with the collision it was guarding.
     AddressConfirmed { address: _, confirmed_at: _ } => true
+  }
+}
+
+// OBSERVATION, NOT INTENT -- the distinction the 2026-11-18 retirement rests on, stated instead of tolerated
+// as a duplicate row on one address. gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint holds
+// 192.168.1.236 as a DATED LEASE OBSERVATION of this unit. Three things must stay true while that is so, and
+// this claim binds them together so a future edit cannot promote the observation by accident: the address the
+// observation carries is the SAME address this unit's standing calls unconfirmed; the standing keeps a
+// non-empty read obligation (the lease table, the in-band address read, the console-confirmed host key); and
+// the effect gate for this host is still the refusal, so the extra row buys no reach. Mark the standing
+// confirmed without doing the reads, or open the gate on the strength of this row, and this reds.
+test fn the_held_address_is_an_observation_while_the_standing_and_the_effect_gate_stay_shut() -> Bool {
+  match supermicro_h11ssl_unit3_install_nic_address_standing {
+    AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: held_by, read_obligation: owed } =>
+      ipv4_address_eq(a: seen, b: ken_host_lan_endpoint.address)
+        && decl_ref_names(ref: held_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
+        && (text(owed) != "")
+        && this_unit_is_enrolled()
+        && this_unit_reaches_as_refused()
+    AddressConfirmed { address: _, confirmed_at: _ } => false
   }
 }
 

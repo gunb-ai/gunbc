@@ -104,17 +104,21 @@ data supermicro_h11ssl_unit3_install_nic_port_label: H11sslReportedFigure = H11s
   },
 }
 
-// WHAT THE NEIGHBOUR TABLE PAIRED THE INSTALL NIC WITH, and why that pairing is NOT this unit's
+// WHAT THE NEIGHBOUR TABLE PAIRED THE INSTALL NIC WITH, and why that pairing is not yet this unit's
 // address. srv1's neighbour table paired ac:1f:6b:e6:75:eb with 192.168.1.236, in state STALE (not
-// confirmed reachable). 192.168.1.236 is already claimed in the model: gunbc.fleet.fleet_intent_network
-// .srv9_host_lan_endpoint gives it to srv9's host LAN interface. A stale entry whose MAC is a different
-// board's NIC sitting on an address another host owns is one of two things and the model cannot tell
-// which from this read alone: the router re-leased an address srv9 had vacated (address reuse, which is
-// what smart-crane-730's ssh attempt found when it met a different host key at that IP), or two hosts
-// hold one address. Either way this unit's install-NIC address is UNCONFIRMED and no NetworkEndpoint
-// row is written for it, because writing one would put this board in front of srv9's endpoint.
-// Whom the address is already modelled as belonging to is carried as a DECLARATION REF, not as a name
-// inside a sentence: the collision is a fact about a row that exists, and a rename of that row must move
+// confirmed reachable). AT THE TIME OF THE READ that address was already claimed in the model by
+// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint, so the pairing was a collision between two
+// hosts, not a free lease: either the router had re-leased an address srv9 vacated (address reuse -- which
+// is what smart-crane-730's ssh attempt met when it found a different host key at that IP), or two hosts
+// held one address. The model could not tell which from this read, and still cannot.
+// WHAT CHANGED IN THE MODEL ON 2026-11-18 (not in this read): srv9 (spark-0c75) is sold --
+// gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 -- and its endpoint row is retired, so
+// there is no longer a competing claim; 192.168.1.236 is held by gunbc.fleet.fleet_intent_network
+// ::ken_host_lan_endpoint, a dated observation of this unit that reserves nothing. The read's own standing
+// is unchanged: this unit's install-NIC address stays UNCONFIRMED until the lease, in-band and console
+// reads below agree. Whom the address is modelled as belonging to is carried as a DECLARATION REF, not as a
+// name inside a sentence: the claim is a fact about a row that exists, and a rename of that row must move
+// this citation with it instead of leaving a stale string in a paragraph.
 // this citation with it instead of leaving a stale string in a paragraph.
 type H11sslUnit3InstallNicAddressStanding
   = AddressSeenOnlyInStaleNeighbourEntry {
@@ -127,16 +131,20 @@ type H11sslUnit3InstallNicAddressStanding
 data supermicro_h11ssl_unit3_install_nic_address_standing: H11sslUnit3InstallNicAddressStanding =
   AddressSeenOnlyInStaleNeighbourEntry {
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
-    // gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models 192.168.1.236 as srv9's host LAN
-    // address -- which is why this pairing is a collision and not a free lease.
-    claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint"),
+    // 192.168.1.236 is carried in the model by ONE row now: gunbc.fleet.fleet_intent_network
+    // ::ken_host_lan_endpoint, added 2026-11-18 as a DATED LEASE OBSERVATION of this unit's address. It used
+    // to be srv9's endpoint row for the same address, which made this pairing a collision between two hosts;
+    // srv9 (spark-0c75) is sold and that row is retired in the same change that added the observation, so the
+    // collision is gone and what remains is the weaker fact: the only row holding this address is a sighting
+    // that reserves nothing and confirms nothing.
+    claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint"),
     // The operator's report of 2026-11-16 puts THIS unit's ssh answer at this exact address, which is
     // reported there and carried in the register as
     // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat. An ssh
     // answer says a host answers at an address, not which host, and no host key for this unit is
     // confirmed, so the report does not resolve the collision below -- it makes two live claims on one
     // address, and this read is what separates them.
-    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS, plus a host key for this unit confirmed from its own console -- until those agree, the address belongs to no row. The 2026-11-16 report raises the urgency of this read rather than lowering it: this unit is now reported to answer ssh at the very address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's." as NonEmptyStr,
+    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS, plus a host key for this unit confirmed from its own console -- until those agree, the address belongs to no row. The 2026-11-18 observation row gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint pins the sighting; it does not discharge this obligation, and the 2026-11-16 report of an ssh answer at this address raises the urgency of the read rather than lowering it." as NonEmptyStr,
   }
 
 // THE NAME THE LAN CALLS THIS BOX, and what it resolves to from here. The operator refers to the unit
@@ -160,7 +168,7 @@ data supermicro_h11ssl_unit3_lan_name_sighting: H11sslUnit3LanNameSighting = H11
   name: "h11-new.mynetworksettings.com" as NonEmptyStr,
   answered_with: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
   answered_at: "2026-11-16T00:53:00Z",
-  account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which makes the collision with srv9_host_lan_endpoint a live one, not just a stale table entry" as NonEmptyStr,
+  account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which is why that address is held in the model only as the dated observation gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, and why the lease, in-band and console reads below stay owed" as NonEmptyStr,
 }
 
 // THE INSTALL NIC, SEEN AT THE EDGE IT WAS INSTALLED FROM: a second, INDEPENDENT LAN-side sighting.
@@ -357,17 +365,17 @@ data supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported: H11sslRepor
 // gunbc.fleet.fleet_enrollment::HostReachPolicy mints HostKeyLoginAdmitted only from a read that returns
 // host-authored output. What the intake layer owns is the DATA the report carries: the host key the
 // transport itself showed (supermicro_h11ssl_unit3_seen_host_key_fingerprint), the address the answers are
-// reported at and the authority that address collides with
+// reported at and the row that address is held by
 // (supermicro_h11ssl_unit3_install_nic_address_standing, whose conflict ref names
-// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint), and the reads that would settle it. The
+// gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint), and the reads that would settle it. The
 // STATUS -- reported, with no read the fleet can repeat -- is an open row in the register:
 // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat.
 //
 // WHY THE srv1 REFUSALS ARE NOT CONTRARY EVIDENCE. The probes from srv1 (2026-11-15 and 2026-11-16) fail
 // because srv1 holds none of those three principals' private keys: they describe srv1's credentials and say
 // nothing about whether this unit answers. And ssh answering at 192.168.1.236 says a host answers there,
-// not WHICH host answers -- no host key for this unit is confirmed -- so the report makes the srv9
-// collision more live, not less.
+// not WHICH host answers -- no host key for this unit is confirmed -- so the report keeps the address question live, not less.
+// It was a collision with srv9 while that row existed; srv9 is sold and the row is retired, and what is left owed is the read that says which machine answers.
 
 // ── BOOT SELECTION, AND THE BOARD QUIRK THAT OUTRUNS IT ──────────────────────────────────────────
 //
