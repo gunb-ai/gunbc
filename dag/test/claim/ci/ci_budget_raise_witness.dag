@@ -26,7 +26,7 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_bmc_cold_
 
 fn m(n: Nat) -> Minute { minute(count: n) }
 
-fn is(x: Minute, n: Nat) -> Bool { minute_count(m: x) == n }
+fn minutes_equal(x: Minute, n: Nat) -> Bool { minute_count(m: x) == n }
 
 fn introduced(n: Nat) -> BudgetApproval { IntroducedWithTheStep { minutes: m(n: n), carried_by: "a fixture step" } }
 
@@ -35,7 +35,7 @@ fn names(r: DesignRuling, want: DesignRuling) -> Bool {
 }
 
 fn runs_at(minutes: Nat, approvals: List<BudgetApproval>, n: Nat) -> Bool {
-  is(x: budget_admitted_minutes(admission: budget_admission(minutes: m(n: minutes), approvals: approvals)), n: n)
+  minutes_equal(x: budget_admitted_minutes(admission: budget_admission(minutes: m(n: minutes), approvals: approvals)), n: n)
 }
 
 // THE DISCRIMINATING RED: a budget required above everything approved, with no ruling row behind the raise, is refused
@@ -43,7 +43,7 @@ fn runs_at(minutes: Nat, approvals: List<BudgetApproval>, n: Nat) -> Bool {
 // introduced value the same budget is admitted and runs at it; with nothing approved, nothing is admitted.
 test fn a_raise_with_no_ruling_row_behind_it_refuses() -> Bool {
   match budget_admission(minutes: m(n: 67), approvals: [introduced(n: 35)]) {
-    BudgetRaiseUnapproved { minutes: x, highest_approved: h } => is(x: x, n: 67) && is(x: h, n: 35)
+    BudgetRaiseUnapproved { minutes: x, highest_approved: h } => minutes_equal(x: x, n: 67) && minutes_equal(x: h, n: 35)
     _ => false
   }
     && runs_at(minutes: 67, approvals: [introduced(n: 35)], n: 35)
@@ -59,12 +59,12 @@ test fn a_signed_raise_admits_and_a_further_raise_needs_its_own_row() -> Bool {
   let approvals = [introduced(n: 30), RaisedBySignoff { minutes: m(n: 45), ruling: serve_entry_verdict_step_raised_to_45_minutes }]
   match budget_admission(minutes: m(n: 45), approvals: approvals) {
     BudgetAdmitted { minutes: x, approval: a } =>
-      is(x: x, n: 45) && match a { RaisedBySignoff { minutes: y, ruling: r } => is(x: y, n: 45) && names(r: r, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }
+      minutes_equal(x: x, n: 45) && match a { RaisedBySignoff { minutes: y, ruling: r } => minutes_equal(x: y, n: 45) && names(r: r, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }
     _ => false
   }
     && runs_at(minutes: 45, approvals: approvals, n: 45)
     && match budget_admission(minutes: m(n: 30), approvals: approvals) { BudgetAdmitted { minutes: _, approval: a } => match a { IntroducedWithTheStep { minutes: _, carried_by: _ } => true  _ => false }  _ => false }
-    && match budget_admission(minutes: m(n: 46), approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => is(x: h, n: 45)  _ => false }
+    && match budget_admission(minutes: m(n: 46), approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => minutes_equal(x: h, n: 45)  _ => false }
     && runs_at(minutes: 46, approvals: approvals, n: 45)
 }
 
@@ -76,13 +76,13 @@ test fn a_signed_raise_admits_and_a_further_raise_needs_its_own_row() -> Bool {
 // (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 // the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call).
 test fn the_cold_reset_step_requires_67_minutes_and_emits_35_while_the_raise_is_unapproved() -> Bool {
-  is(x: mtcollins1_bmc_cold_reset_step_required_minutes(), n: 67)
+  minutes_equal(x: mtcollins1_bmc_cold_reset_step_required_minutes(), n: 67)
     && second_count(s: mtcollins1_bmc_cold_reset_allowance()) == 4020
     && match mtcollins1_bmc_cold_reset_step_budget_admission() {
-         BudgetRaiseUnapproved { minutes: x, highest_approved: h } => is(x: x, n: 67) && is(x: h, n: 35)
+         BudgetRaiseUnapproved { minutes: x, highest_approved: h } => minutes_equal(x: x, n: 67) && minutes_equal(x: h, n: 35)
          _ => false
        }
-    && is(x: mtcollins1_bmc_cold_reset_step_timeout_minutes(), n: 35)
+    && minutes_equal(x: mtcollins1_bmc_cold_reset_step_timeout_minutes(), n: 35)
     && !measure_le(a: mtcollins1_bmc_cold_reset_allowance(), b: minute_to_second(m: mtcollins1_bmc_cold_reset_step_timeout_minutes()))
     && match fleet_converge_mtcollins1_bmc_cold_reset_step() {
          RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
