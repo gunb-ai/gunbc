@@ -406,6 +406,7 @@ fn srv1_over_backend(backend: NonEmptyStr) -> ServeBackendVariant {
     },
     selected_identity: base.selected_identity,
     admitted_branch: base.admitted_branch,
+    pair_delivery: base.pair_delivery,
   }
   let spec = selected_deployment_spec(variant)
   ServeBackendVariant {
