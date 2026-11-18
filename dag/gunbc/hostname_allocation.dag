@@ -289,26 +289,24 @@ data fleet_machine_registry: List<HostnameAllocation> = [
     },
     next_name: Absent,
   },
-  // H11SSL unit 1 (2026-10-30): the host already answers as h11-a16 on the LAN and in its own hostname,
-  // and that is how the operator addresses it, so it keeps that spelling as a LEGACY name rather than a
-  // drawn one, the same treatment srv9-srv12 get below.
-  // THE PENDING RENAME (2026-11-18): the operator asked for a human name and to apply it everywhere
-  // ("could we please draw a name for that one now ... and apply it/rename everything"), so this row now
-  // carries an accepted DRAW in `next_name` -- the same pending shape srv1-srv4 and mtcollins1 carry. The
-  // name is NOT applied in place: `name` stays the legacy spelling the host answers to today, and the flip
-  // transition (next_name -> name, gunbc.plans.fleet_machine_authority P8) is what retires it. Drawn with
-  // a FRESH 12-DIGIT ENTROPY like the pending rows above, taken against every other row's reserved selector
-  // and pending form -- the set dag/test/claim/hostname_allocation_witness.dag re-derives `next_name`
-  // against. The ticket is 630127021373: 432-given x 24-surname corpora index it to dan / dan-check /
-  // dan-jax-check, and first-untaken yields the FirstOnly `dan` -- it collides with no current or pending
-  // name, no short form and no identity slot, so it also stays injective as a secondary key at admission.
+  // H11SSL unit 1 (2026-10-30): the host answered as h11-a16 on the LAN and in its own hostname, so it kept
+  // that spelling as a LEGACY name. THE PENDING RENAME (2026-11-18) drew a human name (see below); THE FLIP
+  // (this PR, per gunbc.plans.fleet_machine_authority; operator 2026-11-18 "apply it/rename everything")
+  // moves that accepted draw from `next_name` into `name` and sets `next_name` back to Absent -- the
+  // transition that retires the legacy spelling, and NOTHING else. The handle is unchanged (operator_host_6ce85c
+  // == "host-6ce85c", already the opaque hex convention, never the hostname), so every handle-keyed row --
+  // serving layout, memory, GPU cap, router roster, board binding -- keeps pointing at the same machine; only
+  // the projected name moves. The ticket travels with the name: the drawn name is still exactly what
+  // draw_human_name yields for 630127021373 against the other rows, so the allocator witness re-derives it
+  // from the recorded draw. Historical receipts/observations keep their old "h11-a16" spelling (they record
+  // what the host was called when they were read); this row is the live allocation fact, not a receipt.
   HostnameAllocation {
     fleet_slot: operator_host_6ce85c,
-    name: LegacyHostname { label: "h11-a16" as DnsLabel },
-    next_name: Present { value: DrawnHumanName {
+    name: DrawnHumanName {
       name: FirstOnly { first: "dan" as DnsLabel },
       draw: HumanNameDraw { entropy: 630127021373 },
-    } },
+    },
+    next_name: Absent,
   },
   // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
   // gunbc.plans.fleet_naming_reach_access (deleted 2026-11-08). srv9-srv12 keep their identity slot as a LEGACY spelling and

@@ -30,6 +30,7 @@ module test.claim.product.p4261_atlas_pass_witness
 // or an observation was promoted into NVIDIA's design.
 // ==================================================================================================
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { count_where }
 import v2.std.text { string_eq }
 import std.optional { Absent, Present }
 import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
@@ -742,7 +743,7 @@ fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
 }
 
 fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
-  count(component_rows(d), c => match c.identification {
+  count_where(component_rows(d), c => match c.identification {
     // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
     // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
     // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
