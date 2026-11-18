@@ -2900,46 +2900,43 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
   // TRIAGED, NOT CLOSED (smart-dove-204, 2026-11-18). The hazard this row describes -- a mode joins the
   // closed sum and its facts, is left out of the roster, and nothing turns red -- IS STILL LIVE, and this
   // row says so rather than reporting a rung the executed evidence does not establish: the wall authored
-  // here runs by hand and is enrolled in no lane, so on the required path a dropped mode is still silent
+  // here is run by hand and is enrolled in no lane, so on the required path a dropped mode is still silent
   // (gunbc.design_argument::continuous_generalization: "A completed work item, a merged abstraction or a
   // shorter ledger is not evidence of integration"; gunbc.design_argument::guarantee_ladder: "A witness no
-  // lane executes is not a check ... the row is what makes the refusal real"). Disposition Open with its
-  // owed rung named, which is what Triaged means here.
-  // What this change DOES establish, by execution: gunbc test
-  // //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, on srv1 in a 40G systemd scope with
-  // GUNBC_MEMORY_BUDGET_BYTES=34359738368, executed 2026-11-18 07:41:47Z to 08:19:33Z at base
-  // 93ab1bb19a35 over a git-archive tree with claim bodies exactly as landed in
-  // a7b273bc4e5d0f52439289cece33093ccf06a855 -- 9 claims, 9 held, 0 red, exit 0. A second execution the
-  // same day, 10:03:50Z to 10:45:52Z, after the control row over the counting idiom was added
-  // (witness_the_count_idiom_this_wall_relies_on_discriminates), reported 10 claims, 10 held, 0 did not
-  // hold, 0 unobserved, exit 0, with the wall file byte-identical to the one on this branch.
-  // MEMBERSHIP now has an author other than attention: the wall compares the roster, arm by arm,
-  // against the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an
-  // arm listed twice, and an entry the sum does not name are three separate reds rather than a count that
+  // lane executes is not a check ... the row is what makes the refusal real"). Open, with its owed rung
+  // named, which is what Triaged means here.
+  // Whether the wall ran is NOT claimed in this comment. Each execution is a RetainedExecutionResult row
+  // in test.claim.fleet.fleet_converge_roster_closed_sum_witness::witness_run_receipts -- command, host,
+  // memory budget, window, revision and verdict -- guarded by that module's
+  // witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran; a receipt is read there, not
+  // restated here (gunbc.design_argument::source_annotations: a receipt, a status and a count belong in a
+  // carrier a pass can read, and a reader may not treat a comment as evidence that a machine claim holds).
+  // What the wall establishes, as opposed to what it counts: it compares the roster, arm by arm, against
+  // the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an arm
+  // listed twice, and an entry the sum does not name are three separate reds rather than a total that
   // happens to match; the dispatch menu is that roster mapped through fleet_converge_workflow_mode_wire,
   // walled in the same module, so the menu cannot drift from the roster either. The question's FIRST branch
   // was tried before the second was taken: the std value-level enumeration of a sum's variants,
-  // coproduct_nullary_inhabitants, REFUSES any sum with a payload arm ("payload arm is not nullary",
-  // src/v1/stage0/src/coproduct_reflection.rs), and this sum has one -- Srv1RootMutation carries
-  // Srv1RootMutationMode -- so it yields a refusal, not a member list, and cannot author the roster. Both
-  // halves are pinned as rows rather than remembered: the refusal over this sum, and the enumeration
-  // working where it can (the nested all-nullary arm, 4 inhabitants for its 4 arms). The nested arm is in
-  // scope because the roster lists its four modes as four entries, so one can go unrostered exactly as
-  // #16583's MtCollins1PcieRetimerReset would have. A fixture (one arm dropped, one repeated, and an
-  // honest twin) is what makes this a wall and not a tautology: the planted roster yields exactly those two
-  // defects and the honest one yields none. The roster keeps its hand-written ORDER deliberately -- a menu
-  // whose option order shifted whenever an arm happened to be declared elsewhere would be the worse
-  // artifact -- which is why the witness branch, not derivation, is the shape taken.
+  // coproduct_nullary_inhabitants, constructs a value per arm and therefore REFUSES any sum with a payload
+  // arm ("payload arm is not nullary", src/v1/stage0/src/coproduct_reflection.rs), and this sum has one --
+  // Srv1RootMutation carries Srv1RootMutationMode -- so it yields a refusal, not a member list, and cannot
+  // author the roster. Both halves are pinned as rows rather than remembered: the refusal over this sum,
+  // and the enumeration working where it can (the nested all-nullary arm, whose constructed inhabitants
+  // agree with the arm keys read for it). The nested arm is in scope because the roster lists each of its
+  // modes as its own entry, so one can go unrostered exactly as #16583's MtCollins1PcieRetimerReset would
+  // have. A fixture (one arm dropped, one repeated, and an honest twin) is what makes this a wall and not a
+  // tautology. The roster keeps its hand-written ORDER deliberately -- a menu whose option order shifted
+  // whenever an arm happened to be declared elsewhere would be the worse artifact -- which is why the
+  // witness branch, not derivation, is the shape taken.
   // WHY IT IS NOT ENROLLED, and where that is recorded. Enrollment means a row of
   // v2.workflow.required_floor.required_gate_authored_modules, which is operator-admitted
   // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling) and spends the CI budget that is
-  // closed to growth; the consolidating session declined to spend it on one wall (bold-otter-603,
-  // 2026-11-18, verbatim: "do NOT enroll it. A required_gate row is operator-admitted and spends the
-  // closed CI budget, and the honest standing (authored, executed by hand, green, enrolled in no lane,
-  // next rung named) is exactly what DESIGN asks for"). That decision is
-  // recorded in this row's `next` and in the two comments that name its trigger, and deliberately NOT as a
-  // row of gunbc.design_ruling: those rows carry an operator provenance, and borrowing that register for a
-  // lane-level decision would itself be the fork this file is about.
+  // closed to growth. The consolidating session declined to spend one on a single wall: bold-otter-603,
+  // 2026-11-18, message msg_bad251bc-81ad-4853-8c6f-a68269259804, which rules the standing
+  // authored-executed-by-hand-green-enrolled-nowhere-with-its-next-rung-named to be what DESIGN asks for.
+  // That decision is cited here and in the two comments that name its trigger, and deliberately NOT kept as
+  // a row of gunbc.design_ruling: those rows carry an operator provenance, and borrowing that register for
+  // a lane-level decision would itself be the fork this file is about.
   disposition: Triaged {
     home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
     preserve: [
@@ -2954,7 +2951,7 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
         statement: "the workflow_dispatch mode menu is exactly the roster's wire strings, once each, in the roster's hand-kept order -- so a mode missing from the roster is undispatchable rather than silently absent, and the order an operator sees stays a decision rather than an accident of declaration order",
       },
     ],
-    next: climbs_when(capability: "the wall is enrolled on an executing lane, so that deleting one entry from fleet_converge_workflow_modes reddens the required path and not only whoever runs gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all -- the trigger is gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose population the native compiler is to judge, which lifts every wall in this standing together rather than one wall by petition; measured today, 2026-11-18, the wall is green by hand and enrolled nowhere, so a dropped mode reddens none of the lanes"),
+    next: climbs_when(capability: "the wall is enrolled on an executing lane, so that deleting one entry from fleet_converge_workflow_modes reddens the required path rather than only whoever runs it; the trigger is gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose population the native compiler is to judge, which lifts every wall in this standing together rather than one wall by petition"),
   },
 }
 

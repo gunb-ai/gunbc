@@ -17,11 +17,12 @@ import v2.std.node { Symbol }
 // test.fn declarations are what make a file selectable, and there are none in this file.
 //
 // WHY THIS SHAPE AND NOT A FLATTER ONE. gunbc.fleet.fleet_converge_workflow.FleetConvergeWorkflowMode
-// is 95 arms of which 94 are nullary and ONE -- Srv1RootMutation -- carries a nested closed sum, and
-// the roster answers that one arm with one entry per nested mode. A fixture of flat arms alone would
+// is mostly nullary arms with one -- Srv1RootMutation -- carrying a nested closed sum, and the roster
+// answers that one arm with one entry per nested mode. A fixture of flat arms alone would
 // let a wall pass that only knows how to count each arm once, and would then be silent on the nested
-// arm: the mode most recently added to this fleet landed exactly there (#16529 landed
-// MtCollins1BmcColdReset; the Srv1 nested modes landed the same way). So the fixture repeats the real
+// arm: the mode most recently added to this fleet landed exactly there (#16583 landed
+// MtCollins1PcieRetimerReset into the nested arm; #16529's MtCollins1BmcColdReset landed the same way
+// one level up). So the fixture repeats the real
 // shape at its own scale: three nullary arms, one payload arm over a two-arm nested sum, five roster
 // entries when honest.
 //
