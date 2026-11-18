@@ -1,5 +1,13 @@
 module test.claim.gitignore_gate
 
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.repository { gunbc_repository, gunbc_private_repository }
+import gunbc.workspace_repository_materialisation {
+  WorkspaceMaterialisation, FileCopy, untracked_materialisations, materialisation_must_not_be_tracked
+}
+import gunbc.gitignore_emit { expected_gitignore, gitignore_drifted, path_is_ignored }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_has_cargo_patterns() -> Bool {
