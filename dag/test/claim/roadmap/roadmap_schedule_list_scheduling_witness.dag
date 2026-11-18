@@ -15,7 +15,6 @@ module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
 
 import std.types { Bool, Int, List, String }
 import std.integer { nat_to_int }
-import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
@@ -23,9 +22,9 @@ import gunbc.roadmap.roadmap_decomposition {
 }
 import gunbc.roadmap.roadmap_schedule {
   schedule, schedule_read, ScheduleAnswer,
-  schedule_is_scheduled, schedule_answer, scheduled_at, critical_path_keys, path_key,
+  schedule_answer, schedule_refusal, scheduled_at, critical_path_keys, path_key,
   scheduled_leaf_count, as_cache, occurrence_count_is_assumed,
-  schedule_read_answer, schedule_read_stale_leaves, schedule_read_stale_answer_fields, schedule_read_refused,
+  schedule_read_answer, schedule_read_refusal, schedule_read_stale_leaves, schedule_read_stale_answer_fields,
 }
 
 // A carrier LeafPath for a decomposition node's (stage, piece, member), built from the SAME LeafPath the carrier
@@ -173,13 +172,24 @@ test fn a_refused_expansion_refuses_and_a_positive_worker_count_is_echoed_as_an_
   ])
   let refused_expansion = expand_decomposition(d: ill_formed, findings_count: 1)
   // (1) a positive worker count schedules, and the count is ECHOED back inside the answer as the input it is.
-  schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 1))
+  (match schedule_refusal(s: schedule(d: chain, e: admitted, workers: 1)) {
+     Present { value: _ } => false
+     Absent => true
+   })
     && (match schedule_answer(s: schedule(d: chain, e: admitted, workers: 4)) {
          Absent => false
          Present { value: a } => nat_to_int(n: a.workers) == 4
        })
   // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion.
-    && !schedule_is_scheduled(s: schedule(d: ill_formed, e: refused_expansion, workers: 2))
+    // the refusal is the ARM the parent's own refusal feeds -- `OverRefusedExpansion`, carrying the parent's
+    // `ExpansionRefusal` row rather than a sentence about it.
+    && (match schedule_refusal(s: schedule(d: ill_formed, e: refused_expansion, workers: 2)) {
+         Present { value: refusal } => match refusal {
+           OverRefusedExpansion { cause: _ } => true
+           _ => false
+         }
+         Absent => false
+       })
 }
 
 // COMPUTED, CACHED, RE-READ (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is
@@ -233,7 +243,10 @@ test fn a_stale_cache_is_superseded_and_the_recomputed_answer_is_what_the_read_s
             _ => false
           })
       // And when the RECOMPUTATION itself refuses, the read refuses: a cached answer is never a reason to answer.
-      && schedule_read_refused(r: schedule_read(d: bad, e: refused, workers: 1, cached: as_cache(a: r)))
+      && (match schedule_read_refusal(r: schedule_read(d: bad, e: refused, workers: 1, cached: as_cache(a: r))) {
+           Present { value: _ } => true
+           Absent => false
+         })
   }
 }
 
@@ -274,11 +287,18 @@ test fn an_occurrence_whose_carrier_path_is_not_on_the_decomposition_read_refuse
     [leaf(label: "first", days: 2)],
   ])
   let s = schedule(d: narrow, e: expand_decomposition(d: wide, findings_count: 1), workers: 1)
-  !schedule_is_scheduled(s: s)
-    && (match s {
-         NotScheduled { cause: c } => string_contains(s: c, pattern: path_key(p: p_at("mp.wide", 0, 1, 0)))
-         Scheduled { answer: _ } => false
-       })
+  // The refusal is the arm that carries the carrier paths THEMSELVES -- no prose to parse -- and it carries exactly
+  // the one path the narrow carrier does not have.
+  (match schedule_refusal(s: s) {
+     Present { value: refusal } => match refusal {
+       NoWorkingDayPrior { paths: ps } => count(ps) == 1 && join(map(ps, p => path_key(p: p)), ",") == "mp.wide#0#1#0"
+       _ => false
+     }
+     Absent => false
+   })
     // The same expansion read against ITS OWN carrier schedules: the refusal is the mismatch, not the shape.
-    && schedule_is_scheduled(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: 1))
+    && (match schedule_refusal(s: schedule(d: wide, e: expand_decomposition(d: wide, findings_count: 1), workers: 1)) {
+         Present { value: _ } => false
+         Absent => true
+       })
 }

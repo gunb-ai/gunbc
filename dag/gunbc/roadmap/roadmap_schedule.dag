@@ -36,7 +36,8 @@ module gunbc.roadmap.roadmap_schedule
 // expansion; their working-day priors are read back through the SAME carrier via piece_member_days. Nothing here
 // re-expands a decomposition or copies a row. fail_closed: a refused expansion, a non-positive worker count, an
 // occurrence whose carrier path carries no working-day prior, a cyclic occurrence graph, and a run that leaves
-// occurrences unplaced each answer with a typed, located cause rather than a fabricated or partial schedule.
+// occurrences unplaced each answer as one `ScheduleRefusal` arm -- typed, located by the carrier paths it carries,
+// and countable -- rather than a fabricated schedule, a partial schedule, or prose.
 // schedule_answers_are_computed_cached_and_re_read: the answer is COMPUTED from the expansion on every call; a
 // cache handed to `schedule_read` is derived and NEVER authoritative -- the read recomputes, supersedes the cached
 // answer, and says how many cached leaves no longer match.
@@ -50,7 +51,7 @@ import std.decl_ref { decl_ref }
 import std.list { first_where }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_decomposition {
-  Expansion, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
+  Expansion, ExpansionRefusal, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
   piece_member_days,
 }
 
@@ -82,11 +83,28 @@ type ScheduleAnswer {
 // THE SCHEDULE ANSWER. `workers` is the worker count shown as an INPUT (never derived into a fact). `leaves` places
 // every scheduled occurrence; `in_flight_per_day` is the count of leaves running on each day from 0 to horizon-1;
 // `horizon` is the last finish day; `critical_path` is the longest remaining path as a chain of LeafPaths and
-// `critical_length` its total days. The failure arm is named `NotScheduled` (not `Refused`) so it never collides
-// with the `Refused` constructor that comes in with the imported `Expansion`.
+// `critical_length` its total days.
+//
+// THE REFUSAL IS A COPRODUCT, NOT A SENTENCE (fail_closed: "A failure arm refuses, never widens, and every
+// degradation is typed, located and countable"; source_annotations: "Prose is not forbidden; unclassified prose
+// is"). Five distinct causes can refuse this answer, and a consumer -- roadmap-schedule-bottlenecks-and-offer, then
+// roadmap-work-item-projection -- must know WHICH one fired and WHICH carrier paths caused it without parsing text.
+// The expansion arm carries the parent's own `ExpansionRefusal` row rather than restating it (single_authority), and
+// the two path-located arms carry the `LeafPath`s themselves -- the same carrier the answer is keyed by. Any prose a
+// report wants is rendered FROM the arm; nothing downstream parses it.
+//
+// `NotScheduled` (not `Refused`) so the constructor never collides with the `Refused` that comes in with the
+// imported `Expansion`.
+type ScheduleRefusal
+  = OverRefusedExpansion { cause: ExpansionRefusal }
+  | NonPositiveWorkerCount { count: Int }
+  | NoWorkingDayPrior { paths: List<LeafPath> }
+  | CyclicOccurrenceGraph
+  | UnplacedOccurrences { paths: List<LeafPath> }
+
 type Schedule
   = Scheduled { answer: ScheduleAnswer }
-  | NotScheduled { cause: String }
+  | NotScheduled { refusal: ScheduleRefusal }
 
 // WHAT THE DAY GRAIN IS, CARRIED AS A ROW AND NOT AS PROSE. Every day quantity here is a count of WORKING DAYS
 // counted from the first day of the run -- ScheduledLeaf.start_day and .finish_day, ScheduleAnswer.horizon and
@@ -288,7 +306,7 @@ fn dep_finish(n: SchedNode, pred: Map<String, List<String>>, finish: Map<String,
 // refusal rather than trusting the two to agree.
 type RunOutcome
   = Placed { leaves: List<ScheduledLeaf> }
-  | Stuck { unplaceable: List<String> }
+  | Stuck { unplaced: List<LeafPath> }
 
 // THE LIST SCHEDULE: place occurrences one at a time -- longest remaining path first, on the lane that frees
 // earliest, no earlier than all its scheduled predecessors have finished -- until nothing remains. `placed`
@@ -298,7 +316,7 @@ fn run(state: RunState, succ: Map<String, List<String>>, pred: Map<String, List<
     Placed { leaves: state.placed }
   } else {
     match best_ready(remaining: state.remaining, rank: rank, pred: pred, finish: state.finish) {
-      Absent => Stuck { unplaceable: map(state.remaining, n => n.key) }
+      Absent => Stuck { unplaced: map(state.remaining, n => n.path) }
       Present { value: n } => {
         let lane = pick_lane(lanes: state.lanes, workers: workers)
         let lane_free = look_int(m: state.lanes, key: lane, dflt: 0)
@@ -343,31 +361,34 @@ fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
 // THE SCHEDULE, computed from an Expansion and a worker count (a SIMULATION INPUT). Refusals, each typed and
 // located: the expansion was itself refused; the worker count is not a positive count; an occurrence carries no
 // working-day prior on the carrier it is read against; the occurrence graph has a cycle; the run leaves occurrences
-// unplaced (a partial schedule is never returned as a complete one).
+// unplaced (a partial schedule is never returned as a complete one). Each is a `ScheduleRefusal` arm, located by the
+// carrier paths it carries -- never a sentence a consumer has to parse.
 fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedule {
   let worker_count: Int = nat_to_int(n: workers)
   match e {
-    Refused { cause: _ } =>
-      NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the expansion it was handed refused (the decomposition is not well-formed); a schedule is computed only over an admitted expansion" }
+    Refused { cause: cause } =>
+      NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
     Expanded { occurrences: occs, edges: edges } => {
       if worker_count <= 0 {
-        NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the worker count is a SIMULATION INPUT and must be a positive count; 0 or fewer is never a fact about who works" }
+        NotScheduled { refusal: NonPositiveWorkerCount { count: worker_count } }
       } else {
         // EVERY occurrence's working-day prior is read back through its OWN carrier path. An occurrence whose path
         // is not on the decomposition being read against has NO day count, and one is never minted for it
-        // (fail_closed: no plausible output is fabricated): the whole answer refuses, naming the paths that carry
-        // no prior. `piece_member_days` is asked twice -- once to find the unpriced paths, once to build the nodes
-        // -- because it is the ONE authority on the day count; nothing here caches or restates its answer.
-        let unpriced = fold(occs, init: [], f: fn(acc, o) {
+        // (fail_closed: no plausible output is fabricated): the whole answer refuses, CARRYING the carrier paths that
+        // hold no prior. `piece_member_days` is asked twice -- once to find the unpriced paths, once to build the
+        // nodes -- because it is the ONE authority on the day count; nothing here caches or restates its answer.
+        let unpriced_seed: List<LeafPath> = []
+        let unpriced = fold(occs, init: unpriced_seed, f: fn(acc, o) {
           match piece_member_days(d: d, path: o.path) {
             Present { value: _ } => acc
-            Absent => concat(acc, [path_key(p: o.path)])
+            Absent => concat(acc, [o.path])
           }
         })
         if count(unpriced) > 0 {
-          NotScheduled { cause: join(["roadmap-schedule-list-scheduling refuses: an occurrence carries no working-day prior on the decomposition it is read against -- its carrier path is not on that carrier: ", join(unpriced, ", ")], "") }
+          NotScheduled { refusal: NoWorkingDayPrior { paths: unpriced } }
         } else {
-          let nodes = fold(occs, init: [], f: fn(acc, o) {
+          let nodes_seed: List<SchedNode> = []
+          let nodes = fold(occs, init: nodes_seed, f: fn(acc, o) {
             match piece_member_days(d: d, path: o.path) {
               Present { value: days } => concat(acc, [SchedNode { path: o.path, key: path_key(p: o.path), days: days, source: o.count_source }])
               Absent => acc
@@ -379,7 +400,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedul
           let rank0: Map<String, Int> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n.days) })
           let node_of: Map<String, SchedNode> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
           match rank_fix(keys: keys, succ: adj.succ, days_map: days_map, rank: rank0, pass: 1, max_pass: count(nodes)) {
-            Cyclic => NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the occurrence dependency graph has a cycle; no list schedule terminates on it" }
+            Cyclic => NotScheduled { refusal: CyclicOccurrenceGraph }
             Ranked { rank: rank } => {
               let lane_seed: Map<Int, Int> = empty_map()
               let lanes0 = fold(range_from(0, worker_count), init: lane_seed, f: fn(acc, l) { map_insert(m: acc, key: l, value: 0) })
@@ -389,8 +410,8 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedul
               ) {
                 // A run that could not place everything refuses with the occurrences it could not place; it is never
                 // wrapped as a complete `Scheduled` answer.
-                Stuck { unplaceable: stuck } =>
-                  NotScheduled { cause: join(["roadmap-schedule-list-scheduling refuses: the list run found no ready occurrence while these stayed unplaced: ", join(stuck, ", "), " -- a partial schedule is never returned as if it were complete"], "") }
+                Stuck { unplaced: stuck } =>
+                  NotScheduled { refusal: UnplacedOccurrences { paths: stuck } }
                 Placed { leaves: placed } => {
                   let horizon = horizon_of(leaves: placed)
                   let crit_start = argmax_rank(keys: keys, rank: rank)
@@ -424,7 +445,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: PositiveInt) -> Schedul
 // `ReadRefused` is the recomputation's own typed refusal: a cached answer is never a reason to answer when the
 // recomputation itself refuses.
 type ScheduleRead
-  = ReadRefused { cause: String }
+  = ReadRefused { refusal: ScheduleRefusal }
   | CacheHeldNothing { answer: ScheduleAnswer }
   | CacheMatches { answer: ScheduleAnswer }
   | CacheSuperseded { answer: ScheduleAnswer, stale_leaves: Int, stale_answer_fields: Int }
@@ -433,10 +454,10 @@ type ScheduleRead
 // decomposition, its expansion, the worker count, and whatever you last cached; it recomputes and answers.
 fn schedule_read(d: WorkDecomposition, e: Expansion, workers: PositiveInt, cached: Schedule) -> ScheduleRead {
   match schedule(d: d, e: e, workers: workers) {
-    NotScheduled { cause: cause } => ReadRefused { cause: cause }
+    NotScheduled { refusal: refusal } => ReadRefused { refusal: refusal }
     Scheduled { answer: fresh } => match cached {
       // Nothing usable was cached: the caller holds no answer, or holds a cached refusal.
-      NotScheduled { cause: _ } => CacheHeldNothing { answer: fresh }
+      NotScheduled { refusal: _ } => CacheHeldNothing { answer: fresh }
       Scheduled { answer: held } => {
         // Every divergence between the cached answer and the recomputed one is counted, in BOTH directions, each
         // leaf located by the one path_key: placed differently or not at all in the cache, and cached leaves that
@@ -444,10 +465,13 @@ fn schedule_read(d: WorkDecomposition, e: Expansion, workers: PositiveInt, cache
         // worker count or horizon cannot masquerade as a matching one.
         let moved = count(filter(fresh.leaves, l => match scheduled_at(a: held, path: l.path) {
           Absent => true
-          Present { value: k } => not (k.start_day == l.start_day && k.finish_day == l.finish_day && k.lane == l.lane
+          Present { value: k } => !(k.start_day == l.start_day && k.finish_day == l.finish_day && k.lane == l.lane
             && occurrence_count_is_assumed(c: k.count_source) == occurrence_count_is_assumed(c: l.count_source))
         }))
-        let dropped = count(filter(held.leaves, k => !leaf_is_placed(a: fresh, path: k.path)))
+        let dropped = count(filter(held.leaves, k => match scheduled_at(a: fresh, path: k.path) {
+          Absent => true
+          Present { value: _ } => false
+        }))
         let fields = stale_answer_fields(fresh: fresh, held: held)
         if moved + dropped + fields == 0 { CacheMatches { answer: fresh } }
         else { CacheSuperseded { answer: fresh, stale_leaves: moved + dropped, stale_answer_fields: fields } }
@@ -468,22 +492,21 @@ fn stale_answer_fields(fresh: ScheduleAnswer, held: ScheduleAnswer) -> Int {
   w + h + c + f + p
 }
 
-// Is this carrier path still placed in the recomputed answer -- located by the one path_key, never a restated format.
-fn leaf_is_placed(a: ScheduleAnswer, path: LeafPath) -> Bool {
-  match scheduled_at(a: a, path: path) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
 // ACCESSORS so a reader consumes a ScheduleRead without matching its coproduct: the answer the read serves (none
 // when the recomputation refused), and how many cached leaves the recomputation superseded.
 fn schedule_read_answer(r: ScheduleRead) -> ScheduleAnswer? {
   match r {
-    ReadRefused { cause: _ } => none
+    ReadRefused { refusal: _ } => none
     CacheHeldNothing { answer: a } => Present { value: a }
     CacheMatches { answer: a } => Present { value: a }
     CacheSuperseded { answer: a, stale_leaves: _, stale_answer_fields: _ } => Present { value: a }
+  }
+}
+
+fn schedule_read_refusal(r: ScheduleRead) -> ScheduleRefusal? {
+  match r {
+    ReadRefused { refusal: r } => Present { value: r }
+    _ => none
   }
 }
 
@@ -504,26 +527,21 @@ fn schedule_read_stale_answer_fields(r: ScheduleRead) -> Int {
   }
 }
 
-fn schedule_read_refused(r: ScheduleRead) -> Bool {
-  match r {
-    ReadRefused { cause: _ } => true
-    _ => false
-  }
-}
-
 // ACCESSORS so a reader consumes a Schedule without matching its coproduct (and without naming its constructors
-// beside the imported Expansion's). `schedule_answer` yields the computed fields, or none when the schedule refused.
-fn schedule_is_scheduled(s: Schedule) -> Bool {
-  match s {
-    Scheduled { answer: _ } => true
-    NotScheduled { cause: _ } => false
-  }
-}
-
+// beside the imported Expansion's). Each hands back the TYPED thing -- the answer, or the refusal -- rather than a
+// Bool that flattens which arm fired; a reader that must act differently per cause reads `schedule_refusal` and
+// matches its arm, and one that only needs the fields reads `schedule_answer`.
 fn schedule_answer(s: Schedule) -> ScheduleAnswer? {
   match s {
     Scheduled { answer: a } => Present { value: a }
-    NotScheduled { cause: _ } => none
+    NotScheduled { refusal: _ } => none
+  }
+}
+
+fn schedule_refusal(s: Schedule) -> ScheduleRefusal? {
+  match s {
+    Scheduled { answer: _ } => none
+    NotScheduled { refusal: r } => Present { value: r }
   }
 }
 
