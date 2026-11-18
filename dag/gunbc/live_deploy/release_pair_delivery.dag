@@ -44,6 +44,7 @@ module gunbc.live_deploy.release_pair_delivery
 // dangling, but the systemd install edge is the stacked PR's to add once the guard is real.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
+import std.algebra { trim }
 import extdeps.tools.gh { gh_run_download_argv }
 import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
 import gunbc.live_deploy.release_locus {
