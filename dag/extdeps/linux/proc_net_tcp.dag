@@ -1,6 +1,6 @@
 module extdeps.linux.proc_net_tcp
 
-import std.types { NonEmptyStr, List, Bool, Int, Port }
+import std.types { NonEmptyStr, List, Bool, Int, Port, checked_port }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.numeric.base16 { base16_word_value }
@@ -32,9 +32,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data tcp_listen_state_hex: String = "0A"
 
-// THE LOCAL PORT IS std.types Port WHERE ONE IS BOUND. The field is a 4-hex-digit 16-bit word;
-// 0000 is a real value the kernel prints for a socket with no bound port, and Port (1..65535) has
-// no constructor for it, so the row says which it read rather than carrying 0 as a port.
+// THE LOCAL PORT IS std.types Port WHERE ONE IS BOUND. 0000 is a real value the kernel prints for a
+// socket with no bound port, and std.types checked_port refuses 0 (no constructor for it, RFC 6335
+// §6), so the row says which it read rather than carrying 0 as a port. The BOUND ITSELF (RFC 793 /
+// RFC 9293's 16-bit field) is owned by std.types checked_port, not by a coincidental field-width cap:
+// a row whose port word decodes out of 1..65535 refuses the whole table rather than minting a Port
+// the Port authority would not admit (gunbc.design_ruling::where_refinements_retire_for_checked_constructors).
 type TcpLocalPort
   = TcpPortBound { port: Port }
   | TcpPortUnbound
@@ -72,9 +75,18 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
             match get(xs: parts, index: 1) {
               Absent => none
               Present { value: port_hex } =>
-                match base16_word_value(word: port_hex, max_digits: 4) {
+                match base16_word_value(word: port_hex, max_digits: 8) {
                   Absent => none
-                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st, uid: uid, inode: inode } }
+                  Present { value: port } =>
+                    if port == 0 {
+                      Present { value: TcpSocketRow { local_address: local, local_port: TcpPortUnbound, state: st, uid: uid, inode: inode } }
+                    } else {
+                      match checked_port(n: port) {
+                        Absent => none
+                        Present { value: bound_port } =>
+                          Present { value: TcpSocketRow { local_address: local, local_port: TcpPortBound { port: bound_port }, state: st, uid: uid, inode: inode } }
+                      }
+                    }
                 }
             }
           }
