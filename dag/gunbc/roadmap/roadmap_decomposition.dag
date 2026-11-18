@@ -1746,3 +1746,26 @@ fn occurrence_is_assumed(o: Occurrence) -> Bool {
 fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
   occurrence_is_declared(o: o) && decomposition_has_leaf_path(path: o.path)
 }
+
+// The working-day PRIOR a leaf OCCURRENCE carries, read straight off the decomposition the expansion was run on,
+// through its single carrier LeafPath -- the schedule's "how long does this leaf take" question answered by
+// reading the SAME WorkPiece.days the expansion walked, never by copying it (single_authority). A member of a
+// family takes the family's per-member days; a Join, Decision or Composite carries no duration, so it reads as
+// zero days -- the Join is the zero-day barrier the scheduler places without a worker. A path the decomposition
+// does not have reads as zero: nothing here mints a day count for a leaf that is not there. It is keyed off the
+// decomposition VALUE (the one expand_decomposition was handed), so a planted decomposition reads its own days.
+fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int {
+  match d.stages[nat_to_int(n: path.stage)] {
+    Absent => 0
+    Present { value: st } => match st.pieces[nat_to_int(n: path.piece)] {
+      Absent => 0
+      Present { value: p } => match p {
+        Leaf { label, days, evidence } => days
+        Family { label, days, population, owner } => days
+        Join { label } => 0
+        Decision { label, alternatives } => 0
+        Composite { label, stages } => 0
+      }
+    }
+  }
+}

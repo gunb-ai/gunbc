@@ -1,0 +1,396 @@
+module gunbc.roadmap.roadmap_schedule
+
+// THE LIST SCHEDULER (roadmap-schedule-list-scheduling). It reads the leaf-expansion's OUTPUT -- the flat
+// occurrence list and their edges (Expansion) -- and answers, for an abstract worker count handed in as a
+// SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how many leaves are in
+// flight on each day, and the critical path. Days stay ABSTRACT (a day is a count, not a date) until the
+// calendar unit binds them; this unit writes no calendar and no claim.
+//
+// The priority is LONGEST REMAINING PATH FIRST: every occurrence's rank is its own working days plus the longest
+// remaining path through the successors it waits nothing on; a ready occurrence with the largest rank is placed
+// next, on the lane that frees earliest. A ZERO-DAY JOIN is placed without a worker: the expansion emits no
+// occurrence for a Join, so a Join consumes no lane and adds no in-flight leaf -- it is the day-zero barrier the
+// stage edges already carry, and it never appears as a scheduled leaf.
+//
+// The worker count is shown as an input and NEVER becomes a fact: it is echoed back inside the answer labelled
+// `workers`, and a non-positive worker count is a typed refusal rather than a coerced value.
+//
+// single_authority: occurrences, their edges, their LeafPaths and their count sources are IMPORTED from the
+// expansion; their working-day priors are read back through the SAME carrier via piece_member_days. Nothing here
+// re-expands a decomposition or copies a row. fail_closed: a refused expansion, a non-positive worker count, and a
+// cyclic occurrence graph each answer with a typed Refused cause rather than a fabricated schedule.
+// schedule_answers_are_computed_cached_and_re_read: the answer is COMPUTED from the expansion on every call; a
+// cache passed to `schedule_read` is derived and NEVER authoritative -- the read recomputes and ignores it.
+
+import std.types { Bool, Int, List, String, Map }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key }
+import std.integer { nat_to_int }
+import std.list { first_where }
+import gunbc.roadmap.roadmap_model { LeafPath }
+import gunbc.roadmap.roadmap_decomposition {
+  Expansion, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
+  piece_member_days,
+}
+
+// ONE SCHEDULED LEAF OCCURRENCE: where it starts and finishes (abstract days), the worker lane it sits in, and its
+// COUNT SOURCE kept visible -- an Assumed occurrence is a simulation input, and it stays marked so downstream.
+type ScheduledLeaf {
+  path: LeafPath
+  start_day: Int
+  finish_day: Int
+  lane: Int
+  count_source: OccurrenceCount
+}
+
+// THE SCHEDULE ANSWER, the computed fields bundled so callers read them without matching the coproduct.
+type ScheduleAnswer {
+  workers: Int
+  leaves: List<ScheduledLeaf>
+  in_flight_per_day: List<Int>
+  horizon: Int
+  critical_path: List<LeafPath>
+  critical_length: Int
+}
+
+// THE SCHEDULE ANSWER. `workers` is the worker count shown as an INPUT (never derived into a fact). `leaves` places
+// every scheduled occurrence; `in_flight_per_day` is the count of leaves running on each day from 0 to horizon-1;
+// `horizon` is the last finish day; `critical_path` is the longest remaining path as a chain of LeafPaths and
+// `critical_length` its total days. The failure arm is named `NotScheduled` (not `Refused`) so it never collides
+// with the `Refused` constructor that comes in with the imported `Expansion`.
+type Schedule
+  = Scheduled { answer: ScheduleAnswer }
+  | NotScheduled { cause: String }
+
+// An occurrence reduced for scheduling: its carrier LeafPath, the string key the maps are keyed by, its working-day
+// prior read back through the carrier, and its count source (Declared or Assumed) kept for the answer.
+type SchedNode {
+  path: LeafPath
+  key: String
+  days: Int
+  source: OccurrenceCount
+}
+
+// One Bellman-Ford relaxation pass over the occurrence ranks.
+type Relaxed { changed: Bool, rank: Map<String, Int> }
+
+// The ranks either settle (a DAG) or keep growing past the node count (a cycle the scheduler will not schedule).
+type RankResult
+  = Ranked { rank: Map<String, Int> }
+  | Cyclic
+
+// THE SCHEDULED RUN STATE: each lane's free day (a Map lane-index -> day, so no indexed list rewrite), each
+// scheduled key's finish day, the leaves placed so far, and the occurrences not yet placed.
+type RunState {
+  lanes: Map<Int, Int>
+  finish: Map<String, Int>
+  placed: List<ScheduledLeaf>
+  remaining: List<SchedNode>
+}
+
+// A total read over a String-keyed map: the stored value, or `dflt` when the key is absent.
+fn look_or<V>(m: Map<String, V>, key: String, dflt: V) -> V {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
+  }
+}
+
+// A total read over an Int-keyed map (the lane-free map).
+fn look_int(m: Map<Int, Int>, key: Int, dflt: Int) -> Int {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
+  }
+}
+
+// The occurrence edge ENDPOINTS keyed by the same path_key the nodes are keyed by.
+fn edge_from_key(e: OccurrenceEdge) -> String {
+  path_key(p: e.from)
+}
+
+fn edge_to_key(e: OccurrenceEdge) -> String {
+  path_key(p: e.to)
+}
+
+// THE STABLE STRING KEY of a leaf occurrence: the carrier LeafPath's four indexes joined. Two occurrences share a
+// key only when they share a path, so the key is the path read a second way -- never a second authority over it.
+fn path_key(p: LeafPath) -> String {
+  join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece)), "#", to_string(nat_to_int(n: p.member))], "")
+}
+
+// Append `v` to the list stored at `key` (a successor / predecessor adjacency list).
+fn push_key(m: Map<String, List<String>>, key: String, v: String) -> Map<String, List<String>> {
+  map_insert(m: m, key: key, value: concat(look_or(m: m, key: key, dflt: []), [v]))
+}
+
+// The successor / predecessor adjacency over the scheduled occurrence keys.
+type Adjacency {
+  succ: Map<String, List<String>>
+  pred: Map<String, List<String>>
+}
+
+// Build a key -> successor-list and key -> predecessor-list pair from the edges whose BOTH endpoints are scheduled
+// occurrences. An edge whose `from` is a parent occurrence (a waits_on aim reaching outside this decomposition) is
+// DROPPED: that predecessor is satisfied before this abstract schedule begins, so it is an already-done edge, not a
+// day this schedule pays for. This unit schedules ONE expansion's own occurrences; parents arrive from above.
+fn adjacency(nodes: List<SchedNode>, edges: List<OccurrenceEdge>) -> Adjacency {
+  let member: Map<String, Bool> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: true) })
+  let internal = filter(edges, e => map_contains_key(m: member, key: edge_from_key(e: e)) && map_contains_key(m: member, key: edge_to_key(e: e)))
+  let succ: Map<String, List<String>> = fold(internal, init: empty_map(), f: fn(acc, e) { push_key(acc, edge_from_key(e: e), edge_to_key(e: e)) })
+  let pred: Map<String, List<String>> = fold(internal, init: empty_map(), f: fn(acc, e) { push_key(acc, edge_to_key(e: e), edge_from_key(e: e)) })
+  Adjacency { succ: succ, pred: pred }
+}
+
+// ONE relaxation pass: rank(k) = days(k) + max rank over successors. A value that grows marks `changed`.
+fn relax(keys: List<String>, succ: Map<String, List<String>>, days_map: Map<String, Int>, rank: Map<String, Int>) -> Relaxed {
+  fold(keys, init: Relaxed { changed: false, rank: rank }, f: fn(acc, k) {
+    let best = fold(look_or(m: succ, key: k, dflt: []), init: 0, g: fn(m, s) {
+      let r = look_or(m: acc.rank, key: s, dflt: 0)
+      if r > m { r } else { m }
+    })
+    let cand = look_or(m: days_map, key: k, dflt: 0) + best
+    let cur = look_or(m: acc.rank, key: k, dflt: 0)
+    if cand > cur { Relaxed { changed: true, rank: map_insert(m: acc.rank, key: k, value: cand) } } else { acc }
+  })
+}
+
+// Relax until stable. For a DAG of n nodes the longest simple path has at most n-1 edges, so it settles within
+// `max_pass` = n passes; if it is STILL growing at pass n the graph has a cycle and there is no terminating
+// schedule -- refuse (fail_closed).
+fn rank_fix(keys: List<String>, succ: Map<String, List<String>>, days_map: Map<String, Int>, rank: Map<String, Int>, pass: Int, max_pass: Int) -> RankResult {
+  let step = relax(keys: keys, succ: succ, days_map: days_map, rank: rank)
+  if !step.changed {
+    Ranked { rank: step.rank }
+  } else if pass >= max_pass {
+    Cyclic
+  } else {
+    rank_fix(keys: keys, succ: succ, days_map: days_map, rank: step.rank, pass: pass + 1, max_pass: max_pass)
+  }
+}
+
+// The key with the largest rank, stable on ties (the first such key in the list wins). "" when the list is empty.
+fn argmax_rank(keys: List<String>, rank: Map<String, Int>) -> String {
+  fold(keys, init: "", f: fn(best, k) {
+    if best == "" {
+      k
+    } else {
+      let rb = look_or(m: rank, key: best, dflt: 0)
+      let rk = look_or(m: rank, key: k, dflt: 0)
+      if rk > rb { k } else { best }
+    }
+  })
+}
+
+// The critical path as a chain of LeafPaths: start at the maximum-rank node and follow its maximum-rank successor
+// until none is left. rank(n) = days(n) + max rank over successors, so each step stays on a longest path. A cycle
+// would not terminate, but rank_fix has already refused one, so this halts. An empty successor key resolves Absent
+// in `node_of`, which ends the walk -- no placeholder path is ever emitted.
+fn follow_critical(n: SchedNode, succ: Map<String, List<String>>, rank: Map<String, Int>, node_of: Map<String, SchedNode>) -> List<LeafPath> {
+  let next = argmax_rank(keys: look_or(m: succ, key: n.key, dflt: []), rank: rank)
+  match map_lookup(m: node_of, key: next) {
+    Absent => [n.path]
+    Present { value: child } => concat([n.path], follow_critical(n: child, succ: succ, rank: rank, node_of: node_of))
+  }
+}
+
+// The lane whose free day is earliest; ties choose the lower lane index, so placement is deterministic.
+fn pick_lane(lanes: Map<Int, Int>, workers: Int) -> Int {
+  scan_lanes(i: 0, workers: workers, lanes: lanes, best_lane: 0, best_free: look_int(m: lanes, key: 0, dflt: 0))
+}
+
+fn scan_lanes(i: Int, workers: Int, lanes: Map<Int, Int>, best_lane: Int, best_free: Int) -> Int {
+  if i >= workers {
+    best_lane
+  } else {
+    let f = look_int(m: lanes, key: i, dflt: 0)
+    if f < best_free { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: i, best_free: f) }
+    else { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: best_lane, best_free: best_free) }
+  }
+}
+
+// Whether every scheduled-predecessor of `n` already has a finish day. (External parents were dropped from `pred`,
+// so they impose no wait.)
+fn is_ready(n: SchedNode, pred: Map<String, List<String>>, finish: Map<String, Int>) -> Bool {
+  all(look_or(m: pred, key: n.key, dflt: []), p => map_contains_key(m: finish, key: p))
+}
+
+// The ready occurrence with the largest rank (longest remaining path first), stable on ties.
+fn best_ready(remaining: List<SchedNode>, rank: Map<String, Int>, pred: Map<String, List<String>>, finish: Map<String, Int>) -> SchedNode? {
+  let seed: SchedNode? = none
+  fold(remaining, init: seed, f: fn(best, n) {
+    if !is_ready(n: n, pred: pred, finish: finish) {
+      best
+    } else {
+      match best {
+        Present { value: b } => if look_or(m: rank, key: n.key, dflt: 0) > look_or(m: rank, key: b.key, dflt: 0) { Present { value: n } } else { best }
+        Absent => Present { value: n }
+      }
+    }
+  })
+}
+
+// The finish day of the latest already-scheduled predecessor of `n` (0 when it has none scheduled).
+fn dep_finish(n: SchedNode, pred: Map<String, List<String>>, finish: Map<String, Int>) -> Int {
+  fold(look_or(m: pred, key: n.key, dflt: []), init: 0, g: fn(m, p) {
+    let f = look_or(m: finish, key: p, dflt: 0)
+    if f > m { f } else { m }
+  })
+}
+
+// THE LIST SCHEDULE: place occurrences one at a time -- longest remaining path first, on the lane that frees
+// earliest, no earlier than all its scheduled predecessors have finished -- until nothing remains. `placed`
+// accumulates the ScheduledLeaf records. (rank_fix has already refused a cycle, so a ready node always exists.)
+fn run(state: RunState, succ: Map<String, List<String>>, pred: Map<String, List<String>>, rank: Map<String, Int>, workers: Int) -> List<ScheduledLeaf> {
+  if count(state.remaining) == 0 {
+    state.placed
+  } else {
+    match best_ready(remaining: state.remaining, rank: rank, pred: pred, finish: state.finish) {
+      Absent => state.placed
+      Present { value: n } => {
+        let lane = pick_lane(lanes: state.lanes, workers: workers)
+        let lane_free = look_int(m: state.lanes, key: lane, dflt: 0)
+        let dep = dep_finish(n: n, pred: pred, finish: state.finish)
+        let start_day = if dep > lane_free { dep } else { lane_free }
+        let finish_day = start_day + n.days
+        let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
+        run(
+          state: RunState {
+            lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
+            finish: map_insert(m: state.finish, key: n.key, value: finish_day),
+            placed: concat(state.placed, [leaf]),
+            remaining: filter(state.remaining, m => m.key != n.key),
+          },
+          succ: succ, pred: pred, rank: rank, workers: workers
+        )
+      }
+    }
+  }
+}
+
+// The days 0 .. last-1 as a list (empty when last <= 0), used to index the per-day in-flight count.
+fn day_range(last: Int) -> List<Int> {
+  range_from(0, last)
+}
+
+fn range_from(i: Int, last: Int) -> List<Int> {
+  if i >= last { [] } else { concat([i], range_from(i + 1, last)) }
+}
+
+// The maximum finish day over the placed leaves -- the horizon, the day the schedule empties.
+fn horizon_of(leaves: List<ScheduledLeaf>) -> Int {
+  fold(leaves, init: 0, g: fn(m, l) { if l.finish_day > m { l.finish_day } else { m } })
+}
+
+// How many leaves are in flight on each day, indexed from day 0 to horizon-1. A leaf with days == 0 (a zero-day
+// Join would be one, but the expansion emits no Join occurrence) spans no day and is counted on none.
+fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
+  map(day_range(last: horizon), d => count(filter(leaves, l => l.start_day <= d && d < l.finish_day)))
+}
+
+// THE SCHEDULE, computed from an Expansion and a worker count (a SIMULATION INPUT). Refusals: the expansion was
+// itself refused; the worker count is not a positive count; the occurrence graph has a cycle.
+fn schedule(d: WorkDecomposition, e: Expansion, workers: Int) -> Schedule {
+  match e {
+    Refused { cause: _ } =>
+      NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the expansion it was handed refused (the decomposition is not well-formed); a schedule is computed only over an admitted expansion" }
+    Expanded { occurrences: occs, edges: edges } => {
+      if workers <= 0 {
+        NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the worker count is a SIMULATION INPUT and must be a positive count; 0 or fewer is never a fact about who works" }
+      } else {
+        let nodes = map(occs, o => SchedNode { path: o.path, key: path_key(p: o.path), days: piece_member_days(d: d, path: o.path), source: o.count_source })
+        let keys = map(nodes, n => n.key)
+        let adj = adjacency(nodes: nodes, edges: edges)
+        let days_map: Map<String, Int> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n.days) })
+        let rank0: Map<String, Int> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n.days) })
+        let node_of: Map<String, SchedNode> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
+        match rank_fix(keys: keys, succ: adj.succ, days_map: days_map, rank: rank0, pass: 1, max_pass: count(nodes)) {
+          Cyclic => NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the occurrence dependency graph has a cycle; no list schedule terminates on it" }
+          Ranked { rank: rank } => {
+            let lane_seed: Map<Int, Int> = empty_map()
+            let lanes0 = fold(range_from(0, workers), init: lane_seed, f: fn(acc, l) { map_insert(m: acc, key: l, value: 0) })
+            let placed = run(
+              state: RunState { lanes: lanes0, finish: empty_map(), placed: [], remaining: nodes },
+              succ: adj.succ, pred: adj.pred, rank: rank, workers: workers
+            )
+            let horizon = horizon_of(leaves: placed)
+            let crit_start = argmax_rank(keys: keys, rank: rank)
+            let critical_path = match map_lookup(m: node_of, key: crit_start) {
+              Absent => []
+              Present { value: n } => follow_critical(n: n, succ: adj.succ, rank: rank, node_of: node_of)
+            }
+            Scheduled { answer: ScheduleAnswer {
+              workers: workers,
+              leaves: placed,
+              in_flight_per_day: in_flight(leaves: placed, horizon: horizon),
+              horizon: horizon,
+              critical_path: critical_path,
+              critical_length: look_or(m: rank, key: crit_start, dflt: 0),
+            } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// COMPUTED, MAY BE CACHED, ALWAYS RE-READ (gunbc.schedule_answers_are_computed_cached_and_re_read). A caller may
+// hand a previously computed `cached` Schedule, but the cache is DERIVED and never authoritative: the read
+// RECOMPUTES from the decomposition, the expansion and the worker count and returns the fresh answer, discarding
+// the cache. The cache argument exists only to show it is ignored -- reading never trusts it.
+fn schedule_read(d: WorkDecomposition, e: Expansion, workers: Int, cached: Schedule) -> Schedule {
+  schedule(d: d, e: e, workers: workers)
+}
+
+// ACCESSORS so a reader consumes a Schedule without matching its coproduct (and without naming its constructors
+// beside the imported Expansion's). `schedule_answer` yields the computed fields, or none when the schedule refused.
+fn schedule_is_scheduled(s: Schedule) -> Bool {
+  match s {
+    Scheduled { answer: _ } => true
+    NotScheduled { cause: _ } => false
+  }
+}
+
+fn schedule_answer(s: Schedule) -> ScheduleAnswer? {
+  match s {
+    Scheduled { answer: a } => Present { value: a }
+    NotScheduled { cause: _ } => none
+  }
+}
+
+// The placed leaf for a carrier path, if it was scheduled -- the witness reads a leaf's day and lane this way,
+// through the same path key the schedule is keyed by.
+fn scheduled_at(a: ScheduleAnswer, path: LeafPath) -> ScheduledLeaf? {
+  first_where(a.leaves, l => path_key(p: l.path) == path_key(p: path))
+}
+
+// The schedule's path key spelled from its parts, so a reader locates a placed leaf (or names a critical-path
+// entry) WITHOUT rebuilding a carrier LeafPath. This is the SAME key path_key derives -- one format, not a second
+// authority over path identity.
+fn leaf_key(node: String, stage: Int, piece: Int, member: Int) -> String {
+  join([node, "#", to_string(stage), "#", to_string(piece), "#", to_string(member)], "")
+}
+
+fn scheduled_by_index(a: ScheduleAnswer, node: String, stage: Int, piece: Int, member: Int) -> ScheduledLeaf? {
+  let want = leaf_key(node: node, stage: stage, piece: piece, member: member)
+  first_where(a.leaves, l => path_key(p: l.path) == want)
+}
+
+// The critical path spelled as path keys, in order from the start of the longest remaining path.
+fn critical_path_keys(a: ScheduleAnswer) -> List<String> {
+  map(a.critical_path, p => path_key(p: p))
+}
+
+fn scheduled_leaf_count(a: ScheduleAnswer) -> Int {
+  count(a.leaves)
+}
+
+// Wrap a computed answer as a cache the read will IGNORE -- used to show the cache never wins (the re-read control).
+fn as_cache(a: ScheduleAnswer) -> Schedule {
+  Scheduled { answer: a }
+}
+
+// Whether a placed leaf's count source is the ASSUMED simulation count (a FindingsOf member), kept visible in the
+// answer so a downstream reader sees it was scheduled from a simulation input, not a declared count.
+fn occurrence_count_is_assumed(c: OccurrenceCount) -> Bool {
+  c == Assumed
+}

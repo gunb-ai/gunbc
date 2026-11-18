@@ -1,0 +1,194 @@
+module test.claim.roadmap.roadmap_schedule_list_scheduling_witness
+
+// THE DECLARATION of the list-scheduling unit (roadmap-schedule-list-scheduling), read against its carrier
+// gunbc.roadmap.roadmap_decomposition (the expansion, occurrences, edges and leaf days) and its scheduler
+// gunbc.roadmap.roadmap_schedule. Over the leaf-expansion's OUTPUT the scheduler answers, for an abstract worker
+// count handed in as a SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how
+// many leaves are in flight each day, and the critical path. Priority is longest-remaining-path-first; a zero-day
+// Join is placed without a worker (the expansion emits no occurrence for it, so it consumes no lane). The answer is
+// COMPUTED; a cache may be passed to a read but is never authoritative -- the read recomputes it.
+//
+// THE RED CONTROL, named the way the unit names its own: a two-leaf CHAIN under ONE worker finishes at the SUM of
+// the two days; two INDEPENDENT leaves under TWO workers finish at the MAX of the two. Both answers come from one
+// run.
+
+import std.types { Bool, Int, List, String }
+import gunbc.roadmap.roadmap_decomposition {
+  decomposition, leaf, reading_family, findings_family, waits, expand_decomposition,
+}
+import gunbc.roadmap.roadmap_schedule {
+  schedule, schedule_read, ScheduleAnswer,
+  schedule_is_scheduled, schedule_answer, scheduled_by_index, critical_path_keys,
+  scheduled_leaf_count, as_cache, occurrence_count_is_assumed,
+}
+
+// THE RED CONTROL. A two-leaf chain under one worker finishes at the SUM of its days; two independent leaves under
+// two workers finish at the MAX of their days. Both answers are computed in this one run.
+test fn a_chain_under_one_worker_finishes_at_the_sum_and_two_independent_leaves_under_two_workers_at_the_max() -> Bool {
+  let chain = decomposition(node: "rc.chain", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  let par = decomposition(node: "rc.par", waits_on: [], stages: [
+    [leaf(label: "short", days: 2), leaf(label: "long", days: 5)],
+  ])
+  let cs = schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: 1)
+  let ps = schedule(d: par, e: expand_decomposition(d: par, findings_count: 1), workers: 2)
+  match schedule_answer(s: cs) {
+    Absent => false
+    Present { value: c } => match schedule_answer(s: ps) {
+      Absent => false
+      Present { value: p } =>
+        // SUM: the chain serializes on its single lane (2 + 3 = 5), and each leaf starts where the last finished.
+        c.horizon == 2 + 3
+        && (match scheduled_by_index(a: c, node: "rc.chain", stage: 0, piece: 0, member: 0) {
+             Present { value: l } => l.start_day == 0 && l.finish_day == 2 && l.lane == 0
+             Absent => false
+           })
+        && (match scheduled_by_index(a: c, node: "rc.chain", stage: 1, piece: 0, member: 0) {
+             Present { value: l } => l.start_day == 2 && l.finish_day == 5 && l.lane == 0
+             Absent => false
+           })
+        && join(critical_path_keys(a: c), ",") == "rc.chain#0#0#0,rc.chain#1#0#0"
+        && c.critical_length == 5
+        // MAX: the two independent leaves run side by side (max(2, 5) = 5), each starting on day 0, on two lanes.
+        && p.horizon == 5
+        && (match scheduled_by_index(a: p, node: "rc.par", stage: 0, piece: 0, member: 0) {
+             Present { value: l } => l.start_day == 0 && l.finish_day == 2 && l.lane == 1
+             Absent => false
+           })
+        && (match scheduled_by_index(a: p, node: "rc.par", stage: 0, piece: 1, member: 0) {
+             Present { value: l } => l.start_day == 0 && l.finish_day == 5 && l.lane == 0
+             Absent => false
+           })
+        && p.critical_length == 5
+    }
+  }
+}
+
+// THE FIRST SLICE. Two chains and one family at a declared count, scheduled under two worker counts, printed side
+// by side: the SAME expansion answered at one worker and at four. stage 0 holds the two chain heads (2 and 3 days)
+// and one reading family at a declared count of two (4 days each member); stage 1 holds the two chain tails (1 and
+// 2 days), each waiting on all of stage 0 behind the stage barrier. At one worker everything serializes to the sum
+// of every day (16); at four workers stage 0 runs in parallel and the horizon is the critical path (6).
+test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_counts() -> Bool {
+  let slice = decomposition(node: "slice", waits_on: [], stages: [
+    [leaf(label: "head A", days: 2), leaf(label: "head B", days: 3),
+     reading_family(label: "family", days: 4, members: 2, on: "2026-11-18", basis: "the two named members", owner: "slice-owner")],
+    [leaf(label: "tail A", days: 1), leaf(label: "tail B", days: 2)],
+  ])
+  let e = expand_decomposition(d: slice, findings_count: 1)
+  let one = schedule(d: slice, e: e, workers: 1)
+  let four = schedule(d: slice, e: e, workers: 4)
+  match schedule_answer(s: one) {
+    Absent => false
+    Present { value: o } => match schedule_answer(s: four) {
+      Absent => false
+      Present { value: f } =>
+        // six leaves scheduled under BOTH counts (2 heads + 2 declared family members + 2 tails); the declared
+        // family members are DECLARED occurrences kept visible in the answer.
+        scheduled_leaf_count(a: o) == 6
+        && scheduled_leaf_count(a: f) == 6
+        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 2, member: 0) {
+             Present { value: l } => !occurrence_count_is_assumed(c: l.count_source)
+             Absent => false
+           })
+        // at one worker: the whole thing serializes -- horizon is the sum of every day.
+        && o.horizon == 2 + 3 + 4 + 4 + 1 + 2
+        && count(o.in_flight_per_day) == o.horizon
+        && all(o.in_flight_per_day, n => n >= 1)
+        // at four workers: stage 0 starts together on day 0, the tails wait for the barrier (day 4), horizon = 6.
+        && f.horizon == 6
+        && count(f.in_flight_per_day) == f.horizon
+        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 0, member: 0) {
+             Present { value: l } => l.start_day == 0
+             Absent => false
+           })
+        && (match scheduled_by_index(a: f, node: "slice", stage: 0, piece: 2, member: 1) {
+             Present { value: l } => l.start_day == 0
+             Absent => false
+           })
+        && (match scheduled_by_index(a: f, node: "slice", stage: 1, piece: 1, member: 0) {
+             Present { value: l } => l.start_day == 4 && l.finish_day == 6
+             Absent => false
+           })
+        // the critical path is the same under both worker counts: a 4-day family member then the 2-day tail B.
+        && o.critical_length == 6
+        && f.critical_length == 6
+        && join(critical_path_keys(a: o), ",") == "slice#0#2#0,slice#1#1#0"
+        && join(critical_path_keys(a: f), ",") == "slice#0#2#0,slice#1#1#0"
+    }
+  }
+}
+
+// AN ASSUMED OCCURRENCE IS A SIMULATION INPUT: it is scheduled, and its count source stays visible in the answer.
+// A FindingsOf family at an assumed count of three expands to three ASSUMED members; all three are placed and every
+// one of them still reads as ASSUMED in the schedule.
+test fn an_assumed_occurrence_is_scheduled_and_its_source_stays_visible() -> Bool {
+  let af = decomposition(node: "af", waits_on: [], stages: [
+    [findings_family(label: "findings", days: 3, probe: "the probe", owner: "af-owner")],
+  ])
+  let e = expand_decomposition(d: af, findings_count: 3)
+  let s = schedule(d: af, e: e, workers: 2)
+  match schedule_answer(s: s) {
+    Absent => false
+    Present { value: a } =>
+      scheduled_leaf_count(a: a) == 3
+      && all([0, 1, 2], m => match scheduled_by_index(a: a, node: "af", stage: 0, piece: 0, member: m) {
+           Present { value: l } => occurrence_count_is_assumed(c: l.count_source)
+           Absent => false
+         })
+      && a.horizon == 6
+  }
+}
+
+// THE TWO REFUSALS (fail_closed), as the ticket's handback names them. (1) The worker count is a SIMULATION INPUT
+// and never a fact: a worker count that is not positive is refused, not coerced. (2) A schedule is computed only
+// over an ADMITTED expansion: when the expansion itself refused, the scheduler refuses too.
+test fn a_nonpositive_worker_count_and_a_refused_expansion_are_each_refused() -> Bool {
+  let chain = decomposition(node: "ref.chain", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  let admitted = expand_decomposition(d: chain, findings_count: 1)
+  // A decomposition that waits on a parent it does not have is not well-formed, so its expansion refuses.
+  let ill_formed = decomposition(node: "ref.bad", waits_on: [waits(item: "ref.nowhere", from_stage: 0, into_stage: 0)], stages: [
+    [leaf(label: "first", days: 2)],
+  ])
+  let refused_expansion = expand_decomposition(d: ill_formed, findings_count: 1)
+  // (1) zero and negative worker counts refuse; a positive count schedules.
+  !schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 0))
+    && !schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: -3))
+    && schedule_is_scheduled(s: schedule(d: chain, e: admitted, workers: 1))
+  // (2) an ill-formed decomposition's expansion refuses, and the scheduler refuses over that refused expansion too.
+    && !schedule_is_scheduled(s: schedule(d: ill_formed, e: refused_expansion, workers: 2))
+}
+
+// COMPUTED, CACHED, RE-READ (gunbc.schedule_answers_are_computed_cached_and_re_read): a cache is derived and never
+// authoritative. Hand the read a DELIBERATELY WRONG cached answer (horizon 99) and it still returns the freshly
+// computed one (horizon 5), discarding the cache.
+test fn a_stale_cache_is_ignored_and_the_answer_is_recomputed_on_every_read() -> Bool {
+  let chain = decomposition(node: "rr.chain", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  let e = expand_decomposition(d: chain, findings_count: 1)
+  let real = schedule(d: chain, e: e, workers: 1)
+  match schedule_answer(s: real) {
+    Absent => false
+    Present { value: r } =>
+      // the stale cache is wrong on purpose: same shape, but a horizon and critical length of 99.
+      r.horizon == 5
+      && (match schedule_answer(s: schedule_read(d: chain, e: e, workers: 1, cached: as_cache(ScheduleAnswer {
+             workers: 1,
+             leaves: r.leaves,
+             in_flight_per_day: r.in_flight_per_day,
+             horizon: 99,
+             critical_path: r.critical_path,
+             critical_length: 99,
+           }))) {
+             Present { value: rr } => rr.horizon == 5 && rr.critical_length == 5
+             Absent => false
+           })
+  }
+}
