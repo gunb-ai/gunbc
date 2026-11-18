@@ -183,11 +183,17 @@ import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph 
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
-import std.filesystem { path_parent_directory }
-import extdeps.tools.gnu_coreutils { mkdir_parents_command }
-import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.roadmap.roadmap_authority_fixture_writer {
+  FixtureWriteTarget,
+  RoadmapAuthorityFixtureWrite,
+  RoadmapAuthorityFixtureEmit,
+  FixtureFileWritten,
+  FixtureWriteRefused,
+  FixtureEmitComplete,
+  FixtureEmitRefused,
+  roadmap_authority_fixture_guard,
+  roadmap_authority_fixture_write_all,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -643,16 +649,13 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
 
 // ─── THE COMMITTED FIXTURE ───────────────────────────────────────────────────
 // A SMALL LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
-// through the floor's checkout carve-out rather than being mocked. Its bytes are THIS table rendered by
-// the log's own emitter: roadmap_authority_fixture_emit (this file) writes them, and
-// witness_acceptance_receipts_are_valid_and_unique re-encodes every file and reddens on a byte of drift,
-// so the fixture cannot rot away from the encoder it was generated with.
+// through the floor's checkout carve-out instead of being mocked. Its bytes are THIS table rendered by the
+// log's own emitter, written by gunbc.roadmap.roadmap_authority_fixture_writer -- the one module allowed to
+// write them -- and witness_committed_fixture_bytes_are_the_encoders_own re-encodes every file and reddens on
+// a byte of drift, so the fixture cannot rot away from the encoder it was generated with.
 //
-// Regenerate (from a checkout, wet lane — it is the only lane that may write):
-//   mkdir -p fixtures/roadmap_authority/events/{namespace-occurrence-transport,2-scm-git-upstream-model,roadmap-authority-scenario-absent-node}
-//   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
-//     --entry dag/test/claim/roadmap/roadmap_authority.dag --wet \
-//     --functions roadmap_authority_fixture_emit
+// Regenerating it is one wet run; the command, the guard, and why the write is not on the sanctioned
+// generated-artifact route all live in that writer module's header.
 data roadmap_authority_fixture_root: String = "fixtures/roadmap_authority/events"
 data roadmap_authority_fixture_worktree: String = "fixtures/roadmap_authority"
 
@@ -738,119 +741,24 @@ fn roadmap_authority_fixture_write_allowed(path: String) -> Bool {
     && path.starts_with(prefix: roadmap_authority_fixture_write_prefix)
 }
 
-// EVERY STEP ANSWERS WITH A TYPE, INCLUDING THE FAILURE. The first wet run of this generator returned
-// false five times over five files and NOTHING NOTICED: a Bool cannot say which file, which step, or why,
-// and 'false' looked like a finished run. gunbc.design_argument::fail_closed makes that a defect ("Done
-// means a real consumer green by execution plus a discriminating input that goes red when the behavior is
-// wrong"), so each step now answers with RoadmapAuthorityFixtureWrite, naming the path, the step and the
-// reason, and the emit refuses as a whole on the FIRST refusal rather than folding successes over it.
-// test.claim.roadmap.roadmap_authority
-// witness_fixture_generator_refuses_an_unwritable_target_by_name is that discriminating input: hand the
-// guard a target outside the fixture and it must come back refused by name, so a deleted or weakened guard
-// reddens a witness instead of quietly widening what the generator will write.
-type RoadmapAuthorityFixtureWrite =
-    FixtureFileWritten { path: String }
-  | FixtureWriteRefused { path: String, step: String, reason: String }
-
-type RoadmapAuthorityFixtureEmit =
-    FixtureEmitComplete { written: List<String> }
-  | FixtureEmitRefused { path: String, step: String, reason: String }
-
-// THE GUARD IS ITS OWN QUESTION, ANSWERED OVER A PATH. It used to be an && inside the emitter, which meant
-// the only way to test it was to run a real write -- and a real write is exactly what the guard exists to
-// stop. Taking the path as a parameter makes it testable without touching a filesystem, which is what makes
-// the control below hermetic.
-fn roadmap_authority_fixture_guard(path: String) -> RoadmapAuthorityFixtureWrite? {
-  if roadmap_authority_fixture_write_allowed(path: path) {
-    Absent
-  } else {
-    Present {
-      value: FixtureWriteRefused {
-        path: path,
-        step: "guard",
-        reason: concat(
-          "refused to write ",
-          concat(path, ": not under the committed fixture root, or absolute, or escaping it"),
-        ),
-      }
-    }
-  }
+// THE FIXTURE IS WRITTEN ELSEWHERE, ON PURPOSE. This module commits a log under the checkout so the real
+// Filesystem.List walk has something real to walk, and it READS that log. Authoring it from here would put
+// the input and the assertion over the input in the same module, which is how a witness gets talked into
+// agreement with whatever the code next does. So the emit is a thin bridge over
+// gunbc.roadmap.roadmap_authority_fixture_writer -- the one place the fixture may be written -- which owns the
+// path guard, the mkdir -p, the write, and the typed refusal. The bridge says nothing the writer does not.
+fn roadmap_authority_fixture_targets() -> List<FixtureWriteTarget> {
+  map(roadmap_authority_fixture_files(), f => FixtureWriteTarget {
+    path: roadmap_authority_fixture_path(f: f), content: roadmap_authority_fixture_bytes(f: f),
+  })
 }
 
-fn roadmap_authority_fixture_write_refused(r: RoadmapAuthorityFixtureWrite) -> Bool {
-  match r {
-    FixtureFileWritten { path: _ } => false
-    FixtureWriteRefused { path: _, step: _, reason: _ } => true
-  }
-}
-
-// A PARENT DIRECTORY IS A PRECONDITION, NOT A COURTESY. Filesystem.Write is a pure write and never
-// plants a tree -- the repo witnesses that property as load-bearing at
-// test.claim.generated_artifact_write_absent_dir_wet_witness
-// the_same_write_without_the_directory_step_refuses_by_real_execution. So the generator does what the one
-// sanctioned generated-artifact write route does (gunbc.instruments.generated_artifact_gate
-// write_generated_artifact): mkdir -p over the local command transport, then the write. Both effects are
-// refused hermetically, which is another way of saying this function has exactly one mode: wet.
-fn roadmap_authority_fixture_make_parent(path: String) -> RoadmapAuthorityFixtureWrite? {
-  match run_shell_command_capture(
-    command: mkdir_parents_command(path: path_parent_directory(path: path)), transport: LocalExec,
-  ) {
-    ProcessRefused { exit_code: code, stderr: err } => Present {
-      value: FixtureWriteRefused {
-        path: path,
-        step: "mkdir",
-        reason: concat(
-          concat("mkdir -p refused for ", path_parent_directory(path: path)),
-          concat(concat(": exit ", int_to_decimal_string(value: code)), concat(": ", err)),
-        ),
-      }
-    }
-    _ => Absent
-  }
-}
-
-fn roadmap_authority_fixture_write(f: RoadmapAuthorityFixtureFile) -> RoadmapAuthorityFixtureWrite {
-  let path = roadmap_authority_fixture_path(f: f)
-  match roadmap_authority_fixture_guard(path: path) {
-    Present { value: refusal } => refusal
-    Absent => match roadmap_authority_fixture_make_parent(path: path) {
-      Present { value: refusal } => refusal
-      Absent => {
-        let w = Filesystem.Write(path: path, content: roadmap_authority_fixture_bytes(f: f))
-        if w.success {
-          FixtureFileWritten { path: path }
-        } else {
-          FixtureWriteRefused {
-            path: path, step: "write", reason: concat("Filesystem.Write refused: ", w.error),
-          }
-        }
-      }
-    }
-  }
-}
-
-// THE EMIT REFUSES ON THE FIRST REFUSAL. Folding a Bool over the files is what let five failures read as
-// one quiet false; here the first typed refusal stops the run, because a generator that keeps writing after
-// it cannot write at the target it just failed at is a generator whose remaining output is unexplained.
 fn roadmap_authority_fixture_emit() -> RoadmapAuthorityFixtureEmit {
-  match first(
-    map(roadmap_authority_fixture_files(), f => roadmap_authority_fixture_write(f: f))
-      |> filter(r => roadmap_authority_fixture_write_refused(r: r)),
-  ) {
-    Present { value: r } => match r {
-      FixtureWriteRefused { path: path, step: step, reason: reason } =>
-        FixtureEmitRefused { path: path, step: step, reason: reason }
-      FixtureFileWritten { path: _ } => FixtureEmitComplete { written: [] }
-    }
-    Absent => FixtureEmitComplete {
-      written: map(roadmap_authority_fixture_files(), f => roadmap_authority_fixture_path(f: f)),
-    }
-  }
+  roadmap_authority_fixture_write_all(targets: roadmap_authority_fixture_targets())
 }
 
-// THE WET ENTRY POINT. claim_batch prints a verdict for a Bool; the emit itself answers with a type, so this
-// is the thin bridge: it says nothing the typed emit did not say, and it fails the same way the typed emit
-// refuses. Run THIS wet to regenerate the fixture.
+// THE WET ENTRY POINT. claim_batch prints a verdict for a Bool, so this is the bridge over the bridge: it
+// says nothing the typed emit did not say and fails the same way it refuses. Run THIS wet to regenerate.
 fn roadmap_authority_fixture_emit_ok() -> Bool {
   match roadmap_authority_fixture_emit() {
     FixtureEmitComplete { written: written } => string_length(s: join(written, ",")) > 0

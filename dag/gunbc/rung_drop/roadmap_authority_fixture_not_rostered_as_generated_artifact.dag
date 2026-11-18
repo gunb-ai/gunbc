@@ -1,0 +1,58 @@
+module gunbc.rung_drop.roadmap_authority_fixture_not_rostered_as_generated_artifact
+
+import std.types { NonEmptyStr, List, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for the module that writes the committed roadmap-authority fixture,
+// gunbc.roadmap.roadmap_authority_fixture_writer. It composes the modelled write primitives directly
+// (extdeps.tools.gnu_coreutils mkdir_parents_command over gunbc.command_runner's LocalExec transport, then
+// Filesystem.Write) instead of going through the ONE sanctioned generated-artifact write route,
+// gunbc.instruments.generated_artifact_gate::write_generated_artifact. That is a real lowering, said out
+// loud rather than left as a second path nobody has to justify.
+//
+// WHAT THE SANCTIONED RUNG WOULD HAVE GIVEN. write_generated_artifact refuses any path it has not rostered
+// (gunbc.generated_artifact GeneratedArtifactPathUnrostered). To be writable at all, the fixture would have
+// to be a variant of GeneratedArtifact, and every variant there carries three obligations: an
+// artifact_location, a consumer disposition that answers WHY the file must survive in a git checkout, and a
+// producer row whose producer DeclarationRef resolves to a live declaration -- with witnesses that walk the
+// whole closed enum (gunbc.recurring_failure_mode.generated_artifact_producer_declaration_standing_in_for_
+// resolution, test.claim.generated_artifact_producer_coverage_witness). Those obligations are the point of
+// the route: no committed generated file appears without a stated producer and a stated consumer.
+
+// WHY IT IS NOT ON THAT ROUTE TODAY. The roster is a CLOSED ENUM of compiler and CI artifacts, and adding a
+// variant means claiming what roadmap acceptance-event BYTES are for -- who consumes them in a checkout and
+// why they may not be derived. That claim is true (the authority's real Filesystem.List route reads them, and
+// witness_committed_fixture_bytes_are_the_encoders_own keeps them from drifting from the encoder), but it is
+// a claim about the generated-artifact ledger, and it belongs in a change that also updates the assessment
+// and coverage witnesses over that enum -- not smuggled in beside a test-hermeticity PR, where a rostered
+// artifact is decided by whoever needed the file. So the primitives are composed, the write is confined to
+// one module whose guard refuses every path outside the fixture, and the rung is named here.
+//
+// THE HARM IS OBSERVED, NOT HYPOTHETICAL. The first wet run of this generator returned false five times over
+// five files and said nothing, because it had no typed refusal; a rostered artifact could not have done
+// that, since its producer is the thing that is run and checked. The typed refusal is in place now, which is
+// the mitigation -- it is not the rung.
+
+data roadmap_authority_fixture_not_rostered_as_generated_artifact_population: FreeSemigroup<String> =
+  FreeSemigroup {
+    head: "dag/gunbc/roadmap/roadmap_authority_fixture_writer.dag::roadmap_authority_fixture_write_all",
+    tail: [],
+  }
+
+data roadmap_authority_fixture_not_rostered_as_generated_artifact: RungDrop = RungDrop {
+  identity: "roadmap_authority_fixture_not_rostered_as_generated_artifact" as NonEmptyStr,
+
+  subject: "roadmap_authority_fixture_write_all in gunbc.roadmap.roadmap_authority_fixture_writer: it writes the committed roadmap-authority event fixture by composing the modelled mkdir and Filesystem.Write primitives, instead of being a rostered GeneratedArtifact written through gunbc.instruments.generated_artifact_gate::write_generated_artifact",
+
+  declared: "2026-11-18",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the generated-artifact roster, which is a closed enum: gunbc.generated_artifact GeneratedArtifact carries an artifact_location, a consumer disposition answering why the bytes must persist in a checkout, and a producer DeclarationRef that must resolve, with witnesses walking every variant. A path absent from that roster is refused by write_generated_artifact outright, so the fixture had nowhere sanctioned to be written" },
+    population: Enumerated { members: roadmap_authority_fixture_not_rostered_as_generated_artifact_population },
+    restoration_trigger: "THE CAPABILITY: the roadmap-authority event fixture rostered as a generated artifact -- a GeneratedArtifact variant carrying artifact_location for fixtures/roadmap_authority/events, a consumer disposition naming the authority's real Filesystem.List route as the reason the bytes persist, and a producer row whose DeclarationRef resolves to the fixture table's encoder (roadmap_authority_fixture_bytes). WHAT IT MUST BE SUFFICIENT FOR: writing the five fixture files through gunbc.instruments.generated_artifact_gate::write_generated_artifact, with the guard, the mkdir -p and the typed refusal all coming from that route, and with the assessment and producer-coverage witnesses green over the enlarged enum; sufficient for deleting gunbc.roadmap.roadmap_authority_fixture_writer and this row",
+  } }
+}
