@@ -1,0 +1,104 @@
+module gunbc.product_names
+
+import std.types { String, List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.markdown_helpers { h2, p, cell, row }
+
+// THE PRODUCT WORDS, EACH ANCHORED ON ONE DECLARATION. Operator, 2026-11-17: "anchor each product name on
+// an actual model/design instead of inventing things in the design docs". A word in this roster means the
+// declaration it is anchored on and nothing else; prose that uses the word is read against that declaration,
+// and a word used for something the anchor does not cover is a nickname (gunbc.design_argument::single_authority).
+// The roster is consumed by the design document's reference section (gunbc.design_document); it is not a
+// glossary kept beside the models, because the anchor IS the model and the row only names it.
+type ProductName {
+  word: String
+  anchor: DeclarationRef
+  is: String
+  is_not: String
+}
+
+data product_names: List<ProductName> = [
+  ProductName {
+    word: "factory",
+    anchor: decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "DogfoodRouteReceipt"),
+    is: "The machine that lands and verifies work: harness, workers, CI and the floor, and the daily workspace. It is defined by one request crossing every stage of the dogfood route and coming back as a reviewed, published candidate; the receipt is its acceptance.",
+    is_not: "Not the daily workspace alone, not the fabric, and not the private control plane.",
+  },
+  ProductName {
+    word: "fabric",
+    anchor: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
+    is: "Compute placement on our own fleet: a demand matched with supply under a policy-bound selection, with seats, leases and cells (product.fabric, product.capacity, gunbc.fabric, gunbc.compute).",
+    is_not: "Not the belt that dispatches an attempt, not the harness that runs it, and not the fleet hardware itself.",
+  },
+  ProductName {
+    word: "harness",
+    anchor: decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat"),
+    is: "A worker session bound to a seat, with its guidance, tools, checkpoints and alignment to the node it serves.",
+    is_not: "Not the dispatcher (the belt) and not the placement (the fabric).",
+  },
+  ProductName {
+    word: "belt",
+    anchor: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_run_claim_through_compute"),
+    is: "The dispatch and attempt loop beside the daily workspace that runs a node's attempt, verifies and publishes it; it keeps attempt, lease and slot state of its own that gunbc.plans.planning_consolidation records as a duplicate of fabric's, to be deleted into fabric.",
+    is_not: "Not the fabric, and not the workspace page it serves.",
+  },
+  ProductName {
+    word: "daily workspace",
+    anchor: decl_ref(module_path: "gunbc.roadmap.roadmap_page", decl_name: "roadmap_page"),
+    is: "The served page that shows nodes, dispatches, standings and acceptances; the operator's reading surface, also called the roadmap page.",
+    is_not: "Not the lab (an instance that serves it) and not the private session dashboard.",
+  },
+  ProductName {
+    word: "lab",
+    anchor: decl_ref(module_path: "gunbc.live_deploy.release_binding", decl_name: "DeployedReleaseBinding"),
+    is: "The one running deployment of the daily workspace and belt on srv1, bound to the release it was built from; a place, not a program.",
+    is_not: "Not the workspace page itself and not a second workspace.",
+  },
+  ProductName {
+    word: "control plane",
+    anchor: decl_ref(module_path: "gunbc.design_ruling", decl_name: "planning_execution_is_anchored_on_fabric"),
+    is: "The private repository's session dashboard (ctrl), where the operator reads work items today; by the 2026-11-11 ruling a side path that renders this repository's plans and is not the destination.",
+    is_not: "Not the daily workspace, not the factory, and never a second planning authority.",
+  },
+  ProductName {
+    word: "seed",
+    anchor: decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing"),
+    is: "The v1 compiler: the hand-maintained Rust that builds v2 today, semantics-frozen and maintenance-active under a purpose test; a regression oracle.",
+    is_not: "Not a specification of v2, and not the native route.",
+  },
+  ProductName {
+    word: "native route",
+    anchor: decl_ref(module_path: "gunbc.instrument_targets", decl_name: "v2_native_cli_entry"),
+    is: "The v2-emitted compiler, built from the seed's emission, judging sources itself; the route that becomes production by native-production-admission.",
+    is_not: "Not the seed interpreting v2 sources, and not a required CI job by itself.",
+  },
+  ProductName {
+    word: "floor",
+    anchor: decl_ref(module_path: "v2.workflow.required_floor", decl_name: "required_gate_authored_modules"),
+    is: "The required gate's authored population: the exact modules whose witnesses the required path judges, grown one name at a time by operator ruling.",
+    is_not: "Not the CI job roster, and not a census of every witness.",
+  },
+  ProductName {
+    word: "compute cell",
+    anchor: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
+    is: "A stateless unit of compute the fabric lays out, reserves and admits; between grants it holds nothing and settles money.",
+    is_not: "Not a serving seat, which holds a loaded replica.",
+  },
+]
+
+fn product_name_row(n: ProductName) -> List<String> {
+  [n.word, concat("`", concat(declaration_ref_display_key(ref: n.anchor), "`")), n.is, n.is_not]
+}
+
+fn product_names_reference_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Reference: product names"),
+    p(text: "Each product word is anchored on one declaration (`gunbc.product_names`), and means that declaration and nothing else; a word used for something its anchor does not cover is a nickname (`gunbc.design_argument::single_authority`). This roster is read, never extended by prose: a new word is a new row with an anchor that resolves."),
+    TableBlock {
+      header: row(cells: [cell(text: "Word"), cell(text: "Anchor"), cell(text: "Is"), cell(text: "Is not")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: map(product_names, n => row(cells: map(product_name_row(n: n), c => cell(text: c)))),
+    },
+  ]
+}

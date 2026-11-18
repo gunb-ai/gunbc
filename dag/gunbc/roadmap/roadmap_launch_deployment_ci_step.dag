@@ -9,8 +9,8 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
-import gunbc.roadmap.roadmap_launch_deployment_receipt {
+import v2.std.diagnostic { Outcome }
+import gunbc.roadmap.roadmap_launch_deployment_receipt_location {
   gunbc_rlm_launch_deployment_receipt_staging_path
 }
 

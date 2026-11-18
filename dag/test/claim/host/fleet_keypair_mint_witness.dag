@@ -2,7 +2,7 @@ module test.claim.host.fleet_keypair_mint_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, Secret, String }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.host_command_binding { HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched }
 import gunbc.host.fleet_keypair_mint {
@@ -459,10 +459,10 @@ test fn only_an_ed25519_public_line_and_a_sha256_fingerprint_are_admitted() -> B
 //   2. selection is the PIN, not an input: every row gets a step, every step is gated on the mode alone, and
 //      each mint asks its own secret container whether it is pinned. An input-gated design could mint an
 //      already-pinned key -- adding a live version unasked; the pin gate cannot.
-//   3. each step is BUILT FROM ITS OWN ROW: its run names the row's `mint_module` (through the entry path
+//   3. each step is BUILT FROM ITS OWN ROW: its run names the row's `mint_target` (through the entry path
 //      DERIVED from it), and no step names the other
 //      row's. A fold that wired both steps to one subject -- the exact bug a lookup table beside the fold
-//      invites, and the reason entry/function are fields of the subject -- is caught here, not by comparing a
+//      invites, and the reason the entry is a typed target field of the subject -- is caught here, not by comparing a
 //      run to the builder that made it.
 
 fn mint_step_id_of(st: Step) -> String {
@@ -486,38 +486,37 @@ fn mint_step_run_of(st: Step) -> String {
   }
 }
 
-fn mint_job_steps() -> Optional<List<Step>> {
+fn mint_job_steps() -> List<Step> {
   match outcome_accepted_value(fleet_converge_fleet_keypair_mint_job()) {
-    Present { value: job } => Present { value: job.steps }
-    Absent => Absent
+    Present { value: j } => j.steps
+    Absent => []
   }
 }
 
-fn step_with_id(id: String, steps: List<Step>) -> Step? { filter(steps, st => mint_step_id_of(st: st) == id).first() }
+fn step_with_id(id: String) -> Step? { filter(mint_job_steps(), st => mint_step_id_of(st: st) == id).first() }
 
 test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built_from_its_row() -> Bool {
   // The cap, as the GENERATOR enforces it -- not a number copied from a comment.
-  match mint_job_steps() {
-    Absent => false
-    Present { value: steps } => count(fleet_converge_dispatch_inputs) <= workflow_dispatch_max_inputs
+  count(fleet_converge_dispatch_inputs) <= workflow_dispatch_max_inputs
     // No per-key input survived the cap: the selection is the pin, so nothing may name it.
     && !any(fleet_converge_dispatch_inputs, i => i.name == "keypair_subject")
     // Every row is walked: its mint step and its receipt upload are in the job, under the row-derived ids.
-    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s), steps: steps) {
+    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s)) {
          Present { value: st } => match outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: s))) {
+           Absent => false
+           Present { value: own_entry } => match fleet_keypair_mint_other_entry(subject: s) {
              Absent => false
-             Present { value: entry } => match fleet_keypair_mint_other_entry(subject: s) {
-               Absent => false
-               Present { value: other } => mint_step_run_of(st: st).contains(entry)
-             && !mint_step_run_of(st: st).contains(other)
-             && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
-             && mint_step_if_of(st: st).contains("fleet_keypair_mint")
-             && !mint_step_if_of(st: st).contains("keypair_subject")
-             }
+             Present { value: other_entry } =>
+               mint_step_run_of(st: st).contains(own_entry)
+                 && !mint_step_run_of(st: st).contains(other_entry)
+                 && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
+                 && mint_step_if_of(st: st).contains("fleet_keypair_mint")
+                 && !mint_step_if_of(st: st).contains("keypair_subject")
            }
+         }
          Absent => false
        })
-    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: concat(fleet_converge_fleet_keypair_mint_step_id(subject: s), "_receipt_upload"), steps: steps) {
+    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: concat(fleet_converge_fleet_keypair_mint_step_id(subject: s), "_receipt_upload")) {
          // `always()` without `&& failure()`: a job that ends on a GitHub-hosted VM keeps its receipts only if
          // the upload runs on the SUCCESS path too -- and success is the path that produces the receipt the
          // runbook pins from (review 87458). A future edit re-adding failure() fails here.
@@ -528,13 +527,12 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
     && count(fleet_keypair_mint_subject_rows()) == 2
     && fleet_converge_fleet_keypair_mint_step_id(subject: boot_medium_reader_keypair_mint_subject)
        != fleet_converge_fleet_keypair_mint_step_id(subject: mtcollins1_host_keypair_mint_subject)
-  }
 }
 
 // THE OTHER ROW'S DERIVED ENTRY PATH, read from the roster rather than spelled, so the cross-wiring check
 // above cannot silently stop checking anything when a third key is added.
 fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> Optional<String> {
-  match filter(fleet_keypair_mint_subject_rows(), s => s.mint_module != subject.mint_module).first() {
+  match filter(fleet_keypair_mint_subject_rows(), s => (s.mint_target.declaration.module_path as String) != (subject.mint_target.declaration.module_path as String)).first() {
     Present { value: other } => outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: other)))
     Absent => Absent
   }

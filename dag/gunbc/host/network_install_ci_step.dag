@@ -10,8 +10,18 @@ import std.types { String }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target }
-import gunbc.host.network_install_ci { managed_host_network_install_receipt_path }
 import v2.std.diagnostic { Outcome }
+
+// THE NETWORK-INSTALL RUN LEAVES ONE ARTEFACT, and it is the receipt the workflow uploads: the dispatch,
+// the boot it issued, what the controller read back, what the completion fold said, and whether the edge binding
+// was withdrawn. A run that refuses writes the same shape with the refusal in it; there is no silent no-op.
+// The path is the STEP's `receipt_rel` — the runner writes the receipt where the step says — so it lives with
+// the step, which is also what the workflow's upload step reads. It is deliberately not in
+// gunbc.host.network_install_ci, the module that RUNS the install: that module carries the executor's whole
+// world, and measuring the artifact gate (gunbc.instruments.generated_artifact_gate) at 12bc0691a427, the two
+// readers that needed only this path acquired 70 further dag modules through it. Its sibling facts, the timeout
+// and the digest command, already live here. Sibling: gunbc.roadmap.roadmap_launch_deployment_receipt_location.
+data managed_host_network_install_receipt_path: String = "target/managed-host-network-install-receipt.txt"
 
 // PXE 2c: the one-shot network install for one admitted arrival unit (bobo/srv15 first). The wet entry named
 // here stages the edge binding, boots the unit once, reads the install back through

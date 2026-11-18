@@ -19,6 +19,7 @@ import extdeps.external_authority { CitedFigureStanding }
 import gunbc.secret_provision {
   mtjade1_bmc_gunbc_arrival_accessor_pin,
   mtjade1_bmc_gunbc_arrival_accessor_version,
+  srv15_bmc_gunbc_arrival_accessor_pin,
   srv15_bmc_gunbc_arrival_accessor_version,
   mtjade1_bmc_gunbc_secret_ref,
   srv15_bmc_gunbc_secret_ref,
@@ -281,8 +282,10 @@ data srv15_arrival_federation_pair: ArrivalFederationPair = ArrivalFederationPai
   unit: operator_host_srv15,
   display_prefix: "srv15" as NonEmptyStr,
   container_ref: srv15_bmc_gunbc_secret_ref,
-  // NO figure until the operator read lands: the obligation on the standing names the two edits.
-  accessor_version: Absent,
+  // THE FIGURE, grounded by the job-identity versions read of run 44134741714 (the single ENABLED
+  // version its receipt names); the standing beside it warrants it, and the ref is minted only
+  // through accessor_ref_from_pin -- figure and warrant travel together (review 94161).
+  accessor_version: Present { value: srv15_bmc_gunbc_arrival_accessor_pin },
   accessor_standing: srv15_bmc_gunbc_arrival_accessor_version,
 }
 

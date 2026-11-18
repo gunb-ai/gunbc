@@ -1,0 +1,88 @@
+module test.fixture.fleet_converge_roster_closed_sum.roster_fixture
+
+import std.types { List }
+import v2.std.node { Symbol }
+
+// THE SHAPES THE ROSTER WALL IS HELD TO, planted so the wall is proven to bite before it is trusted
+// over the real mode roster (gunbc.integration_concern::fleet_converge_roster_vs_closed_sum).
+//
+// WHY A FIXTURE AND NOT JUST THE REAL SUM. The wall's job is to refuse a hand-kept roster that has
+// drifted from the closed sum it repeats. A wall that has only ever been seen green over one roster
+// proves nothing about whether it can see drift at all, and the drift it is meant to catch -- a mode
+// landing on the sum without landing on the roster, or landing on the roster twice -- is exactly the
+// drift nobody has yet made here (the roster is honest as of 2026-11-18, measured by this file's own
+// green row). So the two shapes that must be refused are PLANTED here, in the open, and the witness
+// asserts the wall refuses them. A fixture home, because a planted defect must not be selectable as
+// a test target by the floor: gunbc.compute.test_selection derives targets from the file listing, and
+// test.fn declarations are what make a file selectable, and there are none in this file.
+//
+// WHY THIS SHAPE AND NOT A FLATTER ONE. gunbc.fleet.fleet_converge_workflow.FleetConvergeWorkflowMode
+// is mostly nullary arms with one -- Srv1RootMutation -- carrying a nested closed sum, and the roster
+// answers that one arm with one entry per nested mode. A fixture of flat arms alone would
+// let a wall pass that only knows how to count each arm once, and would then be silent on the nested
+// arm: the mode most recently added to this fleet landed exactly there (#16583 landed
+// MtCollins1PcieRetimerReset into the nested arm; #16529's MtCollins1BmcColdReset landed the same way
+// one level up). So the fixture repeats the real
+// shape at its own scale: three nullary arms, one payload arm over a two-arm nested sum, five roster
+// entries when honest.
+//
+// The names below are invented and carry no standing. The variant names are globally unique because
+// the language refuses two sums sharing a variant name, so the fixture cannot be confused with the
+// real mode vocabulary (gunbc.design_argument::closed_world_sum).
+type FleetRosterWallFixtureMode =
+  | FixtureAlpha
+  | FixtureBeta
+  | FixtureGamma
+  | FixtureNested(FleetRosterWallFixtureNestedMode)
+
+// The nested sum the payload arm ranges over, at the same grain as
+// gunbc.fleet.srv1_root_mutation_mode.Srv1RootMutationMode: every arm nullary, which is what makes
+// v2.std.node_reflection.coproduct_nullary_inhabitants able to enumerate it -- the capability the
+// parent sum does NOT have, and the reason the parent's roster is walled instead of derived.
+type FleetRosterWallFixtureNestedMode =
+  | FixtureNestedOne
+  | FixtureNestedTwo
+
+// Discrimination is the LANGUAGE's (gunbc.design_argument::sum_types_are_discriminated), not a
+// hand-kept projection, so the fixture cannot disagree with itself about which arm a value is.
+fn fixture_mode_discriminant(mode: FleetRosterWallFixtureMode) -> Symbol {
+  discriminant(v: mode)
+}
+
+fn fixture_nested_mode_discriminant(mode: FleetRosterWallFixtureNestedMode) -> Symbol {
+  discriminant(v: mode)
+}
+
+// THE HONEST ROSTER: every arm of the sum exactly once, except the payload arm, which appears once
+// per arm of ITS sum. This is what the real roster owes its sum, at fixture scale, and the wall must
+// pass it -- a wall that refuses the honest shape is not a wall, it is noise.
+fn fixture_roster_honest() -> List<FleetRosterWallFixtureMode> {
+  [
+    FixtureAlpha,
+    FixtureBeta,
+    FixtureGamma,
+    FixtureNested(FixtureNestedOne),
+    FixtureNested(FixtureNestedTwo)
+  ]
+}
+
+// THE BROKEN ROSTER, carrying BOTH defects the task of this wall is to catch, in one list:
+//   MISSING    -- FixtureGamma is on the sum and not on the roster. This is the shape of the real
+//               hazard: a mode is added to the closed sum, the exhaustive facts match is forced to
+//               grow (the compiler demands it), and the hand-kept roster nobody is forced to touch
+//               stays behind. The mode then has facts and no dispatch option.
+//   DUPLICATED -- FixtureBeta is on the roster twice. This is the shape of the second real hazard: a
+//               roster edited by appending rather than by replacing, which puts the same dispatch
+//               option on the workflow's choice menu twice.
+// The wall reports 2 against this list -- one defect per arm whose multiplicity is wrong, and no
+// third finding for the duplicate being also a stranger (it is a declared arm, so the stranger law
+// does not fire). That exact count is what the witness pins.
+fn fixture_roster_missing_and_duplicated() -> List<FleetRosterWallFixtureMode> {
+  [
+    FixtureAlpha,
+    FixtureBeta,
+    FixtureBeta,
+    FixtureNested(FixtureNestedOne),
+    FixtureNested(FixtureNestedTwo)
+  ]
+}

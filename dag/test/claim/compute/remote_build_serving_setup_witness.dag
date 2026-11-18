@@ -13,7 +13,7 @@ module test.claim.compute.remote_build_serving_setup_witness
 
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
-import std.algebra { non_empty_to_list }
+import std.algebra { count_where, non_empty_to_list }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -624,7 +624,11 @@ fn is_root_target(t: OwnedDirectoryTarget) -> Bool { !is_area_target(t: t) }
 // a guard, not a red control: some desired ledger row really declares this canonical octal, so a
 // fixture that silently lost the sticky areas or the 0755 root cannot let a mode control pass.
 fn any_row_declares(d: RemoteBuildServingDesired, mode: String) -> Bool {
-  count(d.ledger_dirs, t => serving_ledger_declared_mode_octal(t: t) == mode) > 0
+  // count_where is the authority for "how many satisfy P"; the builtin `count` is 1-argument and a
+  // surplus predicate actual is now refused at type check (it was silently dropped, so this was vacuously
+  // `non-empty(ledger_dirs)`). The guard's intent -- some desired row really declares this octal -- is what
+  // count_where actually judges.
+  count_where(d.ledger_dirs, t => serving_ledger_declared_mode_octal(t: t) == mode) > 0
 }
 
 // a row built with explicit established field values.

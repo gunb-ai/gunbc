@@ -1,0 +1,25 @@
+module gunbc.roadmap.roadmap_launch_deployment_receipt_location
+
+import std.types { String }
+
+// WHERE THE RLM LAUNCH-DEPLOYMENT RECEIPT IS WRITTEN AND PUBLISHED. The wet CLI stages the receipt
+// here, the CI run step hands the staged path to the runner as its receipt, and the fleet-converge
+// workflow uploads this directory as one artifact. Three readers, one spelling — and deliberately NOT
+// in the receipt model module (gunbc.roadmap.roadmap_launch_deployment_receipt): that module renders
+// the receipt's CONTENT, so it carries the imports the content needs (the fleet converge plan, and
+// through it the workspace-commissioning executor). A job that only needs the path would acquire all
+// of it: measuring the artifact gate (gunbc.instruments.generated_artifact_gate) at 12bc0691a427, the
+// two path-only readers of these facts pulled 70 dag modules through the model module. The location is
+// a fact about where the artifact lives, so it stands where the readers can reach it without the
+// model's world. Sibling: gunbc.ci.release_bins_consumer_check_location.
+data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
+
+data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
+
+fn gunbc_rlm_launch_deployment_receipt_staging_path() -> String {
+  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.json"], "")
+}
+
+fn gunbc_rlm_launch_deployment_receipt_staging_digest_path() -> String {
+  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.sha256"], "")
+}
