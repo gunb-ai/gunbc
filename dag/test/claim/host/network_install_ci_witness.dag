@@ -28,7 +28,8 @@ import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
 import extdeps.toolchain.types { Architecture }
-import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15, operator_host_srv4 }
+import gunbc.actions_run_binding { fleet_converge_arrival_subject_env_name }
 import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.fleet.machine_target_disk_observations { target_disk_reading_for }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_binding_mac, site_pxe_edge_chain_pins, SitePxeEdgeChainPinned, SitePxeEdgeChainUnpinned }
@@ -40,7 +41,7 @@ import gunbc.host.network_install_ci {
   network_install_ci_edge_view,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
   network_install_ci_resolve, network_install_ci_route, network_install_ci_unit_row,
-  network_install_ci_reported_serial,
+  network_install_ci_reported_serial, network_install_ci_unit_refusal, network_install_ci_conflation_refusal,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
 import gunbc.machine_intake.arrival_subject { arrival_converge_population, arrival_population_row_in }
@@ -412,4 +413,78 @@ test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
             && !declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_wet"))
       )
     ) == 0
+}
+
+// THE UNIT IS THE KEY, NEVER THE EXECUTOR. The dispatch arrives with two identities: the executor host (the
+// runner that hosts the one site PXE edge) and the install unit read from the arrival_subject input. Every
+// committed lookup below the entry is keyed by the UNIT. This claim is the manager-ruled red: account the same
+// missing pass under the executor's identity (srv4) and the rows committed under srv15's name -- managed-host
+// row, write-controller row, capability row, target-disk reading -- all miss; account it under the unit and none
+// of them appear. If the entry ever routes the executor into the lookups, the unit-keyed arm goes red and the
+// executor-keyed arm goes green: the claim flips exactly on the conflation.
+test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_rows() -> Bool {
+  let unit_missing = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  let executor_missing = network_install_ci_missing(
+    host: operator_host_srv4, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  !any(
+    xs: unit_missing,
+    where: item =>
+      string_contains(s: item.input as String, pattern: "managed-host row")
+        || string_contains(s: item.input as String, pattern: "write-controller row")
+        || string_contains(s: item.input as String, pattern: "firmware release capability row")
+        || string_contains(s: item.input as String, pattern: "dated target-disk reading")
+  )
+    && any(
+      xs: executor_missing,
+      where: item =>
+        string_contains(s: item.input as String, pattern: "managed-host row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item =>
+        string_contains(s: item.input as String, pattern: "write-controller row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item =>
+        string_contains(s: item.input as String, pattern: "firmware release capability row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item =>
+        string_contains(s: item.input as String, pattern: "dated target-disk reading")
+    )
+}
+
+// AN ABSENT UNIT REFUSES, NAMING THE INPUT IT WANTED. The refusal names FLEET_CONVERGE_ARRIVAL_SUBJECT -- the
+// dispatch's own input -- and says outright that the unit is never taken from the executor host. A witness that
+// only checked "some refusal" would pass on any other text; this one pins the input name and the clause.
+test fn w_an_absent_unit_refusal_names_the_arrival_subject_input_and_denies_the_host() -> Bool {
+  let text = network_install_ci_unit_refusal(
+    variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
+    detail: "workflow_dispatch carried no arrival_subject value" as NonEmptyStr
+  )
+  string_contains(s: text, pattern: "FLEET_CONVERGE_ARRIVAL_SUBJECT")
+    && string_contains(s: text, pattern: "arrival_subject")
+    && string_contains(s: text, pattern: "never from the executor host")
+}
+
+// A CONFLATED DISPATCH REFUSES BY BOTH NAMES. Putting the same identity in the executor slot and the unit slot
+// is refused, and the refusal names the shared identity and both roles, so the operator can see WHICH input was
+// mis-set. It is distinct text from the absent-unit refusal: two different mistakes report two different causes.
+test fn w_a_conflated_dispatch_is_refused_naming_the_identity_and_both_roles() -> Bool {
+  let text = network_install_ci_conflation_refusal(host: ci_host, unit: ci_host)
+  string_contains(s: text, pattern: "srv15")
+    && string_contains(s: text, pattern: "executor")
+    && string_contains(s: text, pattern: "unit")
+    && text
+      != network_install_ci_unit_refusal(
+        variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
+        detail: "x" as NonEmptyStr
+      )
 }

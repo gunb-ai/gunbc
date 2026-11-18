@@ -2449,10 +2449,15 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
 // and see what a converge would write before any root-evaluated file changes. Both reach the target
 // over the job's fleet-key agent as the declared administrator; the job user gains no grant.
 fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
-  fleet_converge_runner_host_file_step_within(id: id, name: name, invoke: invoke, if_condition: if_condition, timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes)
+  fleet_converge_runner_host_file_step_within(
+    id: id, name: name, invoke: invoke, if_condition: if_condition,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes, extra_env: [],
+  )
 }
 
-fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Duration) -> Step {
+// The step binds its runner through the executor host input; a step whose dispatch ALSO names an install unit
+// passes that input through extra_env, so the executor stays the executor and the unit stays the unit.
+fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Duration, extra_env: List<YamlKeyValue>) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -2461,7 +2466,7 @@ fn fleet_converge_runner_host_file_step_within(id: String, name: String, invoke:
     env: Present {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-      ]
+      ] + extra_env
     },
     working_directory: none,
     if_condition: Present { value: if_condition },
@@ -2849,6 +2854,7 @@ fn fleet_converge_site_pxe_edge_converge_step() -> Step {
     invoke: gunbc_ci_site_pxe_edge_converge_invoke(),
     if_condition: fleet_converge_site_pxe_edge_converge_step_if,
     timeout_minutes: gunbc_ci_site_pxe_edge_converge_step_timeout_minutes,
+    extra_env: [],
   )
 }
 
@@ -8989,6 +8995,9 @@ fn fleet_converge_managed_host_network_install_step() -> Step {
     invoke: gunbc_ci_managed_host_network_install_invoke(),
     if_condition: fleet_converge_managed_host_network_install_step_if,
     timeout_minutes: gunbc_ci_site_pxe_edge_converge_step_timeout_minutes,
+    extra_env: [
+      kv(key: fleet_converge_arrival_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.arrival_subject }}")),
+    ],
   )
 }
 
