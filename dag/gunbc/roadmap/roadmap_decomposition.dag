@@ -4,6 +4,7 @@ import std.types { String, Int, Bool, List }
 import std.integer { nat_to_int }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_event_log { ClaimGrain }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
 // THE RECURSIVE DECOMPOSITION OF EVERY OPEN BOUND WORK ITEM, DONE UP FRONT (operator, 2026-11-17: "basically i'm
@@ -341,6 +342,55 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
           }
         }
       }
+    }
+  }
+}
+
+// THE APPEND-TIME GUARD: the ONE place that decides whether a Claimed of a given GRAIN may be recorded
+// against `node`. It lives here, beside decomposition_has_leaf_path -- the leaf authority -- so the well-
+// formedness judgment is never re-spelled at a call site (single_authority: consumers import this one
+// check, they do not copy it). Both minting producers (roadmap_event_cli, roadmap_issue_command) route a
+// Claimed through it before appending; the two decode sites never mint, so they never call it.
+//
+// The decision is by decomposition COUNT, read through decomposition_for (the carrier's own authority),
+// exactly as the operator ruled (2026-11-18): a count of 0 means there is no leaf to name, so a Pathless
+// is admitted and a Leaf names a path in nothing (refused, leaf-path-unknown); a count of 1 applies the
+// first-landing ruling -- a Claimed must name a leaf (Pathless refused), the leaf must belong to THIS
+// item (else leaf-wrong-item), and it must be a leaf the decomposition actually has (else leaf-path-
+// unknown); a count above 1 is ambiguous and refuses EVERY Claimed with a typed decomposition-ambiguous
+// reason -- the guard never silently picks one decomposition to check against. Every refusal is typed
+// (fail_closed), never a boolean that a caller could invert or ignore.
+type ClaimedGrainRefusal
+  = LeafPathUnknown { path: LeafPath }
+  | LeafWrongItem { path: LeafPath, expected: RoadmapNodeId }
+  | PathlessOnDecomposed { node: RoadmapNodeId }
+  | DecompositionAmbiguous { node: RoadmapNodeId, count: Int }
+
+type ClaimedGrainVerdict
+  = Admissible
+  | Refused { reason: ClaimedGrainRefusal }
+
+fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> ClaimedGrainVerdict {
+  let ds = decomposition_for(node: node)
+  let c = count(ds)
+  if c > 1 {
+    Refused { reason: DecompositionAmbiguous { node: node, count: c } }
+  } else if c == 0 {
+    match grain {
+      Pathless => Admissible
+      Leaf { path } => Refused { reason: LeafPathUnknown { path: path } }
+    }
+  } else {
+    match grain {
+      Pathless => Refused { reason: PathlessOnDecomposed { node: node } }
+      Leaf { path } =>
+        if path.item != node {
+          Refused { reason: LeafWrongItem { path: path, expected: node } }
+        } else if decomposition_has_leaf_path(path: path) {
+          Admissible
+        } else {
+          Refused { reason: LeafPathUnknown { path: path } }
+        }
     }
   }
 }

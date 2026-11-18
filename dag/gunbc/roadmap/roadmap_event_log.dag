@@ -1,6 +1,9 @@
 module gunbc.roadmap.roadmap_event_log
 
 import std.types { String, Int, Bool, List, NonEmptyStr, brand }
+import std.nat { Nat }
+import std.integer { nat_to_int }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim, zip_eq }
 import std.content_hash { content_hash_atom, fnv1a64_structural_hex_digest, serialize_content_hash, Fnv1a64 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_array, json_object, json_kv, json_string, serialize_json }
@@ -19,7 +22,7 @@ import gunbc.roadmap.roadmap_model {
   RedControlEvidence, RedControlNotRun, RedControlExecuted,
   HandbackEvidence, HandbackNotDelivered, HandbackDelivered,
   AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
-  revocation_reopens_active_frontier, replay_acceptance_history,
+  revocation_reopens_active_frontier, replay_acceptance_history, LeafPath,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
@@ -124,8 +127,22 @@ type RoadmapEventId = NonEmptyStr where brand("RoadmapEventId")
 // /issue/<id>#comment-N survives edits and deletes); the v3 comment id is the client-minted
 // stable value (a retry converges on it), and parent_comment threads a reply to the comment it
 // answers (none = a root comment).
+// THE CLAIM GRAIN: what a Claimed binds. A claim can name the WHOLE item, or one LEAF of it.
+// The leaf is spelled by the carrier's own authority type, LeafPath (imported from
+// gunbc.roadmap.roadmap_model -- the module below both this record and roadmap_decomposition),
+// and its well-formedness is judged ONLY by decomposition_has_leaf_path at append; this record
+// never re-spells the check. PATHLESS is here so the RECORDED log can be read: every Claimed
+// recorded before claims named a leaf decodes as Pathless, and the log is never rewritten --
+// reading history is not a migration (gunbc.design_ruling single_authority: the log is the
+// authority). Whether a Pathless is ADMISSIBLE on a new append is the guard's judgment, not the
+// type's; on an item that HAS a decomposition a new Claimed must name a leaf (the operator's
+// ruling: a claim names its leaf from the first landing), so Pathless there refuses at append.
+type ClaimGrain
+  = Pathless
+  | Leaf { path: LeafPath }
+
 type RoadmapEventKind
-  = Claimed { assignee: EventPrincipal, return_to: EventPrincipal }
+  = Claimed { assignee: EventPrincipal, return_to: EventPrincipal, grain: ClaimGrain }
   | Released
   | Progress { note: NonEmptyStr }
   | Blocked { reason: NonEmptyStr }
@@ -265,11 +282,13 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
 // carried no parent; v3 names it "comment" and threads parent_comment ("" = a root comment).
 fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<JsonKeyValue> {
   match k {
-    Claimed { assignee, return_to } =>
-      if schema == roadmap_event_schema_v1 { [] } else { [
-        json_kv(key: "assignee", value: json_string(s: event_principal_label(p: assignee))),
-        json_kv(key: "return_to", value: json_string(s: event_principal_label(p: return_to))),
-      ] }
+    Claimed { assignee, return_to, grain } =>
+      if schema == roadmap_event_schema_v1 { [] } else {
+        concat([
+          json_kv(key: "assignee", value: json_string(s: event_principal_label(p: assignee))),
+          json_kv(key: "return_to", value: json_string(s: event_principal_label(p: return_to))),
+        ], roadmap_claim_grain_members(grain: grain))
+      }
     Released => []
     Progress { note } => [json_kv(key: "note", value: json_string(s: note as String))]
     Blocked { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
@@ -633,6 +652,87 @@ fn event_member_calendar_day(doc: JsonValue, key: String) -> NonEmptyStr? {
   }
 }
 
+// THE CLAIM GRAIN, on the wire. A Pathless writes NO member: a Claimed recorded before claims named a
+// leaf, and a Pathless appended today, therefore share one byte-identical canonical form, and every
+// historical event id still verifies against its bytes (the log is the authority; reading history is not
+// a migration, so it is never rewritten). A Leaf adds one "leaf" object -- the item and its three Nat
+// indexes, each index a JsonNumber lexeme crossed total-and-exact via nat_to_int.
+fn roadmap_claim_grain_members(grain: ClaimGrain) -> List<JsonKeyValue> {
+  match grain {
+    Pathless => []
+    Leaf { path } => [json_kv(key: "leaf", value: json_object(members: [
+      json_kv(key: "item", value: json_string(s: path.item as String)),
+      json_kv(key: "stage", value: JsonNumber { lexeme: to_string(value: nat_to_int(n: path.stage)) }),
+      json_kv(key: "piece", value: JsonNumber { lexeme: to_string(value: nat_to_int(n: path.piece)) }),
+      json_kv(key: "member", value: JsonNumber { lexeme: to_string(value: nat_to_int(n: path.member)) }),
+    ]))]
+  }
+}
+
+// Read one Nat index off the leaf object, FAIL-CLOSED: absent, not-a-number, a non-decimal lexeme, or a
+// negative value all yield none, which the caller turns into an undecodable event rather than a guessed
+// grain. parse_int would read a leading '-', so a negative lexeme is refused here before checked_int_to_nat
+// would itself refuse it -- the Nat is never invented from bytes that do not spell one.
+fn roadmap_leaf_nat_member(obj: JsonValue, key: String) -> Nat? {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme: lex } } =>
+      match parse_int(s: lex as String) {
+        Present { value: n } => if n < 0 { none } else { checked_int_to_nat(n: n) }
+        Absent => none
+      }
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// Decode the grain from the kind object. NO "leaf" member => Pathless (every pre-change line reads back
+// exactly as recorded). A malformed leaf -- a non-object, a missing item, any index that is not a Nat --
+// is undecodable (none), never defaulted: fail_closed, because a Claimed whose grain cannot be read cannot
+// be trusted to name, or to omit, a leaf.
+fn roadmap_claim_grain_decode(doc: JsonValue) -> ClaimGrain? {
+  match json_object_unique_member(v: doc, key: "leaf") {
+    JsonMemberFound { value: o } => match o {
+      JsonObject { members: _ } =>
+        match event_member_nonempty(doc: o, key: "item") {
+          Absent => none
+          Present { value: item } =>
+            match roadmap_leaf_nat_member(obj: o, key: "stage") {
+              Absent => none
+              Present { value: stage } =>
+                match roadmap_leaf_nat_member(obj: o, key: "piece") {
+                  Absent => none
+                  Present { value: piece } =>
+                    match roadmap_leaf_nat_member(obj: o, key: "member") {
+                      Absent => none
+                      Present { value: member } =>
+                        Present { value: Leaf { path: LeafPath {
+                          item: (item as String) as NonEmptyStr as RoadmapNodeId,
+                          stage: stage,
+                          piece: piece,
+                          member: member,
+                        } } }
+                    }
+                }
+            }
+        }
+      JsonNull => none
+      JsonBool { value: _ } => none
+      JsonNumber { lexeme: _ } => none
+      JsonString { value: _ } => none
+      JsonArray { elements: _ } => none
+    }
+    JsonMemberAbsent => Present { value: Pathless }
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
 // THE KIND DECODE, per schema generation. v2/v3 require the Claimed assignee and return_to
 // members (v3 additionally requires them to parse as principals); v1's Claimed had neither: it
 // decodes as a self-claim (both = the author principal), the only assignment v1 could state, and
@@ -640,7 +740,7 @@ fn event_member_calendar_day(doc: JsonValue, key: String) -> NonEmptyStr? {
 fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, author: EventPrincipal, node: RoadmapNodeId) -> RoadmapEventKind? {
   if word == "claimed" {
     if schema == roadmap_event_schema_v1 {
-      Present { value: Claimed { assignee: author, return_to: author } }
+      Present { value: Claimed { assignee: author, return_to: author, grain: Pathless } }
     } else {
       match event_member_nonempty(doc: doc, key: "assignee") {
         Absent => none
@@ -653,7 +753,11 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
                 Present { value: r } =>
                   match event_principal_decode(schema: schema, s: r) {
                     Absent => none
-                    Present { value: return_to } => Present { value: Claimed { assignee: assignee, return_to: return_to } }
+                    Present { value: return_to } =>
+                      match roadmap_claim_grain_decode(doc: doc) {
+                        Absent => none
+                        Present { value: grain } => Present { value: Claimed { assignee: assignee, return_to: return_to, grain: grain } }
+                      }
                   }
               }
           }

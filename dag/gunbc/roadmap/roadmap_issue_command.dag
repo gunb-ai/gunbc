@@ -78,7 +78,7 @@ fn issue_operation_nonce() -> String? {
 fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEvent {
   match command {
     AssignIssue { subject, assignee, return_to } => RoadmapEvent { node: subject.node, author: subject.author,
-      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: recorded_at }
+      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to , grain: Pathless }, recorded_at: recorded_at }
     CreateComment { subject, body } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
