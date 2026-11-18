@@ -5459,17 +5459,14 @@ fn fleet_converge_srv1_root_mutation_job_env() -> List<YamlKeyValue> {
   [kv(key: srv1_root_mutation_mode_env, value: yaml_string(s: "${{ github.event.inputs.mode }}"))]
 }
 
-fn fleet_converge_dashboard_deploy_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)) as String,
-    name: none,
-    runner: fleet_converge_host_pinned_runner_spec(),
-    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
-    steps: concat(
-      fleet_converge_consumer_prelude_steps(),
+fn fleet_converge_dashboard_deploy_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(
+      xs: concat(
+      lift_steps(fleet_converge_consumer_prelude_steps()),
       [
-        ci_release_bins_download_step(),
-        ci_release_bins_unpack_verify_step(),
+        outcome_accepted(value: ci_release_bins_download_step()),
+        outcome_accepted(value: ci_release_bins_unpack_verify_step()),
       ],
       // THE DISPATCH ADMISSION IS THE GATE'S FRONT PORCH: a dispatch that cannot deploy -- malformed
       // expected_revision, empty plan_artifact_hash, malformed run pointers -- is refused in seconds,
@@ -5478,21 +5475,21 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_dashboard_deploy_selected_inputs),
       fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
       [
-        fleet_converge_receipt_download_step(
+        outcome_accepted(value: fleet_converge_receipt_download_step(
           id: "dashboard_plan_receipt_download",
           name: "Download the plan artifact (carries the plan receipt) from the plan run",
           artifact: gunbc_fleet_converge_plan_artifact_name,
           path: fleet_converge_plan_artifact_dir,
           run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
-        ),
+        )),
         fleet_converge_admit_apply_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
-        fleet_converge_receipt_download_step(
+        outcome_accepted(value: fleet_converge_receipt_download_step(
           id: "dashboard_apply_receipt_download",
           name: "Download the fleet apply receipt from the apply run",
           artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
           path: fleet_converge_apply_receipt_dir,
           run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
-        ),
+        )),
         fleet_converge_checkout_verify_step(if_condition: none),
         // THE BUDGET QUESTION, ASKED BEFORE THE FOLD IS PAID FOR (gunbc.host.host_budget_preflight):
         // read /proc/self/cgroup and the bounding dirs' memory.max/memory.high and refuse by name
@@ -5505,15 +5502,24 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         fleet_converge_host_budget_preflight_step(),
         fleet_converge_dashboard_deploy_step(),
         fleet_converge_dashboard_receipt_assert_step(),
-        fleet_converge_receipt_upload_step(
+        outcome_accepted(value: fleet_converge_receipt_upload_step(
           id: "dashboard_receipt_upload",
           name: "Upload live-deploy transaction receipt",
           artifact: gunbc_live_deploy_receipt_artifact_name,
           path: gunbc_live_deploy_receipt_artifact_dir,
           if_condition: "always()",
-        ),
+        )),
       ]
     ),
+      policy: StageDiagnosticPolicy { accumulation: ShortCircuit },
+    ),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
+    id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)) as String,
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy))),
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
@@ -5528,7 +5534,9 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       }
     },
     permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
-  }
+      })
+    }
+  )
 }
 
 // ── THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1) ────────────────────────────────────
@@ -7699,36 +7707,41 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
 // timeout is the SUM of the declared step timeouts rather than a constant, because this job builds its own
 // binary on a hosted runner and a hand-set ceiling would be a number somebody guessed; the fold is over the
 // same steps that will run.
-fn fleet_converge_fleet_keypair_mint_job() -> Job {
+fn fleet_converge_fleet_keypair_mint_job() -> Outcome<Job> {
   // THE PER-KEY STEPS, in roster order: each subject contributes its mint step and its receipt upload. A
   // fold rather than a map because map would give one list per key and this language's list append is the
   // only flattening available to this module -- and the ORDER is the roster's, so a reader comparing the
   // generated workflow against fleet_keypair_mint_subject_rows() finds them in the same sequence.
   let mint_steps = fold(fleet_keypair_mint_subject_rows(), init: [], f: fn(acc, s) { append(acc, items: [
     fleet_converge_fleet_keypair_mint_step(subject: s),
-    fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: s),
+    outcome_accepted(value: fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: s)),
   ]) })
-  let steps = concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
+  bind_outcome(
+    o: sequence_outcome(
+      xs: concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
     concat(
       [
-        fleet_converge_hosted_gunbc_build_step(purpose: "the fleet keypair mint"),
+        outcome_accepted(value: fleet_converge_hosted_gunbc_build_step(purpose: "the fleet keypair mint")),
         fleet_converge_fleet_identity_auth_step(if_condition: outcome_accepted(value: fleet_converge_fleet_keypair_mint_step_if)),
       ],
       mint_steps,
     ),
-  )
-  Job {
+  ),
+      policy: StageDiagnosticPolicy { accumulation: ShortCircuit },
+    ),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: fleet_converge_fleet_keypair_mint_job_id as String,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     environment: none,
-    steps: steps,
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_fleet_keypair_mint_job_id),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_fleet_keypair_mint_step_if },
-    timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
+    timeout_minutes: Present { value: fold(zesty_steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
@@ -7740,7 +7753,9 @@ fn fleet_converge_fleet_keypair_mint_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     },
-  }
+      })
+    }
+  )
 }
 
 // ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decision B 2026-09-25) ────────
