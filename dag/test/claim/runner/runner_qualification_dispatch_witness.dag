@@ -39,7 +39,7 @@ import gunbc.runner.runner_qualification_group { qualification_workflow_path, qu
 import gunbc.runner.runner_qualification_floor_job {
   qualification_attempt_dispatch_input, qualification_floor_revision_guard_step, qualification_guard_script, qualification_guard_mismatch_marker,
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.fleet.fleet_converge_workflow { FleetConvergeDispatchSpec, fleet_converge_dispatch_values, FleetConvergeDispatchValuesRendered, FleetConvergeDispatchInputRepeated }
 import gunbc.runner.runner_qualification_dispatch {
   qualification_revision_dispatch_input, qualification_floor_dispatch_spec, qualification_dispatch_effect, SubjectRequiredInputUnsupplied,
@@ -687,31 +687,39 @@ fn workflow_with_floor(job: Job, inputs_declare_revision: Bool) -> Workflow {
 }
 
 test fn the_floor_checks_out_the_pinned_revision_first_and_nothing_runs_past_a_refusal() -> Bool {
-  let guard = qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)
-  let work = floor_work_step(if_condition: none)
-  let tolerant = RunStep {
-    name: Present { value: "run the floor anyway" }, id: none, run: "claim_executor --required-ci",
-    shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: Present { value: true }, timeout_minutes: none,
+  match outcome_accepted_value(qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)) {
+    Absent => false
+    Present { value: guard } => {
+      let work = floor_work_step(if_condition: none)
+      let tolerant = RunStep {
+      name: Present { value: "run the floor anyway" }, id: none, run: "claim_executor --required-ci",
+      shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: Present { value: true }, timeout_minutes: none,
+    }
+      match outcome_accepted_value(qualification_guard_script()) {
+        Absent => false
+        Present { value: guard_script } =>
+          (match qualification_floor_admission(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: true), floor_job_id: floor_job_id) {
+        QualificationFloorAdmitted { floor_job_name: _ } => true
+        QualificationFloorRefused { refusal: _ } => false
+      })
+      && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: false))
+      && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work]), inputs_declare_revision: true))
+      && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work, guard]), inputs_declare_revision: true))
+      && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, floor_work_step(if_condition: Present { value: "always()" })]), inputs_declare_revision: true))
+      && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, tolerant]), inputs_declare_revision: true))
+      && (match guard {
+        RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: ce, timeout_minutes: _ } =>
+          r == guard_script
+            && string_contains(s: r, pattern: "rev-parse")
+            && string_contains(s: r, pattern: "exit 1")
+            && (match c { Absent => true Present { value: _ } => false })
+            && (match ce { Absent => true Present { value: _ } => false })
+            && (match e { Present { value: kvs } => kvs |> any(x => x.key == "QUALIFICATION_REVISION") Absent => false })
+        UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+      })
+      }
+    }
   }
-  (match qualification_floor_admission(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: true), floor_job_id: floor_job_id) {
-    QualificationFloorAdmitted { floor_job_name: _ } => true
-    QualificationFloorRefused { refusal: _ } => false
-  })
-    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: false))
-    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work]), inputs_declare_revision: true))
-    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work, guard]), inputs_declare_revision: true))
-    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, floor_work_step(if_condition: Present { value: "always()" })]), inputs_declare_revision: true))
-    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, tolerant]), inputs_declare_revision: true))
-    && (match guard {
-      RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: ce, timeout_minutes: _ } =>
-        r == qualification_guard_script()
-          && string_contains(s: r, pattern: "rev-parse")
-          && string_contains(s: r, pattern: "exit 1")
-          && (match c { Absent => true Present { value: _ } => false })
-          && (match ce { Absent => true Present { value: _ } => false })
-          && (match e { Present { value: kvs } => kvs |> any(x => x.key == "QUALIFICATION_REVISION") Absent => false })
-      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-    })
 }
 
 // ── THE DESIGNATED JOB'S LOG ──────────────────────────────────────────────────────────────────
@@ -815,11 +823,12 @@ test fn a_required_input_the_dispatch_does_not_carry_refuses_and_is_named() -> B
 // the comparison reads two quoted variables. A literal revision, an unassigned substitution in the test, or a guard
 // spelled as a hand string that bypassed the renderer fails one of these.
 test fn the_revision_guard_is_rendered_from_its_model_and_compares_the_readback() -> Bool {
-  let script = qualification_guard_script()
-  script != gunbc_invoke_step_orch_refused_poison
-    && string_contains(s: script, pattern: "rev-parse")
+  match outcome_accepted_value(qualification_guard_script()) {
+    Absent => false
+    Present { value: script } => string_contains(s: script, pattern: "rev-parse")
     && string_contains(s: script, pattern: "QUALIFICATION_OBSERVED_HEAD=$(")
     && string_contains(s: script, pattern: "\"$QUALIFICATION_OBSERVED_HEAD\" '!=' \"$QUALIFICATION_REVISION\"")
     && string_contains(s: script, pattern: qualification_guard_mismatch_marker)
     && string_contains(s: script, pattern: "exit 1")
+  }
 }
