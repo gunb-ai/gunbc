@@ -65,7 +65,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_desired_instance_deploy_job, fleet_converge_desired_instance_deploy_options,
 }
 import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, deployment_is_prod_role_holder }
-import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_live_desired_deployment }
+import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_production_desired_deployment }
 import gunbc.deployment_risk { prod_role_selection }
 import gunbc.fleet.fleet_intent { operator_host_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
@@ -288,7 +288,7 @@ test fn the_selection_names_only_the_lab_and_refuses_an_unknown_id() -> Bool {
 // (srv1-live) as the holder and the lab as not, so live_deploy_apply_desired_wet_from_ci cannot be coaxed
 // into converging the prod-role row (no second deploy path for production).
 test fn the_entry_refuses_the_prod_role_holder_row_but_not_the_lab() -> Bool {
-  deployment_is_prod_role_holder(deployment: srv1_live_desired_deployment())
+  deployment_is_prod_role_holder(deployment: srv1_production_desired_deployment())
     && !deployment_is_prod_role_holder(deployment: srv1_lab_desired_deployment())
 }
 
