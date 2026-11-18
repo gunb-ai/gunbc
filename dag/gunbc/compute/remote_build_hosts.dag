@@ -27,10 +27,9 @@ import product.host_identity { HostIdentity }
 // srv1's existing home and creates the others.
 //
 // WHO IS LISTED, AND ON WHAT EVIDENCE. srv1 -- its home already existed (its dashboard instance lives at
-// /opt/gunbc, so it does not migrate). srv3 and srv4 -- admitted 2026-11-18 once the serving converger
+// /opt/gunbc, so it does not migrate). srv3 and srv4 -- admitted once the serving converger
 // (gunbc.compute.remote_build_serving_converge) had created their account, ledger home, store, checkout,
-// rustup, toolchain and serve binary and re-observed each host settled (fleet-converge runs 44198068780 and
-// 44203229183, confirmed for srv3 by the independent observe 44199766267). Listing them carves one CI runner
+// rustup, toolchain and serve binary and re-observed each host settled. Listing them carves one CI runner
 // slot on each into its build pool (gunbc.runner.runner_slot_desired host_build_pool_reservation): they
 // carry no dashboard instance to hold their own reservation. srv2 is NOT listed: its runner is down and its
 // serving setup is unobserved. Its ledger switch from /home/briansrls to the host home is the converger's
