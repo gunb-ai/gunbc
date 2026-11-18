@@ -1646,25 +1646,24 @@ test fn witness_projected_dependency_edges_include_closing_contract_projection()
   // THE SCENARIO: nothing accepted, so the closing-contract obligations are the ones the un-accepted
   // frontier owes. Both halves are read from the SAME scenario, which is the point: the dependency-edge
   // projection must be a superset of the closing-contract edges for any frontier at all, and a live log
-  // can only ever show one frontier.
+  // can only ever show one frontier. Both sides are the caller-held list projections, so no live load is
+  // consulted and the containment is checked over a frontier the witness chose.
   match scenario_envelopes(label: "projected-edges-closing-contract", events: []) {
     Absent => false
     Present { value: envs } =>
-      match closing_contract_task_edges_for_accepted(
-        accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
-      ) {
-    ClosingContractTaskEdgesProjected { edges: closing_edges } =>
-      match projected_roadmap_edges_for_accepted(
-        accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
-      ) {
-        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(closing_edges, init: true, f: fn(acc, edge) {
-            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-          })
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-      }
-    ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
-    }
+      fold(
+        closing_contract_task_edges_for_accepted(
+          accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+        ),
+        init: true,
+        f: fn(acc, edge) {
+          acc
+            && projected_roadmap_edges_for_accepted(
+                 accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+               )
+               |> any(p => p.child == edge.child && p.parent == edge.parent)
+        }
+      )
   }
 }
 
@@ -1685,17 +1684,15 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
     Present { value: envs } =>
       match scenario_frontier(envs: envs) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-      match projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld) {
-        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(
-            active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
-            init: true,
-            f: fn(acc, edge) {
-              acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-            }
-          )
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-      }
+      fold(
+        active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+        init: true,
+        f: fn(acc, edge) {
+          acc
+            && projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
+               |> any(p => p.child == edge.child && p.parent == edge.parent)
+        }
+      )
     FrontierSetsProjectionRefused { detail: _ } => false
       }
   }
