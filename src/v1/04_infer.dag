@@ -5868,7 +5868,32 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let declared_last = qualified_last_segment(name: declared_name)
+  let produced_last = qualified_last_segment(name: produced_name)
+  let produced_exposure = expected_type_head_exposure(formal: produced, scope: scope)
   if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope) {
+    false
+  } else if produced_name == "" || is_kernel_type(name: produced_last) {
+    // TWO CASES THIS ARM DOES NOT OWN, and the Bool false positive is what pinned them down. A produced
+    // head with NO name names no declaration, so there is no "different declaration" to refuse -- that
+    // pair is UndecidableProducedIdentityErased's to abstain on. And a produced head whose own name IS a
+    // kernel belongs to the kernel-at-kernel relation (`declared_type_kernel_inhabitance_mismatch`, which
+    // already refuses a String under `-> Int`) and to the refinement arm (a String literal at a
+    // NonEmptyStr formal). `Bool` is the case that surfaced this: std declares `type Bool = True | False`
+    // (dag/std/types.dag:138), so a Bool condition node carries a Disj connective and the raw exposure
+    // view reads it as a coproduct at a kernel -- the same identity read two ways. Without this guard the
+    // first refusal the new arm emitted was dag/std/types.dag:145, an `if` condition, and the corpus
+    // would not compile. The kernel exclusion is the same one v1.compiler.infer
+    // nominal_coproduct_head_name already applies by name.
+    false
+  } else if declared_last != "" && produced_last == declared_last {
+    // THE IDENTITY CASE THE GENERAL FORM PRESUPPOSES: refusal is justified by the produced head naming a
+    // DIFFERENT declaration than the formal's kernel. A head naming the formal's own declaration is that
+    // declaration, whatever connective it is written with -- which is what keeps a value of a
+    // where-refinement (`type NonEmptyStr = String where string_non_empty`, dag/std/types.dag:140) at a
+    // formal of the same refinement clean, even though a where-refinement's node carries a Conj connective
+    // and the raw exposure view would read it as a product. The name authorities apply the same exclusion
+    // through is_where_refinement_type; the exposure route needs it stated here.
     false
   } else if alias_identity_in_judgment(
       left: declared, right: produced, source_indices: source_indices,
@@ -5884,22 +5909,20 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     false
-  } else if is_container_type(name: qualified_last_segment(name: produced_name)) {
+  } else if is_container_type(name: produced_last) {
     // A container at a scalar is container_element_nominal_brand_mismatch's and
     // collection_versus_established_identity's judgment, each with its own located reason.
     false
+  } else if type_head_exposure_is_product(exposure: produced_exposure)
+      || type_head_exposure_is_coproduct(exposure: produced_exposure) {
+    true
   } else {
-    let exposure = expected_type_head_exposure(formal: produced, scope: scope)
-    if type_head_exposure_is_product(exposure: exposure) || type_head_exposure_is_coproduct(exposure: exposure) {
-      true
-    } else {
-      // The exposure view reports an APPLIED head as ApplicationHead rather than peeling it to its
-      // declaration's connective, so an applied carrier (`Outcome<String>`) is named by the two head-name
-      // authorities, which do peel an application to its constructor's declaration -- the same reach the
-      // product-versus-coproduct arm records for its own shapes (#13198).
-      nominal_product_head_name(n: produced, scope: scope) != ""
-        || nominal_coproduct_head_name(n: produced, scope: scope) != ""
-    }
+    // The exposure view reports an APPLIED head as ApplicationHead rather than peeling it to its
+    // declaration's connective, so an applied carrier (`Outcome<String>`) is named by the two head-name
+    // authorities, which do resolve an applied head to its constructor's declaration -- the same reach the
+    // product-versus-coproduct arm records for its own shapes (#13198).
+    nominal_product_head_name(n: produced, scope: scope) != ""
+      || nominal_coproduct_head_name(n: produced, scope: scope) != ""
   }
 }
 
