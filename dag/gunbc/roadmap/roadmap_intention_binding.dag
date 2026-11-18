@@ -47,7 +47,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-reference-derived-closure", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-reference-derived-producer-bounded", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "names-bind-to-the-unique-declaration", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
-  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
+  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "native-seven-names-homed", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "declaration-provider-outcomes", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "compiler-closure-names-homed-and-types-merged", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 2),
