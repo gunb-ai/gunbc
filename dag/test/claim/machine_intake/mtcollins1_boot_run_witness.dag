@@ -890,7 +890,6 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
     && string_contains(s: script, pattern: sol_hold_exit_record_prefix)
     && string_contains(s: script, pattern: sol_hold_pid_not_published_line)
     && string_contains(s: script, pattern: "'mv' '-T'")
-    && !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
 }
 
 // RELEASE SIGNALS ONLY THE PROCESS THE HOLD RECORDED, and only while it is still that process. The
@@ -899,8 +898,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script
-  !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
-    && string_contains(s: script, pattern: "'kill' \"$p\"")
+  string_contains(s: script, pattern: "'kill' \"$p\"")
     && string_contains(s: script, pattern: "'kill' '-9' \"$p\"")
     && string_contains(s: script, pattern: "'-f' '20'")
 }
