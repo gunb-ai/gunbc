@@ -1863,13 +1863,13 @@ type InstallRefusalCause
 // traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
 // surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
 // only ever sees the carrier or a refusal, never a raw unchecked path).
-type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
+type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: NonEmptyStr }
 
 fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
   if path == "" { Absent }
   else if !starts_with(s: path, prefix: "/") { Absent }
   else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
-  else { Present { value: ShellInertAbsolutePath { raw: path } } }
+  else { Present { value: ShellInertAbsolutePath { raw: path as NonEmptyStr } } }
 }
 
 data unsafe_install_fragments: List<String> = [
