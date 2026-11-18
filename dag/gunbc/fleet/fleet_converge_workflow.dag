@@ -8787,6 +8787,19 @@ fn zesty_pseq() -> Int {
   }
 }
 
+fn zesty_fs(s: Step) -> Int {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => 1
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => 2
+  }
+}
+fn zesty_qpre() -> Int { count(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])) }
+fn zesty_qpair() -> Int { zesty_fs(fleet_converge_plan_revision_pair_build_step()) }
+fn zesty_qadmit() -> Int { match fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if) { Accepted { value: s } => zesty_fs(s) Rejected { diagnostics: _ } => 0 } }
+fn zesty_qdl() -> Int { zesty_fs(fleet_converge_plan_revision_download_step()) }
+fn zesty_qres() -> Int { match fleet_converge_plan_revision_resolve_step() { Accepted { value: s } => zesty_fs(s) Rejected { diagnostics: _ } => 0 } }
+fn zesty_qchk() -> Int { zesty_fs(fleet_converge_event_sha_checkout_step()) }
+
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
