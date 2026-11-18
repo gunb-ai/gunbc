@@ -2586,6 +2586,7 @@ pub fn declared_type_conformance_diags_core(
                                 if structured_value_at_kernel_scalar_declared_type(
                                     declared.clone(),
                                     produced.clone(),
+                                    position.clone(),
                                     scope.clone(),
                                 ) {
                                     declared_type_obligation_diags(
@@ -8738,39 +8739,42 @@ pub fn declared_type_inhabitance(
                             reason: InhabitanceRefusalReason::RefusedValueAtNever,
                         })
                     } else {
-                        if structured_value_at_kernel_scalar_declared_type(
-                            declared.clone(),
-                            produced.clone(),
-                            scope.clone(),
-                        ) {
-                            if product_at_scalar_declared_type(
-                                declared.clone(),
-                                produced.clone(),
-                                scope.clone(),
-                            ) {
-                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                    reason: InhabitanceRefusalReason::RefusedProductAtScalar,
-                                })
-                            } else {
-                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                    reason: InhabitanceRefusalReason::RefusedStructuredAtScalar,
-                                })
-                            }
+                        if declared_is_generic.clone() {
+                            Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                                reason: InhabitanceUndecidableReason::UndecidableGenericFormal,
+                            })
                         } else {
-                            if declared_is_generic.clone() {
+                            if (declared_name.clone() == "".to_string()) {
                                 Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-                                    reason: InhabitanceUndecidableReason::UndecidableGenericFormal,
+                                    reason:
+                                        InhabitanceUndecidableReason::UndecidableFormalUnresolved,
                                 })
                             } else {
-                                if (declared_name.clone() == "".to_string()) {
+                                if (produced_name.clone() == "".to_string()) {
                                     Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-    reason: InhabitanceUndecidableReason::UndecidableFormalUnresolved,
-})
-                                } else {
-                                    if (produced_name.clone() == "".to_string()) {
-                                        Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
 })
+                                } else {
+                                    if structured_value_at_kernel_scalar_declared_type(
+                                        declared.clone(),
+                                        produced.clone(),
+                                        obligation.position.clone(),
+                                        scope.clone(),
+                                    ) {
+                                        if product_at_scalar_declared_type(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            scope.clone(),
+                                        ) {
+                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                reason:
+                                                    InhabitanceRefusalReason::RefusedProductAtScalar,
+                                            })
+                                        } else {
+                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedStructuredAtScalar,
+})
+                                        }
                                     } else {
                                         if application_pair(
                                             declared.clone(),
@@ -9280,27 +9284,30 @@ pub fn conversion_plan_row_admits(
 }
 
 pub fn produced_head_reaches_declared_kernel_by_declared_route(
-    declared_name: String,
+    declared: Rc<Node>,
     produced: Rc<Node>,
     produced_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> bool {
     {
-        let declared_kernel = crate::v1_std_core::qualified_last_segment(declared_name);
+        let declared_kernel = declared_kernel_name_at(declared, env.clone());
         if (produced_name.clone() == "".to_string()) {
             true
         } else {
-            match produced_head_literal_grounding(
-                produced.clone(),
-                produced_name.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(k) => {
-                    (minted_kernel_name_of_literal_source(k.clone()) == declared_kernel.clone())
-                }
-                std::option::Option::None => {
+            {
+                let grounds_at_declared_kernel = match produced_head_literal_grounding(
+                    produced.clone(),
+                    produced_name.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ) {
+                    Some(k) => {
+                        (minted_kernel_name_of_literal_source(k.clone()) == declared_kernel.clone())
+                    }
+                    std::option::Option::None => false,
+                };
+                (grounds_at_declared_kernel.clone() || {
                     let mut __found = false;
                     for plan in conversion_plan_rows().iter().cloned() {
                         if conversion_plan_row_admits(
@@ -9316,15 +9323,46 @@ pub fn produced_head_reaches_declared_kernel_by_declared_route(
                         }
                     }
                     __found
-                }
+                })
             }
         }
+    }
+}
+
+pub fn declared_kernel_name_at(declared: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    {
+        let resolved =
+            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), declared.clone()) {
+                Some(r) => r.clone(),
+                std::option::Option::None => declared.clone(),
+            };
+        if is_where_refinement_type(resolved.clone()) {
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
+                peel_where_refinement_base(resolved.clone(), env.clone()),
+            ))
+        } else {
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
+                declared.clone(),
+            ))
+        }
+    }
+}
+
+pub fn kernel_lane_admitted_position(position: DeclaredTypePosition) -> bool {
+    match position.clone() {
+        DeclaredTypePosition::PositionDeclaredReturn => true,
+        DeclaredTypePosition::PositionDirectCallArgument => true,
+        DeclaredTypePosition::PositionRecordLiteralField => true,
+        _ => false,
     }
 }
 
 pub fn structured_value_at_kernel_scalar_declared_type(
     declared: Rc<Node>,
     produced: Rc<Node>,
+    position: DeclaredTypePosition,
     scope: Rc<InferScope>,
 ) -> bool {
     {
@@ -9336,8 +9374,11 @@ pub fn structured_value_at_kernel_scalar_declared_type(
         let declared_last = crate::v1_std_core::qualified_last_segment(declared_name.clone());
         let produced_last = crate::v1_std_core::qualified_last_segment(produced_name.clone());
         let produced_exposure = expected_type_head_exposure(produced.clone(), scope.clone());
-        if (!declared_head_is_kernel_scalar_through_refinement(declared.clone(), scope.clone())
-            && !declared_head_is_kernel_scalar_by_name(declared.clone(), scope.clone()))
+        if (!kernel_lane_admitted_position(position)
+            || (!declared_head_is_kernel_scalar_through_refinement(
+                declared.clone(),
+                scope.clone(),
+            ) && !declared_head_is_kernel_scalar_by_name(declared.clone(), scope.clone())))
         {
             false
         } else {
@@ -9369,7 +9410,7 @@ pub fn structured_value_at_kernel_scalar_declared_type(
                             false
                         } else {
                             if produced_head_reaches_declared_kernel_by_declared_route(
-                                declared_name.clone(),
+                                declared.clone(),
                                 produced.clone(),
                                 produced_name.clone(),
                                 source_indices.clone(),
@@ -23501,7 +23542,7 @@ if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) 
     span: ar_typed.span.clone(),
 }), scope.clone())
                                 } else {
-                                    if structured_value_at_kernel_scalar_declared_type(expected_node.clone(), got_value.clone(), scope.clone()) {
+                                    if structured_value_at_kernel_scalar_declared_type(expected_node.clone(), got_value.clone(), DeclaredTypePosition::PositionRecordLiteralField, scope.clone()) {
                                         declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionRecordLiteralField,
     subject: fi_name.clone(),

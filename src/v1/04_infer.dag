@@ -1783,7 +1783,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       },
       scope: scope)
   }
-  else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+  else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, position: position, scope: scope) {
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
         position: position, subject: subject, declared: declared, produced: produced, span: span
@@ -5544,12 +5544,25 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedValueAtNever }
-  } else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
-    // Placed HERE, before the abstaining arms, deliberately: everything after this point can only
-    // ABSTAIN a pair it cannot name (UndecidableGenericFormal, UndecidableFormalUnresolved,
-    // UndecidableProducedIdentityErased) or walk arguments of an application pair. An abstention is not
-    // a verdict of inhabitance, and the declared head is already known by the time this arm is reached:
-    // a kernel scalar with a positively-resolved structured head in hand is a refusal, not an unknown.
+  } else if declared_is_generic {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if declared_name == "" {
+    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+  } else if produced_name == "" {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, position: obligation.position, scope: scope) {
+    // Placed AFTER the three abstentions, and that order is measured, not preferred. An abstention is not a
+    // verdict of inhabitance, so this arm may sit above the ones that merely fail to name a pair -- but it
+    // may not sit above a pair the seed has already RECORDED as undecidable, because those three lanes are
+    // ledger rows in their own right (a generic formal's payload types, an unresolved formal, an erased
+    // produced identity; @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel)
+    // names generic record instantiation and post-substitution field access as lanes not yet admitted). The
+    // first cut of this arm sat above them and refused the generic lane corpus-wide: every
+    // `admission_of<T>(subject: String, arms: List<T>, admitted: List<T>, spell: fn(T) -> String)` call site
+    // in @ref(gunbc.auth.approval_device_wire::wire_admission_apns_environment) read its element obligation
+    // as a kernel and refused the list. Below these arms the arm still refuses everything it can positively
+    // name: a concretely declared kernel formal with a named structured head in hand answers to no
+    // abstention, and the three shapes this row was filed for refuse there.
     // The product half keeps its own located reason -- the reason a witness and a reader already know --
     // and the general arm adds the head kinds the product half never covered.
     if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
@@ -5557,12 +5570,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     } else {
       InhabitanceRefused { reason: RefusedStructuredAtScalar }
     }
-  } else if declared_is_generic {
-    InhabitanceUndecidable { reason: UndecidableGenericFormal }
-  } else if declared_name == "" {
-    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
-  } else if produced_name == "" {
-    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if application_pair(declared: declared, produced: produced, source_indices: source_indices) {
     application_arguments_inhabitance(declared: declared, produced: produced, scope: scope)
   } else if alias_identity_in_judgment(
@@ -5832,20 +5839,15 @@ fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferS
 }
 
 // THE GENERAL FORM OF THE HEAD-KIND CLASH AT A KERNEL SCALAR. The judgment above is its product half
-// (gunbc#13391); this is the whole of it, and it is the dispositioning that
-// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel names as its next
-// rung: the wall there decides on the KIND OF THE OFFENDING VALUE -- kernel_value_declared_type_mismatch_bounded
-// opens by exiting whenever the produced value's authored name is not a kernel type -- so an actual
-// that is NOT a kernel (a carrier, a record, an applied generic) leaves the inhabitance judgment
-// before any formal is consulted, and the pair fell to declared_type_conformance_diags_core's
-// abstention at `!both_ground` and to this relation's InhabitanceUnmodeled. Measured on
-// gunbc.recurring_failure_mode a_carrier_body_under_a_scalar_declared_return_is_accepted (silent-owl-221,
-// 2026-11-18): a fn declared `-> String` whose body's trailing expr is `outcome_accepted(value: "x")`,
-// a `String` parameter applied to an `Outcome<String>`, and a record's `String` field built with one
-// were ALL accepted at phase=closure_typecheck with zero blocking errors, and the run aborted later,
-// unlocated, in a primitive cast ('cannot cast Outcome to NonEmptyStr', NoSuchField{type_name: Outcome})
-// -- the checker's judgment and the runtime disagreed with nothing joining them, which is the floor of
-// gunbc.design_argument::guarantee_ladder (values inhabit their declared types) failing.
+// (gunbc#13391); this is the whole of it, and it is the dispositioning
+// @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel)
+// names as its next rung: the wall there decides on the KIND OF THE OFFENDING VALUE --
+// @ref(v1.compiler.infer::kernel_value_declared_type_mismatch_bounded) opens by exiting whenever the
+// produced value's authored name is not a kernel type -- so an actual that is NOT a kernel (a carrier, a
+// record, an applied generic) leaves the inhabitance judgment before any formal is consulted, and the pair
+// fell to the `!both_ground` abstention and to this relation's InhabitanceUnmodeled. What the three repro
+// shapes did before this arm existed -- accepted with zero blocking errors, the run aborting later and
+// unlocated in a primitive cast -- is a dated receipt on that row, with the runtime messages they produced.
 //
 // THE DECISION IS KEYED ON THE FORMAL, NEVER ON THE ACTUAL'S KIND. A declared head that exposes as a
 // kernel scalar -- through a where-refinement too, by the same authority the product half uses -- has
@@ -5866,57 +5868,48 @@ fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferS
 // direct call argument are judged by the ONE relation -- not by a second relation keyed on carriers,
 // which is the fork that row exists to prevent.
 // THE DECLARED SIDE READS BOTH AUTHORITIES, exactly as the produced side does. `expected_type_head_exposure`
-// unfolds a kernel whose OWN declaration is a structured type, and std declares `type Bool = True | False`
-// (dag/std/types.dag:138), so the exposure view alone never calls a `Bool` formal a kernel scalar and a
-// carrier written under `-> Bool` walked past this arm unjudged -- the pair fell to the silent tail, which
-// is how `Outcome<Bool>` reached a `Bool` record field in the corpus and died in a primitive cast. `Bool` is
-// the kernel whose exposure view contradicts its name; `std.algebra` `is_kernel_type` is the authority the
-// produced side already consults for the same reason, and a formal cannot be judged by an authority the
-// actual is judged by without the other half being read the same way. This is NOT a Bool-specific carve-out:
-// the name authority decides, so every kernel in `std.algebra` `kernel_type_set` is treated alike, and the
-// produced-side guards below still decide the pair -- a real `Bool` value names a kernel and is excluded, so
-// no `if` condition is refused here (that over-refusal is what pinned the produced-side guard, and the
-// witness pins both readings as controls).
+// unfolds a kernel whose OWN declaration is structured -- @ref(std.types::Bool) is `True | False` -- so the
+// exposure view alone never calls a `Bool` formal a kernel scalar, and a carrier written under `-> Bool`
+// walks past this arm unjudged into the silent tail. @ref(std.types::is_kernel_type) is the name authority
+// the produced side already consults for the same reason, and a formal cannot be judged by an authority the
+// actual is judged by unless the other half is read the same way. This is not a Bool-specific carve-out: the
+// name authority decides, so every kernel in @ref(std.types::kernel_type_set) is treated alike, and the
+// produced-side guards decide the pair -- a value that names a kernel is excluded, so an `if` condition is
+// not refused here. The dated receipts for both readings (the corpus shape that walked past the arm, the
+// `if`-condition over-refusal that pinned the produced-side guard, and the controls that pin them) are in
+// @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
 fn declared_head_is_kernel_scalar_by_name(declared: Node, scope: InferScope) -> Bool {
   is_kernel_type(name: qualified_last_segment(name: authored_name_at(
     source_indices: scope.type_env.source_indices, node: declared)))
 }
 
-// THE ROUTE AUTHORITY THIS ARM WAS MISSING, and the required gate found it for me rather than my fixtures
-// doing so. The first cut refused five sites -- src/v2/std/decl_index.dag:209,213,
-// src/v2/std/data_initializer_identity.dag:135,285 (`declared Primitive(Int)`, `produced
-// Primitive(std.nat.Nat)`, all reached through `fn length<T>(xs: FreeMonoid<T>) -> Int { xs |> count }`,
-// dag/std/algebra.dag:1580, whose `count` is the carrier-size authority and returns `Nat`), and
-// src/v2/std/text.dag:146:52 (`declared` a String-of-Char, `produced Coproduct(FreeMonoid)`, where
-// `string_split` builds `Cons { head: delimiter.head, tail: delimiter.tail}` and hands it to
-// `string_split_step(delimiter: String)`). Neither pair is a defect, and the arm had asserted "a different
-// declaration with no route to it" -- a claim about ROUTES -- while never consulting the authorities that
-// declare them. DESIGN section 3 is explicit that the host representation is a realization fact:
-// gunbc.structural_realization_bindings binds std.nat.Nat (UnboundedNaturals, PeanoGroundingView) and
-// std.integer.Int (UnboundedIntegers, SignedGroundingView) to ONE kernel literal source, folds every Zero,
-// Succ, NonNegative and Negative into integer form at the end of typechecking
-// (v1.compiler.infer `ground_kernel_views`), and states the discipline for those rows -- "a row may only
-// state a realization that is already true of the carrier on every route... it is never added to make a
-// failing site compile". The named value routes are the corpus's `conversion_plan_rows`:
-// std.integer.nat_to_int (std.nat.Nat -> std.integer.Int) and std.coercion.unicode_scalar_unfold/fold
-// (the minted String <-> std.algebra.FreeMonoid bijection). So the question this arm must answer before it
-// refuses is asked of THOSE rows, keyed on resolved declarations -- never on a spelling, which is the same
-// discipline the rows themselves state ("std.nat Nat and test.fixture.structural_peeling_nat StructuralNat
-// have the same shape, and only the second has a row here"). `Outcome` appears in no row at any source
-// kind, so the carrier this arm exists for is untouched: a corpus type spelled `Nat`, `Int` or `FreeMonoid`
-// with no binding resolves to its own declaration and stays refused.
-//
-// And when the produced head cannot be resolved to a declaration at all, the arm abstains. A NEW refusal is
-// only admissible while the arm can positively name the declaration it is refusing; failing to identify a
-// declaration is not evidence of absence of a route.
-// WHICH DECLARATION IS THE PRODUCED HEAD? Asked of the same three authorities the rest of infer asks, in
-// the order they are proven in this file: the node's own resolved declaration (declaration_ref_of_type_node,
-// the one the structural-realization rows key on), the environment's binding for the head's authored name
-// (lookup_type_by_name, which is also what resolves an ALIAS to the declaration it aliases -- `type
-// List<element> = FreeMonoid<element>`, dag/std/types.dag:25 -- and therefore reaches a locally-declared
-// carrier whose authored name carries no module path), and finally the qualified authored name itself. Any
-// one of them naming the row's declaration is enough: the rows bind declarations, and the question is only
-// whether this head IS that declaration.
+// THE ARM ASSERTS A ROUTE CLAIM, SO THE ROUTE AUTHORITIES DECIDE IT. A refusal here says "a different
+// declaration, with no route to the kernel" -- a claim about ROUTES -- so it is admissible only against the
+// rows that declare routes, both read through @ref(v1.compiler.infer::produced_head_reaches_declared_kernel_by_declared_route):
+// @ref(gunbc.structural_realization_bindings::kernel_grounding_rows), which binds @ref(std.nat::Nat) and
+// @ref(std.integer::Int) to one kernel literal source to be folded at the end of typechecking by
+// @ref(v1.compiler.infer::ground_kernel_views), and
+// @ref(gunbc.structural_realization_bindings::conversion_plan_rows), whose named-value routes are
+// @ref(std.integer::nat_to_int) and the @ref(std.coercion::unicode_scalar_unfold) /
+// @ref(std.coercion::unicode_scalar_fold) bijection with @ref(std.algebra::FreeMonoid). Those rows live
+// under the discipline gunbc.structural_realization_bindings states for them -- a row may state only a
+// realization already true of the carrier on every route, and is never added to make a failing site compile
+// -- so consulting them widens nothing: a corpus declaration that appears in no row at any source kind is
+// untouched, `Outcome` among them. Keyed on resolved declarations, never on a spelling, which is why the
+// rows key on the declaring module rather than on the name.
+// WHICH DECLARATION IS THE PRODUCED HEAD? Asked of the three authorities the rest of infer asks, in the
+// order they are proven in this file: the node's own resolved declaration
+// (@ref(v1.compiler.infer_env::declaration_ref_of_type_node), the one the realization rows key on), the
+// environment's binding for the head's authored name (@ref(v1.compiler.infer_env::lookup_type_by_name),
+// which is also how an ALIAS such as @ref(std.types::List) reaches the declaration it names, and so how a
+// module-locally declared carrier whose authored name carries no module path is resolved), and the qualified
+// authored name itself. Any one of them naming the row's declaration is enough: the rows bind declarations,
+// and the question is only whether this head IS that declaration.
+// And when the produced head resolves to no declaration at all, the arm ABSTAINS. A new refusal is
+// admissible only while the arm can positively name the declaration it is refusing; failing to identify one
+// is not evidence that no route exists. The sites the first cut over-refused, and the controls that pin the
+// repair, are dated receipts in
+// @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
 fn produced_head_is_declaration(ref: DeclarationRef, produced: Node, produced_name: String,
                                 source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   if match declaration_ref_of_type_node(rt: produced, source_indices: source_indices, env: env) {
@@ -6011,53 +6004,115 @@ fn conversion_plan_row_admits(plan: ConversionPlan, produced: Node, produced_nam
 // True when the pair has a declared route, or when the arm cannot name the produced declaration well
 // enough to claim it does not.
 fn produced_head_reaches_declared_kernel_by_declared_route(
-    declared_name: String, produced: Node, produced_name: String,
+    declared: Node, produced: Node, produced_name: String,
     source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  let declared_kernel = qualified_last_segment(name: declared_name)
+  // THE DECLARED KERNEL IS THE BASE OF THE REFINEMENT CHAIN, not the spelling at the position. The gate
+  // above already reads the declared head through its where-chain (`Octet` is `Int where range(min: 0, max:
+  // 255)` in @ref(extdeps.network.ipv4::Octet), `EpochSecs` is `Int where range(min: 0)` in
+  // @ref(std.types::EpochSecs)), and the row authorities key on the BASE kernel -- a `Nat` handed to an
+  // `Octet` formal reaches Int by @ref(std.integer::nat_to_int). Comparing a produced grounding against the
+  // refinement's own name instead asks the produced head for a route to a declaration that is not a kernel
+  // at all, which is the same over-refusal the gate's six sites were, one seam over.
+  // @ref(v1.compiler.infer::peel_where_refinement_base) walks the whole chain to the ground base, the same
+  // face the declared gate uses.
+  let declared_kernel = declared_kernel_name_at(declared: declared, env: env)
   if produced_name == "" {
     true
   } else {
-    match produced_head_literal_grounding(produced: produced, produced_name: produced_name,
-                                          source_indices: source_indices, env: env) {
+    // BOTH AUTHORITIES ARE ASKED, not one-or-the-other. A head can be grounded at one kernel AND carried to
+    // another by a named-value row -- `Nat` grounds at the natural literal source and `std.integer`
+    // `nat_to_int` takes it to Int -- so a grounding that does not match the formal is not yet a verdict,
+    // and the rows must still be consulted before the arm claims there is no route.
+    let grounds_at_declared_kernel = match produced_head_literal_grounding(
+        produced: produced, produced_name: produced_name, source_indices: source_indices, env: env) {
       Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
-      none => conversion_plan_rows |> any(plan => conversion_plan_row_admits(
-                plan: plan, produced: produced, produced_name: produced_name,
-                source_indices: source_indices, env: env, declared_kernel: declared_kernel))
+      Absent => false
     }
+    grounds_at_declared_kernel
+      || (conversion_plan_rows |> any(plan => conversion_plan_row_admits(
+            plan: plan, produced: produced, produced_name: produced_name,
+            source_indices: source_indices, env: env, declared_kernel: declared_kernel)))
   }
 }
 
-fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+// THE KERNEL A DECLARED HEAD IS JUDGED AGAINST, THROUGH ITS REFINEMENT CHAIN. One face for the gate and the
+// route authority, so the two cannot settle on different names for the same formal; a head that is not a
+// refinement answers with its own name, unchanged.
+fn declared_kernel_name_at(declared: Node, env: TypeEnv) -> String {
+  let resolved = match lookup_type_for(env: env, node: declared) {
+      Present { value: r } => r
+      Absent => declared
+    }
+  if is_where_refinement_type(ty: resolved) {
+    qualified_last_segment(name: authored_name_at(
+      source_indices: env.source_indices,
+      node: peel_where_refinement_base(ty: resolved, type_env: env)))
+  } else {
+    qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: declared))
+  }
+}
+
+// THE LANES THIS ARM WAS GRANTED. The other positions of `DeclaredTypePosition` are lanes whose own rows
+// have not admitted them; see structured_value_at_kernel_scalar_declared_type's header for why the arm
+// cannot tell their real obligations from artefacts of generic instantiation.
+fn kernel_lane_admitted_position(position: DeclaredTypePosition) -> Bool {
+  match position {
+    PositionDeclaredReturn => true
+    PositionDirectCallArgument => true
+    PositionRecordLiteralField => true
+    _ => false
+  }
+}
+
+fn structured_value_at_kernel_scalar_declared_type(
+    declared: Node, produced: Node, position: DeclaredTypePosition, scope: InferScope) -> Bool {
+  // WHICH LANES THIS ARM IS ADMITTED IN. It judges the three positions this PR was filed for -- the declared
+  // return, the direct call argument, the record-literal field -- because at those three the obligation is
+  // built from a declaration the program itself wrote, so both sides of the pair are facts the program
+  // stated. The other positions are lanes with ledger rows of their own, and their facts are NOT settled by
+  // the time an obligation reaches the relation: every list-element obligation of a generic callee arrives
+  // with the type parameter already substituted away -- an `admission_of<T>(arms: List<T>, admitted: List<T>,
+  // spell: fn(T) -> String)` call hands the element formal over as `Unit`, @ref(std.types::Unit), the trivial
+  // product -- so the arm could not tell "the formal really is this kernel" from "the parameter was solved to
+  // a placeholder", and a refusal the arm cannot distinguish from an artefact of instantiation is a claim it
+  // may not make. Those positions stay with
+  // @ref(gunbc.recurring_failure_mode.list_typed_value_element_mismatch_admitted::list_typed_value_element_mismatch_admitted)
+  // and with this row's own not-yet-admitted generic-instantiation lane; what moves one is a measured site at
+  // that position PLUS that row's admission, never this arm deciding to cover a lane it has not been granted.
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
   let declared_last = qualified_last_segment(name: declared_name)
   let produced_last = qualified_last_segment(name: produced_name)
   let produced_exposure = expected_type_head_exposure(formal: produced, scope: scope)
-  if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
-      && !declared_head_is_kernel_scalar_by_name(declared: declared, scope: scope) {
+  // The lane gate goes first: see kernel_lane_admitted_position's header for which positions this arm was
+  // granted, and this arm's own header for why the others are not its to decide.
+  if !kernel_lane_admitted_position(position: position)
+      || (!declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+          && !declared_head_is_kernel_scalar_by_name(declared: declared, scope: scope)) {
     false
   } else if produced_name == "" || is_kernel_type(name: produced_last) {
-    // TWO CASES THIS ARM DOES NOT OWN, and the Bool false positive is what pinned them down. A produced
-    // head with NO name names no declaration, so there is no "different declaration" to refuse -- that
-    // pair is UndecidableProducedIdentityErased's to abstain on. And a produced head whose own name IS a
-    // kernel belongs to the kernel-at-kernel relation (`declared_type_kernel_inhabitance_mismatch`, which
-    // already refuses a String under `-> Int`) and to the refinement arm (a String literal at a
-    // NonEmptyStr formal). `Bool` is the case that surfaced this: std declares `type Bool = True | False`
-    // (dag/std/types.dag:138), so a Bool condition node carries a Disj connective and the raw exposure
-    // view reads it as a coproduct at a kernel -- the same identity read two ways. Without this guard the
-    // first refusal the new arm emitted was dag/std/types.dag:145, an `if` condition, and the corpus
-    // would not compile. The kernel exclusion is the same one v1.compiler.infer
-    // nominal_coproduct_head_name already applies by name.
+    // TWO CASES THIS ARM DOES NOT OWN. A produced head with NO name names no declaration, so there is no
+    // "different declaration" to refuse -- that pair is UndecidableProducedIdentityErased's to abstain on.
+    // And a produced head whose own name IS a kernel belongs to the kernel-at-kernel relation
+    // (@ref(v1.compiler.infer::declared_type_kernel_inhabitance_mismatch), which already refuses a String
+    // under `-> Int`) and to the refinement arm (a String literal at a NonEmptyStr formal);
+    // @ref(v1.compiler.infer::nominal_coproduct_head_name) already applies the same kernel exclusion by
+    // name. The kernel whose exposure view contradicts its name is @ref(std.types::Bool) -- declared
+    // `True | False`, so a condition node carries a Disj connective and the raw exposure view reads a real
+    // Bool as a coproduct at a kernel, the same identity read two ways -- which is why the guard is by name
+    // and not by exposure. Receipt for the `if`-condition refusal the first cut emitted:
+    // @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
     false
   } else if declared_last != "" && produced_last == declared_last {
     // THE IDENTITY CASE THE GENERAL FORM PRESUPPOSES: refusal is justified by the produced head naming a
     // DIFFERENT declaration than the formal's kernel. A head naming the formal's own declaration is that
     // declaration, whatever connective it is written with -- which is what keeps a value of a
-    // where-refinement (`type NonEmptyStr = String where string_non_empty`, dag/std/types.dag:140) at a
-    // formal of the same refinement clean, even though a where-refinement's node carries a Conj connective
-    // and the raw exposure view would read it as a product. The name authorities apply the same exclusion
-    // through is_where_refinement_type; the exposure route needs it stated here.
+    // where-refinement such as @ref(std.types::NonEmptyStr) at a formal of the same refinement clean, even
+    // though a where-refinement's node carries a Conj connective and the raw exposure view would read it as
+    // a product. @ref(v1.compiler.infer::is_where_refinement_type) applies the same exclusion by name; the
+    // exposure route needs it stated here, and @ref(v1.compiler.infer_types::alias_identity_in_judgment)
+    // owns the alias half.
     false
   } else if alias_identity_in_judgment(
       left: declared, right: produced, source_indices: source_indices,
@@ -6071,11 +6126,12 @@ fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Nod
     // them here would contradict the arm that admits them.
     false
   } else if produced_head_reaches_declared_kernel_by_declared_route(
-      declared_name: declared_name, produced: produced, produced_name: produced_name,
+      declared: declared, produced: produced, produced_name: produced_name,
       source_indices: source_indices, env: scope.type_env) {
     // A declared route exists, or the produced declaration cannot be named well enough to claim that none
-    // does -- see produced_head_reaches_declared_kernel_by_declared_route's header for the five sites that
-    // taught this arm to ask the route authorities before asserting their absence.
+    // does. Which sites taught this arm to ask the route authorities before asserting their absence is a
+    // dated receipt in
+    // @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
     false
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
@@ -14321,14 +14377,15 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             },
             scope: scope)
         } else if structured_value_at_kernel_scalar_declared_type(
-            declared: expected_node, produced: got_value, scope: scope) {
+            declared: expected_node, produced: got_value, position: PositionRecordLiteralField, scope: scope) {
           // THE RECORD-LITERAL FIELD CONSUMER. This chain is separate from
           // declared_type_conformance_diags_core and never consulted the inhabitance relation for a
           // non-application, non-container pair: it reached node_type_compatible, which compares names
           // across representations it does not peel, and fell to the permissive tail -- so a record's
           // String field assigned an Outcome<String> was ACCEPTED while the fn body and the call argument
-          // of the same value refused (gunbc.recurring_failure_mode
-          // a_carrier_body_under_a_scalar_declared_return_is_accepted, the third shape). Placed before
+          // of the same value refused -- the third shape in the dated receipt on
+          // @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
+          // Placed before
           // node_type_compatible, which is the arm that admitted it, and it delegates to the ONE relation
           // rather than judging here: the verdict, the position label and the refusal reason all come from
           // declared_type_inhabitance, exactly as the two arms above it do.

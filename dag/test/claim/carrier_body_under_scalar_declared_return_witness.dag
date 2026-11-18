@@ -2,7 +2,8 @@ module test.claim.carrier_body_under_scalar_declared_return_witness
 
 // Witness: a CARRIER (or any nominal structured head) under a SCALAR declared type refuses.
 //
-// gunbc.recurring_failure_mode a_carrier_body_under_a_scalar_declared_return_is_accepted: a fn declared
+// The class is the dated receipt on @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel).
+// Before this PR: a fn declared
 // `-> String` whose body's trailing expression is `outcome_accepted(value: "x")` -- a value of
 // `Outcome<String>`, the Accepted/Rejected carrier -- was ACCEPTED at phase=closure_typecheck with zero
 // blocking errors, as was the same value at a `String` parameter and at a record's `String` field. The
