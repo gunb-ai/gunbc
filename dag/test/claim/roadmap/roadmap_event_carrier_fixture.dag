@@ -951,7 +951,8 @@ test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behi
   let property = made_calibration && saw_present && saw_absent && leftover_verdict
   let settlement = shell.Remove.RecursiveForce(path: root as FilePath)
   if !property {
-    claim("the control's own property claims, labelled above, are what failed; the settlement ran only after they were computed and cannot have moved them", false)
+    claim(join(["the control's own property claims, labelled above, are what failed; the settlement ran afterwards and cannot have moved them; its own outcome was: ", roadmap_carrier_mint_cleanup_words(cleaned: settlement.success)], "" +
+      " -- and a red control whose cleanup ALSO failed has left its private parent on disk, which must be visible and not implied",), false)
   } else {
     claim(join(["the control refused to reclaim its own private parent at ", root, " -- a control that certifies nothing-was-left must leave nothing of its own either"], ""), settlement.success)
   }
