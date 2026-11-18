@@ -536,7 +536,7 @@ data tailscale_backend_state_running: String = "Running"
 
 type TailscaleJoinState
   = JoinStateJoinedWithRequiredTag { self_tags: List<String> }
-  | JoinStateJoinedWithoutRequiredTag { state: String, self_tags: List<String> }
+  | JoinStateJoinedWithoutRequiredTag { self_tags: List<String> }
   | JoinStateNotJoined { state: String }
   | JoinStateUnreadable { cause: String }
 
@@ -585,7 +585,7 @@ fn tailscale_up_join_state_of(status_json: String, required_tag: NonEmptyStr) ->
                 if tailscale_self_tags_include(tags: tags, tag: required_tag) {
                   JoinStateJoinedWithRequiredTag { self_tags: tags }
                 } else {
-                  JoinStateJoinedWithoutRequiredTag { state: value, self_tags: tags }
+                  JoinStateJoinedWithoutRequiredTag { self_tags: tags }
                 }
             }
           } else {
@@ -605,7 +605,7 @@ fn tailscale_up_join_state_of(status_json: String, required_tag: NonEmptyStr) ->
 fn tailscale_up_join_state_is_joined(state: TailscaleJoinState) -> Bool {
   match state {
     JoinStateJoinedWithRequiredTag { self_tags: _ } => true
-    JoinStateJoinedWithoutRequiredTag { state: _, self_tags: _ } => true
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => true
     JoinStateNotJoined { state: _ } => false
     JoinStateUnreadable { cause: _ } => false
   }
