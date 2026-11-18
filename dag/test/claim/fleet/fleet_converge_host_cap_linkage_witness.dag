@@ -272,12 +272,23 @@ fn env_value_of(e: YamlKeyValue) -> String {
 // finalizer included, because a converge that died mid-bracket must have its masks lifted on the
 // SUBJECT, not re-admitted on the executor.
 test fn the_subject_named_steps_carry_their_subject_env() -> Bool {
-  let steps = map([
+  let carriers = [
     fleet_converge_runner_host_file_converge_step(),
     fleet_converge_runner_host_withdraw_step(),
     fleet_converge_runner_host_restore_step(),
     fleet_converge_runner_host_cap_release_step(),
-  ], st => any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}")))
-  all(steps, ok => ok)
-    && any(env_pairs_of(st: fleet_converge_runner_host_file_converge_step()), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
+  ]
+  let checks = map(carriers, o =>
+    match outcome_accepted_value(o) {
+      Present { value: st } =>
+        any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
+      Absent => false
+    }
+  )
+  all(checks, ok => ok)
+    && match outcome_accepted_value(fleet_converge_runner_host_file_converge_step()) {
+         Present { value: st0 } =>
+           any(env_pairs_of(st: st0), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
+         Absent => false
+       }
 }
