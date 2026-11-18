@@ -982,7 +982,7 @@ test fn the_srv15_read_runs_without_any_approval_gate() -> Bool {
   let converge = fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)
   let read = fleet_converge_srv15_bmc_secret_versions_read_step()
   let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
-  string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_step_id as String) + "," + (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + "gcp_iam_bootstrap_request")
+  string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
   && count(converge.steps, st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String)) == 0
   && match request.if_condition {
        Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
