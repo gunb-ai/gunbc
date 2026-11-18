@@ -668,17 +668,39 @@ fn roadmap_claim_grain_members(grain: ClaimGrain) -> List<JsonKeyValue> {
   }
 }
 
+// THE ONE LEAF-INDEX PARSE: a decimal non-negative integer within Nat range, on success its Nat; on
+// failure a typed reason (not-a-decimal, negative, out-of-range) computed on the FIRST parse, never
+// re-derived. roadmap_claim_grain_parse calls this three times, one per index, and the decode side
+// (roadmap_leaf_nat_member) calls it on the recorded lexeme -- the check is spelled exactly here, once
+// (single_authority: a form value and a recorded number accept or reject the same lexemes).
+type LeafIndexParse
+  = Index { value: Nat }
+  | Rejected { why: String }
+
+fn roadmap_leaf_index_parse(value: String) -> LeafIndexParse {
+  match parse_int(s: value) {
+    Absent => Rejected { why: "not a decimal integer" }
+    Present { value: n } => if n < 0 {
+      Rejected { why: "negative" }
+    } else {
+      match checked_int_to_nat(n: n) {
+        Present { value: k } => Index { value: k }
+        Absent => Rejected { why: "out of range for a leaf index" }
+      }
+    }
+  }
+}
+
 // Read one Nat index off the leaf object, FAIL-CLOSED: absent, not-a-number, a non-decimal lexeme, or a
 // negative value all yield none, which the caller turns into an undecodable event rather than a guessed
-// grain. parse_int would read a leading '-', so a negative lexeme is refused here before checked_int_to_nat
-// would itself refuse it -- the Nat is never invented from bytes that do not spell one.
+// grain. The lexeme check is roadmap_leaf_index_parse -- the same one the form/CLI side runs, so the two
+// cannot drift.
 fn roadmap_leaf_nat_member(obj: JsonValue, key: String) -> Nat? {
   match json_object_unique_member(v: obj, key: key) {
-    JsonMemberFound { value: JsonNumber { lexeme: lex } } =>
-      match parse_int(s: lex as String) {
-        Present { value: n } => if n < 0 { none } else { checked_int_to_nat(n: n) }
-        Absent => none
-      }
+    JsonMemberFound { value: JsonNumber { lexeme: lex } } => match roadmap_leaf_index_parse(value: lex as String) {
+      Index { value: k } => Present { value: k }
+      Rejected { why: _ } => none
+    }
     JsonMemberFound { value: JsonString { value: _ } } => none
     JsonMemberFound { value: JsonNull } => none
     JsonMemberFound { value: JsonBool { value: _ } } => none
@@ -743,26 +765,6 @@ type ClaimGrainParse
   = Parsed { grain: ClaimGrain }
   | Malformed { field: String, why: String }
 
-// THE ONE LEAF-INDEX PARSE: a decimal non-negative integer within Nat range, on success its Nat.
-// A failure names the malformed field and why. roadmap_claim_grain_parse calls this three times,
-// one per index; the check is never re-spelled (single_authority).
-fn roadmap_leaf_index_parse(field: String, value: String) -> Nat? {
-  match parse_int(s: value) {
-    Absent => none
-    Present { value: n } => if n < 0 { none } else { checked_int_to_nat(n: n) }
-  }
-}
-
-// The reason a roadmap_leaf_index_parse returned none, rendered per field. The why string differs by
-// input shape, so this re-derives it rather than carrying it: the three shapes are not-a-decimal,
-// negative, and out-of-range.
-fn roadmap_leaf_index_why(value: String) -> String {
-  match parse_int(s: value) {
-    Absent => "not a decimal integer"
-    Present { value: n } => if n < 0 { "negative" } else { "out of range for a leaf index" }
-  }
-}
-
 fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece: String, leaf_member: String) -> ClaimGrainParse {
   if leaf_stage == "" && leaf_piece == "" && leaf_member == "" {
     Parsed { grain: Pathless }
@@ -773,13 +775,13 @@ fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece
   } else if leaf_member == "" {
     Malformed { field: "leaf_member", why: "blank while the other leaf fields are set" }
   } else {
-    match roadmap_leaf_index_parse(field: "leaf_stage", value: leaf_stage) {
-      Absent => Malformed { field: "leaf_stage", why: roadmap_leaf_index_why(value: leaf_stage) }
-      Present { value: s_n } => match roadmap_leaf_index_parse(field: "leaf_piece", value: leaf_piece) {
-        Absent => Malformed { field: "leaf_piece", why: roadmap_leaf_index_why(value: leaf_piece) }
-        Present { value: p_n } => match roadmap_leaf_index_parse(field: "leaf_member", value: leaf_member) {
-          Absent => Malformed { field: "leaf_member", why: roadmap_leaf_index_why(value: leaf_member) }
-          Present { value: m_n } => Parsed { grain: AtPath { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
+    match roadmap_leaf_index_parse(value: leaf_stage) {
+      Rejected { why } => Malformed { field: "leaf_stage", why: why }
+      Index { value: s_n } => match roadmap_leaf_index_parse(value: leaf_piece) {
+        Rejected { why } => Malformed { field: "leaf_piece", why: why }
+        Index { value: p_n } => match roadmap_leaf_index_parse(value: leaf_member) {
+          Rejected { why } => Malformed { field: "leaf_member", why: why }
+          Index { value: m_n } => Parsed { grain: AtPath { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
         }
       }
     }

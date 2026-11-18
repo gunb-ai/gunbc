@@ -85,8 +85,11 @@ test fn claim_grain_guard_refuses_wrong_item() -> Bool {
 // Count 0 (no decomposition): there is no leaf to name, so a Pathless claim is admitted (the ruling's
 // scope was multi-leaf items; an item with no decomposition has no leaf, and its claims are tracked, not
 // refused). Tightening Pathless on undecomposed items is roadmap-dispatch-carries-leaf's job, not this one.
+// The fixture is a WITNESS-ONLY id, deliberately absent from the decomposition table: real work-item ids
+// drift (main decomposed "roadmap-claim-names-leaf" in 09d17c0ec41 and turned an earlier fixture red).
+// If this ever goes red, the table gained this id -- pick a new witness id, do not delete the arm.
 test fn claim_grain_guard_admits_pathless_when_undecomposed() -> Bool {
-  let v = roadmap_claimed_grain_admissible(node: node_of("roadmap-claim-names-leaf"), grain: Pathless)
+  let v = roadmap_claimed_grain_admissible(node: node_of("roadmap-witness-undecomposed-fixture"), grain: Pathless)
   refusal_tag(v) == "admissible"
 }
 
