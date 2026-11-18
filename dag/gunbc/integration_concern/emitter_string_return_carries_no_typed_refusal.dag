@@ -9,6 +9,20 @@ import std.decl_ref { decl_ref }
 import std.optional { Absent }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, emitter_string_return_carries_no_typed_refusal_review }
 
+// THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE. The run-step emitter refuses
+// three ways -- the word wall (gunbc_invoke_word_unsafe_poison), the orchestration rejection
+// (gunbc_invoke_step_orch_refused_poison), and a target whose module derives no storage path
+// (gunbc_run_step_target_unstored_poison) -- and all three collapse their typed refusal into a marker
+// STRING in the rendered bytes, which gunbc.tier_o_artifact_emit tier_o_workflow_produced later finds
+// with a prefix scan. Each refusal locates itself (the word or the sanitized module_path/decl_name
+// follows the marker) and the committed-workflow door is closed while the scan stands, but a refusal
+// rendered into anything the scan does not read travels untyped. The honest terminal shape is one
+// carrier: every *_invoke job body returns a refusal carrier that string concatenation preserves,
+// unwrapped ONCE at gunbc.generated_artifact_emit artifact_generate into ArtifactGenerationRefused --
+// at which point all three poisons and the scan are deleted together. P2a (#16467, review 95421)
+// filed this instead of building it: the retype is a cross-emitter change of ~140 String-returning job
+// bodies, a different change than retyping the roster. The gate scan is the single wall meanwhile, and
+// a new refusal sibling must join the one prefix the scan checks.
 data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = IntegrationConcern {
   identity: "emitter_string_return_carries_no_typed_refusal",
   kind: SuspectedCapabilityGap {

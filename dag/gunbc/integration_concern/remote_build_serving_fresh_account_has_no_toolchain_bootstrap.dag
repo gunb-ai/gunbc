@@ -13,6 +13,9 @@ import std.optional { Present }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, CitesHistorical, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision }
 
+// REMOTE-BUILD SERVING (gunbc.compute.remote_build_serving_converge), carried from PR 5(b) #16583 at its
+// merge. Review 96107 on that PR named these as the debt the converge ships with; they are recorded here so
+// they outlive the session that merged it, and each is owed before 5(c) admits more hosts to the roster.
 data remote_build_serving_fresh_account_has_no_toolchain_bootstrap: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_serving_fresh_account_has_no_toolchain_bootstrap",
   kind: SuspectedCapabilityGap {

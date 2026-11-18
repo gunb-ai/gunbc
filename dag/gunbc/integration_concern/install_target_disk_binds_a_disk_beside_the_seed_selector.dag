@@ -6,6 +6,9 @@ import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HomeUnresolved, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, install_target_disk_binds_a_disk_beside_the_seed_selector_authorities, pxe_2a_base_revision }
 
+// PXE 2a (gunbc#16275, session proud-crab-189). The install's target disk is bound by observed serial in two
+// places, and the change that added the second one is the change that records it
+// (gunbc.design_argument::root_generalization: the answer belongs where the pattern was introduced).
 data install_target_disk_binds_a_disk_beside_the_seed_selector: IntegrationConcern = IntegrationConcern {
   identity: "install_target_disk_binds_a_disk_beside_the_seed_selector",
   kind: SuspectedFork {

@@ -9,6 +9,26 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
 
+// THE REACH LAYER NEVER CONSULTS THE MODELED LAN ADDRESS, SO A HOST REACHABLE ONLY
+// THERE IS UNRESOLVABLE FOR EVERY CALLER THAT PROBES IT.
+// gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for answers with the bare host
+// identity when a host is neither provider-guest-IP bound nor spark-gateway bound,
+// regardless of what the modeled address home records: srv14 (butch) is reachable only
+// at its modeled LAN address (srv14_host_lan_endpoint in gunbc.fleet.fleet_intent_network),
+// so every path that probes it -- including the fleet-converge apply route before this
+// repair -- receives the unresolvable string "srv14" and dies at ssh name resolution
+// (fleet-converge run 43333208673: 'ssh: Could not resolve hostname srv14', receipt
+// sha256 recorded in the standing below). The runner_host_file_converge ADMINISTRATOR
+// target was repaired at this boundary by gunbc.plans.new_server_bringup B3b phase 2
+// (operator ruling msg_05ee3851): it now IS the endpoint of the host's enrolled
+// known-hosts anchor row (anchored_host_key_row), because the converge may only ssh
+// where the host key is anchored -- the anchor is the address authority there, not a
+// check beside it. THE PROBE LAYER IS DELIBERATELY NOT REPAIRED HERE: its other callers
+// observe and must keep current behavior until one reachability resolution exists that
+// consults the same enrollment material the anchor gate reads, so the address ssh
+// connects to and the address host keys are anchored at are one datum. HOME:
+// gunbc.plans.fleet_machine_authority 2.3 (fleet_machine_authority 2.3 / fleet_lan_name
+// wiring, vivid-koi-387's lane; recorded for it here, not landed there by this PR).
 data fleet_reach_endpoint_ignores_the_modeled_lan_address: IntegrationConcern = IntegrationConcern {
   identity: "fleet_reach_endpoint_ignores_the_modeled_lan_address",
   kind: SuspectedCapabilityGap {

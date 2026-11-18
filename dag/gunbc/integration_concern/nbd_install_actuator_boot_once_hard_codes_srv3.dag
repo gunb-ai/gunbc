@@ -6,6 +6,13 @@ import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HomeUnresolved, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, nbd_boot_once_sighting_revision, nbd_install_actuator_boot_once_hard_codes_srv3_authorities }
 
+// PXE 2b: the nbd install actuator's boot-once and the host-generic managed-host boot-once are two
+// authorities that set a Redfish boot-source override and reset a host's BMC. The install actuator has NO
+// managed-host identity (os_install_actuator_steps is keyed on arm+boot_control+export; network_boot_actuation
+// carries boot_control+boot_target+arm shape and no host), so its boot-once controller is HARD-CODED to srv3
+// in the realization -- a defect, not merely a style choice: a second managed host could not be booted once
+// from its own row. The two answer different concerns (an OS-install sequence step vs a managed-fleet one-shot
+// boot) but share the override+reset question, so until the identity is threaded they are recorded as a fork.
 data nbd_install_actuator_boot_once_hard_codes_srv3: IntegrationConcern = IntegrationConcern {
   identity: "nbd_install_actuator_boot_once_hard_codes_srv3",
   kind: SuspectedFork {

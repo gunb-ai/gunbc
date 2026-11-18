@@ -8,6 +8,7 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_intake_sighting_revision }
 
+// AN INSTALL THAT ALREADY HAPPENED LEAVES NO PRE-INSTALL DISK CAPTURE.
 data h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture: IntegrationConcern = IntegrationConcern {
   identity: "h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture",
   kind: SuspectedCapabilityGap {

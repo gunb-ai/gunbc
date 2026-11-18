@@ -8,6 +8,13 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
 
+// A SHELL PROGRAM LIVES AS ONE STRING LITERAL BESIDE THE EMITTING GRAMMAR. The JIT wrapper just
+// moved onto v2.workflow.bash_emit (Nodes, not string-built bash); the serving image's on-start
+// program is the same shape of artifact that has NOT moved: the whole on-start -- env recovery,
+// driver refusal, TLS minting, cache sizing, the written run.sh supervisor -- is one String data.
+// It is a different lane's carrier (a product image's entrypoint), and whether an image on-start
+// belongs to the shell grammar or may stay an image-carrier string is the serving lane's reading,
+// not a defect this PR fixes. Recorded so the rule has one visible boundary instead of two.
 data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConcern = IntegrationConcern {
   identity: "flex_serving_onstart_is_a_string_shell_beside_the_grammar",
   kind: SuspectedCapabilityGap {

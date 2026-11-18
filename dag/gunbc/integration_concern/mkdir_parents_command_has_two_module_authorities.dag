@@ -10,6 +10,15 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, mkdir_parents_command_has_two_module_authorities_authorities }
 
+// THE mkdir PARENTS COMMAND HAS TWO MODULE AUTHORITIES. The generated-artifact write route
+// (gunbc.instruments.generated_artifact_gate write_generated_artifact) materializes a newly-added
+// runner host's provisioning/<host>/ directory by EXECUTING the modelled mkdir -p ArgvCommand --
+// rather than growing the semantics-frozen v1 Filesystem surface with a new verb. Two extdeps.tools
+// modules expose the same command: gnu_coreutils's mkdir_parents_command (mkdir_program + [-p, --,
+// path]) and mkdir's mkdir_parents_command (mkdir_binary + [-p, --, path]). The route uses
+// gnu_coreutils's. A caller picking the other gets an identical argv from a second declaration kept
+// in agreement by nothing. Recorded here rather than consolidated, per operator direction: this row
+// closes when one is withdrawn toward the other, or as distinct with a reason per module.
 data mkdir_parents_command_has_two_module_authorities: IntegrationConcern = IntegrationConcern {
   identity: "mkdir_parents_command_has_two_module_authorities",
   kind: SuspectedFork {

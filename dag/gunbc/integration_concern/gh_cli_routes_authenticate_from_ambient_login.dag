@@ -4,6 +4,10 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_field_ref, decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, gh_disposition_base_revision }
 
+// CREDENTIAL CONSOLIDATION, the gh disposition (plan review 2, section 4): a gh CLI route authenticates
+// from gh's own ambient login and issues its own HTTP sends inside the subprocess, so the
+// presentation path (std.credential_admission present_credential) cannot admit them. They are retained
+// as a declared subprocess boundary, each with its migration path, rather than migrated blind.
 data gh_cli_routes_authenticate_from_ambient_login: IntegrationConcern = IntegrationConcern {
   identity: "gh_cli_routes_authenticate_from_ambient_login",
   kind: SuspectedCapabilityGap {

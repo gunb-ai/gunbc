@@ -10,6 +10,8 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities, authenticated_lanplus_retry_bound_receipts_revision, authenticated_lanplus_retry_bound_sighting_revision }
 
+// The revision at which the three string-built ipmitool script builders were sighted bound-free, alongside
+// the pinning of the declared ops (the sighting text describes that tree).
 data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops: IntegrationConcern = IntegrationConcern {
   identity: "authenticated_lanplus_retry_bound_pinned_only_in_declared_ops",
   kind: SuspectedFork {

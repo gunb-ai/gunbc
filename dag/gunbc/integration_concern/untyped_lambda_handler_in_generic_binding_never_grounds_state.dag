@@ -9,6 +9,18 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
 
+// UNTYPED FN-LITERAL HANDLERS INSIDE GENERIC OPERATION BINDINGS NEVER GROUND THE GENERIC.
+// The whole untyped-lambda OperationRealization pattern (virtual_delay_binding's shape, copied into
+// witnesses) dies at the carrier rule the moment a handler touches its state with an operator: the
+// lambda's parameters have no declared types (the fn-literal grammar admits neither typed params nor
+// an arrow return), and the generic S is not unified with the instantiated state type of the
+// enclosing typed position, so `state + 1` inside the handler is (Primitive(S), Primitive(Int)) with
+// no carrier. There is NO green instance of the pattern anywhere in the tree: every witness built on
+// it (slot-cap observe route, host cap bracket, host withdraw, mtcollins1 boot acceptance) is red
+// with this or a sibling diagnostic. The author's alternative -- hand-writing one typed top-level
+// handler per scenario to replace the lambda -- reproduces the lambda's captured environment by hand
+// for each scenario, which DESIGN's root_generalization names as the line-stop signal, so it is not
+// taken and the witness files stay red, listed in the repair PR as blocked on this row.
 data untyped_lambda_handler_in_generic_binding_never_grounds_state: IntegrationConcern = IntegrationConcern {
   identity: "untyped_lambda_handler_in_generic_binding_never_grounds_state",
   kind: SuspectedCapabilityGap {

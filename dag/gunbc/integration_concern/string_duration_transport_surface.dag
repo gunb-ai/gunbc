@@ -8,6 +8,7 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, string_duration_transport_surface_receipts_revision, string_duration_transport_surface_revision }
 
+// THE BUDGET-RENDER RECEIPTS, AS DATA (review 94474, source_annotations).
 data string_duration_transport_surface: IntegrationConcern = IntegrationConcern {
   identity: "string_duration_transport_surface",
   kind: SuspectedCapabilityGap {

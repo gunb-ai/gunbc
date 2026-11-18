@@ -9,6 +9,8 @@ import gunbc.guarantee_stall { climbs_when }
 import gunbc.target_syntax_transcription { debt_declarations, target_syntax_debts }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, target_syntax_ledger_ref }
 
+// Every module the target-syntax ledger rows implicate, read from the ledger rather than restated, so
+// a row added there widens this concern's relevance with no edit here.
 data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = IntegrationConcern {
   identity: "target_syntax_built_by_hand_in_application_modules",
   kind: SuspectedCapabilityGap {

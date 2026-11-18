@@ -6,6 +6,16 @@ import std.decl_ref { decl_ref }
 import std.types { CommitSha }
 import gunbc.integration_concern { CitesArtifact, ConcernSighting, HistoricalDeclaration, Integrated, IntegrationConcern, IntegrationEvidence, RetainedExecutionResult, SuspectedFork, srv13_and_srv15_name_one_board_authorities, srv13_srv15_sighting_revision }
 
+// srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
+// ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
+// contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
+// pushed 3.22.00. srv15's in-band recovery (2026-10-29) found it at 192.168.1.248, MAC 9c:6b:00:e7:c9:e7.
+// On 2026-11-05 the router lists .247 inactive and .248 active, and .248's unauthenticated Redfish root
+// answers ServiceEntryPointUUID 6e884505-ba5e-49f2-af66-cedf82ef8d8c, the one srv13's capture carries.
+// The merge is left open, not done, because srv13's slot is not only a name: the machine-intake witnesses
+// replay its 2026-10-07 captures at .247 through srv13's own write-controller row, and the row model has no
+// way to name an endpoint a board HAD. Repointing them at srv15 (.248) would assert the captures came from
+// an address they did not.
 data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
   identity: "srv13_and_srv15_name_one_board",
   kind: SuspectedFork {

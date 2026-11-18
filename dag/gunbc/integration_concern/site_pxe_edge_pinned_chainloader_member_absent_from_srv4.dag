@@ -10,6 +10,10 @@ import std.optional { Absent }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, Distinct, IntegrationConcern, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_edge_live_read_revision, h11ssl_unit3_intake_sighting_revision }
 
+// A PINNED EDGE MEMBER THE BOX DOES NOT CARRY -- filed open on the strength of a wire line, then CLOSED AS
+// DISTINCT by reading the code that produced that line. The finding is real (srv4 lacks the file); what was
+// wrong was my claim about what it blocks. The account below keeps both, because the wrong half is the part a
+// reader must not repeat.
 data site_pxe_edge_pinned_chainloader_member_absent_from_srv4: IntegrationConcern = IntegrationConcern {
   identity: "site_pxe_edge_pinned_chainloader_member_absent_from_srv4",
   kind: SuspectedCapabilityGap {

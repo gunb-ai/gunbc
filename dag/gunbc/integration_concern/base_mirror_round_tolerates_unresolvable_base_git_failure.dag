@@ -4,6 +4,10 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, base_mirror_round_sighting_revision }
 
+// RAISED BY WORK ITEM adhoc-d9a8b550-3f7 (2026-11-07), from a regen round observed 2026-11-06 06:18Z.
+// The round printed git's refusal to resolve a bare `main` and CONTINUED to exit 0. Nothing here was
+// built or executed: the trace is source reading plus one read-only scratch repo used to match git's
+// error strings, and the round-time binary and head object are both gone.
 data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConcern = IntegrationConcern {
   identity: "base_mirror_round_tolerates_unresolvable_base_git_failure",
 

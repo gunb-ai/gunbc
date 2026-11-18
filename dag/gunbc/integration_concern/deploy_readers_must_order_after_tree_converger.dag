@@ -10,6 +10,18 @@ import std.optional { Absent }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementUnestablished, SuspectedCapabilityGap, Triaged }
 
+// deploy-readers-must-order-after-tree-converger (review 95811 item 2, filed at gate-cb8-rebuild).
+// A CAPABILITY GAP, not a fork: there is ONE authority for TreeContent coverage (the deploy-artifact gate's
+// (path,kind) matcher) and it cannot express a concrete requirement the reader units need. The reader units
+// -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read at
+// the instance repo_root (working_directory_read classifies a WorkingDirectory==repo_root as TreeContent) --
+// must be ordered After= and Requires= the tree-sync PUBLICATION unit so the tree is present when they start.
+// The gate proves only that a converger RUNS this deploy (rung: converger-runs, not ordering); no After=/
+// Requires= edge from reader to converger is recorded anywhere, so it cannot be checked. The affected
+// declarations name the readers (deployment_artifact_read_set / working_directory_read) and the converger
+// (live_deploy_tree_sync_unit_file_for_closure, decided by converger_brought_up matching the publication
+// leg's typed systemctl action and unit identity; tree-remote only sets the origin URL and never publishes
+// content, so it is not the producer).
 data deploy_readers_must_order_after_tree_converger: IntegrationConcern = IntegrationConcern {
   identity: "deploy-readers-must-order-after-tree-converger",
   kind: SuspectedCapabilityGap {

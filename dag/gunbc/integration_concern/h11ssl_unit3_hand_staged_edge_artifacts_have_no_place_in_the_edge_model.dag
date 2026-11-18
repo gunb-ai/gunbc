@@ -9,6 +9,19 @@ import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_edge_gate_refusal_revision, h11ssl_unit3_edge_live_read_revision, h11ssl_unit3_intake_sighting_revision }
 
+// THE HAND-INSTALLED H11SSL-i (unit 3, BMC at 192.168.1.249): WHAT THE HAND WORK LEFT OUTSIDE THE
+// MODEL. Sighted 2026-11-15 while bringing this unit under the modeled lifecycle. The operator
+// installed its OS by hand from srv4's PXE edge -- a hand-staged install entry, a hand-staged seed and
+// a hand-added dnsmasq line -- so the machine exists and runs, and three things about how it came to
+// exist have no place in the model. Each row below is one of them, recorded as a gap in the model that
+// could not express it, not as a defect in the hand work: the operator did what was needed at the
+// bench, and the model is what is short of a standing.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The main revision the edge gate was found refusing a branch dispatch against: the session branch head
+// the read-only edge observation was dispatched from, and refused at.
+// The MAIN revision the read-only edge observation ran against -- the ref the observe was dispatched at,
+// and therefore the model state its readings are a statement about.
+// THE EDGE MODEL RENDERS THE EDGE, SO IT CANNOT NAME WHAT WAS STAGED BESIDE IT.
 data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: IntegrationConcern = IntegrationConcern {
   identity: "h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model",
   kind: SuspectedCapabilityGap {

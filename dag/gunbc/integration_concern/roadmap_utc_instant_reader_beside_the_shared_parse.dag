@@ -5,6 +5,10 @@ import std.decl_ref { decl_ref }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, SuspectedFork, Triaged, credential_consolidation_base_revision, roadmap_utc_instant_reader_beside_the_shared_parse_authorities }
 
+// ── CREDENTIAL CONSOLIDATION, P1 (shared RFC 3339 instant; credential validity) ──────────────────
+// Sighted at the P1 base while extracting extdeps.time.rfc3339 rfc3339_parse_instant and building
+// std.credential_admission. Each is a remaining sibling the change found and did not move; the change
+// that moves it closes the row with Integrated evidence.
 data roadmap_utc_instant_reader_beside_the_shared_parse: IntegrationConcern = IntegrationConcern {
   identity: "roadmap_utc_instant_reader_beside_the_shared_parse",
   kind: SuspectedFork {

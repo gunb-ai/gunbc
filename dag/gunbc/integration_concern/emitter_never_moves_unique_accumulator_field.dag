@@ -10,6 +10,12 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, accumulator_move_source_revision }
 
+// The revision the accumulator-copy measurement was made against (parse ladder, native --release).
+// A linear (non-backtracking) accumulator that is a record field is copied on every persistent update:
+// record-update lowering emits rc_map_insert(record.field.clone(), ..). Measured: aliased im insert
+// 1.7-3.7 us (grows with size) vs uniquely owned 0.38-0.52 us. The v2 parser's own sharing is
+// backtracking, so it was fixed at its source (SpanIndex built from the committed tree) and this
+// emitter gap is recorded, not built.
 data emitter_never_moves_unique_accumulator_field: IntegrationConcern = IntegrationConcern {
   identity: "emitter_never_moves_unique_accumulator_field",
   kind: SuspectedCapabilityGap {

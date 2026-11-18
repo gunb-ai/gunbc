@@ -9,6 +9,25 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
 
+// THE RECORDS-PORT-22 BYTE GOLDEN DRIFTS WITH THE ANCHOR REGISTRY.
+// test.claim.fleet.fleet_ssh_target_address_witness::every_recorded_host_renders_byte_identically_at_port_22
+// compares the fold's rendering of the recorded population (srv1, srv2, srv3, srv4
+// over the hermetic witness fixture) against a pinned byte golden recorded on
+// 2026-10-25 (541580054877, "#15073 supply the recorded population instead of the
+// live roster"). The fold is not golden-stable: the key-session ControlPath socket
+// name is a SHA-256 over the attempt, THE ANCHOR REGISTRY AND CONTENT IDENTITIES,
+// the credential identity, the endpoint and the principal
+// (gunbc.fleet.fleet_known_hosts_anchor, socket-name derivation), so any change to
+// the enrolled registry moves every key-session socket name at once. The registry
+// has moved since the pin: the per-boot host-key pin (8ace24849b1a, #15523) and
+// srv14/butch's ed25519 host-key enrollment (cb683fd75797, #16276) both changed its
+// content identities. The claim is red identically at main 236e51d0e519 and at this
+// head (6 PASS / 1 FAIL, same claim, same binary, --claim-run, both source roots,
+// receipt sha256 in the standing below); pinning RUNNER_TEMP to the CI value does
+// not flip it, so it is not an environment difference. THE PR DID NOT CAUSE IT and
+// touches the file only to widen two refusal arms through TargetEndpointUnparseable.
+// B3b phase 2 found it while establishing the head-vs-main ledger the operator
+// asked for; leaving it RED, unedited and unhidden.
 data port22_byte_golden_drifts_with_the_anchor_registry: IntegrationConcern = IntegrationConcern {
   identity: "port22_byte_golden_drifts_with_the_anchor_registry",
   kind: SuspectedCapabilityGap {

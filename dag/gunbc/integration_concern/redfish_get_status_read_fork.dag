@@ -11,6 +11,11 @@ import std.decl_ref { decl_ref }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, redfish_get_status_read_fork_authorities, redfish_get_status_read_fork_revision }
 
+// THE STATUS-OBSERVING GET IS A SECOND PATH BESIDE THE MODELED ROUTE (review 94474; gunbc.design_argument
+// ::how_to_work "a second path beside a modeled route (parallel authority)"; gunbc.design_argument
+// ::source_annotations "a dissolution condition belongs in a typed carrier" -- the trigger to collapse
+// the two reads is disposition.next below, not a comment the project may delete at any time).
+// the two reads is disposition.next below, not a comment the project may delete at any time).
 data redfish_get_status_read_fork: IntegrationConcern = IntegrationConcern {
   identity: "redfish_get_status_read_fork",
   kind: SuspectedFork {

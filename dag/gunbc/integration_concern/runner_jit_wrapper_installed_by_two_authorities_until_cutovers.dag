@@ -11,6 +11,13 @@ import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, runner_jit_wrapper_installed_by_two_authorities_until_cutovers_authorities }
 
+// ONE FILE, TWO AUTHORITIES, BY DESIGN AND ON A CLOCK. srv14's jit wrapper is written by fleet
+// converge from the gunbc carrier; srv1-srv4 still take theirs from the ctrl installer's
+// host/jit-runner.sh, because their specs still name the legacy root listener and the ctrl copy
+// is the root-mint contract that goes with it. The cutovers (each: one spec unit_user edit) move
+// each host onto the carrier, and the last one deletes the fork. Until then the same path on
+// different hosts answers to different authorities -- which is exactly what this registry exists
+// to make visible, not to hide.
 data runner_jit_wrapper_installed_by_two_authorities_until_cutovers: IntegrationConcern = IntegrationConcern {
   identity: "runner_jit_wrapper_installed_by_two_authorities_until_cutovers",
   kind: SuspectedFork {
