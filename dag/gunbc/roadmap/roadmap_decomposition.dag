@@ -1431,10 +1431,12 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // at member 0, one per member of a produced/read family at its DECLARED count, and one per member of a
 // FindingsOf family at a SIMULATION-input count -- an ASSUMED count the carrier itself declares none of.
 // The edge relation is stage k depending on stage k-1, plus every waits_on row aimed into the child's own
-// stage. The expansion WRITES NOTHING; its executing consumer is the leaf-expansion witness
+// stage. The expansion WRITES NOTHING. Its executing consumer today is the leaf-expansion witness
 // (test.claim.roadmap.roadmap_schedule_leaf_expansion_witness), which reads the occurrences and their edges
-// through the accessors below. Downstream schedule/readiness units are OUT OF SCOPE for this unit and are
-// deliberately NOT built or claimed here. It mints no
+// through the accessors below. Its declared frontier consumer is roadmap-schedule-list-scheduling -- the next
+// link in gunb-ai/gunbc#16650's chain to the roadmap Gantt -- which will read expand_decomposition and these
+// accessors to order occurrences into a schedulable list; the trigger is that unit landing over this branch. No
+// schedule, calendar, in-flight set, or readiness unit is built or claimed HERE (out of scope). It mints no
 // gunbc.roadmap.roadmap_authority node -- a leaf has no identity until claimed. Occurrences are keyed by the
 // single carrier LeafPath (imported from gunbc.roadmap.roadmap_model above); nothing here re-spells that tuple.
 //
@@ -1606,19 +1608,38 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
   )
 }
 
+// A decomposition mints members from a FindingsOf family only when it has one. The findings count is a
+// simulation input that constrains exactly such a family, so a refusal on it is warranted ONLY when a family
+// actually exists: a negative count would silently drop a family's assumed members, while a zero count is a
+// legitimate "no findings yet" input (§Epistemic humility: do not over-generalize a prohibition).
+fn piece_is_findings_family(p: WorkPiece) -> Bool {
+  match p {
+    Family { label, days, population, owner } => population_is_findings(p: population)
+    Leaf { label, days, evidence } => false
+    Join { label } => false
+    Decision { label, alternatives } => false
+    Composite { label, stages } => false
+  }
+}
+
+fn decomposition_has_findings(d: WorkDecomposition) -> Bool {
+  any(d.stages, s => any(s.pieces, p => piece_is_findings_family(p: p)))
+}
+
 // THE expansion. It asks the carrier's own well-formedness claim first (fail_closed, single_authority): when
 // that claim refuses -- a stage dependency naming a stage its parent's decomposition does not have, or an
 // undeclared edge -- the expansion refuses with the carrier's claim as the located cause, and re-checks no row.
-// A non-positive findings count refuses: it would silently drop a FindingsOf family's assumed members. A
-// waits_on naming a parent that is not uniquely decomposed refuses: its edge could not be aimed at a parent
-// occurrence the carrier's own leaf rule admits (dependency_is_well_formed bounds the stage index but not
-// decomposition uniqueness, so this is an added refusal, not a re-check). Only over an admitted decomposition
-// does it read out the occurrences and their edges.
+// A negative findings count refuses, but only when the decomposition has a FindingsOf family to constrain (it
+// would silently drop that family's assumed members); zero is a legitimate "no findings yet" input and a count
+// with no family to constrain is harmless. A waits_on naming a parent that is not uniquely decomposed refuses:
+// its edge could not be aimed at a parent occurrence the carrier's own leaf rule admits
+// (dependency_is_well_formed bounds the stage index but not decomposition uniqueness, so this is an added
+// refusal, not a re-check). Only over an admitted decomposition does it read out the occurrences and edges.
 fn expand_decomposition(d: WorkDecomposition, findings_count: Int) -> Expansion {
   if !decomposition_dependencies_well_formed(d: d) {
     Refused { cause: "roadmap-schedule-leaf-expansion refuses: the carrier's decomposition_dependencies_well_formed claim rejects this decomposition (a stage dependency names a stage its parent's decomposition does not have)" }
-  } else if findings_count <= 0 {
-    Refused { cause: "roadmap-schedule-leaf-expansion refuses: a FindingsOf family's assumed count must be a positive simulation input, never a value that drops its members" }
+  } else if findings_count < 0 && decomposition_has_findings(d: d) {
+    Refused { cause: "roadmap-schedule-leaf-expansion refuses: a negative findings count would silently drop a FindingsOf family's assumed members (a zero count -- no findings yet -- is a legitimate simulation input)" }
   } else if !every_waits_parent_decomposed(d: d) {
     Refused { cause: "roadmap-schedule-leaf-expansion refuses: a waits_on row names a parent that is not uniquely decomposed, so its edge cannot be aimed at a parent occurrence the carrier's own leaf rule admits" }
   } else {

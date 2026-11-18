@@ -101,3 +101,25 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
     && all(adm_edges, e => e.from.item == nid(s: parent) && nat_to_int(n: e.from.stage) == 0
       && e.to.item == nid(s: child) && nat_to_int(n: e.to.stage) == 0 && nat_to_int(n: e.to.piece) == 0 && nat_to_int(n: e.to.member) == 0)
 }
+
+// THE FINDINGS-COUNT GUARD IS TIGHT, NOT OVER-GENERAL (§Epistemic humility). literal-elaboration carries a
+// FindingsOf family, so a NEGATIVE count would silently drop that family's assumed members and REFUSES; the
+// SAME node at count ZERO (a legitimate "no findings yet" simulation input) EXPANDS, minting zero assumed
+// members -- the family leaves no leaf occurrences, which is correct, not a silent drop. A decomposition with
+// NO FindingsOf family at a negative count EXPANDS: the count has no family to constrain, so refusing it would
+// over-generalize a prohibition. Together these execute both branches of decomposition_has_findings -- the
+// refusal cannot be a decoration.
+test fn a_findings_count_refuses_only_when_a_findings_family_is_present() -> Bool {
+  let leaf_only = decomposition(node: "leaf-only-expansion-fixture", waits_on: [], stages: [
+    [
+      leaf(label: "one leaf", days: 1),
+    ],
+  ])
+  let le_neg = expansion_of(node: "literal-elaboration", findings_count: -1)
+  let le_zero = expansion_of(node: "literal-elaboration", findings_count: 0)
+  is_refused(le_neg)
+    && is_expanded(le_zero)
+    && count(filter(expanded_occurrences(le_zero), o => occurrence_is_assumed(o))) == 0
+    && count(filter(expanded_occurrences(le_zero), o => occurrence_is_declared(o))) == 1
+    && is_expanded(expand_decomposition(d: leaf_only, findings_count: -1))
+}
