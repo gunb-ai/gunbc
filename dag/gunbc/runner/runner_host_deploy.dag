@@ -370,10 +370,10 @@ fn runner_host_ssh_identity(host: HostIdentity) -> String? {
   match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (host as String)).first() {
     Absent => Absent
     Present { value: machine } =>
-      match allocated_canonical_hostname(allocation: machine) {
+      match fleet_tailnet_domain {
         Absent => Absent
-        Present { value: name } =>
-          Present { value: join([name as String, ".", fleet_tailnet_domain as String], "") as String }
+        Present { value: domain } =>
+          Present { value: join([allocated_canonical_hostname(allocation: machine) as String, ".", domain as String], "") as String }
       }
   }
 }

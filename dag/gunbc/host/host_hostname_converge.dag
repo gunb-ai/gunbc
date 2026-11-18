@@ -703,7 +703,7 @@ fn hostname_converge_transport_target(target: HostIdentity) -> SshTargetResoluti
     host: target,
     principal: host_identity_operator_principal_name(),
     // The token, held by exactly this mode (review 96277): the type, not a string, is the admission.
-    admission: Present { value: FirstContactAdmission.HostnameMode },
+    admission: Present { value: HostnameMode },
   ) {
     SshTargetResolved { target: ssh_target } => SshTargetResolved { target: ssh_target }
     SshTargetRefused { endpoint: _, refusal: _ } => fleet_ssh_target_at_standard_port(
