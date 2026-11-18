@@ -12,7 +12,7 @@ module test.claim.fleet.fleet_converge_roster_closed_sum_witness
 // landing, which is what makes this live rather than latent: #16529 (MtCollins1BmcColdReset), #16567,
 // #16583. The roster has since been kept honest only by attention.
 //
-// THE ROUTE THE CONCERN ASKED FOR FIRST, AND WHY IT IS CLOSED HERE. The concern asked for the roster
+// THE ROUTE THE CONCERN ASKED FOR FIRST, AND WHY IT IS ANSWERED RATHER THAN TAKEN. The concern asked for the roster
 // to be DERIVED from the closed sum if the language admits value-level enumeration of a sum's
 // variants. Searched: std has exactly one such capability, v2.std.node_reflection
 // .coproduct_nullary_inhabitants, and it is a host seam that answers by constructing a value of every
@@ -22,7 +22,8 @@ module test.claim.fleet.fleet_converge_roster_closed_sum_witness
 // payload-bearing arm, Srv1RootMutation(Srv1RootMutationMode), so the sum is NOT value-enumerable and
 // the roster cannot be derived as values. That refusal is not taken on faith here:
 // witness_value_level_enumeration_refuses_the_fleet_converge_mode_sum below observes it from the
-// language, which is the evidence that closes the derivation half of the concern.
+// language, which is the evidence that settles the DERIVATION half of the concern. The membership half
+// stays owed until this module runs on a lane -- see ENROLLMENT below, and the Triaged row itself.
 //
 // SO THIS FILE TAKES THE CONCERN'S SECOND BRANCH: a witness over membership, asserting the roster
 // repeats every arm exactly once and holds nothing else. It does not rest on a TOTAL compared to a
@@ -54,17 +55,15 @@ module test.claim.fleet.fleet_converge_roster_closed_sum_witness
 
 // ENROLLMENT, stated because a witness no lane executes is not a check
 // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling; gunbc.design_argument::
-// guarantee_ladder wants the reported rung to equal the executed one). This module is authored and it
-// has been executed -- `gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all`,
-// 9 claims / 9 held / 0 red on 2026-11-18 -- but it is enrolled in NO lane, so today this wall judges
-// whoever runs it, and nothing else: a mode dropped from the roster is still silently dispatchable on
-// the required path. That standing is a ruling, not an oversight, taken 2026-11-18 by the consolidating
-// session: a required_gate row is operator-admitted and spends the closed CI budget, and the honest
-// standing is authored-executed-green-enrolled-nowhere with its next rung named rather than a one-off
-// row bought for a single wall. The trigger that lifts it, and every wall in the same standing with it,
-// is gunbc.rung_drop.v1_required_lanes_withdrawn -- the withdrawal of the v1 required lanes whose
-// population the native compiler is to judge -- so this climbs with the rest and not by petition. Do
-// not read the rows below as a standing gate before that happens.
+// guarantee_ladder wants the reported rung to equal the executed one). This module is authored and it has
+// been executed -- `gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all`, 9 claims /
+// 9 held / 0 red on 2026-11-18 -- and it is enrolled in NO lane, so it judges whoever runs it and nothing
+// on the required path: a mode dropped from the roster is still dispatchable in silence. That is the
+// standing gunbc.integration_concern fleet_converge_roster_vs_closed_sum is left Triaged on, with its
+// trigger named there as gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose
+// population the native compiler is to judge -- so this wall climbs with every other wall in the same
+// standing rather than by a row bought for itself at the operator's gate. Do not read the rows below as a
+// standing gate before that happens.
 
 import std.algebra { bag_eq }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
