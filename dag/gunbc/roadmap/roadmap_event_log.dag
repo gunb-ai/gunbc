@@ -2298,13 +2298,29 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // THE IN-FLIGHT LEAF SET (roadmap-leaf-in-flight-set): WHICH OF AN ITEM'S LEAVES ARE HELD RIGHT NOW.
 //
 // WHY THIS EXISTS. The daily workspace has to answer, per item, "which of its leaves does somebody
-// hold at this moment", so the ctrl dashboard's Gantt can draw the leaves that are being worked and
-// the gaps that are not. The question is answered FROM THE LOG, by replaying it. There is no
+// hold at this moment", so that — once roadmap-work-item-projection and then roadmap-timeline-page
+// land, both of them downstream of this node in the plan — the ctrl dashboard's Gantt can draw the
+// leaves that are being worked and the gaps that are not. The question is answered FROM THE LOG, by
+// replaying it. There is no
 // in-flight record, no in-flight file and no in-flight event, and none may be added: an
 // in-flight-bearing record would be a SECOND authority over the fact of who holds what
 // (gunbc.design_argument::single_authority), and two authorities over a holding answer are exactly
 // the drift the log exists to remove. Everything below is a read — it takes the log's own wire lines
 // and returns what they say, so a reader can never be shown a hold that no event recorded.
+//
+// CONSUMED BY A NAMED LATER CHANGE — the classification gunbc.design_argument::consumption asks for,
+// so the frontier is declared here rather than asserted in prose. Today the only thing that calls
+// roadmap_leaf_in_flight_set is its own witness module, which exercises the fold but is not a consumer.
+// The consumer is the node this one unblocks: roadmap-work-item-projection
+// (identity rn_01M7NPVR8ZNA89SDC0ZXCHA2DS, dag/gunbc/roadmap/roadmap_authority.dag, carrier
+// dag/gunbc/roadmap/roadmap_event_log.dag, module gunbc.roadmap.roadmap_work_item_projection), whose
+// declared row shape names THIS carrier field for field — "in_flight — the derived set, each entry with
+// its leaf path, its claim's assignee and its claim's return_to". Its TRIGGER is the plan's own edge,
+// edge(child: "roadmap-work-item-projection", parent: "roadmap-leaf-in-flight-set"); the same edge list
+// hangs roadmap-schedule-from-now off this node too, and the operator's Gantt is two edges further on at
+// roadmap-timeline-page (identity rn_01M7NPVR90N2HGC2XA1WMQFRFK, carrier dag/gunbc/roadmap/roadmap_page.dag),
+// which renders that projection row and nothing else. Until the projection lands, nothing renders this
+// set, and no comment here should be read as saying otherwise.
 //
 // WHICH LEAVES ARE IN FLIGHT. A leaf is in flight when the chain shows it a Claimed and NOTHING
 // after it: no Released, no HandedBack, no Retired, no acceptance. "After" is read in the ONE order
@@ -2367,8 +2383,11 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // ================================================================================================
 
 // ONE LEAF HELD RIGHT NOW, with the three facts its claim carried: who holds it, who the published
-// work comes back to, and when the claim landed. The projection downstream serves these directly,
-// which is why they are carried here rather than re-looked-up from the log by its consumer.
+// work comes back to, and when the claim landed. These are the fields
+// roadmap-work-item-projection's declared row shape names for its in_flight entries (see CONSUMED BY A
+// NAMED LATER CHANGE above), which is why they are carried here rather than re-looked-up from the log by
+// that consumer when it lands — a reader that re-derived them would be a second place deciding who holds
+// what. They are carried for that reader; nothing renders them today.
 type LeafInFlightEntry {
   leaf: LeafPath
   claim: RoadmapEventId
