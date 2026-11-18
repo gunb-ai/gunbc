@@ -164,7 +164,7 @@ fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool 
 // commit srv15's standing, arrival row and unit key, this claim goes red first.
 test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing() -> Bool {
   match network_install_ci_resolve(
-    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    host: ci_host, executor: operator_host_srv4, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
     password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
     // No sealed context here, and none is needed: the account refuses srv15 today, so the plan -- the only
     // consumer of the context -- is never reached. A claim that needed a real context would have to be admitted
