@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop }
+import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_pair_delivery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, SeedBuiltAtRevision, SourceUndeclared }
@@ -242,6 +242,9 @@ import gunbc.live_deploy.spec {
   deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
   deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
   deployment_belt_standings_refresh_unit_name,
+  deployment_pair_delivery_unit_name,
+  gunbc_pair_delivery_base_root, release_pair_deliver_base_root_env,
+  release_pair_deliver_serve_unit_env, release_pair_deliver_repo_root_env,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -1296,6 +1299,64 @@ fn live_deploy_belt_standings_refresh_timer_unit_file(spec: DeploymentSpec) -> S
   }
 }
 
+// THE PAIR-DELIVERY unit + timer (node://lab-converges-release-pair): the EXECUTING consumer of the staged wet
+// delivery CLI. The service oneshot runs release_pair_deliver_once_cli (its OWN run performs the delivery —
+// fetch -> observed build-key verify -> fold -> place + restart — not a hand step); the timer re-arms it on the
+// pair cadence. DECLARED here (builder + emission witness stay in this PR); their INSTALL legs are deliberately
+// NOT registered in apply_legs — registering them would let a fleet converge install and RUN this unit while the
+// source/binary guard still compares a value to itself. That registration, with the guard's real observation, is a
+// DECLARED FRONTIER consumed by the stacked PR (roadmap node lab-converges-release-pair). Witnessed in the emission oracle.
+// Built DIRECTLY (not via the belt-event helper) because this entry lives in a different module than the belt tick
+// CLI, and its own environment is supplied here: the release locus root, the serve unit to restart, and the repo root,
+// all DERIVED from spec authorities (no literals in the unit).
+fn live_deploy_belt_pair_delivery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  let svc = spec.service
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc paired release delivery (runs the staged wet delivery from its own unit: fetch, observed build-key verify, fold, place at the per-revision locus, restart)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: concat([
+      ServiceType { mode: OneshotMode },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        release_pair_deliver_base_root_env as String, "=", gunbc_pair_delivery_base_root as String,
+      ], "") as NonEmptyStr },
+      Environment { assignment: join([
+        release_pair_deliver_serve_unit_env as String, "=", spec.names.unit_name as String,
+      ], "") as NonEmptyStr },
+      Environment { assignment: join([
+        release_pair_deliver_repo_root_env as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+      ExecStart { command: join([
+        fixed_serve_binary_path(binary: svc.serve_binary),
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/live_deploy/release_pair_deliver_cli.dag --function release_pair_deliver_once_cli",
+      ], "") as NonEmptyStr },
+    ])),
+    install: NotInstallable,
+  }
+}
+
+fn live_deploy_belt_pair_delivery_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc paired release delivery timer (re-arms the wet pair-delivery on its own cadence; keeps the served pair at origin/main)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_pair_delivery_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
 // THE BELT EXIT .path unit's read of record: the directories it watches for non-empty (the attempt-exit
 // request roles' spool dirs). One authority for both the unit file (below) and the closure read row, so a
 // control can compare them as one list without going through the same helper both sides call.
@@ -1802,13 +1863,13 @@ type InstallRefusalCause
 // traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
 // surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
 // only ever sees the carrier or a refusal, never a raw unchecked path).
-type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
+type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: NonEmptyStr }
 
 fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
   if path == "" { Absent }
   else if !starts_with(s: path, prefix: "/") { Absent }
   else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
-  else { Present { value: ShellInertAbsolutePath { raw: path } } }
+  else { Present { value: ShellInertAbsolutePath { raw: path as NonEmptyStr } } }
 }
 
 data unsafe_install_fragments: List<String> = [

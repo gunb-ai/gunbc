@@ -220,7 +220,7 @@ type DeployApplyLeg
   // EXISTENCE (DirectoryExists) — what a .path unit's watched spool/queue directory needs from the deploy.
   // It never covers a TreeContent read (a different kind, owned only by a converger). argv is rendered from
   // `dest` by the one coreutils_install_directory_owned_argv fold, so dest and argv are one fact.
-  | ApplyLegInstallDirectory { step: String, command: ArgvCommand, dest: String }
+  | ApplyLegInstallDirectory { step: String, command: ArgvCommand, dest: NonEmptyStr }
   | ApplyLegReport { step: String, line: String }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
@@ -648,7 +648,7 @@ fn apply_systemctl_leg_diagnosed(step: String, action: SystemctlAction, unit: No
 // DirectoryExists); the command is RENDERED inside the builder from dest/mode/owner/group by the one
 // coreutils builder, as install_file_command does -- dest is the only authority, there is no separate
 // argv input that could disagree with it (review 96024, same family as the systemctl legs).
-fn apply_root_directory_leg_typed(step: String, dest: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr) -> DeployApplyLeg {
+fn apply_root_directory_leg_typed(step: String, dest: NonEmptyStr, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr) -> DeployApplyLeg {
   ApplyLegInstallDirectory { step: step, command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: dest)), dest: dest }
 }
 
@@ -672,7 +672,7 @@ fn apply_staged_leg(step: String, dest: String, payload: String) -> DeployApplyL
     source: Payload { bytes: payload })
 }
 
-fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: String) -> DeployApplyLeg {
+fn apply_owned_directory_leg(spec: DeploymentSpec, step: String, path: NonEmptyStr) -> DeployApplyLeg {
   apply_root_directory_leg_typed(step: step, dest: path, mode: install_d_shared_mode, owner: spec.service.service_user, group: spec.service.service_user)
 }
 
@@ -711,10 +711,10 @@ fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_
           Present { value: readback } =>
             ApplyPlanReady { legs: [
               apply_root_leg(step: "tree-root", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: "/opt/gunbc")),
-              apply_owned_directory_leg(spec: spec, step: "tree-repo-root", path: spec.service.repo_root as String),
+              apply_owned_directory_leg(spec: spec, step: "tree-repo-root", path: spec.service.repo_root),
               apply_staged_leg(step: "tree-sync-env", dest: spec.names.tree_sync_env_path as String, payload: join(["GUNBC_TREE_SRC=", source_root, "\n"], "")),
               apply_staged_leg(step: "instance-slice", dest: deployment_slice_unit_path(names: spec.names) as String, payload: render(doc: emit_slice_unit_doc(spec: spec), proto: live_deploy_protocol)),
-              apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
+              apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root)),
               apply_staged_leg(step: "user-work-slice", dest: gunbc_user_work_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),
               apply_root_leg(step: "user-work-slice-reload", argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid)),
               apply_staged_leg(step: "repository-convergence-slice", dest: gunbc_repository_convergence_slice_unit_path() as String, payload: render(doc: emit_repository_convergence_slice_unit_doc(), proto: live_deploy_protocol)),
@@ -751,7 +751,7 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
         mode: install_executable_shared_mode, owner: spec.service.service_user, group: spec.service.service_user,
         source: Staged { source: source }),
       ApplyLegDigestVerify { step: "executable-installed-digest", path: fixed_serve_binary_path(binary: spec.service.serve_binary), digest: plan.target.executable },
-      apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root as String)),
+      apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: spec.service.instance_root)),
     ] }
   }
 }
@@ -763,11 +763,11 @@ fn deploy_apply_executable_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, s
 // serve unit; then the reload, and the enable and restart of the serve unit and the owned broker. A serve
 // unit whose OIDC readback was refused refuses the plan: the script emitted nothing for that member and
 // the run converged without a unit, which read an unknown as nothing to do.
-fn apply_install_directory_leg(step: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> DeployApplyLeg {
+fn apply_install_directory_leg(step: String, mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: NonEmptyStr) -> DeployApplyLeg {
   apply_root_directory_leg_typed(step: step, dest: path, mode: mode, owner: owner, group: group)
 }
 
-fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: String) -> DeployApplyLeg {
+fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, path: NonEmptyStr) -> DeployApplyLeg {
   apply_install_directory_leg(step: step, mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path)
 }
 
@@ -875,7 +875,7 @@ fn credstore_copy_legs(instance: HostDashboardInstance) -> List<DeployApplyLeg> 
     Absent => []
     Present { value: _ } =>
       concat(
-        [apply_root_directory_leg(step: "worker-credstore-dir", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: approval_broker_helper_root_principal, path: systemd_system_credstore_directory as String)],
+        [apply_root_directory_leg(step: "worker-credstore-dir", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: approval_broker_helper_root_principal, path: systemd_system_credstore_directory)],
         map(dispatch_worker_credentials(instance: instance), c => ApplyLegCredstoreCopy {
           step: "worker-credstore-copy",
           source: c.custody_source,
@@ -1354,7 +1354,7 @@ fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
     ),
     concat(
       [
-        apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root) as String),
+        apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root)),
         apply_staged_leg(step: "publication-service-unit", dest: deployment_publication_service_unit_path(names: spec.names) as String, payload: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
         apply_staged_leg(step: "publication-path-unit", dest: path as String, payload: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol)),
       ],
@@ -1390,6 +1390,11 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_belt_unit_leg(step: "belt-credential-recovery-timer", dest: deployment_belt_credential_recovery_timer_unit_path(names: n), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-standings-refresh-unit", dest: deployment_belt_standings_refresh_unit_path(names: n), file: live_deploy_belt_standings_refresh_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-standings-refresh-timer", dest: deployment_belt_standings_refresh_timer_unit_path(names: n), file: live_deploy_belt_standings_refresh_timer_unit_file(spec: spec)),
+      // The pair-delivery service+timer are DECLARED in emit.dag (their builders + emission witnesses stay in this
+      // PR), but their INSTALL legs are deliberately NOT registered here: an already-converged tick currently compares
+      // the gh head query to itself (the source-side observation — review 96121 — is a separate authority transition
+      // and lands in the stacked PR). Registering the legs would let a fleet converge install and RUN that unit, so
+      // the install legs move with the observation that makes the guard real. Nothing in this PR makes the unit run.
       apply_belt_unit_leg(step: "belt-answer-path-unit", dest: deployment_belt_answer_path_unit_path(names: n), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
@@ -1691,7 +1696,7 @@ fn kept_member_owned(member: ConvergedMember, spec: DeploymentSpec, instance: Ho
         [OwnedArtifact { path: path as String, kind: DirectoryExists }]
       }
     // The drain path unit and the broker front door do NOT ride the release roster today (member_identity's
-    // roster comment; their per-member-kind migration is the named roadmap leaf), so a KEEP row naming them
+    // roster comment; roadmap node deploy-release-roster-carries-every-owned-step), so a KEEP row naming them
     // only exists once the plan's verifier carries them -- the controls below pass them through the roster
     // the plan mints. When such a row exists, its reads (the launcher snapshot dir; the broker release tree
     // and its digest env file) are covered by the SAME folds the write legs use, above. Meanwhile this is

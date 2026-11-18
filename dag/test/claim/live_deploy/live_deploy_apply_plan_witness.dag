@@ -22,6 +22,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, apply_systemctl_leg, systemctl_action_argv,
+  systemctl_leg_render_command, systemctl_leg_render_diagnosis, ApplyLegInstallDirectory,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
   deploy_artifact_closure_gate,
@@ -312,8 +313,8 @@ test fn the_board_function_converge_unit_is_installed_by_the_host_singleton_depl
 // so a missing, drifted or failed converge is repaired whatever the serve unit's standing.
 // THE ALL-KEPT ROSTER: every member the release plan verifies as already present, INCLUDING the two
 // artifact-step members the release roster does not carry today (the attempt-unit drain path unit and the
-// broker front door -- their per-member-kind migration is the named roadmap leaf in
-// gunbc.roadmap.deploy_artifact_observed_identity). The verifier that admits a KEEP walks the owned steps,
+// broker front door -- their migration onto the roster is roadmap node
+// deploy-release-roster-carries-every-owned-step in gunbc.roadmap.roadmap_authority). The verifier that admits a KEEP walks the owned steps,
 // so a faithful all-kept plan carries their rows, spelled through the SAME identity authority
 // identity_member_of_step uses (it binds DirectoryRoot { path: <step path> } for both).
 fn all_kept_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
@@ -337,7 +338,7 @@ test fn the_converge_is_applied_when_the_serve_unit_is_unchanged() -> Bool {
 // the tree publication had no install leg, and refusing on members the plan PROVED present is wrong. The
 // gate counts them via plan_kept_owned_artifacts (apply_legs), whose paths come from the same folds the
 // write legs use -- no gate-local second map. The drain path unit and the broker front door do not ride
-// the release roster today (their per-member-kind migration is the named roadmap leaf), so the plan's
+// the release roster today (roadmap node deploy-release-roster-carries-every-owned-step), so the plan's
 // verifier carries them as rows spelled from the SAME identity authority (identity_member_of_step binds
 // DirectoryRoot { path: <step path> } -- the identical fold spec.dag's deployment_owned_steps builds).
 test fn the_all_kept_plan_clears_the_deploy_artifact_gate() -> Bool {
@@ -448,7 +449,10 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => true
-    ApplyLegBrokerTree { locus: _, executables: _ } => true
+    ApplyLegBrokerTree { revision: _ } => true
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => command_within_grants(c: c)
+    ApplyLegSystemctl { step: _, action: a, unit: u } => command_within_grants(c: systemctl_leg_render_command(action: a, unit: u))
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => command_within_grants(c: systemctl_leg_render_command(action: a, unit: u)) && command_within_grants(c: systemctl_leg_render_diagnosis(unit: u))
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
@@ -637,7 +641,10 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
         ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => env_binary(legs: rest)
-        ApplyLegBrokerTree { locus: _, executables: _ } => env_binary(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
+        ApplyLegInstallDirectory { step: _, command: _, dest: _ } => env_binary(legs: rest)
+        ApplyLegSystemctl { step: _, action: _, unit: _ } => env_binary(legs: rest)
+        ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => env_binary(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
         ApplyLegDependency { dep: _ } => env_binary(legs: rest)
       }
@@ -916,7 +923,10 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { locus: _, executables: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => argv_words(command: c)
+    ApplyLegSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
@@ -936,7 +946,10 @@ fn leg_payload(leg: DeployApplyLeg) -> String {
     ApplyLegObjectSource => ""
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => ""
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ""
-    ApplyLegBrokerTree { locus: _, executables: _ } => ""
+    ApplyLegBrokerTree { revision: _ } => ""
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => ""
+    ApplyLegSystemctl { step: _, action: _, unit: _ } => ""
+    ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => ""
     ApplyLegRetract { step: _, leg: _ } => ""
     ApplyLegDependency { dep: _ } => ""
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
@@ -1207,7 +1220,10 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
         ApplyLegBrokerStateDirectories { revision: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegObjectSource => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegBrokerTree { locus: _, executables: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallDirectory { step: _, command: _, dest: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegSystemctl { step: _, action: _, unit: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)

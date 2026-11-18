@@ -1070,7 +1070,7 @@ test fn the_wet_carrier_admits_the_scenario_instance_it_was_handed() -> Bool {
 // provisioning would `git init` into the foreign tree and report Ready.
 fn carrier_ownership_refusal_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
   match roadmap_event_carrier_mint_scratch(template: "/tmp/gunbc_carrier_foreign.XXXXXX" as NonEmptyStr) {
-    RoadmapEventCarrierMintRefused { detail: detail } => claim("the foreign scratch could not be minted: " + detail, false)
+    RoadmapEventCarrierMintRefused { detail: detail, arm: _arm } => claim("the foreign scratch could not be minted: " + detail, false)
     RoadmapEventCarrierMinted { scratch: foreign } => {
       let foreign_instance: HostDashboardInstance = fabric_fixture_instance(root: foreign.path)
       let verdict = match roadmap_event_carrier_provision(instance: foreign_instance, scratch: scratch) {
