@@ -170,8 +170,9 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {  bind_outcome(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
     zesty_c
   )
-
-      })
+)
+      }
+    )
   )
 
 
@@ -355,7 +356,8 @@ fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> Outcome<String> {  bind_
     gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false), "\n",
     zesty_c, "\n",
   ], "")
-
-      })
+)
+      }
+    )
   )
 

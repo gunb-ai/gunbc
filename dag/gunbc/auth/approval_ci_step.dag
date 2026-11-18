@@ -205,8 +205,9 @@ fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> O
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
     zesty_c, "\n",
   ], "")
-
-      })
+)
+      }
+    )
   )
 
 
@@ -224,7 +225,8 @@ fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcom
     concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
     zesty_c
   )
-
-      })
+)
+      }
+    )
   )
 

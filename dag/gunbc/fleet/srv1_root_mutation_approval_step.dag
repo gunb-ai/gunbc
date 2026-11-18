@@ -81,7 +81,8 @@ fn gunbc_ci_srv1_root_mutation_approval_invoke() -> Outcome<String> {  bind_outc
     gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
     zesty_c, "\n",
   ], "")
-
-      })
+)
+      }
+    )
   )
 

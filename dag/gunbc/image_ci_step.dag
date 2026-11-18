@@ -24,8 +24,9 @@ fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> Outcome<Stri
     f: fn(zesty_c) {
       outcome_accepted(value:
   join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", zesty_c, "\n"], "")
-
-      })
+)
+      }
+    )
   )
 
 
