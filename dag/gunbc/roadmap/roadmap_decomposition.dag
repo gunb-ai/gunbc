@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_decomposition
 
 import std.types { String, Int, Bool, List }
 import std.integer { nat_to_int }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
@@ -1463,32 +1464,45 @@ type OccurrenceEdge {
 
 // The expansion is fail-closed: it either holds the occurrences and their edges, or a located refusal naming
 // the carrier claim that refused.
-type Expansion {
-  Expanded {
-    occurrences: List<Occurrence>
-    edges: List<OccurrenceEdge>
-  }
-  Refused {
-    cause: String
-  }
-}
+type Expansion
+  = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge> }
+  | Refused { cause: String }
 
 // members drawn from `first` up to `last` with the given count source. An empty (or inverted) range yields
-// none; every produced member index is >= 0, so its Nat field is always inhabited soundly.
+// none. Every index is carried as a checked Int->Nat crossing at minting time (see member_occurrence), so an
+// unrepresentable index refuses to mint rather than silently wrapping.
 fn members_occurrences(item: RoadmapNodeId, stage: Int, piece: Int, first: Int, last: Int, source: OccurrenceCount) -> List<Occurrence> {
   if last <= first {
     []
   } else {
     concat(
-      [Occurrence { path: LeafPath { item: item, stage: stage, piece: piece, member: first }, count_source: source }],
+      member_occurrence(item: item, stage: stage, piece: piece, member: first, source: source),
       members_occurrences(item: item, stage: stage, piece: piece, first: first + 1, last: last, source: source),
     )
   }
 }
 
+// THE single place an Occurrence is minted. `LeafPath`'s stage/piece/member are Nat; each index crosses from
+// Int through the sanctioned checked crossing `std.checked_arithmetic::checked_int_to_nat` (the reverse of
+// nat_to_int is checked, per the repo's coercion rule), and an unrepresentable index REFUSES to mint -- the
+// carrier mints no occurrence with an index the type system cannot hold. The crossing is therefore enforced at
+// construction, not asserted by the caller.
+fn member_occurrence(item: RoadmapNodeId, stage: Int, piece: Int, member: Int, source: OccurrenceCount) -> List<Occurrence> {
+  match checked_int_to_nat(n: stage) {
+    Absent => []
+    Present { value: sn } => match checked_int_to_nat(n: piece) {
+      Absent => []
+      Present { value: pn } => match checked_int_to_nat(n: member) {
+        Absent => []
+        Present { value: mn } => [Occurrence { path: LeafPath { item: item, stage: sn, piece: pn, member: mn }, count_source: source }]
+      }
+    }
+  }
+}
+
 fn piece_occurrences(item: RoadmapNodeId, stage: Int, piece_index: Int, p: WorkPiece, findings_count: Int) -> List<Occurrence> {
   match p {
-    Leaf { label, days, evidence } => [Occurrence { path: LeafPath { item: item, stage: stage, piece: piece_index, member: 0 }, count_source: Declared }]
+    Leaf { label, days, evidence } => member_occurrence(item: item, stage: stage, piece: piece_index, member: 0, source: Declared)
     Family { label, days, population, owner } =>
       if population_is_findings(p: population) {
         members_occurrences(item: item, stage: stage, piece: piece_index, first: 0, last: findings_count, source: Assumed)
@@ -1620,11 +1634,14 @@ fn occurrence_is_assumed(o: Occurrence) -> Bool {
   o.count_source == Assumed
 }
 
-// An occurrence is OFFERED CLAIMABLE only when its member index is DRAWN FROM A DECLARED count. An ASSUMED
-// FindingsOf member is never offered as claimable: the carrier declares no count for it, and
-// decomposition_has_leaf_path itself refuses a FindingsOf member.
+// An occurrence is OFFERED CLAIMABLE under a policy DISTINCT from "its count is declared": it may be offered
+// only when its count is DECLARED *and* its path actually resolves under the carrier's own
+// decomposition_has_leaf_path. This is deliberately not a rename of occurrence_is_declared -- an ASSUMED
+// FindingsOf member is not declared (so not offered), and a declared member whose index the carrier does not
+// acknowledge is likewise not offered. It composes existing authority (the carrier's leaf predicate) rather
+// than restating it.
 fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
-  o.count_source == Declared
+  occurrence_is_declared(o: o) && decomposition_has_leaf_path(path: o.path)
 }
 
 fn claimable_paths(e: Expansion) -> List<LeafPath> {
