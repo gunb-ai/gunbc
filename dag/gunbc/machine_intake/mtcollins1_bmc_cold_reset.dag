@@ -5,8 +5,7 @@ import std.algebra { trim }
 import std.optional { Present, Absent, Optional }
 import std.measure { Second, second, second_count, Minute, minute, minute_count, second_to_millisecond }
 import extdeps.linux.proc_uptime { proc_uptime_read }
-import gunbc.ci.ci_budget_raise { BudgetApproval, IntroducedWithTheStep, RaisedBySignoff, SignoffPending, BudgetAdmission, budget_admission }
-import gunbc.design_ruling { mtcollins1_bmc_cold_reset_step_raised_to_67_minutes }
+import gunbc.ci.ci_budget_raise { BudgetApproval, IntroducedWithTheStep, BudgetAdmission, BudgetAdmitted, BudgetRaiseUnapproved, budget_admission, budget_admitted_minutes }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -171,30 +170,40 @@ fn mtcollins1_bmc_cold_reset_allowance() -> Second {
     + second_count(s: mtcollins1_bmc_cold_reset_window_allowance())) as Int)
 }
 
-// The step's timeout, the allowance in whole minutes. It is closed to growth: 35 -> 67 is a raise, admitted only by
-// gunbc.design_ruling mtcollins1_bmc_cold_reset_step_raised_to_67_minutes through
-// mtcollins1_bmc_cold_reset_step_budget_approvals (below).
-fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {
+// The minutes the step REQUIRES: the allowance in whole minutes (67 at this revision).
+fn mtcollins1_bmc_cold_reset_step_required_minutes() -> Minute {
   minute(count: (second_count(s: mtcollins1_bmc_cold_reset_allowance()) + 59) / 60)
 }
 
 // THE STEP'S APPROVED BUDGETS, oldest first (ruling gunbc.design_ruling ci_job_budgets_closed_to_growth; admitted by
-// gunbc.ci.ci_budget_raise budget_admission). The step landed at 35 min with the mode (gunb-ai/gunbc#16529), a new
-// step and not a raise. The sustained window (gunbc#16659) raises it to 67, which is admitted only by the operator's
-// explicit sign-off recorded verbatim in gunbc.design_ruling mtcollins1_bmc_cold_reset_step_raised_to_67_minutes;
-// that row is STAGED and its sign-off PENDING, so the raise is not admitted until the operator's words are in it.
+// gunbc.ci.ci_budget_raise). The step landed at 35 min with the mode (gunb-ai/gunbc#16529), a new step and not a raise.
+// The sustained window (gunbc#16659) requires 67 (mtcollins1_bmc_cold_reset_step_required_minutes). That raise needs
+// the operator's explicit sign-off, and a ruling row exists only once the operator's words do, so there is NO approval
+// for it here: the admission of 67 refuses as BudgetRaiseUnapproved naming 35 (the request, its arithmetic and
+// evidence, is on gunb-ai/gunbc#16668). The change that carries the words adds the gunbc.design_ruling row, enrolls it
+// in design_rulings(), and appends `RaisedBySignoff { minutes: minute(count: 67), ruling: <that row> }` here -- one
+// edit that both admits 67 and lifts the entry's refusal below.
 data mtcollins1_bmc_cold_reset_step_budget_approvals: List<BudgetApproval> = [
-  IntroducedWithTheStep { minutes: 35, carried_by: "gunb-ai/gunbc#16529 (the MtCollins1BmcColdReset mode)" },
-  RaisedBySignoff { minutes: 67, signoff: SignoffPending { ruling: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes } },
+  IntroducedWithTheStep { minutes: minute(count: 35), carried_by: "gunb-ai/gunbc#16529 (the MtCollins1BmcColdReset mode)" },
 ]
 
 fn mtcollins1_bmc_cold_reset_step_budget_admission() -> BudgetAdmission {
-  budget_admission(minutes: minute_count(mtcollins1_bmc_cold_reset_step_timeout_minutes()) as Int, approvals: mtcollins1_bmc_cold_reset_step_budget_approvals)
+  budget_admission(minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), approvals: mtcollins1_bmc_cold_reset_step_budget_approvals)
+}
+
+// THE STEP'S TIMEOUT, as emitted into the generated workflow (gunbc.fleet.fleet_converge_workflow): the ADMITTED
+// value, never the required one on its own -- 35 while the raise is unapproved, so a regen ships no raise. 35 does
+// NOT cover the window the watch permits (4020 s), and is never run as if it did: while the admission refuses, the
+// entry refuses before the hold, so at this budget the step's only work is that typed refusal and its receipt
+// (ColdResetStepBudgetUnapproved). No shorter window is fitted into 35.
+fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {
+  budget_admitted_minutes(admission: mtcollins1_bmc_cold_reset_step_budget_admission())
 }
 
 // ── THE STAGES THE RECEIPT RECORDS ───────────────────────────────────────────────────────────────
 type ColdResetPreHoldRefusal
-  = ColdResetCredentialUnset
+  = ColdResetStepBudgetUnapproved { required: Minute, admitted: Minute }
+  | ColdResetCredentialUnset
   | ColdResetRunIdentityUnset
   | ColdResetHostNotManaged
   | ColdResetControllerAccessUnobserved
@@ -204,6 +213,8 @@ type ColdResetPreHoldRefusal
 
 fn cold_reset_pre_hold_reason(refusal: ColdResetPreHoldRefusal) -> String {
   match refusal {
+    ColdResetStepBudgetUnapproved { required: r, admitted: a } =>
+      join(["the step requires ", to_string(minute_count(m: r)), " min (the sustained window's allowance, mtcollins1_bmc_cold_reset_allowance) and its budget admits ", to_string(minute_count(m: a)), " min: the raise is unapproved (gunbc.design_ruling ci_job_budgets_closed_to_growth; gunbc.ci.ci_budget_raise BudgetRaiseUnapproved), so the watch is not run under a timeout that could end its window; blocked on the signed ruling row"], "")
     ColdResetCredentialUnset => concat(host_reset_bmc_credential_path_env, " is unset: the shared BMC credential fetch did not run")
     ColdResetRunIdentityUnset => "GITHUB_RUN_ID or GITHUB_SHA is unset"
     ColdResetHostNotManaged => "mtcollins1 has no managed membership"
@@ -357,7 +368,7 @@ fn mtcollins1_bmc_cold_reset_send(bmc_host: NonEmptyStr, username: NonEmptyStr, 
 // refused here, before McResetCold.
 fn mtcollins1_bmc_cold_reset_held(proof: UnitHoldProof, host: HostIdentity, bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ColdResetStage
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet_admitted"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: host, label: mtcollins1_bmc_cold_reset_label as String) {
@@ -408,7 +419,25 @@ fn cold_reset_stage_exit(stage: ColdResetStage) -> ProcessExit {
 }
 
 // ── THE ENTRY ────────────────────────────────────────────────────────────────────────────────────
+// The step's entry (gunbc.machine_intake.mtcollins1_boot_step): the route under the PRODUCTION budget admission. At
+// this revision that admission is BudgetRaiseUnapproved{67, highest 35}, so the entry refuses before any credential
+// read, hold or controller contact (ColdResetStepBudgetUnapproved); the change that signs the raise appends its
+// approval and the same call admits, with no edit here.
 fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
+  mtcollins1_bmc_cold_reset_wet_admitted(budget: mtcollins1_bmc_cold_reset_step_budget_admission())
+}
+
+// THE ROUTE UNDER A GIVEN BUDGET ADMISSION. It takes a SUPPLIED admission only so the acceptance matrix can execute
+// the watch the production admission does not yet admit; it is not a second production entry. The seal says so: its
+// callers are the entry above and the matrix's one runner, nothing else. The hold and the held sequence admit this
+// function in the entry's place, one name for one name (boot_run_acquire_unit_hold, mtcollins1_bmc_cold_reset_held,
+// gunbc.auth.privileged_effect_registry), so no caller is added to either seal.
+fn mtcollins1_bmc_cold_reset_wet_admitted(budget: BudgetAdmission) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "matrix_cold_reset_run_in"),
+  ]
+{
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
@@ -416,6 +445,10 @@ fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
   let sha = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  match budget {
+    BudgetRaiseUnapproved { minutes: required, highest_approved: admitted } => return mtcollins1_bmc_cold_reset_refused(run_id: run_id, sha: sha, refusal: ColdResetStepBudgetUnapproved { required: required, admitted: admitted })
+    BudgetAdmitted { minutes: _, approval: _ } => {}
   }
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {

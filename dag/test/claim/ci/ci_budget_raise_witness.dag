@@ -1,69 +1,92 @@
 module test.claim.ci.ci_budget_raise_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import std.optional { Present, Absent, Optional }
 import std.decl_ref { declaration_ref_display_key }
-import std.measure { minute_count }
-import gunbc.design_ruling { DesignRuling, mtcollins1_bmc_cold_reset_step_raised_to_67_minutes, serve_entry_verdict_step_raised_to_45_minutes }
+import std.measure { Minute, minute, minute_count, second_count, minute_to_second, measure_le }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.design_ruling { DesignRuling, serve_entry_verdict_step_raised_to_45_minutes }
 import gunbc.ci.ci_budget_raise {
-  BudgetApproval, IntroducedWithTheStep, RaisedBySignoff, SignoffPending, SignoffSigned,
-  BudgetAdmission, BudgetAdmitted, BudgetRaiseSignoffPending, BudgetRaiseUnapproved,
-  budget_admission, budget_admitted,
+  BudgetApproval, IntroducedWithTheStep, RaisedBySignoff,
+  BudgetAdmission, BudgetAdmitted, BudgetRaiseUnapproved,
+  budget_admission, budget_admitted, budget_admitted_minutes,
 }
-import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_step_timeout_minutes, mtcollins1_bmc_cold_reset_step_budget_admission }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset {
+  mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_step_timeout_minutes,
+  mtcollins1_bmc_cold_reset_step_budget_admission, mtcollins1_bmc_cold_reset_allowance,
+}
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_bmc_cold_reset_step }
 
 // THE CONTROLS FOR A CI BUDGET RAISE (gunbc.ci.ci_budget_raise; ruling gunbc.design_ruling
-// ci_job_budgets_closed_to_growth). The approvals are SUPPLIED here, so each claim decides one shape of the admission
-// fold; the last claim reads the one production budget that cites a raise row today, the cold-reset step's.
+// ci_job_budgets_closed_to_growth). The approvals are SUPPLIED in the first two claims, so each decides one shape
+// of the admission fold and of the value a budget runs at; the last reads the one production budget that carries a
+// raise today, the cold-reset step's, through to the step the generated workflow emits. No claim reads a ruling
+// row's prose: the signed fixture cites an existing row only as the value a RaisedBySignoff carries.
 
-fn introduced(m: Int) -> BudgetApproval { IntroducedWithTheStep { minutes: m, carried_by: "a fixture step" } }
+fn m(n: Nat) -> Minute { minute(count: n) }
+
+fn is(x: Minute, n: Nat) -> Bool { minute_count(m: x) == n }
+
+fn introduced(n: Nat) -> BudgetApproval { IntroducedWithTheStep { minutes: m(n: n), carried_by: "a fixture step" } }
 
 fn names(r: DesignRuling, want: DesignRuling) -> Bool {
   declaration_ref_display_key(ref: r.reference) == declaration_ref_display_key(ref: want.reference)
 }
 
-// THE DISCRIMINATING RED: a budget derived above everything approved, with no ruling row behind the raise, is refused
-// naming the highest approved value; the same budget at its introduced value is admitted.
+fn runs_at(minutes: Nat, approvals: List<BudgetApproval>, n: Nat) -> Bool {
+  is(x: budget_admitted_minutes(admission: budget_admission(minutes: m(n: minutes), approvals: approvals)), n: n)
+}
+
+// THE DISCRIMINATING RED: a budget required above everything approved, with no ruling row behind the raise, is refused
+// naming the highest approved value, and the budget runs at that approved value, never the required one; at its
+// introduced value the same budget is admitted and runs at it; with nothing approved, nothing is admitted.
 test fn a_raise_with_no_ruling_row_behind_it_refuses() -> Bool {
-  match budget_admission(minutes: 67, approvals: [introduced(m: 35)]) {
-    BudgetRaiseUnapproved { minutes: m, highest_approved: h } => m == 67 && h == 35
+  match budget_admission(minutes: m(n: 67), approvals: [introduced(n: 35)]) {
+    BudgetRaiseUnapproved { minutes: x, highest_approved: h } => is(x: x, n: 67) && is(x: h, n: 35)
     _ => false
   }
-    && !budget_admitted(admission: budget_admission(minutes: 67, approvals: [introduced(m: 35)]))
-    && budget_admitted(admission: budget_admission(minutes: 35, approvals: [introduced(m: 35)]))
-    && !budget_admitted(admission: budget_admission(minutes: 1, approvals: []))
+    && runs_at(minutes: 67, approvals: [introduced(n: 35)], n: 35)
+    && budget_admitted(admission: budget_admission(minutes: m(n: 35), approvals: [introduced(n: 35)]))
+    && runs_at(minutes: 35, approvals: [introduced(n: 35)], n: 35)
+    && runs_at(minutes: 30, approvals: [introduced(n: 35)], n: 30)
+    && !budget_admitted(admission: budget_admission(minutes: m(n: 1), approvals: []))
 }
 
-// A STAGED ROW IS NOT A SIGN-OFF: a raise whose ruling row is pending admits nothing above the earlier approval, and
-// the refusal names the row; a value inside the earlier approval needs no raise and is admitted under it.
-test fn a_raise_whose_signoff_is_pending_is_refused_naming_its_row() -> Bool {
-  let approvals = [introduced(m: 35), RaisedBySignoff { minutes: 67, signoff: SignoffPending { ruling: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes } }]
-  all([36, 67], m =>
-    match budget_admission(minutes: m, approvals: approvals) {
-      BudgetRaiseSignoffPending { minutes: x, ruling: r } => x == m && names(r: r, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes)
-      _ => false
-    })
-    && budget_admitted(admission: budget_admission(minutes: 35, approvals: approvals))
-    && match budget_admission(minutes: 68, approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => h == 67  _ => false }
-}
-
-// A SIGNED RAISE ADMITS, under the raise that covers it; above it, the next raise again needs its own row.
+// A SIGNED RAISE ADMITS, under the raise that covers it, and the budget runs at the required value; above it, the next
+// raise again needs its own row.
 test fn a_signed_raise_admits_and_a_further_raise_needs_its_own_row() -> Bool {
-  let approvals = [introduced(m: 30), RaisedBySignoff { minutes: 45, signoff: SignoffSigned { ruling: serve_entry_verdict_step_raised_to_45_minutes } }]
-  match budget_admission(minutes: 45, approvals: approvals) {
-    BudgetAdmitted { minutes: m, approval: a } =>
-      m == 45 && match a { RaisedBySignoff { minutes: x, signoff: s } => x == 45 && match s { SignoffSigned { ruling: r } => names(r: r, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }  _ => false }
+  let approvals = [introduced(n: 30), RaisedBySignoff { minutes: m(n: 45), ruling: serve_entry_verdict_step_raised_to_45_minutes }]
+  match budget_admission(minutes: m(n: 45), approvals: approvals) {
+    BudgetAdmitted { minutes: x, approval: a } =>
+      is(x: x, n: 45) && match a { RaisedBySignoff { minutes: y, ruling: r } => is(x: y, n: 45) && names(r: r, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }
     _ => false
   }
-    && match budget_admission(minutes: 46, approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => h == 45  _ => false }
+    && runs_at(minutes: 45, approvals: approvals, n: 45)
+    && match budget_admission(minutes: m(n: 30), approvals: approvals) { BudgetAdmitted { minutes: _, approval: a } => match a { IntroducedWithTheStep { minutes: _, carried_by: _ } => true  _ => false }  _ => false }
+    && match budget_admission(minutes: m(n: 46), approvals: approvals) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => is(x: h, n: 45)  _ => false }
+    && runs_at(minutes: 46, approvals: approvals, n: 45)
 }
 
-// THE PRODUCTION BUDGET: the cold-reset step derives 67 minutes, and its admission waits on its staged ruling row;
-// it is never an unapproved raise. When the operator's words are in the row and its sign-off is SIGNED, this claim's
-// pending arm becomes the admitted one, in the same edit.
-test fn the_cold_reset_steps_67_minutes_wait_on_its_staged_ruling_row() -> Bool {
-  minute_count(m: mtcollins1_bmc_cold_reset_step_timeout_minutes()) == 67
+// THE PRODUCTION BUDGET, TO THE EMITTED STEP: the cold-reset step requires 67 minutes (its allowance, 4020 s), no
+// ruling row admits the raise, so its admission refuses as BudgetRaiseUnapproved{67, highest 35}, and the step the
+// generated workflow emits carries the last approved 35 -- a regen ships no raise (review 96483 on
+// gunb-ai/gunbc#16668). The emitted 35 does NOT cover the allowance, and that is asserted, not hidden: the route's
+// entry refuses on this same admission before any hold or controller call
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
+// the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call).
+test fn the_cold_reset_step_requires_67_minutes_and_emits_35_while_the_raise_is_unapproved() -> Bool {
+  is(x: mtcollins1_bmc_cold_reset_step_required_minutes(), n: 67)
+    && second_count(s: mtcollins1_bmc_cold_reset_allowance()) == 4020
     && match mtcollins1_bmc_cold_reset_step_budget_admission() {
-         BudgetRaiseSignoffPending { minutes: m, ruling: r } => m == 67 && names(r: r, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes)
+         BudgetRaiseUnapproved { minutes: x, highest_approved: h } => is(x: x, n: 67) && is(x: h, n: 35)
+         _ => false
+       }
+    && is(x: mtcollins1_bmc_cold_reset_step_timeout_minutes(), n: 35)
+    && !measure_le(a: mtcollins1_bmc_cold_reset_allowance(), b: minute_to_second(m: mtcollins1_bmc_cold_reset_step_timeout_minutes()))
+    && match fleet_converge_mtcollins1_bmc_cold_reset_step() {
+         RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+           match t { Present { value: v } => v == 35  Absent => false }
          _ => false
        }
 }

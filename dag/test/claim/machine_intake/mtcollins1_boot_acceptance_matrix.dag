@@ -24,7 +24,8 @@ import std.measure { measure_le }
 import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost, BmcControllerResetBegan, BmcControllerResetEnded }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
-import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval, mtcollins1_bmc_cold_reset_read_ceiling, mtcollins1_bmc_cold_reset_window_allowance }
+import gunbc.ci.ci_budget_raise { BudgetAdmission, BudgetAdmitted, IntroducedWithTheStep }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_wet_admitted, mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval, mtcollins1_bmc_cold_reset_read_ceiling, mtcollins1_bmc_cold_reset_window_allowance }
 import std.measure { second_count }
 import gunbc.bmc_dry_realization { sleep_delay_seconds_operation }
 import v2.std.operation_realization { virtual_delay_binding, FileObserved }
@@ -1969,10 +1970,23 @@ fn matrix_cold_reset_binding(operation: String, reply: fn(BmcWorld, OperationCal
 // THE BOOT'S PRODUCTION REALIZATION, with a scenario's controller behaviors replacing the production answer for
 // the operations they name (two bindings for one operation is a refusal, so the production one is filtered out).
 fn matrix_cold_reset_run(overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
-  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides)
+  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides, production_budget: false)
 }
 
-fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+// THE BUDGET THE WATCH CLAIMS RUN UNDER, SUPPLIED: the step's required minutes, admitted. At this revision the
+// production admission refuses the raise to them (gunbc.machine_intake.mtcollins1_bmc_cold_reset
+// mtcollins1_bmc_cold_reset_step_budget_admission, BudgetRaiseUnapproved{67, 35}), so the entry refuses before the
+// watch; these claims are about the watch, and execute it through the route under this budget
+// (mtcollins1_bmc_cold_reset_wet_admitted, whose seal admits this runner). The production admission is read by
+// the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call, which runs the entry.
+fn matrix_cold_reset_supplied_admitted_budget() -> BudgetAdmission {
+  BudgetAdmitted {
+    minutes: mtcollins1_bmc_cold_reset_step_required_minutes(),
+    approval: IntroducedWithTheStep { minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), carried_by: "matrix fixture: the step budget as it stands once its raise is signed" },
+  }
+}
+
+fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>, production_budget: Bool) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
   let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
   evaluate_in_witness_frame(
     frame: matrix_frame_over(realization: OperationRealization {
@@ -1982,7 +1996,7 @@ fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<Operatio
       advance: production.advance,
       bindings: concat(xs: filter(production.bindings, b => all(overrides, o => !(o.at.service == b.at.service && o.at.operation == b.at.operation))), ys: overrides),
     }),
-    subject: fn(_scope) { mtcollins1_bmc_cold_reset_wet() },
+    subject: fn(_scope) { if production_budget { mtcollins1_bmc_cold_reset_wet() } else { mtcollins1_bmc_cold_reset_wet_admitted(budget: matrix_cold_reset_supplied_admitted_budget()) } },
   )
 }
 
@@ -2135,6 +2149,30 @@ test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fr
         && string_contains(s: receipt, pattern: "fan=unobserved")
         && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
         && string_contains(s: receipt, pattern: matrix_cold_reset_answered_record)
+    }
+    _ => false
+  }
+}
+
+// THE PRODUCTION ENTRY AT THIS REVISION REFUSES, and touches nothing (merry-fox-82 msg_887e605b on gunb-ai/gunbc#16668):
+// the step requires 67 minutes and its budget admits 35 (the raise is unapproved), so mtcollins1_bmc_cold_reset_wet,
+// run in the same world the watch claims use, ends at the typed pre-hold refusal derived from that admission --
+// before any credential read, hold write or controller operation -- and its receipt names the unapproved raise. The
+// inhabitance pair of the supplied budget above: deleting the refusal reaches the hold and the controller.
+test fn the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call() -> Bool {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: [], production_budget: true) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count(ordinals_where(route: route, keep: is_hold_write)) == 0
+        && count(filter(route, r => r.invocation.at.service == "Filesystem" && starts_with(s: record_path(r: r), prefix: unit_hold_store_path(tree: host_state_tree()) as String))) == 0
+        && count_named(route: route, name: matrix_cold_reset_mc_info) == 0
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 0
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 0
+        && string_contains(s: receipt, pattern: "hold=not-attempted")
+        && string_contains(s: receipt, pattern: "stage=pre-hold refused: the step requires 67 min")
+        && string_contains(s: receipt, pattern: "its budget admits 35 min: the raise is unapproved")
+        && string_contains(s: receipt, pattern: "controller=untouched")
     }
     _ => false
   }
@@ -2406,7 +2444,7 @@ test fn a_local_probe_failure_then_an_available_answer_never_reaches_an_accepted
 // loss or a recovery, and the route refuses naming the undecodable answers -- it is never read as available. The
 // claim above, run in this world, goes red; this one is what it would have read.
 test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_recovery() -> Bool {
-  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)]) {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)], production_budget: false) {
     WitnessReturned { value, route, state } => {
       let receipt = matrix_cold_reset_receipt(state: state)
       !matrix_cold_reset_exited_success(exit: value)
