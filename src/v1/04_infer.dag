@@ -14149,6 +14149,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
             },
             scope: scope)
+        } else if structured_value_at_kernel_scalar_declared_type(
+            declared: expected_node, produced: got_value, scope: scope) {
+          // THE RECORD-LITERAL FIELD CONSUMER. This chain is separate from
+          // declared_type_conformance_diags_core and never consulted the inhabitance relation for a
+          // non-application, non-container pair: it reached node_type_compatible, which compares names
+          // across representations it does not peel, and fell to the permissive tail -- so a record's
+          // String field assigned an Outcome<String> was ACCEPTED while the fn body and the call argument
+          // of the same value refused (gunbc.recurring_failure_mode
+          // a_carrier_body_under_a_scalar_declared_return_is_accepted, the third shape). Placed before
+          // node_type_compatible, which is the arm that admitted it, and it delegates to the ONE relation
+          // rather than judging here: the verdict, the position label and the refusal reason all come from
+          // declared_type_inhabitance, exactly as the two arms above it do.
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_value, span: ar_typed.span
+            },
+            scope: scope)
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []

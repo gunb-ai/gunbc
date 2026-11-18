@@ -96,6 +96,35 @@ data epoch_ms_at_epoch_ms_argument_source: String = "module probe_epoch_ms_at_ep
 // The wall-is-not-idle control: the pair the wall already refuses, through this same census route.
 data string_at_int_return_source: String = "module probe_string_at_int_return\nimport std.types { String, Int }\nfn probe() -> Int { \"x\" }\n"
 
+// THE TWO EXCLUSIONS THE GENERAL FORM CARRIES, PINNED AS CONTROLS (bold-otter-603, 2026-11-18). (1) A
+// produced head that names a KERNEL by name is the kernel-at-kernel relation's, not this arm's: std
+// declares `type Bool = True | False` (dag/std/types.dag:138), so a Bool node carries a Disj connective
+// and the raw exposure view reads a Bool `if` condition as a coproduct at a kernel -- unexcluded, the new
+// arm's FIRST refusal in the corpus was dag/std/types.dag:145, an `if`. (2) A produced head naming the
+// formal's OWN declaration is that declaration whatever connective it is written with: a where-refinement
+// (`type NonEmptyStr = String where string_non_empty`, dag/std/types.dag:140) carries a Conj connective,
+// so a NonEmptyStr value at a NonEmptyStr position would otherwise read as a product at a kernel. Both
+// exclusions restate what the name authorities (nominal_coproduct_head_name, nominal_product_head_name)
+// already apply; the exposure route needed them stated. If either control goes red, the arm has widened
+// past the class it was filed for.
+data bool_if_condition_source: String = "module probe_bool_if_condition\nimport std.types { Bool, Int }\nfn probe(b: Bool) -> Int { if b { 1 } else { 2 } }\n"
+
+data bool_at_bool_positions_source: String = "module probe_bool_at_bool_positions\nimport std.types { Bool }\ntype Row { flag: Bool }\nfn take(flag: Bool) -> Bool { flag }\nfn probe(b: Bool) -> Row { Row { flag: take(flag: b) } }\n"
+
+data non_empty_str_at_non_empty_str_source: String = "module probe_non_empty_str_at_non_empty_str\nimport std.types { NonEmptyStr }\ntype Row { label: NonEmptyStr }\nfn take(value: NonEmptyStr) -> NonEmptyStr { value }\nfn probe(v: NonEmptyStr) -> Row { Row { label: take(value: v) } }\n"
+
+test fn a_bool_if_condition_is_clean() -> Bool {
+  blocking_total(source: bool_if_condition_source) == 0
+}
+
+test fn a_bool_value_at_bool_positions_is_clean() -> Bool {
+  blocking_total(source: bool_at_bool_positions_source) == 0
+}
+
+test fn a_non_empty_str_at_a_non_empty_str_position_is_clean() -> Bool {
+  blocking_total(source: non_empty_str_at_non_empty_str_source) == 0
+}
+
 test fn a_carrier_at_a_string_declared_return_refuses() -> Bool {
   blocking_of_class(source: carrier_at_string_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
