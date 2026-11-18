@@ -64,10 +64,10 @@ fn discriminant(a: GeneratedArtifact) -> String =
     ApproveIosOperationErrorsSwiftArtifact => "ApproveIosOperationErrorsSwiftArtifact"
     ApproveIosEnrolmentMachineTestsSwiftArtifact => "ApproveIosEnrolmentMachineTestsSwiftArtifact"
     ApproveIosOperationErrorsTestsSwiftArtifact => "ApproveIosOperationErrorsTestsSwiftArtifact"
-    RoadmapAuthorityOccurrenceAcceptanceArtifact => "RoadmapAuthorityOccurrenceAcceptanceArtifact"
-    RoadmapAuthorityUpstreamAcceptanceArtifact => "RoadmapAuthorityUpstreamAcceptanceArtifact"
-    RoadmapAuthorityUpstreamRevocationArtifact => "RoadmapAuthorityUpstreamRevocationArtifact"
-    RoadmapAuthorityUpstreamRetiredArtifact => "RoadmapAuthorityUpstreamRetiredArtifact"
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => "RoadmapAuthorityAcceptedScenarioAcceptanceArtifact"
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => "RoadmapAuthoritySupersededScenarioAcceptanceArtifact"
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => "RoadmapAuthoritySupersededScenarioRevocationArtifact"
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => "RoadmapAuthoritySupersededScenarioRetiredArtifact"
     RoadmapAuthorityAbsentNodeAcceptanceArtifact => "RoadmapAuthorityAbsentNodeAcceptanceArtifact"
   }
 

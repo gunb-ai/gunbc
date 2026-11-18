@@ -2,16 +2,25 @@ module gunbc.roadmap.roadmap_authority_fixture
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { Fnv1a64Structural }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
+  RoadmapNode,
+  RoadmapNodeIdentity,
   RoadmapAcceptanceReceipt,
   AcceptanceNodeRemainsSuperseded,
-  node_criteria_digest,
+  roadmap_criteria_digest,
+  Dispatchable,
+  PrsMerged,
 }
-import gunbc.roadmap.roadmap_status { RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_status {
+  TicketLine,
+  TicketFields,
+  RedControlExecuted,
+  HandbackDelivered,
+}
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent,
   RoadmapEventKind,
@@ -69,42 +78,137 @@ data roadmap_authority_fixture_worktree_dir: String = "fixtures/roadmap_authorit
 
 fn roadmap_authority_fixture_worktree_root() -> String { roadmap_authority_fixture_worktree_dir }
 
-// ── The three rows the log is about ─────────────────────────────────────────
-fn roadmap_authority_scenario_node_id(s: String) -> RoadmapNodeId { s as NonEmptyStr as RoadmapNodeId }
+// ── The scenario the log is about, OWNED HERE ───────────────────────────────
+// THE FIXTURE DECLARES ITS OWN NODES AND ITS OWN ACCEPTANCE CRITERIA. It does not read the plan.
+// DESIGN gunbc.design_argument::planning_has_one_home: "no build or generated output may depend on it …
+// No compiler build input and no generated product may depend on plan content, so a change that edits only
+// plans invalidates neither the compiler nor any mirror." These five files are a CommitRequired generated
+// product (gunbc.generated_artifact, the RoadmapAuthority*Artifact rows), so an earlier revision that took
+// each receipt's criteria_digest off the live roadmap row was breaking that rule: editing one node's
+// acceptance criteria would have invalidated a committed generated file, and the drift witness would have
+// reddened on a plan-only edit. Review 96520 caught it; this is the fix.
+//
+// The scenario is therefore fiction with one home, in this module: two nodes, their criteria, and the row
+// the scenario does NOT declare. The node ids are legibly the fixture's and cannot collide with a real
+// roadmap row — a fixture that shadowed a live row would put a second, contradicting statement of that
+// row's terms in the tree, which is the same defect wearing different clothes. The digest is the model's
+// OWN criteria law (gunbc.roadmap.roadmap_model roadmap_criteria_digest) applied to the fixture's own
+// ticket fields, so the receipt is valid for the reason the model says receipts are valid, not because a
+// number was guessed. There is no fallback branch and nothing is fabricated: a receipt is built from a
+// scenario row that exists here, and a witness (test.claim.roadmap.roadmap_authority
+// witness_fixture_digests_are_declared_or_borrowed) demands the committed bytes carry exactly those
+// digests, and that no fixture node is a real roadmap row at all.
 
-// THE ROW THE AUTHORITY DOES NOT DECLARE. The fixture carries an acceptance for it precisely so the
-// fail-closed path is exercised by the committed route rather than argued about: a log may name a node the
-// plan has never heard of, and nothing may be admitted on it -- and nothing may crash on it either.
-fn roadmap_authority_fixture_absent_node() -> RoadmapNodeId {
-  roadmap_authority_scenario_node_id(s: "roadmap-authority-scenario-absent-node")
+type RoadmapAuthorityFixtureScenario {
+  node: RoadmapNodeId
+  identity: RoadmapNodeIdentity
+  brief: String
+  red_control: String
+  handback: String
 }
 
-fn roadmap_authority_fixture_accepted_node() -> RoadmapNodeId {
-  roadmap_authority_scenario_node_id(s: "namespace-occurrence-transport")
-}
-
-fn roadmap_authority_fixture_superseded_node() -> RoadmapNodeId {
-  roadmap_authority_scenario_node_id(s: "2-scm-git-upstream-model")
-}
-
-// ── The scenario's receipts, digests and evidence ───────────────────────────
-// A receipt only survives the fold if its criteria_digest is the one the declared node carries AND its
-// evidence is delivered; anything else is dropped, and a dropped acceptance silently changes what every
-// witness sees. So the digest is taken from the authority's own declaration, not invented here.
-fn roadmap_authority_fixture_digest(id: RoadmapNodeId) -> Fnv1a64Structural {
-  match first(declared_roadmap_nodes() |> filter(n => n.node == id)) {
-    Absent => content_hash_atom(value: "0000000000000000" as NonEmptyStr)
-    Present { value: n } => match node_criteria_digest(rn: n) {
-      Present { value } => value
-      Absent => content_hash_atom(value: "0000000000000000" as NonEmptyStr)
-    }
+fn roadmap_authority_fixture_accepted_scenario() -> RoadmapAuthorityFixtureScenario {
+  RoadmapAuthorityFixtureScenario {
+    node: "roadmap-authority-scenario-accepted" as NonEmptyStr as RoadmapNodeId,
+    identity: "roadmap-authority-fixture-accepted" as NonEmptyStr as RoadmapNodeIdentity,
+    brief: "The fixture's own accepted row: its only purpose is to be a node the log accepted on terms this module states.",
+    red_control: "A receipt whose criteria_digest differs from this row's criteria is not admitted by the fold.",
+    handback: "The committed acceptance event under fixtures/roadmap_authority/events/roadmap-authority-scenario-accepted.",
   }
 }
 
-fn roadmap_authority_fixture_receipt(id: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
+fn roadmap_authority_fixture_superseded_scenario() -> RoadmapAuthorityFixtureScenario {
+  RoadmapAuthorityFixtureScenario {
+    node: "roadmap-authority-scenario-superseded" as NonEmptyStr as RoadmapNodeId,
+    identity: "roadmap-authority-fixture-superseded" as NonEmptyStr as RoadmapNodeIdentity,
+    brief: "The fixture's own remains-superseded row: accepted, taken back, then retired by the log.",
+    red_control: "A remains-superseded revocation on a node the log never retired refuses the join.",
+    handback: "The three committed events under fixtures/roadmap_authority/events/roadmap-authority-scenario-superseded.",
+  }
+}
+
+// THE SCENARIO ROWS, in the order the files are filed. Two rows, five files: the absent node is not here,
+// that is the whole point of it.
+fn roadmap_authority_fixture_scenarios() -> List<RoadmapAuthorityFixtureScenario> {
+  [roadmap_authority_fixture_accepted_scenario(), roadmap_authority_fixture_superseded_scenario()]
+}
+
+fn roadmap_authority_fixture_scenario_node_id(s: String) -> RoadmapNodeId { s as NonEmptyStr as RoadmapNodeId }
+
+// THE ROW THE SCENARIO DOES NOT DECLARE. The fixture carries an acceptance for it precisely so the
+// fail-closed path is exercised by the committed route rather than argued about: a log may name a node the
+// scenario has never heard of, and nothing may be admitted on it -- and nothing may crash on it either.
+fn roadmap_authority_fixture_absent_node() -> RoadmapNodeId {
+  roadmap_authority_fixture_scenario_node_id(s: "roadmap-authority-scenario-absent-node")
+}
+
+fn roadmap_authority_fixture_accepted_node() -> RoadmapNodeId {
+  roadmap_authority_fixture_accepted_scenario().node
+}
+
+fn roadmap_authority_fixture_superseded_node() -> RoadmapNodeId {
+  roadmap_authority_fixture_superseded_scenario().node
+}
+
+// ── The scenario's rows, receipts, digests and evidence ─────────────────────
+// A receipt only survives the fold if its criteria_digest is the one its row's criteria derive from AND its
+// evidence is delivered; anything else is dropped, and a dropped acceptance silently changes what every
+// witness sees. So the digest is DERIVED, from the fixture's own ticket fields, by the model's own criteria
+// law -- the same law the live model applies to live rows (gunbc.roadmap.roadmap_model
+// receipt_matches_node), which is what makes an admissible fixture receipt admissible for the real reason.
+fn roadmap_authority_fixture_ticket(s: RoadmapAuthorityFixtureScenario) -> TicketFields {
+  TicketFields {
+    headline: "Roadmap-authority fixture scenario row",
+    brief: s.brief,
+    displaced_cost: "none: the fixture exists only to be read by a witness",
+    current_state: "fixture",
+    first_slice: "the committed event file this row is accepted by",
+    red_control: s.red_control,
+    out_of_scope: "anything outside fixtures/roadmap_authority/events",
+    handback: s.handback,
+    updates: [],
+    authored_on: "2026-11-18",
+    last_verified_on: "2026-11-18",
+  }
+}
+
+// THE SCENARIO'S OWN DECLARED GRAPH, and the only document the committed-fixture witnesses fold against.
+// The fold validates a receipt against the document it is handed (roadmap_model receipt_matches_node), so
+// the fixture's receipts need the fixture's rows -- which is also why those rows live here rather than
+// being read off the plan.
+fn roadmap_authority_fixture_declared_row(s: RoadmapAuthorityFixtureScenario) -> RoadmapNode {
+  RoadmapNode {
+    identity: s.identity,
+    node: s.node,
+    line: TicketLine { ticket: roadmap_authority_fixture_ticket(s: s) },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "briansrls",
+    parent: Absent,
+    centering: Absent,
+  }
+}
+
+fn roadmap_authority_fixture_declared_rows() -> List<RoadmapNode> {
+  roadmap_authority_fixture_scenarios() |> map(s => roadmap_authority_fixture_declared_row(s: s))
+}
+
+fn roadmap_authority_fixture_digest(s: RoadmapAuthorityFixtureScenario) -> Fnv1a64Structural {
+  roadmap_criteria_digest(t: roadmap_authority_fixture_ticket(s: s))
+}
+
+// A RECEIPT FOR A NODE, ON THE TERMS A SCENARIO ROW STATES. `node` and `terms` are separate arguments
+// because the fixture needs exactly one receipt whose node is NOT the row that states the terms: the
+// undeclared node's acceptance, which borrows a declared row's terms verbatim so that the only thing wrong
+// with it is the thing under test.
+fn roadmap_authority_fixture_receipt(
+  node: RoadmapNodeId,
+  terms: RoadmapAuthorityFixtureScenario,
+) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
-    node: id,
-    criteria_digest: roadmap_authority_fixture_digest(id: id),
+    node: node,
+    criteria_digest: roadmap_authority_fixture_digest(s: terms),
     red_control: RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
@@ -147,9 +251,9 @@ fn roadmap_authority_fixture_event(
   }
 }
 
-fn roadmap_authority_fixture_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventKind {
+fn roadmap_authority_fixture_acceptance_kind(s: RoadmapAuthorityFixtureScenario) -> RoadmapEventKind {
   AcceptanceRecordedEvent {
-    receipt: roadmap_authority_fixture_receipt(id: id),
+    receipt: roadmap_authority_fixture_receipt(node: s.node, terms: s),
     evidence: roadmap_authority_fixture_evidence(),
   }
 }
@@ -160,32 +264,32 @@ fn roadmap_authority_fixture_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventK
 // one home. The witness reads the same functions and compares them to Filesystem.Read.
 
 // The accepted row: one acceptance, which is what puts it on the active frontier at all.
-fn expected_roadmap_authority_occurrence_acceptance_json() -> String {
-  let row = roadmap_authority_fixture_accepted_node()
+fn expected_roadmap_authority_accepted_scenario_acceptance_json() -> String {
+  let s = roadmap_authority_fixture_accepted_scenario()
   roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
-    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row),
+    node: s.node, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(s: s),
   )))
 }
 
 // The superseded row, event 1 of 3: accepted, so it exists on the frontier to begin with.
-fn expected_roadmap_authority_upstream_acceptance_json() -> String {
-  let row = roadmap_authority_fixture_superseded_node()
+fn expected_roadmap_authority_superseded_scenario_acceptance_json() -> String {
+  let s = roadmap_authority_fixture_superseded_scenario()
   roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
-    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row),
+    node: s.node, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(s: s),
   )))
 }
 
 // Event 2 of 3: the acceptance is taken back and the node STAYS SUPERSEDED. Its receipt is the same bytes as
 // event 1's, which is what makes it a revocation of that acceptance rather than a second opinion about it.
-fn expected_roadmap_authority_upstream_revocation_json() -> String {
-  let row = roadmap_authority_fixture_superseded_node()
+fn expected_roadmap_authority_superseded_scenario_revocation_json() -> String {
+  let s = roadmap_authority_fixture_superseded_scenario()
   let opened = roadmap_authority_fixture_event(
-    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row))
+    node: s.node, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(s: s))
   roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
-    node: row,
+    node: s.node,
     parent: Present { value: roadmap_event_id(e: opened) },
     kind: AcceptanceRevokedEvent {
-      receipt: roadmap_authority_fixture_receipt(id: row),
+      receipt: roadmap_authority_fixture_receipt(node: s.node, terms: s),
       disposition: AcceptanceNodeRemainsSuperseded {},
       revoked_by: "operator" as NonEmptyStr,
       revoked_on: "2026-11-18" as NonEmptyStr,
@@ -197,22 +301,22 @@ fn expected_roadmap_authority_upstream_revocation_json() -> String {
 // Event 3 of 3: the node is retired. A remains-superseded revocation on a node that was never retired is
 // inadmissible (gunbc.roadmap.roadmap_model remains_superseded_revocations_join refuses it), so this event is
 // what makes the row's chain a legal log rather than a refusal that would empty the fixture.
-fn expected_roadmap_authority_upstream_retired_json() -> String {
-  let row = roadmap_authority_fixture_superseded_node()
+fn expected_roadmap_authority_superseded_scenario_retired_json() -> String {
+  let s = roadmap_authority_fixture_superseded_scenario()
   let opened = roadmap_authority_fixture_event(
-    node: row, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(id: row))
+    node: s.node, parent: Absent, kind: roadmap_authority_fixture_acceptance_kind(s: s))
   let taken_back = roadmap_authority_fixture_event(
-    node: row,
+    node: s.node,
     parent: Present { value: roadmap_event_id(e: opened) },
     kind: AcceptanceRevokedEvent {
-      receipt: roadmap_authority_fixture_receipt(id: row),
+      receipt: roadmap_authority_fixture_receipt(node: s.node, terms: s),
       disposition: AcceptanceNodeRemainsSuperseded {},
       revoked_by: "operator" as NonEmptyStr,
       revoked_on: "2026-11-18" as NonEmptyStr,
       reason: "the scenario took the acceptance back" as NonEmptyStr,
     })
   roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
-    node: row,
+    node: s.node,
     parent: Present { value: roadmap_event_id(e: taken_back) },
     kind: Retired { reason: "the scenario closed the node" as NonEmptyStr },
   )))
@@ -222,19 +326,14 @@ fn expected_roadmap_authority_upstream_retired_json() -> String {
 // thing wrong with it is the thing under test: the authority does not declare the node the receipt is about.
 fn expected_roadmap_authority_absent_node_acceptance_json() -> String {
   let stranger = roadmap_authority_fixture_absent_node()
-  let borrowed = roadmap_authority_fixture_receipt(id: roadmap_authority_fixture_accepted_node())
+  let terms = roadmap_authority_fixture_accepted_scenario()
   roadmap_event_wire_text(env: roadmap_event_envelope(e: roadmap_authority_fixture_event(
     node: stranger,
     parent: Absent,
     kind: AcceptanceRecordedEvent {
-      receipt: RoadmapAcceptanceReceipt {
-        node: stranger,
-        criteria_digest: borrowed.criteria_digest,
-        red_control: borrowed.red_control,
-        handback: borrowed.handback,
-        accepted_by: borrowed.accepted_by,
-        accepted_on: borrowed.accepted_on,
-      },
+      // THE BORROW IS EXPLICIT: the node is the stranger, the terms are verbatim the accepted row's, so the
+      // only thing wrong with this event is the one thing under test.
+      receipt: roadmap_authority_fixture_receipt(node: stranger, terms: terms),
       evidence: roadmap_authority_fixture_evidence(),
     },
   )))
