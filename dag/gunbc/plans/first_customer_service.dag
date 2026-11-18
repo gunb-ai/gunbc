@@ -1,0 +1,53 @@
+module gunbc.plans.first_customer_service
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
+
+fn first_customer_service_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`). The work items live under the `fabric-bringup` and `vm-service` projects in `gunbc.roadmap.roadmap_authority` and name this intention; this plan does not list them. Split from `gunbc.plans.factory_dogfood` on 2026-11-17."),
+      p(text: "**Grounding:** `gunbc.design_argument::guarantee_ladder` (a service dimension stays opaque only above a falsifiable quality floor with a named consequence), `gunbc.design_argument::fail_closed` (a published property with no receipt is not published; externalized degradation), `gunbc.design_argument::consumption` (a dependency is admitted by its consumer), `gunbc.design_argument::selection_precedes_convergence`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** one real external workload is admitted, isolated, served, observed, metered, recoverable, and given the declared billing or credit outcome for every terminal result, on our own fleet, with every promised property observed rather than assumed (`vm-service`'s own headline)."),
+    p(text: "**Why:** the operator's stated product line is cheap, power-efficient, safe capacity wrapped in whatever form fits, transacting only when it worked; the operator's go or no-go on the first customer is their own confidence from dogfooding, which must rest on receipts captured from the first qualifying run (`service-evidence-capture`). The cost removed is the gap between a property we promise and a property we have observed, and the externalized degradation a failure with no billing disposition would be."),
+    p(text: "**Done when** (each assessed against a receipt unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "An unclassified machine artifact refuses before change; a stalled route takes no new work; no published property lacks an acceptance receipt (`vm-service`'s red control)."),
+      li(text: "Every non-success has a declared billing or credit outcome (`failure-billing-outcomes`)."),
+      li(text: "A host serves only on a fresh satisfied health receipt (`fleet-health-2-serving-admission`), and a serving route that has stopped serving stops being routable with its seats freed (`serving-liveness-route-withdrawal`)."),
+      li(text: "Every service credential can be rotated and revoked, proven by an executed drill (`credential-lifecycle-revocation`); a worker holds scoped grants, not ambient credentials (`factory-f6-scoped-worker-grants`)."),
+      li(text: "The first workload's form is named (CI jobs, tokens, a VM, or a directly served site with managed identity and durable state) and its isolation bar is stated: a capped unit plus a lease is the dogfood bar (2026-10-03); microVM isolation (`factory-f5-off-the-control-host`) is the customer bar unless ruled otherwise."),
+      li(text: "The joined service evidence of the dogfood window exists for every run: usage, cache, placement, failures, recovery, intervention time, health, billable usage (`service-evidence-capture`)."),
+      li(text: "Operator's judgement: a design partner's retained use, measured, before any paid customer (the private strategy's external-product layer requires the substrate-stable and utilization layers first)."),
+    ]),
+    h2(text: "2. The backward structure, read at e346a2c89daa"),
+    p(text: "No declared edges exist among the service nodes; the order is read from their texts and from `gunbc.plans.factory_dogfood`, which this intention requires: the service rests on a factory that lands and verifies without the operator, on a lab that tracks main, and on one execution model."),
+    ol(items: [
+      li(text: "**The goal.** One external workload served under the receipts above."),
+      li(text: "**Just before it.** The service evidence of a real dogfood window (`service-evidence-capture`), which needs the dogfood start receipt (`factory-dogfood-route`, the factory intention's goal)."),
+      li(text: "**Before the evidence means anything.** Health admission (`fleet-health-0-live-receipt` to `fleet-health-2-serving-admission`), credential rotation and scoped grants, failure billing outcomes, and the isolation bar decided."),
+      li(text: "**The stall that is not a layer.** The six F nodes (`factory-f1` to `factory-f6`) have been DRAFT since 2026-10-01 pending a contracts document with no path; F1 and F2 belong to the factory's layer 1, F5 to the isolation bar here, F6 to the credentials condition here, F3 and F4 to fabric cost; each is re-cut against its layer or retired, by the operator's word."),
+    ]),
+    h2(text: "3. What is outside this intention"),
+    p(text: "Pricing and commercial terms (`vm-service` says so); the factory's own route (`gunbc.plans.factory_dogfood`); the customer-workspace rows (review sheets, the census App), which serve a product surface and not the first workload's service, unless the first workload is that site."),
+    h2(text: "4. Open questions"),
+    ul(items: [
+      li(text: "**The first workload's form,** which fixes the isolation bar and the evidence that counts."),
+      li(text: "**G0** (`contained-development-execution`): a first slice (`factory-f6-scoped-worker-grants`) and a boundary, or retirement to a ruling; it must not stay an undefined standing veto."),
+    ]),
+    h2(text: "5. Realization"),
+    p(text: "Not authored here; the first realization act is to declare the edges section 2 read from prose. What a landing reports is which promised property now has a receipt, never a count of nodes closed."),
+  ]
+}
+
+data first_customer_service_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "first-customer-service",
+  title: "First customer service: one external workload served with every promised property observed",
+  body: first_customer_service_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: one external workload served under the receipts named, and the operator's design-partner judgement recorded.") },
+}

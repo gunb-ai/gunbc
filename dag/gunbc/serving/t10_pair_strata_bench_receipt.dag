@@ -163,8 +163,13 @@ data t10_pair_bench_rows: List<PairBenchRow> = [
     pair_power_under_load: bench_point(value: watt(count: 110), precision: Approximate),
     pair_power_cap: Absent,
   },
-  // butch's A2s run at the 35 W per-card cap (gunbc.serving.gpu_power_state_policy srv14_a2_cap_decision), so the
-  // pair draws about its 70 W cap under load.
+  // butch's A2s RAN at a 35 W per-card cap when this bench was taken (the operator's 2026-11-10 decision,
+  // 35 W each; that decision and its four cap intents were retired on 2026-11-17 when the cards were pulled
+  // from butch to be sold -- the wording is kept in the retirement note in
+  // gunbc.fleet.fleet_physical_inventory, above gpu_board_07_asset), so the pair drew about its 70 W cap
+  // under load. This receipt is DATED HISTORY of that shape; it is not a claim about butch today, and the
+  // 2026-11-14 note above this file already says it "has no live host to re-measure against" -- as of
+  // 2026-11-17 it has no GPU to re-measure against either.
   PairBenchRow {
     cards: NvidiaA2Pair,
     host: FleetHost { host: operator_host_srv14 },

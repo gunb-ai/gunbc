@@ -16,6 +16,11 @@ import gunbc.plans.fleet_machine_authority { fleet_machine_authority_plan }
 import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
+import gunbc.plans.v2_self_host { v2_self_host_plan }
+import gunbc.plans.factory_dogfood { factory_dogfood_plan }
+import gunbc.plans.debt_payoff { debt_payoff_plan }
+import gunbc.plans.names_without_imports { names_without_imports_plan }
+import gunbc.plans.first_customer_service { first_customer_service_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -28,12 +33,14 @@ import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 // active T11 / affected-set consolidation program (2026-11-09); fleet_machine_authority is the machine-registry and host-name de-fork program
 // (2026-11-10; D1-D13 answered); closure_consolidation is the ci_spec dissolution and selective-generation program
 // (2026-11-10); planning_consolidation: plans are intentions; realization, execution and projection are downstream (rulings in gunbc.design_ruling, 2026-11-10 and 2026-11-11);
-// declaration_acquisition is the v2 adoption program for the gate, heal and regen closures (2026-11-11).
+// declaration_acquisition is the v2 adoption program for the gate, heal and regen closures (2026-11-11);
+// v2_self_host, factory_dogfood, debt_payoff and names_without_imports are the 2026 intentions of the root's programs (2026-11-16).
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
   input_envelope_roadmap_plan, fabric_serving_router_plan, fleet_subsumption_manual_gaps_plan, interpreter_kernel_d_plan,
   fleet_hardware_fact_consumption_plan, host_thermal_operating_point_plan, v2_complexity_capability_parity_plan,
   read_set_convergence_plan, fleet_machine_authority_plan, closure_consolidation_plan,
-  planning_consolidation_plan, declaration_acquisition_plan,
+  planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
+  factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
 ]
