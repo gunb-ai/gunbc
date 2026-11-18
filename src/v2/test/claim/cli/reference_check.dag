@@ -7,7 +7,7 @@ import v2.cli.population_verbs { PopulationReport }
 import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller }
 import v2.compiler.live_resolution_context { live_context_load_empty }
 import v2.compiler.module_acquisition { SourceRootBinding }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.text { String }
 
 // THE CHECK OVER REAL DIRECTORIES, through the production fold: check_references reads each module
@@ -194,3 +194,19 @@ test fn a_run_step_target_caller_with_a_root_is_not_falsely_refused_holds() -> B
   )
   is_empty(xs: ex.sites) && is_empty(xs: ex.lines)
 }
+
+// THE WHOLE-CORPUS CONTROL. Every run-step target the repository actually registers -- the 119-row CI roster and
+// the fleet/mint/heal/runner/live-deploy entry steps -- names a REAL entry that must resolve in the one target
+// universe, so check-references over the whole governed tree must hold with NO run-step refusal. A production
+// entry that does not resolve is either a genuine typo (which must refuse) or a check that cannot reach a module it
+// should; either way this claim is the oracle the fix is measured against. Fixtures live outside these roots, so
+// their intentional misspellings cannot contaminate it.
+test fn every_registered_run_step_target_in_the_repository_resolves_holds() -> Bool {
+  let bindings = Cons {
+    head: SourceRootBinding { tree: DagTree, host_directory: "dag" },
+    tail: Cons { head: SourceRootBinding { tree: V2Tree, host_directory: "src/v2" }, tail: Empty }
+  }
+  let report = check_references(bindings: bindings)
+  report.held && !string_contains(s: report.text, pattern: "RunStepTarget")
+}
+
