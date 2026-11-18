@@ -47,7 +47,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-reference-derived-closure", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-reference-derived-producer-bounded", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "names-bind-to-the-unique-declaration", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
-  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
+  serves(node: "namespace-legacy-choice-retirement", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "native-seven-names-homed", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "declaration-provider-outcomes", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 1),
   serves(node: "compiler-closure-names-homed-and-types-merged", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 2),
@@ -224,9 +224,13 @@ fn intention_key(b: IntentionBinding) -> String {
 
 // The projection gunbc.plans.planning_consolidation section 2 asks for, read from here: the work items
 // serving one intention, in layer order.
-fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
-  filter(roadmap_intention_bindings, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
+fn nodes_serving_from(rows: List<IntentionBinding>, intention: DeclarationRef) -> List<IntentionBinding> {
+  filter(rows, b => intention_key(b: b) == declaration_ref_display_key(ref: intention))
     |> sort_by(b => b.layer)
+}
+
+fn nodes_serving(intention: DeclarationRef) -> List<IntentionBinding> {
+  nodes_serving_from(rows: roadmap_intention_bindings, intention: intention)
 }
 
 fn bindings_at_layer(intention: DeclarationRef, layer: Int) -> List<IntentionBinding> {

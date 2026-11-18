@@ -19,11 +19,12 @@ import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   decomposition, leaf, reading_family, findings_family, decision, waits, expand_decomposition,
+  Declared, Assumed,
 }
 import gunbc.roadmap.roadmap_schedule {
   schedule, schedule_read, ScheduleAnswer,
   schedule_answer, schedule_refusal, scheduled_at, critical_path_keys, path_key,
-  scheduled_leaf_count, as_cache, occurrence_count_is_assumed,
+  scheduled_leaf_count, as_cache,
   schedule_read_answer, schedule_read_refusal, schedule_read_stale_leaves, schedule_read_stale_answer_fields,
 }
 
@@ -108,7 +109,7 @@ test fn two_chains_and_a_declared_family_schedule_side_by_side_under_two_worker_
         scheduled_leaf_count(a: o) == 6
         && scheduled_leaf_count(a: f) == 6
         && (match scheduled_at(a: f, path: p_at("slice", 0, 2, 0)) {
-             Present { value: l } => !occurrence_count_is_assumed(c: l.count_source)
+             Present { value: l } => l.count_source == Declared
              Absent => false
            })
         // at one worker: the whole thing serializes -- horizon is the sum of every day.
@@ -152,9 +153,9 @@ test fn an_assumed_occurrence_is_scheduled_and_its_source_stays_visible() -> Boo
     Absent => false
     Present { value: a } =>
       scheduled_leaf_count(a: a) == 3
-      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 0)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
-      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 1)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
-      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 2)) { Present { value: l } => occurrence_count_is_assumed(c: l.count_source) Absent => false })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 0)) { Present { value: l } => l.count_source == Assumed Absent => false })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 1)) { Present { value: l } => l.count_source == Assumed Absent => false })
+      && (match scheduled_at(a: a, path: p_at("af", 0, 0, 2)) { Present { value: l } => l.count_source == Assumed Absent => false })
       && a.horizon == 6
   }
 }

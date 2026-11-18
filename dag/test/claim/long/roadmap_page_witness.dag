@@ -2455,7 +2455,7 @@ fn fx_event_envelope_chained(id: String, parent: String, at: String, kind: gunbc
 
 test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
   let events = [
-    fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_human_principal(), return_to: fixture_human_principal() }),
+    fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_human_principal(), return_to: fixture_human_principal() , grain: Pathless }),
     fx_event_envelope_chained(id: "evt-two", parent: "evt-three", at: "2026-09-24T03:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "kv receipts joined" as NonEmptyStr }),
     fx_event_envelope_chained(id: "evt-three", parent: "evt-one", at: "2026-09-24T02:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "ranks realized" as NonEmptyStr }),
   ]
@@ -2659,7 +2659,7 @@ test fn witness_issue_retire_is_named_and_confirmed() -> Bool {
 // merge owner the fold reassigned to (the stored return_to) — while the standing the page reads
 // becomes ready for review and the History tab carries the raw event.
 fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope> {
-  let claim = fx_event_envelope(id: "ho-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let claim = fx_event_envelope(id: "ho-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() , grain: Pathless })
   let pub = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
     id: "ho-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
     event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
@@ -2700,7 +2700,7 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
 // failed verification renders its own entry naming the head, the cause and the principal it was
 // returned to, and it does NOT read as a reassignment for merge -- the standing stays claimed.
 test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff() -> Bool {
-  let claim = fx_event_envelope(id: "rr-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let claim = fx_event_envelope(id: "rr-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() , grain: Pathless })
   let failed = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
     id: "rr-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
     event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
@@ -2991,7 +2991,7 @@ fn issue_detail_profiled_fixture_view() -> gunbc.roadmap.roadmap_presentation.Wo
 }
 
 test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> Bool {
-  let claim = fx_event_envelope_chained(id: "prof-ho-1", parent: "cmt-3d", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let claim = fx_event_envelope_chained(id: "prof-ho-1", parent: "cmt-3d", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() , grain: Pathless })
   let pub = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
     id: "prof-ho-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
     event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {

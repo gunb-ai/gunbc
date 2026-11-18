@@ -379,7 +379,7 @@ fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
 fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedule {
   let worker_count: Int = workers.max_concurrent
   match e {
-    Refused { cause: cause } =>
+    ExpansionRejected { cause: cause } =>
       NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
     Expanded { occurrences: occs, edges: edges } => {
       if worker_count <= 0 {
@@ -492,7 +492,7 @@ fn schedule_read(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, cach
         let moved = count(filter(fresh.leaves, l => match scheduled_at(a: held, path: l.path) {
           Absent => true
           Present { value: k } => !(k.start_day == l.start_day && k.finish_day == l.finish_day && k.lane == l.lane
-            && occurrence_count_is_assumed(c: k.count_source) == occurrence_count_is_assumed(c: l.count_source))
+            && k.count_source == l.count_source)
         }))
         let dropped = count(filter(held.leaves, k => match scheduled_at(a: fresh, path: k.path) {
           Absent => true
@@ -591,10 +591,4 @@ fn scheduled_leaf_count(a: ScheduleAnswer) -> Int {
 // cache and nothing more -- the read recomputes and never serves it, which is what makes a stale one superseded.
 fn as_cache(a: ScheduleAnswer) -> Schedule {
   Scheduled { answer: a }
-}
-
-// Whether a placed leaf's count source is the ASSUMED simulation count (a FindingsOf member), kept visible in the
-// answer so a downstream reader sees it was scheduled from a simulation input, not a declared count.
-fn occurrence_count_is_assumed(c: OccurrenceCount) -> Bool {
-  c == Assumed
 }
