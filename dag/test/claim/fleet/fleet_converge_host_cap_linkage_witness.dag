@@ -24,6 +24,7 @@ import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_c
 import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
+import v2.std.diagnostic { outcome_accepted_value }
 
 // THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
 // delivery, and its timeout covers converge + release (a job-level timeout is a cancellation).
@@ -39,22 +40,40 @@ fn step_id_of(st: Step) -> String {
 fn job_step_ids(j: Job) -> List<String> { map(j.steps, s => step_id_of(st: s)) }
 
 test fn the_job_timeout_covers_the_converge_step_plus_its_release() -> Bool {
-  match fleet_converge_job().timeout_minutes {
-    Present { value: m } => m >= fleet_converge_host_cap_job_floor_minutes() && m == fleet_converge_job_timeout_minutes()
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } => match j.timeout_minutes {
+      Present { value: m } =>
+        match outcome_accepted_value(fleet_converge_host_cap_job_floor_minutes()) {
+          Present { value: floor_m } =>
+            match outcome_accepted_value(fleet_converge_job_timeout_minutes()) {
+              Present { value: tm } => m >= floor_m && m == tm
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
     Absent => false
   }
 }
 
 test fn the_emitted_job_carries_the_converge_and_the_always_release_steps() -> Bool {
-  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_file_converge")
-    && any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release")
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } =>
+      any(job_step_ids(j: j), i => i == "runner_host_file_converge")
+        && any(job_step_ids(j: j), i => i == "runner_host_cap_release")
+    Absent => false
+  }
 }
 
 test fn the_converge_step_is_delivered_the_declared_budget() -> Bool {
-  match fleet_converge_runner_host_file_converge_step() {
-    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
-    _ => false
+  match outcome_accepted_value(fleet_converge_runner_host_file_converge_step()) {
+    Present { value: s } => match s {
+      RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
+      _ => false
+    }
+    Absent => false
   }
 }
 
@@ -63,7 +82,10 @@ test fn the_release_does_not_write_the_converge_receipt() -> Bool {
 }
 
 test fn the_job_carries_the_release_receipt_upload() -> Bool {
-  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release_receipt_upload")
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } => any(job_step_ids(j: j), i => i == "runner_host_cap_release_receipt_upload")
+    Absent => false
+  }
 }
 
 // ─── THE SPLIT CONTROLS OF THE EMITTED JOB (operator ruling 2026-10-24, run 40085967610) ──────────
