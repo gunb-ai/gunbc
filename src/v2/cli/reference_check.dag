@@ -635,15 +635,18 @@ fn run_step_target_index_refusal(site: RunStepTargetSite, env: AcquisitionEnv, m
     PopulationMemberRefused { cause: cause } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: no registered storage root contains ", module_name, " (", cause, "), so it was never a run-time entry") }
     PopulationMemberRead { member: member } =>
-      if is_empty(xs: decl_named_in_module(
-        decls: fn_arrow_decl_facts_live(pool_roots: [], pool_files: [concat(member.host_directory, "/", module_file_key(file: member.file))]),
-        mod_path: module_name,
-        fn_name: function_name
-      )) {
-        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
-      } else {
-        Absent
-      }
+      run_step_target_member_decl_line(site: site, module_name: module_name, function_name: function_name, host_directory: member.host_directory, file: member.file)
+  }
+}
+
+// One file-grain index call over the target's own source, bound as a direct host call (the v1.interpreter builtin
+// emits as await, so it must sit at function scope, exactly as gunbc.instruments.roster_reach_inhabitance binds it).
+fn run_step_target_member_decl_line(site: RunStepTargetSite, module_name: String, function_name: String, host_directory: String, file: ModuleFileRef) -> Optional<String> {
+  let decls = fn_arrow_decl_facts_live(pool_roots: [], pool_files: [concat(host_directory, "/", module_file_key(file: file))])
+  if is_empty(xs: decl_named_in_module(decls: decls, mod_path: module_name, fn_name: function_name)) {
+    Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
+  } else {
+    Absent
   }
 }
 
