@@ -213,7 +213,7 @@ fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
   }
 }
 
-fn tnid(s: String) -> RoadmapNodeId { s }
+fn tnid(s: String) -> RoadmapNodeId { s as NonEmptyStr as RoadmapNodeId }
 fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
 
 fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
@@ -332,9 +332,8 @@ fn scenario_revocation_kind(id: RoadmapNodeId, disposition: AcceptanceRevocation
     receipt: scenario_receipt(id: id),
     disposition: disposition,
     revoked_by: "operator" as NonEmptyStr,
-    revoked_on: "2026-11-18",
+    revoked_on: "2026-11-18" as NonEmptyStr,
     reason: "the scenario took the acceptance back" as NonEmptyStr,
-    exact_prior_receipt: scenario_receipt(id: id),
   }
 }
 
@@ -378,7 +377,7 @@ fn scenario_envelopes(label: RoadmapNodeId, events: List<RoadmapEvent>) -> List<
   match roadmap_events_decode_reads(
     node: label,
     reads: map(events, e => EventFileContent { content: roadmap_event_wire_text(env: roadmap_event_envelope(e: e)) })) {
-    EventsRead { envelopes: envs } => Present { value: envs }
+    EventsRead { node: _, envelopes: envs } => Present { value: envs }
     EventsReadRefused { node: _, step: _, reason: _ } => Absent
   }
 }
