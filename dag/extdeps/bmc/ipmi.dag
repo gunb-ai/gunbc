@@ -800,9 +800,11 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // verbosity_argv: extdeps.bmc.ipmi_session ipmitool_verbosity_argv, the typed verbosity rendered to words (empty, or
+  // "-v" so the lanplus open names the stage that went unanswered on stderr; one -v leaves stdout unchanged).
   operation McInfo {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String>, retry_bound_retries: NonEmptyStr, retry_bound_timeout: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String>, verbosity_argv: List<String>, retry_bound_retries: NonEmptyStr, retry_bound_timeout: NonEmptyStr }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -810,10 +812,54 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-R", "{retry_bound_retries}", "-N", "{retry_bound_timeout}", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", verbosity_argv, "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-R", "{retry_bound_retries}", "-N", "{retry_bound_timeout}", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool mc info failed"
+    }
+  }
+
+  // THE CONTROLLER'S OWN COLD RESET: IPMI v2.0 §20.2 Cold Reset (NetFn App 06h, command 02h), sent by
+  // `ipmitool mc reset cold` (ipmitool 1.8.19 lib/ipmi_mc.c ipmi_mc_reset). The spec directs the
+  // responder to reinitialize its functions and warns that the effect on the rest of the system is
+  // platform-specific; it promises neither an observable LAN outage nor an unaffected host. ipmitool
+  // sets intf->noanswer for a cold reset and treats a missing response as expected, then prints "Sent
+  // cold reset command to MC" and exits 0, also when the lanplus send returned no response; a nonzero
+  // completion code or an unopened session exits nonzero. AN EXIT 0 THEREFORE SAYS ONLY THAT IPMITOOL
+  // REPORTED SENDING, never that the request arrived or that the controller reset, and a nonzero exit
+  // does not say it did not arrive (extdeps.bmc.ipmitool_mc_reset reads the reply; any effect is
+  // observed separately by the caller). This operation claims nothing about host power. NOT
+  // `readonly`: it asks the controller to reinitialize, and its RMCP+ login can spend the lockout
+  // budget like every authenticated write here. Bounded under coreutils `timeout` like its siblings.
+  // ONE ATTEMPT PER REQUEST. The reset takes only the response timeout; its -R is the literal "1", so
+  // no other attempt count is constructible for this operation. Why one, from ipmitool 1.8.19 source
+  // (lib/ipmi_main.c sha256 ddcb7c570167b2d3f68f85c7bbdf294c9336f62272dbb0ca1358416ce392150c,
+  // src/plugins/lanplus/lanplus.c sha256 0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068,
+  // lib/ipmi_mc.c sha256 e7baf833bc2289c84e10ec0b3984fbbab86726b724bdf386e279aefdd4b6ea54): -R is an
+  // ATTEMPT count (ipmi_lanplus_send_payload loops while try < ssn_params.retry), and "-R 0" is not zero
+  // retries -- ipmi_main.c sets the retry only "if (retry > 0)" and ipmi_lanplus_open then defaults an
+  // unset retry to IPMI_LAN_RETRY, 4 attempts. That is why IpmiRetryBound's door (ipmi_retry_bound above)
+  // mints nothing for retries 0, and this literal agrees with it. The reset request itself is sent once
+  // whatever -R says: ipmi_mc_reset sets intf->noanswer for BMC_COLD_RESET and the send loop breaks after
+  // the first transmit. -R 1 therefore bounds each session-setup REQUEST to one attempt (one transmit, no
+  // retransmit); it does not govern the requests ipmitool repeats on its own -- the second Get Channel
+  // Authentication Capabilities request (ipmi_get_auth_capabilities_cmd) and the session-open loop of the
+  // constant IPMI_LAN_RETRY (open session, RAKP 1, RAKP 3) -- and it does not prevent a resend of the reset
+  // ipmitool would not make. Pinned by the materialized-argv control
+  // test.claim.bmc.ipmi_cipher_suite_argv_witness (the McResetCold row).
+  operation McResetCold {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String>, retry_bound_timeout: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-R", "1", "-N", "{retry_bound_timeout}", "-U", "{username}", "-f", "{password_file}", "mc", "reset", "cold"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool mc reset cold failed"
     }
   }
 

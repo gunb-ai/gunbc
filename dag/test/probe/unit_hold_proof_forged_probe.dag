@@ -28,6 +28,8 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_attach_boot_image, MegaRacIpmiReadBound }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.managed_host_boot { AdmittedBootSubject }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_held, mtcollins1_bmc_cold_reset_send }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.boot_medium { BootMedium }
 import gunbc.runner.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
 
@@ -148,5 +150,19 @@ fn actuate_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject, b: Admit
 
 fn acquire_the_unit_hold_from_outside_its_roots(s: AdmittedUnitHoldSubject) -> String {
   let _x = unit_hold_acquire(subject: s, owner: "forger" as DurableHoldOwnerRef, tree: host_state_tree())
+  ""
+}
+
+// THE CONTROLLER COLD RESET IS REACHABLE ONLY THROUGH ITS HOLD-ACQUIRING ENTRY (side chat on gunbc#16529, F3).
+// The held sequence is sealed to mtcollins1_bmc_cold_reset_wet, which acquires the hold, and the one write is
+// sealed to the held sequence. Each call below reaches McResetCold without acquiring the hold, and each is
+// refused at compile time, before any controller is touched.
+fn cold_reset_the_held_sequence_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject) -> String {
+  let _x = mtcollins1_bmc_cold_reset_held(proof: forged_proof(s: s), host: operator_host_mtcollins1, bmc_host: "10.0.0.1" as NonEmptyStr, username: "forger" as NonEmptyStr, password_file: "/tmp/pw" as NonEmptyStr, cipher_suite: none)
+  ""
+}
+
+fn cold_reset_send_from_outside() -> String {
+  let _x = mtcollins1_bmc_cold_reset_send(bmc_host: "10.0.0.1" as NonEmptyStr, username: "forger" as NonEmptyStr, password_file: "/tmp/pw" as NonEmptyStr, cipher_suite: none)
   ""
 }

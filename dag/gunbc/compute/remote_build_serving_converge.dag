@@ -55,7 +55,11 @@ import extdeps.tools.uname { uname_machine_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.github.actions_environment { github_sha_variable_name }
-import extdeps.rust.rustup {rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm, rustup_toolchain_install_command }
+import extdeps.rust.rustup {rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm, rustup_toolchain_install_command,
+  rustup_init_release, rustup_init_url, rustup_linux_gnu_triple, rustup_init_install_command }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
 
 data remote_build_serving_observe_attempt_raw: String = "remote-build-serving-observe-ci"
 // Repo-relative (under the CI checkout's target/, which the build creates), mirroring the
@@ -499,6 +503,10 @@ type ConvergeAction =
   // build (that would be a build action, not a convergence action). Consumes the pin's
   // toolchain_channel, which until now was never read.
   | EnsureToolchain { channel: String, as_user: String }
+  // rustup ITSELF, for an account the observe proved has none: the pinned rustup-init for the target's
+  // triple, downloaded as the account, verified against the digest this action carries, and run with
+  // the account's homes. Every value the write uses is a field here, so the plan names the whole write.
+  | EnsureRustup { installer_url: String, expected_sha256: String, as_user: String, rustup_home: String, cargo_home: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
 
@@ -659,6 +667,31 @@ fn converge_ensure_toolchain(acc: ConvergeDraft, d: RemoteBuildServingDesired, p
   ConvergeDraft { writes: concat([EnsureToolchain { channel: pin.toolchain_channel, as_user: d.account_name }], acc.writes), unhandled: acc.unhandled }
 }
 
+// Which rustup release a serving account is bootstrapped with: this workflow's policy, read against
+// the published release rows in extdeps.rust.rustup (the version is ours to choose; the digests are
+// upstream's). Raising it is a one-line change here plus that release's rows there.
+data serving_rustup_init_version: String = "1.29.3"
+
+// An account with no rustup gets the pinned rustup-init for the TARGET's triple (read from the
+// target's own `uname -m`, which the observe established), then the pinned toolchain through the
+// existing EnsureToolchain write. A machine with no published triple row, or a version with no row
+// for that triple, is unhandled: the plan never downloads an installer it holds no digest for.
+fn converge_ensure_rustup(acc: ConvergeDraft, d: RemoteBuildServingDesired, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
+  match target_arch {
+    ObservationRefused { cause: _ } => converge_draft_unhandled(acc, concat("toolchain: rustup absent and the host arch is unread for ", d.account_name))
+    ObservationEstablished { observed: machine } => match rustup_linux_gnu_triple(machine: machine) {
+      Absent => converge_draft_unhandled(acc, concat("toolchain: rustup absent and no rustup-init triple for machine ", machine))
+      Present { value: triple } => match rustup_init_release(version: serving_rustup_init_version, triple: triple as String) {
+        Absent => converge_draft_unhandled(acc, join(["toolchain: no rustup-init ", serving_rustup_init_version, " row for ", triple as String], ""))
+        Present { value: r } => ConvergeDraft {
+          writes: concat([EnsureRustup { installer_url: rustup_init_url(r: r) as String, expected_sha256: r.sha256 as String, as_user: d.account_name, rustup_home: d.rustup_home, cargo_home: d.cargo_home }], acc.writes),
+          unhandled: acc.unhandled,
+        }
+      }
+    }
+  }
+}
+
 // A ledger row whose owner/group/mode drifted => re-establish it with install -d -o -g at the declared
 // mode. The mode is the row's declared_directory_mode_octal (value-canonical), never re-spelled from
 // the observed string; if the drifted path is not a desired row it is unhandled, never written blind.
@@ -681,7 +714,7 @@ fn converge_ledger_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired, p
 // The fold PREPENDS each step's writes (concat([x], acc.writes)), so a plan's write order was the
 // reverse of the deviation order — on a fresh host the checkout / authorized_keys / store / usermod -aG
 // could all run before useradd. converge_plan therefore re-derives the order by ACTION KIND, not fold
-// position: groups, account, membership, dirs+ledger, authorized_keys, checkout, toolchain, binary. It also
+// position: groups, account, membership, dirs+ledger, authorized_keys, checkout, rustup, toolchain, binary. It also
 // DEDUPES by identity (uid and gid arms could both emit EnsureAccount; the group can be requested by
 // the account arm and again by every membership arm) — a duplicate would re-run useradd/groupadd and
 // trip "already exists".
@@ -695,10 +728,11 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     EnsureLedgerDirectory { path: _, owner_user: _, owner_group: _, mode: _ } => 3
     EnsureAuthorizedKeys { path: _, owner_user: _, content: _ } => 4
     EnsureCheckout { dir: _, clone_url: _, revision: _, as_user: _ } => 5
-    // B1 (side-chat review of 2026-11-16): the toolchain install is its OWN step — rank 6, after the
-    // account it sudo -u's and after the checkout, and before the serve binary it gates serving.
-    EnsureToolchain { channel: _, as_user: _ } => 6
-    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 7
+    // rustup before the toolchain it installs; both after the account they sudo -u as and the checkout,
+    // and before the serve binary.
+    EnsureRustup { installer_url: _, expected_sha256: _, as_user: _, rustup_home: _, cargo_home: _ } => 6
+    EnsureToolchain { channel: _, as_user: _ } => 7
+    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 8
   }
 }
 
@@ -712,6 +746,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureAuthorizedKeys { path: p, owner_user: _, content: _ } => concat("ak:", p)
     EnsureCheckout { dir: dd, clone_url: _, revision: _, as_user: _ } => concat("checkout:", dd)
     EnsureToolchain { channel: c, as_user: u } => concat("toolchain:", c, ":", u)
+    EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
   }
 }
@@ -729,7 +764,8 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
   let r5 = filter(ws, a => converge_kind_rank(a) == 5)
   let r6 = filter(ws, a => converge_kind_rank(a) == 6)
   let r7 = filter(ws, a => converge_kind_rank(a) == 7)
-  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, r7)))))))
+  let r8 = filter(ws, a => converge_kind_rank(a) == 8)
+  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, concat(r7, r8))))))))
 }
 
 // B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
@@ -758,16 +794,13 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
-      // B1 (side-chat review of 2026-11-16) + the follow-up (clever-raven-401): the absence of the
-      // PINNED channel has a remediation — `rustup toolchain install` of the pin's channel, as the
-      // account — but its RUNNER is rustup itself, so the plan only when the observe PROVED rustup
-      // present (the account's cargo-bin rustup, established under the account gate). rustup proven
-      // ABSENT is UNHANDLABLE: bootstrapping rustup (curl | sh) is not modelled, and planning the
-      // install would plan a write bound to fail. rustup unreadable never reaches here — the
-      // observe folds it into an unknown, and the assessment refuses.
+      // The absence of the PINNED channel is remediated by `rustup toolchain install` as the account,
+      // whose runner is rustup itself. rustup proven present: the install alone. rustup proven ABSENT
+      // (a fresh account): the verified rustup-init bootstrap first, then the install. rustup
+      // unreadable never reaches here — the observe folds it into an unknown and the assessment refuses.
       "toolchain" => match rustup {
         ObservationEstablished { observed: true } => converge_ensure_toolchain(acc, d, pin)
-        ObservationEstablished { observed: false } => converge_draft_unhandled(acc, concat("toolchain: rustup not installed for ", concat(d.account_name, "; no bootstrap modelled")))
+        ObservationEstablished { observed: false } => converge_ensure_toolchain(converge_ensure_rustup(acc, d, target_arch), d, pin)
         ObservationRefused { cause: _ } => converge_draft_unhandled(acc, concat("toolchain: rustup presence unreadable for ", d.account_name))
       }
       "seed.serve_binary" => converge_install_binary(acc, d, pin, target_arch)
@@ -935,7 +968,16 @@ type ConvergeStage =
 data converge_stage_dir_template: NonEmptyStr = "/tmp/gunbc-serving-stage.XXXXXXXXXX"
 
 fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> ConvergeStage {
-  let outcome = typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template)))
+  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))
+}
+
+// The same private directory, created AS the serving account, for a file the account itself must
+// write and execute (the rustup-init download).
+fn converge_private_stage_dir_as(target: SshTarget, context: FleetSshExecutionContext, user: String) -> ConvergeStage {
+  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))))
+}
+
+fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
   match converge_exec_step(outcome: outcome) {
     StepFailed { cause: c } => StageFailed { cause: concat("mktemp -d (private staging dir): ", c) }
     StepDone => match outcome {
@@ -976,6 +1018,49 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
             // Readback of the file we JUST sudo-installed — elevation is established (the install above
             // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
             StepDone => converge_readback_step(what: "authorized_keys content", read: serving_leg_authorized_keys(elevation: ObservationEstablished { observed: true }, item: "authorized_keys", target: target, context: context, path: path), want: content)
+          }
+        }
+      }
+    }
+  }
+}
+
+// rustup-init, as the serving account: download the pinned installer into a private directory the
+// account owns, require its sha256 to equal the digest the action carries BEFORE it is made executable
+// or run, run it with the account's homes, then read back that the account's cargo-bin rustup is
+// executable. The directory is removed whatever happened; a removal that fails is reported, never
+// dropped. Each step that fails names its own cause.
+fn converge_install_rustup(target: SshTarget, context: FleetSshExecutionContext, url: String, expected_sha256: String, usr: String, rustup_home: String, cargo_home: String) -> ConvergeStep {
+  match converge_private_stage_dir_as(target: target, context: context, user: usr) {
+    StageFailed { cause: c } => StepFailed { cause: c }
+    StageReady { dir: stage } => {
+      let installer = concat(stage, "/rustup-init")
+      let installed = converge_rustup_from_stage(target: target, context: context, installer: installer, url: url, expected_sha256: expected_sha256, usr: usr, rustup_home: rustup_home, cargo_home: cargo_home)
+      let cleanup = converge_as_user(target: target, context: context, user: usr, command: rm_recursive_force_command(path: stage))
+      match installed {
+        StepFailed { cause: c } => StepFailed { cause: c }
+        StepDone => match cleanup {
+          StepDone => StepDone
+          StepFailed { cause: c } => StepFailed { cause: join(["rustup installed, but removing its staging directory ", stage, " failed: ", c], "") }
+        }
+      }
+    }
+  }
+}
+
+fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionContext, installer: String, url: String, expected_sha256: String, usr: String, rustup_home: String, cargo_home: String) -> ConvergeStep {
+  match converge_as_user(target: target, context: context, user: usr, command: curl_download_command(url: url, destination: installer)) {
+    StepFailed { cause: c } => StepFailed { cause: concat("rustup-init download: ", c) }
+    StepDone => match converge_readback_step(what: "rustup-init sha256", read: serving_leg_sha256(item: "rustup-init.sha256", target: target, context: context, path: installer), want: expected_sha256) {
+      StepFailed { cause: c } => StepFailed { cause: c }
+      StepDone => match converge_as_user(target: target, context: context, user: usr, command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0700" as NonEmptyStr, path: installer)) {
+        StepFailed { cause: c } => StepFailed { cause: concat("chmod rustup-init: ", c) }
+        StepDone => match converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
+          StepFailed { cause: c } => StepFailed { cause: concat("rustup-init: ", c) }
+          StepDone => match serving_leg_test(elevation: ObservationEstablished { observed: true }, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(cargo_home, "/bin/rustup"))) {
+            ObservationEstablished { observed: true } => StepDone
+            ObservationEstablished { observed: false } => StepFailed { cause: concat("rustup-init exited 0 but no executable rustup at ", concat(cargo_home, "/bin/rustup")) }
+            ObservationRefused { cause: f } => StepFailed { cause: concat("rustup readback refused: ", f.cause) }
           }
         }
       }
@@ -1040,6 +1125,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
     EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
+    EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })

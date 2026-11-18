@@ -181,18 +181,15 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
   // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18: srv3 112 GiB costs 4 (18->14),
   // srv4 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a silent widen; the
   // committed-width witness below agrees at the same charged numbers.
-  // REMOTE-BUILD PR 4 carves NOTHING here: gunbc.runner host_build_pool_reservation is gated on the host being
-  // on the serving roster (a host-fact gate, review 95809 -- rostered AND no dashboard instance), and srv3/
-  // srv4 are not yet admitted. PR 5 admits each host in the same change that creates and reads back its
-  // /opt/gunbc home, and the one-slot carve (14->13, 16->15) fires in THAT change -- the slot leaves CI only
-  // when the ledger pool exists to hold it (conservation; the bug an ungated carve would leave between this PR
-  // and PR 5 is a full slot per host lost to neither side). So in THIS PR srv3/srv4 keep the full charged width
-  // (14 / 16) and host_build_pool_reservation returns byte_size(0) for them. srv1 is untouched (7).
+  // srv3/srv4 are on the remote-build serving roster and resolve no dashboard instance, so
+  // gunbc.runner host_build_pool_reservation carves one CI slot from each into its build pool (14->13,
+  // 16->15) -- the slot leaves CI in the change that admitted the host, so the pool holds it. srv1 carries its
+  // own ledger and is untouched (7).
   host_memory_admitted_width(host: operator_host_srv1) == 7
-    && host_memory_admitted_width(host: operator_host_srv3) == 14
-    && host_memory_admitted_width(host: operator_host_srv4) == 16
-    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3)) == 0
-    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4)) == 0
+    && host_memory_admitted_width(host: operator_host_srv3) == 13
+    && host_memory_admitted_width(host: operator_host_srv4) == 15
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3)) == byte_size_count(b: gunbc_runner_slot_memory_max)
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4)) == byte_size_count(b: gunbc_runner_slot_memory_max)
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -288,14 +285,13 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
   // srv3/srv4 committed widths are re-baselined from the pre-engine 18 to the charged values (their engine's
-  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16. In THIS PR the build-pool
-  // carve is NOT applied to them -- host_build_pool_reservation is gated on the host being on the serving roster
-  // (rostered AND no dashboard instance), and srv3/srv4 are not admitted yet; PR 5 admits each and the one-slot
-  // carve (-> 13 / -> 15) lands in that same change, so CI never loses a slot that a pool does not hold
+  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16, and the remote-build
+  // build-pool carve takes one more slot from each now that both are on the serving roster (-> 13 / -> 15),
+  // held by the pool, so CI never loses a slot that a pool does not hold
   // (conservation). The dynamic assertions below (committed == memory-admitted, and cpu axis > memory-admitted)
-  // prove memory is the binding axis at these charged, un-carved values; srv1 pays nothing and stays 7.
-  committed_width_is(host: operator_host_srv3, expected: 14)
-    && committed_width_is(host: operator_host_srv4, expected: 16)
+  // prove memory is the binding axis at these charged, carved values; srv1 pays nothing and stays 7.
+  committed_width_is(host: operator_host_srv3, expected: 13)
+    && committed_width_is(host: operator_host_srv4, expected: 15)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))

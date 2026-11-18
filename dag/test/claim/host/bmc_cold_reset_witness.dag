@@ -1,0 +1,469 @@
+module test.claim.host.bmc_cold_reset_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent, Optional }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, chassis_observation }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, ipmitool_mc_info_firmware_text }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, IpmitoolDefaultVerbosity, IpmitoolVerboseOnce }
+import std.measure { second_count }
+import std.nat { Nat }
+import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
+import extdeps.bmc.ipmitool_lanplus_timing {
+  IpmitoolLanplusInvocation, ipmitool_lanplus_invocation_of_argv, ipmitool_lanplus_unanswered_request_wait,
+  ipmitool_lanplus_auth_caps_unanswered_wait, ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops,
+  ipmitool_get_channel_auth_caps_requests, ipmitool_lanplus_open_worst_wait, ipmitool_lanplus_open_first_success_wait,
+}
+import std.measure { Second, second, measure_add, measure_le }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound, bmc_ipmi_watch_poll_retry_bound }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline }
+import extdeps.bmc.ipmitool_mc_reset { IpmitoolMcResetColdReply, McResetColdReportedSent, McResetColdExitedNonzero, McResetColdUnrecognised, ipmitool_mc_reset_cold_reply_of }
+import gunbc.host.bmc_cold_reset {
+  ColdResetWatchBounds, ColdResetPoll, ControllerAvailable, ControllerInitializing, ControllerNoResponse, ControllerProbeFailed, ControllerUndecodable, cold_reset_poll_of,
+  ColdResetLoss, LossNoResponse, LossInitializing,
+  ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved, WatchEnded, WatchContinues,
+  cold_reset_watch_start, cold_reset_watch_step,
+  ColdResetVerdict, ColdResetRecoveredPowerEqual, ColdResetRecoveredUnattributed, ColdResetPowerChanged, ColdResetPowerUnreadAfter, ColdResetRecoveryNotObserved, ColdResetLossNotObserved,
+  cold_reset_verdict, cold_reset_verdict_text, ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
+}
+
+// THE CONTROLS FOR THE JUDGMENT OF A CONTROLLER COLD RESET ATTEMPT (gunbc.host.bmc_cold_reset). Each claim decides
+// through the production folds: cold_reset_poll_of parses each mc info read, cold_reset_watch_step judges each
+// poll, cold_reset_verdict judges the power readings, cold_reset_attempt_acceptance joins ipmitool's reply to them.
+// The readings are PARSED, NOT CONSTRUCTED: every poll and power reading comes out of the parsers the route uses.
+//
+// WHAT THIS FILE DOES NOT ESTABLISH: that the route reads in the right order around its attempt, that its after-
+// reading is fresh, or that it polls to its bound. Those are properties of the route, not of these folds, and they
+// are exercised by running the route's entry through the boot's dry realization
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix, the cold-reset route claims).
+
+// ── THIS UNIT'S REAL BYTES ──────────────────────────────────────────────────────────────────────
+// `ipmitool mc info` as mtcollins1's controller answered it at firmware 0.45 (boot run 41573858366).
+data real_mc_info_path: String = "artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-mc-info-41573858366.txt"
+// `ipmitool chassis status` as mtcollins1's controller answered it (2026-09-11, the 32-DIMM state capture,
+// whose chassis status section prints one System Power line, on).
+data real_chassis_state_path: String = "artifacts/bmc/mtcollins1-32dimm/01-state.txt"
+
+fn real_mc_info() -> String { Filesystem.Read(path: real_mc_info_path).content }
+fn real_chassis_state() -> String { Filesystem.Read(path: real_chassis_state_path).content }
+
+fn available() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolDefaultVerbosity, success: true, exit_code: 0, stdout: real_mc_info(), stderr: "") }
+// FAILED POLLS AT ONE -v, as ipmitool 1.8.19 prints them. SOURCE-TRANSCRIBED, not captured (extdeps.bmc.ipmi_session
+// ipmitool_lanplus_source_standing): src/plugins/lanplus/lanplus.c ipmi_get_auth_capabilities_cmd, ipmi_lanplus_open,
+// ipmi_lanplus_rakp1 / _rakp3 and ipmi_set_session_privlvl_cmd; the RAKP status words from lanplus_strings.c.
+// The deadline form (exit 124, nothing printed) IS captured on this unit
+// (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt, "exit=124 stdout=[] stderr=[]"),
+// and so is the bare session line at the default verbosity ("exit=1 ... stderr=[Error: Unable to establish IPMI v2 /
+// RMCP+ session]"), which names no stage.
+data session_line: String = concat(ipmitool_lanplus_session_unestablished_line, "\n")
+// The watch polls run at one -v, so a failed poll is read as one; the baseline runs at the default verbosity.
+fn failed(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
+fn failed_at_default(exit_code: Int, stderr: String) -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolDefaultVerbosity, success: false, exit_code: exit_code, stdout: "", stderr: stderr) }
+
+// No answer, each stage named.
+fn no_response() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Get Auth Capabilities error\nError issuing Get Channel Authentication Capabilities request\n", session_line)) }
+fn no_reply_to_rakp1() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> Error: no response from RAKP 1 message\nSet Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
+fn no_reply_after_open_session() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Set Session Privilege Level to ADMINISTRATOR failed\n", session_line)) }
+// The captured deadline form, at the default verbosity it was captured at.
+fn timed_out() -> ColdResetPoll { failed_at_default(exit_code: 124, stderr: "") }
+// A -v poll killed at its deadline: nothing printed, or the stage line a silent controller leaves before the kill.
+fn timed_out_at_v() -> ColdResetPoll { failed(exit_code: 124, stderr: "") }
+fn timed_out_at_v_after_a_stage() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Auth Capabilities error\nError issuing Get Channel Authentication Capabilities request\n") }
+
+// NOT evidence of no answer.
+fn bare_session_line() -> ColdResetPoll { failed(exit_code: 1, stderr: session_line) }
+fn credential_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("RAKP 2 message indicates an error : unauthorized name\n", session_line)) }
+fn hmac_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> RAKP 2 HMAC is invalid\n", session_line)) }
+fn open_session_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Error in open session response message : invalid role\n\n", session_line)) }
+fn auth_caps_answered_with_a_code() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Get Auth Capabilities error: Invalid command\nError issuing Get Channel Authentication Capabilities request\n", session_line)) }
+fn privilege_answered_with_a_code() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("Set Session Privilege Level to ADMINISTRATOR failed: Insufficient privilege level\n", session_line)) }
+// The open/RAKP 1/RAKP 3 sequence retries: an early try went unanswered, a later one was refused. The controller
+// answered, so this is not a loss.
+fn unanswered_then_refused() -> ColdResetPoll { failed(exit_code: 1, stderr: concat("> Error: no response from RAKP 1 message\n> RAKP 2 HMAC is invalid\n", session_line)) }
+fn probe_failed() -> ColdResetPoll { failed(exit_code: 1, stderr: "Unable to read password from file /run/bmc/password\n") }
+// The read deadline expired AFTER the controller answered (side chat on gunbc#16529 at e930da53): exit 124 beside a
+// line ipmitool prints only on receiving a reply.
+fn timed_out_after_hmac() -> ColdResetPoll { failed(exit_code: 124, stderr: "> RAKP 2 HMAC is invalid\n") }
+fn timed_out_after_a_code() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Auth Capabilities error: Invalid command\nError issuing Get Channel Authentication Capabilities request\n") }
+// The session came up and the controller answered Get Device ID with completion code C1h, which ipmitool renders
+// "Invalid command" (lib/ipmi_mc.c ipmi_mc_get_deviceid, lib/ipmi_strings.c): extdeps.bmc.ipmi_session classifies it
+// IpmiCommandNotServed. Source-transcribed, like the -v lines above.
+fn not_served() -> ColdResetPoll { failed(exit_code: 1, stderr: "Get Device ID command failed: Invalid command\n") }
+fn timed_out_after_not_served() -> ColdResetPoll { failed(exit_code: 124, stderr: "Get Device ID command failed: Invalid command\n") }
+fn not_installed() -> ColdResetPoll { failed(exit_code: 127, stderr: "timeout: failed to run command 'ipmitool': No such file or directory\n") }
+
+// A successful poll at one -v: lprintf noise on stderr (ipmi_main.c "Discovered IPMB address 0x%x", LOG_INFO) and the
+// controller's report on stdout, which one -v leaves alone.
+fn verbose_available() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: real_mc_info(), stderr: "Discovered IPMB address 0x20\n") }
+fn undecodable() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: "this is not an mc info report\n", stderr: "") }
+fn initializing() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerboseOnce, success: true, exit_code: 0, stdout: replace(s: real_mc_info(), from: "Device Available          : yes", to: "Device Available          : no"), stderr: "") }
+fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
+fn power_off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
+
+data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4 }
+
+// Fold a poll sequence through the watch. Polls after the watch ended are never consulted, as in the live
+// route, which stops polling there. A sequence that runs out before the watch ends is Absent.
+fn watch(polls: List<ColdResetPoll>) -> ColdResetWatchEnd? {
+  let last = fold(polls, init: WatchContinues { watch: cold_reset_watch_start }, f: (acc, p) => match acc {
+    WatchEnded { end: e } => WatchEnded { end: e }
+    WatchContinues { watch: w } => cold_reset_watch_step(watch: w, poll: p, bounds: bounds)
+  })
+  match last {
+    WatchEnded { end: e } => Present { value: e }
+    WatchContinues { watch: _ } => none
+  }
+}
+
+fn verdict_from(baseline: ColdResetPoll, before_on: Bool, polls: List<ColdResetPoll>, after: ChassisPowerObservation?) -> ColdResetVerdict? {
+  match watch(polls: polls) {
+    Absent => none
+    Present { value: e } => Present { value: cold_reset_verdict(baseline: baseline, before_on: before_on, end: e, after: after) }
+  }
+}
+
+fn verdict_of(before_on: Bool, polls: List<ColdResetPoll>, after: ChassisPowerObservation?) -> ColdResetVerdict? {
+  verdict_from(baseline: available(), before_on: before_on, polls: polls, after: after)
+}
+
+fn recovered_power_equal(v: ColdResetVerdict?) -> Bool {
+  match v {
+    Present { value: x } => match x { ColdResetRecoveredPowerEqual { power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _, report: _ } => true  _ => false }
+    Absent => false
+  }
+}
+
+// ── POSITIVE ────────────────────────────────────────────────────────────────────────────────────
+// Available before; available once more, no response twice, available again; power on at both endpoints: the
+// strongest outcome, with the counts the receipt prints and the loss it was established by.
+test fn a_loss_and_recovery_after_the_attempt_with_equal_endpoint_power_is_the_strongest_outcome() -> Bool {
+  match verdict_of(before_on: true, polls: [available(), no_response(), no_response(), available()], after: Present { value: power_on() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetRecoveredPowerEqual { power_on: p, loss: l, polls_to_loss: d, polls_to_recovery: a, report: _ } =>
+          p && d == 2 && a == 2 && match l { LossNoResponse { cause: _ } => true  _ => false }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ── RED: endpoint power differs ─────────────────────────────────────────────────────────────────
+test fn a_power_reading_that_differs_at_the_endpoints_refuses_naming_both() -> Bool {
+  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: power_off() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetPowerChanged { before_on: b, after_on: a } => b && !a
+        _ => false
+      }
+    Absent => false
+  }
+    && match verdict_of(before_on: false, polls: [no_response(), available()], after: Present { value: power_on() }) {
+         Present { value: v } => match v { ColdResetPowerChanged { before_on: b, after_on: a } => !b && a  _ => false }
+         Absent => false
+       }
+}
+
+// A power reading that cannot be decoded after the controller recovered is not "equal".
+test fn an_unreadable_power_state_after_recovery_refuses() -> Bool {
+  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: chassis_observation(success: false, stdout: "") }) {
+    Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: b, after: _ } => b  _ => false }
+    Absent => false
+  }
+    && match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: chassis_observation(success: true, stdout: "no power line here\n") }) {
+         Present { value: v } => match v { ColdResetPowerUnreadAfter { before_on: _, after: _ } => true  _ => false }
+         Absent => false
+       }
+}
+
+// ── RED: no recovery within the bound ───────────────────────────────────────────────────────────
+// The poll that observes the loss is not counted against the recovery bound. answer_polls (4) further polls
+// without a recovery refuse at the fourth; a recovery that would have come on the next poll is never consulted.
+test fn availability_lost_past_the_bound_refuses_and_a_late_recovery_does_not_rescue_it() -> Bool {
+  match verdict_of(before_on: true, polls: [available(), no_response(), no_response(), no_response(), no_response(), no_response(), available()], after: Present { value: power_on() }) {
+    Present { value: v } =>
+      match v {
+        ColdResetRecoveryNotObserved { loss: _, polls_to_loss: d, polls: n, last: _ } => d == 2 && n == 4
+        _ => false
+      }
+    Absent => false
+  }
+    // Recovering on the last poll inside the bound is still the strongest outcome: the refusal is the count.
+    && recovered_power_equal(v: verdict_of(before_on: true, polls: [no_response(), no_response(), no_response(), no_response(), available()], after: Present { value: power_on() }))
+}
+
+// A controller that never loses availability after the attempt shows no effect of it: refused, never accepted.
+test fn a_controller_that_never_loses_availability_shows_no_effect() -> Bool {
+  match verdict_of(before_on: true, polls: [available(), available(), available()], after: Present { value: power_on() }) {
+    Present { value: v } => match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+    Absent => false
+  }
+}
+
+// ── F1: THE FOUR OBSERVATIONS ARE KEPT APART ────────────────────────────────────────────────────
+// An answer reporting Device Available: no is a decoded loss of availability (the controller answered and said it
+// is not ready), recorded as such, and it is not a recovery.
+test fn an_initializing_report_is_a_decoded_loss_and_never_a_recovery() -> Bool {
+  match initializing() { ControllerInitializing { report: _ } => true  _ => false }
+    && match watch(polls: [initializing(), initializing(), available()]) {
+         Present { value: e } =>
+           match e {
+             WatchRecovered { polls_to_loss: d, loss: l, polls_to_recovery: a, report: _ } =>
+               d == 1 && a == 2 && match l { LossInitializing { report: _ } => true  _ => false }
+             _ => false
+           }
+         Absent => false
+       }
+}
+
+// AN UNDECODABLE RESPONSE ESTABLISHES NOTHING (side chat on gunbc#16529, F1). Undecodable, then a valid available
+// answer, cannot reach a recovery: the undecodable reply was a response, so no loss was observed, and the watch
+// refuses with no effect observed. In the recovery phase an undecodable reply is not a recovery either.
+test fn an_undecodable_response_then_a_valid_answer_cannot_reach_a_recovery() -> Bool {
+  match undecodable() { ControllerUndecodable { cause: _ } => true  _ => false }
+    && match verdict_of(before_on: true, polls: [undecodable(), available(), available()], after: Present { value: power_on() }) {
+         Present { value: v } => match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+         Absent => false
+       }
+    && match watch(polls: [no_response(), undecodable(), available()]) {
+         Present { value: e } => match e { WatchRecovered { polls_to_loss: _, loss: _, polls_to_recovery: a, report: _ } => a == 2  _ => false }
+         Absent => false
+       }
+}
+
+fn is_no_response(p: ColdResetPoll) -> Bool { match p { ControllerNoResponse { cause: _ } => true  _ => false } }
+fn is_probe_failed(p: ColdResetPoll) -> Bool { match p { ControllerProbeFailed { exit_code: _, cause: _ } => true  _ => false } }
+
+// A FAILED COMMAND IS NOT A SILENT CONTROLLER (side chat on gunbc#16529 at 7d87d15b, F1 narrowed; the -v ruling).
+// Only the read deadline, or a stage ipmitool -v names as unanswered, is a missing response. The bare session line
+// names no stage (without -v a refused credential prints exactly that), and every line showing the controller
+// answered -- a RAKP 2 error, the HMAC check, an open session error, a completion code -- is a failed probe, also
+// when an earlier retry went unanswered.
+test fn only_a_stage_ipmitool_names_as_unanswered_is_a_missing_response() -> Bool {
+  match no_response() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to Get Channel Authentication Capabilities")  _ => false }
+    && match no_reply_to_rakp1() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to RAKP 1")  _ => false }
+    && match no_reply_after_open_session() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "Set Session Privilege Level")  _ => false }
+    && match timed_out() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "timeout exit 124")  _ => false }
+    && is_probe_failed(p: bare_session_line())
+    && is_probe_failed(p: credential_refused())
+    && is_probe_failed(p: hmac_refused())
+    && is_probe_failed(p: open_session_refused())
+    && is_probe_failed(p: auth_caps_answered_with_a_code())
+    && is_probe_failed(p: privilege_answered_with_a_code())
+    && is_probe_failed(p: unanswered_then_refused())
+    && match probe_failed() { ControllerProbeFailed { exit_code: e, cause: _ } => e == 1  _ => false }
+    && match not_installed() { ControllerProbeFailed { exit_code: e, cause: _ } => e == 127  _ => false }
+}
+
+// THE COUNTEREXAMPLE: available before, the first poll after the attempt fails without evidencing no answer (a local
+// failure, a refused credential, the bare session line), the next answers available, power agrees. No loss was
+// observed, so it is never a recovery and never accepted. A failed probe still counts against the bound, and an
+// evidenced loss after it is still a loss.
+test fn a_failed_probe_then_an_available_answer_cannot_reach_an_accepted_recovery() -> Bool {
+  all([probe_failed(), credential_refused(), bare_session_line()], f =>
+    match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+      Present { value: v } =>
+        match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+          && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+      Absent => false
+    })
+    && match watch(polls: [credential_refused(), timed_out(), available()]) {
+         Present { value: e } => match e { WatchRecovered { polls_to_loss: d, loss: _, polls_to_recovery: a, report: _ } => d == 2 && a == 1  _ => false }
+         Absent => false
+       }
+}
+
+// AN ANSWER OUTLIVES THE DEADLINE (side chat on gunbc#16529 at e930da53): exit 124 says the command ran out of time,
+// not that the controller was silent. Beside a line showing it answered (the HMAC check, a completion code), the
+// poll is a failed probe, so available before, that poll, then available with power agreeing is no observed loss and
+// never accepted. Exit 124 with nothing answered is a missing response at the default verbosity (only_a_stage_...
+// above) and a failed probe at -v (the -v deadline rule below).
+test fn an_answer_before_the_read_deadline_is_a_failed_probe_and_cannot_reach_an_accepted_recovery() -> Bool {
+  all([timed_out_after_hmac(), timed_out_after_a_code()], f =>
+    match f { ControllerProbeFailed { exit_code: e, cause: c } => e == 124 && string_contains(s: c as String, pattern: "after the controller answered (exit 124)")  _ => false }
+      && match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+           Present { value: v } =>
+             match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+               && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+           Absent => false
+         })
+}
+
+// THE -v DEADLINE RULE (decision X on gunbc#16529, msg_4588a441). A -v poll killed at its read deadline with neither
+// an answered line nor a stage line is a FAILED PROBE: under the watch-poll row a silent controller ends inside the
+// deadline on its stage line (the timing claim below), so this is a controller answering too slowly to finish. Read as
+// a loss, it let a slow controller that never reset reach an accepted recovery on its next answer; read as a failed
+// probe, available before, that poll, then available with power agreeing is no observed loss and never accepted. The
+// captured form at the default verbosity stays a missing response, and a -v poll killed after printing a stage line
+// is a missing response through that stage.
+test fn a_verbose_poll_killed_at_its_deadline_with_nothing_said_is_a_failed_probe_and_cannot_reach_an_accepted_recovery() -> Bool {
+  match timed_out_at_v() { ControllerProbeFailed { exit_code: e, cause: c } => e == 124 && string_contains(s: c as String, pattern: "neither an answered line nor an unanswered stage")  _ => false }
+    && match timed_out() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "timeout exit 124")  _ => false }
+    && match timed_out_at_v_after_a_stage() { ControllerNoResponse { cause: c } => string_contains(s: c as String, pattern: "no reply to Get Channel Authentication Capabilities (exit 124)")  _ => false }
+    && match verdict_of(before_on: true, polls: [timed_out_at_v(), available(), available()], after: Present { value: power_on() }) {
+         Present { value: v } =>
+           match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+             && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+         Absent => false
+       }
+}
+
+// THE WATCH-POLL ROW'S MARGIN, DERIVED (decision X condition 1; re-derived for the side chat on gunbc#16529, which found
+// the second Get Channel Authentication Capabilities request and the cipher-suite discovery the first model left out).
+// The figures in the policy row's table are computed here from the rows themselves, through ipmitool 1.8.19's loops
+// (extdeps.bmc.ipmitool_lanplus_timing), against the read deadline the polls run under: each invocation is read back
+// from the -R/-N words the row renders, with no -C, exactly as the watch polls run (the unit's route carries no cipher
+// suite). Under the watch-poll row a silent controller ends inside the deadline with and without ICMP refusals (8 s
+// of margin with them), a slow-but-alive controller does not (the case the -v deadline rule reads as a failed probe),
+// and one dropped datagram per request is retried. Under ipmitool's default a silent controller reaches the deadline
+// even without refusals. Under the authenticated-read row a dropped datagram on a request sent once fails it, while
+// the auth-caps exchange absorbs one by asking twice.
+fn invocation_of_row(bound: IpmiRetryBound) -> IpmitoolLanplusInvocation? {
+  ipmitool_lanplus_invocation_of_argv(argv: ["-R", ipmi_retry_bound_retries_word(bound: bound) as String, "-N", ipmi_retry_bound_timeout_word(bound: bound) as String])
+}
+
+fn wait_is(w: Second, count: Nat) -> Bool { second_count(s: w) == count }
+
+test fn the_watch_poll_row_ends_a_silent_controller_inside_the_deadline_and_retries_one_dropped_datagram() -> Bool {
+  let deadline = mtcollins1_boot_ipmi_read_deadline
+  match invocation_of_row(bound: bmc_ipmi_watch_poll_retry_bound()) {
+    Absent => false
+    Present { value: watch } => match invocation_of_row(bound: bmc_ipmi_retry_bound()) {
+      Absent => false
+      Present { value: policy } => match ipmitool_lanplus_invocation_of_argv(argv: []) {
+        Absent => false
+        Present { value: four } =>
+          wait_is(w: deadline, count: 20)
+            && watch.attempts == 2 && wait_is(w: watch.response_timeout, count: 1) && watch.cipher_suite_discovery
+            && wait_is(w: ipmitool_lanplus_unanswered_request_wait(invocation: watch, refused: false), count: 3)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: false), count: 6)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), count: 12)
+            // 8 s of margin inside the deadline, with refusals, before process start-up and exit.
+            && measure_le(a: measure_add(a: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: watch, refused: true), b: second(count: 8)), b: deadline)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: watch), count: 24)
+            && measure_le(a: deadline, b: ipmitool_mc_info_slowest_answered_wait(invocation: watch))
+            && ipmitool_lanplus_request_survives_drops(invocation: watch, dropped: 1)
+            && four.attempts == 4
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false), count: 20)
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: true), count: 40)
+            && measure_le(a: deadline, b: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: four, refused: false))
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: four), count: 73)
+            && policy.attempts == 1
+            && wait_is(w: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: policy, refused: true), count: 4)
+            && wait_is(w: ipmitool_mc_info_slowest_answered_wait(invocation: policy), count: 10)
+            // The open's worst case stays an upper bound: four outer iterations of three stages.
+            && wait_is(w: ipmitool_lanplus_open_worst_wait(invocation: watch, refused: false), count: 12)
+            && wait_is(w: ipmitool_lanplus_open_first_success_wait(invocation: watch), count: 3)
+            && !ipmitool_lanplus_request_survives_drops(invocation: policy, dropped: 1)
+            // The auth-caps exchange asks twice, so one lost datagram there is absorbed even at one attempt per request.
+            && ipmitool_get_channel_auth_caps_requests * policy.attempts > 1
+            // "-R 0" is not zero retries: ipmitool falls back to its default of four attempts.
+            && match ipmitool_lanplus_invocation_of_argv(argv: ["-R", "0", "-N", "1"]) { Present { value: z } => z.attempts == 4  Absent => false }
+            // A -C in the argv turns discovery off.
+            && match ipmitool_lanplus_invocation_of_argv(argv: ["-C", "17", "-R", "2", "-N", "1"]) { Present { value: c } => !c.cipher_suite_discovery  Absent => false }
+      }
+    }
+  }
+}
+
+// A COMMAND NOT SERVED IS AN ANSWER (msg_d9c38bd7 on gunbc#16529, after #16357 added IpmiCommandNotServed): the
+// controller answered with a completion code, so the poll is a failed probe on the same veto as every other answered
+// line -- also beside exit 124 -- and available before, that poll, then available with power agreeing is no observed
+// loss and never accepted.
+test fn a_command_not_served_is_an_answer_and_cannot_reach_an_accepted_recovery() -> Bool {
+  all([not_served(), timed_out_after_not_served()], f =>
+    match f { ControllerProbeFailed { exit_code: _, cause: c } => string_contains(s: c as String, pattern: "after the controller answered")  _ => false }
+      && match verdict_of(before_on: true, polls: [f, available(), available()], after: Present { value: power_on() }) {
+           Present { value: v } =>
+             match v { ColdResetLossNotObserved { polls: n, last: _ } => n == 3  _ => false }
+               && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+           Absent => false
+         })
+}
+
+// ONE -v LEAVES THE REPORT ALONE: lprintf noise on stderr beside a valid report on stdout decodes available, at the
+// firmware the capture names.
+test fn a_verbose_poll_with_stderr_noise_and_a_valid_report_decodes_available() -> Bool {
+  match verbose_available() {
+    ControllerAvailable { report: r } => (ipmitool_mc_info_firmware_text(report: r) as String) == "0.45"
+    _ => false
+  }
+}
+
+// THE BASELINE CONSTRAINS THE CONCLUSION: a controller not available before the attempt can recover later without
+// the attempt having caused anything observable, so the same observations that are the strongest outcome over an
+// available baseline are ColdResetRecoveredUnattributed over an unavailable or undecodable one, and never accepted.
+test fn a_recovery_over_a_baseline_that_was_not_available_is_unattributed_and_never_accepted() -> Bool {
+  let polls = [no_response(), available()]
+  let over_unavailable = verdict_from(baseline: no_response(), before_on: true, polls: polls, after: Present { value: power_on() })
+  let over_undecodable = verdict_from(baseline: undecodable(), before_on: true, polls: polls, after: Present { value: power_on() })
+  recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_on() }))
+    && match over_unavailable {
+         Present { value: v } =>
+           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _ } => true  _ => false }
+             && match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+         Absent => false
+       }
+    && match over_undecodable {
+         Present { value: v } =>
+           match v { ColdResetRecoveredUnattributed { baseline: _, power_on: _, loss: _, polls_to_loss: _, polls_to_recovery: _ } => true  _ => false }
+             && string_contains(s: cold_reset_verdict_text(verdict: v), pattern: "baseline availability was not established (undecodable")
+             && !string_contains(s: cold_reset_verdict_text(verdict: v), pattern: "was not available")
+         Absent => false
+       }
+}
+
+// ── F2: WHAT IPMITOOL REPORTED ──────────────────────────────────────────────────────────────────
+// ipmitool 1.8.19 prints the sent line and exits 0; a nonzero exit is kept as such; exit 0 without the line is
+// kept apart. None of them is read as the controller having reset, or as the request not having been sent.
+test fn the_reply_reads_reported_sent_only_from_the_sent_line() -> Bool {
+  match ipmitool_mc_reset_cold_reply_of(success: true, exit_code: 0, stdout: "Sent cold reset command to MC\n", stderr: "") { McResetColdReportedSent => true  _ => false }
+    && match ipmitool_mc_reset_cold_reply_of(success: false, exit_code: 1, stdout: "", stderr: "Error: Unable to establish IPMI v2 / RMCP+ session\n") {
+         McResetColdExitedNonzero { exit_code: c, detail: d } => c == 1 && string_contains(s: d as String, pattern: "RMCP+ session")
+         _ => false
+       }
+    && match ipmitool_mc_reset_cold_reply_of(success: true, exit_code: 0, stdout: "", stderr: "") { McResetColdUnrecognised { stdout: _ } => true  _ => false }
+}
+
+// ACCEPTANCE NEEDS BOTH: ipmitool reporting sending, and the strongest observed outcome. The same observations
+// beside a nonzero or unrecognised reply are UNCERTAIN, not accepted, and not "not sent"; a reported send beside a
+// refused observation is not accepted.
+test fn an_attempt_is_accepted_only_when_reported_sent_and_recovered_with_equal_power() -> Bool {
+  match verdict_of(before_on: true, polls: [no_response(), available()], after: Present { value: power_on() }) {
+    Present { value: v } =>
+      match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => true  _ => false }
+        && match cold_reset_attempt_acceptance(reply: ipmitool_mc_reset_cold_reply_of(success: false, exit_code: 124, stdout: "", stderr: ""), verdict: v) {
+             ColdResetAttemptNotAccepted { reason: r } => string_contains(s: r as String, pattern: "UNCERTAIN") && !string_contains(s: r as String, pattern: "not sent")
+             ColdResetAttemptAccepted => false
+           }
+        && match cold_reset_attempt_acceptance(reply: McResetColdUnrecognised { stdout: "" }, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+    Absent => false
+  }
+    && match verdict_of(before_on: true, polls: [available(), available(), available()], after: Present { value: power_on() }) {
+         Present { value: v } => match cold_reset_attempt_acceptance(reply: McResetColdReportedSent, verdict: v) { ColdResetAttemptAccepted => false  _ => true }
+         Absent => false
+       }
+}
+
+// ── PARSER COMPATIBILITY WITH THIS UNIT'S REAL BYTES ────────────────────────────────────────────
+// The real mc info bytes parse, through the route's own poll parser, to an available controller at the firmware
+// the capture names, and the real chassis status bytes to power on. If either parser drifted from what this
+// controller prints, the watch could never see it available and the verdict could never read its power. This
+// is parser compatibility only: it does not execute the route's live reads.
+test fn this_units_real_mc_info_and_chassis_status_bytes_parse_to_available_and_power_on() -> Bool {
+  match available() {
+    ControllerAvailable { report: r } => (ipmitool_mc_info_firmware_text(report: r) as String) == "0.45"
+    _ => false
+  }
+    && match power_on() { ChassisPowerRead { power_on: p } => p  _ => false }
+}
+
+// THE VERDICT CONSUMES ITS AFTER-READING: with the baseline and the watch held fixed, changing only the reading
+// passed as the after-reading flips the outcome. This protects consumption inside the verdict; that the route
+// passes a FRESH reading is the matrix's power-lost-inside-the-window route claim.
+test fn only_the_after_reading_moves_the_verdict() -> Bool {
+  let polls = [available(), no_response(), available()]
+  recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_on() }))
+    && !recovered_power_equal(v: verdict_of(before_on: true, polls: polls, after: Present { value: power_off() }))
+}
