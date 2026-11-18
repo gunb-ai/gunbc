@@ -42,6 +42,8 @@ import extdeps.github.actions { Job, Step, RunStep, UsesStep, max_job_timeout_mi
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { second_count }
+import gunbc.design_ruling { design_rulings }
+import std.decl_ref { declaration_ref_display_key }
 
 fn step_id_of(s: Step) -> NonEmptyStr {
   match s {
@@ -119,8 +121,8 @@ test fn the_arrival_converge_step_ships_the_fold() -> Bool {
 // down (coming down needs no sign-off). Nothing here inspects a string inside a ruling.
 test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
   let rows = filter(
-    xs: design_rulings(),
-    keep: r => declaration_ref_display_key(ref: r.reference) == "gunbc.design_ruling::srv15_arrival_converge_step_raised_to_21_minutes"
+    design_rulings(),
+    r => declaration_ref_display_key(ref: r.reference) == "gunbc.design_ruling::srv15_arrival_converge_step_raised_to_21_minutes"
   )
   let step = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
