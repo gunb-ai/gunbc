@@ -100,8 +100,8 @@ fn bound_day_to_date(read_date: Iso8601CivilDate, day: Int) -> Iso8601CivilDate 
 // working days onto exactly that many working calendar days. This is computed from the dates themselves, NOT
 // from bound_day_to_date, so a witness can check the binding without trusting it.
 fn working_days_between(start: Iso8601CivilDate, finish: Iso8601CivilDate) -> Int {
-  let span = iso8601_days_from_civil(y: finish.year, m: finish.month, d: finish.day)
-    - iso8601_days_from_civil(y: start.year, m: start.month, d: start.day)
+  let span = iso8601_days_from_civil(y: finish.year, m: finish.month, d: finish.day) -
+    iso8601_days_from_civil(y: start.year, m: start.month, d: start.day)
   let start_ordinal = weekday_of(date: start)
   let total = start_ordinal + span
   let whole_weeks = total / working_days_in_week()
