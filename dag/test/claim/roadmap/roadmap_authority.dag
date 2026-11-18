@@ -182,6 +182,11 @@ import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph 
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
+import std.filesystem { path_parent_directory }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -369,6 +374,10 @@ fn scenario_chain_after(node: RoadmapNodeId, kinds: List<RoadmapEventKind>, afte
 // THE SCENARIO'S BYTES, out through the log's own emitter and back through the reader's own decoder —
 // the same decoder the directory walk feeds on the live route. A scenario that spells an event the wire
 // cannot carry is caught here, before any projection gets to call it a fact.
+fn scenario_retirement_kind() -> RoadmapEventKind {
+  Retired { reason: "the scenario closed the node's story" as NonEmptyStr }
+}
+
 fn scenario_envelopes(label: RoadmapNodeId, events: List<RoadmapEvent>) -> List<RoadmapEventEnvelope>? {
   match roadmap_events_decode_reads(
     node: label,
@@ -728,12 +737,33 @@ fn roadmap_authority_fixture_write_allowed(path: String) -> Bool {
     && path.starts_with(prefix: roadmap_authority_fixture_write_prefix)
 }
 
+// A PARENT DIRECTORY IS A PRECONDITION, NOT A COURTESY. Filesystem.Write is a pure write and never
+// plants a tree -- the repo witnesses that property as load-bearing at
+// test.claim.generated_artifact_write_absent_dir_wet_witness
+// the_same_write_without_the_directory_step_refuses_by_real_execution. So the generator does what the one
+// sanctioned generated-artifact write route does (gunbc.instruments.generated_artifact_gate
+// write_generated_artifact): mkdir -p over the local command transport, then the write. Both effects are
+// refused hermetically, which is another way of saying this function has exactly one mode: wet.
+fn roadmap_authority_fixture_make_parent(path: String) -> Bool {
+  match run_shell_command_capture(
+    command: mkdir_parents_command(path: path_parent_directory(path: path)), transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    _ => true
+  }
+}
+
+fn roadmap_authority_fixture_write(f: RoadmapAuthorityFixtureFile) -> Bool {
+  let path = roadmap_authority_fixture_path(f: f)
+  if roadmap_authority_fixture_write_allowed(path: path) && roadmap_authority_fixture_make_parent(path: path) {
+    Filesystem.Write(path: path, content: roadmap_authority_fixture_bytes(f: f)).success
+  } else {
+    false
+  }
+}
+
 fn roadmap_authority_fixture_emit() -> Bool {
-  all(roadmap_authority_fixture_files(), f => {
-    let path = roadmap_authority_fixture_path(f: f)
-    roadmap_authority_fixture_write_allowed(path: path)
-      && Filesystem.Write(path: path, content: roadmap_authority_fixture_bytes(f: f)).success
-  })
+  all(roadmap_authority_fixture_files(), f => roadmap_authority_fixture_write(f: f))
 }
 
 // THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
@@ -829,15 +859,31 @@ test fn witness_live_receipt_on_retired_node_refuses_with_typed_cause() -> Bool 
 test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
   // THE SCENARIO: that node is accepted, then revoked under the disposition that leaves it superseded.
   // A revoked-but-superseded acceptance must NOT put the row back on the frontier -- it stays withheld.
+  // `gone` is accepted and then revoked under remains-superseded; `back` is accepted and then revoked
+  // under reopens-active-frontier. Only the disposition differs, so the pair is what makes this
+  // discriminate: conflate the two dispositions and one half goes red. A remains-superseded revocation is
+  // an admissible log fact only once the node is ALSO retired -- remains_superseded_revocations_join
+  // refuses one on an unretired node -- so `gone` carries its retirement too. That is why `back` shares the
+  // log: a retirement on its own would not put anything back on the frontier, so the reopened twin is what
+  // shows the claim is about the disposition and not about the retirement.
   let gone = tnid(s: "entry-graph-union-construction")
-  match scenario_envelopes(label: gone, events: scenario_chain(node: gone, kinds: [
-    scenario_acceptance_kind(id: gone),
-    scenario_revocation_kind(id: gone, disposition: AcceptanceNodeRemainsSuperseded {}),
-  ])) {
+  let back = tnid(s: "namespace-occurrence-transport")
+  match scenario_envelopes(label: gone, events: concat(
+    scenario_chain(node: gone, kinds: [
+      scenario_acceptance_kind(id: gone),
+      scenario_revocation_kind(id: gone, disposition: AcceptanceNodeRemainsSuperseded {}),
+      scenario_retirement_kind(),
+    ]),
+    scenario_chain(node: back, kinds: [
+      scenario_acceptance_kind(id: back),
+      scenario_revocation_kind(id: back, disposition: AcceptanceNodeReopensActiveFrontier {}),
+    ]),
+  )) {
     Absent => false
     Present { value: envs } =>
       !scenario_active_id_exists(envs: envs, id: gone)
-        && scenario_withheld(envs: envs) |> any(w => w == gone)
+        && (scenario_withheld(envs: envs) |> any(w => w == gone))
+        && scenario_active_id_exists(envs: envs, id: back)
   }
 }
 
@@ -1074,31 +1120,19 @@ test fn witness_live_receipt_on_a_log_retired_node_refuses_frontier_sets() -> Bo
     Present { value: envs } => match scenario_history(envs: envs) {
       RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
       RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
-        match first(
-          prior |> filter(e =>
-            match e {
-              AcceptanceRecorded { receipt: r } => r.node == retired_row
-              AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-                false
-            }
-          ),
+        // THE HISTORY GOES THROUGH UNCHANGED. It holds the one acceptance the scenario recorded, and that
+        // is already enough to contradict the retirement. Re-recording it -- which an earlier draft of this
+        // witness did -- is a DIFFERENT defect (duplicate_receipts_refuse_acceptance witnesses that), and
+        // the replay would then refuse for the wrong reason, so the detail this claim pins would never
+        // arrive. The retired set is the carrier's own loaded variant, which is what makes this the
+        // log-retired case rather than the caller-retired one.
+        match frontier_sets_projection(
+          history: RoadmapAcceptanceEventHistoryLoaded { events: prior },
+          retired: RetiredNodeIdsLoaded { ids: [retired_row] },
         ) {
-          Absent => false
-          Present { value: recorded } =>
-            match recorded {
-              AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-                false
-              AcceptanceRecorded { receipt } =>
-                match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
-                  AcceptanceRecorded { receipt: receipt },
-                ]) }, retired: RetiredNodeIdsLoaded {
-                  ids: [retired_row],
-                }) {
-                  FrontierSetsProjectionRefused { detail } =>
-                    detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
-                  FrontierSetsProjected { accepted: _, withheld: _ } => false
-                }
-            }
+          FrontierSetsProjectionRefused { detail: detail } =>
+            detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
+          FrontierSetsProjected { accepted: _, withheld: _ } => false
         }
     }
   }
@@ -1245,6 +1279,10 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
     "pderive-typesafe-nullary-reflection",
     "2-scm-compatibility-shape",
     "2-claim-indexed-evidence",
+    // The only declared parent of declaration-identity-switchover. Without it that node keeps an active
+    // incoming edge and is not top-level: top level is not a property of a node, it is a property of
+    // everything above it, and the witness correctly refused until this row was in the accepted set.
+    "namespace-binding-kernel",
   ]
   match scenario_envelopes(
     label: "accepted-parent-discharges-active-dependency",
