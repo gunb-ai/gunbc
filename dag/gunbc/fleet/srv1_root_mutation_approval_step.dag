@@ -76,12 +76,10 @@ fn gunbc_ci_srv1_root_mutation_approval_invoke() -> Outcome<String> {  bind_outc
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
     claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  join([
+      outcome_accepted(value:join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
     zesty_c, "\n",
-  ], "")
-)
+  ], ""))
       }
     )
   )

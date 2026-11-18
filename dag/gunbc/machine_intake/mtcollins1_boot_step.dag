@@ -123,14 +123,12 @@ fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> Outcome<String> {
 fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {  bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  join([
+      outcome_accepted(value:join([
     gunbc_ci_bash_rendered(stmts: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
     ], set_e: true), "\n",
     zesty_c, "\n",
-  ], "")
-)
+  ], ""))
       }
     )
   )
@@ -378,15 +376,13 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {  bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
     claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  join([
+      outcome_accepted(value:join([
     "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
     gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
     zesty_c, "\n",
-  ], "")
-)
+  ], ""))
       }
     )
   )
@@ -435,15 +431,13 @@ fn receipted_run_tail_statements(run: ReceiptedRun) -> List<Node> {
 fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {  bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  join([
+      outcome_accepted(value:join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false), "\n",
     "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
     zesty_c, " || ", run.rc_name, "=$?\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
-  ], "")
-)
+  ], ""))
       }
     )
   )

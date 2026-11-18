@@ -199,12 +199,10 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> Outcome<String> {  bind_outc
       receipt_rel: none
     ),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  concat(
+      outcome_accepted(value:concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_microvm_runner_group_ensure_shell_emit_dissolution_trigger), "\n")),
     zesty_c
-  )
-)
+  ))
       }
     )
   )

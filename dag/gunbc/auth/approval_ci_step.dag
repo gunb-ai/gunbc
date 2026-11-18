@@ -200,12 +200,10 @@ fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> O
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
     claim_run: false),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  join([
+      outcome_accepted(value:join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
     zesty_c, "\n",
-  ], "")
-)
+  ], ""))
       }
     )
   )
@@ -220,12 +218,10 @@ fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcom
       receipt_rel: none
     ),
     f: fn(zesty_c) {
-      outcome_accepted(value:
-  concat(
+      outcome_accepted(value:concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
     zesty_c
-  )
-)
+  ))
       }
     )
   )
