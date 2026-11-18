@@ -216,12 +216,15 @@ test fn witness_arm_key_reflection_is_non_vacuous_over_the_fleet_converge_mode_s
 // A witness is only as good as the primitives it is built from, and this one nearly was not: written
 // first on the two-argument count(xs, pred), it reported dozens of defects over a roster that was
 // correct, and the rows that looked like PASS were passing because the predicate was never consulted.
-// The two-argument count(xs, P) ignores P today -- measured 2026-11-18: count([1,2,3], x => false) = 3
-// and count([1,2,3], x => x == 1) = 3, while count(filter(...)) = 1, any(..., x => x == 9) = false and
-// all(..., x => x == 1) = false. So every 'how many satisfy P' in this module is count(filter(xs, P)):
-// std's own composition, with no module-local re-implementation of anything in it. When the interpreter
-// gives the predicate form its documented meaning, simplifying these rows back is the change to make;
-// until then a row written on it does not fail, it only appears to. What is left to doubt is the equality, and it is
+// That was the state when this wall was authored (measured 2026-11-18 at base 93ab1bb19a35:
+// count([1,2,3], x => false) = 3 and count([1,2,3], x => x == 1) = 3, where count(filter(...)) = 1,
+// any(..., x => x == 9) = false and all(..., x => x == 1) = false). The class is
+// @ref(gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored::builtin_predicate_actual_accepted_and_ignored),
+// and #16693 refuses the surplus positional actual at type check on main, so that form is no longer
+// silently wrong -- it does not compile. What was learned stands regardless: every 'how many satisfy P'
+// in this module is count(filter(xs, P)), std's own composition with no module-local re-implementation
+// of anything in it, because a builtin that can accept a predicate and ignore it is a defect shape and
+// the composition below is measured rather than trusted. What is left to doubt is the equality, and it is
 // refused here in both degenerate directions -- an equality true of everything would make the wall green
 // over a roster holding nothing, and one false of everything would make it a machine for demanding the
 // impossible. The pairwise-distinctness conjunct is the one that fails loudly if the comparison ever
@@ -249,12 +252,14 @@ test fn witness_symbol_comparison_used_by_this_wall_discriminates() -> Bool {
 // length, and a length of a correct roster is exactly the number a roster with one mode dropped and
 // another invented also produces. So the composition is refused here in both degenerate directions, over
 // a literal domain with no reflection in the way and again at the real roster's scale. The two-argument
-// count(xs, P) is deliberately NOT asserted about from here. It is measured, filed with its rung,
-// standing and trigger, and repaired in the lane that owns it -- fierce-ibex-326, 2026-11-18, whose row is
-// gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored once it is on main -- and a
-// second row for one failure class, in a program whose subject is duplicated authority, would be the
-// defect rather than the fix. This wall never calls that form, so no row here depends on whether it is
-// fixed.
+// count(xs, P) is deliberately NOT asserted about from here: it has its row, with its rung, standing and
+// trigger, and its repair was landed by the lane that owns it rather than worked around here --
+// @ref(gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored::builtin_predicate_actual_accepted_and_ignored),
+// repaired by #16693, with std's count_where the single authority for 'how many satisfy P'. Filing a
+// second row for one failure class, in a program whose subject is duplicated authority, would have been
+// the defect rather than the fix. This wall calls count only in its one-argument form, so no row here
+// depends on that refusal, and none depends on count_where either -- which is why the composition below
+// is discriminated rather than assumed.
 test fn witness_the_count_idiom_this_wall_relies_on_discriminates() -> Bool {
   count(filter([1, 2, 3], x => false)) == 0
     && count(filter([1, 2, 3], x => true)) == 3
