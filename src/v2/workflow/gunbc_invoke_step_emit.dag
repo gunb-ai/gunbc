@@ -161,6 +161,13 @@ fn gunbc_invoke_word_wall_diagnostic(word: String) -> Diagnostic {
   }
 }
 
+// INTERIM (this PR must retype before merge, gunbc.design_argument::fail_closed): the orch refusal
+// token shares the scanned prefix __GUNBC_INVOKE_EMIT_REFUSED__, so its consumer
+// gunbc.ci.ci_bash_step.gunbc_ci_bash_rendered still answers Rejected with this sentinel. The typed
+// retype (ci_bash_rendered -> Outcome<String>, Rejected carries the emit diagnostics; callers bind)
+// is tracked in the integration_concern orch row + the session progress file.
+data gunbc_invoke_step_orch_refused_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.compiler.emit_orchestration rejected the gunbc run step pipeline; this marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)\n"
+
 // THE ORCHESTRATION REFUSAL carries no text of its own: the orchestration emitter
 // (v2.compiler.emit_orchestration orch_emit_pipeline) ALREADY answers with a located
 // v2.std.diagnostic Outcome, so the step emitter FORWARDS those diagnostics rather than collapsing them
