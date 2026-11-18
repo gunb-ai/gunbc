@@ -184,6 +184,8 @@ import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotRead
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
 import gunbc.roadmap.roadmap_authority_fixture_writer {
+  roadmap_authority_fixture_root,
+  roadmap_authority_fixture_worktree_root,
   FixtureWriteTarget,
   RoadmapAuthorityFixtureWrite,
   RoadmapAuthorityFixtureEmit,
@@ -656,8 +658,10 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
 //
 // Regenerating it is one wet run; the command, the guard, and why the write is not on the sanctioned
 // generated-artifact route all live in that writer module's header.
-data roadmap_authority_fixture_root: String = "fixtures/roadmap_authority/events"
-data roadmap_authority_fixture_worktree: String = "fixtures/roadmap_authority"
+// THE PATH COMES FROM THE MODULE THAT WRITES IT, in one spelling. A root restated here is a fork: this module
+// reads the directory and that module creates it, and if the two spellings ever drift the witness is reading a
+// different directory than the one generated -- a missing-fixture FAIL, which is the state this PR exists to
+// make impossible. gunbc.design_argument::single_authority.
 
 type RoadmapAuthorityFixtureFile {
   node: RoadmapNodeId
@@ -721,25 +725,21 @@ fn roadmap_authority_fixture_bytes(f: RoadmapAuthorityFixtureFile) -> String {
 }
 
 fn roadmap_authority_fixture_path(f: RoadmapAuthorityFixtureFile) -> String {
-  join([roadmap_authority_fixture_root, "/", f.node as String, "/", f.name], "")
+  join([roadmap_authority_fixture_root(), "/", f.node as String, "/", f.name], "")
 }
 
 // THE WRITE, wet lane only. It exists so the committed fixture is produced by the encoder rather than
 // transcribed by hand; the witness re-encodes every file, so an edit here without a regeneration reddens.
 //
-// IT WRITES ONE PLACE, AND THE TYPE SAYS SO. The only directory this driver will ever write is the
-// committed fixture under the checkout, and the guard refuses anything else: no absolute path, no `..`
-// escaping the checkout, nothing outside the fixture root. That is not decoration -- the live route reads
-// its log from a working-tree `events/` directory, and a generator that could be aimed anywhere is a
-// generator that will someday be aimed at the lab's log. Generation therefore runs in a throwaway clone
+// THE GUARD LIVES OVER THERE, ONCE. The only directory this driver may ever write is the committed fixture,
+// and the guard that refuses anything else -- no absolute path, no `..` escaping the checkout, nothing outside
+// the fixture root -- is gunbc.roadmap.roadmap_authority_fixture_writer::roadmap_authority_fixture_guard. It
+// used to be duplicated here as a prefix constant plus an allowed-predicate; nothing in this module called the
+// copy, so it was a second authority over one decision with no consumer, and the red control below interrogates
+// the writer's guard, which is the one that gates real writes. That is not decoration either: the live route
+// reads its log from a working-tree `events/` directory, and a generator that could be aimed anywhere is a
+// generator that will someday be aimed at the lab's log -- so generation runs in a throwaway clone
 // (`mktemp -d`), never the lab checkout, and never under any real instance root.
-data roadmap_authority_fixture_write_prefix: String = "fixtures/roadmap_authority/events/"
-
-fn roadmap_authority_fixture_write_allowed(path: String) -> Bool {
-  !path.starts_with(prefix: "/")
-    && !path.contains(fragment: "..")
-    && path.starts_with(prefix: roadmap_authority_fixture_write_prefix)
-}
 
 // THE FIXTURE IS WRITTEN ELSEWHERE, ON PURPOSE. This module commits a log under the checkout so the real
 // Filesystem.List walk has something real to walk, and it READS that log. Authoring it from here would put
@@ -788,7 +788,7 @@ test fn witness_fixture_generator_refuses_an_unwritable_target_by_name() -> Bool
     },
   )
     && match roadmap_authority_fixture_guard(
-      path: concat(concat(roadmap_authority_fixture_root, "/"), "some-node/01-acceptance.json"),
+      path: concat(concat(roadmap_authority_fixture_root(), "/"), "some-node/01-acceptance.json"),
     ) {
       Absent => true
       Present { value: _ } => false
@@ -797,7 +797,7 @@ test fn witness_fixture_generator_refuses_an_unwritable_target_by_name() -> Bool
 
 // THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
 fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
-  match roadmap_events_read_dir(dir: roadmap_authority_fixture_root) {
+  match roadmap_events_read_dir(dir: roadmap_authority_fixture_root()) {
     AllEventsRead { envelopes: envs } => Present { value: envs }
     AllEventsReadRefused { step: _, reason: _ } => Absent
   }
@@ -807,8 +807,8 @@ fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
 // calls the same one reader. Aimed at the fixture it must answer identically.
 fn roadmap_authority_fixture_live_route_envelopes() -> List<RoadmapEventEnvelope>? {
   match roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout {
-    repo_root: roadmap_authority_fixture_worktree,
-    worktree: roadmap_authority_fixture_worktree,
+    repo_root: roadmap_authority_fixture_worktree_root(),
+    worktree: roadmap_authority_fixture_worktree_root(),
     git_program: "git",
     directory_program: "install",
     remote: "origin",

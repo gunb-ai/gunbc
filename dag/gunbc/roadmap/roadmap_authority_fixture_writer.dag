@@ -67,14 +67,24 @@ import std.text { join, string_length }
 import std.integer { int_to_decimal_string }
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessRefused }
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessOutputPresent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
 
 // ONE PATH IS WRITABLE HERE, AND THE TYPE SAYS WHICH. Not decoration: the live route reads its acceptance log
 // from a working-tree `events/` directory, so a generator that could be aimed at any path is a generator that
 // will someday be aimed at the lab's log, or at /opt/gunbc/roadmap-events, or at a real instance root. No
 // absolute path, no traversal, nothing outside the committed fixture root.
-fn roadmap_authority_fixture_write_prefix() -> String { "fixtures/roadmap_authority/events/" }
+// ONE SPELLING OF THE DIRECTORY, IN THE MODULE THAT WRITES IT. The witnesses that READ the committed log
+// import these two; they do not re-spell the path. A root written twice is a fork: the reader and the writer
+// can drift apart, and the drift shows up as a witness reading a different directory than the one generated --
+// which is a missing-fixture FAIL, the exact state this PR exists to make impossible.
+data roadmap_authority_fixture_worktree_dir: String = "fixtures/roadmap_authority"
+
+fn roadmap_authority_fixture_worktree_root() -> String { roadmap_authority_fixture_worktree_dir }
+
+fn roadmap_authority_fixture_root() -> String { concat(roadmap_authority_fixture_worktree_dir, "/events") }
+
+fn roadmap_authority_fixture_write_prefix() -> String { concat(roadmap_authority_fixture_root(), "/") }
 
 fn roadmap_authority_fixture_write_allowed(path: String) -> Bool {
   !path.starts_with(prefix: "/")
@@ -143,7 +153,20 @@ fn roadmap_authority_fixture_make_parent(path: String) -> RoadmapAuthorityFixtur
         ),
       }
     }
-    _ => Absent
+    // NO OUTPUT IS NOT SUCCESS. gunbc.extdeps.shell.exec ProcessOutcome has three inhabitants, and a
+    // catch-all that maps the third to "the directory is there now" invents a precondition out of silence --
+    // which is precisely the failure this module was built to stop, since a write into a missing parent is
+    // the silent false that started this. Only a reported output says the step ran.
+    ProcessOutputAbsent => Present {
+      value: FixtureWriteRefused {
+        path: path,
+        step: "mkdir",
+        reason: concat(
+          "mkdir -p for ", concat(path_parent_directory(path: path), " reported no outcome; refusing to assume the parent exists"),
+        ),
+      }
+    }
+    ProcessOutputPresent { text: _ } => Absent
   }
 }
 
@@ -166,9 +189,13 @@ fn roadmap_authority_fixture_write_target(t: FixtureWriteTarget) -> RoadmapAutho
   }
 }
 
-// THE EMIT REFUSES ON THE FIRST REFUSAL. Folding Bools over the files is what let five failures read as one
-// quiet false; here the first typed refusal stops the run, because output produced after a failure to write
-// at all is output nobody can explain.
+// THE EMIT REFUSES WHOLE, AND NAMES THE FIRST FAILURE. What this does NOT claim is worth as much as what it
+// claims: evaluation here is not lazy, so `map` over the targets ATTEMPTS EVERY TARGET -- there is no
+// short-circuit to be had, and a comment saying the run stops at the first refusal would be a lie about
+// evaluation order. What is guaranteed is the thing that matters: a run in which any target failed is never
+// reported as an emit that completed. The old shape folded Bools, which is how five separate failures read
+// as one quiet false with no path on it; now the refusal carries the path, the step and the reason, and it
+// is the FIRST refusal in target order. A partial log cannot be mistaken for a fixture.
 fn roadmap_authority_fixture_write_all(targets: List<FixtureWriteTarget>) -> RoadmapAuthorityFixtureEmit {
   match first(
     map(targets, t => roadmap_authority_fixture_write_target(t: t))
@@ -177,7 +204,15 @@ fn roadmap_authority_fixture_write_all(targets: List<FixtureWriteTarget>) -> Roa
     Present { value: r } => match r {
       FixtureWriteRefused { path: path, step: step, reason: reason } =>
         FixtureEmitRefused { path: path, step: step, reason: reason }
-      FixtureFileWritten { path: _ } => FixtureEmitComplete { written: [] }
+      // UNREACHABLE, AND REFUSING ANYWAY. The filter admits only refusals, so no written record can reach
+      // this arm; the shape it must have if one ever does is a refusal that names itself, not a success with
+      // an empty list standing in for files that were never counted. Reporting FixtureEmitComplete here would
+      // be the emit inventing a result -- the same defect this module exists to remove from the fold.
+      FixtureFileWritten { path: p } => FixtureEmitRefused {
+        path: p,
+        step: "emit",
+        reason: "a completed write reached the refusal filter; refusing to report an emit built from it",
+      }
     }
     Absent => FixtureEmitComplete { written: map(targets, t => t.path) }
   }
