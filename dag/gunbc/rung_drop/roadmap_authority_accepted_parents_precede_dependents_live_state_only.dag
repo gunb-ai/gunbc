@@ -1,0 +1,60 @@
+module gunbc.rung_drop.roadmap_authority_accepted_parents_precede_dependents_live_state_only
+
+import std.types { NonEmptyStr, List, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for the ONE witness in test.claim.roadmap.roadmap_authority that is not a code
+// property: witness_accepted_parents_precede_dependents. The other fifty-one execute hermetically; this
+// one is excluded from that set and kept, deliberately, on the wet/live lane.
+//
+// WHAT WAS THE RUNG. The witness ran in the authority's hermetic claim batch and produced a terminal
+// verdict, so "an accepted node's declared parents are accepted too" was mechanically prevented: nothing
+// had to decide to look at it. It has since stopped producing a verdict at all in that batch.
+//
+// WHY IT COULD NOT SIMPLY BE MADE HERMETIC LIKE THE OTHERS. What it quantifies over is WHICH acceptances
+// the log actually holds -- not what an acceptance does, which is what every scenario witness in that
+// file now states for itself, but what has in fact been accepted. That fact's only home is the synced
+// event log in the working tree, reached through Filesystem.List. The hermetic floor refuses that effect,
+// and refuses it for a reason this PR honours: the one mock that would make the witness green again is a
+// Filesystem.List stub, and a stubbed directory listing does not observe the log, it FABRICATES it -- the
+// ledger's whole authority rests on nobody being able to invent an acceptance history
+// (gunbc.design_ruling::fail_closed). A witness kept alive by a stub of the very corpus it reports on is
+// a guarantee rung painted on.
+//
+// WHAT IT IS NOW. Executed on the wet/live lane (claim_batch --wet over the same entry), where the real
+// walk runs and the verdict is terminal; excluded from the hermetic set by this row so its absence from
+// that run is a declared state, not a silent gap. The mitigation is procedural: an authority change that
+// could regress it is covered by a wet run that names it, carried on the pull request.
+//
+// THE POPULATION IS THE CLAIM, BY ID. Exactly one witness, named where it lives. Every other witness in
+// test.claim/roadmap/roadmap_authority.dag carries its own events through the log's own encoder, decoder
+// and fold, and is NOT a member here; adding a second member to this list is the act of letting another
+// witness read live acceptance state, and it is reviewed as one.
+//
+// THE HARM IS OBSERVED, NOT HYPOTHETICAL. The witness stood UNOBSERVED -- no PASS, no FAIL, nothing -- for
+// the whole of the batch that this change closes, which is precisely the silent gap a declared rung drop
+// exists to make loud.
+
+data roadmap_authority_accepted_parents_precede_dependents_live_state_only_population: FreeSemigroup<String> =
+  FreeSemigroup {
+    head: "test/claim/roadmap/roadmap_authority.dag::witness_accepted_parents_precede_dependents",
+    tail: [],
+  }
+
+data roadmap_authority_accepted_parents_precede_dependents_live_state_only: RungDrop = RungDrop {
+  identity: "roadmap_authority_accepted_parents_precede_dependents_live_state_only" as NonEmptyStr,
+
+  subject: "witness_accepted_parents_precede_dependents in test.claim.roadmap.roadmap_authority: it quantifies over the acceptances the live roadmap event log holds, so it runs on the wet/live lane and is excluded from the hermetic set that file otherwise executes in full",
+
+  declared: "2026-11-18",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the roadmap acceptance event log's only home: the synced working-tree event directory reached through Filesystem.List, an effect the hermetic floor refuses and that may not be mocked -- a published Filesystem.List mock would fabricate the log the authority is read from" },
+    population: Enumerated { members: roadmap_authority_accepted_parents_precede_dependents_live_state_only_population },
+    restoration_trigger: "THE CAPABILITY: a live-probe home for roadmap acceptance facts -- a probe, rostered like the fabric control-plane live probes, that yields the acceptance event log as typed, commit-deterministic input the hermetic floor will admit (the log's own identities and digests, not a transcription), so the witness can ask WHICH rows are accepted against real history instead of a stub of it. WHAT IT MUST BE SUFFICIENT FOR: running witness_accepted_parents_precede_dependents in the hermetic batch to a terminal PASS or FAIL with no --wet, no Filesystem.List route gap and no published mock for it; sufficient for deleting this row",
+  } }
+}

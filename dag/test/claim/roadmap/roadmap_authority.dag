@@ -756,7 +756,6 @@ fn roadmap_authority_fixture_retired(envs: List<RoadmapEventEnvelope>) -> List<R
 }
 
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
   // THE COMMITTED ROUTE, END TO END: the real Filesystem.List walk over the checked-in fixture, the real
   // decode, the real fold — then the claim this witness is for, that the log's receipts are valid and
   // one-per-node. The fixture deliberately also carries a row the authority does not declare; that row
@@ -831,32 +830,54 @@ test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool 
 }
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
-  let prior = live_acceptance_event_history()
-  match project_live_acceptance_receipts(history: prior) {
-    LiveAcceptanceReceiptsReplayRefused => false
-    LiveAcceptanceReceiptsReplayed { live: live } => {
-      let receipt = first(
-        live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-      )
-      let reopened = concat(prior, [
-        AcceptanceRevoked {
-          exact_prior_receipt: receipt,
-          disposition: AcceptanceNodeReopensActiveFrontier {},
-          reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
-          revoked_by: "operator" as NonEmptyStr,
-          revoked_on: "2026-09-13" as NonEmptyStr,
-        },
-      ])
-      match project_live_acceptance_receipts(history: reopened) {
+  // THE SCENARIO: one accepted row and one row the log says nothing about. An explicit revocation with
+  // the REOPEN disposition must put the accepted row back on the frontier. The absent row is the red
+  // control for the bug this witness used to carry: first(...) over a node with no receipt returned an
+  // Optional, and the fold then reached for a `node` field on it and crashed the claim. The absent row
+  // now answers with a Bool -- the typed refusal to claim anything about a node the log never accepted.
+  let reopened_row = tnid(s: "namespace-occurrence-transport")
+  let absent_row = roadmap_authority_fixture_absent_node()
+  match scenario_envelopes(label: "reopen-revocation-returns-node", events: [
+    scenario_event(node: reopened_row, parent: Absent, kind: scenario_acceptance_kind(id: reopened_row)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
-        LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
-          let accepted = declared_roadmap_nodes()
-            |> filter(n => node_accepted(receipts: reopened_live, rn: n))
-            |> map(n => n.node)
-          let withheld = node_ids_held_off_active_frontier(history: reopened, retired: fixture_retired_node_ids())
-          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
-            |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
-        }
+        LiveAcceptanceReceiptsReplayed { live: live } =>
+          // AN ABSENT NODE IS ANSWERED, NOT CRASHED ON.
+          match first(live |> filter(r => r.node == absent_row)) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match first(live |> filter(r => r.node == reopened_row)) {
+            // No receipt for a row the scenario accepted is the scenario's own bug: refuse, with a type.
+            Absent => false
+            Present { value: receipt } => {
+              let reopened = concat(prior, [
+                AcceptanceRevoked {
+                  exact_prior_receipt: receipt,
+                  disposition: AcceptanceNodeReopensActiveFrontier {},
+                  reason: "the scenario took the acceptance back and put the row back on the plan" as NonEmptyStr,
+                  revoked_by: "operator" as NonEmptyStr,
+                  revoked_on: "2026-09-13" as NonEmptyStr,
+                },
+              ])
+              match project_live_acceptance_receipts(history: reopened) {
+                LiveAcceptanceReceiptsReplayRefused => false
+                LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
+                  let accepted = declared_roadmap_nodes()
+                    |> filter(n => node_accepted(receipts: reopened_live, rn: n))
+                    |> map(n => n.node)
+                  let withheld = node_ids_held_off_active_frontier(
+                    history: reopened, retired: fixture_retired_node_ids())
+                  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+                    |> any(n => n.node == reopened_row)
+                }
+              }
+            }
+          }
       }
     }
   }
@@ -902,14 +923,26 @@ test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool
 }
 
 test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
+  // THE SCENARIO: that row, accepted by the log. THE CODE PROPERTY: remains-superseded is a state an
+  // OPERATOR chose, and only an explicit revocation carries that choice -- a row still standing as a
+  // live ticket line must REFUSE the join, naming the node. The absent-node half is the bug this witness
+  // used to have: first(...) on a row with no receipt gave an Optional and the fold reached through it
+  // for a `node` field. It now answers with a type.
   let victims = declared_node(id: "namespace-occurrence-transport")
-  let prior = live_acceptance_event_history()
+  let ticket_row = tnid(s: "namespace-occurrence-transport")
+  match scenario_envelopes(label: "remains-superseded-on-ticket-line", events: [
+    scenario_event(node: ticket_row, parent: Absent, kind: scenario_acceptance_kind(id: ticket_row)),
+  ]) {
+    Absent => false
+    Present { value: scenario_envs } => {
+  let prior = scenario_event_history(envs: scenario_envs)
   match project_live_acceptance_receipts(history: prior) {
     LiveAcceptanceReceiptsReplayRefused => false
     LiveAcceptanceReceiptsReplayed { live: live } => {
-  let receipt = first(
-    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
+  match first(live |> filter(r => r.node == ticket_row)) {
+    // NO RECEIPT, A TYPED REFUSAL -- never a field lookup on an Optional.
+    Absent => false
+    Present { value: receipt } => {
   count(victims) == 1
     && all(victims, n =>
       match n.line {
@@ -933,10 +966,14 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
       nodes: declared_roadmap_nodes(),
     ) {
       RemainsSupersededRevocationOnUnretiredNode { node } =>
-        node == tnid(s: "namespace-occurrence-transport")
+        node == ticket_row
       RemainsSupersededRevocationsJoined => false
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
       RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+    }
+    }
+    }
+    }
     }
     }
   }
@@ -1013,36 +1050,56 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
 // authority projection emits for that contradiction, located by node
 // ('live-receipt-on-retired-node:<node>', dag/gunbc/roadmap/roadmap_authority.dag:6583-6586).
 test fn witness_live_receipt_on_a_log_retired_node_refuses_frontier_sets() -> Bool {
-  let prior = live_acceptance_event_history()
-  match first(
-    prior |> filter(e =>
-      match e {
-        AcceptanceRecorded { receipt: r } =>
-          r.node == tnid(s: "entry-graph-union-construction")
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-          false
-      }
-    ),
-  ) {
+  // THE SCENARIO: the log ACCEPTS the row and the log RETIRES it. Acceptance completes a node's story and
+  // retirement ends it, so a log holding both is contradicted -- and the frontier sets refuse, naming the
+  // row, rather than averaging the two. The retired set here is the carrier's own variant, not a caller's
+  // assertion, which is what makes this the log-retired case rather than the caller-retired one.
+  let retired_row = tnid(s: "entry-graph-union-construction")
+  match scenario_envelopes(label: retired_row, events: [
+    scenario_event(node: retired_row, parent: Absent, kind: scenario_acceptance_kind(id: retired_row)),
+  ]) {
     Absent => false
-    Present { value: recorded } =>
-      match recorded {
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-          false
-        AcceptanceRecorded { receipt } =>
-          match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
-            AcceptanceRecorded { receipt: receipt },
-          ]) }, retired: RetiredNodeIdsLoaded {
-            ids: [tnid(s: "entry-graph-union-construction")],
-          }) {
-            FrontierSetsProjectionRefused { detail } =>
-              detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
-            FrontierSetsProjected { accepted: _, withheld: _ } => false
-          }
-      }
+    Present { value: envs } => match scenario_history(envs: envs) {
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
+      RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
+        match first(
+          prior |> filter(e =>
+            match e {
+              AcceptanceRecorded { receipt: r } => r.node == retired_row
+              AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+                false
+            }
+          ),
+        ) {
+          Absent => false
+          Present { value: recorded } =>
+            match recorded {
+              AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+                false
+              AcceptanceRecorded { receipt } =>
+                match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
+                  AcceptanceRecorded { receipt: receipt },
+                ]) }, retired: RetiredNodeIdsLoaded {
+                  ids: [retired_row],
+                }) {
+                  FrontierSetsProjectionRefused { detail } =>
+                    detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
+                  FrontierSetsProjected { accepted: _, withheld: _ } => false
+                }
+            }
+        }
+    }
   }
 }
 
+// CLASSIFIED LIVE/STATE, NOT CODE, and kept. What this witness asks is not what an acceptance does but
+// WHICH rows have in fact been accepted -- a fact whose only home is the synced event log, reached through
+// Filesystem.List, which the hermetic floor refuses and which may not be mocked (a stubbed listing would
+// fabricate the log; gunbc.design_ruling::fail_closed). So it stays a wet/live witness, run by
+// claim_batch --wet over this entry, and it is EXCLUDED from the hermetic set by a typed carrier rather
+// than left as a silent gap: gunbc.rung_drop.roadmap_authority_accepted_parents_precede_dependents_live_state_only,
+// whose restoration trigger is the capability that would bring it back -- a live-probe home for roadmap
+// acceptance facts. The other fifty-one witnesses in this file carry their own events and run hermetically.
 test fn witness_accepted_parents_precede_dependents() -> Bool {
   match live_accepted_node_ids() {
     Absent => false
@@ -1175,7 +1232,21 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
-  let act = active_edges()
+  // THE SCENARIO: the four parents whose work has landed. The declared half -- every edge_exists assertion
+  // below -- reads the .dag graph and is untouched; what the scenario carries is the frontier, so the
+  // claim stays what it always was: an accepted parent discharges its dependent's active dependency.
+  let landed = [
+    "namespace-occurrence-transport",
+    "pderive-typesafe-nullary-reflection",
+    "2-scm-compatibility-shape",
+    "2-claim-indexed-evidence",
+  ]
+  match scenario_envelopes(
+    label: "accepted-parent-discharges-active-dependency",
+    events: map(landed, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
+    Absent => false
+    Present { value: scenario_envs } =>
+  let act = scenario_active_edges(envs: scenario_envs)
   !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
     && !(act |> any(e => e.child == "2-scm-p0-landing-spine"))
@@ -1189,6 +1260,7 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
     && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
     && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape")
     && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence")
+    }
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
@@ -1450,9 +1522,11 @@ fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
 // The former markdown claim's text clause, split off because it is independent of which rows are
 // active: no projected row's line and no preamble paragraph carries an operator TODO.
 test fn witness_projection_carries_no_operator_todo() -> Bool {
-  match roadmap_authority_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: nothing accepted, nothing retired. A leftover "Operator TODO" is a rendering defect of
+  // the projection, not a fact about anybody's log, so the projection is driven over a scenario instead.
+  match scenario_envelopes(label: "no-operator-todo", events: []) {
+    Absent => false
+    Present { value: scenario_envs } => match scenario_authority(envs: scenario_envs) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
       !any(doc_all_nodes(doc: d), n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
@@ -1460,6 +1534,7 @@ test fn witness_projection_carries_no_operator_todo() -> Bool {
           ParagraphBlock { inlines } => any(inlines, i => inline_text_contains(i: i, pattern: "Operator TODO"))
           _ => false
         })
+    }
   }
 }
 
@@ -1535,17 +1610,48 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
 data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
 
 test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
-  roadmap_ghost_node_red_probe_count() == 1
+  // THE SCENARIO: nothing accepted. The probe's base document is the projection over that scenario and
+  // the sanctioned closing-contract pairs are the scenario's own -- so the count is the wall it claims to
+  // be (exactly the one synthetic ghost) with no directory walk behind it. The live nullary above stays
+  // the live route; both go through one law in dag/gunbc/roadmap/roadmap_spawner.dag.
+  match scenario_envelopes(label: "ghost-probe", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
+      RoadmapAuthorityProjectionRefused { detail: _ } => false
+      RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
+        roadmap_ghost_node_red_probe_count_with(pairs: scenario_pairs(envs: envs), base: d) == 1
+    }
+  }
 }
 
 test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
-  roadmap_altered_copy_red_probe_count() == 1
+  // THE SCENARIO, as above: the copied row is a declared row, so an altered copy of it is a ghost by the
+  // same law -- and the count is still exactly one, not zero-by-absence.
+  match scenario_envelopes(label: "altered-copy-probe", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
+      RoadmapAuthorityProjectionRefused { detail: _ } => false
+      RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
+        roadmap_altered_copy_red_probe_count_with(pairs: scenario_pairs(envs: envs), base: d) == 1
+    }
+  }
 }
 
 test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
-  match closing_contract_task_edges_projection() {
+  // THE SCENARIO: nothing accepted, so the closing-contract obligations are the ones the un-accepted
+  // frontier owes. Both halves are read from the SAME scenario, which is the point: the dependency-edge
+  // projection must be a superset of the closing-contract edges for any frontier at all, and a live log
+  // can only ever show one frontier.
+  match scenario_envelopes(label: "projected-edges-closing-contract", events: []) {
+    Absent => false
+    Present { value: envs } =>
+      match closing_contract_task_edges_for_accepted(
+        accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+      ) {
     ClosingContractTaskEdgesProjected { edges: closing_edges } =>
-      match projected_roadmap_dependency_edges_projection() {
+      match projected_roadmap_edges_for_accepted(
+        accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+      ) {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
           fold(closing_edges, init: true, f: fn(acc, edge) {
             acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
@@ -1553,6 +1659,7 @@ test fn witness_projected_dependency_edges_include_closing_contract_projection()
         ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
       }
     ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
+    }
   }
 }
 
@@ -1563,11 +1670,17 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match frontier_sets_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: one accepted row, so the active set is not merely the whole declared graph and the
+  // superset claim has something to bite on. The frontier and the edge projection are driven from the
+  // SAME scenario, so the claim is the containment itself rather than a coincidence of one live log.
+  match scenario_envelopes(label: "projected-edges-active", events: [
+    scenario_event(node: "namespace-occurrence-transport", parent: Absent, kind: scenario_acceptance_kind(id: "namespace-occurrence-transport")),
+  ]) {
+    Absent => false
+    Present { value: envs } =>
+      match scenario_frontier(envs: envs) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-      match projected_roadmap_dependency_edges_projection() {
+      match projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld) {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
           fold(
             active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
@@ -1579,6 +1692,7 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
         ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
       }
     FrontierSetsProjectionRefused { detail: _ } => false
+      }
   }
 }
 
@@ -1589,9 +1703,20 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
 }
 
 fn withheld_sized_subject_verdict() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: nothing accepted -- the frontier the minting rule is read against. The verdict is the
+  // rule's own: withholding a startable sized subject must take its would-be closing-contract task out
+  // with it, so the task was never owed independently of the row.
+  match scenario_envelopes(label: "withheld-sized-subject", events: []) {
     Absent => false
-    Present { value: accepted } =>
+    Present { value: envs } => match scenario_frontier(envs: envs) {
+      FrontierSetsProjectionRefused { detail: _ } => false
+      FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+        withheld_sized_subject_verdict_over(accepted: accepted)
+    }
+  }
+}
+
+fn withheld_sized_subject_verdict_over(accepted: List<RoadmapNodeId>) -> Bool {
       let unfiltered = startable_nodes_missing_closing_contract_for_accepted(
         accepted: accepted,
         withheld: [],
@@ -1608,7 +1733,6 @@ fn withheld_sized_subject_verdict() -> Bool {
             ) |> any(x => x.node == victim.node))
         }
       }
-  }
 }
 
 // THE AUTHORITY-WIDE HALF OF THE PAGE CLAIMS, AS A CENSUS THAT DOES NOT RENDER. The page claims read
@@ -1628,9 +1752,13 @@ fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
 }
 
 test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
-  match roadmap_authority_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: nothing accepted and nothing retired, so EVERY declared row is active and the census is
+  // a census -- the projected document must carry all of them, none may be silently dropped from the page
+  // it belongs on, and every row a subtree claim names must be among them. A non-empty frontier would
+  // make the claim smaller, not stronger: an accepted row is absent from the page by design.
+  match scenario_envelopes(label: "authority-document-census", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted, withheld } => {
       let shown = projected_document_id_set(doc: d)
@@ -1638,6 +1766,7 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
       count(active) > 0
         && all(active, n => projected_document_carries(ids: shown, id: n.node as String))
         && all(fx_subtree_fixture_ids(), id => any(active, n => (n.node as String) == id))
+    }
     }
   }
 }
