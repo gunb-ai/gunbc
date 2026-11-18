@@ -208,21 +208,25 @@ data release_pair_release_bins_artifact_name: NonEmptyStr = "release-bins"
 // THE SINGLE AUTHORITY for where the incoming pack lands: base_root + the owned incoming dir name. The fetch argv,
 // the plan witness, and the fold witness all derive from this ONE row instead of each spelling the directory
 // (review 96073: an unconsumed constant plus a free fetch_argv pack_dir was a second authority for this one fact).
-fn release_pair_incoming_pack_dir(base_root: String) -> String {
-  join([base_root, "/", release_pair_incoming_pack_dir_name], "")
+fn release_pair_incoming_pack_dir(base_root: String, revision: String) -> String {
+  // PER-REVISION (review 96241 finding 1, manager B): the pack for each delivered revision is staged in its own
+  // directory, so a fetch for a NEW head never overwrites the file a PREVIOUS revision's serving symlink still points
+  // into (the placed binary link lives under the per-revision release locus but its target is this member path). A
+  // shared incoming dir would let rev B's download clobber rev A's member mid-delivery and dangle the serving link.
+  join([base_root, "/", release_pair_incoming_pack_dir_name, "/", revision], "")
 }
 
-// The path of the serve member INSIDE the fetched pack, derived from the single incoming-dir authority.
-fn release_pair_incoming_serve_source(base_root: String) -> String {
-  join([release_pair_incoming_pack_dir(base_root: base_root), "/", release_pair_incoming_serve_member_name], "")
+// The path of the serve member INSIDE the fetched pack, derived from the single per-revision incoming-dir authority.
+fn release_pair_incoming_serve_source(base_root: String, revision: String) -> String {
+  join([release_pair_incoming_pack_dir(base_root: base_root, revision: revision), "/", release_pair_incoming_serve_member_name], "")
 }
 
-// STAGE 1 (fetch, DRY): the argv to fetch the head's release-bins pack, built from the one gh-download authority.
-// The executing unit runs this argv FIRST and only then asks what to verify — the fetch is not a precondition of
-// verification, verification is downstream of the fetch observation.
-fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String) -> List<String> {
+// STAGE 1 (fetch, DRY): the argv to fetch the head's release-bins pack into its OWN per-revision directory, built
+// from the one gh-download authority. The executing unit runs this argv FIRST and only then asks what to verify — the
+// fetch is not a precondition of verification, verification is downstream of the fetch observation.
+fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String, revision: String) -> List<String> {
   gh_run_download_argv(
-    run_id: run_id, repo: repo, artifact: release_pair_release_bins_artifact_name as String, dir: release_pair_incoming_pack_dir(base_root: base_root),
+    run_id: run_id, repo: repo, artifact: release_pair_release_bins_artifact_name as String, dir: release_pair_incoming_pack_dir(base_root: base_root, revision: revision),
   )
 }
 

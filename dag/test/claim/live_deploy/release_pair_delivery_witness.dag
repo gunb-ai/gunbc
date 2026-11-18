@@ -51,7 +51,7 @@ data last_good_sha: String = "2222222222222222222222222222222222222222"
 data wrong_sha: String = "9999999999999999999999999999999999999999"
 data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 // the file the fetch OBSERVED producing the pack — the placement source the fold must carry (review 96059)
-data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root) as NonEmptyStr
+data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root, revision: main_sha) as NonEmptyStr
 
 fn main_head() -> CommitSha { main_sha as CommitSha }
 fn last_good_head() -> CommitSha { last_good_sha as CommitSha }

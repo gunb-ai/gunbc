@@ -47,10 +47,10 @@ data main_sha: String = "3333333333333333333333333333333333333333"
 data last_good_sha: String = "2222222222222222222222222222222222222222"
 data wrong_sha: String = "9999999999999999999999999999999999999999"
 data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
-data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root) as NonEmptyStr
+data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root, revision: main_sha) as NonEmptyStr
 data run_id: String = "43968177413"
 data repo_slug: String = "gunb-ai/gunbc"
-data pack_dir: NonEmptyStr = release_pair_incoming_pack_dir(base_root: base_root) as NonEmptyStr
+data pack_dir: NonEmptyStr = release_pair_incoming_pack_dir(base_root: base_root, revision: main_sha) as NonEmptyStr
 data other_pack_dir: NonEmptyStr = "/opt/gunbc/releases/some-other-head"
 data serve_unit_text: String = "gunbc-srv1-lab-codex-feedback-v0.service"
 
@@ -77,7 +77,7 @@ fn join_argv(xs: List<String>) -> String {
 // This witnesses that the fetch stage REUSES gh_run_download_argv (no hand-spelled gh command line): the argv it
 // emits equals the download authority's argv for (run_id, repo, "release-bins", pack_dir), element for element.
 test fn witness_stage1_fetch_argv_reuses_gh_download_authority() -> Bool {
-  let got = release_pair_fetch_argv(base_root: base_root, run_id: run_id, repo: repo_slug)
+  let got = release_pair_fetch_argv(base_root: base_root, run_id: run_id, repo: repo_slug, revision: main_sha)
   let want = gh_run_download_argv(run_id: run_id, repo: repo_slug, artifact: "release-bins", dir: pack_dir as String)
   join_argv(xs: got) == join_argv(xs: want)
 }

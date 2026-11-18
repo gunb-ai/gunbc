@@ -303,8 +303,8 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
         // exists for the head (CI still building), so keep serving and retry green next tick.
         RunLookupNoneForHead => PlanWaits { kept: serving, reason: release_pair_no_run_for_head_reason }
         RunLookupFound { run } =>
-          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root)
-          let member_src = release_pair_incoming_serve_source(base_root: base_root)
+          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root, revision: main_head as String)
+          let member_src = release_pair_incoming_serve_source(base_root: base_root, revision: main_head as String)
           let fetch_outcome = run_shell_command_capture(
             command: gh_run_download_command(
               run_id: run.run_id as String,
