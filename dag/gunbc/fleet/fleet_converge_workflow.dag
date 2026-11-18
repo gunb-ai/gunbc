@@ -6578,7 +6578,7 @@ fn fleet_converge_fleet_identity_auth_condition() -> Outcome<String> {
   )
 }
 
-fn fleet_converge_job() -> Job {
+fn fleet_converge_job() -> Outcome<Job> {
   fleet_converge_job_with_steps(steps: concat(
     concat(
       fleet_converge_consumer_prelude_steps(),
@@ -6783,18 +6783,24 @@ fn fleet_converge_host_cap_job_floor_minutes() -> Outcome<Int> {
 
 fn fleet_converge_job_timeout_minutes() -> Outcome<Int> { fleet_converge_host_cap_job_floor_minutes() }
 
-fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
-  Job {
+fn fleet_converge_job_with_steps(steps: List<Outcome<Step>>) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: steps, policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      bind_outcome(
+        o: fleet_converge_job_timeout_minutes(),
+        f: fn(zesty_timeout) {
+          outcome_accepted(value: Job {
     id: fleet_converge_shared_job_id as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
-    steps: steps,
+    steps: zesty_steps,
     needs: fleet_converge_job_needs(id: fleet_converge_shared_job_id),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_after_grant_wait_if(after_build: true, mode_if: fleet_converge_shared_job_if) },
-    timeout_minutes: Present { value: fleet_converge_job_timeout_minutes() },
+    timeout_minutes: Present { value: zesty_timeout },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -6812,7 +6818,11 @@ fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
         id_token: Present { value: PermWrite },
       }
     }
-  }
+  })
+        }
+      )
+    }
+  )
 }
 
 // THE RLM-2 RECEIPT MODE (RLM-2a deliverable 10): the fourth run of the transaction. Its own job
