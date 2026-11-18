@@ -36,8 +36,10 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
-import gunbc.hostname_allocation { fleet_machine_registry, allocated_canonical_hostname }
+import extdeps.network.endpoint { render_network_host }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_name }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_name_at_ssh_port }
+import gunbc.hostname_allocation { fleet_machine_registry, canonical_hostname_in_roster }
 import gunbc.fleet.fleet_posix_accounts {
   DeployRunnerPrincipal,
   fleet_posix_root_user,
@@ -361,19 +363,22 @@ fn srv14_runner_host_spec() -> RunnerHostSpec? {
 }
 
 // THE HOST'S SSH IDENTITY (reusable by every host's deploy spec -- ken's follow-up builds on this,
-// msg from still-fox-404): the tailnet name, DERIVED through hostname_allocation x fleet_tailnet_domain
-// -- the same construction the enrollment row uses when the host joins, so spec and anchor can never
-// name different machines. This is IDENTITY, not reachability: dialing decisions are made only by
-// anchored_ssh_target / first_contact_ssh_target in fleet_known_hosts_anchor, never by reading a spec.
-// A host absent from the machine registry has no identity and no spec: consumers refuse it closed.
+// msg from still-fox-404). REVIEW 96429 (single_authority + fail_closed): the name is NOT glued here.
+// The registry lookup goes through the ADMISSION (canonical_hostname_in_roster -- a colliding registry
+// serves no identity rather than a winner), and the name is the ONE tailnet composition
+// (fleet_tailnet_name -> tailnet_host_labels) rendered through the same address constructor the
+// enrollment row uses (fleet_name_at_ssh_port), so spec and anchor can never name different machines.
+// This is IDENTITY, not reachability: dialing decisions are made only by anchored_ssh_target /
+// first_contact_ssh_target in fleet_known_hosts_anchor, never by reading a spec. A host the roster
+// refuses or does not know has no identity and no spec: consumers refuse it closed.
 fn runner_host_ssh_identity(host: HostIdentity) -> String? {
-  match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (host as String)).first() {
+  match canonical_hostname_in_roster(allocations: fleet_machine_registry, fleet_slot: host) {
     Absent => Absent
-    Present { value: machine } =>
-      match fleet_tailnet_domain {
+    Present { value: _ } =>
+      match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (host as String)).first() {
         Absent => Absent
-        Present { value: domain } =>
-          Present { value: join([allocated_canonical_hostname(allocation: machine) as String, ".", domain as String], "") as String }
+        Present { value: machine } =>
+          Present { value: render_network_host(host: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: machine)).host) as String }
       }
   }
 }
