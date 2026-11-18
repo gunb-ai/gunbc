@@ -15,13 +15,14 @@ module test.claim.fleet.fleet_converge_arrival_step_budget_witness
 // computing a number -- the operator's sign-off happens outside the diff -- so this PR models the raise and
 // refuses to apply it, and applying it is a later change that carries the ruling row with it.
 //
-// No claim in this file reads a ruling row at all -- not its prose, not its absence (reviews 96500 and
-// 96505: a word like PENDING is not a control bit, and a test that grades a hand-typed sentence is not
-// grading a model). The figures are pinned as integers, from the fold. The permission that would let them
-// be shipped is a separate, typed thing: the row in gunbc.design_ruling joins design_rulings() only in the
-// commit that carries the operator's words, and gunbc.ci.ci_budget_raise budget_admission
-// (BudgetAdmitted / BudgetRaiseSignoffPending / BudgetRaiseUnapproved) is the carrier the emitter will gate
-// on once it is on main.
+// No claim in this file reads a ruling row -- not its prose, not its absence (reviews 96500, 96505: a word
+// like PENDING is not a control bit, and grading a hand-typed sentence is not grading a model). The figures
+// are pinned as integers, from the fold. What authorizes shipping them is a DesignRuling row that does not
+// exist yet and is not named here: gunbc.design_ruling ci_job_budgets_closed_to_growth says the operator's
+// explicit sign-off must be recorded before a CI time budget moves, and no such record exists. Where the
+// unmet need itself is tracked: gunbc.recurring_failure_mode
+// gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation, which owns the fact that a gunbc run step
+// pays corpus-denominated cost before its entry is entered.
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_converge_job,
   fleet_converge_arrival_converge_step_timeout_minutes,
@@ -107,10 +108,9 @@ test fn the_step_fold_is_the_phases_it_declares() -> Bool {
     && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
 }
 
-// THE SHIPPED FIGURE IS THE ALLOWANCE, NOT THE FOLD, until the sign-off exists. The fold is computed and
-// ceiling-checked, but applying it is a budget raise, and the row that would authorize it
-// (srv15_arrival_converge_step_raised_to_21_minutes) records that the operator's words have not been given.
-// This is what keeps the PR from shipping the raise it models.
+// THE SHIPPED FIGURE IS THE ALLOWANCE, NOT THE FOLD. The fold is computed and ceiling-checked, but applying
+// it is a CI time-budget raise, and the operator's sign-off for it has not been given or recorded. This is
+// what keeps the PR from shipping the raise it models.
 test fn the_arrival_converge_step_ships_the_allowance_not_the_fold() -> Bool {
   let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   t.length() == 1

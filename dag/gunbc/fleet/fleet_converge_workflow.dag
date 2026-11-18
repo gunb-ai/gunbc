@@ -8345,14 +8345,15 @@ fn fleet_converge_arrival_converge_job() -> Job {
         working_directory: none,
         if_condition: none,
         continue_on_error: none,
-        // NOT the fold. The fold (fleet_converge_arrival_converge_step_timeout_minutes, 21 minutes)
-        // is what this step needs -- run 44249358201 was killed at 05m00s inside it before the fold
-        // was ever entered -- but a budget raise needs the operator's explicit sign-off
-        // (gunbc.design_ruling::ci_job_budgets_closed_to_growth), and the row that would carry it
-        // (srv15_arrival_converge_step_raised_to_21_minutes) is staged with the words still pending.
-        // Until that row is filled and admitted through gunbc.ci.ci_budget_raise budget_admission,
-        // the emitted figure stays the shared allowance, and the witness
-        // fleet_converge_arrival_step_budget_witness refuses any other reading.
+        // The shared allowance, not the fold. The fold below computes what this step's declared legs
+        // need -- 21 minutes -- and run 44249358201 was killed at 05m00s in this step before its fold
+        // was entered; that shortfall is recorded in the failure mode that owns it
+        // (gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation).
+        // Applying the fold is a CI time-budget raise, and gunbc.design_ruling
+        // ci_job_budgets_closed_to_growth requires the operator's explicit sign-off recorded in a
+        // ruling row before the figure may move. No such row exists, so the emitted figure stays here.
+        // fleet_converge_arrival_step_budget_witness pins both halves: the shipped allowance, and the
+        // fold computed and ceiling-checked but not applied.
         timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
       },
     ],
@@ -8360,10 +8361,10 @@ fn fleet_converge_arrival_converge_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: ArrivalConverge) },
-    // NOT the computed backstop (51 minutes) -- same pending sign-off as the step above. The
-    // computed figure is checked, not applied: fleet_converge_arrival_converge_backstop_holds
-    // refuses generation if it would pass the platform ceiling, so the moment the row is signed and
-    // admitted the call site flips to it with the ceiling already proven.
+    // The flat sum main has always carried, not the computed backstop (51 minutes): the same
+    // sign-off as the step above covers both. The computed figure is checked, never clamped --
+    // fleet_converge_arrival_converge_backstop_holds refuses generation if it would pass the
+    // platform ceiling -- so the figure that awaits the ruling row is already proven admissible.
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")),
