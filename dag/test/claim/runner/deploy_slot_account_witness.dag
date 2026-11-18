@@ -4,6 +4,8 @@ import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { string_contains, list_at_optional }
 import std.optional { Present, Absent }
+import gunbc.runner.runner_local_state { NoMainProcess }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 import extdeps.exec.command { argv_words }
 import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountRead, DeploySlotAccountReadPresent, DeploySlotAccountReadAbsent, DeploySlotAccountReadUnreadable,
@@ -14,7 +16,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerSlotTreeStep, RunnerSlotTreeSettled, RunnerSlotTreeDrainThenRebuild, runner_slot_tree_step, runner_slot_tree_rebuild_commands, classify_runner_slot_tree_owned, runner_slot_tree_owned_find_argv,
   RunnerSlotTreeTarget, runner_slot_tree_targets_of, runner_slot_tree_release_argv, classify_runner_slot_tree_release,
   runner_slot_stage_dir, deploy_slot_runner_stage_fetch_commands,
-  FleetHostFileDesired, RunnerHostFileWithheld,
+  FleetHostFileDesired, RunnerHostFileWithheld, fleet_host_file_scope,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
   RunnerSlotTreePresence, TreePresent, TreeAbsent, TreePresenceUnreadable, classify_runner_slot_tree_presence, runner_slot_tree_presence_argv, runner_slot_tree_presence_entry,
@@ -92,6 +94,7 @@ fn fixture_file(subject: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: subject as NonEmptyStr,
     path: "/etc/fixture" as FilePath,
+    scope: fleet_host_file_scope,
     content: "x",
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
@@ -386,7 +389,7 @@ test fn the_existence_read_answers_from_listing_content_and_refusals_are_never_a
 // typed -- no build under a live unit. A read that did not complete is unreadable, never a guessed
 // absence; a tree that EXISTS is instantiated whatever the unit read says.
 fn reading_with(active: SystemdUnitActiveState) -> SlotReadOutcome {
-  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: Absent, active: active } }
+  SlotRead { reading: SlotActuationReading { unit: "actions-runner@srv3-11.service" as NonEmptyStr, load: UnitLoaded, file: Absent, active: active, result: ServiceResultSuccess, main_pid: NoMainProcess } }
 }
 
 test fn butch_s_exact_state_takes_the_first_install_route_and_an_active_treeless_slot_refuses() -> Bool {

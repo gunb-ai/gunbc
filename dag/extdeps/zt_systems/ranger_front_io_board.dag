@@ -1,0 +1,89 @@
+module extdeps.zt_systems.ranger_front_io_board
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, File }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.zt_systems { zt_systems }
+
+// ZT SYSTEMS' FRONT IO BOARD OF THE RANGER COMPUTE TRAY: board 1395A3492101, rev X03, also marked
+// BD-00325-003. It carries the slot for the tray's management module and the sockets its cables to the
+// baseboard plug into. No ZT Systems document for it has been read; every row is cited to one tray owner's
+// account of November 2026, committed with that owner's permission and without naming them
+// (docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md). Which signal any contact of a socket carries
+// is not known.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md"
+  }
+}
+
+type RangerFrontIoBoard {
+  manufacturer: Vendor<Hardware>
+  board_number: NonEmptyStr
+  revision: NonEmptyStr
+  also_marked: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data ranger_front_io_board: RangerFrontIoBoard = RangerFrontIoBoard {
+  manufacturer: zt_systems,
+  board_number: "1395A3492101",
+  revision: "X03",
+  also_marked: "BD-00325-003",
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.zt_systems.ranger_front_io_board",
+      decl_name: "ranger_front_io_board",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The board's positions the account names: the four cable sockets and the management module's slot.
+type FrontIoPosition
+  = FioJ12
+  | FioJ13
+  | FioJ18
+  | FioJ19
+  | FioJ20
+
+fn front_io_position_text(p: FrontIoPosition) -> String {
+  match p {
+    FioJ12 => "J12"
+    FioJ13 => "J13"
+    FioJ18 => "J18"
+    FioJ19 => "J19"
+    FioJ20 => "J20"
+  }
+}
+
+// What is printed at a position. `seen_on_board` says whether the owner reported the print from the board
+// itself (a photograph) or only from the tray's lid label; the two agreeing is corroboration the tray model
+// records (extdeps.nvidia.ranger_tray).
+type FrontIoPrint {
+  position: FrontIoPosition
+  print: NonEmptyStr
+  seen_on_board: Bool
+}
+
+data ranger_front_io_prints: List<FrontIoPrint> = [
+  FrontIoPrint { position: FioJ12, print: "MCIO1 CONN", seen_on_board: false },
+  FrontIoPrint { position: FioJ13, print: "MCIO2 CONN", seen_on_board: true },
+  FrontIoPrint { position: FioJ18, print: "J18 DC-SCM", seen_on_board: true },
+  FrontIoPrint { position: FioJ19, print: "MGMT2 CONN", seen_on_board: false },
+  FrontIoPrint { position: FioJ20, print: "MGMT1 CONN", seen_on_board: true },
+]
+
+fn front_io_print_at(p: FrontIoPosition) -> String {
+  join(map(filter(ranger_front_io_prints, r => front_io_position_text(p: r.position) == front_io_position_text(p: p)), r => r.print as String), "")
+}

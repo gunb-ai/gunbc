@@ -31,6 +31,9 @@ import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_g
 import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 
 import product.host_identity { HostIdentity }
+// B2: the serve_binary_dir owner is READ from the instance root's owning authority (the service
+// principal that owns /opt/gunbc), never restated as a literal here.
+import gunbc.roadmap.roadmap_dashboard_instance { linux_service_directory_owner }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user,
   fleet_posix_remote_build_home,
@@ -421,6 +424,17 @@ type RemoteBuildServingDesired {
   // The declared mode of the account's authorized_keys file. The apply's write renders it via
   // file_mode_octal rather than restating "0600" in the write arm (single_authority, review 95935).
   authorized_keys_mode: FileMode
+  // B2 (side-chat review of 2026-11-16): the PARENTS the installs write into. authorized_keys lives
+  // in ~/.ssh and the serve binary in <instance root>/bin; neither parent exists on a fresh host,
+  // and the installs do not create them. They are declared HERE — path, owner, mode — so converge
+  // ensures them (its own writes, ordered before the installs they precede) instead of assuming
+  // them, and the write arms read the modes from here, never bare literals (single_authority).
+  account_ssh_dir: String
+  account_ssh_dir_mode: FileMode
+  serve_binary_dir: String
+  serve_binary_dir_owner_user: String
+  serve_binary_dir_owner_group: String
+  serve_binary_dir_mode: FileMode
   forced_command_line: String?
 }
 
@@ -436,7 +450,7 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
 
 // The CANDIDATE host set PR 5 owns. It is deliberately NOT gunbc.compute.remote_build_hosts
 // ::remote_build_serving_hosts — that is the LIVE dispatch gate (-> remote_build_host_rows ->
-// the fabric roster) and PR 4 keeps it at srv1 only, because admitting a host before its
+// the fabric roster), which admits a host only after its serving setup converges: admitting a host before its
 // /opt/gunbc/compute/capacity home, store and account exist is fail-open (review 95791). The
 // OBSERVE arm must still read a host that is not yet rostered, so it takes its candidate set
 // from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
@@ -475,6 +489,17 @@ fn serving_authorized_keys_declared_mode() -> FileMode? {
 }
 
 fn serving_serve_binary_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0755")
+}
+
+// B2 (side-chat review of 2026-11-16): the parents' declared modes, read through the SAME octal
+// grammar — ~/.ssh is owner-only 0700 (the account's private key material lives in it), the seed
+// binary's bin dir is a 0755 directory.
+fn serving_account_ssh_dir_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0700")
+}
+
+fn serving_serve_binary_dir_declared_mode() -> FileMode? {
   file_mode_of_octal_text(text: "0755")
 }
 
@@ -592,7 +617,11 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
           Absent => Absent
           Present { value: authorized_keys_mode } => match serving_serve_binary_declared_mode() {
             Absent => Absent
-            Present { value: serve_binary_mode } => Present { value: {
+            Present { value: serve_binary_mode } => match serving_account_ssh_dir_declared_mode() {
+              Absent => Absent
+              Present { value: account_ssh_dir_mode } => match serving_serve_binary_dir_declared_mode() {
+                Absent => Absent
+                Present { value: serve_binary_dir_mode } => Present { value: {
     host: host,
     account_name: fleet_posix_remote_build_user.name as String,
     account_uid: fleet_posix_remote_build_user.uid,
@@ -616,8 +645,16 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     store_dir_mode: store_dir_mode,
     authorized_keys_path: concat(home, "/.ssh/authorized_keys"),
     authorized_keys_mode: authorized_keys_mode,
+    account_ssh_dir: concat(home, "/.ssh"),
+    account_ssh_dir_mode: account_ssh_dir_mode,
+    serve_binary_dir: concat(instance.instance_root as String, "/bin"),
+    // The bin directory carries the SAME owner the instance root's carrier declares (the service
+    // principal that owns /opt/gunbc), read from the owning authority, not restated.
+    serve_binary_dir_owner_user: linux_service_directory_owner().user as String,
+    serve_binary_dir_owner_group: linux_service_directory_owner().group as String,
+    serve_binary_dir_mode: serve_binary_dir_mode,
     forced_command_line: serving_forced_command_line(host: host),
-            } }
+            } } } }
           }
         }
       }
@@ -670,9 +707,8 @@ type ServingObserved {
   // Whether rustup itself (the account's cargo-bin program) is executable. Observe gates this — and
   // the toolchain leg — on the account being present: account confirmed absent CONFIRMS both absent
   // (a home whose account does not exist has no rustup and no channels). When the toolchain leg is
-  // established absent, this leg decides the classification: present = EnsureToolchain is runnable;
-  // absent = unhandled ('rustup not installed for <account>; no bootstrap modelled') — converge does
-  // not bootstrap toolchains, and planning a write that execs a missing program is planning a failure.
+  // established absent, this leg decides the classification: present = EnsureToolchain alone;
+  // absent = the verified rustup-init bootstrap (EnsureRustup) first, then EnsureToolchain.
   rustup: ObservationAttempt<Bool, ServingLegFailure>
   // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
   // the apply would act on, so the observe reads these host facts and compares them to

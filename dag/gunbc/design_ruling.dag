@@ -1015,6 +1015,13 @@ data pair_delivery_shell_as_medium_steps_admitted: DesignRuling = DesignRuling {
   provenance: "Operator, 2026-11-18, to session neat-badger-614, answering 'Do you approve the restart and verify steps in #16623 running as shell scripts, as declared scaffolding, until each one's removal condition is met?': \"yes the two shell steps are okay\". RULED, in those words. This single ruling covers BOTH declared-scaffold legs on the release-pair delivery path in gunbc.live_deploy.release_pair_deliver_cli: (1) release_pair_verify_shell_scaffold / release_pair_verify_shell_dissolution_trigger -- the fleet consumer key-check verify runs as a multi-statement posix_sh program via posix_sh_program_command; DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization). (2) release_pair_restart_shell_scaffold / release_pair_restart_shell_dissolution_trigger -- the serve restart renders the single registered gunbc.live_deploy.operations::systemctl_restart_command (gunbc.auth.privileged_effect_registry:1376) to a String and posix_sh_program_command's it; DISSOLVES WHEN that authority returns an ArgvCommand under its existing privileged_effect_registry row. INTERPRETATION (mine, not the operator's words): the operator approved these two shell-as-medium STEPS as declared scaffolding only; it approves no NEW shell-as-medium leg, each leg still carries its own dissolution trigger, and each must be typed the moment its trigger is met. No second sudo restart builder is introduced."
 }
 
+data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "codex_app_server_trip_pinned_oracle_repointed_to_direct_argv"),
+  decided: "2026-11-17",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+  provenance: "Operator ruling on the pinned Codex check, escalation msg_87d2aff1-c358-4b5f-b17c-11b7504962e2, decided 2026-11-17, relayed verbatim by manager session neat-badger-614 (msg_81ee26ff) and directed to session quiet-wolf-155. Asked whether re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word from refusing the adversarial CODEX_HOME to asserting it survives as one argv value with no shell control word is authorized, the operator answered, verbatim: \"yes the codex pinned check is fine to ignore\". Read by the manager as approval to change the pin: the old CodexTripArgvRefused expectation no longer binds. WHAT IT DECIDES: that arm is re-pointed from pinning a refusal to pinning that the value crosses as one argv element and renders no separate shell word, per node dp-m2-codex-direct-argv-policy. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     no_ci_claim_execution_until_native_frontier_clears,
@@ -1136,6 +1143,7 @@ fn design_rulings() -> List<DesignRuling> {
     srv15_arrival_reviewer_selected_by_operator,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
     pair_delivery_shell_as_medium_steps_admitted,
+    codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,
   ]
 }
 

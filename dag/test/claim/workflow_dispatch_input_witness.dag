@@ -19,6 +19,7 @@ import extdeps.github.actions {
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
+  fleet_converge_srv15_read_wif_auth_step, fleet_converge_srv15_bmc_secret_versions_read_step, fleet_converge_srv15_versions_read_wif_step_id,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   Srv1RootMutation, fleet_converge_approval_broker_dark_install_step_if,
@@ -52,6 +53,9 @@ import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
+import extdeps.languages.yaml.types { yaml_string }
+import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
@@ -756,6 +760,10 @@ fn step_env_text(step: Step) -> String {
         Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
         Absent => ""
       }
+    // step_env_text renders only run-step env. The sole-consumer check is a whole-file occurrence
+    // count over the generated YAML (see the_srv15_read_consumes_only_its_own_mint), so nothing here
+    // depends on uses-step rendering; rendering UsesStep through yaml_scalar_text cost 100M+ eval
+    // steps and 23GB of RSS for zero discrimination, so this arm stays "".
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
   }
 }
@@ -911,4 +919,47 @@ test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
     && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
     && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
     && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
+}
+
+// THE READ STEP'S TOKEN IS ITS OWN DECLARED DEPENDENCY, always iam-observe (manager ruling, after
+// run 43923411255: the post-wait re-mint's condition (approved == 'true') is FALSE on a no-op
+// converge, so the read's old binding resolved to the empty string and the entry refused typed --
+// gunbc.recurring_failure_mode.a_step_binds_env_from_a_step_output_its_condition_can_skip). The fix is
+// not a fallback expression -- a credential chosen by which steps happened to run is history-chosen
+// authority -- but a dedicated mint whose condition is the read's own condition. These claims pin the
+// three things the ruling demands: the mint impersonates iam-observe through the observe provider;
+// it runs exactly when the read runs; and its ONLY consumer is the read's WIF_ACCESS_TOKEN binding.
+test fn the_srv15_read_mint_is_iam_observe_under_the_reads_own_condition() -> Bool {
+  let mint = fleet_converge_srv15_read_wif_auth_step()
+  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
+  match mint {
+    UsesStep { name: _, id: mid, uses: _, with: Present { value: ws }, env: _, if_condition: mic, continue_on_error: _, timeout_minutes: _ } =>
+      mid == Present { value: fleet_converge_srv15_versions_read_wif_step_id as String }
+        && any(ws, w => w.key == "service_account" && w.value == yaml_string(s: iam_observe_service_account as String))
+        && any(ws, w => w.key == "workload_identity_provider" && w.value == yaml_string(s: gcp_iam_observe_wif_provider_resource()))
+        && any(ws, w => w.key == "token_format" && w.value == yaml_string(s: "access_token"))
+        && mic == read.if_condition
+    _ => false
+  }
+}
+
+test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
+  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
+  let yml = expected_fleet_converge_yml_content()
+  match read {
+    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      count(filter(es, e => e.key == "WIF_ACCESS_TOKEN")) == 1
+        && any(es, e => e.key == "WIF_ACCESS_TOKEN" && e.value == yaml_string(s: "${{ steps." + (fleet_converge_srv15_versions_read_wif_step_id as String) + ".outputs.access_token }}"))
+    _ => false
+  }
+    && string_contains(s: yml, pattern: "steps.wif_auth_srv15_read.outputs.access_token")
+    // review 96099 / review 96142: "sole consumer" must be checked, not just named. The generated
+    // YAML text is what GHA actually interprets, and counting occurrences covers every binding form
+    // at once -- run-step env, uses-step `with:`, and every job -- so no step kind can hide a second
+    // binder (a per-step model scan could not do this: each rendering of the job model exceeded the
+    // 24GB batch ceiling). The mint produces the token and never references it; no other step may
+    // reference it. One occurrence is the honest expected count, and re-adding any second binder --
+    // a `||` fallback (the class the no-'||' ruling msg_dacad7be rejected) or a binding in another
+    // step -- lifts it to 2 and flips this claim.
+    && (fold(split(s: yml, delimiter: "steps.wif_auth_srv15_read.outputs.access_token"), init: 0, f: fn(acc, _part) { acc + 1 }) - 1) == 1
 }
