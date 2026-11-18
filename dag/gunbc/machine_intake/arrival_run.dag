@@ -768,7 +768,17 @@ data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5
 // Each call is bounded by the pair the door itself passes as argv (arrival_read_policy): ipmitool's
 // --deadline plus --kill-after, the wall past which the transport kills the tool, so the retry bound
 // INSIDE the tool cannot extend the wall.
-data arrival_single_ipmi_legs: List<NonEmptyStr> = ["ipmi.LanPrint"]
+// The door issues exactly one IPMI call outside the channel walk and the census: the managed account's
+// own lan print, bound to `lan` inside arrival_wet_read_account_state, whose refusal
+// ARRIVAL WET LAN PRINT INCOMPLETE is the only thing that can stop the run after it. This row is that
+// call's single home in the budget: a hand-maintained roster is the weakness the review named, so the rule
+// here is that an IPMI call counts IF AND ONLY IF it has a row in one of the three lists the fold reads --
+// arrival_candidate_channel_numbers (the walk's upper bound), this list, or arrival_counted_census_ops (the
+// map the census issues its calls FROM, so census calls cannot drift). A fourth kind of call added to the
+// door without a row here makes the fold too small, and the fold is not yet the shipped figure: it becomes
+// one only with the operator's ruling (gunbc.design_ruling ci_job_budgets_closed_to_growth), which is the
+// moment this roster stops being documentation and starts being a budget.
+data arrival_threshold_read_legs: List<NonEmptyStr> = ["ipmi.LanPrint"]
 
 fn arrival_ipmi_leg_bound() -> Second {
   second(count: (second_count(s: arrival_read_policy.deadline) as Int) + (second_count(s: arrival_read_policy.kill_after) as Int))
@@ -776,7 +786,7 @@ fn arrival_ipmi_leg_bound() -> Second {
 
 fn arrival_wet_ipmi_legs_bound() -> Second {
   let per_call = second_count(s: arrival_ipmi_leg_bound()) as Int
-  let calls = (length(xs: arrival_candidate_channel_numbers) as Int) + (length(xs: arrival_single_ipmi_legs) as Int) + (length(xs: arrival_counted_census_ops) as Int)
+  let calls = (length(xs: arrival_candidate_channel_numbers) as Int) + (length(xs: arrival_threshold_read_legs) as Int) + (length(xs: arrival_counted_census_ops) as Int)
   second(count: per_call * calls)
 }
 

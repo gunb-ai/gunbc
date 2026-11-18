@@ -38,7 +38,7 @@ import gunbc.fleet.fleet_workflow_steps {
 }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.machine_intake.arrival_run {
-  arrival_candidate_channel_numbers, arrival_single_ipmi_legs, arrival_counted_census_ops,
+  arrival_candidate_channel_numbers, arrival_threshold_read_legs, arrival_counted_census_ops,
   arrival_ipmi_leg_bound, arrival_wet_ipmi_legs_bound,
 }
 import gunbc.machine_intake.prior_life_capture_live {
@@ -140,12 +140,12 @@ test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
     && (second_count(s: live_prior_life_legs_bound()) as Int)
         >= (ipmi_legs * (second_count(s: live_ipmi_leg_bound()) as Int))
           + ((redfish_legs + live_log_services_read_bound) * (second_count(s: live_redfish_read_budget) as Int))
-    && length(xs: arrival_single_ipmi_legs) > 0
+    && length(xs: arrival_threshold_read_legs) > 0
     && length(xs: arrival_counted_census_ops) > 0
     && length(xs: arrival_candidate_channel_numbers) > 0
     && (second_count(s: arrival_wet_ipmi_legs_bound()) as Int)
         >= ((length(xs: arrival_candidate_channel_numbers)
-            + length(xs: arrival_single_ipmi_legs)
+            + length(xs: arrival_threshold_read_legs)
             + length(xs: arrival_counted_census_ops)) * (second_count(s: arrival_ipmi_leg_bound()) as Int))
 }
 
