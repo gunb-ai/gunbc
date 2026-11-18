@@ -670,51 +670,8 @@ fn hostname_converge_bind_transport(
   host: ComputeHost,
   context: FleetSshExecutionContext,
 ) -> HostnameConvergeResolution {
-  // THE HOP FIRST -- safe because the hop function ITSELF refuses any host the registry already anchors
-  // (FirstContactHopSupersededByAnchor): srv1-srv4 are anchored, so their resolution falls to the
-  // ORIGINAL probe route below, byte-for-byte unchanged in address source AND operator principal
-  // (review 96272: an anchored-first composition here would have hijacked them onto the registry row
-  // with the executor login -- it does not). Only an UNANCHORED host with a pinned key, reached by an
-  // admitted mode wire, is admitted over the hop; the hop rows retire at the flip, after which even
-  // srv14 falls through to the probe route like every other host.
-  match first_contact_ssh_target(host: target, principal: host_identity_operator_principal_name(), mode_wire: hostname_converge_mode) {
-    SshTargetResolved { target: ssh_target } =>
-      PairResolved {
-        request: hostname_converge_request(
-          target: target,
-          peer: peer,
-          direction: direction,
-          base: base,
-          desired: desired,
-          host: host,
-          ssh_target: ssh_target,
-        ),
-        context: context,
-      }
-    SshTargetRefused { endpoint: _, refusal: _ } => hostname_converge_bind_probe_route(
-      target: target,
-      peer: peer,
-      direction: direction,
-      base: base,
-      desired: desired,
-      host: host,
-      context: context,
-    )
-  }
-}
-
-fn hostname_converge_bind_probe_route(
-  target: HostIdentity,
-  peer: HostIdentity,
-  direction: HostnameConvergeDirection,
-  base: DeployedIntentV0,
-  desired: DeployedIntentV1,
-  host: ComputeHost,
-  context: FleetSshExecutionContext,
-) -> HostnameConvergeResolution {
-  let endpoint = fleet_probe_endpoint_for(host: target as String)
-  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: host_identity_operator_principal_name()) {
-    SshTargetRefused { endpoint: _, refusal: _ } =>
+  match hostname_converge_transport_target(target: target) {
+    SshTargetRefused { endpoint: endpoint, refusal: _ } =>
       ResolutionRefused { cause: SshRouteRefused { host: target as NonEmptyStr, endpoint: endpoint } }
     SshTargetResolved { target: ssh_target } =>
       PairResolved {
@@ -728,6 +685,29 @@ fn hostname_converge_bind_probe_route(
           transport: FleetSsh { target: ssh_target, context: context },
         ),
       }
+  }
+}
+
+// THE ONE TRANSPORT DECISION of this mode, callable by witnesses without the plan fixtures.
+// THE HOP FIRST -- safe because the hop function ITSELF refuses any host the registry already anchors
+// (FirstContactHopSupersededByAnchor): srv1-srv4 are anchored, so their resolution falls to the
+// ORIGINAL probe route below, byte-for-byte unchanged in address source AND operator principal -- the
+// claim fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host), principal:
+// OPERATOR) is verbatim main's route at 1a78eac11c93 (witness-pinned:
+// host_credential_custody_converge_witness hostname_and_custody_targets_are_unchanged_for_anchored_hosts).
+// Only an UNANCHORED host with a pinned key, reached by an admitted mode wire, is admitted over the
+// hop; the hop rows retire at the flip, after which even srv14 falls through to the probe route.
+fn hostname_converge_transport_target(target: HostIdentity) -> SshTargetResolution {
+  match first_contact_ssh_target(
+    host: target,
+    principal: host_identity_operator_principal_name(),
+    mode_wire: hostname_converge_mode,
+  ) {
+    SshTargetResolved { target: ssh_target } => SshTargetResolved { target: ssh_target }
+    SshTargetRefused { endpoint: _, refusal: _ } => fleet_ssh_target_at_standard_port(
+      endpoint: fleet_probe_endpoint_for(host: target as String),
+      principal: host_identity_operator_principal_name(),
+    )
   }
 }
 
