@@ -1078,8 +1078,32 @@ data effort_estimates_are_public_and_live_in_gunbc: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-17, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked where milestone estimates should be recorded. Operator words, verbatim: \"i think public planning is fine - sorry, i should probably reverse that - i think the private/public split should be for anything that we actually care to be private - i don't care if people see our effort esimtates etc\". RULED, in those words: planning, effort estimates included, is public and lives in this repository; the private repository holds only what is actually private. SUPERSEDES, in part, gunbc.design_ruling::planning_scheduling_is_cut: a dated effort estimate with a basis is not the schedule, forecast or time-period record that ruling cut; it is the clock the operator asked to keep on 2026-11-03 in the private plan (\"the clock is the estimate, not the milestone\": every estimate dated, saying when the work starts and finishes and why, appended and never edited, so the first estimate and the actual completion stay readable side by side). INTERPRETATION (not operator words): the home is gunbc.roadmap.roadmap_effort_estimate, one row per estimate keyed by the roadmap node that stands for the milestone; an estimate names its basis and is appended, never edited; overdue is derived from the latest estimate against the acceptance log, never authored; the private plan's rows point here for the public milestones rather than restating them (gunbc.design_ruling::planning_is_one_source_for_every_repo); no date ever becomes a dependency or a gate."
 }
 
+data claims_name_their_leaf_from_the_first_landing: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "claims_name_their_leaf_from_the_first_landing"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked whether a Claimed event that names only its work item (no leaf path from gunbc.roadmap.roadmap_decomposition) is admitted on a multi-leaf item during the migration to leaf-grain claims, or refused from the first landing. Operator words, verbatim: \"its onlya dmitted if its an exponential amount of work to fit the repo - prefer to not and track anything outstanding and prioritize it\". RULED, in those words: a claim names its leaf from the first landing; a pathless claim is refused at append unless fitting the repository would be an exponential amount of work, and anything left outstanding by the refusal is tracked and prioritized, not admitted. INTERPRETATION (not operator words): the migration arm of unit 4 of the dispatch brief is not built; a live item-level claim that predates the landing is re-recorded against its leaf or released, and the set of such claims is a work item, not an admitted shape."
+}
+
+data a_split_handback_is_accepted_by_the_manager: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a_split_handback_is_accepted_by_the_manager"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked who accepts a Split handback (a worker's replacement decomposition for the leaf it held, which edits gunbc.roadmap.roadmap_decomposition and can move the critical path). Operator words, verbatim: \"yeah the manager canown it\". RULED, in those words: the manager of the owning session accepts a Split, as it accepts any work item (gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation). INTERPRETATION (not operator words): no operator gate on splits that lengthen the critical path; the view flags a split that moved the critical path so the operator sees it rather than approves it."
+}
+
+data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_ctrl_dashboard_renders_the_planning_page"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "planning_has_one_home"),
+  provenance: "Operator, 2026-11-18, direct to session eloquent-albattani (gunb-ai/gunbc#16604), asked whether the ctrl session dashboard embeds the same timeline page the daily workspace serves or consumes only the one-row-per-item projection and draws its own view. Operator words, verbatim: \"yeah someone is working on that stuff, i will try not to add too much if anything from ctrl, that's my goal at least\". RULED, in those words: the ctrl dashboard renders the same page and adds nothing, or as little as possible, of its own. INTERPRETATION (not operator words): one renderer in gunbc.roadmap.roadmap_page; ctrl keeps no planning state and no second view until something is actually missing, and that missing thing is then added to the page here (gunbc.design_ruling::planning_execution_is_anchored_on_fabric keeps ctrl a side path)."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    claims_name_their_leaf_from_the_first_landing,
+    a_split_handback_is_accepted_by_the_manager,
+    the_ctrl_dashboard_renders_the_planning_page,
     v2_landing_waits_on_the_namespace_program,
     effort_estimates_are_public_and_live_in_gunbc,
     source_is_ingested_into_one_universe_and_files_are_discarded,
