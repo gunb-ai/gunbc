@@ -40,6 +40,21 @@ type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
 // imported from the carrier's own authority rather than spelled here or at a call site.
 type LeafPath { item: RoadmapNodeId, stage: Nat, piece: Nat, member: Nat }
 
+// THE CLAIM GRAIN: what a Claimed names. Pathless = whole-item; AtPath = one leaf.
+// Moved here (like LeafPath) so both roadmap_issue_command and roadmap_decomposition can
+// reach it without a cycle.
+// THE GUARD (roadmap_claimed_grain_admissible, in roadmap_decomposition) is the authority that
+// decides whether a grain may be recorded against a node. It is called at the two Claimed-producing
+// sites named here: roadmap_serve and roadmap_event_cli. The machine check is the witness
+// roadmap_claim_grain_witness (guard_pipeline_admits_and_refuses_correctly, served_route_pipeline_*):
+// it drives the parser and guard on discriminating inputs and goes red if either regresses. The
+// type system does NOT prevent a producer from skipping the guard -- no privacy in this language --
+// so a new producer must add its own driving test to that witness. Stating the guarantee at its
+// real rung (guarantee_ladder): call-site discipline plus a witness, not a type-level proof.
+type ClaimGrain
+  = Pathless
+  | AtPath { path: LeafPath }
+
 type Pointer { label: String, path: String }
 
 type Acceptance

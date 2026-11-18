@@ -256,6 +256,10 @@ data d6_witness_measurement_revision: CommitSha = "eae15daee5d175a5abca6f3c380d9
 
 data d6_witness_base_revision: CommitSha = "bbec474015b0127181893ec2850b1f94d376cc22"
 
+// The head the closed sighting-basis guard (#16671) was certified at: its claims passed and it was still closed, which is the
+// evidence this concern rests on.
+data sighting_basis_guard_revision: CommitSha = "0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a"
+
 
 data duct_print_plate: SightingEvidence = CitesArtifact {
   label: "a16-blower-flat-on-end-duct plate 3MF prepared by product.printed_chassis.print_workflow prepare_request_plate, printed on printer-01 2026-11-01",
@@ -2893,7 +2897,62 @@ data fleet_converge_roster_vs_closed_sum: IntegrationConcern = IntegrationConcer
     },
     tail: [],
   },
-  disposition: Open,
+  // TRIAGED, NOT CLOSED (smart-dove-204, 2026-11-18). The hazard this row describes -- a mode joins the
+  // closed sum and its facts, is left out of the roster, and nothing turns red -- IS STILL LIVE, and this
+  // row says so rather than reporting a rung the executed evidence does not establish: the wall authored
+  // here is run by hand and is enrolled in no lane, so on the required path a dropped mode is still silent
+  // (gunbc.design_argument::continuous_generalization: "A completed work item, a merged abstraction or a
+  // shorter ledger is not evidence of integration"; gunbc.design_argument::guarantee_ladder: "A witness no
+  // lane executes is not a check ... the row is what makes the refusal real"). Open, with its owed rung
+  // named, which is what Triaged means here.
+  // Whether the wall ran is NOT claimed in this comment. Each execution is a RetainedExecutionResult row
+  // in test.claim.fleet.fleet_converge_roster_closed_sum_witness::witness_run_receipts -- command, host,
+  // memory budget, window, revision and verdict -- guarded by that module's
+  // witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran; a receipt is read there, not
+  // restated here (gunbc.design_argument::source_annotations: a receipt, a status and a count belong in a
+  // carrier a pass can read, and a reader may not treat a comment as evidence that a machine claim holds).
+  // What the wall establishes, as opposed to what it counts: it compares the roster, arm by arm, against
+  // the closed sum as the compiler itself reflects it (coproduct_arm_keys), so an arm missing, an arm
+  // listed twice, and an entry the sum does not name are three separate reds rather than a total that
+  // happens to match; the dispatch menu is that roster mapped through fleet_converge_workflow_mode_wire,
+  // walled in the same module, so the menu cannot drift from the roster either. The question's FIRST branch
+  // was tried before the second was taken: the std value-level enumeration of a sum's variants,
+  // coproduct_nullary_inhabitants, constructs a value per arm and therefore REFUSES any sum with a payload
+  // arm ("payload arm is not nullary", src/v1/stage0/src/coproduct_reflection.rs), and this sum has one --
+  // Srv1RootMutation carries Srv1RootMutationMode -- so it yields a refusal, not a member list, and cannot
+  // author the roster. Both halves are pinned as rows rather than remembered: the refusal over this sum,
+  // and the enumeration working where it can (the nested all-nullary arm, whose constructed inhabitants
+  // agree with the arm keys read for it). The nested arm is in scope because the roster lists each of its
+  // modes as its own entry, so one can go unrostered exactly as #16583's MtCollins1PcieRetimerReset would
+  // have. A fixture (one arm dropped, one repeated, and an honest twin) is what makes this a wall and not a
+  // tautology. The roster keeps its hand-written ORDER deliberately -- a menu whose option order shifted
+  // whenever an arm happened to be declared elsewhere would be the worse artifact -- which is why the
+  // witness branch, not derivation, is the shape taken.
+  // WHY IT IS NOT ENROLLED, and where that is recorded. Enrollment means a row of
+  // v2.workflow.required_floor.required_gate_authored_modules, which is operator-admitted
+  // (gunbc.design_document::required_gate_rows_grow_by_operator_ruling) and spends the CI budget that is
+  // closed to growth. The consolidating session declined to spend one on a single wall: bold-otter-603,
+  // 2026-11-18, message msg_bad251bc-81ad-4853-8c6f-a68269259804, which rules the standing
+  // authored-executed-by-hand-green-enrolled-nowhere-with-its-next-rung-named to be what DESIGN asks for.
+  // That decision is cited here and in the two comments that name its trigger, and deliberately NOT kept as
+  // a row of gunbc.design_ruling: those rows carry an operator provenance, and borrowing that register for
+  // a lane-level decision would itself be the fork this file is about.
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"),
+        statement: "the roster holds every arm of the closed sum FleetConvergeWorkflowMode exactly once, counting the Srv1RootMutation arm once per arm of Srv1RootMutationMode with that count read from the declaration index rather than written, and holds no entry the sum does not name -- enforced today for whoever executes the wall, and by nothing on the required path",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_options"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness", decl_name: "witness_dispatch_mode_options_are_roster_wires_without_repetition"),
+        statement: "the workflow_dispatch mode menu is exactly the roster's wire strings, once each, in the roster's hand-kept order -- so a mode missing from the roster is undispatchable rather than silently absent, and the order an operator sees stays a decision rather than an accident of declaration order",
+      },
+    ],
+    next: climbs_when(capability: "the wall is enrolled on an executing lane, so that deleting one entry from fleet_converge_workflow_modes reddens the required path rather than only whoever runs it; the trigger is gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose population the native compiler is to judge, which lifts every wall in this standing together rather than one wall by petition"),
+  },
 }
 
 // THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE. The run-step emitter refuses
@@ -3495,7 +3554,81 @@ data redfish_get_status_read_fork: IntegrationConcern = IntegrationConcern {
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+// Weighing the question below: convenience argues for the row, drift argues for the ladder, and only drift is a
+// correctness argument.
+data ledger_sighting_cannot_state_what_it_established: IntegrationConcern = IntegrationConcern {
+  identity: "ledger_sighting_cannot_state_what_it_established",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field_name: "receipts"),
+    requirement: "a row states, per sighting, what that sighting established -- that a build did not stop, as distinct from a behaviour or a resolving route being observed -- so that a claim can refuse a read rung whose sightings are all of the weaker kind, without the claim being handed its own grade by its caller",
+    standing: RequirementUnestablished {
+      decided_by: "a claim over the ledger that refuses a row reporting a read rung while every one of its sightings is of the weaker basis, and that accepts the same row once a sighting of the stronger basis is present, and that downgrades no row merely because its evidence list is empty: at main 12253b17b3ae 95 of the 227 rows reporting a read rung carry evidence: [] legitimately, since the ledger header has evidence witness the class through computed references while receipts carry the prose the authored fold consumes, so a grade derived from the evidence field fails this requirement. It is unestablished today because the grade can only be supplied by the test: the closed guard #16671 shows the shape, its two claims passed and neither could fail on anything the ledger said.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode"),
+    tail: [
+      decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RungReading"),
+      decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder"),
+    ],
+  },
+  question: "Where does the ledger record what a sighting established, so that a claim can refuse a rung bought with a weaker sighting than the rung requires -- on the row, or in the guarantee ladder that already states what establishes a rung? The row placement is convenient and creates two statements about one fact; the ladder placement keeps one authority and re-derives every standing.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: sighting_basis_guard_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace", decl_name: "bare_name_resolved_only_by_the_flat_namespace") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder") },
+        ],
+      },
+      account: "Filed by still-otter-809 on 2026-11-18 while closing the loop on the first observed-to-compile specimen recorded on bare_name_resolved_only_by_the_flat_namespace (gunb-ai/gunbc#16667), whose W7 receipt already admits this geometry: a bare type-position name in an import-bearing file compiled and executed under the v1 path, and the resolving route was never established. The caveat that a guard would have to enforce exists only as prose in that receipt, because no field or sum can carry it. The guard that tried to enforce it (#16671 at 0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a) passed its claims and was still closed, on the ground that its basis was test-supplied. Measurement of the 95-of-227 read-rung rows with empty evidence was taken at main 12253b17b3ae7a38fa331531a422efc727f5761b by counting rows whose declaration reports a read rung against rows whose evidence list is empty, over every row file under dag/gunbc/recurring_failure_mode excluding the roster.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data live_deploy_apply_plan_witness_2026_11_18_revision: CommitSha = "e6dfd84cc16de6e203974cf8bde02a30d0d11112"
+
+data srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs: IntegrationConcern = IntegrationConcern {
+  identity: "srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs"),
+    requirement: "the srv1 release roster behind deploy_apply_plan_legs carries an install leg for every artifact its converger and serve units READ, so the deploy-artifact closure gate (gunbc.live_deploy.deploy_artifact_closure::deploy_gate) does not halt the plan before the install, serving-engine retire/reload/enable and gpu-power-cap unit/reload/enable legs are emitted; four release artifacts are read but never installed (see the account)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "deploy_gate") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs"),
+    tail: [
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_binary_only_plan_installs_and_restarts_without_publishing_the_tree"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release"),
+    ],
+  },
+  question: "Why does the srv1 release roster behind deploy_apply_plan_legs install none of the four release artifacts its units read -- the attempt-system-unit-helpers directory for the attempt-unit-drain path unit, and the approval-broker front-door release directory with its device-crypto-deployed-digest.env and gunbc files -- so the deploy-artifact closure gate fail-closes the plan before any enable leg runs? The gate is correct to halt; the missing coverage is a release-roster gap. Dissolution: roadmap node deploy-release-roster-carries-every-owned-step (#16661) makes the roster carry every owned step, which closes the gate's installed set and turns the four claims green.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: live_deploy_apply_plan_witness_2026_11_18_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_binary_only_plan_installs_and_restarts_without_publishing_the_tree") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release") },
+        ],
+      },
+      account: "STANDING: with the witness made to resolve (this lane), claim_batch --wet evaluates all 59 witness claims at 55 PASS / 4 FAIL; the four failures are a RECORDED STANDING, not an unexplained red, and they are exactly this capability gap. The four are the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting, the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run, a_binary_only_plan_installs_and_restarts_without_publishing_the_tree and a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release. A read-only diagnostic (a Bool-claim battery plus gunbc run of a fn returning the plan's refusal rendering for deployment_spec_srv1()) proved all four share ONE root cause: deploy_apply_plan_legs is wrapped by the deploy-artifact closure gate introduced by #16587, which fail-closes -- the gate is CORRECT, so this is not a plan-builder defect and there is nothing to restore there. For the srv1 all-kept fixture the whole plan is Refused at step deploy-artifact-gate; the gpu unit file is Ready, the serving boot outcome is admitted, and serve-unit emission is Emitted, so no serving/gpu code drops the legs -- the plan is refused upstream before those legs are reached. gunbc run rendered the halt verbatim (0123456789abcdef0123456789abcdef01234567 is the fixture release revision): live-deploy apply refused: the deploy artifact-closure gate halted -- missing directory [/opt/gunbc/attempt-system-unit-helpers/srv1-live/0123456789abcdef0123456789abcdef01234567] read by [/etc/systemd/system/gunbc-roadmap-attempt-unit-drain.path]: no install-directory leg creates it; missing directory [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567] read by [443:/approve]: no install-directory leg creates it; missing artifact [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/device-crypto-deployed-digest.env] read by [443:/approve]: no install-file leg writes it; missing artifact [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc] read by [443:/approve]: no install-file leg writes it; the plan is refused before any enable leg runs. The reads that lack an install leg are therefore: the unit /etc/systemd/system/gunbc-roadmap-attempt-unit-drain.path (reads the attempt-system-unit-helpers directory) and the approval-broker front-door at 443:/approve (reads the release directory, its device-crypto-deployed-digest.env and its gunbc binary). Dissolution: roadmap node deploy-release-roster-carries-every-owned-step (#16661) -- once the release roster carries install legs for every owned step, the gate's installed set covers these four reads and the plan (and all four claims) turns green. The witness folds themselves (the ApplyLegBrokerTree arm, whose field is now revision, and the ApplyLegInstallDirectory, ApplyLegSystemctl and ApplyLegDiagnosedSystemctl arms) are correct and not implicated.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
@@ -3504,7 +3637,9 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   remote_build_serving_fresh_account_has_no_toolchain_bootstrap,
   remote_build_serving_checkout_pin_has_no_declared_owner,
   remote_build_converge_action_is_not_the_whole_write,
-  group_membership_append_spelled_by_two_tools]
+  group_membership_append_spelled_by_two_tools,
+  machine_width_uint8_int_crossing_has_no_declared_route,
+  srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -3983,5 +4118,55 @@ data group_membership_append_spelled_by_two_tools: IntegrationConcern = Integrat
       },
     ],
     next: climbs_when(capability: "the custody readers leg builds its membership append through extdeps.shadow.account_creation, and custody_group_add_member_argv is deleted"),
+  },
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MACHINE-WIDTH UInt8 <-> Int CROSSING. Origin: review 95669 on PR #16520. DESIGN.md states the
+// limit in the model itself (`UInt8` is `Compose<UInt, MachineWidth<8>>`, phantom and transparent to
+// `Int` across a formal; the worked example is a floor receipt observing `256` cross a `UInt8`
+// parameter in `test.claim.machine_word_witness`), and the ruling decides the intended model, but
+// neither claims a route -- this row is where the crossing exerts pressure.
+
+data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d2c89de45d6c766b044d65"
+
+data machine_width_uint8_int_crossing_has_no_declared_route: IntegrationConcern = IntegrationConcern {
+  identity: "machine_width_uint8_int_crossing_has_no_declared_route",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.integer", decl_name: "UInt8"),
+    requirement: "a value of the machine-width composition UInt8 reaches the unbounded Int carrier through a route the model declares, and a bare Int is refused before it crosses into a UInt8 formal",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_auth_routes", decl_name: "auth_base64url_wire"),
+    tail: [decl_ref(module_path: "std.integer", decl_name: "uint8_of_int"), decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"), decl_ref(module_path: "test.claim.machine_word_witness", decl_name: "an_octet_cannot_be_built_out_of_range_holds")],
+  },
+  question: "How does a List<UInt8> value reach the unbounded Int carrier, and what refuses a bare Int before it crosses into a UInt8 formal, when UInt8 is a phantom composition transparent to Int across a formal and no route is declared in either direction?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: machine_width_uint8_int_crossing_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_auth_routes", decl_name: "auth_base64url_wire") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "test.claim.machine_word_witness", decl_name: "an_octet_cannot_be_built_out_of_range_holds") }, CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_width_composition_has_an_intersection_carrier") }],
+      },
+      account: "BOTH DIRECTIONS ARE MEASURED, NEITHER IS DECLARED. The outward crossing: `gunbc.roadmap.roadmap_auth_routes.auth_base64url_wire` reads credential entropy and the PKCE challenge by mapping its octets with `o as Int` -- a `List<UInt8>` value reaching `Int` through a bare cast, because `UInt8` is `Compose<UInt, MachineWidth<8>>` and `Compose` is `Phantom`, so the composition has no declared route to the unbounded carrier anywhere in the corpus. The inward crossing is transparent rather than casted: `test.claim.machine_word_witness` once passed `[256, 0, 0]` to a `List<UInt8>` formal and COMPILED, and the file's own note records it -- `test.claim.machine_word_witness.an_octet_cannot_be_built_out_of_range_holds` pins only the mitigation's refusal, `std.integer.uint8_of_int` reporting an out-of-range member, and a caller is free to ignore that constructor and write `List<UInt8>` with any `List<Int>`. THE READING IS DECIDED, THE MODEL HAS NOT LANDED: `gunbc.design_ruling.machine_width_composition_has_an_intersection_carrier` ruled on 2026-11-01 that the composition denotes an intersection -- the algebra value restricted to the machine interval, width retained in its type -- and not a transparent alias of `UInt`; recording that ruling claims no runtime or emitted-width guarantee. THE CANDIDATE INTEGRATION IS PARKED: PR #16548, a declared total `UInt<N>` -> `Int` injection into `std.integer`, thrash-refuses in its non-required heal job near 22.5 GB on the 25.7 GB runner slot, and raising that budget is an operator decision, so no CI time or memory budget is changed here and the row stays open on the parking.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.integer", decl_name: "UInt8") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "std.integer", decl_name: "uint8_of_int"),
+        control: Present { value: decl_ref(module_path: "test.claim.machine_word_witness", decl_name: "an_octet_cannot_be_built_out_of_range_holds") },
+        statement: "the checked octet constructor refuses an out-of-range member reporting the value it saw; a landing keeps the refusal and its control",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_auth_routes", decl_name: "auth_base64url_wire"),
+        control: Absent,
+        statement: "the wire refuses rather than answering with a value when octets do not qualify; a declared crossing may not turn that refusal into a substitution",
+      },
+    ],
+    next: climbs_when(capability: "std.integer lands the ruled intersection carrier -- a checked width mint with its target realization, and the declared total UInt<N> -> Int crossing of PR #16548, parked while its non-required heal job thrash-refuses near 22.5 GB on the 25.7 GB runner slot pending an operator decision on that budget -- so sole construction makes an unadmitted octet unwritable and auth_base64url_wire consumes the qualified carrier instead of casting o as Int"),
   },
 }

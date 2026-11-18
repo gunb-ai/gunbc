@@ -5,8 +5,7 @@ import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_invoke
 import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_invoke }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
-import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke }
-import gunbc.host.network_install_ci { managed_host_network_install_receipt_path }
+import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke, managed_host_network_install_receipt_path }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
 import gunbc.fleet.flex_pass_ci_step { gunbc_ci_flex_pass_invoke }
 import gunbc.fleet.app_control_plane_inspection_ci_step { gunbc_ci_app_control_plane_inspect_invoke }
@@ -22,7 +21,7 @@ import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spa
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
 import gunbc.fabric.workspace_ci_step { gunbc_ci_workspace_checkpoint_measure_invoke, gunbc_ci_workspace_checkpoint_restore_invoke, gunbc_ci_workspace_source_pack_invoke, gunbc_ci_workspace_transcript_rate_observe_invoke }
 import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_invoke, gunbc_ci_r2_bucket_ensure_invoke, gunbc_ci_r2_cache_object_read_mint_invoke, gunbc_ci_r2_cache_object_write_mint_invoke, gunbc_ci_r2_conditional_put_race_probe_invoke, gunbc_ci_r2_mint_preflight_invoke, gunbc_ci_r2_object_write_mint_invoke, gunbc_ci_r2_workspace_object_read_mint_invoke, gunbc_ci_r2_workspace_object_write_mint_invoke }
-import gunbc.roadmap.roadmap_launch_deployment_receipt { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
+import gunbc.roadmap.roadmap_launch_deployment_receipt_location { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
@@ -632,17 +631,22 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-// THE ROSTER IS THE ONE HAND-AUTHORED LIST OF EVERY MODE, and that is a STATED divergence, not a
-// silent one (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall;
-// gunbc.integration_concern fleet_converge_roster_vs_closed_sum). Every per-mode FACT now has exactly
-// one authoring -- the single exhaustive fleet_converge_mode_facts row (gunbc.plans.closure_consolidation
-// P2b) -- so "no duplicate target registration" holds for the FACTS. It does NOT yet hold for
-// MEMBERSHIP: this list re-enumerates the closed sum by hand, because no value-level primitive reflects
-// over a coproduct to produce its members (the fallback-arm census reaches AST nodes, not runtime
-// values). A mode added to the sum but left out here is absent from the dispatch menu -- visible, not
-// silently misspelled -- but nothing refuses it. NEXT RUNG: a value-level variant enumeration this list
-// derives from, or a witness asserting every arm of fleet_converge_mode_facts appears in this roster
-// exactly once; until then the roster and the facts match are two enumerations of one vocabulary.
+// THE ROSTER IS THE ONE HAND-AUTHORED LIST OF EVERY MODE, a STATED divergence rather than a silent one
+// (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall; gunbc.integration_concern
+// fleet_converge_roster_vs_closed_sum). Per-mode FACTS have one authoring, the single exhaustive
+// fleet_converge_mode_facts row (gunbc.plans.closure_consolidation P2b). MEMBERSHIP has an author too:
+// the wall test.claim.fleet.fleet_converge_roster_closed_sum_witness reads this list against the arms of
+// FleetConvergeWorkflowMode as the compiler reflects them, and refuses an arm missing, an arm listed
+// twice, or an entry the sum does not name. Whether that wall has RUN, on what revision, and what it
+// concluded is deliberately not stated here: the executions are RetainedExecutionResult rows in that
+// module's witness_run_receipts, guarded by a row of its own, and the wall's enrollment standing and its
+// climb trigger are carried by the concern row (gunbc.design_argument::source_annotations: a status or a
+// receipt belongs in a carrier a pass can read, not in a comment a reader must trust). What keeps this
+// list hand-written at all is its ORDER, which is the operator's dropdown: the language's only value-level
+// enumeration of a sum's members, v2.std.node_reflection.coproduct_nullary_inhabitants, constructs one
+// value per arm and so refuses any sum with a payload-bearing arm, which Srv1RootMutation is -- so there
+// is nothing here could derive from, and that refusal is itself a row of the witness, observed rather than
+// asserted. The day the language grows the enumeration, this becomes a map.
 data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, RemoteBuildServingObserve, RemoteBuildServingConverge, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, TailscaleJoinConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
