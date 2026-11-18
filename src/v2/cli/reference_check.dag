@@ -19,6 +19,7 @@ import std.annotation_reference {
 }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.repository_layout { repository_storage_layout }
+import v2.std.fn_index { fn_arrow_decl_facts_live, decl_named_in_module }
 import v2.compiler.live_resolution_context { LiveContextLoad, live_context_finish, live_context_hop_homes, live_context_load_empty, live_context_load_modules }
 import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
 import v2.compiler.name_resolve { ResolutionContext }
@@ -558,13 +559,9 @@ fn run_step_target_site_head(site: RunStepTargetSite) -> String {
 // Judge one run-step-target site. First the callee must resolve, through the caller's imports in THIS context,
 // to the one constructor's declaring home -- otherwise the call lexically names the constructor but is not it
 // (a same-named local, or imported from elsewhere) and is not a site at all (condition 1, closed_grounded_substrate).
-fn run_step_refused_has(refused: List<String>, module_name: String) -> Bool {
-  fold_list(xs: refused, empty: false, cons: fn(acc, r) { acc || r == module_name })
-}
-
-fn run_step_target_site_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
+fn run_step_target_site_line(site: RunStepTargetSite, env: AcquisitionEnv, context: ResolutionContext) -> Optional<String> {
   match run_step_target_callee_verdict(caller: site.caller, constructor: site.constructor, context: context) {
-    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, targets: targets, refused: refused, context: context)
+    RunStepTargetIsConstructor => run_step_target_entry_line(site: site, env: env)
     RunStepTargetNotConstructor => Absent
     RunStepTargetCalleeUnconfirmed { reason: reason } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetCalleeUnconfirmed: ", reason) }
@@ -604,9 +601,15 @@ fn run_step_target_callee_verdict(caller: String, constructor: RunStepTargetCons
 }
 
 // With the callee confirmed to be the constructor, the (module, function) pair must name a real declaration.
-// A non-literal argument refuses typed at the site (never skipped -- it is the un-checkable route); a literal
-// pair that does not resolve refuses, located, distinguishing a target module that did not even normalize.
-fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, refused: List<String>, context: ResolutionContext) -> Optional<String> {
+// A non-literal argument refuses typed at the site (never skipped -- it is the un-checkable route). Existence is
+// decided from the FILE-GRAIN parse-once declaration index over the target's own source file -- the same index
+// gunbc.instruments.roster_reach_inhabitance uses for a (module_path, decl_name) identity match -- NOT by
+// normalizing the target in the bounded resolution context: a run-step target is a run-time ENTRY, typically a
+// capability-using `fn e() -> ProcessExit uses ...`, which the fast-lane ImportScoped context does not normalize,
+// so the resolver answers ModuleAbsent for entries that are real (the inverse of the gunbc#8377 class this closes).
+// The index is parse-only (ItemKind::FnItem), so it sees capability entries with no import, normalize or resolve
+// dependency -- the "parse-once declaration index" the residual gap named as its own trigger.
+fn run_step_target_entry_line(site: RunStepTargetSite, env: AcquisitionEnv) -> Optional<String> {
   match site.module_arg {
     RunStepTargetNotLiteral { text: mt } =>
       Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.module_label, ": argument is not a string literal (", mt, "), so its entry cannot be checked") }
@@ -614,33 +617,33 @@ fn run_step_target_entry_line(site: RunStepTargetSite, targets: CitedTargets, re
       RunStepTargetNotLiteral { text: ft } =>
         Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetArgumentNotLiteral: the ", site.constructor.function_label, ": argument is not a string literal (", ft, "), so its entry cannot be checked") }
       RunStepTargetLiteral { value: function_name } =>
-        match map_lookup(m: targets.standing, key: module_name) {
-          Present { value: CitedModuleUnread { cause: cause } } =>
-            Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleUnread: the target module was not read: ", cause) }
-          Present { value: CitedModuleRead { read: read } } =>
-            run_step_target_refusal(site: site, module_name: module_name, module_key: symbol_lexeme(sym: read.compilation_unit), function_name: function_name, refused: refused, context: context)
-          Absent =>
-            run_step_target_refusal(site: site, module_name: module_name, module_key: "", function_name: function_name, refused: refused, context: context)
-        }
+        run_step_target_index_refusal(site: site, env: env, module_name: module_name, function_name: function_name)
     }
   }
 }
 
-fn run_step_target_refusal(site: RunStepTargetSite, module_name: String, module_key: String, function_name: String, refused: List<String>, context: ResolutionContext) -> Optional<String> {
-  match resolve_declaration_ref(ref: decl_ref(module_path: module_name, decl_name: function_name), context: context) {
-    DeclarationRefResolved { declaration_identity: _ } => Absent
-    DeclarationRefModuleAbsent { reference: _ } =>
-      if run_step_refused_has(refused: refused, module_name: module_key) {
-        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleNormalizeRefused: the target module ", module_name, " was read but did not normalize into the resolution context, so its run-time entry could not be confirmed") }
+// Does the target module, at the file its population member is read from, declare a function of this name?
+// population_member is the single authority for BOTH existence and location: a module no registered storage root
+// contains is a located RunStepTargetModuleAbsent (it was never a run-time entry); a present member yields its bound
+// host_directory and root-relative file, joined into one workspace-relative path fed to the FILE-GRAIN index
+// (pool_files = that one .dag) so the check reads exactly the target's source -- never the whole corpus, and works
+// under a bound synthetic tree as well as the repository root. The index is parse-only so a capability entry's
+// `uses` clause cannot make it refuse (the resolver path did). The file only reaches the fail-closed builtin once
+// population_member has read it, so a missing target file is a located refusal, never a builtin hard-error.
+fn run_step_target_index_refusal(site: RunStepTargetSite, env: AcquisitionEnv, module_name: String, function_name: String) -> Optional<String> {
+  match population_member(layout: env.layout, bindings: env.bindings, name: module_name) {
+    PopulationMemberRefused { cause: cause } =>
+      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: no registered storage root contains ", module_name, " (", cause, "), so it was never a run-time entry") }
+    PopulationMemberRead { member: member } =>
+      if is_empty(xs: decl_named_in_module(
+        decls: fn_arrow_decl_facts_live(pool_roots: [], pool_files: [concat(member.host_directory, "/", module_file_key(file: member.file))]),
+        mod_path: module_name,
+        fn_name: function_name
+      )) {
+        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
       } else {
-        Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetModuleAbsent: the target module ", module_name, " is not in the target universe, so it was never a run-time entry") }
+        Absent
       }
-    DeclarationRefDeclarationAbsent { reference: _ } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetDeclarationAbsent: the target module ", module_name, " declares no ", site.constructor.function_label, " named ", function_name) }
-    DeclarationRefFieldAbsent { reference: _ } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetFieldAbsent: a run-step target names a whole declaration, not a field") }
-    DeclarationRefContested { reference: _, claimants: claimants } =>
-      Present { value: concat(run_step_target_site_head(site: site), ": RunStepTargetContested: the entry is contested between ", join(claimants, ", ")) }
   }
 }
 
@@ -710,7 +713,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
             fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(run_step_target_site_head(site: s), ": the cited modules did not form a resolution context") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
           Accepted { value: context, diagnostics: _ } =>
             fold_list(xs: supported, empty: fold_list(xs: target_sites, empty: target_seed, cons: fn(acc, s) {
-              reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, targets: with_target_homes, refused: live.refused_files, context: context))
+              reference_verdicts_push(acc: acc, line: run_step_target_site_line(site: s, env: env, context: context))
             }), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
             })
