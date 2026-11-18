@@ -530,6 +530,19 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 data sighting_basis_guard_revision: CommitSha = "0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a"
 
 data live_deploy_apply_plan_witness_2026_11_18_revision: CommitSha = "e6dfd84cc16de6e203974cf8bde02a30d0d11112"
+// The main revision the operator's reach report was received against (2026-11-16). The commit that
+// carries the sighting below is a descendant of this one; the revision recorded is the tree the report
+// was read against, not the sha of the commit that writes it down, which does not exist yet.
+data h11ssl_unit3_reach_report_sighting_revision: CommitSha = "2674c00724d7fcf446d1fd3b8d12228c360e6959"
+// The head review 96009 read when it surfaced the build-pool reservation as a second answer to "which
+// hosts hold a build slot" (2026-11-17). The revision recorded is the tree that review read, not the sha
+// of the commit that writes this sighting down, which does not exist yet.
+data h11ssl_unit3_build_pool_fork_sighting_revision: CommitSha = "091f3a9b924ba4ff63268fee3f289d8ef14a27c6"
+data h11ssl_unit3_census_standing_sighting_revision: CommitSha = "6be8eaef58a481519c839f9ade82e2ae027554f7"
+// The head that carries the build-pool carve rule (gunbc.runner.runner_slot_desired), read when the fork above was
+// closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
+// writes this down.
+data h11ssl_unit3_build_pool_carve_derived_revision: CommitSha = "5215eaaf821ef0bfb9e22e9b88932dd294deaa4b"
 
 
 
