@@ -52,6 +52,15 @@ type Evidence
   = Builds
   | RunsWitness { witness: DeclarationRef }
 
+// `days` on a Leaf or a Family is a count of WORKING DAYS -- a duration -- carried as a bare
+// Int. std.measure has no working-day/effort family: its Time dimension counts SI seconds and its
+// CalendarDayDisplacement (:1870) counts CALENDAR-day displacements, and neither is a working-day
+// effort prior (a working-day count "fits neither type exactly"), so wrapping these would be a
+// fabricated value wearing a unit, not a conversion. gunbc.design_ruling::planning_scheduling_is_cut
+// forbids a schedule/effort type here, and these figures are documented priors, not measurements
+// (see the calibration note above). The field name carries the unit until the carrier grows.
+// feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family;
+// Leaf.days and Family.days become its alias. Owning lane: std.measure.
 type WorkPiece
   = Leaf { label: String, days: Int, evidence: Evidence }
   | Family { label: String, days: Int, population: Population, owner: RoadmapNodeId }
@@ -73,9 +82,17 @@ type WorkDecomposition {
   stages: List<WorkStage>
 }
 
+// Same working-day prior unit as WorkPiece.days: leaf_days_max is the leaf-rule ceiling and
+// decision_days the cost of a decision point, both in working days, held as bare Int.
+// feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family.
+// Owning lane: std.measure.
 data leaf_days_max: Int = 5
 data decision_days: Int = 1
 
+// The `days: Int` parameter on each constructor below is the same working-day prior as
+// WorkPiece.days (see the marker there).
+// feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family.
+// Owning lane: std.measure.
 fn leaf(label: String, days: Int) -> WorkPiece { Leaf { label: label, days: days, evidence: Builds } }
 
 fn probe(label: String, days: Int, module_path: String, decl_name: String) -> WorkPiece {
