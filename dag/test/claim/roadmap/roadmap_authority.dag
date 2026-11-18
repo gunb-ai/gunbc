@@ -86,8 +86,9 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventKind,
   RoadmapEventEnvelope,
   RoadmapEventId,
-  EventPrincipal,
   EventPrincipalAuthenticated,
+  AcceptancePrEvidence,
+  EarnedByPullRequest,
   roadmap_event_envelope,
   roadmap_event_id,
   roadmap_event_wire_text,
@@ -123,6 +124,7 @@ import gunbc.roadmap.roadmap_model {
   RoadmapAcceptanceEvent,
   AcceptanceRecorded,
   AcceptanceRevoked,
+  AcceptanceRevocationDisposition,
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeRemainsSuperseded,
   remains_superseded_revocations_join,
@@ -288,6 +290,49 @@ fn scenario_principal() -> EventPrincipalAuthenticated {
     namespace: "accounts" as NonEmptyStr,
     subject: "sub-roadmap-authority-scenario" as NonEmptyStr,
   } }
+}
+
+// THE RECEIPT THE FOLD WILL ADMIT: the node's own criteria digest, a red control executed, a handback
+// delivered. A receipt missing any of those is DROPPED by the fold, which is the point — a witness that
+// asserts a node was accepted has to spell an acceptance the log would actually honour, not merely say
+// so. The digest comes from the DECLARED node, so a scenario cannot accept a node on terms the model
+// does not state; a node the model does not declare gets a digest no receipt can match, and stays absent.
+fn scenario_digest(id: RoadmapNodeId) -> Fnv1a64Structural {
+  match first(nodes() |> filter(n => n.node == id)) {
+    Absent => tchash(s: "0000000000000000")
+    Present { value: n } => digest_or_zero(rn: n)
+  }
+}
+
+fn scenario_receipt(id: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
+  receipt_fixture(node: id as String, digest: scenario_digest(id: id))
+}
+
+// THE ACCEPTANCE WAS EARNED BY A PULL REQUEST, legibly the scenario's: a real url, merge time and head,
+// and a url whose number cannot be read as anybody's work. The other evidence case (no pull request at
+// all) is a CLOSED SET keyed by the receipt's own bytes, so a scenario could not argue into it even if
+// it wanted to — which is exactly why the scenarios do not want to.
+fn scenario_evidence() -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: "https://github.com/gunb-ai/gunbc/pull/0" as NonEmptyStr,
+    merged_at: "2026-11-18T00:00:00Z" as NonEmptyStr,
+    head_sha: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  }
+}
+
+fn scenario_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventKind {
+  RoadmapEventKind.AcceptanceRecordedEvent { receipt: scenario_receipt(id: id), evidence: scenario_evidence() }
+}
+
+fn scenario_revocation_kind(id: RoadmapNodeId, disposition: AcceptanceRevocationDisposition) -> RoadmapEventKind {
+  RoadmapEventKind.AcceptanceRevokedEvent {
+    receipt: scenario_receipt(id: id),
+    disposition: disposition,
+    revoked_by: "operator" as NonEmptyStr,
+    revoked_on: "2026-11-18",
+    reason: "the scenario took the acceptance back" as NonEmptyStr,
+    exact_prior_receipt: scenario_receipt(id: id),
+  }
 }
 
 // ONE SCENARIO EVENT. Every scenario event is recorded at the same instant, so an ordering a witness
@@ -531,27 +576,39 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which gunbc.design_argument::fail_closed names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: the ten acceptances this witness names, each spelled as the log spells one. They are
+  // real declared rows carrying real receipts, so the fold admits them or this witness reddes — which is
+  // what keeps the per-id assertions honest now that no directory walk stands behind them. What stays
+  // asserted is the RELATIONSHIP this witness is actually for (see live_state_count_transcription_note):
+  // active == declared minus accepted minus withheld, with nothing accepted or withheld left inside.
+  let wanted = [
+    tnid(s: "namespace-occurrence-transport"),
+    tnid(s: "pderive-typesafe-nullary-reflection"),
+    tnid(s: "pderive-static-supplemental-contract"),
+    tnid(s: "v1-test-hygiene-producer-retirement"),
+    tnid(s: "2-scm-git-upstream-model"),
+    tnid(s: "2-scm-mercurial-upstream-model"),
+    tnid(s: "2-scm-pijul-upstream-model"),
+    tnid(s: "2-claim-indexed-evidence"),
+    tnid(s: "2-scm-compatibility-shape"),
+    tnid(s: "2-scm-p0-landing-spine"),
+  ]
+  match scenario_envelopes(
+    label: "active-set-is-declared-minus-accepted",
+    events: map(wanted, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
     Absent => false
-    Present { value: accepted } =>
-      (accepted |> any(a => a == "namespace-occurrence-transport"))
-        && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
-        && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
-        && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
-        && (accepted |> any(a => a == "2-scm-git-upstream-model"))
-        && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
-        && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
-        && (accepted |> any(a => a == "2-claim-indexed-evidence"))
-        && (accepted |> any(a => a == "2-scm-compatibility-shape"))
-        && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && match live_withheld_node_ids() {
-          Absent => false
-          Present { value: withheld } =>
-            count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld)
-              && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
-              && all(active_nodes(), n => !(withheld |> any(w => w == n.node)))
-        }
+    Present { value: envs } => {
+      let accepted = scenario_accepted(envs: envs)
+      let withheld = scenario_withheld(envs: envs)
+      all(wanted, w => accepted |> any(a => a == w))
+        && count(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld))
+          == count(nodes()) - count(accepted) - count(withheld)
+        && all(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+          n => !(accepted |> any(a => a == n.node)))
+        && all(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+          n => !(withheld |> any(w => w == n.node)))
         && all(accepted, a => id_exists(id: a))
+    }
   }
 }
 
