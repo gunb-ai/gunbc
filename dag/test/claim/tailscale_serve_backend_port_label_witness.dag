@@ -1,0 +1,36 @@
+// NAME: tailscale_serve_backend_port_label_witness
+// SCENARIO: tailscale_serve_backend_is_port_label is THE one port-label rule of extdeps.tailscale
+//   serve -- both tailscale_serve_backend_of_proxy_target (the port half of a loopback proxy URL) and
+//   tailscale_serve_backend_target (a bare backend word) apply it, so a second copy would drift the
+//   moment one side learned a new fact. Before the Port fold landed it admitted 70000 as a port (the
+//   upper bound was a named gap, not a silent one: the module refused to copy the literal 65535 and
+//   there was no fold to consume). It now consumes std.types checked_port, so 0 (reserved) and 70000
+//   (outside RFC 793 / RFC 9293's 16-bit field) refuse, a non-numeric label refuses, and a real
+//   service port admits.
+// RUN: gunbc run --claim-run --entry dag/test/claim/tailscale_serve_backend_port_label_witness.dag --function <test fn> --source-root dag --source-root src/v2
+// EXPECT: each test fn answers true on the discriminating input.
+module test.claim.tailscale_serve_backend_port_label_witness
+
+import std.types { Bool }
+import extdeps.tailscale.serve { tailscale_serve_backend_is_port_label }
+
+// A REAL SERVICE PORT IS A PORT LABEL -- the admitting half of the pair.
+test fn classifier_admits_a_real_service_port() -> Bool {
+  tailscale_serve_backend_is_port_label(backend: "443")
+}
+
+// 70000 IS NOT A PORT. RED: if the classifier stopped consuming checked_port and fell back to the
+// old `n > 0 && round-trip` rule, this answers false -- the exact admission review 95857 named.
+test fn classifier_refuses_a_value_outside_the_16bit_field() -> Bool {
+  !tailscale_serve_backend_is_port_label(backend: "70000")
+}
+
+// 0 IS NOT A PORT. Port 0 is reserved (RFC 6335 §6); a "0" backend word is not a listening port.
+test fn classifier_refuses_reserved_port_zero() -> Bool {
+  !tailscale_serve_backend_is_port_label(backend: "0")
+}
+
+// A NON-NUMERIC LABEL IS NOT A PORT -- the fold is added, not substituted for the numeric round-trip.
+test fn classifier_refuses_a_non_numeric_label() -> Bool {
+  !tailscale_serve_backend_is_port_label(backend: "tcp")
+}
