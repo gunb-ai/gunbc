@@ -3545,11 +3545,11 @@ data ledger_sighting_cannot_state_what_it_established: IntegrationConcern = Inte
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode") },
         tail: [
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RungRead") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace", decl_name: "bare_name_resolved_only_by_the_flat_namespace") },
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "guarantee_ladder") },
         ],
       },
-      account: "Filed by still-otter-809 on 2026-11-18 while closing the loop on the first observed-to-compile specimen added to a_bare_type_name_binds_the_wrong_declaration (#16667): a bare type-position name in an import-bearing file compiled and executed under the v1 path, and the resolving route was never established. The caveat that a guard would have to enforce exists only as prose in that receipt, because no field or sum can carry it. The guard that tried to enforce it (#16671 at 0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a) passed its claims and was still closed, on the ground that its basis was test-supplied. Measurement of the 95-of-227 read-rung rows with empty evidence was taken at main 12253b17b3ae7a38fa331531a422efc727f5761b by counting rows whose declaration reports a read rung against rows whose evidence list is empty, over every row file under dag/gunbc/recurring_failure_mode excluding the roster.",
+      account: "Filed by still-otter-809 on 2026-11-18 while closing the loop on the first observed-to-compile specimen recorded on bare_name_resolved_only_by_the_flat_namespace (gunb-ai/gunbc#16667), whose W7 receipt already admits this geometry: a bare type-position name in an import-bearing file compiled and executed under the v1 path, and the resolving route was never established. The caveat that a guard would have to enforce exists only as prose in that receipt, because no field or sum can carry it. The guard that tried to enforce it (#16671 at 0fd8ac6e0ed2d8e277a5d1f477e14dfabf25991a) passed its claims and was still closed, on the ground that its basis was test-supplied. Measurement of the 95-of-227 read-rung rows with empty evidence was taken at main 12253b17b3ae7a38fa331531a422efc727f5761b by counting rows whose declaration reports a read rung against rows whose evidence list is empty, over every row file under dag/gunbc/recurring_failure_mode excluding the roster.",
     },
     tail: [],
   },
