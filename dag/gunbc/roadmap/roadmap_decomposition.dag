@@ -1431,7 +1431,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // at member 0, one per member of a produced/read family at its DECLARED count, and one per member of a
 // FindingsOf family at a SIMULATION-input count -- an ASSUMED count the carrier itself declares none of.
 // The edge relation is stage k depending on stage k-1, plus every waits_on row aimed into the child's own
-// stage. The expansion WRITES NOTHING: the schedule and readiness units below read it. It mints no
+// stage. The expansion WRITES NOTHING; its executing consumer is the leaf-expansion witness
+// (test.claim.roadmap.roadmap_schedule_leaf_expansion_witness), which reads the occurrences and their edges
+// through the accessors below. Downstream schedule/readiness units are OUT OF SCOPE for this unit and are
+// deliberately NOT built or claimed here. It mints no
 // gunbc.roadmap.roadmap_authority node -- a leaf has no identity until claimed. Occurrences are keyed by the
 // single carrier LeafPath (imported from gunbc.roadmap.roadmap_model above); nothing here re-spells that tuple.
 //
@@ -1642,8 +1645,4 @@ fn occurrence_is_assumed(o: Occurrence) -> Bool {
 // than restating it.
 fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
   occurrence_is_declared(o: o) && decomposition_has_leaf_path(path: o.path)
-}
-
-fn claimable_paths(e: Expansion) -> List<LeafPath> {
-  filter(expanded_occurrences(e: e), o => occurrence_is_offered_claimable(o: o)) |> map(o => o.path)
 }

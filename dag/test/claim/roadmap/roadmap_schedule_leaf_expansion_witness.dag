@@ -13,6 +13,7 @@ module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
 // which the expansion CALLS rather than re-checks. The same row aimed at a stage the parent HAS is admitted.
 
 import std.types { Bool, Int, List, String }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   Expansion, decomposition_for, expand_decomposition, is_expanded, is_refused,
@@ -71,7 +72,9 @@ test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
 // verdict rather than re-checking any row. The dependency here is the one the calendar-binding unit declares
 // on list-scheduling; aimed at a stage list-scheduling does not have (from_stage 99), the carrier rejects it
 // and so does the expansion; aimed at a stage it does have (from_stage 0), the carrier admits it and the
-// expansion admits it and emits the aimed edge into the child's own stage.
+// expansion admits it and emits the aimed edge into the child's own stage. The assertion is DISCRIMINATING:
+// it requires a non-empty edge set in which EVERY edge runs from a list-scheduling stage-0 occurrence TO the
+// planted child's LeafPath(child, 0, 0, 0) -- so a mis-aimed `from` or `to`, or no edge at all, goes red.
 test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_carriers_own_claim() -> Bool {
   let parent = "roadmap-schedule-list-scheduling"
   let child = "roadmap-schedule-calendar-binding"
@@ -89,9 +92,12 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
       leaf(label: "planted leaf", days: 1),
     ],
   ])
+  let adm_edges = expanded_edges(expand_decomposition(d: admitted, findings_count: 3))
   is_refused(expand_decomposition(d: beyond, findings_count: 3))
     && is_expanded(expand_decomposition(d: admitted, findings_count: 3))
     && !decomposition_dependencies_well_formed(d: beyond)
     && decomposition_dependencies_well_formed(d: admitted)
-    && count(expanded_edges(expand_decomposition(d: admitted, findings_count: 3))) >= 1
+    && count(adm_edges) >= 1
+    && all(adm_edges, e => e.from.item == nid(s: parent) && nat_to_int(n: e.from.stage) == 0
+      && e.to.item == nid(s: child) && nat_to_int(n: e.to.stage) == 0 && nat_to_int(n: e.to.piece) == 0 && nat_to_int(n: e.to.member) == 0)
 }
