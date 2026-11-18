@@ -23,7 +23,7 @@ import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows }
 import gunbc.fleet.fleet_known_hosts_anchor {
   portable_remote_words, anchored_host_key_row, SshTargetResolution, SshTargetResolved,
-  SshTargetRefused, TargetAnchorRowAbsent, ssh_target_wire, ssh_target_refusal_text
+  SshTargetRefused, TargetAnchorRowAbsent, FirstContactModeNotAdmitted, FirstContactHopSupersededByAnchor, ssh_target_wire, ssh_target_refusal_text
 }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
@@ -2348,6 +2348,7 @@ test fn the_pre_join_host_refuses_the_administrator_target_srv14() -> Bool {
       TargetAnchorRowAbsent { host: _ } => true
       TargetEndpointUnparseable { reason: _ } => false
       FirstContactModeNotAdmitted { mode: _, host: _ } => false
+      FirstContactHopSupersededByAnchor { host: _ } => false
     }
   }
 }

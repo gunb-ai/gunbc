@@ -288,23 +288,6 @@ data first_contact_admitted_mode_wires: List<String> = [
   tailscale_join_converge_wire as String,
 ]
 
-// THE REACH COMPOSITION, in ONE place (review 96260): the ANCHOR first -- anchored_ssh_target's own
-// adjudication, the verification registry's rule, hop rows skipped -- and ONLY on refusal the
-// mode-gated FIRST-CONTACT HOP. Every dialing mode resolves through this; none may prefer the hop over
-// an existing anchor, so once a host has its tailnet row the lease is never dialled again. A mode that
-// is not in first_contact_admitted_mode_wires simply gets the anchored refusal.
-fn ssh_reach_resolution(
-  host: HostIdentity,
-  principal: NonEmptyStr,
-  mode_wire: String,
-) -> SshTargetResolution {
-  match administrator_ssh_target(host: host) {
-    SshTargetResolved { target: target } => SshTargetResolved { target: target }
-    SshTargetRefused { endpoint: _, refusal: _ } =>
-      first_contact_ssh_target(host: host, principal: principal, mode_wire: mode_wire)
-  }
-}
-
 fn mode_admits_first_contact(mode_wire: String) -> Bool {
   length(filter(first_contact_admitted_mode_wires, fn(w) { w == mode_wire })) > 0
 }
@@ -320,6 +303,13 @@ fn first_contact_ssh_target(
       refusal: FirstContactModeNotAdmitted { mode: mode_wire, host: host as String },
     }
   } else {
+  // THE HOP IS FOR PRE-ANCHOR HOSTS ONLY, and the hop function itself enforces it: a host the registry
+  // already anchors is refused the hop (no window in which any mode, in any order, dials a lease while
+  // an anchor row exists -- review 96260/96272). Callers therefore need no anchor-check of their own.
+  match anchored_host_key_row(host: host) {
+    Present { value: _ } =>
+      SshTargetRefused { endpoint: host as String, refusal: FirstContactHopSupersededByAnchor { host: host as String } }
+    Absent =>
   match fold(first_contact_lan_keys, init: none, f: fn(acc, o) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -333,6 +323,7 @@ fn first_contact_ssh_target(
         Present { value: row } =>
           SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
       }
+  }
   }
   }
 }
@@ -748,6 +739,7 @@ type SshTargetRefusal
   = TargetEndpointUnparseable { reason: NetworkHostParseRefusal }
   | TargetAnchorRowAbsent { host: String }
   | FirstContactModeNotAdmitted { mode: String, host: String }
+  | FirstContactHopSupersededByAnchor { host: String }
 
 type SshTargetResolution
   = SshTargetResolved { target: SshTarget }
@@ -792,6 +784,10 @@ fn ssh_target_refusal_text(endpoint: String, refusal: SshTargetRefusal) -> Strin
       join(["fleet ssh target refused: endpoint `", endpoint, "` is not a host (", network_host_parse_refusal_wire(refusal: why), ")"], "")
     TargetAnchorRowAbsent { host: h } =>
       join(["fleet ssh target refused: host `", h, "` has no known-hosts anchor row, and an ssh may only connect at the anchored address (the anchor gate is the authority for the address)"], "")
+    FirstContactModeNotAdmitted { mode: m, host: h } =>
+      join(["fleet ssh target refused: mode `", m, "` may not use the first-contact hop for host `", h, "` -- only the join-making modes in first_contact_admitted_mode_wires reach a pre-anchor host"], "")
+    FirstContactHopSupersededByAnchor { host: h } =>
+      join(["fleet ssh target refused: host `", h, "` is already anchored; the first-contact hop admits nothing while an anchor row exists"], "")
   }
 }
 

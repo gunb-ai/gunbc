@@ -47,7 +47,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetRefused,
   SshTargetResolved,
   fleet_ssh_target_at_standard_port,
-  ssh_reach_resolution,
+  first_contact_ssh_target,
 }
 import gunbc.fleet.fleet_converge_mode_wires { hostname_converge_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -670,11 +670,14 @@ fn hostname_converge_bind_transport(
   host: ComputeHost,
   context: FleetSshExecutionContext,
 ) -> HostnameConvergeResolution {
-  // ANCHOR FIRST, then the mode-gated first-contact hop (hostname_converge is one of the two modes the
-  // hop admits -- it is the mode that MAKES a host joinable, so it must reach a host that has no anchor
-  // yet; but once an anchor exists it wins, and the lease is never dialled again, review 96260). The
-  // probe route remains only for hosts with no hop. srv1-srv4 have none: route byte-for-byte unchanged.
-  match ssh_reach_resolution(host: target, principal: host_identity_operator_principal_name(), mode_wire: hostname_converge_mode) {
+  // THE HOP FIRST -- safe because the hop function ITSELF refuses any host the registry already anchors
+  // (FirstContactHopSupersededByAnchor): srv1-srv4 are anchored, so their resolution falls to the
+  // ORIGINAL probe route below, byte-for-byte unchanged in address source AND operator principal
+  // (review 96272: an anchored-first composition here would have hijacked them onto the registry row
+  // with the executor login -- it does not). Only an UNANCHORED host with a pinned key, reached by an
+  // admitted mode wire, is admitted over the hop; the hop rows retire at the flip, after which even
+  // srv14 falls through to the probe route like every other host.
+  match first_contact_ssh_target(host: target, principal: host_identity_operator_principal_name(), mode_wire: hostname_converge_mode) {
     SshTargetResolved { target: ssh_target } =>
       PairResolved {
         request: hostname_converge_request(
