@@ -1,5 +1,5 @@
 module gunbc.runner.runner_qualification_dispatch
-import v2.std.diagnostic { outcome_accepted_value }
+import v2.std.diagnostic { outcome_accepted_value, Accepted, Rejected, diagnostics_reason_lexemes }
 
 import std.optional { Absent, Present }
 import std.algebra { length }
@@ -32,7 +32,7 @@ import extdeps.github.workflow_runs {
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
+  fleet_converge_workflow_jobs_of, fleet_converge_assemble_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
   fleet_converge_workflow_mode_wire, QualificationFloor,
   FleetConvergeDispatchSpec, DispatchInputValue, fleet_converge_dispatch_values, fleet_converge_dispatch_names_supplying,
   FleetConvergeDispatchValuesRendered, FleetConvergeDispatchInputRepeated,
@@ -179,6 +179,7 @@ type QualificationSubjectRefusal
   | SubjectFloorRevisionGuardNotFirst { job_id: NonEmptyStr }
   | SubjectFloorStepRunsPastTheGuard { job_id: NonEmptyStr }
   | SubjectRequiredInputUnsupplied { input: String }
+  | SubjectWorkflowGenerationRefused { reason: String }
 
 type QualificationSubjectStanding
   = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
@@ -424,14 +425,19 @@ fn qualification_dispatch_subject(
   if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
     QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
   } else {
-    qualification_dispatch_subject_over(
-      dispatch: dispatch,
-      slot: slot,
-      delivery: delivery,
-      workflow: fleet_converge_workflow,
-      floor_job_id: floor_job_id,
-      pin: pin,
-    )
+    match fleet_converge_workflow_jobs_of() {
+      Rejected { diagnostics: d } =>
+        QualificationSubjectRefused { refusal: SubjectWorkflowGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) } }
+      Accepted { value: jobs } =>
+        qualification_dispatch_subject_over(
+          dispatch: dispatch,
+          slot: slot,
+          delivery: delivery,
+          workflow: fleet_converge_assemble_workflow(jobs: jobs),
+          floor_job_id: floor_job_id,
+          pin: pin,
+        )
+    }
   }
 }
 
