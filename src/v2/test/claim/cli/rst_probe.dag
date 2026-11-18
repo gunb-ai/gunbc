@@ -1,12 +1,11 @@
-module gunbc.test.probe.run_step_population {
-}
+module v2.test.claim.cli.rst_probe
 
 // STANDALONE, never imported by any instrument or required claim. This is a diagnostic harness only: it asks
 // whether the whole-corpus run-step refusals are an ACQUISITION failure (the target module is not a readable
 // population member under [dag, src/v2]) or a LOAD failure (readable, but never became a resolution root). It
 // imports only the acquisition surface, so claim_batch resolves it in seconds instead of the whole compiler.
 
-import v2.std.text { String }
+import std.types { Bool, List, String }
 import std.algebra { fold_list }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.cli.repository_layout { repository_storage_layout }
