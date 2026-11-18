@@ -790,29 +790,47 @@ fn duplicate_acceptance_witness(instance: HostDashboardInstance, scratch: Roadma
       let node = "node-duplicate" as NonEmptyStr as RoadmapNodeId
       let receipt = sample_receipt("node-duplicate")
       let facts = fact_set()
-      let first = issue_command_apply(layout: layout,
+      // BOTH acceptances must LAND in the log. The raw writer (issue_command_apply) admits a second same-node
+      // acceptance — roadmap_event_admitted_after answers AcceptanceRecordedEvent => true — so the ONLY thing
+      // that may refuse the duplicate is the LOAD's replay law. Chaining the second onto the committed head
+      // (expected = the first event's own id) makes parent admission pass, so the second is refused by REPLAY
+      // and not by the writer's optimistic-concurrency revision check. With expected: none the second hits
+      // ExpectSlotAbsent on a now-present slot, the writer refuses it as a revision conflict, the log holds ONE
+      // acceptance, and the claim goes green on the wrong refusal without ever exercising replay (review F1).
+      match issue_command_apply(layout: layout,
         command: AcceptNode {
           subject: IssueCommandSubject { node: node, author: opr_principal(),
             operation: "op-duplicate-one" as NonEmptyStr, expected: none },
           receipt: receipt, evidence: earned(facts) },
-        recorded_at: "2026-11-04T08:00:00Z")
-      let e1 = match first { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the first acceptance appended", true)
-        _ => claim("the first acceptance was refused", false) }
-      let second = issue_command_apply(layout: layout,
-        command: AcceptNode {
-          subject: IssueCommandSubject { node: node, author: opr_principal(),
-            operation: "op-duplicate-two" as NonEmptyStr, expected: none },
-          receipt: receipt, evidence: earned(facts) },
-        recorded_at: "2026-11-04T08:00:01Z")
-      let e2 = match second { CarrierClosed { result: EventAppended { id: _ }, close: _ } => claim("the duplicate reached the log, so the LOAD is the one that must refuse it", true)
-        CarrierClosed { result: EventAppendRefused { id: _, step: _, reason: _ }, close: _ } => claim("the writer itself refused the duplicate at the chain", true) }
-      match roadmap_operator_close_history(layout: layout) {
-        RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => e1 && e2 && claim("the replay refuses the duplicate, located: " + d, count(d) > 0)
-        RoadmapAcceptanceEventHistoryLoaded { events: evs } => e1 && e2 && claim("the log never holds two acceptances of one node",
-          count(filter(evs, e => match e {
-            AcceptanceRecorded { receipt: r } => (r.node as String) == "node-duplicate"
-            AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
-          })) <= 1)
+        recorded_at: "2026-11-04T08:00:00Z") {
+        CarrierClosed { result: EventAppended { id: first_id }, close: _ } =>
+          match issue_command_apply(layout: layout,
+            command: AcceptNode {
+              subject: IssueCommandSubject { node: node, author: opr_principal(),
+                operation: "op-duplicate-two" as NonEmptyStr, expected: Present { value: first_id } },
+              receipt: receipt, evidence: earned(facts) },
+            recorded_at: "2026-11-04T08:00:01Z") {
+            CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
+              // TWO acceptances of one node are committed. The LOAD — the same reader production uses — must
+              // REFUSE and LOCATE the refusal on the node: a duplicate-specific cause, not a bare non-empty
+              // detail (any read or parse failure has one), and never a Loaded history the fold lets through.
+              match roadmap_operator_close_history(layout: layout) {
+                RoadmapAcceptanceEventHistoryLoadRefused { detail: d } =>
+                  claim("the replay law refuses the second acceptance, located on the node: " + d,
+                    string_contains(s: d, pattern: "already holds a live acceptance")
+                      && string_contains(s: d, pattern: "node-duplicate"))
+                RoadmapAcceptanceEventHistoryLoaded { events: _ } =>
+                  claim("two acceptances of one node loaded without refusal — the replay law must reject the whole load", false)
+              }
+            CarrierClosed { result: EventAppendRefused { id: _, step: step, reason: reason }, close: _ } =>
+              claim("the duplicate must reach the log so the LOAD is what refuses it; the writer refused it at " + step + ": " + reason, false)
+            CarrierClosed { result: _, close: _ } =>
+              claim("the duplicate was neither appended nor a clean writer refusal", false)
+          }
+        CarrierClosed { result: EventAppendRefused { id: _, step: step, reason: reason }, close: _ } =>
+          claim("the first acceptance must append so the second is a genuine replay; it was refused at " + step + ": " + reason, false)
+        CarrierClosed { result: _, close: _ } =>
+          claim("the first acceptance was neither appended nor a clean writer refusal", false)
       }
     }
   }
@@ -966,7 +984,8 @@ fn retired_belt_lineage_witness(instance: HostDashboardInstance, scratch: Roadma
 // status makes EVERY node's terminality unreadable (roadmap_operator_node_closed answers ClosedStatusUnreadable),
 // so it refuses the open control as well and witnesses a blanket veto rather than a retirement rule. Where a
 // REFUSED carrier is the point, this file already says it — a_retired_node_is_not_open_to_the_belt_even_over_a_refused_carrier
-// and a_retired_nodes_lineage_is_terminal_to_the_belt both judge over one and expect the refusal.
+// judges over one and expects the refusal. a_retired_nodes_lineage_is_terminal_to_the_belt no longer does: it now
+// reads over a PROVISIONED carrier, so its terminality is decided by a committed event tail, not by a refused read.
 fn launch_gate_refusal_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
     match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
       RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
