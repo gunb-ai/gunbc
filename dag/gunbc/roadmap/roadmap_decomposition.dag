@@ -1837,43 +1837,50 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // ---- The priced prior of one occurrence (roadmap-schedule-list-scheduling, gunb-ai/gunbc#16650)
 //
 // A schedule needs the WORKING-DAY prior an occurrence carries. The days live in the decomposition (WorkPiece.days
-// -- the single authority); this only LOOKS UP a member path's prior and answers none when the path has no duration
-// to give: a non-leaf (Join / Decision / Composite), a leaf asked for anything but member 0, a Family member index
-// the population does not hold, or a stage / piece that is not there. Answering Present { 0 } for any of those
-// would be a fabricated default -- the scheduler would place a zero-day leaf for a path that has no duration, which
-// is a plausible output invented where the real answer is a refusal (gunbc.design_argument::fail_closed: "no
-// plausible output is fabricated", "A diff landing a silent widen, fabricated default ... is a hard reject").
-// Refusing is the consumer's job; this function's job is to answer none, never a made-up day count.
-// A FindingsOf family is unbounded by declaration -- its members come from the findings_count simulation input --
-// so its members are priced without an index bound; a Produced or Reading family IS bounded by its declared count.
+// is the single authority for them); this only LOOKS UP the prior a member path carries and answers Absent when the
+// path has no duration to give: a non-leaf (Join / Decision / Composite), a leaf asked for anything but member 0, a
+// bounded family whose member index its population does not hold, or a stage / piece that is not there. Answering
+// Present { value: 0 } for any of those would mint a zero-day leaf for a path that carries no duration -- a
+// fabricated default and a plausible output invented where the real answer is a refusal
+// (@ref(gunbc.design_argument::fail_closed): "no plausible output is fabricated"; "A diff landing a silent widen,
+// fabricated default ... is a hard reject"). Refusing is the consumer's job; this function's job is to answer
+// Absent, never a made-up day count.
+//
+// The shape follows decomposition_has_leaf_path exactly -- the same Nat indexes crossed once via nat_to_int, the
+// same list reads, the same arm-by-arm answer -- so the two cannot drift on WHICH path carries a duration: that
+// function answers whether a worker may CLAIM the leaf, this one answers what a SIMULATION pays for it.
+// A FindingsOf family is the one arm the two answer differently, and deliberately: decomposition_has_leaf_path
+// refuses a findings member because no such leaf exists to claim until the probe produces it, while an expansion
+// emits those very members as occurrences with count_source Assumed -- a declared simulation input
+// (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
+// carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
+// NOT bounded by population_members (which answers 1 for a FindingsOf carrier, a count the probe does not hold);
+// it is bounded by the member set the expansion itself emitted, which the scheduler checks against its own
+// occurrence set (MemberIndexBeyondExpansion) instead of here. A Produced or Reading family IS bounded by its
+// declared count in both.
 
-// The piece list of a stage, by Nat index walked down (the same structural walk the occurrence emitters use;
-// answers none when the index runs past the list).
-fn stage_piece_list(stages: List<WorkStage>, index: Nat) -> List<WorkPiece> {
-  match stages {
-    Empty => []
-    Cons { head: s, tail: rest } => match index { Zero => s.pieces, Succ { prev: k } => stage_piece_list(stages: rest, index: k) }
-  }
-}
-
-fn piece_at_index(pieces: List<WorkPiece>, index: Nat) -> WorkPiece? {
-  match pieces {
-    Empty => none
-    Cons { head: p, tail: rest } => match index { Zero => some(value: p), Succ { prev: k } => piece_at_index(pieces: rest, index: k) }
-  }
-}
-
-fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int? {
-  match piece_at_index(pieces: stage_piece_list(stages: d.stages, index: path.stage), index: path.piece) {
-    Absent => none
-    Present { value: p } => match p {
-      Leaf { label: label, days: days, evidence: ev } =>
-        if nat_to_int(n: path.member) == 0 { some(value: days) } else { none }
-      Family { label: label, days: days, population: pop, owner: o } =>
-        if population_is_findings(p: pop) || nat_to_int(n: path.member) < population_members(p: pop) { some(value: days) } else { none }
-      Join { label: label } => none
-      Decision { label: label, alternatives: alts } => none
-      Composite { label: label, stages: sts } => none
+fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Optional<Int> {
+  let stage_index: Int = nat_to_int(n: path.stage)
+  let piece_index: Int = nat_to_int(n: path.piece)
+  let member_index: Int = nat_to_int(n: path.member)
+  match d.stages[stage_index] {
+    Absent => Absent
+    Present { value: st } => match st.pieces[piece_index] {
+      Absent => Absent
+      Present { value: pc } => match pc {
+        Leaf { label, days, evidence } => if member_index == 0 { Present { value: days } } else { Absent }
+        Family { label, days, population, owner } =>
+          if population_is_findings(p: population) {
+            Present { value: days }
+          } else if member_index < population_members(p: population) {
+            Present { value: days }
+          } else {
+            Absent
+          }
+        Join { label } => Absent
+        Decision { label, alternatives } => Absent
+        Composite { label, stages } => Absent
+      }
     }
   }
 }
