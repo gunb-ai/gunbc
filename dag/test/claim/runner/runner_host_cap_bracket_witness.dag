@@ -291,7 +291,7 @@ test fn a_unit_left_masked_by_an_interrupted_bracket_is_planned_back_in_service(
 // host this control used to name carries no fabric member at all, and its population test failed on a
 // host the ruling had emptied rather than on the release it claims to check. gunbc.runner.
 // runner_slot_allocation fabric_execution_slot_identities is the authority for which slots are lent to
-// fabric execution (srv1's microVM shakedown 13 and revision job 14 today, by the same rulings), so it
+// fabric execution, and what that roster holds today is its business and not this control's, so it
 // picks the subject here: a control that must be re-picked by hand every time the operator moves a slot
 // is a stale control, not a check. AN EMPTY POPULATION WITNESSES NOTHING AND REFUSES — with no fabric
 // member there is no unit to keep out of the released set, and the disjointness below would be vacuously
