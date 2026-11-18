@@ -152,37 +152,34 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
                   Retired { reason } => roadmap_retirement_operation_identity(node: node, reason: reason as String)
                   _ => ""
                 }
-                // THE GUARD, at the append. A Claimed is refused here BEFORE anything is written, and the
-                // refusal is the guard's typed reason rendered for the operator. Non-claim kinds carry no
-                // grain and are not refused by the guard.
-                match k {
+                // THE GUARD, evaluated BEFORE the append. A Claimed is refused here before anything is
+                // written, and the refusal is the guard's typed reason rendered for the operator. Non-claim
+                // kinds carry no grain and skip the guard. The append and exit block below is ONE block
+                // for every kind -- the grain branches decide only the verdict, not the write (minimize_
+                // redundancy: append handling lives in exactly one place).
+                let guard_refusal = match k {
                   Claimed { grain } => match roadmap_claimed_grain_admissible(node: node_id, grain: grain) {
-                    Refused { reason } => roadmap_event_record_exit(
-                      exit: ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: ", roadmap_claimed_grain_refusal_text(reason)], "") },
-                      closes: [history.close])
-                    Admitted { grain: _ } => {
-                      let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }, operation: operation)
-                      roadmap_event_record_exit(
-                        exit: match appended.result {
-                          EventAppended { id } => ExitSuccess
-                          EventAlreadyPresent { id } => ExitSuccess
-                          EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
-                        },
-                        closes: [history.close, appended.close])
-                    }
+                    Refused { reason } => Present { value: roadmap_claimed_grain_refusal_text(reason) }
+                    Admitted { grain: _ } => none
                   }
-                  _ => {
-                      let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }, operation: operation)
-                      roadmap_event_record_exit(
-                        exit: match appended.result {
-                          EventAppended { id } => ExitSuccess
-                          EventAlreadyPresent { id } => ExitSuccess
-                          EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
-                        },
-                        closes: [history.close, appended.close])
-                    }
+                  _ => none
+                }
+                match guard_refusal {
+                  Present { value: why } => roadmap_event_record_exit(
+                    exit: ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: ", why], "") },
+                    closes: [history.close])
+                  Absent => {
+                    let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }, operation: operation)
+                    roadmap_event_record_exit(
+                      exit: match appended.result {
+                        EventAppended { id } => ExitSuccess
+                        EventAlreadyPresent { id } => ExitSuccess
+                        EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
+                      },
+                      closes: [history.close, appended.close])
                   }
                 }
+              }
               }
               }
             }

@@ -21,7 +21,7 @@ import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, Lau
 import gunbc.roadmap.roadmap_dispatch_actuator { decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state, roadmap_standing_is_retired }
 
-import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_command_event, issue_operation_nonce }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }

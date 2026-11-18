@@ -361,7 +361,9 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
 // item (else leaf-wrong-item), and it must be a leaf the decomposition actually has (else leaf-path-
 // unknown); a count above 1 is ambiguous and refuses EVERY Claimed with a typed decomposition-ambiguous
 // reason -- the guard never silently picks one decomposition to check against. Every refusal is typed
-// (fail_closed), never a boolean that a caller could invert or ignore.
+// (fail_closed), never a boolean that a caller could invert or ignore. The CLI front-end computes this
+// verdict BEFORE appending (kinds that carry no grain skip it), so the append and exit block is one
+// block, not a copy per grain branch (minimize_redundancy).
 type ClaimedGrainRefusal
   = LeafPathUnknown { path: LeafPath }
   | LeafWrongItem { path: LeafPath, expected: RoadmapNodeId }
