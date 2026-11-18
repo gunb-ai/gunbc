@@ -1,0 +1,139 @@
+module test.claim.carrier_body_under_scalar_declared_return_probe
+
+// REPRO PROBE (silent-owl-221, adhoc-4d5ad4ff-fbf). Three shapes of a CARRIER (a generic coproduct,
+// the v2.std.diagnostic.Outcome class) produced at a position DECLARING A KERNEL SCALAR:
+//   A. a fn declared `-> String` whose body's trailing expr is `outcome_accepted(value: "x")`;
+//   B. a `String` parameter applied to an `Outcome<String>`;
+//   C. a record with a `String` field built with an `Outcome<String>` at that field.
+// Plus the controls that make the wall's idleness or liveness decidable: the same call at a
+// position declaring the carrier (must stay accepted), and a bare `String` literal under `-> Int`
+// (the one pair the existing wall is known to refuse).
+//
+// This file is a MEASUREMENT PROBE, not a claim of held status: every arm reports its observed
+// blocking count in the ExitFailure reason, so ONE claim_batch run answers "which of the three
+// shapes does the checker accept", with the class breakdown beside each total.
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_blocking_rows_of_class,
+  census_total_count
+}
+import std.types { String, Int, Bool, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CARRIER IS LOCAL AND IS THE SAME SHAPE AS THE CORPUS ONE. `type Outcome<T> = Accepted<T> |
+// Rejected<String>` with `fn outcome_accepted<T>(value: T) -> Outcome<T>` is v2.std.diagnostic's
+// carrier and its Accepted constructor's smart constructor in two lines, so the probe measures the
+// checker's judgment about the SHAPE (a coproduct application under a kernel scalar), not about the
+// name. The corpus pair is measured separately against the real import in the entry-compile probe.
+
+data carrier_prelude: String = "import std.types { String }\ntype Outcome<T> = Accepted<T> | Rejected<String>\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted(value: value) }\n"
+
+fn probe_source(body: String) -> String {
+  concat("module probe_carrier_scalar\n", concat(carrier_prelude, body))
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// A. declared `-> String`, body produces the carrier.
+data shape_a_body: String = "fn probe() -> String { outcome_accepted(value: \"x\") }\n"
+
+data shape_a_control_body: String = "fn probe() -> Outcome<String> { outcome_accepted(value: \"x\") }\n"
+
+// The wall-is-not-idle control: the pair the existing wall DOES refuse.
+data idle_control_body: String = "fn probe() -> Int { \"x\" }\n"
+
+// B. a String parameter, applied to the carrier.
+data shape_b_body: String = "fn takes(x: String) -> Int { 1 }\nfn probe() -> Int { takes(x: outcome_accepted(value: \"x\")) }\n"
+
+data shape_b_control_body: String = "fn takes(x: String) -> Int { 1 }\nfn probe() -> Int { takes(x: \"x\") }\n"
+
+// C. a record with a String field, built with the carrier at that field.
+data shape_c_body: String = "type Box { text: String }\nfn probe() -> Box { Box { text: outcome_accepted(value: \"x\") } }\n"
+
+data shape_c_control_body: String = "type Box { text: String }\nfn probe() -> Box { Box { text: \"x\" } }\n"
+
+fn report(label: String, total: Int, not_inhabited: Int) -> String {
+  concat(
+    concat(concat(label, " total="), to_string(total)),
+    concat(" DTNI=", to_string(not_inhabited))
+  )
+}
+
+test fn carrier_under_scalar_three_shape_probe_reports_observed_counts() -> ProcessExit {
+  let a: Int = blocking_total(source: probe_source(body: shape_a_body));
+  let a_class: Int =
+    blocking_class(source: probe_source(body: shape_a_body), wanted: "DeclaredTypeNotInhabited");
+  let a_control: Int = blocking_total(source: probe_source(body: shape_a_control_body));
+  let idle: Int = blocking_total(source: probe_source(body: idle_control_body));
+  let b: Int = blocking_total(source: probe_source(body: shape_b_body));
+  let b_class: Int =
+    blocking_class(source: probe_source(body: shape_b_body), wanted: "DeclaredTypeNotInhabited");
+  let b_control: Int = blocking_total(source: probe_source(body: shape_b_control_body));
+  let c: Int = blocking_total(source: probe_source(body: shape_c_body));
+  let c_class: Int =
+    blocking_class(source: probe_source(body: shape_c_body), wanted: "DeclaredTypeNotInhabited");
+  let c_control: Int = blocking_total(source: probe_source(body: shape_c_control_body));
+  let part1: String =
+    concat(
+      report(label: "A", total: a, not_inhabited: a_class),
+      concat(" | ", report(label: "A+", total: a_control, not_inhabited: 0))
+    );
+  let part2: String =
+    concat(
+      concat(" | ", report(label: "idle", total: idle, not_inhabited: 0)),
+      concat(" | ", report(label: "B", total: b, not_inhabited: b_class))
+    );
+  let part3: String =
+    concat(
+      concat(" | ", report(label: "B+", total: b_control, not_inhabited: 0)),
+      concat(" | ", report(label: "C", total: c, not_inhabited: c_class))
+    );
+  let part4: String = concat(concat(" | ", report(label: "C+", total: c_control, not_inhabited: 0)), " (total=-1 means the census route reported not-runnable)");
+  ExitFailure {
+    code: 1,
+    reason: concat(concat(concat(part1, part2), concat(part3, part4)),
+      concat(" | classes: A=", class_breakdown(source: probe_source(body: shape_a_body))))
+  }
+}
+
+// The full blocking-row census for shape A, so a refusal landing under a different class name is
+// still seen. Rows carry the class, the subject name and the count.
+fn class_breakdown(source: String) -> String {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: rows } => rows_of(rows: census_blocking_rows(rows: rows), rest: "")
+    CensusNotRunnable { cause: c } => concat("NOT-RUNNABLE: ", c)
+  }
+}
+
+fn rows_of(rows: List<CompileDiagnosticCensusRow>, rest: String) -> String {
+  match rows {
+    [] => concat(rest, "none")
+    [head, ...tail] =>
+      concat(
+        concat(concat(concat(head.diagnostic_class, ":"), to_string(head.count)),
+          concat("(", concat(head.subject_name, ") "))),
+        rows_of(rows: tail, rest: rest)
+      )
+  }
+}
