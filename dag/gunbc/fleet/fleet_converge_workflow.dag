@@ -3623,7 +3623,7 @@ fn fleet_converge_gunbc_run_step_timeout_minutes(phases: List<Second>) -> Int {
 data fleet_converge_mtcollins1_kvm_observer_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1KvmObserverObserve)
 
 fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins KVM observer, no boot: under the unit hold, log in, establish the viewer, one still, release" },
     id: Present { value: "mtcollins1_kvm_observer_observe" },
     run: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
@@ -3907,7 +3907,7 @@ data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = join(["
 data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
 
 fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins vendor UI status mapping: fetch the virtual-media page and the scripts it names, commit the status-0 branch with its offsets (reads only)" },
     id: Present { value: "mtcollins1_ui_status_asset_observe" },
     run: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
@@ -4772,7 +4772,7 @@ fn fleet_converge_mtcollins1_boot_step() -> Outcome<Step> {
 }
 
 fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, PXE/controller handoff, release)" },
     id: Present { value: "mtcollins1_pxe_mac_discovery" },
     run: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
@@ -4789,7 +4789,7 @@ fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Outcome<Step> {
 }
 
 fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins unit 1 controller cold reset under the unit hold (read, one IPMI cold reset attempt, watch availability lost then recovered, read; no chassis-power command)" },
     id: Present { value: "mtcollins1_bmc_cold_reset" },
     run: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
@@ -5830,7 +5830,7 @@ fn fleet_converge_spark_bootstrap_step() -> Outcome<Step> {
 // drift on how a Spark is reached or authenticated. The entry converges the promoted fabric groups'
 // vLLM units, workers before heads.
 fn fleet_converge_spark_serving_apply_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)" },
     id: Present { value: "spark_serving_apply" },
     run: gunbc_ci_spark_serving_apply_invoke(),
@@ -5858,7 +5858,7 @@ fn fleet_converge_spark_serving_apply_step() -> Outcome<Step> {
 // before the head" while the source did the opposite -- a generated description that contradicted the
 // thing it described, which is worse than none because an operator plans the blast radius from it.
 fn fleet_converge_spark_native_serving_apply_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight that mutates nothing, the incumbent unit preserved, head before workers, a readback of the complete realization bound to each rank's own incarnation, then commit or roll the whole arm back)" },
     id: Present { value: "spark_native_serving_apply" },
     run: gunbc_ci_spark_native_serving_apply_invoke(),
@@ -5887,7 +5887,7 @@ fn fleet_converge_spark_native_serving_apply_step() -> Outcome<Step> {
 // credential materialized inside this boundary. An authoring session cannot hold it, which is the
 // whole reason the probe is a dispatched mode rather than something anyone runs from a laptop.
 fn fleet_converge_spark_runtime_image_probe_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Spark runtime image probe (pull the pinned image on the selected Spark and ask it, inside its own digest, what it registers and what it admits)" },
     id: Present { value: "spark_runtime_image_probe" },
     run: gunbc_ci_spark_runtime_image_probe_invoke(),
@@ -6365,7 +6365,7 @@ fn fleet_converge_fan_policy_phase_step_if_expression() -> Expression {
 data fleet_converge_fan_policy_phase_step_if: String = serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
 
 fn fleet_converge_fan_policy_phase_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "fan_policy_phase" },
     run: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
@@ -7800,7 +7800,7 @@ fn fleet_converge_branch_run_grant_env(observe_step_id: NonEmptyStr) -> List<Yam
 }
 
 fn fleet_converge_branch_run_grant_request_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "Branch run grant: read the run from GitHub and the account's policy as iam-observe, file one request, wait for the operator" },
     id: Present { value: "branch_run_grant_request" },
     run: gunbc_ci_branch_run_grant_request_invoke(),
@@ -7833,7 +7833,7 @@ fn fleet_converge_branch_run_grant_apply_step() -> Outcome<Step> {
 }
 
 fn fleet_converge_gcp_iam_request_step() -> Outcome<Step> {
-  outcome_accepted(value:value: RunStep {
+  outcome_accepted(value: RunStep {
     name: Present { value: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)" },
     id: Present { value: "gcp_iam_request" },
     run: gunbc_ci_gcp_iam_converge_request_invoke(),
