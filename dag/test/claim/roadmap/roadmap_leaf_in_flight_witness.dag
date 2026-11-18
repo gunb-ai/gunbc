@@ -1,0 +1,592 @@
+// The CLAIM WITNESSES for the in-flight leaf set (roadmap-leaf-in-flight-set): every answer this read
+// gives, EXECUTED. The logs are PLANTED from the module's own pure encoders — each event is a
+// RoadmapEvent, its id its own content hash (roadmap_event_envelope), its line
+// roadmap_event_wire_text — and never read from a live log, so no witness can pass because of what a
+// deployment happens to have recorded, and none can pass a filesystem in.
+//
+// WHAT IS ASSERTED, AND WHY IT IS THE RIGHT ASSERTION. Membership is structural: which LeafPath (the
+// carrier's own item/stage/piece/member) the set shows, and the three facts the claim carried with it
+// (assignee, return_to, recorded_at) — never a count alone, because a count that matched the wrong
+// leaves would pass while lying about who holds what. The red control is the pair the ticket names,
+// run on ONE planted history: a leaf claimed and then released is NOT in flight, and the same log
+// replayed WITHOUT the release puts it back — with the difference of the two derived sets stated
+// leaf by leaf.
+module test.claim.roadmap.roadmap_leaf_in_flight_witness
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.integer { nat_to_int }
+import std.nat { Nat, Zero, Succ }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_model {
+  RoadmapNodeId, LeafPath, ClaimGrain, AtPath, Pathless,
+  RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
+  AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
+  Claimed, Released, HandedBack, Retired, Progress,
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent,
+  LeafInFlightRead, LeafInFlightEntry, LeafClosedByEntry, InFlightLeaves, InFlightRefused,
+  InFlightClaimGrainUnreadable, InFlightLineUnreadable,
+  InFlightEventOfAnotherItem, InFlightLeafOfAnotherItem, InFlightHistoryUnordered,
+  NoPullRequest, roadmap_event_envelope, roadmap_event_wire_text, roadmap_leaf_in_flight_set,
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PLAINT. Every log below is built here, from the pure encoders, in causal order: an event's
+// parent is the id of the event before it, so roadmap_event_causal_chain is what orders the fold and
+// no witness can hand the read a history the log itself does not form.
+// ------------------------------------------------------------------------------------------------
+
+fn item() -> RoadmapNodeId { nid(s: "leaf-in-flight-item") }
+fn other_item() -> RoadmapNodeId { nid(s: "another-item") }
+
+fn principal(authority: String, namespace: String, subject: String) -> EventPrincipal {
+  EventPrincipalAuthenticated {
+    ref: PrincipalRef {
+      authority: authority as NonEmptyStr, namespace: namespace as NonEmptyStr, subject: subject as NonEmptyStr,
+    },
+  }
+}
+
+fn op() -> EventPrincipal { principal("google-oidc", "accounts", "op") }
+fn session_a() -> EventPrincipal { principal("google-oidc", "accounts", "session-a") }
+fn session_b() -> EventPrincipal { principal("google-oidc", "accounts", "session-b") }
+
+// A LEAF OF THIS ITEM, at the carrier's own path.
+fn leaf(member: Int) -> LeafPath {
+  LeafPath { item: item(), stage: 0, piece: 0, member: nat(member) }
+}
+
+fn leaf_on(on: RoadmapNodeId, member: Int) -> LeafPath {
+  LeafPath { item: on, stage: 0, piece: 0, member: nat(member) }
+}
+
+// AN INTEGER AS THE CARRIER'S Nat. The literals a .dag source spells are already Nat; this is the one
+// place a witness turns a test's Int into that, so the leaf indexes under test are the carrier's own
+// Nat, not a string stand-in for one.
+fn nat(n: Int) -> Nat {
+  if n <= 0 {
+    Zero
+  } else {
+    Succ { prev: nat(n - 1) }
+  }
+}
+
+fn receipt() -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: item(), criteria_digest: Fnv1a64Structural { digest: "0123456789abcdef" as Fnv1a64StructuralDigestHex },
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_leaf_in_flight_witness" as NonEmptyStr,
+      witness_fn: "a_released_leaf_is_not_in_flight_and_the_same_log_without_the_release_puts_it_back" as NonEmptyStr,
+      executed_on: "2026-11-18" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "dag/gunbc/roadmap/roadmap_event_log.dag" as NonEmptyStr,
+      further_artifacts: ["dag/test/claim/roadmap/roadmap_leaf_in_flight_witness.dag" as NonEmptyStr] as List<NonEmptyStr>,
+    },
+    accepted_by: "operator" as NonEmptyStr, accepted_on: "2026-11-18" as NonEmptyStr,
+  }
+}
+
+fn claim_of(holder: EventPrincipal, back: EventPrincipal, grain: ClaimGrain) -> RoadmapEventKind {
+  Claimed { assignee: holder, return_to: back, grain: grain }
+}
+
+fn claim_of_a(member: Int) -> RoadmapEventKind { claim_of(session_a(), session_b(), AtPath { path: leaf(member) }) }
+fn claim_of_b(member: Int) -> RoadmapEventKind { claim_of(session_b(), session_a(), AtPath { path: leaf(member) }) }
+fn whole_item_claim() -> RoadmapEventKind { claim_of(session_a(), session_b(), Pathless) }
+fn accepted() -> RoadmapEventKind { AcceptanceRecordedEvent { receipt: receipt(), evidence: NoPullRequest } }
+fn retired() -> RoadmapEventKind { Retired { reason: "this work died" as NonEmptyStr } }
+fn handed_back() -> RoadmapEventKind { HandedBack { reason: "the session has stopped" as NonEmptyStr } }
+
+fn revocation(reopens: Bool) -> RoadmapEventKind {
+  AcceptanceRevokedEvent {
+    receipt: receipt(),
+    disposition: if reopens { AcceptanceNodeReopensActiveFrontier {} } else { AcceptanceNodeRemainsSuperseded {} },
+    revoked_by: "operator" as NonEmptyStr, revoked_on: "2026-11-19" as NonEmptyStr,
+    reason: "the criterion did not hold" as NonEmptyStr,
+  }
+}
+
+// THE PLANTER: kinds in, wire lines out, chained by id. A witness states WHAT happened and the planter
+// spells the bytes; no test hand-writes a line except where a corrupt line IS the subject, and then it
+// corrupts an encoded one rather than free-writing a record the encoder would refuse.
+fn planted_log(kinds: List<RoadmapEventKind>) -> List<String> {
+  plant(kinds: kinds, at: 0, parent: none, out: [])
+}
+
+// THE SAME, ON ANOTHER ITEM'S LOG, for the refusal that an event must be the item's own.
+fn planted_log_on(on: RoadmapNodeId, kinds: List<RoadmapEventKind>) -> List<String> {
+  plant_on(on: on, kinds: kinds, at: 0, parent: none, out: [])
+}
+
+fn plant(kinds: List<RoadmapEventKind>, at: Int, parent: RoadmapEventId?, out: List<String>) -> List<String> {
+  match kinds.first() {
+    Absent => out
+    Present { value: hd } => plant_step(kind: hd, rest: kinds.skip(n: 1), at: at, parent: parent, out: out)
+  }
+}
+
+// THE ONE EVENT-WRITER. The envelope's id is its own event's hash, so the planted chain is the log's
+// real chain. The event is built in a function body, never inside a match arm.
+fn plant_step(kind: RoadmapEventKind, rest: List<RoadmapEventKind>, at: Int, parent: RoadmapEventId?, out: List<String>) -> List<String> {
+  let e = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: op(), parent: parent, kind: kind, recorded_at: stamp(at: at),
+  })
+  plant(kinds: rest, at: at + 1, parent: Present { value: e.id }, out: concat(out, [roadmap_event_wire_text(env: e)]))
+}
+
+fn plant_on(on: RoadmapNodeId, kinds: List<RoadmapEventKind>, at: Int, parent: RoadmapEventId?, out: List<String>) -> List<String> {
+  match kinds.first() {
+    Absent => out
+    Present { value: hd } => plant_on_step(on: on, kind: hd, rest: kinds.skip(n: 1), at: at, parent: parent, out: out)
+  }
+}
+
+fn plant_on_step(on: RoadmapNodeId, kind: RoadmapEventKind, rest: List<RoadmapEventKind>, at: Int, parent: RoadmapEventId?, out: List<String>) -> List<String> {
+  let e = roadmap_event_envelope(e: RoadmapEvent {
+    node: on, author: op(), parent: parent, kind: kind, recorded_at: stamp(at: at),
+  })
+  plant_on(on: on, kinds: rest, at: at + 1, parent: Present { value: e.id }, out: concat(out, [roadmap_event_wire_text(env: e)]))
+}
+
+// A FORGERY, GUARDED. The corrupt-line witnesses below must corrupt THE ENCODER'S OWN bytes, so the
+// target is a literal the canonical writer emits ("serialize_json_object_members" writes each member
+// as `"key": value`, with the space). A target that stops matching would silently hand the read a
+// VALID line and the witness would pass on the wrong thing, so a forgery that changed nothing is a
+// failure, not a pass — the wire form's authority is the encoder, and this is where a witness says so.
+fn forged_wire(line: String, from: String, to: String) -> String {
+  let forged = replace(s: line, from: from, to: to)
+  if forged == line {
+    "__forgery_did_not_match__"
+  } else {
+    forged
+  }
+}
+
+// THE CLAIM'S OWN CLOCK, distinct per position in a planted log, so an entry's `since` can be pinned to
+// the event that put the leaf in flight rather than to whichever claim touched it last.
+fn stamp(at: Int) -> String {
+  if at == 0 { "2026-11-18T09:00:00Z" }
+  else if at == 1 { "2026-11-18T09:01:00Z" }
+  else if at == 2 { "2026-11-18T09:02:00Z" }
+  else if at == 3 { "2026-11-18T09:03:00Z" }
+  else if at == 4 { "2026-11-18T09:04:00Z" }
+  else { "2026-11-18T09:05:00Z" }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SET AS PREDICATES, all structural: which leaf the set shows, and what its entry carries.
+// ------------------------------------------------------------------------------------------------
+
+fn leaves_of(read: LeafInFlightRead) -> List<LeafInFlightEntry> {
+  match read {
+    InFlightLeaves { leaves: l, closed: _, pathless_claims: _, absorbed_claims: _ } => l
+    InFlightRefused { cause: _ } => []
+  }
+}
+
+fn closed_of(read: LeafInFlightRead) -> List<LeafClosedByEntry> {
+  match read {
+    InFlightLeaves { leaves: _, closed: c, pathless_claims: _, absorbed_claims: _ } => c
+    InFlightRefused { cause: _ } => []
+  }
+}
+
+fn held_count(read: LeafInFlightRead) -> Int { count(leaves_of(read)) }
+fn closed_count(read: LeafInFlightRead) -> Int { count(closed_of(read)) }
+
+fn pathless_count(read: LeafInFlightRead) -> Int {
+  match read {
+    InFlightLeaves { leaves: _, closed: _, pathless_claims: p, absorbed_claims: _ } => p
+    InFlightRefused { cause: _ } => 0
+  }
+}
+
+fn absorbed_count(read: LeafInFlightRead) -> Int {
+  match read {
+    InFlightLeaves { leaves: _, closed: _, pathless_claims: _, absorbed_claims: a } => a
+    InFlightRefused { cause: _ } => 0
+  }
+}
+
+// WHICH LEAF THE SET SHOWS, by its carrier path.
+fn holds(read: LeafInFlightRead, member: Int) -> Bool {
+  any(leaves_of(read), e => nat_to_int(n: e.leaf.member) == member
+    && (e.leaf.item as String) == ("leaf-in-flight-item" as String))
+}
+
+fn holds_nothing(read: LeafInFlightRead) -> Bool { count(leaves_of(read)) == 0 }
+
+fn holds_only(read: LeafInFlightRead, member: Int) -> Bool { count(leaves_of(read)) == 1 && holds(read: read, member: member) }
+
+// THE ENTRY CARRIES WHAT ITS CLAIM CARRIED — the holder, the return-to, the claim's own time and the
+// claim's own id. A set that named the right leaf with the wrong holder would still mislead the offer.
+fn held_by(read: LeafInFlightRead, member: Int, holder: EventPrincipal) -> Bool {
+  any(leaves_of(read), e => nat_to_int(n: e.leaf.member) == member && e.assignee == holder)
+}
+
+fn returned_to(read: LeafInFlightRead, member: Int, back: EventPrincipal) -> Bool {
+  any(leaves_of(read), e => nat_to_int(n: e.leaf.member) == member && e.return_to == back)
+}
+
+fn since_is(read: LeafInFlightRead, member: Int, at: String) -> Bool {
+  any(leaves_of(read), e => nat_to_int(n: e.leaf.member) == member && e.since == at)
+}
+
+fn claim_id_is(read: LeafInFlightRead, member: Int, id: RoadmapEventId) -> Bool {
+  any(leaves_of(read), e => nat_to_int(n: e.leaf.member) == member && (e.claim as String) == (id as String))
+}
+
+// WHICH EVENT ENDED WHICH HOLD. A leaf that left the set without this would be a silent drop.
+fn closed_by_kind(read: LeafInFlightRead, member: Int, word: String) -> Bool {
+  any(closed_of(read), c => nat_to_int(n: c.leaf.member) == member && c.by_kind == word)
+}
+
+fn all_closed_are(read: LeafInFlightRead, word: String) -> Bool { all(closed_of(read), c => c.by_kind == word) }
+
+// ------------------------------------------------------------------------------------------------
+// THE SET, AS EACH EVENT LANDS — the ticket's first slice: one item over a planted log of claims,
+// releases and acceptances, the set shown changing as each of them arrives.
+// ------------------------------------------------------------------------------------------------
+
+test fn an_unclaimed_item_has_nothing_in_flight() -> Bool {
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: []))
+  held_count(read: read) == 0 && closed_count(read: read) == 0
+    && pathless_count(read: read) == 0 && absorbed_count(read: read) == 0
+}
+
+test fn a_claimed_leaf_is_in_flight_with_the_holder_its_claim_carried() -> Bool {
+  let e = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: op(), parent: none, kind: claim_of_a(0), recorded_at: "2026-11-18T09:00:00Z",
+  })
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: [roadmap_event_wire_text(env: e)])
+  holds_only(read: read, member: 0)
+    && held_by(read: read, member: 0, holder: session_a())
+    && returned_to(read: read, member: 0, back: session_b())
+    && since_is(read: read, member: 0, at: "2026-11-18T09:00:00Z")
+    && claim_id_is(read: read, member: 0, id: e.id)
+    && closed_count(read: read) == 0
+}
+
+// THE SET CHANGES AS EACH EVENT LANDS: nothing, one leaf, two leaves, nothing — and the release that
+// emptied it is named beside every leaf it emptied.
+test fn the_set_changes_as_each_event_lands() -> Bool {
+  let kinds = [claim_of_a(0), claim_of_b(1), Released, accepted()]
+  let at_zero = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: []))
+  let at_one = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: prefix(kinds: kinds, n: 1)))
+  let at_two = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: prefix(kinds: kinds, n: 2)))
+  let after_release = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: prefix(kinds: kinds, n: 3)))
+  let after_acceptance = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: kinds))
+  holds_nothing(read: at_zero)
+    && holds_only(read: at_one, member: 0)
+    && held_count(read: at_two) == 2 && holds(read: at_two, member: 0) && holds(read: at_two, member: 1)
+    // the release empties the set and records BOTH leaves as closed by it
+    && holds_nothing(read: after_release) && closed_count(read: after_release) == 2
+    && closed_by_kind(read: after_release, member: 0, word: "released")
+    && closed_by_kind(read: after_release, member: 1, word: "released")
+    && all_closed_are(read: after_release, word: "released")
+    // the acceptance closes nothing further: the set was already empty, and it stays empty
+    && holds_nothing(read: after_acceptance) && closed_count(read: after_acceptance) == 2
+}
+
+fn prefix(kinds: List<RoadmapEventKind>, n: Int) -> List<RoadmapEventKind> {
+  take(kinds: kinds, n: n, out: [])
+}
+
+fn take(kinds: List<RoadmapEventKind>, n: Int, out: List<RoadmapEventKind>) -> List<RoadmapEventKind> {
+  if n <= 0 {
+    out
+  } else {
+    match kinds.first() {
+      Absent => out
+      Present { value: hd } => take(kinds: kinds.skip(n: 1), n: n - 1, out: concat(out, [hd]))
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE RED CONTROL, as the ticket names it: a leaf claimed and then released is NOT in flight, and the
+// same log replayed WITHOUT the release puts it back. Both halves run on ONE planted history, so the
+// only difference between the two answers is the release itself.
+// ------------------------------------------------------------------------------------------------
+
+test fn a_released_leaf_is_not_in_flight_and_the_same_log_without_the_release_puts_it_back() -> Bool {
+  let claims = [claim_of_a(0), claim_of_b(1)]
+  let with_release = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: concat(claims, [Released])))
+  let without_release = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: claims))
+  // WITH the release: nothing is in flight, and both leaves are recorded as closed by that release.
+  holds_nothing(read: with_release)
+    && closed_count(read: with_release) == 2
+    && closed_by_kind(read: with_release, member: 0, word: "released")
+    && closed_by_kind(read: with_release, member: 1, word: "released")
+    && all_closed_are(read: with_release, word: "released")
+    // WITHOUT it: both leaves are back, each held by the hand that claimed it.
+    && held_count(read: without_release) == 2
+    && holds(read: without_release, member: 0) && holds(read: without_release, member: 1)
+    && held_by(read: without_release, member: 0, holder: session_a())
+    && held_by(read: without_release, member: 1, holder: session_b())
+    // THE DIFF OF THE TWO DERIVED SETS, leaf by leaf: the release took exactly these two out, and
+    // put nothing in. Each leaf is in the no-release set and absent from the with-release set.
+    && holds(read: without_release, member: 0) && !holds(read: with_release, member: 0)
+    && holds(read: without_release, member: 1) && !holds(read: with_release, member: 1)
+    && closed_count(read: without_release) == 0
+}
+
+// A RELEASE THAT LANDS WHILE NOTHING IS HELD IS STILL AN EVENT, NOT A HOLE: the chain keeps its link
+// and the answer is simply the empty set.
+test fn a_release_with_nothing_held_answers_the_empty_set() -> Bool {
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [Released]))
+  holds_nothing(read: read) && closed_count(read: read) == 0
+}
+
+// A LEAF CLAIMED, RELEASED AND CLAIMED AGAIN IS IN FLIGHT AGAIN, under the NEWER claim: the log's
+// newest Claimed governs, so a re-claim after a release reads as the fresh hold it is.
+test fn a_leaf_released_and_claimed_again_is_in_flight_again_under_the_new_holder() -> Bool {
+  let read = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), Released, claim_of_b(0)]))
+  holds_only(read: read, member: 0)
+    && held_by(read: read, member: 0, holder: session_b())
+    && returned_to(read: read, member: 0, back: session_a())
+    && since_is(read: read, member: 0, at: "2026-11-18T09:02:00Z")
+    && closed_by_kind(read: read, member: 0, word: "released")
+}
+
+// A RE-CLAIM OF A HELD LEAF REPLACES ITS HOLDER RATHER THAN ADDING A SECOND ENTRY: the set is keyed by
+// the LeafPath, so one leaf is never shown held twice.
+test fn a_reclaim_of_a_held_leaf_replaces_its_holder_rather_than_adding_an_entry() -> Bool {
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [claim_of_a(0), claim_of_b(0)]))
+  holds_only(read: read, member: 0)
+    && held_by(read: read, member: 0, holder: session_b())
+    && !held_by(read: read, member: 0, holder: session_a())
+    && closed_count(read: read) == 0
+}
+
+// TWO LEAVES THAT DIFFER ONLY IN THEIR MEMBER INDEX ARE TWO LEAVES: the key is the whole path, so a
+// member index is not decoration.
+test fn two_leaves_that_differ_only_in_their_member_index_are_two_leaves() -> Bool {
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [claim_of_a(0), claim_of_a(1)]))
+  held_count(read: read) == 2 && holds(read: read, member: 0) && holds(read: read, member: 1)
+}
+
+// ------------------------------------------------------------------------------------------------
+// EVERY CLOSER, BY NAME. Each ends the holds the chain shows and says which event it was; none may
+// vanish a leaf without a trace.
+// ------------------------------------------------------------------------------------------------
+
+fn closed_by_one(kinds: List<RoadmapEventKind>, word: String) -> Bool {
+  let read = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: kinds))
+  holds_nothing(read: read) && closed_count(read: read) == 1
+    && closed_by_kind(read: read, member: 0, word: word)
+}
+
+test fn each_closer_ends_the_holds_and_names_itself_as_the_closer() -> Bool {
+  let claim = claim_of_a(0)
+  closed_by_one(kinds: [claim, Released], word: "released")
+    && closed_by_one(kinds: [claim, handed_back()], word: "handed_back")
+    && closed_by_one(kinds: [claim, retired()], word: "retired")
+    && closed_by_one(kinds: [claim, accepted()], word: "acceptance_recorded")
+}
+
+// A REVOCATION IS NOT A RE-CLAIM: nothing re-enters flight on an undone acceptance. And whether a leaf
+// may be claimed again after one is the disposition the operator recorded, read the way the node fold
+// reads it — a reopening one lifts the terminal standing, a remains-superseded one does not.
+test fn a_revocation_returns_no_leaf_to_flight_and_only_a_reopening_one_may_be_claimed_again() -> Bool {
+  let revoked_alone = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), accepted(), revocation(reopens: true)]))
+  let claimed_after_reopen = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), accepted(), revocation(reopens: true), claim_of_b(1)]))
+  let claimed_after_supersede = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), accepted(), revocation(reopens: false), claim_of_b(1)]))
+  // the revocation itself returns nothing
+  holds_nothing(read: revoked_alone)
+    // a claim after a REOPENING revocation is a live hold again, and nothing was absorbed on the way
+    && holds_only(read: claimed_after_reopen, member: 1)
+    && absorbed_count(read: claimed_after_reopen) == 0
+    // a claim after a remains-superseded revocation is absorbed, exactly as it was before the revocation
+    && holds_nothing(read: claimed_after_supersede) && absorbed_count(read: claimed_after_supersede) == 1
+}
+
+// A CLAIM AFTER AN ACCEPTANCE, OR AFTER A RETIREMENT, IS ABSORBED — counted, never dropped: the
+// standing is terminal, and the only event authorized to end an acceptance is an admitted revocation.
+test fn a_claim_after_a_terminal_standing_is_absorbed_and_counted() -> Bool {
+  let after_acceptance = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), accepted(), claim_of_b(1)]))
+  let after_retirement = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), retired(), claim_of_b(1)]))
+  holds_nothing(read: after_acceptance) && absorbed_count(read: after_acceptance) == 1
+    && closed_by_kind(read: after_acceptance, member: 0, word: "acceptance_recorded")
+    && holds_nothing(read: after_retirement) && absorbed_count(read: after_retirement) == 1
+    && closed_by_kind(read: after_retirement, member: 0, word: "retired")
+}
+
+// AN EVENT THAT SAYS NOTHING ABOUT A HOLD MOVES THE SET NOT AT ALL: a progress note is not a claim and
+// is not a release either.
+test fn an_event_that_says_nothing_about_a_hold_moves_the_set_not_at_all() -> Bool {
+  let bare = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [claim_of_a(0)]))
+  let with_noise = roadmap_leaf_in_flight_set(
+    node: item(), lines: planted_log(kinds: [claim_of_a(0), Progress { note: "midway" as NonEmptyStr }]))
+  held_count(read: bare) == 1 && held_count(read: with_noise) == 1
+    && holds(read: with_noise, member: 0)
+    && held_by(read: with_noise, member: 0, holder: session_a())
+    && closed_count(read: with_noise) == 0
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PATHLESS CLAIM: it names no leaf, so it puts no leaf in flight — and it is COUNTED, so a reader
+// is never told that a log with claims in it holds nothing. And it is a shape the writer really
+// produces today: the wire line simply carries no leaf member at all.
+// ------------------------------------------------------------------------------------------------
+
+test fn a_pathless_claim_names_no_leaf_and_is_counted_visibly() -> Bool {
+  let pathless_only = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [whole_item_claim()]))
+  let together = roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: [whole_item_claim(), claim_of_a(0)]))
+  holds_nothing(read: pathless_only) && pathless_count(read: pathless_only) == 1
+    // beside a real claim: exactly one leaf — the named one — and the Pathless visible in the count
+    && holds_only(read: together, member: 0) && pathless_count(read: together) == 1
+    // and it closes nothing: a Pathless claim is not a release
+    && closed_count(read: together) == 0
+}
+
+// THE PATHLESS CLAIM IS THE BYTES THE PRODUCERS WRITE TODAY: no leaf member on the line at all, which
+// is what roadmap_claim_grain_members emits for Pathless — so the claim above is not a shape no log
+// can hold.
+test fn a_pathless_claim_is_recorded_without_a_leaf_member_at_all() -> Bool {
+  match planted_log(kinds: [whole_item_claim()]).first() {
+    Absent => false
+    Present { value: line } => !string_contains(s: line, pattern: "\"leaf\"")
+      && pathless_count(read: roadmap_leaf_in_flight_set(node: item(), lines: [line])) == 1
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// FAIL CLOSED. A Claimed whose grain cannot be read REFUSES the read; it is never skipped, because a
+// skipped claim reports as free a leaf somebody holds. So is any other unreadable line, a history that
+// will not order, another item's event, and a leaf belonging to another item.
+// ------------------------------------------------------------------------------------------------
+
+// A MALFORMED GRAIN CANNOT SURVIVE THE DECODER, which is why this read takes the log's wire LINES: the
+// forged line is the encoder's own output with the leaf's stage changed from a number to a string — a
+// claim whose leaf nobody can read, recorded on the log.
+test fn a_claimed_with_a_malformed_grain_refuses_the_read_naming_the_line_and_the_field() -> Bool {
+  match planted_log(kinds: [claim_of_a(0)]).first() {
+    Absent => false
+    Present { value: good } => match roadmap_leaf_in_flight_set(
+      node: item(), lines: [forged_wire(line: good, from: "\"stage\": 0", to: "\"stage\": \"zero\"")]) {
+      InFlightRefused { cause } => match cause {
+        InFlightClaimGrainUnreadable { line: l, field: f } =>
+          l == 0 && string_length(s: f) > 0 && string_contains(s: f, pattern: "stage")
+        _ => false
+      }
+      // NOT an empty set, and not the leaf either: a refusal is its own answer, never a quiet absence.
+      InFlightLeaves { leaves: _, closed: _, pathless_claims: _, absorbed_claims: _ } => false
+    }
+  }
+}
+
+// THE REFUSAL IS NOT THE ANSWER AN EMPTY LOG GIVES: the same line, unforged, derives the leaf — so the
+// refusal above is the corrupt bytes being refused, not the read failing to see a claim.
+test fn the_same_log_with_the_grain_intact_derives_the_leaf_the_forged_one_refuses() -> Bool {
+  match planted_log(kinds: [claim_of_a(0)]).first() {
+    Absent => false
+    Present { value: good } =>
+      holds_only(read: roadmap_leaf_in_flight_set(node: item(), lines: [good]), member: 0)
+        && match roadmap_leaf_in_flight_set(
+             node: item(), lines: [forged_wire(line: good, from: "\"stage\": 0", to: "\"stage\": \"zero\"")]) {
+             InFlightRefused { cause: InFlightClaimGrainUnreadable { line: 0, field: _ } } => true
+             _ => false
+           }
+  }
+}
+
+// EVERY UNREADABLE PART OF A GRAIN REFUSES, EACH NAMED BY THE GRAIN AUTHORITY'S OWN READERS: the item,
+// then the three indexes.
+test fn each_unreadable_part_of_a_grain_refuses_naming_the_part() -> Bool {
+  match planted_log(kinds: [claim_of_a(0)]).first() {
+    Absent => false
+    Present { value: line } => all([
+      forged_wire(line: line, from: "\"item\": \"leaf-in-flight-item\"", to: "\"item\": \"\""),
+      forged_wire(line: line, from: "\"piece\": 0", to: "\"piece\": \"p\""),
+      forged_wire(line: line, from: "\"member\": 0", to: "\"member\": \"\""),
+    ], forged => match roadmap_leaf_in_flight_set(node: item(), lines: [forged]) {
+      InFlightRefused { cause: InFlightClaimGrainUnreadable { line: 0, field: _ } } => true
+      _ => false
+    })
+  }
+}
+
+// AN UNREADABLE LINE THAT IS NOT A CLAIM IS REFUSED, NOT SKIPPED: it could be the release whose
+// absence would put a leaf back in flight, so a read that skipped lines could invent holds.
+test fn a_line_that_is_not_an_event_refuses_rather_than_being_skipped() -> Bool {
+  match planted_log(kinds: [claim_of_a(0), Released]).first() {
+    Absent => false
+    Present { value: claim } => match roadmap_leaf_in_flight_set(node: item(), lines: [
+      forged_wire(line: claim, from: "\"assignee\": \"principal:google-oidc/accounts/session-a\"", to: "\"assignee\": \"principal:google-oidc/accounts/other\""),
+      roadmap_event_wire_text(env: roadmap_event_envelope(e: RoadmapEvent {
+        node: item(), author: op(), parent: none, kind: Released, recorded_at: "2026-11-18T09:01:00Z",
+      })),
+    ]) {
+      // the FIRST line is the tampered one, and the read refuses there: it never walks past it to the
+      // release, which would otherwise say the leaf is not in flight.
+      InFlightRefused { cause } => match cause {
+        InFlightLineUnreadable { line: l, reason: r } => l == 0 && string_length(s: r) > 0
+        _ => false
+      }
+      InFlightLeaves { leaves: _, closed: _, pathless_claims: _, absorbed_claims: _ } => false
+    }
+  }
+}
+
+// A HISTORY THAT WILL NOT ORDER IS REFUSED, not folded in file order: "which leaf does the newest claim
+// name" has no answer without an order to ask it in.
+test fn a_forked_history_refuses_rather_than_being_folded_in_an_arbitrary_order() -> Bool {
+  let first = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: op(), parent: none, kind: claim_of_a(0), recorded_at: "2026-11-18T09:00:00Z",
+  })
+  let second = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: op(), parent: none, kind: claim_of_b(1), recorded_at: "2026-11-18T09:01:00Z",
+  })
+  match roadmap_leaf_in_flight_set(
+    node: item(), lines: [roadmap_event_wire_text(env: first), roadmap_event_wire_text(env: second)]) {
+    InFlightRefused { cause: InFlightHistoryUnordered {} } => true
+    _ => false
+  }
+}
+
+// AN EVENT FROM ANOTHER ITEM'S LOG REFUSES: a chain built from two items' lines would answer this
+// item's question with the other item's holds.
+test fn an_event_of_another_item_refuses_the_read() -> Bool {
+  let foreign = planted_log_on(on: other_item(), kinds: [claim_of(session_a(), session_b(), AtPath { path: leaf_on(on: other_item(), member: 0) })])
+  match roadmap_leaf_in_flight_set(node: item(), lines: foreign) {
+    InFlightRefused { cause: InFlightEventOfAnotherItem { line: 0, event_node: n, asked: a } } =>
+      (n as String) == "another-item" && (a as String) == "leaf-in-flight-item"
+    _ => false
+  }
+}
+
+// A LEAF OF ANOTHER ITEM RECORDED ON THIS ITEM'S LOG REFUSES: the leaf is not this item's to hold, and
+// guessing which item the writer meant would put in flight a leaf nobody claimed.
+test fn a_leaf_of_another_item_refuses_rather_than_guessing_the_item() -> Bool {
+  let kinds = [claim_of(session_a(), session_b(), AtPath { path: leaf_on(on: other_item(), member: 0) })]
+  match roadmap_leaf_in_flight_set(node: item(), lines: planted_log(kinds: kinds)) {
+    InFlightRefused { cause: InFlightLeafOfAnotherItem { line: 0, leaf_item: li, asked: a } } =>
+      (li as String) == "another-item" && (a as String) == "leaf-in-flight-item"
+    _ => false
+  }
+}
+
+// THE SAME LINES ANSWER THE SAME SET TWICE OVER: the set is derived and never stored, so re-deriving it
+// is the normal thing to do and there is no cache to be stale against — and no writer to have written
+// it, which is what the ticket's "never written" asks this read to leave true.
+test fn the_set_is_derived_again_from_the_same_lines_and_answers_the_same() -> Bool {
+  let log = planted_log(kinds: [claim_of_a(0), Released, claim_of_b(2)])
+  let once = roadmap_leaf_in_flight_set(node: item(), lines: log)
+  let twice = roadmap_leaf_in_flight_set(node: item(), lines: log)
+  held_count(read: once) == 1 && held_count(read: twice) == 1
+    && holds_only(read: once, member: 2) && holds_only(read: twice, member: 2)
+    && held_by(read: once, member: 2, holder: session_b()) == held_by(read: twice, member: 2, holder: session_b())
+    && closed_count(read: once) == 1 && closed_count(read: twice) == 1
+}
