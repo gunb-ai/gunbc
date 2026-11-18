@@ -36,13 +36,22 @@ import product.host_identity { HostIdentity }
 // actuation -- no in-flight reservation carries across the switch, so it should happen when srv2 has no
 // builds in flight.
 //
-// FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet
-// a place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
-//   - bobo (srv15) has no anchored known-hosts row (the last real scan covered srv1-4 and butch), so it
-//     cannot be dialed; adding one needs a key-scan observation with provenance, not a key from memory.
-//   - butch (srv14) has an anchored row but is a GPU serving host with no CI runner width and no modeled
-//     build ceiling, so a build-pool figure for it would be a guess (gunbc.design_argument::
-//     epistemic_humility); it is held off until its role gives an honest number.
+// FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet a
+// place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
+//   - bobo (srv15): the next step is its OS, not its key.
+//     @ref(gunbc.fleet.fleet_intent_network::host_lan_address) answers nothing for srv15 and it has no row in
+//     @ref(gunbc.fleet.fleet_enrollment::fleet_enrollments), so it is outside
+//     @ref(gunbc.fleet.fleet_enrollment::runner_executor_hosts) -- no address to dial, no host a run could be
+//     pinned to. A scanned row joins
+//     @ref(gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments) once an installed bobo has an
+//     address and a live runner, and not before.
+//   - butch (srv14): its pool figure asks for no authoring, because
+//     @ref(gunbc.runner.runner_slot_desired::host_build_pool_reservation) derives it for a host on this list;
+//     what keeps the host off is the serving charge held by
+//     @ref(gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier). It joins after
+//     that frontier dissolves: candidate row
+//     (@ref(gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts)), observe, converge,
+//     this row -- the order srv3 and srv4 took.
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
 // figure -- never before.

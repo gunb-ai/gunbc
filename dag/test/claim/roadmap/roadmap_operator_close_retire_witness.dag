@@ -1070,7 +1070,7 @@ test fn the_wet_carrier_admits_the_scenario_instance_it_was_handed() -> Bool {
 // provisioning would `git init` into the foreign tree and report Ready.
 fn carrier_ownership_refusal_witness(instance: HostDashboardInstance, scratch: RoadmapEventCarrierScratch) -> Bool {
   match roadmap_event_carrier_mint_scratch(template: "/tmp/gunbc_carrier_foreign.XXXXXX" as NonEmptyStr) {
-    RoadmapEventCarrierMintRefused { detail: detail } => claim("the foreign scratch could not be minted: " + detail, false)
+    RoadmapEventCarrierMintRefused { detail: detail, arm: _arm } => claim("the foreign scratch could not be minted: " + detail, false)
     RoadmapEventCarrierMinted { scratch: foreign } => {
       let foreign_instance: HostDashboardInstance = fabric_fixture_instance(root: foreign.path)
       let verdict = match roadmap_event_carrier_provision(instance: foreign_instance, scratch: scratch) {
@@ -1173,7 +1173,7 @@ test fn a_retirement_ends_any_standing_and_nothing_moves_it_afterwards() -> Bool
   let n = "node-retired" as NonEmptyStr as RoadmapNodeId
   let p = opr_principal()
   // The unsettled-review world: claimed, then handed back with review demanded.
-  let e_claimed = roadmap_event_envelope(e: RoadmapEvent { node: n, author: p, parent: none, kind: Claimed { assignee: p, return_to: p }, recorded_at: "2026-11-04T08:00:00Z" })
+  let e_claimed = roadmap_event_envelope(e: RoadmapEvent { node: n, author: p, parent: none, kind: Claimed { assignee: p, return_to: p , grain: Pathless }, recorded_at: "2026-11-04T08:00:00Z" })
   let e_back = roadmap_event_envelope(e: RoadmapEvent {
     node: n, author: p, parent: Present { value: e_claimed.id }, kind: HandedBack { reason: "review requested" as NonEmptyStr }, recorded_at: "2026-11-04T08:30:00Z" })
   let before = roadmap_issue_state(envs: [e_claimed, e_back]).standing
@@ -1187,7 +1187,7 @@ test fn a_retirement_ends_any_standing_and_nothing_moves_it_afterwards() -> Bool
   }
   // Terminal: events recorded afterwards — in causal order or out of it — never move it.
   let e_late = roadmap_event_envelope(e: RoadmapEvent {
-    node: n, author: p, parent: Present { value: e_retire.id }, kind: Claimed { assignee: p, return_to: p }, recorded_at: "2026-11-04T09:30:00Z" })
+    node: n, author: p, parent: Present { value: e_retire.id }, kind: Claimed { assignee: p, return_to: p , grain: Pathless }, recorded_at: "2026-11-04T09:30:00Z" })
   let later = roadmap_issue_state(envs: [e_claimed, e_back, e_retire, e_late]).standing
   let e3 = match later {
     NodeRetired { by: _, reason: _ } => claim("a retired node stays retired — no event moves it back", true)

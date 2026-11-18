@@ -11,9 +11,9 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_mtcollins1, operator_host_mtjade1,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
   operator_host_srv14, operator_host_srv15,
-  operator_host_183527, operator_host_3dde7f, operator_host_6ce85c,
+  operator_host_183527, operator_host_3dde7f, operator_host_6ce85c, operator_host_e2d4b7,
 }
-import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv14_baseboard, srv15_baseboard }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv14_baseboard, srv15_baseboard, supermicro_h11ssl_unit3_baseboard }
 
 // WHICH BOARD EACH MACHINE IN THE ROSTER CARRIES, for every member of
 // gunbc.hostname_allocation operator_hosts, enrolled or not. Naming is not enrollment, and
@@ -82,4 +82,19 @@ data machine_board_rows: List<MachineBoardRow> = [
   provider_owned(host: operator_host_183527),
   provider_owned(host: operator_host_3dde7f),
   identity_stated_board(host: operator_host_6ce85c, decl_name: "operator_host_6ce85c", catalog: supermicro_h11ssl_catalog),
+  // H11SSL unit 3 (2026-11-15 sighting): the board family is cited from the row that carries it, exactly as
+  // srv1-4, srv14 and srv15 do -- this unit now arrives through the fleet's supply layer, so a
+  // ServerBaseboard row for it exists in gunbc.fleet.fleet_intent, and this row CITES that row rather than
+  // restating the catalog. The siblings (operator_host_6ce85c and the other H11SSL unit) stay
+  // identity-stated because no supply intent exists for them: minting an intent row for a machine the fleet
+  // never intended to supply would be the invention, and this row is not a per-host fork of theirs -- the
+  // difference between the two shapes tracks whether the host has an intent row, which is a fact of the
+  // supply route, not of the board. Still owed, and no row here pretends otherwise: the baseboard SERIAL,
+  // which only an in-band `dmidecode -t baseboard` on the host gives. The hand install captured nothing, and
+  // the read goes over the modeled route once the fleet roster is on the box.
+  fleet_intent_board(
+    host: operator_host_e2d4b7,
+    decl_name: "supermicro_h11ssl_unit3_baseboard",
+    catalog: supermicro_h11ssl_catalog,
+  ),
 ]

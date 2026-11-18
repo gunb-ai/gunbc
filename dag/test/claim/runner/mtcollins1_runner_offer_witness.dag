@@ -9,7 +9,7 @@ import gunbc.ci.ci_fleet {
   mtcollins1_socket0_cpu_part_standing, cpu_bios_line_names_part,
 }
 import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
-import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total, HostRamMeasured, HostRamCensusUnread, host_hardware_census_of, MemoryUnread, MemorySurveyed }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv3 }
 import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
 import gunbc.ci.ci_runner_placement {
@@ -33,9 +33,9 @@ import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsI
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_slot_allocation {
-  HostWidthFacts, host_width_facts, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted,
+  HostWidthFacts, host_width_facts, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthCensusAbsent, CpuWidthOverCommitted,
   compute_host_cpu_admitted_width, committed_width_of, gunbc_runner_committed_width,
-  RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent,
+  RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, WidthCpuCensusAbsent,
 }
 import gunbc.ci.ci_runner_placement {
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -118,8 +118,12 @@ test fn census_meminfo_RED_non_reads_refuse_by_cause() -> Bool {
       "MemAvailable:   127000000 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
 }
 
+// THE STANDINGS ARE PER AXIS (review 96379). This host's row lists a CPU and no DIMM row, so its processor axis is
+// read and its MEMORY AXIS IS UNREAD: nobody measured zero DIMMs here. The RAM read therefore refuses rather than
+// answering byte_size(0) -- the same claim this row always made, now carried by the type instead of by an absence a
+// reader could fold away: the nominal DRAM reaches neither the offer nor any reader.
 test fn mtcollins1_RED_nominal_dram_total_reaches_neither_offer_nor_reader() -> Bool {
-  byte_size_count(b: compute_host_ram_bytes_total(host: mtcollins1_offer.supply.physical)) == 0
+  host_ram_axis_unread(host: mtcollins1_offer.supply.physical)
     && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
       "dram_total: 134217728 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
 }
@@ -172,6 +176,7 @@ fn mtcollins_cpu_slots(host: ComputeHost) -> Int {
   match compute_host_cpu_admitted_width(host: host) {
     CpuWidthDerived { slots: n } => n
     CpuWidthOfferAbsent { host: _ } => 0 - 1
+    CpuWidthCensusAbsent { host: _ } => 0 - 1
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => 0 - 1
   }
 }
@@ -492,5 +497,18 @@ test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
   match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
     HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 4
     _ => false
+  }
+}
+
+// THE MEMORY AXIS WAS NEVER READ, so the RAM read refuses; and the axis standing says so directly, which is what
+// stops a future reader from "fixing" the refusal by folding the empty list.
+fn host_ram_axis_unread(host: ComputeHost) -> Bool {
+  match host_hardware_census_of(host: host).memory {
+    MemoryUnread =>
+      match compute_host_ram_bytes_total(host: host) {
+        HostRamCensusUnread { host: _ } => true
+        HostRamMeasured { bytes: _ } => false
+      }
+    MemorySurveyed { rows: _ } => false
   }
 }

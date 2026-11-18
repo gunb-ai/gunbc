@@ -92,6 +92,13 @@ type ExecutorPrivilegedOperation
   | SystemdUnmaskUnit { unit: NonEmptyStr }
   | SystemdEnableUnit { unit: NonEmptyStr }
   | SystemdStartUnit { unit: NonEmptyStr }
+  // PLAIN MASK IS ITS OWN OPERATION, not a spelling of mask --now: the cap bracket masks a unit only
+  // after proving it stopped (gunbc.runner.runner_host_cap_bracket mask_slot_only), and `--now` would
+  // additionally STOP whatever the unit turned out to be by the time the command lands. On a host whose
+  // slots run CI, that difference is the difference between withdrawing a host and cancelling someone's
+  // build, so the two verbs carry separate grants. systemd documents mask as creating the symlink that
+  // makes the unit unstartable; it neither stops nor inhibits a running unit (systemctl(1)).
+  | SystemdMaskUnit { unit: NonEmptyStr }
   | SystemdMaskNowUnit { unit: NonEmptyStr }
   | SystemdStopUnit { unit: NonEmptyStr }
   | RetireUnitFragment { fragment: NonEmptyStr, retained: NonEmptyStr }
@@ -263,6 +270,11 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_now_flag,
       u
     ]
+    SystemdMaskUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_mask_verb,
+      u
+    ]
     SystemdStopUnit { unit: u } => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       systemctl_stop_verb,
@@ -299,6 +311,7 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdEnableUnit { unit: _ } => RunsAsRoot
     SystemdStartUnit { unit: _ } => RunsAsRoot
     SystemdMaskNowUnit { unit: _ } => RunsAsRoot
+    SystemdMaskUnit { unit: _ } => RunsAsRoot
     SystemdStopUnit { unit: _ } => RunsAsRoot
     RetireUnitFragment { fragment: _, retained: _ } => RunsAsRoot
     SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
@@ -796,6 +809,7 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     SystemdEnableUnit { unit: _ } => NoPrecondition
     SystemdStartUnit { unit: _ } => NoPrecondition
     SystemdMaskNowUnit { unit: _ } => NoPrecondition
+    SystemdMaskUnit { unit: _ } => NoPrecondition
     SystemdStopUnit { unit: _ } => NoPrecondition
     RetireUnitFragment { fragment: _, retained: _ } => NoPrecondition
     SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
