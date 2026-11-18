@@ -15,10 +15,13 @@ module test.claim.fleet.fleet_converge_arrival_step_budget_witness
 // computing a number -- the operator's sign-off happens outside the diff -- so this PR models the raise and
 // refuses to apply it, and applying it is a later change that carries the ruling row with it.
 //
-// No claim here reads state out of a ruling row's prose: review 96500 is right that a word like PENDING is
-// not a control bit, and an invariant belongs in a typed carrier (gunbc.design_argument::source_annotations).
-// The typed carrier is gunbc.ci.ci_budget_raise budget_admission (BudgetAdmitted / BudgetRaiseSignoffPending
-// / BudgetRaiseUnapproved); when it lands, the emitter gates on it and these claims read that, not text.
+// No claim in this file reads a ruling row at all -- not its prose, not its absence (reviews 96500 and
+// 96505: a word like PENDING is not a control bit, and a test that grades a hand-typed sentence is not
+// grading a model). The figures are pinned as integers, from the fold. The permission that would let them
+// be shipped is a separate, typed thing: the row in gunbc.design_ruling joins design_rulings() only in the
+// commit that carries the operator's words, and gunbc.ci.ci_budget_raise budget_admission
+// (BudgetAdmitted / BudgetRaiseSignoffPending / BudgetRaiseUnapproved) is the carrier the emitter will gate
+// on once it is on main.
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_converge_job,
   fleet_converge_arrival_converge_step_timeout_minutes,
@@ -26,7 +29,6 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_arrival_converge_backstop_holds,
   fleet_converge_gunbc_run_step_timeout_minutes,
 }
-import gunbc.design_ruling { srv15_arrival_converge_step_raised_to_21_minutes }
 import gunbc.fleet.fleet_workflow_steps {
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
@@ -114,18 +116,6 @@ test fn the_arrival_converge_step_ships_the_allowance_not_the_fold() -> Bool {
   t.length() == 1
     && all(t, m => m >= 0)
     && all(t, m => m == gunbc_ci_aux_step_timeout_minutes)
-}
-
-// A DOCUMENTATION CHECK, NOT A GATE. If the ledger carries a ruling row for this raise, the figures it
-// states in prose are the figures the fold produces. The claim asserts a property OF the text; it reads no
-// state OUT of it, and it is the only claim in this file that quotes a row at all. The fold's integers are
-// asserted alongside, so a leg added to a roster moves the fold and turns this RED, forcing the row to be
-// rewritten and re-signed: a sign-off given on 21 and 51 cannot be spent on other numbers.
-test fn a_ruling_row_names_the_figures_the_fold_produces() -> Bool {
-  string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.provenance, pattern: "step 5 -> 21 minutes")
-    && string_contains(s: srv15_arrival_converge_step_raised_to_21_minutes.provenance, pattern: "backstop 25 -> 51 minutes")
-    && fleet_converge_arrival_converge_step_timeout_minutes() == 21
-    && fleet_converge_arrival_converge_job_backstop_timeout_minutes() == 51
 }
 
 // THE FOLD COVERS ITS PHASES, each counted once: the resolve allowance plus the credential read plus both
