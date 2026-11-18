@@ -773,7 +773,7 @@ fn ssh_target_refusal_text(endpoint: String, refusal: SshTargetRefusal) -> Strin
     TargetAnchorRowAbsent { host: h } =>
       join(["fleet ssh target refused: host `", h, "` has no known-hosts anchor row, and an ssh may only connect at the anchored address (the anchor gate is the authority for the address)"], "")
     FirstContactModeNotAdmitted { host: h } =>
-      join(["fleet ssh target refused: host `", h, "` may only be reached through the first-contact hop by a mode holding an admission token -- the join-making modes alone hold one (FirstContactAdmission)"], "")
+      join(["fleet ssh target refused: host `", h, "` has no anchored row and may only be reached through the first-contact hop by a mode holding an admission token -- the join-making modes alone hold one (FirstContactAdmission)"], "")
     FirstContactHopSupersededByAnchor { host: h } =>
       join(["fleet ssh target refused: host `", h, "` is already anchored; the first-contact hop admits nothing while an anchor row exists"], "")
   }
