@@ -29,6 +29,8 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.measure { second, second_count, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
@@ -150,15 +152,22 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
 test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> Bool {
   let budget = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
   let step_minutes = fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
-  let job_minutes = fleet_converge_job_timeout_minutes()
-  let release_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
   let upload_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
-  budget == bound_seconds()
-      + (second_count(s: runner_host_cap_drain_policy.operations_allowance) as Int)
-      + (second_count(s: runner_host_cap_drain_policy.release_allowance) as Int)
-    && step_minutes * 60 >= budget
-    && job_minutes >= step_minutes + release_minutes + upload_minutes
-    && job_minutes <= max_job_timeout_minutes
+  match outcome_accepted_value(fleet_converge_job_timeout_minutes()) {
+    Absent => false
+    Present { value: job_minutes } => match outcome_accepted_value(fleet_converge_runner_host_cap_release_step()) {
+      Absent => false
+      Present { value: release_st } => {
+        let release_minutes = step_declared_timeout_minutes(st: release_st)
+        budget == bound_seconds()
+          + (second_count(s: runner_host_cap_drain_policy.operations_allowance) as Int)
+          + (second_count(s: runner_host_cap_drain_policy.release_allowance) as Int)
+          && step_minutes * 60 >= budget
+          && job_minutes >= step_minutes + release_minutes + upload_minutes
+          && job_minutes <= max_job_timeout_minutes
+      }
+    }
+  }
 }
 
 // 6. THE DOMAIN IS EXPLAINED, and the rows carry the authorities' OWN Workflow values (the fold is

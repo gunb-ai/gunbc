@@ -3,6 +3,7 @@ module test.claim.auth.branch_run_grant_broker_workflow_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, CommitSha }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.github.actions {
   PermRead, PermWrite, workflow_run_display_title_at,
   DisplayTitleIsWorkflowName, DisplayTitleIsRenderedRunName, DisplayTitleRenderingUncited,
@@ -141,8 +142,11 @@ test fn only_the_broker_holds_actions_write() -> Bool {
         && match p.id_token { Present { value: _ } => false  Absent => true }
     Absent => false
   })
-    && match fleet_converge_job().permissions {
+    && match outcome_accepted_value(fleet_converge_job()) {
+      Absent => false
+      Present { value: jj } => match jj.permissions {
       Present { value: p } => match p.actions { Present { value: PermRead } => true  _ => false }
       Absent => false
+    }
     }
 }
