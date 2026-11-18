@@ -1691,7 +1691,7 @@ fn kept_member_owned(member: ConvergedMember, spec: DeploymentSpec, instance: Ho
         [OwnedArtifact { path: path as String, kind: DirectoryExists }]
       }
     // The drain path unit and the broker front door do NOT ride the release roster today (member_identity's
-    // roster comment; their per-member-kind migration is the named roadmap leaf), so a KEEP row naming them
+    // roster comment; roadmap node deploy-release-roster-carries-every-owned-step), so a KEEP row naming them
     // only exists once the plan's verifier carries them -- the controls below pass them through the roster
     // the plan mints. When such a row exists, its reads (the launcher snapshot dir; the broker release tree
     // and its digest env file) are covered by the SAME folds the write legs use, above. Meanwhile this is

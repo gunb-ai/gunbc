@@ -312,8 +312,8 @@ test fn the_board_function_converge_unit_is_installed_by_the_host_singleton_depl
 // so a missing, drifted or failed converge is repaired whatever the serve unit's standing.
 // THE ALL-KEPT ROSTER: every member the release plan verifies as already present, INCLUDING the two
 // artifact-step members the release roster does not carry today (the attempt-unit drain path unit and the
-// broker front door -- their per-member-kind migration is the named roadmap leaf in
-// gunbc.roadmap.deploy_artifact_observed_identity). The verifier that admits a KEEP walks the owned steps,
+// broker front door -- their migration onto the roster is roadmap node
+// deploy-release-roster-carries-every-owned-step in gunbc.roadmap.roadmap_authority). The verifier that admits a KEEP walks the owned steps,
 // so a faithful all-kept plan carries their rows, spelled through the SAME identity authority
 // identity_member_of_step uses (it binds DirectoryRoot { path: <step path> } for both).
 fn all_kept_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
@@ -337,7 +337,7 @@ test fn the_converge_is_applied_when_the_serve_unit_is_unchanged() -> Bool {
 // the tree publication had no install leg, and refusing on members the plan PROVED present is wrong. The
 // gate counts them via plan_kept_owned_artifacts (apply_legs), whose paths come from the same folds the
 // write legs use -- no gate-local second map. The drain path unit and the broker front door do not ride
-// the release roster today (their per-member-kind migration is the named roadmap leaf), so the plan's
+// the release roster today (roadmap node deploy-release-roster-carries-every-owned-step), so the plan's
 // verifier carries them as rows spelled from the SAME identity authority (identity_member_of_step binds
 // DirectoryRoot { path: <step path> } -- the identical fold spec.dag's deployment_owned_steps builds).
 test fn the_all_kept_plan_clears_the_deploy_artifact_gate() -> Bool {
