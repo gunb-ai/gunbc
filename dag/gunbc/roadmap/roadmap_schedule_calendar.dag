@@ -1,0 +1,249 @@
+module gunbc.roadmap.roadmap_schedule_calendar
+
+// THE CALENDAR BINDING (roadmap-schedule-calendar-binding), a unit of gunb-ai/gunbc#16650's chain to the
+// roadmap Gantt. The list scheduler (roadmap-schedule-list-scheduling, gunbc.roadmap.roadmap_schedule)
+// answers the schedule in ABSTRACT days -- day 0, day 1, ... -- and stays testable on days alone. THIS unit
+// is kept OUT of the scheduler on purpose: it reads a COMPUTED schedule answer and a READ DATE and turns the
+// abstract days into calendar dates. Day 0 is the date the read was taken.
+//
+// A WEEK HAS FIVE WORKING DAYS (Monday..Friday) -- the calendar fact the ticket declares. Saturday and Sunday
+// are non-working, so a leaf whose finish would land on a non-working day READS AS THE NEXT WORKING DAY, never
+// as the weekend. Holidays are NOT modelled: the ticket declares only the five-working-day week, and this unit
+// invents no calendar fact the ticket does not. The weekday is read off the calendar's OWN day count
+// (extdeps.units.iso8601_calendar); a day is never carried as a bare Int here.
+//
+// NO date produced here is a dependency or a gate -- the dependency reading is the decomposition edges, not a
+// date. NO scheduling policy is changed: the order, the lanes, and the worker count are read straight off the
+// schedule answer (#16695), never recomputed -- this unit IMPORTS the schedule, it does not recompute it.
+//
+// DATES ARE DERIVED, NEVER AUTHORITATIVE BETWEEN READS (@ref schedule_answers_are_computed_cached_and_re_read,
+// narrowing @ref planning_scheduling_is_cut): a dated answer may be cached, but a READ RECOMPUTES it from the
+// schedule answer and the read date handed in; the cached dated answer is never served as a fact between reads.
+// The dated clock itself stays @ref effort_estimates_are_public_and_live_in_gunbc -- this unit reads a read date
+// in; it does not read a wall clock.
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate, iso8601_days_from_civil, iso8601_civil_from_days, iso8601_two_digits,
+}
+import gunbc.roadmap.roadmap_model { LeafPath }
+import gunbc.roadmap.roadmap_decomposition { OccurrenceCount }
+import gunbc.roadmap.roadmap_schedule {
+  Schedule, ScheduleAnswer, ScheduledLeaf, schedule_answer, scheduled_at, path_key,
+}
+
+// THE FIVE WORKING DAYS of the week, the calendar fact the ticket names. A week is seven calendar days; only
+// the first FIVE ordinals (Monday..Friday) are worked. This is the single authority for "working day" in this
+// unit -- the weekend length is read from it, never hard-coded a second way.
+fn working_days_in_week() -> Int { 5 }
+
+// The ORDINAL of a date within its week, Monday = 0 .. Sunday = 6, derived from the calendar's own day-count.
+// 1970-01-01 (day-count 0) was a THURSDAY, the fourth working ordinal, so the ordinal is (day-count + 3) mod 7.
+// The offset is a pure calendar property of the proleptic Gregorian calendar read off the existing day-count --
+// it is not an invented policy fact.
+fn weekday_of(date: Iso8601CivilDate) -> Int {
+  let raw = (iso8601_days_from_civil(y: date.year, m: date.month, d: date.day) + 3) % 7
+  if raw < 0 { raw + 7 } else { raw }
+}
+
+// A date is a WORKING day when its weekday ordinal falls inside the five working days.
+fn is_working_day(date: Iso8601CivilDate) -> Bool {
+  weekday_of(date: date) < working_days_in_week()
+}
+
+fn is_non_working_day(date: Iso8601CivilDate) -> Bool {
+  !(is_working_day(date: date))
+}
+
+// The calendar date an ABSTRACT DAY NUMBER falls on: the read date advanced by that many CALENDAR days. This is
+// the plain mapping the ticket's red control tests -- an abstract day advances the calendar one day at a time,
+// so a leaf can reach a Saturday or a Sunday on the raw calendar and must be rolled forward below.
+fn raw_date(read_date: Iso8601CivilDate, day: Int) -> Iso8601CivilDate {
+  iso8601_civil_from_days(days: iso8601_days_from_civil(y: read_date.year, m: read_date.month, d: read_date.day) + day)
+}
+
+// The NEXT working day on or after a date: a working day reads as itself; a Saturday rolls two days to Monday;
+// a Sunday rolls one day to Monday. The roll is the weekend length read off the working-week, never a magic 2.
+fn next_working_day(date: Iso8601CivilDate) -> Iso8601CivilDate {
+  let ordinal = weekday_of(date: date)
+  if ordinal < working_days_in_week() {
+    date
+  } else {
+    iso8601_civil_from_days(
+      days: iso8601_days_from_civil(y: date.year, m: date.month, d: date.day) + (7 - ordinal))
+  }
+}
+
+// THE BOUNDING OF ONE ABSTRACT DAY to a date: the raw calendar date it lands on, then rolled forward to the next
+// working day. Every start and finish date a caller reads goes through this, so a date is never a weekend.
+fn bound_day_to_date(read_date: Iso8601CivilDate, day: Int) -> Iso8601CivilDate {
+  next_working_day(date: raw_date(read_date: read_date, day: day))
+}
+
+// ONE CRITICAL-PATH OCCURRENCE, DATED. The abstract start/finish days stay visible beside their dates, and the
+// COUNT SOURCE (Declared or Assumed) stays visible, so a reader sees both the schedule the scheduler answered
+// and the calendar this unit read against it.
+type DatedLeaf {
+  path: LeafPath
+  start_day: Int
+  finish_day: Int
+  start_date: Iso8601CivilDate
+  finish_date: Iso8601CivilDate
+  count_source: OccurrenceCount
+}
+
+// THE DATED ANSWER. `read_date` is the date the read was taken (abstract day 0). `workers` and `critical_length`
+// are read STRAIGHT OFF the schedule answer (the scheduler's input and total -- never recomputed here). `dated`
+// is the critical path, in order, with each leaf's start and finish date. The failure arm is typed (fail_closed):
+// a schedule that was never scheduled, or a critical path that cannot be read, is refused with a cause.
+type DatedCriticalPath
+  = Bound { read_date: Iso8601CivilDate, workers: Int, critical_length: Int, dated: List<DatedLeaf> }
+  | Unbindable { cause: String }
+
+// THE CACHE CARRIER, mirroring the scheduler's: a dated answer a caller may hold between reads. It is DERIVED --
+// a read recomputes from the schedule answer and the read date and never serves this as an authoritative fact.
+type DatedScheduleCache
+  = Cache { dated: DatedCriticalPath }
+  | NoCache
+
+// A count source as a VISIBLE string, so the dated output shows Declared or Assumed next to every leaf.
+fn count_source_text(count: OccurrenceCount) -> String {
+  match count {
+    Declared => "declared"
+    Assumed => "assumed"
+  }
+}
+
+// The ISO text of a date (YYYY-MM-DD), built from the calendar's own two-digit helper -- no bare day Int leaks out.
+fn date_text(date: Iso8601CivilDate) -> String {
+  join([to_string(date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day)], "")
+}
+
+// Bind one leaf's abstract start/finish days to dates against a read date. Pure; never touches a wall clock.
+fn date_leaf(read_date: Iso8601CivilDate, leaf: ScheduledLeaf) -> DatedLeaf {
+  DatedLeaf {
+    path: leaf.path,
+    start_day: leaf.start_day,
+    finish_day: leaf.finish_day,
+    start_date: bound_day_to_date(read_date: read_date, day: leaf.start_day),
+    finish_date: bound_day_to_date(read_date: read_date, day: leaf.finish_day),
+    count_source: leaf.count_source,
+  }
+}
+
+// THE BINDING. Read the schedule answer (#16695 -- this unit never computes it) and bind its critical path to a
+// read date. Fail_closed on the two ways a binding cannot happen: a schedule that was never scheduled, and a
+// critical-path occurrence that the answer does not place. Order, lanes, and workers are only ever READ.
+fn bind_critical_path(schedule: Schedule, read_date: Iso8601CivilDate) -> DatedCriticalPath {
+  match schedule_answer(s: schedule) {
+    Absent =>
+      Unbindable { cause: "roadmap-schedule-calendar-binding refuses: the schedule it was handed is not a scheduled answer, so it has no abstract days to bind to a read date" }
+    Present { value: answer } =>
+      if count(answer.critical_path) == 0 {
+        Unbindable { cause: "roadmap-schedule-calendar-binding refuses: the schedule answer carries an empty critical path; there is no dated critical path to print" }
+      } else {
+        match bind_each_leaf(read_date: read_date, answer: answer) {
+          Absent =>
+            Unbindable { cause: "roadmap-schedule-calendar-binding refuses: a critical-path occurrence is not placed by the schedule answer; the dated critical path would be incomplete" }
+          Present { value: dated } =>
+            Bound {
+              read_date: read_date,
+              workers: answer.workers,
+              critical_length: answer.critical_length,
+              dated: dated,
+            }
+        }
+      }
+  }
+}
+
+// Walk the critical path, reading each occurrence back through the answer and dating it. The fold short-circuits
+// once any occurrence is missing (Absent stays Absent), so if any critical-path occurrence the answer does not
+// place is reached the whole binding refuses -- a dated critical path is never partial.
+fn bind_each_leaf(read_date: Iso8601CivilDate, answer: ScheduleAnswer) -> List<DatedLeaf>? {
+  let built: List<DatedLeaf>? = fold(answer.critical_path, init: Present { value: [] }, f: fn(acc, p) {
+    match acc {
+      Absent => Absent
+      Present { value: b } =>
+        match scheduled_at(a: answer, path: p) {
+          Absent => Absent
+          Present { value: leaf } => Present { value: concat(b, [date_leaf(read_date: read_date, leaf: leaf)]) }
+        }
+    }
+  })
+  built
+}
+
+// THE RE-READ (computed, cached, and re-read). Compute a fresh dated binding from the schedule answer and the
+// read date handed in. The cached dated answer is NEVER served as a fact between reads: a read returns the fresh
+// binding, so a cache built against an older read date cannot pass its stale dates through. This mirrors the
+// scheduler's own re-read: the answer is derived on every read, the cache is not authoritative.
+fn bind_critical_path_read(schedule: Schedule, read_date: Iso8601CivilDate, cached: DatedScheduleCache) -> DatedCriticalPath {
+  bind_critical_path(schedule: schedule, read_date: read_date)
+}
+
+// Cache a dated answer for holding -- derived, never authoritative (see bind_critical_path_read).
+fn as_dated_cache(dated: DatedCriticalPath) -> DatedScheduleCache {
+  Cache { dated: dated }
+}
+
+// THE DATED OUTPUT for a binding -- the artifact the handback posts. One line per critical-path leaf in order:
+// its path key, its abstract start->finish days, its DATED start->finish, and its count source. A refused
+// binding prints its typed refusal so the fail-closed cause is visible in the output too.
+fn dated_output(bound: DatedCriticalPath) -> String {
+  match bound {
+    Unbindable { cause: cause } => join(["UNBINDABLE: ", cause], "")
+    Bound { read_date: read_date, workers: workers, critical_length: critical_length, dated: dated } => {
+      let header = join(["read_date=", date_text(date: read_date), " workers=", to_string(workers), " critical_length=", to_string(critical_length)], "")
+      let lines = map(dated, d => join(["  ", path_key(p: d.path), " days[", to_string(d.start_day), "..", to_string(d.finish_day), "]", " dates[", date_text(date: d.start_date), " -> ", date_text(date: d.finish_date), "]", " count=", count_source_text(count: d.count_source)], ""))
+      join(concat([header], lines), "\n")
+    }
+  }
+}
+
+// Whether a binding succeeded. A read that failed is never mistaken for a dated answer.
+fn is_bound(bound: DatedCriticalPath) -> Bool {
+  match bound {
+    Bound { read_date: _, workers: _, critical_length: _, dated: _ } => true
+    Unbindable { cause: _ } => false
+  }
+}
+
+fn is_unbindable(bound: DatedCriticalPath) -> Bool {
+  !is_bound(bound: bound)
+}
+
+// The typed refusal cause of a failed binding, or the empty string when the binding succeeded. Kept visible so a
+// fail-closed refusal can be shown, not swallowed.
+fn refusal_cause(bound: DatedCriticalPath) -> String {
+  match bound {
+    Bound { read_date: _, workers: _, critical_length: _, dated: _ } => ""
+    Unbindable { cause: cause } => cause
+  }
+}
+
+// Read one critical-path leaf back by its LeafPath, the same total read the schedule answer offers. Absent when
+// the binding failed or the path is not on the critical path.
+fn dated_at(bound: DatedCriticalPath, path: LeafPath) -> DatedLeaf? {
+  match bound {
+    Unbindable { cause: _ } => Absent
+    Bound { read_date: _, workers: _, critical_length: _, dated: dated } =>
+      first_where(dated, d => path_key(p: d.path) == path_key(p: path))
+  }
+}
+
+// The dated critical path in order, the artifact a caller prints or hands back. Empty only for a failed binding.
+fn dated_critical_path(bound: DatedCriticalPath) -> List<DatedLeaf> {
+  match bound {
+    Unbindable { cause: _ } => []
+    Bound { read_date: _, workers: _, critical_length: _, dated: dated } => dated
+  }
+}
+
+// The calendar-day DISTANCE between two dates, read off the calendar's own day-count -- used to assert that a
+// read one week later moves every date by exactly seven days and nothing else.
+fn days_between(from: Iso8601CivilDate, to: Iso8601CivilDate) -> Int {
+  iso8601_days_from_civil(y: to.year, m: to.month, d: to.day) - iso8601_days_from_civil(y: from.year, m: from.month, d: from.day)
+}

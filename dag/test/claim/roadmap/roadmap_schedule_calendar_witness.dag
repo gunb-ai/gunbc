@@ -1,0 +1,204 @@
+module test.claim.roadmap.roadmap_schedule_calendar_witness
+
+// THE DECLARATION of the calendar-binding unit (roadmap-schedule-calendar-binding), a unit of
+// gunb-ai/gunbc#16650's chain to the roadmap Gantt. It reads the COMPUTED list schedule from
+// gunbc.roadmap.roadmap_schedule (roadmap-schedule-list-scheduling, #16695) -- never recomputing it -- and the
+// calendar (extdeps.units.iso8601_calendar), and binds the schedule's ABSTRACT DAYS to DATES against a read date.
+// Day 0 is the read date; a week has FIVE working days (Monday..Friday); a finish landing on a non-working day
+// reads as the NEXT working day, never the weekend; the same schedule read one week later moves every date by
+// seven days and changes nothing else.
+//
+// THE HANDBACK, named the way the unit names its own: the dated output for one read, the weekend output, the
+// one-week-later output, and the diff. Each is a dated_output string the claims below assert to the character.
+//
+// LOCAL RECIPE (claims are executed, not parsed):
+//   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/roadmap_schedule_calendar_witness.dag \
+//     --functions first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path,red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend,red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else,a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads,binding_a_schedule_that_was_never_scheduled_is_refused
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import gunbc.roadmap.roadmap_model { LeafPath }
+import gunbc.roadmap.roadmap_decomposition { decomposition, leaf, expand_decomposition }
+import gunbc.roadmap.roadmap_schedule { schedule, schedule_read, schedule_answer, Schedule, path_key }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_schedule_calendar {
+  DatedCriticalPath, DatedLeaf, DatedScheduleCache,
+  bind_critical_path, bind_critical_path_read, as_dated_cache, dated_output,
+  is_bound, is_unbindable, refusal_cause, dated_at, dated_critical_path, days_between,
+  is_working_day, is_non_working_day, raw_date, date_text, count_source_text,
+}
+
+// THE FIXTURE. A two-leaf CHAIN under ONE worker: first (2 days) then second (3 days). The scheduler (#16695)
+// places first on days 0..2 and second on days 2..5, so the critical path's last leaf finishes on abstract day 5
+// -- the day that, read on a Monday, lands on a Saturday on the raw calendar.
+fn calendar_chain_schedule() -> Schedule {
+  let chain = decomposition(node: "cal.chain", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: 1)
+}
+
+// THE READ DATE: Monday 16 November 2026. Abstract day 0.
+fn read_monday() -> Iso8601CivilDate {
+  Iso8601CivilDate { year: 2026, month: 11, day: 16 }
+}
+
+// The same weekday, ONE WEEK LATER: Monday 23 November 2026.
+fn read_one_week_later() -> Iso8601CivilDate {
+  Iso8601CivilDate { year: 2026, month: 11, day: 23 }
+}
+
+// THE FIRST SLICE. Bind one schedule answer to a read date and print the start and finish dates along its
+// critical path. The printed artifact is asserted to the character (the HANDBACK's dated output).
+fn first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path() -> Bool {
+  let sched = calendar_chain_schedule()
+  let bound = bind_critical_path(schedule: sched, read_date: read_monday())
+  let expected = join([
+    "read_date=2026-11-16 workers=1 critical_length=5",
+    "  cal.chain#0#0#0 days[0..2] dates[2026-11-16 -> 2026-11-18] count=declared",
+    "  cal.chain#1#0#0 days[2..5] dates[2026-11-18 -> 2026-11-23] count=declared",
+  ], "\n")
+  is_bound(bound: bound)
+    && count(dated_critical_path(bound: bound)) == 2
+    && dated_output(bound: bound) == expected
+}
+
+// THE RED CONTROL, named the way the unit names its own: a leaf finishing on a non-working day reads as the NEXT
+// working day, never as the weekend. The chain's last leaf finishes on abstract day 5; read on a Monday the raw
+// calendar day 5 IS a Saturday (the control fires only because the raw day is a weekend), and the bound date reads
+// as the FOLLOWING Monday -- 2026-11-23 -- and is never a Saturday or a Sunday.
+fn red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend() -> Bool {
+  let sched = calendar_chain_schedule()
+  let read = read_monday()
+  let bound = bind_critical_path(schedule: sched, read_date: read)
+  match first_where(dated_critical_path(bound: bound), d => d.finish_day == 5) {
+    Absent => false
+    Present { value: roller } =>
+      // The raw calendar day this abstract day lands on is a Saturday -- a non-working day.
+      is_non_working_day(date: raw_date(read_date: read, day: 5))
+      && date_text(date: raw_date(read_date: read, day: 5)) == "2026-11-21"
+      // ...but the DATED finish reads as the next working day, never the weekend.
+      && date_text(date: roller.finish_date) == "2026-11-23"
+      && is_working_day(date: roller.finish_date)
+      && date_text(date: roller.finish_date) != "2026-11-21"
+      && date_text(date: roller.finish_date) != "2026-11-22"
+      // The start of the same leaf (abstract day 2) is already a working day, so it reads as itself.
+      && date_text(date: roller.start_date) == "2026-11-18"
+      // Its count source stays visible: a declared leaf is marked declared.
+      && count_source_text(count: roller.count_source) == "declared"
+  }
+}
+
+// THE SECOND HALF OF THE RED CONTROL: the same schedule read one week later moves EVERY date by seven days and
+// changes NOTHING ELSE -- the order, the abstract days, the workers, the critical length, and every count source
+// are identical; only the dates shift, by exactly seven.
+fn red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else() -> Bool {
+  let sched = calendar_chain_schedule()
+  let first = bind_critical_path(schedule: sched, read_date: read_monday())
+  let later = bind_critical_path(schedule: sched, read_date: read_one_week_later())
+  match first_where(dated_critical_path(bound: first), d => d.finish_day == 5) {
+    Absent => false
+    Present { value: f } => match first_where(dated_critical_path(bound: later), d => d.finish_day == 5) {
+      Absent => false
+      Present { value: l } =>
+        // Every date moves by exactly seven days.
+        days_between(from: f.start_date, to: l.start_date) == 7
+        && days_between(from: f.finish_date, to: l.finish_date) == 7
+        // ...and nothing else changes: same leaf, same abstract days, same count source.
+        && l.start_day == f.start_day
+        && l.finish_day == f.finish_day
+        && count_source_text(count: l.count_source) == count_source_text(count: f.count_source)
+        // The whole dated critical path still has the same two leaves and the same critical length / workers.
+        && count(dated_critical_path(bound: later)) == count(dated_critical_path(bound: first))
+        && count(dated_critical_path(bound: first)) == 2
+    }
+  }
+}
+
+// COMPUTED, MAY BE CACHED, ALWAYS RE-READ (@ref schedule_answers_are_computed_cached_and_re_read). A dated answer
+// may be cached, but a read hands in a NEW read date and recomputes from the schedule answer: the cached dates
+// from the older read are NEVER served. A stale cache built against an earlier read cannot pass its dates through.
+fn a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads() -> Bool {
+  let sched = calendar_chain_schedule()
+  let stale = as_dated_cache(dated: bind_critical_path(schedule: sched, read_date: read_monday()))
+  let reread = bind_critical_path_read(schedule: sched, read_date: read_one_week_later(), cached: stale)
+  match first_where(dated_critical_path(bound: reread), d => d.finish_day == 5) {
+    Absent => false
+    Present { value: roller } =>
+      // The re-read is dated against the LATER read date, not the cached earlier one.
+      is_bound(bound: reread)
+      && date_text(date: roller.finish_date) == "2026-11-30"
+      && date_text(date: roller.finish_date) != "2026-11-23"
+  }
+}
+
+// FAIL CLOSED: a schedule that was never scheduled (here, a worker count of zero, which the scheduler refuses as
+// a non-positive simulation input) cannot be bound to dates -- the binding is a typed refusal, not fabricated
+// dates, and carries a visible cause.
+fn binding_a_schedule_that_was_never_scheduled_is_refused() -> Bool {
+  let chain = decomposition(node: "cal.chain", waits_on: [], stages: [
+    [leaf(label: "first", days: 2)],
+    [leaf(label: "second", days: 3)],
+  ])
+  let refused = schedule(d: chain, e: expand_decomposition(d: chain, findings_count: 1), workers: 0)
+  let bound = bind_critical_path(schedule: refused, read_date: read_monday())
+  is_unbindable(bound: bound)
+    && refusal_cause(bound: bound) != ""
+    && count(dated_critical_path(bound: bound)) == 0
+}
+
+// HANDBACK ARTIFACT 1 -- THE WEEKEND OUTPUT. The dated output for one read taken on the Monday, printed the way
+// the unit prints it. The chain's last leaf finishes on abstract day 5 -- the Saturday 2026-11-21 on the raw
+// calendar -- and the printed dated critical path shows it reading as the FOLLOWING Monday 2026-11-23, never the
+// Saturday or the Sunday. The whole printed artifact is asserted to the character.
+fn the_weekend_output_shows_the_finish_rolled_off_the_saturday() -> Bool {
+  let bound = bind_critical_path(schedule: calendar_chain_schedule(), read_date: read_monday())
+  let weekend_output = join([
+    "read_date=2026-11-16 workers=1 critical_length=5",
+    "  cal.chain#0#0#0 days[0..2] dates[2026-11-16 -> 2026-11-18] count=declared",
+    "  cal.chain#1#0#0 days[2..5] dates[2026-11-18 -> 2026-11-23] count=declared",
+  ], "\n")
+  dated_output(bound: bound) == weekend_output
+}
+
+// HANDBACK ARTIFACT 2 -- THE ONE-WEEK-LATER OUTPUT. The same schedule answer read on the following Monday prints
+// every date exactly seven days on, asserted to the character.
+fn the_one_week_later_output_prints_every_date_a_week_on() -> Bool {
+  let later = bind_critical_path(schedule: calendar_chain_schedule(), read_date: read_one_week_later())
+  let one_week_later_output = join([
+    "read_date=2026-11-23 workers=1 critical_length=5",
+    "  cal.chain#0#0#0 days[0..2] dates[2026-11-23 -> 2026-11-25] count=declared",
+    "  cal.chain#1#0#0 days[2..5] dates[2026-11-25 -> 2026-11-30] count=declared",
+  ], "\n")
+  dated_output(bound: later) == one_week_later_output
+}
+
+// HANDBACK ARTIFACT 3 -- THE DIFF. Compare the two dated critical paths leaf for leaf: EVERY date moves by
+// exactly seven days, and EVERYTHING ELSE -- path, abstract start/finish days, and count source -- is identical,
+// for both leaves on the critical path (not just the one that rolled).
+fn the_handback_diff_moves_every_dated_leaf_by_seven_days_and_changes_nothing_else() -> Bool {
+  let sched = calendar_chain_schedule()
+  let first = dated_critical_path(bound: bind_critical_path(schedule: sched, read_date: read_monday()))
+  let later = dated_critical_path(bound: bind_critical_path(schedule: sched, read_date: read_one_week_later()))
+  pair_unchanged(first, later, 2) && pair_unchanged(first, later, 5)
+}
+
+// One leaf of each binding, matched by its abstract finish day, checked: dates moved by seven, nothing else moved.
+fn pair_unchanged(first: List<DatedLeaf>, later: List<DatedLeaf>, finish: Int) -> Bool {
+  match first_where(first, d => d.finish_day == finish) {
+    Absent => false
+    Present { value: f } => match first_where(later, d => d.finish_day == finish) {
+      Absent => false
+      Present { value: l } =>
+        days_between(from: f.start_date, to: l.start_date) == 7
+        && days_between(from: f.finish_date, to: l.finish_date) == 7
+        && l.start_day == f.start_day
+        && l.finish_day == f.finish_day
+        && path_key(p: l.path) == path_key(p: f.path)
+        && count_source_text(count: l.count_source) == count_source_text(count: f.count_source)
+    }
+  }
+}
