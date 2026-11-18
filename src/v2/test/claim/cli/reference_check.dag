@@ -4,8 +4,14 @@ import std.types { Bool }
 import std.algebra { Cons, Empty, is_empty, string_contains }
 import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.cli.population_verbs { PopulationReport }
-import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller }
+import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller, run_step_target_callee_verdict, run_step_target_row_named, RunStepTargetCalleeUnconfirmed, RunStepTargetIsConstructor, RunStepTargetNotConstructor }
 import v2.compiler.live_resolution_context { live_context_load_empty }
+import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.resolution_policy { ImportScoped }
+import std.diagnostic { Accepted, Outcome, Rejected }
+import std.optional { Absent, Present }
 import v2.compiler.module_acquisition { SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.text { String }
@@ -193,6 +199,43 @@ test fn a_run_step_target_caller_with_a_root_is_not_falsely_refused_holds() -> B
     callers: []
   )
   is_empty(xs: ex.sites) && is_empty(xs: ex.lines)
+}
+
+// THE RED FOR THE CALLEE-VERDICT FAIL-OPEN (review 96470). The inner match of run_step_target_callee_verdict used a
+// catch-all `_ => NotConstructor`, so a caller whose resolution FAILED (DeclarationRefModuleAbsent /
+// DeclarationRefDeclarationAbsent -- e.g. a module the bounded ImportScoped finish pruned from the active roots after
+// extraction already read it) was treated as "this call is not the constructor" and the site was DROPPED with no line
+// -- the gunbc#8377 escape hatch: the token scan saw the identifier, yet the run-step entry reported held unchecked.
+// Now NotConstructor is reached ONLY from a positively-resolved DIFFERENT identity (the local_fn holding fixture is
+// that positive control), and every cannot-confirm outcome refuses as RunStepTargetCalleeUnconfirmed. This control
+// pins the fail-closed DIRECTION at the verdict boundary: an unconfirmable callee is a located refusal, never a silent
+// skip. The precise "caller loaded but pruned by finish" state is not fixture-reproducible without a module that
+// breaks the whole tree's typecheck -- its extraction analog (review 96357) likewise required a unit control -- so it
+// is covered here by the direction plus the exhaustive four-way match, which has no path to NotConstructor except a
+// resolved-different identity.
+fn run_step_target_empty_context() -> Outcome<ResolutionContext> {
+  resolution_context(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: Empty,
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
+  )
+}
+
+test fn a_run_step_target_unconfirmable_callee_refuses_and_is_not_dropped_holds() -> Bool {
+  match run_step_target_row_named(name: "gunbc_run_step_target") {
+    Absent => false
+    Present { value: constructor } => match run_step_target_empty_context() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: context, diagnostics: _ } =>
+        match run_step_target_callee_verdict(caller: "gunbc.a_caller_not_in_the_context", constructor: constructor, context: context) {
+          RunStepTargetCalleeUnconfirmed { reason: _ } => true
+          RunStepTargetNotConstructor => false
+          RunStepTargetIsConstructor => false
+        }
+    }
+  }
 }
 
 
