@@ -283,7 +283,7 @@ fn heal_publisher_phase_script(
 ) -> Outcome<String> {
   bind_outcome(
     o: phase,
-    f: fn(p) match source {
+    f: fn(p) { match source {
       PublisherBuildsItsOwnCheckout { required_bins: _ } =>
         outcome_accepted(
           value: gunbc_run_step_script_with_prelude(
@@ -296,7 +296,7 @@ fn heal_publisher_phase_script(
           )
         )
     }
-  )
+   })
 }
 
 // THE PUBLICATION PHASE, over the same roots the gate admitted: the row's publish invocation, rendered by
