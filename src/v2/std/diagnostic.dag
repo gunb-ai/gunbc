@@ -179,6 +179,14 @@ fn outcome_accepted_value<T>(o: Outcome<T>) -> Optional<T> {
   }
 }
 
+// The LIST analogue of outcome_accepted_value: sequence a List<Outcome<T>> (short-circuit) and project
+// onto the accepted List<T> as an Optional. Generic over T -- one projection for every element type, not a
+// type-specific copy -- and still a projection, not a total accessor: a refused element yields Absent, so a
+// consumer must handle Absent and cannot mistake a refusal for a fully-accepted list.
+fn outcome_accepted_values<T>(xs: List<Outcome<T>>) -> Optional<List<T>> {
+  outcome_accepted_value(o: sequence_outcome(xs: xs, policy: StageDiagnosticPolicy { accumulation: ShortCircuit }))
+}
+
 fn extent_eq(a: Extent, b: Extent) -> Bool {
   match a {
     WholeFile => match b {
