@@ -153,7 +153,7 @@ data release_pair_already_at_head_reason: NonEmptyStr = "the pair is already ser
 // restart leg, skipping the create legs); absent means nothing is placed yet (run the create legs, tolerating an
 // already-occupied link left by a half-done tick); DIFFERENT content means a foreign or stale placement sits at the
 // per-revision locus — refuse rather than silently overwrite it (fail_closed).
-data ReleasePairResume
+type ReleasePairResume
   = AlreadyPlaced { }
   | NotYetPlaced { }
   | MismatchRefusal { reason: NonEmptyStr }
