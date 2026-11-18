@@ -6523,7 +6523,7 @@ concat(
     [
     outcome_accepted(value: ci_release_bins_download_step()),
     outcome_accepted(value: ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
-    outcome_accepted(value: fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition())),
+    fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
   ],
     lift_steps(fleet_converge_post_mint_credential_steps()),
   )
@@ -6569,8 +6569,13 @@ fn fleet_converge_fleet_identity_unreadable_refusal() -> String {
 
 // The run-scoped exclusion (a granted-account mode never mints the fleet identity) conjoined with the
 // readers' conditions.
-fn fleet_converge_fleet_identity_auth_condition() -> String {
-  join([fleet_converge_fleet_identity_step_if, " && (", fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())), ")"], "")
+fn fleet_converge_fleet_identity_auth_condition() -> Outcome<String> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_fleet_identity_reader_candidates(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_candidates) {
+      outcome_accepted(value: join([fleet_converge_fleet_identity_step_if, " && (", fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: zesty_candidates)), ")"], ""))
+    }
+  )
 }
 
 fn fleet_converge_job() -> Job {
@@ -7318,13 +7323,18 @@ fn fleet_converge_branch_account_expression() -> String {
     join([acc, fleet_converge_any_mode_step_if(modes: fleet_converge_modes_of_rows(rows: [r])), "", join(map(fleet_converge_row_service_accounts(row: r), e => join([" && '", e, "' || "], "")), "")], ""))
 }
 
-fn fleet_converge_fleet_identity_auth_step(if_condition: String) -> Step {
-  ci_wif_auth_step_with_condition(
+fn fleet_converge_fleet_identity_auth_step(if_condition: Outcome<String>) -> Outcome<Step> {
+  bind_outcome(
+    o: if_condition,
+    f: fn(zesty_if) {
+      outcome_accepted(value: ci_wif_auth_step_with_condition(
     name: "WIF auth (OIDC -> fleet-cloud-convergence SA at main; run-scoped account after this run's grant on a branch)",
     id: "wif_auth",
     provider_resource: join(["${{ ", fleet_converge_branch_fleet_step_if, " && '", branch_dispatch_provider_resource(), "' || '", probe_identity_secret_access_requirement.wif_provider_resource, "' }}"], ""),
     service_account: join(["${{ ", fleet_converge_branch_fleet_step_if, " && (", fleet_converge_branch_account_expression(), "'", probe_identity_secret_access_requirement.service_account, "') || '", probe_identity_secret_access_requirement.service_account, "' }}"], ""),
-    if_condition: Present { value: if_condition },
+    if_condition: Present { value: zesty_if },
+  ))
+    }
   )
 }
 
