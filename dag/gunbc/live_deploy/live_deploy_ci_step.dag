@@ -100,9 +100,13 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   )
 }
 
-// THE INSTANCE-SCOPED DEPLOY step script. The run-step process receipt lands at a fixed per-run path
-// (a stable label, not the runtime instance -- GitHub isolates each run's artifacts, and the receipt
-// the entry mints into the shared receipt dir carries the chosen instance identity).
+// THE INSTANCE-SCOPED DEPLOY step script. Two receipts, two locations -- do not conflate them:
+// (1) the run-step's OWN process receipt lands at a fixed per-run path under a stable label
+//     ("desired-instance-deploy"); GitHub isolates each run's workspace, so a stable label cannot
+//     collide across runs, and this is the file the step cats after the run;
+// (2) the transaction receipt the wet fold mints lands in the CHOSEN instance's own receipt dir
+//     (live_deploy_apply_receipt_dir_for(instance)), and the job locates THAT one through the resolve
+//     step (live_deploy_ci_instance_receipt_identity_from_ci), never through this fixed path.
 fn gunbc_ci_desired_instance_deploy_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
