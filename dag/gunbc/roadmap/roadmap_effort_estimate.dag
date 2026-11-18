@@ -56,26 +56,23 @@ data roadmap_effort_estimates: List<EffortEstimate> = [
     basis: "the 2026 batch: seven nodes, three landed in the week of 2026-11-16; acceptance-bound, 4 to 8 weeks if acceptances flow"),
   estimate(subject: "factory-attempt-execution-on-fabric-lease", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 15), pessimistic: d(y: 2027, m: 3, day: 31),
     basis: "planning consolidation's realization half: the acceptance guidance, the closed binding, the realization-home decision and the projection; mostly plan and carrier work, 2 to 3 months"),
-  // SECOND ROUND, SAME DAY, FROM A SIMULATED EXECUTION OVER THE UNITS (operator, 2026-11-17: the aggregate is the
-  // simulation over units; honest accounting at unit grain is all that matters). List scheduling over the 36 open
-  // units of the v2 cone with declared duration classes (receipt 5 working days, generator sweep 15, join 10,
-  // v1 preparation 30, namespace 40, hard compiler node 60 = the measured 12-week median), three workers,
-  // longest-remaining-path first; the critical path is the six serial emitter nodes from direct-rust-door to
-  // second-generation and then the bootstrap, fixed point and deletions; five or more workers change the makespan
-  // by two weeks only. The first round above assumed native-seven's parents get seats of their own; this round
-  // shows that with three workers and critical-path-first staffing native-seven waits behind the emitter chain,
-  // which is a staffing choice the operator makes, not a fact about the work. Producer: simulate.py in the
-  // session's scratch (the classes are declared in it and are the falsifiable part).
+  // SECOND ROUND, SAME DAY (operator, 2026-11-17: the aggregate is read over the units; honest accounting at unit
+  // grain is all that matters). Prior: the operator's scratch list-scheduling simulation over the 36 open units of the
+  // v2 cone, 2026-11-17, not in the tree -- its duration classes (receipt 5 working days, generator sweep 15, join 10,
+  // v1 preparation 30, namespace 40, hard compiler node 60 = the measured 12-week median) are the falsifiable part and
+  // are named here so the assumption can be checked against them. The longest serial chain runs the six emitter nodes
+  // from direct-rust-door through second-generation and then the bootstrap, fixed point and deletions. These dates are
+  // a prior the operator's own staffing choices could move, not a measurement about the work.
   estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 4, day: 27), pessimistic: d(y: 2027, m: 9, day: 21),
     basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 115 wide, day 220 narrow; the first-round January date holds only if native-seven's four parents are taken before the emitter chain"),
   estimate(subject: "second-generation", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 11, day: 2), pessimistic: d(y: 2028, m: 3, day: 31),
     basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 250, bound by the longest serial chain: six hard emitter nodes at 60 working days each; more parallelism does not move it, only decomposing those nodes into parallel units does"),
   estimate(subject: "v1-products-v1-free", made: d(y: 2026, m: 11, day: 17), start: d(y: 2027, m: 11, day: 2), done: d(y: 2028, m: 8, day: 8), pessimistic: d(y: 2029, m: 2, day: 28),
     basis: "prior: operator's scratch list-scheduling simulation, 2026-11-17, not in the tree. day 450 narrow, day 440 wide; the first-round end-of-2027 date assumed 4 to 8 weeks per deletion step, the simulation's v1 class is 30 working days and the chain after second-generation is seven serial units"),
-  // THIRD ROUND, SAME DAY, UNBOUNDED WORKERS (operator, 2026-11-17: assume 100 to 200 workers; the bottleneck is planning,
-  // dependency and decomposition). With workers unbounded the simulation keeps 5.3 items in flight on average and never
-  // more than 20, and the makespan equals the critical path: the six serial emitter nodes at 60 working days each, then
-  // the bootstrap, the fixed point and the deletions. These rows are therefore the dates DECOMPOSITION has to beat, not
+  // THIRD ROUND, SAME DAY (operator, 2026-11-17: with the limit set by planning, dependency and decomposition rather than
+  // by any workforce, the floor is the longest serial chain -- the six serial emitter nodes at 60 working days each, then
+  // the bootstrap, the fixed point and the deletions). Same prior as the second round: the operator's scratch
+  // list-scheduling simulation, 2026-11-17, not in the tree. These rows are the dates DECOMPOSITION has to beat, not
   // dates to staff toward; the axis each milestone splits along is recorded in gunbc.plans.planning_consolidation.
   estimate(subject: "native-seven", made: d(y: 2026, m: 11, day: 17), start: d(y: 2026, m: 11, day: 17), done: d(y: 2027, m: 2, day: 23), pessimistic: d(y: 2027, m: 4, day: 27),
     basis: "prior: operator's scratch list-scheduling simulation (unbounded-parallelism assumption), 2026-11-17, not in the tree. day 70, bound by its own four parents at 40 working days (declaration-provider-outcomes and the derived closure), not by parallelism"),
