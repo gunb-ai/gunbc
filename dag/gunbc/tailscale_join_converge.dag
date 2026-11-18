@@ -645,9 +645,10 @@ type TailscaleJoinOutcome
     }
   | JoinRefused { host: HostIdentity, cause: String }
 
-// The wire name of THIS mode, in one place. fleet_converge_workflow's mode facts reference it, and the
-// first-contact hop admits this mode (fleet_known_hosts_anchor::first_contact_admitted_mode_wires) --
-// join is one of the two modes allowed to dial a host that has no tailnet anchor yet.
+// The wire name of THIS mode, in one place. fleet_converge_workflow's mode facts reference it. The
+// first-contact hop admits this mode through its TOKEN (FirstContactAdmission.TailscaleJoinMode, held
+// at tailscale_join_host's custody call below) -- join is one of the two modes allowed to dial a host
+// that has no tailnet anchor yet.
 data tailscale_join_converge_mode: NonEmptyStr = tailscale_join_converge_wire
 
 fn tailscale_join_host(
