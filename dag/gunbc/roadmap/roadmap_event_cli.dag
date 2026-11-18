@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_event_carrier {
 // A claim names the LEAF it binds. Pass all three leaf args blank (or omit them) for a whole-item claim
 // -- admitted only on an item that carries NO decomposition; on an item WITH a decomposition a claim must
 // name a leaf, so pass the three as non-negative decimal integers (stage/piece/member) and the recorded
-// Claimed carries Leaf{path} whose item is pinned to <id>; a malformed or partial leaf (a blank mixed with
+// Claimed carries AtPath{path} whose item is pinned to <id>; a malformed or partial leaf (a blank mixed with
 // a number, a negative, a non-decimal) is refused, never defaulted. The guard in roadmap_decomposition
 // decides admissibility against the item's declared decomposition; see roadmap_claim_grain_witness.
 // and reads a node's standing with roadmap_event_standing_cli. The instance is resolved from the

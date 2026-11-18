@@ -21,7 +21,7 @@ module test.claim.roadmap.roadmap_claim_grain_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
-import gunbc.roadmap.roadmap_event_log { ClaimGrain, Pathless, Leaf, ClaimGrainParse, Parsed, Malformed, roadmap_claim_grain_parse }
+import gunbc.roadmap.roadmap_event_log { ClaimGrain, Pathless, AtPath, ClaimGrainParse, Parsed, Malformed, roadmap_claim_grain_parse }
 import gunbc.roadmap.roadmap_decomposition {
   roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admissible, Refused, ClaimedGrainRefusal,
   LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
@@ -51,7 +51,7 @@ fn refusal_tag(v: ClaimedGrainVerdict) -> String {
 // one naming a path it does NOT have refuses. Plus the ruled arms the guard is specced to make.
 test fn claim_grain_guard_admits_a_real_leaf() -> Bool {
   let item = node_of("emitter-produces-main-rs")
-  let v = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
+  let v = roadmap_claimed_grain_admissible(node: item, grain: AtPath { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
   refusal_tag(v) == "admissible"
 }
 
@@ -59,9 +59,9 @@ test fn claim_grain_guard_admits_a_real_leaf() -> Bool {
 // (1,0,0) is a FindingsOf member -- a population with no count -- and (2,0,0) is an out-of-range stage.
 test fn claim_grain_guard_refuses_unknown_paths() -> Bool {
   let item = node_of("emitter-produces-main-rs")
-  let findings = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 1, piece: 0, member: 0 } })
-  let oob = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 2, piece: 0, member: 0 } })
-  let oob_piece = roadmap_claimed_grain_admissible(node: item, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 1, member: 0 } })
+  let findings = roadmap_claimed_grain_admissible(node: item, grain: AtPath { path: LeafPath { item: item, stage: 1, piece: 0, member: 0 } })
+  let oob = roadmap_claimed_grain_admissible(node: item, grain: AtPath { path: LeafPath { item: item, stage: 2, piece: 0, member: 0 } })
+  let oob_piece = roadmap_claimed_grain_admissible(node: item, grain: AtPath { path: LeafPath { item: item, stage: 0, piece: 1, member: 0 } })
   refusal_tag(findings) == "leaf-path-unknown"
     && refusal_tag(oob) == "leaf-path-unknown"
     && refusal_tag(oob_piece) == "leaf-path-unknown"
@@ -78,7 +78,7 @@ test fn claim_grain_guard_refuses_pathless_on_decomposed() -> Bool {
 test fn claim_grain_guard_refuses_wrong_item() -> Bool {
   let item = node_of("emitter-produces-main-rs")
   let other = node_of("v1-emitter-fixed-point")
-  let v = roadmap_claimed_grain_admissible(node: other, grain: Leaf { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
+  let v = roadmap_claimed_grain_admissible(node: other, grain: AtPath { path: LeafPath { item: item, stage: 0, piece: 0, member: 0 } })
   refusal_tag(v) == "leaf-wrong-item"
 }
 
@@ -112,7 +112,7 @@ fn parse_field(result: ClaimGrainParse) -> String {
 test fn typed_parser_all_blank_is_pathless() -> Bool {
   let item = node_of("emitter-produces-main-rs")
   let result = roadmap_claim_grain_parse(node: item, leaf_stage: "", leaf_piece: "", leaf_member: "")
-  parse_tag(result) == "parsed" && match result { Parsed { grain } => match grain { Pathless => true  Leaf { path: _ } => false }  Malformed { field: _, why: _ } => false }
+  parse_tag(result) == "parsed" && match result { Parsed { grain } => match grain { Pathless => true  AtPath { path: _ } => false }  Malformed { field: _, why: _ } => false }
 }
 
 // All three set and valid: a Leaf with the node pinned as item.
@@ -120,7 +120,7 @@ test fn typed_parser_all_set_is_leaf() -> Bool {
   let item = node_of("emitter-produces-main-rs")
   let result = roadmap_claim_grain_parse(node: item, leaf_stage: "0", leaf_piece: "0", leaf_member: "0")
   match result {
-    Parsed { grain } => match grain { Leaf { path } => path.item == item && path.stage == 0 && path.piece == 0 && path.member == 0  Pathless => false }
+    Parsed { grain } => match grain { AtPath { path } => path.item == item && path.stage == 0 && path.piece == 0 && path.member == 0  Pathless => false }
     Malformed { field: _, why: _ } => false
   }
 }

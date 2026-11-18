@@ -380,12 +380,12 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
   } else if c == 0 {
     match grain {
       Pathless => Admissible
-      Leaf { path } => Refused { reason: LeafPathUnknown { path: path } }
+      AtPath { path } => Refused { reason: LeafPathUnknown { path: path } }
     }
   } else {
     match grain {
       Pathless => Refused { reason: PathlessOnDecomposed { node: node } }
-      Leaf { path } =>
+      AtPath { path } =>
         if path.item != node {
           Refused { reason: LeafWrongItem { path: path, expected: node } }
         } else if decomposition_has_leaf_path(path: path) {
@@ -401,10 +401,10 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
 // call this so the ruled reason appears identically no matter which front-end is refused.
 fn roadmap_claimed_grain_refusal_text(reason: ClaimedGrainRefusal) -> String {
   match reason {
-    LeafPathUnknown { path } => join(["the claimed leaf stage/", to_string(value: nat_to_int(n: path.stage)), "/", to_string(value: nat_to_int(n: path.piece)), "/", to_string(value: nat_to_int(n: path.member)), " is not a leaf the item's decomposition has"], "")
-    LeafWrongItem { path, expected } => join(["the claimed leaf names item '", path.item as String, "' but the claim is being recorded against '", expected as String, "'"], "")
-    PathlessOnDecomposed { node } => join(["the item '", node as String, "' has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"], "")
-    DecompositionAmbiguous { node, count } => join(["the item '", node as String, "' has ", to_string(value: count), " decompositions; a claim is refused until exactly one is declared"], "")
+    LeafPathUnknown { path } => "the claimed leaf stage/" + to_string(value: nat_to_int(n: path.stage)) + "/" + to_string(value: nat_to_int(n: path.piece)) + "/" + to_string(value: nat_to_int(n: path.member)) + " is not a leaf the item's decomposition has"
+    LeafWrongItem { path, expected } => "the claimed leaf names item '" + (path.item as String) + "' but the claim is being recorded against '" + (expected as String) + "'"
+    PathlessOnDecomposed { node } => "the item '" + (node as String) + "' has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"
+    DecompositionAmbiguous { node, count } => "the item '" + (node as String) + "' has " + to_string(value: count) + " decompositions; a claim is refused until exactly one is declared"
   }
 }
 

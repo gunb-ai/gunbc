@@ -139,7 +139,7 @@ type RoadmapEventId = NonEmptyStr where brand("RoadmapEventId")
 // ruling: a claim names its leaf from the first landing), so Pathless there refuses at append.
 type ClaimGrain
   = Pathless
-  | Leaf { path: LeafPath }
+  | AtPath { path: LeafPath }
 
 type RoadmapEventKind
   = Claimed { assignee: EventPrincipal, return_to: EventPrincipal, grain: ClaimGrain }
@@ -655,12 +655,12 @@ fn event_member_calendar_day(doc: JsonValue, key: String) -> NonEmptyStr? {
 // THE CLAIM GRAIN, on the wire. A Pathless writes NO member: a Claimed recorded before claims named a
 // leaf, and a Pathless appended today, therefore share one byte-identical canonical form, and every
 // historical event id still verifies against its bytes (the log is the authority; reading history is not
-// a migration, so it is never rewritten). A Leaf adds one "leaf" object -- the item and its three Nat
+// a migration, so it is never rewritten). An AtPath adds one "leaf" object -- the item and its three Nat
 // indexes, each index a JsonNumber lexeme crossed total-and-exact via nat_to_int.
 fn roadmap_claim_grain_members(grain: ClaimGrain) -> List<JsonKeyValue> {
   match grain {
     Pathless => []
-    Leaf { path } => [json_kv(key: "leaf", value: json_object(members: [
+    AtPath { path } => [json_kv(key: "leaf", value: json_object(members: [
       json_kv(key: "item", value: json_string(s: path.item as String)),
       json_kv(key: "stage", value: JsonNumber { lexeme: to_string(value: nat_to_int(n: path.stage)) }),
       json_kv(key: "piece", value: JsonNumber { lexeme: to_string(value: nat_to_int(n: path.piece)) }),
@@ -711,7 +711,7 @@ fn roadmap_claim_grain_decode(doc: JsonValue) -> ClaimGrain? {
                     match roadmap_leaf_nat_member(obj: o, key: "member") {
                       Absent => none
                       Present { value: member } =>
-                        Present { value: Leaf { path: LeafPath {
+                        Present { value: AtPath { path: LeafPath {
                           item: (item as String) as NonEmptyStr as RoadmapNodeId,
                           stage: stage,
                           piece: piece,
@@ -733,7 +733,7 @@ fn roadmap_claim_grain_decode(doc: JsonValue) -> ClaimGrain? {
   }
 }
 
-// THE SHARED GRAIN PARSER: a typed result, not an optional. Returns either a grain (Leaf or Pathless)
+// THE SHARED GRAIN PARSER: a typed result, not an optional. Returns either a grain (AtPath or Pathless)
 // or a refusal naming which field is malformed and why. All Claimed producers -- the CLI, the served
 // route -- call this one parser; the return type makes the malformed case visible to the caller who
 // must name it in its own language (a CLI exit reason, an HTTP 400) without ever reaching the append.
@@ -769,7 +769,7 @@ fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece
                   Present { value: m_i } => if m_i < 0 { Malformed { field: "leaf_member", why: "negative" } } else {
                     match checked_int_to_nat(n: m_i) {
                       Absent => Malformed { field: "leaf_member", why: "out of range for a leaf index" }
-                      Present { value: m_n } => Parsed { grain: Leaf { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
+                      Present { value: m_n } => Parsed { grain: AtPath { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
                     }
                   }
                 }
