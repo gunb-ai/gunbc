@@ -83,7 +83,8 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_standing_is_retired,
 }
 import gunbc.roadmap.roadmap_schedule {
-  RealizedDays, ScheduleAnswer, ScheduleRefusal, ScheduledLeaf, path_key, schedule_with_realized,
+  NotScheduled, RealizedDays, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf, path_key,
+  schedule, schedule_with_realized,
 }
 import gunbc.roadmap.roadmap_schedule_calendar { date_text, days_between, working_days_between }
 
@@ -502,6 +503,47 @@ fn realized_schedule_output(fold: RealizedFold) -> String {
       to_string(count(fold.unpriced)), " leaves refused a row (no prior declared, nothing realized); unit: ",
       realized_duration_unit_note()], "")
   }
+}
+
+// THE HANDBACK DIFF. Which leaf's bar CHANGED LENGTH against the schedule #16695 computes from the SAME carriers,
+// the same expansion and the same lane count at NO duration input, and by how many working days -- and what that did
+// to the critical length. Both sides come from the imported scheduler: `schedule` is itself list-scheduling's prior
+// path (schedule_with_realized at an empty realized input), so this unit names no schedule of its own, re-runs no
+// algorithm and re-sorts nothing. It is computed on read from the same lines the fold was read from, and printed as
+// the ticket asks: which leaf got shorter, by how many working days.
+fn schedule_diff(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, fold: RealizedSchedule) -> String {
+  match schedule(d: d, e: e, workers: workers) {
+    NotScheduled { refusal: refusal } => join(["no diff is claimed: the scheduler refused the same carriers at the ",
+      "prior input (", schedule_refusal_text(refusal: refusal), ")"], "")
+    Scheduled { answer: prior } => join([
+      "critical length ", to_string(prior.critical_length), " -> ", to_string(fold.answer.critical_length),
+      " working days; ",
+      join(map(prior.leaves, b => diff_leaf(
+        before: b.finish_day - b.start_day, row: row_for(rows: fold.rows, key: path_key(p: b.path)))), "; ")], "")
+  }
+}
+
+// ONE LEAF'S CHANGE, in words a Gantt reader can act on -- shorter by N, longer by N, or unchanged -- with the value
+// the realized side came from beside it, so a bar that moved is traceable to the lines that moved it. A leaf the
+// realized fold refused a row for says so here rather than vanishing from the diff.
+fn diff_leaf(before: Int, row: LeafDurationRow?) -> String {
+  match row {
+    Absent => "a leaf the realized fold refused a row for: no bar to compare"
+    Present { value: r } =>
+      let after = duration_days(duration: r.duration)
+      let words = if after < before {
+        join(["shorter by ", to_string(before - after)], "")
+      } else {
+        if after > before { join(["longer by ", to_string(after - before)], "") } else { "unchanged" }
+      }
+      join([path_key(p: r.path), " ", to_string(before), " -> ", to_string(after), " working days (", words,
+        "; ", duration_output(duration: r.duration), ")"], "")
+  }
+}
+
+// THE ROW FOR A LEAF, by the schedule's own key. One lookup, imported key, no second spelling.
+fn row_for(rows: List<LeafDurationRow>, key: String) -> LeafDurationRow? {
+  first_where(rows, r => path_key(p: r.path) == key)
 }
 
 // ONE ROW, PRINTED: where the schedule placed the leaf, WHICH VALUE it was priced from, and -- on a realized row --

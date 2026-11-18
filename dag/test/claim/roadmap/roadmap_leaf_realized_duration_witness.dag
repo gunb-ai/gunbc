@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_leaf_realized_duration {
   AcceptedWithoutClaim, ClaimInstantUnreadable, ForkedOrDanglingCausalChain, Folded, LeafDurationRow,
   PriorFromCarrier, PriorNamedOutLoud, RealizedFold, RealizedFromLog, RealizedSchedule, Refused, UndecodableLine,
   WorkInFlight, duration_days, is_named_out_loud, is_realized, realized_duration_fold, realized_duration_unit_note,
-  realized_row_output, realized_schedule_output,
+  realized_row_output, realized_schedule_output, row_for, schedule_diff,
 }
 
 // ─── THE FIXTURES ─────────────────────────────────────────────────────────────────────────────────
@@ -180,14 +180,14 @@ fn fold_lines(lines: List<String>) -> RealizedFold {
   realized_duration_fold(d: carrier(), e: expansion(), workers: lanes(1), item: item(), lines: lines)
 }
 
-fn row_for(fold: RealizedSchedule, key: String) -> LeafDurationRow? {
-  first_where(fold.rows, r => path_key(p: r.path) == key)
+fn row_in(fold: RealizedSchedule, key: String) -> LeafDurationRow? {
+  row_for(rows: fold.rows, key: key)
 }
 
 // A row for the string comparisons to need. A missing row makes the comparison FALSE (its days are -1, its lane
 // -1), never a crash and never a vacuous pass.
 fn row_or_none(fold: RealizedSchedule, key: String) -> LeafDurationRow {
-  match row_for(fold: fold, key: key) {
+  match row_in(fold: fold, key: key) {
     Present { value: r } => r
     Absent => LeafDurationRow {
       path: leaf_first(), start_day: -1, finish_day: -1, prior: none,
@@ -259,7 +259,7 @@ fn red_control_an_accepted_leaf_with_no_claim_has_no_realized_duration_and_never
     Folded { fold: fold } =>
       fold.accepted
         && count(filter(fold.rows, r => is_named_out_loud(row: r))) == 1
-        && (match row_for(fold: fold, key: "gantt.item#1#0#0") {
+        && (match row_in(fold: fold, key: "gantt.item#1#0#0") {
              Absent => false
              Present { value: r } =>
                // THE ARM, not merely the words: an ordinary prior is a different arm, so no reader -- of the print or
@@ -323,22 +323,17 @@ fn the_handback_outputs_are_the_realized_row_the_no_claim_row_and_the_diff() -> 
           "gantt.item#1#0#0: days 4 to 6 | NO REALIZED DURATION -- the item's acceptance stands and this leaf was",
           " NEVER CLAIMED; the prior stands at 2 working days (never zero, never a silent fallback)",
           " (working days (Mon-Fri, no holiday calendar))"], "")
-        && schedule_diff(prior: prior_answer(), fold: fold) == join([
-          "critical length 10 -> 9 working days; leaves gantt.item#0#0#0 5 -> 4,",
-          " gantt.item#1#0#0 2 -> 2, gantt.item#2#0#0 3 -> 3"], "")
+        && string_contains(s: schedule_diff(d: carrier(), e: expansion(), workers: lanes(1), fold: fold),
+             pattern: "critical length 10 -> 9 working days; ")
+        && string_contains(s: schedule_diff(d: carrier(), e: expansion(), workers: lanes(1), fold: fold),
+             pattern: "gantt.item#0#0#0 5 -> 4 working days (shorter by 1; realized from the log: 4 working days,")
+        && string_contains(s: schedule_diff(d: carrier(), e: expansion(), workers: lanes(1), fold: fold),
+             pattern: "claimed 2026-11-16, accepted 2026-11-20)")
+        && string_contains(s: schedule_diff(d: carrier(), e: expansion(), workers: lanes(1), fold: fold),
+             pattern: "gantt.item#1#0#0 2 -> 2 working days (unchanged; NO REALIZED DURATION")
+        && string_contains(s: schedule_diff(d: carrier(), e: expansion(), workers: lanes(1), fold: fold),
+             pattern: "gantt.item#2#0#0 3 -> 3 working days (unchanged; realized from the log: 3 working days")
   }
-}
-
-// THE DIFF: what the realized durations changed against the schedule #16695 computed from the same carriers at no
-// duration input.
-fn schedule_diff(prior: ScheduleAnswer, fold: RealizedSchedule) -> String {
-  join(["critical length ", to_string(prior.critical_length), " -> ", to_string(fold.answer.critical_length),
-    " working days; leaves ",
-    join(map(prior.leaves, b => match row_for(fold: fold, key: path_key(p: b.path)) {
-      Absent => join([path_key(p: b.path), " ", to_string(b.finish_day - b.start_day), " -> absent"], "")
-      Present { value: r } => join([path_key(p: b.path), " ", to_string(b.finish_day - b.start_day),
-        " -> ", to_string(duration_days(duration: r.duration))], "")
-    }), ", ")], "")
 }
 
 // ─── OUT_OF_SCOPE, ENFORCED ───────────────────────────────────────────────────────────────────────
