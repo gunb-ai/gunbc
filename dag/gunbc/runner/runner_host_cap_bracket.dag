@@ -53,11 +53,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.systemd.systemctl {
   systemctl_mask_argv,
   systemctl_stop_argv,
-  systemctl_set_property_argv,
-  systemctl_show_properties_argv,
 }
-import extdeps.systemd { SystemdUnitProperty, RestartPolicyProperty }
-import gunbc.runner.runner_unit_file { runner_unit_restart_policy, runner_slot_restart_inhibit_value, restart_property_assignment }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import extdeps.github.actions_runner { actions_runner_base_dir }
@@ -88,7 +84,8 @@ import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh
 // inside a DECLARED bound, idleness is judged UNDER the closure, the write is made, and admission is
 // re-opened on every exit path.
 //
-// ORDER: close admission (mask) -> wait, bounded, for every slot to be drained -> (the caller writes,
+// ORDER: mask what the mask leg can take -> wait, bounded, for every slot to be drained, stopping the
+// idle listeners the host's drain row authorizes once the readings certify them (the stop leg) -> (the
 // reloads, activates, reads back from the cgroup files) -> re-admit (activate + read back).
 //
 // COULD-NOT-TELL IS NOT IDLE (gunbc.design_argument::fail_closed). An unreadable process listing or unit reading, and a slot that is
@@ -175,14 +172,21 @@ data listener_reregistration_frontier: ListenerReregistrationFrontier = Listener
 // and the window is CARRIED rather than closed: the operator's ruling of 2026-11-18 is that draining these
 // hosts is authorized, a job caught in the window included.
 //
-// THE RUNTIME OVERRIDE THIS BRACKET WRITES LEAVES ITS OWN RESIDUE, and it is stated rather than assumed
-// away: set-property without --permanent writes the override into the unit's runtime drop-in directory
-// (/run/systemd/system.control on the systemd systemctl(1) describes), which is why the release puts the
-// AUTHORED value back instead of deleting a file, and why the residue after a released bracket is an
-// override whose value equals the unit's own file. systemd discards that directory on reboot. The first
-// live bracket records on the host which of the two system.control locations the override actually landed
-// in, because this fleet's cap shadows have been observed under /etc/systemd/system.control
-// (gunbc.runner.runner_host_file_converge's shadow rule) and the two are not the same file.
+// WHY THE STOP LEG NEEDS NO RESTART INHIBITION, AND WHY WRITING ONE WOULD HAVE BEEN WRONG. Measured
+// 2026-11-18 against upstream source rather than man pages: systemd's D-Bus setter
+// (src/core/dbus-service.c, bus_service_set_property) applies cgroup and resource-control properties to any
+// unit -- which is why this fleet's per-slice MemoryMax lines work over the same socket -- but every other
+// property, Restart= among them, is written only inside `if (u->transient && u->load_state == UNIT_STUB)`.
+// So `systemctl set-property actions-runner@<slot>.service Restart=no` is refused on a persistent unit, and
+// the route roadmap_authority node fleet-no-route-masks-a-running-unit first suggested -- a runtime
+// Restart=no override -- does not exist per unit at runtime. The other form of the same idea, a Restart=
+// drop-in plus daemon-reload, is what
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload refuses: a
+// reload is host-wide and this bracket masks units inside the same run. What the bracket relies on instead
+// is stated by systemd.service(5) for Restart=simple: "When the death of the process is a result of systemd
+// operation (e.g. service stop or restart), the service will not be restarted." A stop issued through
+// systemctl is therefore not fought by the unit that started it, no override is written, and the unit's own
+// Restart policy stays authoritative on the host -- which is also what the release path wants to read back.
 
 fn reregistration_trigger_wire(t: ReregistrationTrigger) -> String {
   match t {
@@ -680,14 +684,14 @@ fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, un
 // that invalid state for the whole wait (srv4-01/02/08/12/15). Unlike DrainSteps in the shared drain actuator,
 // this route masks ONLY a unit PROVEN stopped (Inactive or Failed) -- exactly runner_slot_actuation's
 // NeverMaskARunningUnit. A unit that is active, activating, reloading or deactivating is left UNMASKED by
-// THIS leg: masking such a unit is the invalid state above. What brings such a unit down is the stop leg
-// below -- restart_inhibit_over, then stop_inhibited_listener_over -- which issues only over a restart path
-// it has READ BACK as inhibited, and only over a listener the roster certifies idle. That is the mechanism
-// roadmap node fleet-no-route-masks-a-running-unit exists for, and it lands here: a busy slot is inhibited
-// and waited on, an idle listener is inhibited and stopped, and either is masked only once it reads
-// stopped. A slot that leg cannot certify -- roster unread, busy, or disagreeing with the host -- stays
-// open and the cap write is withheld: fail-closed, ending in BracketAdmissionNotClosed, or
-// BracketBoundExceeded once the wait bound is spent. A failed mask is not reported here: the next reading
+// THIS leg: masking such a unit is the invalid state above. What brings such a unit down is the STOP leg
+// below (drain_action_of, then stop_listener_over), which stops a listener the readings say is idle and
+// never a unit whose cgroup shows a Runner.Worker. That is the mechanism roadmap node
+// fleet-no-route-masks-a-running-unit exists for, and it lands here: a busy slot is waited on, an idle
+// listener is stopped, and either is masked only once the next reading shows it stopped -- a stop, unlike a
+// process exit, is not undone by the unit's own Restart= path. A slot that leg cannot certify -- a live
+// worker, or a roster the operator's drain row does not reach -- stays open and the cap write is withheld:
+// fail-closed, ending in BracketAdmissionNotClosed, or BracketBoundExceeded once the wait bound is spent. A failed mask is not reported here: the next reading
 // shows the slot unmasked, and an unmasked slot is never drained.
 fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
 {
@@ -772,171 +776,39 @@ fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
   }
 }
 
-// ── The restart inhibitor ────────────────────────────────────────────────────────────────────────
-// THE LEG THIS BRACKET WAS MISSING ON A LIVE HOST. A slot unit restarts after every job and an idle
-// listener never exits at all, so a drain that may neither mask a running unit nor stop one has nothing
-// to do but wait, and waiting cannot take such a unit out of service: that is srv4's run 44232633417,
-// which spent its whole bound with 13 slots at ClassAdmissionOpen, none of them masked, and then refused.
-// The absent leg is owned by roadmap node fleet-no-route-masks-a-running-unit, whose first_slice names
-// this mechanism; this section lands it.
+// ── The stop leg ───────────────────────────────────────────────────────────────────────────────
+// THE DRAIN HAD NO STOP LEG, AND ON A LIVE HOST THAT IS THE WHOLE DEADLOCK. mask_slot_only masks only a
+// unit PROVEN stopped, and a runner's listener never stops by itself: it exits when its own job ends, and
+// the unit brings it back (runner_unit_file authors Restart=always with runner_unit_restart_delay). So the
+// bound always expired -- srv4 run 44232633417 named 13 open slots after 5415s, 0 of them busy, and the
+// masks it tried were refused because the units under them were running.
 //
-// WHAT CLOSES THE RESTART PATH WITHOUT MASKING is a runtime override of Restart=, set with
-// systemctl set-property. systemctl(1) states the contract: set-property sets the property AT RUNTIME,
-// the change is effective at once for the loaded unit, and the override lives in a runtime drop-in the
-// unit's own file replaces at the next daemon-reload. It is not a mask: it does not make the unit
-// unstartable and it does not carry the cost mask carries here --
-// gunbc.recurring_failure_mode.a_running_unit_masked_loses_its_drop_ins_at_the_next_reload is precisely
-// the harm of masking an active unit, and mask_slot_only below still refuses it. With the override in
-// effect a busy slot finishes its job and STAYS finished, and an idle listener can be stopped and stays
-// stopped; that is what makes such a unit provable as stopped, and therefore maskable by the rule below,
-// which does not change.
+// A STOP ENDS THE CYCLE, AND IT NEEDS NO CHANGE TO THE UNIT. systemd.service(5), on Restart=: "When the
+// death of the process is a result of systemd operation (e.g. service stop or restart), the service will
+// not be restarted." The restart path answers the process's OWN exit; a stop is a requested
+// deactivation and systemd schedules no restart for one. The mask still does the rest -- it is what keeps
+// any later start from running the unit and what survives a reboot -- but no Restart= override is needed
+// to make a stop hold.
 //
-// THE OVERRIDE IS PROVEN BY READING IT BACK, never by set-property's exit status: `systemctl show -p
-// Restart` answers the policy the manager holds for the loaded unit, and only that answer counts as
-// inhibited. The same read-back is what makes the RELEASE honest. A slot left with Restart=no serves one
-// job and never comes back, a failure quieter than a drain that refused, so no exit of this bracket --
-// drained, refused, or released -- reports a slot restored unless its restart policy reads back as the
-// authored one (gunbc.runner.runner_unit_file runner_unit_restart_policy).
-
-type RestartPolicyReading
-  = RestartPolicyObserved { unit: NonEmptyStr, policy: String }
-  | RestartPolicyUnread { unit: NonEmptyStr, cause: String }
-
-fn restart_policy_is_inhibited(r: RestartPolicyReading) -> Bool {
-  match r {
-    RestartPolicyObserved { unit: _, policy: p } => p == (runner_slot_restart_inhibit_value as String)
-    RestartPolicyUnread { unit: _, cause: _ } => false
-  }
-}
-
-fn restart_policy_is_the_authored_one(r: RestartPolicyReading) -> Bool {
-  match r {
-    RestartPolicyObserved { unit: _, policy: p } => p == (runner_unit_restart_policy as String)
-    RestartPolicyUnread { unit: _, cause: _ } => false
-  }
-}
-
-fn restart_policy_text(r: RestartPolicyReading) -> String {
-  match r {
-    RestartPolicyObserved { unit: _, policy: p } => p
-    RestartPolicyUnread { unit: _, cause: _ } => "unread"
-  }
-}
-
-// THE READ-BACK PARSED APART FROM THE TRANSPORT, so the witness can hand it the real `systemctl show -p
-// Restart` output of a fixture unit and check what the bracket is allowed to conclude from it.
-fn restart_policy_reading_of_text(unit: NonEmptyStr, stdout: String) -> RestartPolicyReading {
-  match slot_show_value(lines: map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), property: RestartPolicyProperty) {
-    Absent => RestartPolicyUnread { unit: unit, cause: "systemctl show -p Restart printed no Restart= line for the unit" }
-    Present { value: p } => RestartPolicyObserved { unit: unit, policy: p }
-  }
-}
-
-fn restart_policy_reading_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> RestartPolicyReading
-{
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [RestartPolicyProperty])) {
-    TypedArgvExecRefused { reason: why } => RestartPolicyUnread { unit: unit, cause: why }
-    TypedArgvExecConverged { result: r } =>
-      if !r.success {
-        RestartPolicyUnread { unit: unit, cause: join(["systemctl show -p Restart exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
-      } else {
-        restart_policy_reading_of_text(unit: unit, stdout: r.stdout)
-      }
-  }
-}
-
-// WHETHER THE OVERRIDE HAS TO GO ON, decided from the read-back alone. A unit that already reads
-// Restart=no is left alone -- no command, no second write -- and a unit whose policy cannot be read is
-// refused: writing an override whose effect cannot be read back is how a slot ends up serving one job and
-// staying down, which is the quieter failure this section exists to avoid.
-fn restart_inhibit_needed(reading: RestartPolicyReading) -> Bool {
-  match reading {
-    RestartPolicyObserved { unit: _, policy: p } => p != (runner_slot_restart_inhibit_value as String)
-    RestartPolicyUnread { unit: _, cause: _ } => false
-  }
-}
-
-// WHAT RELEASING OWEs, same rule from the other side: the unit's policy is put back when it is not the
-// authored one, and the release REFUSES rather than report a slot restored when the policy is unread.
-type RestartReleaseStep
-  = ReleasePutBack { from: String }
-  | ReleaseNothingToPutBack
-  | ReleaseRefused { cause: String }
-
-fn restart_release_step_of(reading: RestartPolicyReading) -> RestartReleaseStep {
-  match reading {
-    RestartPolicyUnread { unit: _, cause: why } => ReleaseRefused { cause: why }
-    RestartPolicyObserved { unit: _, policy: p } =>
-      if p == (runner_unit_restart_policy as String) { ReleaseNothingToPutBack } else { ReleasePutBack { from: p } }
-  }
-}
-
-type RestartInhibit
-  = RestartInhibited { unit: NonEmptyStr, was: String }
-  | RestartAlreadyInhibited { unit: NonEmptyStr }
-  | RestartInhibitRefused { unit: NonEmptyStr, cause: String }
-
-// SET IT, THEN READ IT BACK. The policy is read first so a second pass over an already-inhibited slot
-// issues no command; the read-back after the write is the only thing allowed to report inhibited.
-fn restart_inhibit_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> RestartInhibit
-{
-  match restart_policy_reading_over(target: target, context: context, unit: unit) {
-    RestartPolicyUnread { unit: un, cause: why } =>
-      RestartInhibitRefused { unit: un, cause: join(["the unit's restart policy is unread before the override: ", why], "") }
-    RestartPolicyObserved { unit: un, policy: p } =>
-      if p == (runner_slot_restart_inhibit_value as String) {
-        RestartAlreadyInhibited { unit: un }
-      } else {
-        match run_slot_steps_over(target: target, context: context, steps: [systemctl_set_property_argv(unit: un, property: systemd_unit_property_wire(property: RestartPolicyProperty), value: runner_slot_restart_inhibit_value)]) {
-          Present { value: why } => RestartInhibitRefused { unit: un, cause: why }
-          Absent =>
-            match restart_policy_reading_over(target: target, context: context, unit: un) {
-              after => if restart_policy_is_inhibited(after) { RestartInhibited { unit: un, was: p } } else { RestartInhibitRefused { unit: un, cause: join(["the override did not read back as Restart=", runner_slot_restart_inhibit_value as String, " but as ", restart_policy_text(after)], "") } }
-            }
-        }
-      }
-  }
-}
-
-type RestartRelease
-  = RestartReleased { unit: NonEmptyStr }
-  | RestartNotInhibited { unit: NonEmptyStr }
-  | RestartReleaseRefused { unit: NonEmptyStr, cause: String }
-
-// PUT THE AUTHORED POLICY BACK, AND ONLY REPORT IT BACK WHEN IT READS BACK. A unit whose policy was
-// never overridden issues no command at all, so this is idempotent and can be the single exit path for
-// every unit the bracket read, touched or not.
-fn restart_release_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> RestartRelease
-{
-  match restart_release_step_of(reading: restart_policy_reading_over(target: target, context: context, unit: unit)) {
-    ReleaseRefused { cause: why } => RestartReleaseRefused { unit: unit, cause: why }
-    ReleaseNothingToPutBack => RestartNotInhibited { unit: unit }
-    ReleasePutBack { from: _ } =>
-      match run_slot_steps_over(target: target, context: context, steps: [systemctl_set_property_argv(unit: unit, property: systemd_unit_property_wire(property: RestartPolicyProperty), value: runner_unit_restart_policy)]) {
-        Present { value: why } => RestartReleaseRefused { unit: unit, cause: why }
-        Absent =>
-          match restart_policy_reading_over(target: target, context: context, unit: unit) {
-            r => if restart_policy_is_the_authored_one(r) { RestartReleased { unit: unit } } else { RestartReleaseRefused { unit: unit, cause: join(["the restart policy reads ", restart_policy_text(r), ", not the authored Restart=", runner_unit_restart_policy as String], "") } }
-          }
-      }
-  }
-}
-
-// WHAT THE DRAIN DOES TO ONE SLOT THIS PASS, given how it read and whether its restart path is already
-// inhibited. PURE, and the witness's control point: the inhibit-then-stop sequence, and the rule that a
-// unit still running is never masked by the drain, are decided here where they can be falsified; the legs
-// only carry out what is decided.
+// AN OVERRIDE WAS TRIED HERE FIRST AND IT DOES NOT EXIST, SO IT IS RECORDED RATHER THAN KEPT.
+// `systemctl set-property <unit> Restart=no` is refused for any unit that is not transient: systemd's
+// bus_service_set_property routes every non-cgroup property, Restart among them, through
+// bus_service_set_transient_property, inside `if (u->transient && u->load_state == UNIT_STUB)`. The
+// writable properties on a persistent unit are the cgroup ones -- which is exactly what
+// gunbc.runner.runner_host_grants sets on the fabric-cell slices. A drop-in WOULD work, and would cost a
+// host-wide daemon-reload; that reload is the trigger of
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload, so it is not
+// free. Leaving the restart path as authored is what the cap and the mask are for.
 type DrainAction
   = ActionAwaitLiveJob { unit: NonEmptyStr }
-  | ActionInhibitRestart { unit: NonEmptyStr }
-  | ActionStopInhibitedListener { unit: NonEmptyStr }
+  | ActionStopListener { unit: NonEmptyStr }
   | ActionHold { unit: NonEmptyStr }
 
 // A stop of a listener whose idleness NO READING corroborates interrupts a job that may be running, and
 // only an operator row naming that unit says that is permitted on this host. Corroboration here means the
-// org roster join said THIS registration is not busy; absent, unread, partial and disagreeing readings
-// are all uncorroborated, and on a JIT host like srv4 every slot is uncorroborated, because a JIT
-// registration never appears in the org roster.
+// org roster join said THIS registration is not busy; absent, unread, partial and disagreeing readings are
+// all uncorroborated, and on a JIT host like srv4 every slot is uncorroborated, because a JIT registration
+// never appears in the org roster.
 fn drain_authorization_names(drain: HostDrainAuthorization, unit: NonEmptyStr) -> Bool {
   match drain {
     HostDrainNamed { authorization: a } => interruption_authorization_covers(auth: a, unit: unit as String)
@@ -944,25 +816,25 @@ fn drain_authorization_names(drain: HostDrainAuthorization, unit: NonEmptyStr) -
   }
 }
 
-fn drain_action_of(r: SlotDrainReading, restart_inhibited: Bool, drain: HostDrainAuthorization) -> DrainAction
+fn drain_action_of(r: SlotDrainReading, drain: HostDrainAuthorization) -> DrainAction
 {
   let unit = r.unit
   match r.run {
     // A live Runner.Worker is somebody's build. The drain never stops it and never masks the unit under
-    // it; it closes the path back up, so that when the job ends on its own the slot stays out of service.
-    RunWorkerLive => if restart_inhibited { ActionAwaitLiveJob { unit: unit } } else { ActionInhibitRestart { unit: unit } }
-    // The roster says a job is on this registration even though no worker shows in its cgroup. Same
-    // treatment: close the restart path, let the job end, and never stop the unit under it.
-    RunListenerIdle { roster: RosterBusy { joined: _ } } => if restart_inhibited { ActionAwaitLiveJob { unit: unit } } else { ActionInhibitRestart { unit: unit } }
-    // An idle listener the roster AGREES is idle is taken out of service by a stop -- but only over an
-    // inhibited restart path, so the stop holds instead of being undone five seconds later.
-    RunListenerIdle { roster: RosterNotBusy { joined: _ } } => if restart_inhibited { ActionStopInhibitedListener { unit: unit } } else { ActionInhibitRestart { unit: unit } }
-    // RosterUnread and RosterDisagrees: the unit is up, something in its cgroup is not a Runner.Worker,
-    // and no reading says whether a job is on it. Stopped here only where an enumerated operator decision
-    // permits the interruption; otherwise it is held, the wait bound refuses, and nothing is masked.
+    // it: the mask that lands on a running unit is the invalid state this module's own row names.
+    RunWorkerLive => ActionAwaitLiveJob { unit: unit }
+    // The roster says a job is on this registration even though no worker shows in its cgroup. Same: the
+    // reading that says a job is running outranks the reading that says none is.
+    RunListenerIdle { roster: RosterBusy { joined: _ } } => ActionAwaitLiveJob { unit: unit }
+    // An idle listener the roster AGREES is not busy is taken out of service by a stop, and the mask lands
+    // on it once the next reading proves it stopped.
+    RunListenerIdle { roster: RosterNotBusy { joined: _ } } => ActionStopListener { unit: unit }
+    // RosterUnread and RosterDisagrees: the unit is up, something in its cgroup is not a Runner.Worker, and
+    // no reading says whether a job is on it. Stopped only where an enumerated operator decision permits
+    // the interruption; otherwise it is held, the bound refuses, and nothing is masked.
     RunListenerIdle { roster: _ } =>
       if drain_authorization_names(drain: drain, unit: unit) {
-        if restart_inhibited { ActionStopInhibitedListener { unit: unit } } else { ActionInhibitRestart { unit: unit } }
+        ActionStopListener { unit: unit }
       } else {
         ActionHold { unit: unit }
       }
@@ -974,46 +846,34 @@ fn drain_action_of(r: SlotDrainReading, restart_inhibited: Bool, drain: HostDrai
   }
 }
 
-// THE STOP LEG THE BRACKET DID NOT HAVE. It issues only over a unit whose restart path this pass has
-// proven inhibited, so the stop holds; the reading that then shows the unit stopped is the same reading
-// mask_slot_only accepts as permission to mask. The window this bracket already declares
-// (listener_restart_residual) stays open: a job GitHub assigns between the idle readings and this stop is
-// cancelled by the stop. The operator's ruling of 2026-11-18 accepts carrying that window on these
-// hosts; it is not claimed closed, and the frontier row says what would close it.
-fn stop_inhibited_listener_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
+// THE STOP RE-TAKES ITS OWN READING. The reading this pass acted on was taken before the pass ran, and
+// between it and this command a job can land on the slot -- that window is the declared residual of
+// listener_reregistration_frontier, and re-reading here is what keeps it a window rather than a habit. A
+// job that has landed by the time the stop is issued is not stopped: the fresh reading decides, through
+// the same decision point, and the refusal is carried into the next pass's readings.
+fn stop_listener_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, drain: HostDrainAuthorization) -> String?
 {
-  match restart_policy_reading_over(target: target, context: context, unit: unit) {
-    r =>
-      if !restart_policy_is_inhibited(r) {
-        Present { value: join(["the restart policy reads ", restart_policy_text(r), ", not Restart=", runner_slot_restart_inhibit_value as String, ": the stop would be undone by the unit's own restart"], "") }
-      } else {
-        match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
-          Present { value: why } => Present { value: why }
-          Absent => none
-        }
+  let fresh = read_slot_drain_over(target: target, context: context, unit: unit)
+  match drain_action_of(r: fresh, drain: drain) {
+    // run_slot_steps_over answers the FIRST failing step, or absent when every step succeeded -- so an
+    // absent here is a stop the host accepted, not a stop that went unanswered.
+    ActionStopListener { unit: _ } =>
+      match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+        Present { value: first } => Present { value: join(["stop failed on ", unit as String, ": ", first], "") }
+        Absent => none
       }
+    ActionAwaitLiveJob { unit: _ } => Present { value: join(["a job is on ", unit as String, " at the stop leg's own reading; not stopped"], "") }
+    ActionHold { unit: _ } => Present { value: join(["the stop leg's own reading no longer shows a stoppable listener on ", unit as String], "") }
   }
 }
 
-fn restart_inhibit_wire(outcome: RestartInhibit) -> List<String> {
-  match outcome {
-    RestartInhibited { unit: _, was: _ } => []
-    RestartAlreadyInhibited { unit: _ } => []
-    RestartInhibitRefused { unit: un, cause: why } => [join([un as String, ": ", why], "")]
-  }
-}
-
-fn stop_inhibited_listener_wire(outcome: String?) -> List<String> {
-  match outcome {
-    Present { value: why } => [join([why], "")]
+fn stop_listener_wire(cause: String?) -> List<String> {
+  match cause {
     Absent => []
+    Present { value: c } => [c]
   }
 }
 
-// THE ACTIONS FOR ONE PASS, as legs. The pass is driven by the units THIS attempt owns, so the
-// two-population rule above is unchanged: a unit someone else holds is never acted on. A failed action
-// does not stop the pass -- it joins the cause list the caller carries out, and the next reading
-// re-classifies the slot under the same bound.
 fn reading_for_unit(readings: List<SlotDrainReading>, unit: NonEmptyStr) -> SlotDrainReading? {
   fold(readings, init: none, f: (acc, r) => match acc {
     Present { value: _ } => acc
@@ -1029,14 +889,15 @@ fn drain_actions_apply_over(target: SshTarget, context: FleetSshExecutionContext
   list_flat_map(owned, unit => match reading_for_unit(readings: readings, unit: unit) {
     Absent => []
     Present { value: r } =>
-      match drain_action_of(r: r, restart_inhibited: restart_policy_is_inhibited(restart_policy_reading_over(target: target, context: context, unit: unit)), drain: drain) {
-        ActionInhibitRestart { unit: un } => restart_inhibit_wire(restart_inhibit_over(target: target, context: context, unit: un))
-        ActionStopInhibitedListener { unit: un } => stop_inhibited_listener_wire(stop_inhibited_listener_over(target: target, context: context, unit: un))
+      match drain_action_of(r: r, drain: drain) {
+        ActionStopListener { unit: un } => stop_listener_wire(stop_listener_over(target: target, context: context, unit: un, drain: drain))
         ActionAwaitLiveJob { unit: _ } => []
         ActionHold { unit: _ } => []
       }
   })
 }
+
+
 // ── The listener restart ───────────────────────────────────────────────────────────────────────
 
 // THE STOP OF AN ADMITTED IDLE LISTENER, GATED BY A FRESH READING OF ALL THREE FACTS. The drain judged the
@@ -1261,23 +1122,14 @@ fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
 // which reads again and refuses with the read cause.
 fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {
-  // THE RESTART OVERRIDE GOES BACK FIRST, and the release refuses without it. The order is the whole
-  // point: unmasking and starting a slot that still reads Restart=no puts back in service a runner that
-  // serves exactly one job and then stays down, a worse failure than the one being undone -- and while the
-  // unit is still masked, putting the policy back first cannot let anything start.
-  match restart_release_over(target: target, context: context, unit: unit) {
-    RestartReleaseRefused { unit: un, cause: why } =>
-      SlotActuationRefused { unit: un, step: "restart-release", reason: join(["the restart override could not be put back: ", why], "") }
-    _ =>
-      match read_slot_over(target: target, context: context, unit: unit) {
-        SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided: ", why) }
-        SlotRead { reading: r } =>
-          if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
-          else if slot_activation_read_back_holds(r: r) {
-            SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
-          } else {
-            SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }
-          }
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided: ", why) }
+    SlotRead { reading: r } =>
+      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
+      else if slot_activation_read_back_holds(r: r) {
+        SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
+      } else {
+        SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }
       }
   }
 }

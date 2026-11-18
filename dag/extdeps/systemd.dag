@@ -87,11 +87,6 @@ type SystemdUnitProperty
   | NeedDaemonReload
   | IdProperty
   | KillModeProperty
-  // systemd.service(5) Restart=: the action the manager takes when the unit's main process exits.
-  // `systemctl show -p Restart` answers the policy IN EFFECT, which is what a runtime override changes
-  // (systemctl(1) set-property), so this is the read-back that proves such an override landed -- and the
-  // read-back that proves it was taken back off again.
-  | RestartPolicyProperty
   | ExitTypeProperty
   | EnvironmentProperty
   | EnvironmentFilesProperty
@@ -204,7 +199,6 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
-    RestartPolicyProperty => "Restart" as NonEmptyStr
     ExitTypeProperty => "ExitType" as NonEmptyStr
     EnvironmentProperty => "Environment" as NonEmptyStr
     EnvironmentFilesProperty => "EnvironmentFiles" as NonEmptyStr
@@ -286,8 +280,6 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     NeedDaemonReload => false
     IdProperty => false
     KillModeProperty => false
-    // The restart policy is a policy word of the unit, never a path it is handed.
-    RestartPolicyProperty => false
     ExitTypeProperty => false
     EnvironmentProperty => false
     EnvironmentFilesProperty => true

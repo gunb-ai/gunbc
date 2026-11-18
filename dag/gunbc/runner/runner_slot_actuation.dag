@@ -24,13 +24,12 @@ import extdeps.systemd {
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
   Result,
 }
-import gunbc.runner.runner_unit_file { runner_unit_restart_delay, runner_unit_restart_policy, runner_slot_restart_inhibit_value }
+import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
 import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label, service_result_is_success }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
   systemctl_show_properties_argv,
-  systemctl_set_property_argv,
   systemctl_restart_argv,
   systemctl_mask_argv,
   systemctl_stop_argv,
@@ -667,22 +666,17 @@ fn slot_actuation_elevated(command: List<String>) -> List<String> {
 fn slot_actuation_argvs(unit: NonEmptyStr) -> List<List<String>> {
   concat(
     [systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties), ps_unit_comm_listing_argv(), systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])],
-    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated, and so are the cap bracket's: the mask and the
-    // stop the drain issues, and the restart override it puts on and takes back off. Those four had no
-    // line while the bracket had no stop leg. They do now, and the authority for them is the OPERATOR's
-    // interruption authorization for the host being drained (srv4_transition_interruption_authorization;
-    // #16665 for srv3), granted per MODELLED member by gunbc.runner.runner_host_grants
-    // runner_slot_cap_bracket_operations -- which is also what scopes it: a unit outside that set has no
-    // line, so sudo refuses it. The assignment strings come from runner_unit_file's own authoring, the
-    // same call the sudoers lines render, so a line that is not what is run cannot be written.
+    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated, and so are the cap bracket's two: the plain
+    // mask and the stop the drain issues. Those two words were spelled here before the bracket had a stop
+    // leg, and no line authorized them for a KEPT slot: the retire side grants `mask --now` for the units
+    // its own authorization names (runner_slot_retirement host_maskable_units), which is not this verb and
+    // not this population. They are granted now, per MODELLED member, by
+    // gunbc.runner.runner_host_grants runner_slot_cap_bracket_operations, on the strength of the host's
+    // drain row (host_drain_interruption_authorization) -- and that is also what scopes them: a unit
+    // outside the modelled population has no line, so sudo refuses it.
     concat(
       map(runner_slot_activation_step_argvs(steps: runner_slot_activation_steps(), unit: unit), c => slot_actuation_elevated(command: c)),
-      map(
-        [systemctl_mask_argv(unit: unit),
-         systemctl_stop_argv(unit: unit),
-         systemctl_set_property_argv(unit: unit, property: systemd_unit_property_wire(property: RestartPolicyProperty), value: runner_slot_restart_inhibit_value),
-         systemctl_set_property_argv(unit: unit, property: systemd_unit_property_wire(property: RestartPolicyProperty), value: runner_unit_restart_policy)],
-        c => slot_actuation_elevated(command: c)),
+      map([systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
     ),
   )
 }
