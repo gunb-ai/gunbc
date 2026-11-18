@@ -415,13 +415,12 @@ test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
     ) == 0
 }
 
-// THE UNIT IS THE KEY, NEVER THE EXECUTOR. The dispatch arrives with two identities: the executor host (the
-// runner that hosts the one site PXE edge) and the install unit read from the arrival_subject input. Every
-// committed lookup below the entry is keyed by the UNIT. This claim is the manager-ruled red: account the same
-// missing pass under the executor's identity (srv4) and the rows committed under srv15's name -- managed-host
-// row, write-controller row, capability row, target-disk reading -- all miss; account it under the unit and none
-// of them appear. If the entry ever routes the executor into the lookups, the unit-keyed arm goes red and the
-// executor-keyed arm goes green: the claim flips exactly on the conflation.
+// THE UNIT IS THE KEY, NEVER THE EXECUTOR (review 96534 scope note). This claim measures the two accounts
+// DIRECTLY: the unit account names what srv15 genuinely lacks (the firmware release capability row) and stays
+// silent on what srv15 holds (arrival population row, write-controller row, dated target-disk reading); the
+// executor account names all of them, because srv4 owns none of these ledgers. That is evidence about the
+// account function itself. The EXECUTED evidence that the dispatch routes lookups by the unit and carries the
+// executor separately is the following claim, which runs the same resolve call the dispatch makes.
 test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_rows() -> Bool {
   // The unit account must report what srv15 genuinely lacks (the firmware release capability
   // row) and stay silent on what it holds (population row, controller row, dated disk); the
@@ -469,6 +468,35 @@ test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_row
 // AN ABSENT UNIT REFUSES, NAMING THE INPUT IT WANTED. The refusal names FLEET_CONVERGE_ARRIVAL_SUBJECT -- the
 // dispatch's own input -- and says outright that the unit is never taken from the executor host. A witness that
 // only checked "some refusal" would pass on any other text; this one pins the input name and the clause.
+// review 96534 (rung honesty): the entry's dispatch resolves its committed inputs through
+// network_install_ci_resolve with the UNIT in the lookup slot and the EXECUTOR carried separately --
+// network_install_ci_dispatch passes host: install_unit, executor: host into it. This claim executes that
+// same resolve call with the same argument shape the dispatch uses, against the real fixtures, and asserts
+// the unit-side account: it names the capability row the unit lacks and stays silent on the population row
+// and the write-controller row, which srv15 owns and only an executor-routed lookup could report missing.
+// If the dispatch ever routes the executor into the lookups, missing() asks srv4 and this arm flips red.
+// The executor is asserted to stay a separate carrier: it is a parameter here, never a lookup key.
+test fn w_the_dispatch_path_keys_lookups_by_the_unit_and_carries_the_executor_apart() -> Bool {
+  match network_install_ci_resolve(
+    host: ci_host,
+    executor: operator_host_srv4,
+    dispatch_id: ci_dispatch_id,
+    decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path },
+    edge_context: Absent,
+    edge_view: Present { value: CiEdgeReady },
+  ) {
+    NetworkInstallCiIncomplete { missing: missing } =>
+      any(xs: missing, where: item =>
+        string_contains(s: item.input as String, pattern: "firmware release capability row"))
+        && !any(xs: missing, where: item =>
+          string_contains(s: item.input as String, pattern: "write-controller row"))
+        && !any(xs: missing, where: item =>
+          string_contains(s: item.input as String, pattern: "arrival population row"))
+    _ => false
+  }
+}
+
 test fn w_an_absent_unit_refusal_names_the_arrival_subject_input_and_denies_the_host() -> Bool {
   let text = network_install_ci_unit_refusal(
     variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
