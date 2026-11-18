@@ -743,6 +743,26 @@ type ClaimGrainParse
   = Parsed { grain: ClaimGrain }
   | Malformed { field: String, why: String }
 
+// THE ONE LEAF-INDEX PARSE: a decimal non-negative integer within Nat range, on success its Nat.
+// A failure names the malformed field and why. roadmap_claim_grain_parse calls this three times,
+// one per index; the check is never re-spelled (single_authority).
+fn roadmap_leaf_index_parse(field: String, value: String) -> Nat? {
+  match parse_int(s: value) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { checked_int_to_nat(n: n) }
+  }
+}
+
+// The reason a roadmap_leaf_index_parse returned none, rendered per field. The why string differs by
+// input shape, so this re-derives it rather than carrying it: the three shapes are not-a-decimal,
+// negative, and out-of-range.
+fn roadmap_leaf_index_why(value: String) -> String {
+  match parse_int(s: value) {
+    Absent => "not a decimal integer"
+    Present { value: n } => if n < 0 { "negative" } else { "out of range for a leaf index" }
+  }
+}
+
 fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece: String, leaf_member: String) -> ClaimGrainParse {
   if leaf_stage == "" && leaf_piece == "" && leaf_member == "" {
     Parsed { grain: Pathless }
@@ -753,28 +773,13 @@ fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece
   } else if leaf_member == "" {
     Malformed { field: "leaf_member", why: "blank while the other leaf fields are set" }
   } else {
-    match parse_int(s: leaf_stage) {
-      Absent => Malformed { field: "leaf_stage", why: "not a decimal integer" }
-      Present { value: s_i } => if s_i < 0 { Malformed { field: "leaf_stage", why: "negative" } } else {
-        match checked_int_to_nat(n: s_i) {
-          Absent => Malformed { field: "leaf_stage", why: "out of range for a leaf index" }
-          Present { value: s_n } => match parse_int(s: leaf_piece) {
-            Absent => Malformed { field: "leaf_piece", why: "not a decimal integer" }
-            Present { value: p_i } => if p_i < 0 { Malformed { field: "leaf_piece", why: "negative" } } else {
-              match checked_int_to_nat(n: p_i) {
-                Absent => Malformed { field: "leaf_piece", why: "out of range for a leaf index" }
-                Present { value: p_n } => match parse_int(s: leaf_member) {
-                  Absent => Malformed { field: "leaf_member", why: "not a decimal integer" }
-                  Present { value: m_i } => if m_i < 0 { Malformed { field: "leaf_member", why: "negative" } } else {
-                    match checked_int_to_nat(n: m_i) {
-                      Absent => Malformed { field: "leaf_member", why: "out of range for a leaf index" }
-                      Present { value: m_n } => Parsed { grain: AtPath { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
-                    }
-                  }
-                }
-              }
-            }
-          }
+    match roadmap_leaf_index_parse(field: "leaf_stage", value: leaf_stage) {
+      Absent => Malformed { field: "leaf_stage", why: roadmap_leaf_index_why(value: leaf_stage) }
+      Present { value: s_n } => match roadmap_leaf_index_parse(field: "leaf_piece", value: leaf_piece) {
+        Absent => Malformed { field: "leaf_piece", why: roadmap_leaf_index_why(value: leaf_piece) }
+        Present { value: p_n } => match roadmap_leaf_index_parse(field: "leaf_member", value: leaf_member) {
+          Absent => Malformed { field: "leaf_member", why: roadmap_leaf_index_why(value: leaf_member) }
+          Present { value: m_n } => Parsed { grain: AtPath { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
         }
       }
     }
