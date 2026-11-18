@@ -73,7 +73,7 @@ import gunbc.source_layout { layout_module_storage_path }
 // (fail_closed). The gunbc#8377 class "exists but does not define the named function" is therefore refused in the
 // required fast-lane step.
 //
-// THE RUNG THIS IS, AND THE RUNG THAT IS NOT (the rung ladder, gunbc.design_argument::closed_grounded_substrate).
+// THE RUNG THIS IS, AND THE RUNG THAT IS NOT (the rung ladder, @ref(gunbc.design_argument::guarantee_ladder)).
 // This is rung 2, mechanically preventable: the gate reliably exposes and blocks the typo, but the entry is still
 // an authored string, so the safety depends on the check RUNNING and staying enrolled -- it is the check
 // executing, not a guarantee in the types. The TERMINAL form is rung 3: a TYPED declaration reference, in which

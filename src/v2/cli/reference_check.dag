@@ -148,12 +148,15 @@ fn reference_walk_counted(walk: ReferenceWalk) -> ReferenceWalk {
 }
 
 // A module is worth tokenizing if it spells the @ref marker (annotation citations) OR the run-step-target
-// constructor call (a run-time entry to resolve). Either spelling is an EXACT substring pre-filter -- never a
-// pattern, never a regex, never a heuristic (v2.compiler::the_cost_of_a_grammars_lexical_rulesets_bound_binds_its_lexers_admission):
-// a module with neither contains nothing to extract, and a substring cannot false-negative.
+// constructor IDENTIFIER (a run-time entry to resolve). The target prefilter keys on the bare identifier
+// `gunbc_run_step_target`, NOT the identifier plus `(`: a call written `gunbc_run_step_target (` or with a
+// newline before the paren must still be queued, or its misspelled entry would reach CI run time unchecked (the
+// gunbc#8377 class). Either spelling is an EXACT substring pre-filter -- never a pattern, never a regex, never a
+// heuristic (v2.compiler::the_cost_of_a_grammars_lexical_rulesets_bound_binds_its_lexers_admission): a module
+// with neither contains nothing to extract, and a substring cannot false-negative.
 fn reference_walk_read(env: AcquisitionEnv, caller: String, file: String, content: String, walk: ReferenceWalk) -> ReferenceWalk {
   let has_marker = string_contains(s: content, pattern: annotation_reference_marker)
-  let has_target = string_contains(s: content, pattern: run_step_target_call_spelling)
+  let has_target = string_contains(s: content, pattern: gunbc_run_step_target_constructor_name)
   if !has_marker && !has_target {
     walk
   } else {
@@ -193,7 +196,6 @@ fn reference_walk_go(env: AcquisitionEnv, pending: List<String>, walk: Reference
 // skipped (never-skip is why the mint subject now carries a typed mint_target rather than two loose strings).
 data gunbc_run_step_target_home_module: String = "gunbc.ci.ci_run_step_target"
 data gunbc_run_step_target_constructor_name: String = "gunbc_run_step_target"
-data run_step_target_call_spelling: String = "gunbc_run_step_target("
 data run_step_target_module_label: String = "module"
 data run_step_target_function_label: String = "function"
 

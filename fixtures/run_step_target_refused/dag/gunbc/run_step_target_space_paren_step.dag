@@ -3,9 +3,11 @@ module gunbc.run_step_target_space_paren_step
 import std.types { Int }
 import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
 
-// THE RED (space before the paren): a space between the callee and its argument list. A substring prefilter keyed
-// on `gunbc_run_step_target(` never scanned this module at all, so the typo passed. The AST walk keys on the
-// IDENTIFIER and parses the call regardless of whitespace, so the misspelled entry refuses as DeclarationAbsent.
+// THE RED (space before the paren): a space between the callee and its argument list. A substring prefilter
+// keyed on the callee-name-plus-open-paren never queued this module at all, so the typo passed unchecked. The
+// prefilter keys on the constructor identifier alone (this comment deliberately spells neither the identifier nor
+// name-plus-paren, so the red is driven by the CALL below, not by any comment text), and the AST walk parses the
+// call regardless of whitespace, so the misspelled entry refuses as DeclarationAbsent.
 data run_step_target_space_paren: Int = gunbc_run_step_target (
   module: "gunbc.run_step_target_fixture_home",
   function: "run_step_target_space_paren_TYPO",
