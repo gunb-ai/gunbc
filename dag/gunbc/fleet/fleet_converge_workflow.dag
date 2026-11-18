@@ -8668,6 +8668,19 @@ type FleetConvergeYamlGenerationOutcome
 // capabilities has nothing worth checking a budget against.
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
+// THE ARTIFACT-BOUNDARY ENTRY the generated/tier_o emitters import. The job list is a carrier now
+// (fleet_converge_jobs() yields List<Outcome<Job>>), so a step that refuses surfaces here as a typed,
+// located FleetConvergeYamlGenerationRefused carrying its diagnostic -- no sentinel, no scanned bytes.
+// Accepted jobs flow to fleet_converge_render_jobs, which runs the census gate and the admission chain.
+fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_workflow_jobs_of() {
+    Accepted { value: jobs } => fleet_converge_render_jobs(jobs: jobs)
+    Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused {
+      reason: join(["REFUSED gunbc.fleet.fleet_converge_workflow: a job step refused to render, so no workflow yaml was emitted. Diagnostic: ", diagnostics_reason_lexemes(diagnostics: d)], "")
+    }
+  }
+}
+
 // The accepted jobs become a plain Workflow through the ONE builder (fleet_converge_assemble_workflow),
 // then the census gate and the admission/projection chain run against it -- identical bytes to the
 // merge-base `data` path.
