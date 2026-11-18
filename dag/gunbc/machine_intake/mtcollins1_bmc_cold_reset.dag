@@ -106,9 +106,12 @@ data mtcollins1_bmc_cold_reset_receipt_absent_line: String = "mtcollins1-bmc-col
 // THE CLOCK is /proc/uptime (extdeps.linux.proc_uptime proc_uptime_read), the boot-based clock this unit's boot already
 // times its own phases on (gunbc.machine_intake.mtcollins1_boot_run, gunbc.host.managed_host_boot_phase_timing): a
 // wall-clock step does not move it, and the boot's dry realization answers it on its virtual clock, so the window's
-// route claims run on the same time the route's sleeps advance. The window poll ceiling is ceil(W / interval) + 1:
-// every window poll is preceded by a successful sleep of the interval, so a clock that has not reached W by then has
-// advanced less than the sleeps did, and the watch REFUSES (ClockNotEstablished); the ceiling never accepts.
+// route claims run on the same time the route's sleeps advance. Every window poll is preceded by a successful sleep
+// of the interval, so the watch's pace IS the interval (one row, read twice): a sample that advanced less than the
+// interval since the previous one refuses at once (ClockNotEstablished), which makes the window's clock and the
+// step's wall time the same time, and a stalled clock refuses within one poll rather than running polls out (side chat
+// on gunbc#16668, F2). The window poll ceiling is ceil(W / interval) + 1, one past the paced polls that must reach W,
+// so on this route it never fires; it is the loop's structural bound, and it never accepts.
 //
 // WHAT AN ACCEPTED VERDICT DOES NOT SAY. The one observation behind this window is that the controller fell silent
 // again about 45 min after an accepted reset (run 44217632446), and 45 min may well exceed W. A controller that stays
@@ -130,6 +133,7 @@ data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBoun
   drop_polls: 6,
   answer_polls: 40,
   sustain: second_to_millisecond(s: mtcollins1_bmc_cold_reset_sustain_window()),
+  pace: second_to_millisecond(s: mtcollins1_bmc_cold_reset_poll_interval),
   sustain_polls_at_most: mtcollins1_bmc_cold_reset_sustain_polls_at_most(),
 }
 
@@ -137,10 +141,22 @@ fn mtcollins1_bmc_cold_reset_read_ceiling() -> Second {
   second(count: (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int)
 }
 
+// THE WINDOW AT ITS WORST (side chat on gunbc#16668, F2): W + 2 read ceilings + 1 interval. A window poll is timed by
+// the clock read BEFORE its read, so the last poll that does not end the window can be timed just short of W and its
+// read can then run to the ceiling, past W; the accepting poll follows after one more interval and its own read. Every
+// other end comes no later: a relapse or an unestablished poll ends on a read at most that late, a stalled clock or a
+// failed sleep ends before its read, and the poll ceiling is never reached because each sample advances by at least the
+// interval, so the window's clock and its wall time agree.
+fn mtcollins1_bmc_cold_reset_window_allowance() -> Second {
+  let ceiling = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling())
+  let interval = second_count(s: mtcollins1_bmc_cold_reset_poll_interval)
+  second(count: (second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) + 2 * ceiling + interval) as Int)
+}
+
 // The step's budget, derived: the credential prelude, the four single reads (mc info and chassis status
 // before, the reset call, chassis status after), every loss and recovery poll at its worst (interval plus a read
-// that runs to its timeout), and the window at its worst: W, then the one interval and read that can start just
-// before W elapses and end it. The clock reads are local file reads and are not budgeted.
+// that runs to its timeout), and the window at its worst (above). The clock reads are local file reads and are not
+// budgeted.
 fn mtcollins1_bmc_cold_reset_allowance() -> Second {
   let ceiling = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling())
   let interval = second_count(s: mtcollins1_bmc_cold_reset_poll_interval)
@@ -148,7 +164,7 @@ fn mtcollins1_bmc_cold_reset_allowance() -> Second {
   second(count: (second_count(s: mtcollins1_boot_prelude_allowance)
     + 4 * ceiling
     + polls * (interval + ceiling)
-    + second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) + interval + ceiling) as Int)
+    + second_count(s: mtcollins1_bmc_cold_reset_window_allowance())) as Int)
 }
 
 fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {

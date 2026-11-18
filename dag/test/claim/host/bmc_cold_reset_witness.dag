@@ -102,8 +102,9 @@ fn initializing() -> ColdResetPoll { cold_reset_poll_of(verbosity: IpmitoolVerbo
 fn power_on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: real_chassis_state()) }
 fn power_off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
 
-// The window at these bounds is 30 s on the monotonic clock; the ceiling of window polls only refuses.
-data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain: second_to_millisecond(s: second(count: 30)), sustain_polls_at_most: 4 }
+// The window at these bounds is 30 s on the monotonic clock, paced at 15 s (the default pacing below sleeps 15 s and
+// reads for 1 s); the ceiling of window polls only refuses, and at these bounds it is one past the polls that reach W.
+data bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain: second_to_millisecond(s: second(count: 30)), pace: second_to_millisecond(s: second(count: 15)), sustain_polls_at_most: 4 }
 
 // THE CLOCK READINGS ARE PARSED, like every other reading here: /proc/uptime text through the route's own parser.
 fn up(s: Int) -> ProcUptimeRead { proc_uptime_parse(text: concat(to_string(s), ".00 1.00\n")) }
@@ -537,7 +538,7 @@ test fn a_poll_that_establishes_nothing_inside_the_window_leaves_it_unestablishe
 // the window has elapsed does not end it either, and a zero window still needs one answer after the recovering one,
 // so a zero window cannot restore the one-answer acceptance.
 test fn the_window_is_never_empty() -> Bool {
-  let none_asked = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain: second_to_millisecond(s: second(count: 0)), sustain_polls_at_most: 4 }
+  let none_asked = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain: second_to_millisecond(s: second(count: 0)), pace: second_to_millisecond(s: second(count: 15)), sustain_polls_at_most: 4 }
   match watch(polls: [no_response(), available()]) { Absent => true  Present { value: _ } => false }
     && match watch(polls: [no_response(), available(), available()]) { Absent => true  Present { value: _ } => false }
     && match watch_within(b: none_asked, polls: [no_response(), available()]) { Absent => true  Present { value: _ } => false }
@@ -576,23 +577,29 @@ fn clock_refused(e: ColdResetWatchEnd?, pattern: String) -> Bool {
 
 fn unreadable() -> ProcUptimeRead { proc_uptime_parse(text: "not an uptime record") }
 
-// A CLOCK THAT CANNOT BE READ, OR READS EARLIER, IS A TYPED REFUSAL, and a poll count never stands in for it: an
-// unreadable reading after the recovering answer, or before a window poll; a reading earlier than the window's start;
-// and a clock that has not advanced through the window by the ceiling of paced window polls, all while every poll
-// answers available. None reaches a recovery, and none is accepted though the power after-reading agrees.
+// A CLOCK THAT CANNOT BE READ, READS EARLIER, OR STALLS IS A TYPED REFUSAL, and a poll count never stands in for it:
+// an unreadable reading after the recovering answer, or before a window poll; a reading earlier than the previous
+// sample; a readable clock that advanced less than the pacing interval across one (7 s, and not at all) -- refused AT
+// THAT POLL, not after the window's polls run out (side chat on gunbc#16668, F2); and, under bounds whose poll ceiling
+// is below the polls that reach W, the ceiling. All while every poll answers available; none reaches a recovery, and
+// none is accepted though the power after-reading agrees. The control is the positive above: a first window sample
+// exactly one pacing interval after the start continues.
 test fn an_unreadable_backward_or_stalled_clock_refuses_and_never_accepts() -> Bool {
   let lost = Timed { poll: no_response(), before: up(s: 116), after: up(s: 117) }
   let back = Timed { poll: available(), before: up(s: 132), after: up(s: 133) }
+  let ceiling_below_w = ColdResetWatchBounds { drop_polls: 3, answer_polls: 4, sustain: second_to_millisecond(s: second(count: 30)), pace: second_to_millisecond(s: second(count: 15)), sustain_polls_at_most: 1 }
   clock_refused(e: watch_reads(b: bounds, xs: [lost, Timed { poll: available(), before: up(s: 132), after: unreadable() }]), pattern: "at the recovering answer")
     && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: unreadable(), after: up(s: 149) }]), pattern: "before a window poll")
-    && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: up(s: 120), after: up(s: 121) }]), pattern: "after the window started")
-    && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: up(s: 140), after: up(s: 141) }, Timed { poll: available(), before: up(s: 141), after: up(s: 142) }, Timed { poll: available(), before: up(s: 142), after: up(s: 143) }, Timed { poll: available(), before: up(s: 143), after: up(s: 144) }]), pattern: "paced window poll(s)")
+    && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: up(s: 120), after: up(s: 121) }]), pattern: "the monotonic clock read 120000 ms, earlier than its previous reading 133000 ms")
+    && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: up(s: 140), after: up(s: 141) }, Timed { poll: available(), before: up(s: 156), after: up(s: 157) }]), pattern: "advanced only 7000 ms across a pacing interval of 15000 ms")
+    && clock_refused(e: watch_reads(b: bounds, xs: [lost, back, Timed { poll: available(), before: up(s: 148), after: up(s: 149) }, Timed { poll: available(), before: up(s: 148), after: up(s: 149) }, Timed { poll: available(), before: up(s: 164), after: up(s: 165) }]), pattern: "advanced only 0 ms across a pacing interval of 15000 ms")
+    && clock_refused(e: watch_reads(b: ceiling_below_w, xs: [lost, back, Timed { poll: available(), before: up(s: 148), after: up(s: 149) }]), pattern: "after 1 paced window poll(s) the monotonic clock had advanced only 15000 ms of the window's 30000 ms")
 }
 
 // A FAILED PACING SLEEP (side chat on gunbc#16668, F1) is a watch end the route produces before any further poll; the
 // verdict carries it as a refusal and the attempt is never accepted on it, in whatever phase it came.
 test fn a_watch_whose_pacing_failed_is_refused_and_never_accepted() -> Bool {
-  all([cold_reset_watch_start, WatchingSustained { polls_to_loss: 1, loss: LossNoResponse { cause: "no reply" as NonEmptyStr }, polls_to_recovery: 1, since: second_to_millisecond(s: second(count: 101)), polls: 1 }], w =>
+  all([cold_reset_watch_start, WatchingSustained { polls_to_loss: 1, loss: LossNoResponse { cause: "no reply" as NonEmptyStr }, polls_to_recovery: 1, last: second_to_millisecond(s: second(count: 101)), elapsed: second_to_millisecond(s: second(count: 0)), polls: 1 }], w =>
     match cold_reset_verdict(baseline: available(), before_on: true, end: WatchPacingNotEstablished { watch: w }, after: Present { value: power_on() }) {
       ColdResetPacingNotEstablished { watch: _ } =>
         !is_accepted(v: cold_reset_verdict(baseline: available(), before_on: true, end: WatchPacingNotEstablished { watch: w }, after: Present { value: power_on() }))
