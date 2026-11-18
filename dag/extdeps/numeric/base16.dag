@@ -263,26 +263,6 @@ fn base16_upper_digit_value_at(cp: Int) -> Int? {
     if code_point(row.upper) == cp { Present { value: row.value } } else { acc })
 }
 
-// A BOUNDED UPPERCASE HEXADECIMAL WORD AS ONE INTEGER: the same operation as base16_word_value, but
-// the CANONICAL-CASE policy is uppercase instead of either -- for the consumer that reads a field the
-// upstream prints in uppercase and must refuse the non-canonical spelling rather than read '01bb' as
-// 0x01BB. extdeps.linux.proc_net_tcp reads the kernel's %04X port column this way. The case POLICY is
-// chosen here beside the either-case and lowercase ones; the alphabet stays in the rows.
-fn base16_word_value_upper(word: String, max_digits: Int) -> Int? {
-  let cps = word |> chars
-  if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { none } else {
-    fold(cps, init: Present { value: 0 }, f: (acc, cp) =>
-      match acc {
-        Absent => none
-        Present { value: v } =>
-          match base16_upper_digit_value_at(cp: cp) {
-            Absent => none
-            Present { value: d } => Present { value: v * 16 + d }
-          }
-      })
-  }
-}
-
 // IS THIS TEXT UPPERCASE-ONLY HEXADECIMAL, the canonical spelling? Mirrors base16_text_is_lowercase:
 // every character is a digit in the UPPER alphabet (base16_upper_digit_value_at is Present); the first
 // non-member (a lowercase a-f, or any non-hex char) answers false. This is the uppercase half of the
@@ -293,4 +273,21 @@ fn base16_word_value_upper(word: String, max_digits: Int) -> Int? {
 fn base16_text_is_uppercase(hex: String) -> Bool {
   let cps = hex |> chars
   any(cps, cp => match base16_upper_digit_value_at(cp: cp) { Absent => true, Present { value: digit } => false }) == false
+}
+
+// A BOUNDED UPPERCASE HEXADECIMAL WORD AS ONE INTEGER: the same operation as base16_word_value, but
+// the CANONICAL-CASE policy is uppercase instead of either -- for the consumer that reads a field the
+// upstream prints in uppercase and must refuse the non-canonical spelling rather than read '01bb' as
+// 0x01BB. extdeps.linux.proc_net_tcp reads the kernel's %04X port and %08X address columns this way. It
+// is base16_word_value DERIVED with the uppercase case check on top, exactly as base16_decode_lower is
+// base16_decode_any + base16_text_is_lowercase: the two word decoders differ in case policy and nothing
+// else, so the length guard, the max_digits cap and the digit walk each live ONCE (in base16_word_value)
+// and cannot drift (gunbc.design_argument::minimize_redundancy). The case POLICY is chosen here beside
+// the either-case and lowercase ones; the alphabet stays in the rows.
+fn base16_word_value_upper(word: String, max_digits: Int) -> Int? {
+  match base16_word_value(word: word, max_digits: max_digits) {
+    Absent => none
+    Present { value: v } =>
+      if base16_text_is_uppercase(hex: word) { Present { value: v } } else { none }
+  }
 }
