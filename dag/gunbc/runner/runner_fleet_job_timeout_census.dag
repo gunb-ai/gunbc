@@ -160,7 +160,10 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
       [FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow }],
       concat(
         match gunbc_heal_job() {
-          Present { value: job } => [FleetWorkflowCensusRow { artifact: HealWorkflowYamlArtifact, workflow: heal_workflow_of(job: job) }]
+          Present { value: job } => match heal_workflow_of(job: job) {
+            Accepted { value: wf } => [FleetWorkflowCensusRow { artifact: HealWorkflowYamlArtifact, workflow: wf }]
+            Rejected { diagnostics: _ } => []
+          }
           Absent => []
         },
         concat(
