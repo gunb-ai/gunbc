@@ -177,7 +177,10 @@ fn bind_critical_path(schedule: Schedule, read_date: Iso8601CivilDate) -> DatedC
           Present { value: dated } =>
             Bound {
               read_date: read_date,
-              workers: answer.workers,
+              // `workers` is the concurrency CARRIER this repo already decided on (`roadmap_belt::BeltCapacity`,
+              // field `max_concurrent`); read the integer worker count off it -- the schedule's own input, never
+              // recomputed here. single_authority: import the carrier, read through it.
+              workers: answer.workers.max_concurrent,
               critical_length: answer.critical_length,
               dated: dated,
             }
