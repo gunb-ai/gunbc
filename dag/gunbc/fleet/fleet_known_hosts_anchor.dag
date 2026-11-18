@@ -59,6 +59,7 @@ import extdeps.network.endpoint {
   NetworkHostParsed, NetworkHostRefused, NetworkHostParseRefusal, network_host_parse_refusal_wire,
 }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
+import gunbc.fleet.fleet_converge_mode_wires { hostname_converge_wire, tailscale_join_converge_wire }
 import extdeps.ssh.openssh_client_commands { scp_upload_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.fleet.fleet_host_key_enrollment {
@@ -283,9 +284,25 @@ fn is_first_contact_row(row: KnownHostKeyRow) -> Bool {
 // One datum, read by every hop dialer; witnesses check it against the workflow's mode facts (so a
 // renamed wire that stops matching FAILS) and that no other mode dials the lease.
 data first_contact_admitted_mode_wires: List<String> = [
-  "hostname_converge",
-  "tailscale_join_converge",
+  hostname_converge_wire as String,
+  tailscale_join_converge_wire as String,
 ]
+
+// THE SINGLE ANSWER to "how may the fleet reach this host, and under which address": the ANCHORED row
+// if the host has one -- adjudicated by anchored_host_key_row itself, the verification registry's own
+// rule (hop rows skipped) -- else the FIRST-CONTACT HOP row if a key is pinned for the host, else
+// Absent. Consumers (deploy specs, planning docs) READ this and never re-filter
+// fleet_host_key_enrollments themselves (review 96252: a second place that decides the anchor is a fork).
+fn ssh_authority_host_field(host: HostIdentity) -> String? {
+  match anchored_host_key_row(host: host) {
+    Present { value: row } => Present { value: known_hosts_host_field(address: row.address) as String }
+    Absent =>
+      match filter(first_contact_known_host_rows(), r => (r.host as String) == (host as String)).first() {
+        Present { value: row } => Present { value: known_hosts_host_field(address: row.address) as String }
+        Absent => Absent
+      }
+  }
+}
 
 fn mode_admits_first_contact(mode_wire: String) -> Bool {
   length(filter(first_contact_admitted_mode_wires, fn(w) { w == mode_wire })) > 0

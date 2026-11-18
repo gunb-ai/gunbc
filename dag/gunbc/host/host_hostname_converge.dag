@@ -48,6 +48,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetResolved,
   fleet_ssh_target_at_standard_port,
 }
+import gunbc.fleet.fleet_converge_mode_wires { hostname_converge_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextReady,
@@ -65,7 +66,9 @@ data gunbc_host_hostname_converge_scope_disposition: Disposition = std.dispositi
 // THE MODE NAME IS HELD BY THE SUBJECT, not by the emitter, so the emitter consumes the mode instead
 // of naming it (gunbc.design_argument::single_authority). gunbc.fleet.fleet_converge_workflow wires
 // this string; no arm spells the mode name independently.
-data hostname_converge_mode: NonEmptyStr = "hostname_converge"
+// The wire name of THIS mode, in ONE place (gunbc.fleet.fleet_converge_mode_wires); this datum is the
+// mode's own handle on it, and the workflow's mode facts reference THIS.
+data hostname_converge_mode: NonEmptyStr = hostname_converge_wire
 
 // THE INPUTS ARE ENVIRONMENT INPUTS OF THE PEER JOB, named once here so the emitted step and the entry
 // cannot drift apart (single authority). The executing peer is read from the dispatch, NEVER from the
