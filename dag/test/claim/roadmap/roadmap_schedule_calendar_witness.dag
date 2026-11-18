@@ -15,7 +15,7 @@ module test.claim.roadmap.roadmap_schedule_calendar_witness
 // LOCAL RECIPE (claims are executed, not parsed):
 //   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry dag/test/claim/roadmap/roadmap_schedule_calendar_witness.dag \
-//     --functions first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path,red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend,red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else,a_working_day_span_that_crosses_the_weekend_is_not_counted_across_it,a_three_week_span_counts_weekends_by_the_seven_day_week,a_dated_leaf_start_and_finish_never_collapse_onto_the_same_date,a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads,binding_a_schedule_that_was_never_scheduled_is_refused
+//     --functions first_slice_binds_one_schedule_answer_to_a_read_date_and_prints_the_dated_critical_path,red_control_a_leaf_finishing_on_a_non_working_day_reads_as_the_next_working_day_never_the_weekend,red_control_the_same_schedule_read_one_week_later_moves_every_date_by_seven_days_and_changes_nothing_else,a_working_day_span_that_crosses_the_weekend_is_not_counted_across_it,a_three_week_span_counts_weekends_by_the_seven_day_week,a_dated_leaf_start_and_finish_never_collapse_onto_the_same_date,a_cached_dated_answer_is_recomputed_on_read_and_is_never_authoritative_between_reads,binding_a_schedule_that_was_never_scheduled_is_refused,the_handback_outputs_are_the_one_read_the_weekend_read_and_the_one_week_later_read
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
@@ -209,6 +209,40 @@ fn a_dated_leaf_start_and_finish_never_collapse_onto_the_same_date() -> Bool {
       && date_text(date: b.start_date) != date_text(date: b.finish_date)
   }
   !any_collapsed_leaf(bound: bound) && leaf_b_not_collapsed
+}
+
+// THE HANDBACK, asserted to the character -- the three dated outputs the unit names, plus their relationship.
+//  - the dated output for ONE read (Monday 2026-11-16): the 10-working-day chain ends Monday 2026-11-30.
+//  - the WEEKEND output (a read taken on Saturday 2026-11-21): the read_date line still says Saturday, but every
+//    date is a working day -- day 0 reads as the FOLLOWING Monday 2026-11-23 and no Saturday or Sunday is printed.
+//  - the ONE-WEEK-LATER output (Monday 2026-11-23): every date is exactly seven days on from the one-read output.
+// The weekend output's DATES are identical to the one-week-later output's: reading on Saturday binds to the very
+// next working day, which is that Monday -- so a Saturday read and a Monday read agree. The diff is verified by
+// pair_unchanged in the one-week-later red control.
+fn the_handback_outputs_are_the_one_read_the_weekend_read_and_the_one_week_later_read() -> Bool {
+  let sched = calendar_week_schedule()
+  let one_read = dated_output(bound: bind_critical_path(schedule: sched, read_date: read_monday()))
+  let weekend_read = dated_output(bound: bind_critical_path(schedule: sched, read_date: read_saturday()))
+  let later_read = dated_output(bound: bind_critical_path(schedule: sched, read_date: read_one_week_later()))
+  let expected_one = join([
+    "read_date=2026-11-16 workers=1 critical_length=10",
+    "  cal.week#0#0#0 days[0..5] dates[2026-11-16 -> 2026-11-23] count=declared",
+    "  cal.week#1#0#0 days[5..7] dates[2026-11-23 -> 2026-11-25] count=declared",
+    "  cal.week#2#0#0 days[7..10] dates[2026-11-25 -> 2026-11-30] count=declared",
+  ], "\n")
+  let expected_weekend = join([
+    "read_date=2026-11-21 workers=1 critical_length=10",
+    "  cal.week#0#0#0 days[0..5] dates[2026-11-23 -> 2026-11-30] count=declared",
+    "  cal.week#1#0#0 days[5..7] dates[2026-11-30 -> 2026-12-02] count=declared",
+    "  cal.week#2#0#0 days[7..10] dates[2026-12-02 -> 2026-12-07] count=declared",
+  ], "\n")
+  let expected_later = join([
+    "read_date=2026-11-23 workers=1 critical_length=10",
+    "  cal.week#0#0#0 days[0..5] dates[2026-11-23 -> 2026-11-30] count=declared",
+    "  cal.week#1#0#0 days[5..7] dates[2026-11-30 -> 2026-12-02] count=declared",
+    "  cal.week#2#0#0 days[7..10] dates[2026-12-02 -> 2026-12-07] count=declared",
+  ], "\n")
+  one_read == expected_one && weekend_read == expected_weekend && later_read == expected_later
 }
 
 // COMPUTED, CACHED, AND RE-READ. A read ALWAYS recomputes: a stale cached answer -- one held against a different
