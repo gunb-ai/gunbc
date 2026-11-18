@@ -382,7 +382,7 @@ fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ReleaseRevis
 // observed state is a REFUSAL (red), never a benign fetch. This pure predicate is what the operator entry checks BEFORE
 // actuating (see release_pair_deliver_observe_and_deliver); its two red controls are witnessed directly (a Mixed and an
 // Unobserved observation both refuse). fail_closed: never deliver a pair from a state you cannot trust.
-export fn release_pair_serving_poison_refused(binding: DeployedReleaseBinding) -> Bool {
+fn release_pair_serving_poison_refused(binding: DeployedReleaseBinding) -> Bool {
   match binding {
     ReleaseBoundToTree { revision: _, surface: _ } => false
     ReleaseMixed { tree_revision: _, process_revision: _ } => true
