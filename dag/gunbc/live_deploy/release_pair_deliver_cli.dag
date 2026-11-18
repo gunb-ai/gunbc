@@ -21,6 +21,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
 import extdeps.tools.gnu_coreutils { readlink_command }
+import gunbc.ci.repository_ci_profile { gunbc_repository_slug }
+import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gh {
   gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
@@ -76,12 +78,9 @@ import gunbc.roadmap.roadmap_belt_tick_cli { belt_pair_serve_gate }
 // release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
 // decode fns below, so the CLI never re-spells the incoming directory.
 
-// The repo whose release-bins run carries the pair, as ONE row (single_authority), consumed by the argv builders.
-data release_pair_deliver_repo_slug: NonEmptyStr = "gunb-ai/gunbc"
-// The fleet-converge workflow whose successful run publishes the release-bins pack for a head. ONE row; confirmed
-// against `gh run list` at deploy time (the release-bins ARTIFACT is published by .github/workflows/fleet-converge.yml);
-// it is the only place this is written, consumed by the effectful entry's call to gh_release_bins_run_list_command.
-data release_pair_release_bins_workflow: NonEmptyStr = "fleet-converge.yml"
+// The repo whose release-bins run carries the pair and the workflow that publishes it are NOT spelled here — they
+// are read from their single authorities so a rename cannot drift: gunbc.ci.repository_ci_profile::gunbc_repository_slug
+// and gunbc.generated_artifact::artifact_location(FleetConvergeYamlArtifact).name. The entry consumes them directly.
 // Why the pair keeps serving when the fetch leg did not produce a pack (consumed by pack_fetch's PackAbsent).
 data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack download for the bound head failed on the executing host"
 // Why the pair keeps serving when the pack was fetched but its digest could not be observed (consumed by pack_fetch).
@@ -273,7 +272,7 @@ fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) ->
 
 fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> DeliveryPlan {
   let head_outcome = run_shell_command_capture(
-    command: gh_main_head_command(api_path: release_pair_main_head_api_path(slug: release_pair_deliver_repo_slug)),
+    command: gh_main_head_command(api_path: release_pair_main_head_api_path(slug: gunbc_repository_slug)),
     transport: LocalExec,
   )
   match release_pair_decode_head(outcome: head_outcome) {
@@ -291,8 +290,8 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
         none => {
       let run_outcome = run_shell_command_capture(
         command: gh_release_bins_run_list_command(
-          repo: release_pair_deliver_repo_slug as String,
-          workflow: release_pair_release_bins_workflow as String,
+          repo: gunbc_repository_slug as String,
+          workflow: artifact_location(a: FleetConvergeYamlArtifact).name,
           commit: main_head as String,
         ),
         transport: LocalExec,
@@ -308,7 +307,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
           let fetch_outcome = run_shell_command_capture(
             command: gh_run_download_command(
               run_id: run.run_id as String,
-              repo: release_pair_deliver_repo_slug as String,
+              repo: gunbc_repository_slug as String,
               artifact: release_pair_release_bins_artifact_name as String,
               dir: pack_dir,
             ),
