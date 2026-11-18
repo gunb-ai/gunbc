@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { trim, list_head, length }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -358,6 +358,27 @@ data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthoriza
   operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs" as NonEmptyStr,
 }
 
+// srv3'S WIDTH CUT TO 13 IS ITS OWN DECISION. Admitting srv3 to the remote-build serving roster
+// (gunb-ai/gunbc#16658) carved one CI slot into its build pool, taking its committed width to 13 while 21
+// slots stood on the host, so srv3-14..21 became required retirees with no permission covering them and
+// the runner converge withheld the host (run 44227331401). The operator chose to apply the converge on
+// srv3 and srv4 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided as msg_c20ceb2b), with the
+// retirement of the surplus CI runners stated in the question. Enumerated, like srv4's, so a later width
+// change cannot widen it.
+data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv3-14.service" as NonEmptyStr,
+    "actions-runner@srv3-15.service" as NonEmptyStr,
+    "actions-runner@srv3-16.service" as NonEmptyStr,
+    "actions-runner@srv3-17.service" as NonEmptyStr,
+    "actions-runner@srv3-18.service" as NonEmptyStr,
+    "actions-runner@srv3-19.service" as NonEmptyStr,
+    "actions-runner@srv3-20.service" as NonEmptyStr,
+    "actions-runner@srv3-21.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-11-18 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided msg_c20ceb2b-75c7-4ab0-a8a7-ec30cd24703c), scoped to srv3 surplus internal CI slots 14-21: the retirees of the cut to 13 (remote-build build-pool carve and the earlier engine charge) may be interrupted; the decision does not extend to srv3's committed slots, its sessions or its serving engine",
+}
+
 // srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
 // joined rather than rewritten, the same composition host_interruption_reason applies to the fabric
 // reassignment.
@@ -464,6 +485,8 @@ type WidthDecisionAuthorization
 fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
     WidthDecisionNamed { authorization: srv1_width_interruption_authorization }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    WidthDecisionNamed { authorization: srv3_width_cut_2026_11_18_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
     WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {
