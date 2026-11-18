@@ -778,35 +778,51 @@ test fn witness_fixture_digests_are_declared_or_borrowed() -> Bool {
     Absent => false
     Present { value: root } => {
       let stranger_dir = concat(concat(root, "/"), roadmap_authority_fixture_absent_node() as String)
-      let stranger = first(roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == stranger_dir))
       let accepted_dir = concat(concat(root, "/"), accepted.node as String)
-      let every_file_carries_a_scenario_digest = all(roadmap_authority_fixture_rows(), a =>
-        match artifact_generate(a: a) {
-          ArtifactGenerated { content } =>
-            content.contains(fragment: accepted_wire) || content.contains(fragment: superseded_wire)
-          ArtifactGenerationRefused { reason: _ } => false
-        })
-      // (1b) The absent-node file carries the ACCEPTED row's digest, and the accepted row's own file carries
-      // it too -- so the borrow is the accepted row's number, byte for byte, not a lookalike.
-      let accepted_file_carries_its_own =
-        count(roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == accepted_dir)) == 1
-          && all(roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == accepted_dir), a =>
-               match artifact_generate(a: a) {
-                 ArtifactGenerated { content } => content.contains(fragment: accepted_wire)
+      let superseded_dir =
+        concat(concat(root, "/"), roadmap_authority_fixture_superseded_scenario().node as String)
+      let accepted_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == accepted_dir)
+      let superseded_files =
+        roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == superseded_dir)
+      let stranger_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == stranger_dir)
+      // (1b) Each scenario's own acceptance and revocation files carry ITS digest and not the other
+      // scenario's; the retirement file carries a receipt by no one, so it carries neither number. The
+      // absent-node file carries the ACCEPTED row's number verbatim -- the borrow is that row's bytes, not a
+      // lookalike -- and not the other scenario's, so a wrong-node borrow reddens this too.
+      let accepted_ok =
+        count(accepted_files) == 1
+          && all(accepted_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+      let superseded_ok =
+        count(superseded_files) == 3
+          && count(superseded_files |> filter(a => artifact_name(a: a) == "03-retired.json")) == 1
+          && all(superseded_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } => !content.contains(fragment: accepted_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+          && all(
+               superseded_files |> filter(a => artifact_name(a: a) != "03-retired.json"),
+               a => match artifact_generate(a: a) {
+                 ArtifactGenerated { content } => content.contains(fragment: superseded_wire)
                  ArtifactGenerationRefused { reason: _ } => false
                })
+      let stranger_ok =
+        count(stranger_files) == 1
+          && all(stranger_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
       rows_agree_with_their_own_criteria
         && fixture_nodes_are_not_plan_rows
-        && every_file_carries_a_scenario_digest
-        && accepted_file_carries_its_own
+        && accepted_ok
+        && superseded_ok
+        && stranger_ok
         && string_length(s: accepted_wire) > 0
-        && match stranger {
-             Absent => false
-             Present { value: row } => match artifact_generate(a: row) {
-               ArtifactGenerated { content } => content.contains(fragment: accepted_wire)
-               ArtifactGenerationRefused { reason: _ } => false
-             }
-           }
+        && string_length(s: superseded_wire) > 0
     }
   }
 }
