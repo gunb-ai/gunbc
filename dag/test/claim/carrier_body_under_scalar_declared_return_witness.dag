@@ -227,8 +227,86 @@ data grounded_carrier_at_own_kernel_source: String = "module probe_grounded_carr
 // uses"). The first cut of this arm refused that site, which CI's second job found and my four-file proxy had
 // not. `List<Char>` is `FreeMonoid<Char>` (dag/std/types.dag:25), so this is the corpus shape and not an
 // invented one.
+// THE CONTROL IS AT THE SEAMS THIS ARM OWNS, AND THE COMMENT SAYS WHY. The same value handed to a `String`
+// PARAMETER is already refused -- by two rules that predate this PR, both measured present on origin/main
+// with the pre-fix binary: the direct-call argument seam emits `value does not inhabit its declared type at
+// the direct call argument for parameter 'delimiter': declared 'Primitive(String)', produced
+// 'Container(List,Product(Char))'`, and a bare `Cons { head, tail }` literal there emits `type mismatch:
+// expected 'Primitive(String)', got 'Coproduct(FreeMonoid)'`. A control over a pair two other rules already
+// refuse cannot fail, and gunbc.design_argument::guarantee_ladder calls that a decoration rather than a weak
+// wall -- so the fixture exercises the record-literal field and the declared return, which the pre-fix
+// binary accepted and which are this PR's seams, and the parameter spelling is left to the rules that hold
+// it today.
 test fn the_string_and_its_code_point_sequence_are_one_text() -> Bool {
   blocking_of_class(source: code_point_sequence_at_string_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
-data code_point_sequence_at_string_source: String = "module probe_code_point_sequence_at_string\nimport std.types { String, Char, List, Int }\nimport std.algebra { FreeMonoid, Cons, Empty }\nfn step(delimiter: String) -> Int { 0 }\nfn step_back(text: FreeMonoid<Char>) -> Int { 0 }\nfn use_list_as_text(cs: List<Char>) -> Int { step(delimiter: cs) }\nfn use_cons_as_text(c: Char, rest: List<Char>) -> Int { step(delimiter: Cons { head: c, tail: rest }) }\nfn use_text_as_sequence(t: String) -> Int { step_back(text: Empty { }) }\n"
+data code_point_sequence_at_string_source: String = "module probe_code_point_sequence_at_string\nimport std.types { String, Char, List }\nimport std.algebra { FreeMonoid, Cons, Empty }\ntype Step { delimiter: String }\nfn step_from_list(cs: List<Char>) -> Step { Step { delimiter: cs } }\nfn text_from_list(cs: List<Char>) -> String { cs }\nfn text_from_empty() -> String { Empty { } }\nfn list_from_text(t: String) -> FreeMonoid<Char> { Empty { } }\n"
+
+// THE DECLARED IMPLICIT ROUTE IS AN AUTHORITY, NOT AN EXCEPTION LIST (DESIGN closed_grounded_substrate:
+// std.integer::nat_to_int is THE declared Nat -> Int route; the checker already consults
+// std.coercion `conversion_plan_rows` and std.literal_elaboration `kernel_grounding_rows`, and the earlier
+// `kernel_grounded_carrier_value` arm of this same relation uses the same rows for the reverse pair). The
+// arm therefore abstains when the produced head reaches the declared kernel by a row -- which is what the
+// v2 self-host emit needed (`Primitive(std.nat.Nat)` at `Primitive(Int)` at src/v2/std/decl_index.dag:209
+// and :213, src/v2/std/data_initializer_identity.dag:135 and :285), and it does so WITHOUT naming Nat.
+// Each control pairs with a refusal of an ungrounded nominal at the SAME position, so the pair shows the
+// decision is made by the rows and not by a spelling.
+test fn a_nat_value_at_an_int_declared_return_is_clean() -> Bool {
+  blocking_of_class(source: nat_at_int_return_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data nat_at_int_return_source: String = "module probe_nat_at_int_return\nimport std.types { Int, String }\nimport std.nat { Nat, nat_add }\nfn two() -> Nat { nat_add(a: 1, b: 2) }\nfn probe() -> Int { two() }\n"
+
+test fn an_ungrounded_nominal_at_an_int_declared_return_refuses() -> Bool {
+  blocking_of_class(source: nominal_at_int_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+data nominal_at_int_return_source: String = "module probe_nominal_at_int_return\nimport std.types { Int, String }\ntype Cent { amount: Int }\nfn two() -> Cent { Cent { amount: 2 } }\nfn probe() -> Int { two() }\n"
+
+test fn a_nat_value_at_an_int_parameter_and_record_field_is_clean() -> Bool {
+  blocking_of_class(source: nat_at_int_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
+    && blocking_of_class(source: nat_at_int_record_field_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data nat_at_int_argument_source: String = "module probe_nat_at_int_argument\nimport std.types { Int, String }\nimport std.nat { Nat, nat_add }\nfn two() -> Nat { nat_add(a: 1, b: 2) }\nfn take_count(n: Int) -> String { \"ok\" }\nfn probe() -> String { take_count(n: two()) }\n"
+
+data nat_at_int_record_field_source: String = "module probe_nat_at_int_record_field\nimport std.types { Int, String }\nimport std.nat { Nat, nat_add }\nfn two() -> Nat { nat_add(a: 1, b: 2) }\ntype Row { count: Int }\nfn probe() -> Row { Row { count: two() } }\n"
+
+test fn an_ungrounded_nominal_at_an_int_parameter_refuses() -> Bool {
+  blocking_of_class(source: nominal_at_int_argument_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+data nominal_at_int_argument_source: String = "module probe_nominal_at_int_argument\nimport std.types { Int, String }\ntype Cent { amount: Int }\nfn two() -> Cent { Cent { amount: 2 } }\nfn take_count(n: Int) -> String { \"ok\" }\nfn probe() -> String { take_count(n: two()) }\n"
+
+// CENSUS RUNNABILITY IS A PREMISE OF EVERY CONTROL ABOVE, AND IT IS ASSERTED, NOT ASSUMED. A control whose
+// census cannot run reads as `0 - 1` from blocking_of_class, so it fails -- but it fails for a reason that
+// looks like a refusal. These tests name the premise so a broken fixture cannot be read as a broken arm.
+test fn every_control_fixture_census_runs() -> Bool {
+  census_is_runnable(source: code_point_sequence_at_string_source)
+    && census_is_runnable(source: nat_at_int_return_source)
+    && census_is_runnable(source: nat_at_int_argument_source)
+    && census_is_runnable(source: nat_at_int_record_field_source)
+    && census_is_runnable(source: nominal_at_int_return_source)
+    && census_is_runnable(source: nominal_at_int_argument_source)
+    && census_is_runnable(source: carrier_at_string_return_source)
+    && census_is_runnable(source: carrier_at_string_argument_source)
+    && census_is_runnable(source: carrier_at_string_record_field_source)
+    && census_is_runnable(source: string_at_string_return_source)
+    && census_is_runnable(source: string_at_int_return_source)
+    && census_is_runnable(source: grounded_carrier_at_own_kernel_source)
+    && census_is_runnable(source: every_kernel_at_own_kernel_source)
+    && census_is_runnable(source: bool_if_condition_source)
+    && census_is_runnable(source: bool_at_bool_positions_source)
+    && census_is_runnable(source: non_empty_str_at_non_empty_str_source)
+    && census_is_runnable(source: carrier_at_bool_return_source)
+    && census_is_runnable(source: carrier_at_bool_param_source)
+    && census_is_runnable(source: carrier_at_bool_record_field_source)
+}
+
+fn census_is_runnable(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}

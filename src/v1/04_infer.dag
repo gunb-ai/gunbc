@@ -5909,23 +5909,69 @@ fn declared_head_is_kernel_scalar_by_name(declared: Node, scope: InferScope) -> 
 // And when the produced head cannot be resolved to a declaration at all, the arm abstains. A NEW refusal is
 // only admissible while the arm can positively name the declaration it is refusing; failing to identify a
 // declaration is not evidence of absence of a route.
-fn produced_head_declaration(produced: Node, produced_name: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  match declaration_ref_of_type_node(rt: produced, source_indices: source_indices, env: env) {
-    Present { value: d } => Present { value: d }
-    none =>
-      if (module_path_segments(path: produced_name) |> count) < 2 {
-        none
-      } else {
-        match module_path_segments(path: produced_name) |> last {
-          Present { value: leaf } =>
-            Present { value: decl_ref(module_path: qualified_all_but_last(name: produced_name), decl_name: leaf) }
-          Absent => none
+// WHICH DECLARATION IS THE PRODUCED HEAD? Asked of the same three authorities the rest of infer asks, in
+// the order they are proven in this file: the node's own resolved declaration (declaration_ref_of_type_node,
+// the one the structural-realization rows key on), the environment's binding for the head's authored name
+// (lookup_type_by_name, which is also what resolves an ALIAS to the declaration it aliases -- `type
+// List<element> = FreeMonoid<element>`, dag/std/types.dag:25 -- and therefore reaches a locally-declared
+// carrier whose authored name carries no module path), and finally the qualified authored name itself. Any
+// one of them naming the row's declaration is enough: the rows bind declarations, and the question is only
+// whether this head IS that declaration.
+fn produced_head_is_declaration(ref: DeclarationRef, produced: Node, produced_name: String,
+                                source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  if match declaration_ref_of_type_node(rt: produced, source_indices: source_indices, env: env) {
+      Present { value: d } => declaration_ref_eq(a: d, b: ref)
+      none => false
+    } {
+    true
+  } else if match lookup_type_by_name(env: env, name: produced_name) {
+      Present { value: bound } =>
+        match declaration_node_of_ref(d: ref, env: env) {
+          Present { value: ref_decl } => same_declaration_site(a: bound, b: ref_decl)
+          Absent => false
         }
-      }
+      Absent => false
+    } {
+    true
+  } else if match lookup_type_by_name(env: env, name: produced_name) {
+      Present { value: bound } =>
+        bound.name != "" && bound.name != produced_name
+          && declaration_ref_of_name_is(bound_name: bound.name, ref: ref)
+      Absent => false
+    } {
+    true
+  } else {
+    declaration_ref_of_name_is(bound_name: produced_name, ref: ref)
   }
 }
 
-// The kernel literal a resolved declaration is grounded in, from the kernel grounding rows alone.
+// A qualified name `module.path.Dead` names the declaration (module.path, Dead); an unqualified name names
+// no module, so it names no declaration for this purpose.
+fn declaration_ref_of_name_is(bound_name: String, ref: DeclarationRef) -> Bool {
+  if (module_path_segments(path: bound_name) |> count) < 2 {
+    false
+  } else {
+    match module_path_segments(path: bound_name) |> last {
+      Present { value: leaf } =>
+        declaration_ref_eq(a: ref,
+                           b: decl_ref(module_path: qualified_all_but_last(name: bound_name), decl_name: leaf))
+      Absent => false
+    }
+  }
+}
+
+// The kernel literal a produced head is grounded in, from the kernel grounding rows, by declaration.
+fn produced_head_literal_grounding(produced: Node, produced_name: String,
+                                   source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> LiteralSourceKind? {
+  match kernel_grounding_rows
+      |> filter(r => produced_head_is_declaration(ref: r.carrier, produced: produced, produced_name: produced_name,
+                                                  source_indices: source_indices, env: env))
+      |> first {
+    Present { value: r } => Present { value: r.source_kind }
+    Absent => none
+  }
+}
+
 fn declaration_literal_grounding(declaration: DeclarationRef) -> LiteralSourceKind? {
   match kernel_grounding_rows |> filter(r => declaration_ref_eq(a: r.carrier, b: declaration)) |> first {
     Present { value: r } => Present { value: r.source_kind }
@@ -5940,25 +5986,26 @@ fn minted_kernel_name_of_literal_source(kind: LiteralSourceKind) -> String {
   }
 }
 
-fn conversion_plan_row_admits(plan: ConversionPlan, produced: DeclarationRef, declared_kernel: String) -> Bool {
+fn conversion_plan_row_admits(plan: ConversionPlan, produced: Node, produced_name: String,
+                              source_indices: Map<String, NewlineIndex>, env: TypeEnv,
+                              declared_kernel: String) -> Bool {
   match plan.phase {
     InjectionPhase { source: s, target: t, safety: _ } =>
-      declaration_ref_eq(a: s, b: produced)
+      produced_head_is_declaration(ref: s, produced: produced, produced_name: produced_name,
+                                   source_indices: source_indices, env: env)
         && match declaration_literal_grounding(declaration: t) {
              Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
              none => false
            }
-    UnfoldPhase { row: r } => unfold_row_admits(row: r, produced: produced, declared_kernel: declared_kernel)
-    InverseUnfoldPhase { row: r } => unfold_row_admits(row: r, produced: produced, declared_kernel: declared_kernel)
+    UnfoldPhase { row: r } =>
+      produced_head_is_declaration(ref: r.destination, produced: produced, produced_name: produced_name,
+                                   source_indices: source_indices, env: env)
+        && minted_kernel_name_of_literal_source(kind: r.source_kind) == declared_kernel
+    InverseUnfoldPhase { row: r } =>
+      produced_head_is_declaration(ref: r.destination, produced: produced, produced_name: produced_name,
+                                   source_indices: source_indices, env: env)
+        && minted_kernel_name_of_literal_source(kind: r.source_kind) == declared_kernel
   }
-}
-
-// The unfold is a declared bijection (std.coercion states unicode_scalar_fold as the inverse of
-// unicode_scalar_unfold, lawful by the bijection), so either phase declares the pair {kernel mint,
-// destination carrier}; which side is the actual is decided by which side the position asks for.
-fn unfold_row_admits(row: LiteralHomomorphism, produced: DeclarationRef, declared_kernel: String) -> Bool {
-  declaration_ref_eq(a: row.destination, b: produced)
-    && minted_kernel_name_of_literal_source(kind: row.source_kind) == declared_kernel
 }
 
 // True when the pair has a declared route, or when the arm cannot name the produced declaration well
@@ -5967,13 +6014,16 @@ fn produced_head_reaches_declared_kernel_by_declared_route(
     declared_name: String, produced: Node, produced_name: String,
     source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   let declared_kernel = qualified_last_segment(name: declared_name)
-  match produced_head_declaration(produced: produced, produced_name: produced_name, source_indices: source_indices, env: env) {
-    none => true
-    Present { value: p } =>
-      match declaration_literal_grounding(declaration: p) {
-        Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
-        none => conversion_plan_rows |> any(plan => conversion_plan_row_admits(plan: plan, produced: p, declared_kernel: declared_kernel))
-      }
+  if produced_name == "" {
+    true
+  } else {
+    match produced_head_literal_grounding(produced: produced, produced_name: produced_name,
+                                          source_indices: source_indices, env: env) {
+      Present { value: k } => minted_kernel_name_of_literal_source(kind: k) == declared_kernel
+      none => conversion_plan_rows |> any(plan => conversion_plan_row_admits(
+                plan: plan, produced: produced, produced_name: produced_name,
+                source_indices: source_indices, env: env, declared_kernel: declared_kernel))
+    }
   }
 }
 
