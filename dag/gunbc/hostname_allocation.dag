@@ -291,7 +291,7 @@ data fleet_machine_registry: List<HostnameAllocation> = [
   },
   // H11SSL unit 1 (2026-10-30): the host answered as h11-a16 on the LAN and in its own hostname, so it kept
   // that spelling as a LEGACY name. THE PENDING RENAME (2026-11-18) drew a human name (see below); THE FLIP
-  // (this PR, gunbc.plans.fleet_machine_authority P9-shaped, operator 2026-11-18 "apply it/rename everything")
+  // (this PR, per gunbc.plans.fleet_machine_authority; operator 2026-11-18 "apply it/rename everything")
   // moves that accepted draw from `next_name` into `name` and sets `next_name` back to Absent -- the
   // transition that retires the legacy spelling, and NOTHING else. The handle is unchanged (operator_host_6ce85c
   // == "host-6ce85c", already the opaque hex convention, never the hostname), so every handle-keyed row --
