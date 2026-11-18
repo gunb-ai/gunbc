@@ -34,7 +34,7 @@ import gunbc.action_use_admission {
   download_artifact_action, google_auth_action,
   realized_use_is_a_repository_selection,
 }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
 import std.optional { Optional, Present, Absent }
 import gunbc.output_policy { ExpectSuccess }
 
@@ -247,12 +247,9 @@ test fn red_modeled_workflow_with_a_substituted_release_is_refused() -> Bool {
 }
 
 test fn fleet_converge_workflow_action_uses_are_admitted() -> Bool {
-  match fleet_converge_workflow_of() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: wf } => match admit_workflow_action_uses(workflow: wf) {
+  match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
     WorkflowActionUsesAdmitted => true
     WorkflowActionUsesRefused { refusals: _ } => false
-  }
   }
 }
 
