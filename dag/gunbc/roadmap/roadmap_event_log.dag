@@ -733,6 +733,55 @@ fn roadmap_claim_grain_decode(doc: JsonValue) -> ClaimGrain? {
   }
 }
 
+// THE SHARED GRAIN PARSER: a typed result, not an optional. Returns either a grain (Leaf or Pathless)
+// or a refusal naming which field is malformed and why. All Claimed producers -- the CLI, the served
+// route -- call this one parser; the return type makes the malformed case visible to the caller who
+// must name it in its own language (a CLI exit reason, an HTTP 400) without ever reaching the append.
+// All three fields blank: Pathless (for items with no decomposition; the guard refuses it on decomposed items).
+// All three set: parsed as three non-negative integers, minted as a Leaf.
+// A blank mixed with a number, a non-decimal, a negative, or an out-of-range value: Malformed.
+union ClaimGrainParse
+  = Parsed { grain: ClaimGrain }
+  | Malformed { field: String, why: String }
+
+fn roadmap_claim_grain_parse(node: RoadmapNodeId, leaf_stage: String, leaf_piece: String, leaf_member: String) -> ClaimGrainParse {
+  if leaf_stage == "" && leaf_piece == "" && leaf_member == "" {
+    Parsed { grain: Pathless }
+  } else if leaf_stage == "" {
+    Malformed { field: "leaf_stage", why: "blank while the other leaf fields are set" }
+  } else if leaf_piece == "" {
+    Malformed { field: "leaf_piece", why: "blank while the other leaf fields are set" }
+  } else if leaf_member == "" {
+    Malformed { field: "leaf_member", why: "blank while the other leaf fields are set" }
+  } else {
+    match parse_int(s: leaf_stage) {
+      Absent => Malformed { field: "leaf_stage", why: "not a decimal integer" }
+      Present { value: s_i } => if s_i < 0 { Malformed { field: "leaf_stage", why: "negative" } } else {
+        match checked_int_to_nat(n: s_i) {
+          Absent => Malformed { field: "leaf_stage", why: "out of range for a leaf index" }
+          Present { value: s_n } => match parse_int(s: leaf_piece) {
+            Absent => Malformed { field: "leaf_piece", why: "not a decimal integer" }
+            Present { value: p_i } => if p_i < 0 { Malformed { field: "leaf_piece", why: "negative" } } else {
+              match checked_int_to_nat(n: p_i) {
+                Absent => Malformed { field: "leaf_piece", why: "out of range for a leaf index" }
+                Present { value: p_n } => match parse_int(s: leaf_member) {
+                  Absent => Malformed { field: "leaf_member", why: "not a decimal integer" }
+                  Present { value: m_i } => if m_i < 0 { Malformed { field: "leaf_member", why: "negative" } } else {
+                    match checked_int_to_nat(n: m_i) {
+                      Absent => Malformed { field: "leaf_member", why: "out of range for a leaf index" }
+                      Present { value: m_n } => Parsed { grain: Leaf { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // THE KIND DECODE, per schema generation. v2/v3 require the Claimed assignee and return_to
 // members (v3 additionally requires them to parse as principals); v1's Claimed had neither: it
 // decodes as a self-claim (both = the author principal), the only assignment v1 could state, and

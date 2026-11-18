@@ -6,7 +6,7 @@ import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRevocationDisposition, roadmap_acceptance_line_of_receipt }
 import gunbc.roadmap.roadmap_event_log {
-  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated, Retired,
+  EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, ClaimGrain, CommentCreated, Retired,
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_id_for, roadmap_event_schema,
   roadmap_acceptance_day, roadmap_acceptance_migration_identity,
   roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
@@ -24,7 +24,7 @@ type IssueCommandSubject {
 }
 
 type IssueCommand
-  = AssignIssue { subject: IssueCommandSubject, assignee: EventPrincipal, return_to: EventPrincipal }
+  = AssignIssue { subject: IssueCommandSubject, assignee: EventPrincipal, return_to: EventPrincipal, grain: ClaimGrain }
   | CreateComment { subject: IssueCommandSubject, body: NonEmptyStr }
   // The operator's retirement (operator ruling 2026-11-04): end ANY work item, in ANY state — no
   // PR, no lineage-state precondition. The durable fact is the event log's Retired kind, authored by
@@ -77,8 +77,8 @@ fn issue_operation_nonce() -> String? {
 
 fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEvent {
   match command {
-    AssignIssue { subject, assignee, return_to } => RoadmapEvent { node: subject.node, author: subject.author,
-      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to , grain: Pathless }, recorded_at: recorded_at }
+    AssignIssue { subject, assignee, return_to, grain } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to , grain: grain }, recorded_at: recorded_at }
     CreateComment { subject, body } => RoadmapEvent { node: subject.node, author: subject.author,
       parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
     RetireNode { subject, reason } => RoadmapEvent { node: subject.node, author: subject.author,
@@ -144,15 +144,15 @@ fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand,
       result: EventAppendRefused { id: roadmap_event_id_for(e: event, schema: roadmap_event_schema), step: "receipt", reason: why },
       close: SnapshotNotOpened }
     Absent => {
-      let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
+      let operation = match command { AssignIssue { subject, assignee: _, return_to: _, grain: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation RetireNode { subject, reason: _ } => subject.operation AcceptNode { subject, receipt: _, evidence: _ } => subject.operation RevokeAcceptance { subject, receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => subject.operation }
       // The append-time claim-grain guard (roadmap_decomposition::roadmap_claimed_grain_admissible) CANNOT
       // be applied here: roadmap_issue_command sits in roadmap_decomposition's upstream closure (the guard's
       // own module, roadmap_decomposition, is reached from roadmap_authority, which imports this module), so
-      // importing the guard here closes a cycle. The guard's executing consumers are roadmap_event_cli (which
-      // mints a Leaf grain and is NOT in that closure) and roadmap_claim_grain_witness. This served assign
-      // route still records grain: Pathless (AssignIssue); whether it must be able to name a leaf -- and where
-      // its guard runs given the cycle -- is an open decision with the manager, tracked as the leaf-naming
-      // capability for this route; it is NOT silently routed here.
+      // importing the guard here closes a cycle. The guard's executing consumers are roadmap_event_cli and
+      // roadmap_serve (both can import decomposition, and both call the guard before appending). The served
+      // assign route now calls issue_command_event + roadmap_claimed_grain_admissible + roadmap_event_append
+      // directly, bypassing this apply path for AssignIssue. This AssignIssue arm in issue_command_apply
+      // remains for any caller that does not need the guard (there is none today).
       roadmap_event_append(layout: layout, event: event, operation: operation as String)
     }
   }
@@ -183,7 +183,7 @@ fn issue_command_receipt_disagreement(command: IssueCommand, event: RoadmapEvent
       if (subject.node as String) != issue_command_receipt_node(receipt: receipt) {
         Present { value: join(["the revocation receipt names node '", issue_command_receipt_node(receipt: receipt), "' but the command's subject is node '", subject.node as String, "'"], "") }
       } else { none }
-    AssignIssue { subject: _, assignee: _, return_to: _ } => none
+    AssignIssue { subject: _, assignee: _, return_to: _, grain: _ } => none
     CreateComment { subject: _, body: _ } => none
     RetireNode { subject: _, reason: _ } => none
   }

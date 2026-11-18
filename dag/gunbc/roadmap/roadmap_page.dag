@@ -543,6 +543,21 @@ fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, vi
         attr(name: "type", value: "hidden" ),
         attr(name: "value", value: expected_revision ),
       ], []),
+      el_attrs("input", [
+        attr(name: "name", value: "leaf_stage" ),
+        attr(name: "type", value: "hidden" ),
+        attr(name: "value", value: "" ),
+      ], []),
+      el_attrs("input", [
+        attr(name: "name", value: "leaf_piece" ),
+        attr(name: "type", value: "hidden" ),
+        attr(name: "value", value: "" ),
+      ], []),
+      el_attrs("input", [
+        attr(name: "name", value: "leaf_member" ),
+        attr(name: "type", value: "hidden" ),
+        attr(name: "value", value: "" ),
+      ], []),
       site_choice_list(id: concat("issue-assign-options-", node_id), options: map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: profiles)), hidden: true, empty_label: "No matching assignees"),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),

@@ -3,7 +3,6 @@ module gunbc.roadmap.roadmap_event_cli
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { nat_to_int }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim, string_contains }
 // The modeled file write, as every other producer of a document on disk uses it (gunbc.auth.branch_run_grant
@@ -11,7 +10,7 @@ import std.algebra { trim, string_contains }
 // artifact the PR can quote, so it is written, not printed: a ProcessExit has no stdout.
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.content_hash { serialize_content_hash, Fnv1a64, content_hash_atom }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
 import gunbc.principal_projection { principal_ref_parse_label }
@@ -20,11 +19,12 @@ import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated,
   roadmap_node_standing, roadmap_node_standing_text, roadmap_history_unordered_reason,
   AcceptancePrEvidence, roadmap_acceptance_pr_evidence_from_args,
-  RoadmapRetiredNodeIds, ClaimGrain,
+  RoadmapRetiredNodeIds, ClaimGrain, ClaimGrainParse, Parsed, Malformed, roadmap_claim_grain_parse,
 }
 import gunbc.roadmap.roadmap_decomposition {
   roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admissible, Refused, ClaimedGrainRefusal,
   LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
+  roadmap_claimed_grain_refusal_text,
 }
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, IssueCommandSubject, issue_command_apply }
 import gunbc.roadmap.roadmap_operator_acceptance {
@@ -74,55 +74,10 @@ import gunbc.roadmap.roadmap_event_carrier {
 // authenticated principal and a legacy email can only be DECODED from history, never minted. A CLI
 // `claim` records the caller's principal as the assignee — a self-claim; assignment to ANOTHER
 // principal is the served assign route's shape (POST /issue/<id>/assign), not the CLI's.
-// THE LEAF ARGUMENT, PARSED. A whole-item claim passes three blank index args and gets Pathless; a leaf
-// claim passes stage, piece and member as decimal non-negative integers and gets Leaf { path } with the
-// item PINNED to the node being claimed -- a caller cannot claim node X by naming a leaf of node Y, so the
-// CLI can never produce a leaf-wrong-item claim (only a planted event in a witness can). Any other shape --
-// a blank mixed with a number, a non-decimal token, a negative -- is refused (none), never defaulted: the
-// grain is never invented from arguments that do not spell one (fail_closed). The item is pinned here, at
-// the only minting producer, so the path that reaches the guard is trustworthy about which item it names.
-fn roadmap_claim_grain_from_leaf_indices(node: RoadmapNodeId, leaf_stage: String, leaf_piece: String, leaf_member: String) -> ClaimGrain? {
-  if leaf_stage == "" && leaf_piece == "" && leaf_member == "" {
-    Present { value: Pathless }
-  } else {
-    match parse_int(s: leaf_stage) {
-      Present { value: s_i } => if s_i < 0 { none } else {
-        match checked_int_to_nat(n: s_i) {
-          Absent => none
-          Present { value: s_n } => match parse_int(s: leaf_piece) {
-            Present { value: p_i } => if p_i < 0 { none } else {
-              match checked_int_to_nat(n: p_i) {
-                Absent => none
-                Present { value: p_n } => match parse_int(s: leaf_member) {
-                  Present { value: m_i } => if m_i < 0 { none } else {
-                    match checked_int_to_nat(n: m_i) {
-                      Absent => none
-                      Present { value: m_n } => Present { value: Leaf { path: LeafPath { item: node, stage: s_n, piece: p_n, member: m_n } } }
-                    }
-                  }
-                  Absent => none
-                }
-              }
-            }
-            Absent => none
-          }
-        }
-      }
-      Absent => none
-    }
-  }
-}
-
-// The typed refusal, rendered for the CLI's failure exit. Each case names the ruled reason so an operator
-// sees WHICH rule refused, not a bare "rejected".
-fn roadmap_claimed_grain_refusal_text(reason: ClaimedGrainRefusal) -> String {
-  match reason {
-    LeafPathUnknown { path } => join(["the claimed leaf stage/", to_string(value: nat_to_int(n: path.stage)), "/", to_string(value: nat_to_int(n: path.piece)), "/", to_string(value: nat_to_int(n: path.member)), " is not a leaf the item's decomposition has"], "")
-    LeafWrongItem { path, expected } => join(["the claimed leaf names item '", path.item as String, "' but the claim is being recorded against '", expected as String, "'"], "")
-    PathlessOnDecomposed { node } => join(["the item '", node as String, "' has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"], "")
-    DecompositionAmbiguous { node, count } => join(["the item '", node as String, "' has ", to_string(value: count), " decompositions; a claim is refused until exactly one is declared"], "")
-  }
-}
+// THE LEAF ARGUMENT, PARSED: the shared parser is in roadmap_event_log (roadmap_claim_grain_parse).
+// It returns a typed result: Parsed with the grain, or Malformed naming which field is wrong and why.
+// The CLI renders the refusal as an exit reason; the served route renders it as an HTTP 400 body.
+// The item is pinned at the parser, so a claim on node X always carries a grain naming X.
 
 fn roadmap_event_kind_from_words(kind: String, text: String, author: EventPrincipal, grain: ClaimGrain) -> RoadmapEventKind? {
   let t = trim(text)
@@ -169,9 +124,10 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
         Absent => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: author must be an authenticated principal spelling principal:<authority>/<namespace>/<subject>; got '", author, "' (a bare email can only be read from history, never written)"], "") }
         Present { value: author_ref } => {
           let author_principal = EventPrincipalAuthenticated { ref: author_ref }
-          let grain_opt = roadmap_claim_grain_from_leaf_indices(node: node as NonEmptyStr as RoadmapNodeId, leaf_stage: leaf_stage, leaf_piece: leaf_piece, leaf_member: leaf_member)
-          let grain = match grain_opt { Present { value: g } => g  Absent => Pathless }
-          match roadmap_event_kind_from_words(kind: kind, text: text, author: author_principal, grain: grain) {
+          let grain_parse = roadmap_claim_grain_parse(node: node as NonEmptyStr as RoadmapNodeId, leaf_stage: leaf_stage, leaf_piece: leaf_piece, leaf_member: leaf_member)
+          match grain_parse {
+            Malformed { field, why } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: the leaf index '", field, "' is malformed: ", why, "; got stage='", leaf_stage, "', piece='", leaf_piece, "', member='", leaf_member, "'"], "") }
+            Parsed { grain } => match roadmap_event_kind_from_words(kind: kind, text: text, author: author_principal, grain: grain) {
             Absent => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: kind must be claim|release|progress|block|handback|retire, and progress/block/handback/retire need text; got kind=", kind], "") }
             Present { value: k } => {
               let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
@@ -197,14 +153,9 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
                   _ => ""
                 }
                 // THE GUARD, at the append. A Claimed is refused here BEFORE anything is written, and the
-                // refusal is the guard's typed reason rendered for the operator. A malformed leaf argument
-                // (a blank mixed with numbers, a non-decimal, a negative) never reaches the log either.
-                // Non-claim kinds carry no grain and are not refused by the guard.
-                match grain_opt {
-                  Absent => roadmap_event_record_exit(
-                    exit: ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: a leaf claim needs stage, piece and member as three non-negative integers, or all three blank for a whole-item claim; got stage='", leaf_stage, "', piece='", leaf_piece, "', member='", leaf_member, "'"], "") },
-                    closes: [history.close])
-                  Present { value: _ } => match match k { Claimed { grain } => roadmap_claimed_grain_admissible(node: node_id, grain: grain)  _ => Admissible } {
+                // refusal is the guard's typed reason rendered for the operator. Non-claim kinds carry no
+                // grain and are not refused by the guard.
+                match match k { Claimed { grain } => roadmap_claimed_grain_admissible(node: node_id, grain: grain)  _ => Admissible } {
                     Refused { reason } => roadmap_event_record_exit(
                       exit: ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: ", roadmap_claimed_grain_refusal_text(reason)], "") },
                       closes: [history.close])

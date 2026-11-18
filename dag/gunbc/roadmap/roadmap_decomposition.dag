@@ -349,8 +349,10 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
 // THE APPEND-TIME GUARD: the ONE place that decides whether a Claimed of a given GRAIN may be recorded
 // against `node`. It lives here, beside decomposition_has_leaf_path -- the leaf authority -- so the well-
 // formedness judgment is never re-spelled at a call site (single_authority: consumers import this one
-// check, they do not copy it). Both minting producers (roadmap_event_cli, roadmap_issue_command) route a
-// Claimed through it before appending; the two decode sites never mint, so they never call it.
+// check, they do not copy it). The minting producers that can reach it (roadmap_event_cli, roadmap_serve)
+// route a Claimed through it before appending; roadmap_issue_command cannot import it (cycle:
+// roadmap_authority imports this module which imports roadmap_event_log which roadmap_issue_command imports).
+// The two decode sites never mint, so they never call it.
 //
 // The decision is by decomposition COUNT, read through decomposition_for (the carrier's own authority),
 // exactly as the operator ruled (2026-11-18): a count of 0 means there is no leaf to name, so a Pathless
@@ -392,6 +394,17 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
           Refused { reason: LeafPathUnknown { path: path } }
         }
     }
+  }
+}
+
+// Render the guard's typed refusal as a human-readable string. The CLI and the served route both
+// call this so the ruled reason appears identically no matter which front-end is refused.
+fn roadmap_claimed_grain_refusal_text(reason: ClaimedGrainRefusal) -> String {
+  match reason {
+    LeafPathUnknown { path } => join(["the claimed leaf stage/", to_string(value: nat_to_int(n: path.stage)), "/", to_string(value: nat_to_int(n: path.piece)), "/", to_string(value: nat_to_int(n: path.member)), " is not a leaf the item's decomposition has"], "")
+    LeafWrongItem { path, expected } => join(["the claimed leaf names item '", path.item as String, "' but the claim is being recorded against '", expected as String, "'"], "")
+    PathlessOnDecomposed { node } => join(["the item '", node as String, "' has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"], "")
+    DecompositionAmbiguous { node, count } => join(["the item '", node as String, "' has ", to_string(value: count), " decompositions; a claim is refused until exactly one is declared"], "")
   }
 }
 
