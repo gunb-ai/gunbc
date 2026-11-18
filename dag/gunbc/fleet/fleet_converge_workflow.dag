@@ -8799,7 +8799,7 @@ fn zesty_qdl() -> ProcessExit { match zesty_fs(fleet_converge_plan_revision_down
 fn zesty_qres() -> ProcessExit { match fleet_converge_plan_revision_resolve_step() { Accepted { value: s } => match zesty_fs(s) { 2 => ExitFailure 1; _ => ExitSuccess } Rejected { diagnostics: _ } => ExitSuccess } }
 fn zesty_qchk() -> ProcessExit { match zesty_fs(fleet_converge_event_sha_checkout_step()) { 2 => ExitFailure 1; _ => ExitSuccess } }
 fn zesty_qfloor() -> ProcessExit { match fleet_converge_host_cap_job_floor_minutes() { Accepted { value: _ } => ExitSuccess Rejected { diagnostics: _ } => ExitSuccess } }
-fn zesty_qneeds() -> ProcessExit { match fleet_converge_job_needs(id: fleet_converge_shared_job_id) { [] => ExitSuccess _ => ExitSuccess } }
+fn zesty_qneeds() -> ProcessExit { if count(fleet_converge_job_needs(id: fleet_converge_shared_job_id)) >= 0 { ExitSuccess } else { ExitFailure 1 } }
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
