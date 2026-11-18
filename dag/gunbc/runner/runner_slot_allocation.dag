@@ -26,8 +26,8 @@ import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
-import gunbc.fleet.fleet_intent { ComputeHost, compute_host_cpu_threads }
-import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved }
+import gunbc.fleet.fleet_intent { ComputeHost, host_hardware_census_of, processor_rows_thread_total, HostHardwareCensus, ProcessorAxis, ProcessorsUnread, ProcessorsSurveyed }
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, host_build_pool_reservation, CpuQuotaResolved }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 
 type HostRunnerSlotAllocation {
@@ -553,29 +553,41 @@ fn envelope_after_control_plane(f: HostWidthFacts, usable: ByteSize, overhead: B
         cause: concat("served deployment is placed on this host with an unmeasured allowance: ", why)
       }
     ServedDeploymentNotPlaced =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: byte_size(0), serving: serving, build_pool: host_build_pool_reservation(host: f.host))
     ServedDeploymentClaimResolved { memory: m } =>
-      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving)
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: control_plane, served_deployment: m, serving: serving, build_pool: host_build_pool_reservation(host: f.host))
   }
 }
 
-fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize) -> RunnerMemoryEnvelope {
+// host_build_pool_reservation MOVED to gunbc.runner.runner_slot_desired -- the leaf that already owns
+// gunbc_runner_slot_memory_max and the srv3/srv4 host constants -- so BOTH it (subtracted from the
+// envelope_final below) and gunbc.compute.host_capacity host_capacity_build_seat (which divides it into
+// the pool seat) read the carve from ONE function. host_capacity cannot import this module (it already
+// reaches it transitively via gunbc.compute.unit_bounds -> the fabric chain, so a host_capacity ->
+// runner_slot_allocation edge closes a cycle the resolver rejects); the leaf is the shared source. See
+// the full single-authority + ci_runner_placement conservation docstring at
+// gunbc.runner.runner_slot_desired.host_build_pool_reservation.
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize, served_deployment: ByteSize, serving: ByteSize, build_pool: ByteSize) -> RunnerMemoryEnvelope {
   RunnerMemoryEnvelopeDerived {
     bytes: byte_size_saturating_sub(
       total: byte_size_saturating_sub(
         total: byte_size_saturating_sub(
           total: byte_size_saturating_sub(
             total: byte_size_saturating_sub(
-              total: byte_size_saturating_sub(total: usable, reserved: overhead),
-              reserved: session
+              total: byte_size_saturating_sub(
+                total: byte_size_saturating_sub(total: usable, reserved: overhead),
+                reserved: session
+              ),
+              reserved: control_plane
             ),
-            reserved: control_plane
+            reserved: served_deployment
           ),
-          reserved: served_deployment
+          reserved: serving
         ),
-        reserved: serving
+        reserved: oomd_actuation_floor(host: usable)
       ),
-      reserved: oomd_actuation_floor(host: usable)
+      reserved: build_pool
     )
   }
 }
@@ -917,7 +929,7 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // part, or a different number of sockets, inherited 128 cores from a row about some other machine:
 // the board spec standing where the host's own processors were available. The width is now the
 // threads of every CpuProcessor in the host's gunbc.ci.ci_fleet offer (gunbc.fleet.fleet_intent
-// compute_host_cpu_threads), so the part and the socket count both reach the axis. Every current
+// processor_rows_thread_total), so the part and the socket count both reach the axis. Every current
 // host's offer carries one fleet_intent_cpu (M128-30, 128 threads), so no current width moves.
 //
 // A HOST WITH NO FLEET OFFER HAS NO CPU WIDTH, WHICH IS NOT A WIDTH OF ZERO (review 75298). A zero
@@ -954,11 +966,25 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // CONTRADICTORY input, so it now refuses: measure_sub (std.measure) decides the offered pool, and
 // MeasureSubtrahendExceedsMinuend becomes the typed CpuWidthOverCommitted arm rather than a plausible zero. A
 // genuine zero -- withheld EQUALS threads -- stays CpuWidthDerived { slots: 0 }, distinct from the refusal.
+//
+// THE PROCESSOR AXIS IS ASKED BEFORE THE ARITHMETIC, AND ASKED IN ONE PLACE (review 96379; the ruling that admits
+// the census-less ken offer is quoted in this PR's body). This axis used to test the empty list itself, which made it
+// one of four sibling leaves of the same rule -- the other three (the RAM total, the thread fold, the primary-CPU read)
+// still answered as if an unread board had been measured. All four now derive from
+// gunbc.fleet.fleet_intent::host_hardware_census_of, whose standing is PER AXIS: this function asks it once, reads the
+// processor axis it established and folds threads with gunbc.fleet.fleet_intent::processor_rows_thread_total rather
+// than re-testing emptiness on the way. An unread processor axis is CpuWidthCensusAbsent; note the grain -- a host can
+// have a read processor axis and an unread memory axis (mtcollins1), and that changes the RAM read, not this one.
 fn compute_host_cpu_admitted_width(host: ComputeHost) -> HostCpuWidthResolution {
-  cpu_width_of_threads_withheld(
-    host: host.identity,
-    threads: compute_host_cpu_threads(host: host),
-    withheld: host_cores_withheld_from_runner(host: host.identity))
+  let census = host_hardware_census_of(host: host)
+  match census.processors {
+    ProcessorsUnread => CpuWidthCensusAbsent { host: host.identity }
+    ProcessorsSurveyed { rows: rows } =>
+      cpu_width_of_threads_withheld(
+        host: host.identity,
+        threads: processor_rows_thread_total(rows: rows),
+        withheld: host_cores_withheld_from_runner(host: host.identity))
+  }
 }
 
 // THE SINGLE HOME OF THE CPU SUBTRACTION. Both operands are HardwareThreadCount; measure_sub (std.measure) decides
@@ -982,6 +1008,16 @@ type HostCpuWidthResolution
   // reader sees it is over-committed, not empty. Distinct from CpuWidthDerived { slots: 0 } (a host that exactly
   // withholds all its threads) -- the state-space conflation gunbc.recurring_failure_mode state_space_conflation warns of.
   | CpuWidthOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
+  // THE OFFER EXISTS AND ITS PROCESSOR CENSUS DOES NOT. A ComputeHost row lists no processors because the fleet
+  // has never read that board, NOT because the board has no cores; folding the empty list to
+  // hardware_thread_count(0) would put "never surveyed" and "measured: nothing" in the same number, which is the
+  // zero-sentinel this module already refuses for the over-commit case above (gunbc.recurring_failure_mode.state_space_conflation::state_space_conflation;
+  // the cardinality/absence domain's collection emptiness). This reading is not new here:
+  // gunbc.host.host_effect_realize::provision_build_cache_arch_unknown_host_fixture builds exactly this shape --
+  // "a host the fleet knows by identity but whose processor inventory is empty, the shape a freshly-racked srvN
+  // has before its BMC read lands" -- and its claim is that realization must REFUSE it. Located at the host, and
+  // the read that closes it is the in-band SMBIOS read named on the unit's intake row.
+  | CpuWidthCensusAbsent { host: HostIdentity }
 
 fn host_cpu_admitted_width(host: HostIdentity) -> HostCpuWidthResolution {
   match fleet_compute_offer_for(host: host) {
@@ -1093,6 +1129,8 @@ fn width_axes_of(f: HostWidthFacts) -> List<WidthAxisStanding> {
       }
     CpuWidthOfferAbsent { host: _ } =>
       AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: "the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width" as NonEmptyStr }
+    CpuWidthCensusAbsent { host: h } =>
+      AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: join([(h as String), "'s compute offer lists no processor census -- the board has never been read -- so its processors are unknown and the cores axis states no width; this is NOT a machine measured at zero cores"], "") as NonEmptyStr }
   }
   let disk = match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } =>
@@ -1244,6 +1282,13 @@ type RunnerWidthUnresolvedCause
   = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
   | WidthSlotShapeInadmissible { reason: NonEmptyStr }
   | WidthComputeOfferAbsent { host: HostIdentity }
+  // THE OFFER EXISTS AND ITS BOARD WAS NEVER READ. WidthComputeOfferAbsent says there is no offer to read at all;
+  // this says an offer stands and lists no processor census. Kept a separate arm because the two sentences differ
+  // -- one is "the fleet has not offered this machine to CI", the other is "the fleet has offered a machine whose
+  // cores it has not read" -- and collapsing them would put never-surveyed and measured-zero in one word
+  // (gunbc.recurring_failure_mode.state_space_conflation::state_space_conflation). Produced by compute_host_cpu_admitted_width, which asks
+  // the census before the arithmetic; the read that closes it is that unit's in-band SMBIOS obligation.
+  | WidthCpuCensusAbsent { host: HostIdentity }
   // CONTRADICTORY INPUT refused, not clamped: a host whose exclusive serving reservations exceed its threads.
   // Located (host) and quantitative (threads/withheld) so a downstream refusal QUOTES the shortfall (fail_closed).
   | WidthCpuOverCommitted { host: HostIdentity, threads: HardwareThreadCount, withheld: HardwareThreadCount }
@@ -1278,6 +1323,11 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
       join([
         "the committed runner width of ", h as String,
         " is UNRESOLVED, not zero: the host has no gunbc.ci.ci_fleet compute offer, so its processors are unknown and the cores axis states no width",
+      ], "")
+    WidthCpuCensusAbsent { host: h } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: its gunbc.ci.ci_fleet compute offer lists no processor census -- the board has never been read -- so the cores axis states no width, and that is not a machine measured at zero cores",
       ], "")
     WidthCpuOverCommitted { host: h, threads: t, withheld: w } =>
       join([
@@ -1364,6 +1414,8 @@ fn committed_width_with_serving(f: HostWidthFacts, serving: Optional<ByteSize>, 
               match f.cpu {
                 CpuWidthOfferAbsent { host: h } =>
                   RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
+                CpuWidthCensusAbsent { host: h } =>
+                  RunnerWidthUnresolved { cause: WidthCpuCensusAbsent { host: h } }
                 CpuWidthOverCommitted { host: h, threads: t, withheld: w } =>
                   RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
                 CpuWidthDerived { slots: by_cpu } =>

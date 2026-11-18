@@ -74,6 +74,7 @@ import extdeps.posix.test_utility {
   test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
+  path_existence_reading_of_exit,
   entry_existence_reading,
   test_executable_command,
   PathExistenceReading,
@@ -105,7 +106,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
-  helper_locus_dir,
+  helper_release_locus_record,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
@@ -119,7 +120,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
@@ -194,7 +195,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host.host_converge { HostConverge }
@@ -265,6 +266,7 @@ import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanSe
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
   ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, systemctl_leg_render_command, systemctl_leg_render_diagnosis,
   ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
   credstore_copy_stage_command, credstore_copy_commands,
@@ -3508,8 +3510,10 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
   match effect_intent.target {
     HostOs { node: host } =>
       match compute_host_primary_cpu(host: host) {
-        Present { value: cpu } => Present { value: cpu.catalog.architecture }
-        Absent => none
+        PrimaryCpuMeasured { cpu: cpu } => Present { value: cpu.catalog.architecture }
+        // No arch is invented for a host with no CPU row, and none for a host nobody has surveyed.
+        PrimaryCpuAbsentFromSurvey { host: _ } => none
+        PrimaryCpuCensusUnread { host: _ } => none
       }
     BmcController { node: _ } => none
     RunnerLocalHost => none
@@ -6103,9 +6107,14 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 // legs because the units that name the snapshot are installed between them: the superseded snapshot is
 // retired only after the new units stand.
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  // ONE mint from the port's own (locus, spine, revision): the directory the snapshot installs into is
+  // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
+  // beside an independent revision argument (review 95713). dark_helper_snapshot_at installs this record
+  // directly, so the directory and the revision it names cannot diverge.
+  let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
-    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, tree: tree, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -6217,11 +6226,11 @@ fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractP
 
 // THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
 fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  let base_root: String = spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: spec.service.service_user,
-    base_root: spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: revision),
     source_root: source_root,
-    revision: revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: transport),
   ) {
@@ -6284,13 +6293,25 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     }
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
-    ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    // The systemctl arms execute the command RENDERED from their typed (action, unit) pair -- the same
+    // rendering the gate's coverage inspects, so what is checked and what runs are one fact (review 96024).
+    ApplyLegSystemctl { step: _, action: a, unit: u } => deploy_retract_command_failure(outcome: command(systemctl_leg_render_command(action: a, unit: u)))
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: src } => match src {
+      Payload { bytes: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+      Staged { source: _ } => deploy_retract_command_failure(outcome: command(c))
+    }
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
       match deploy_retract_command_failure(outcome: command(c)) {
         Absent => Absent
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
+      }
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } =>
+      match deploy_retract_command_failure(outcome: command(systemctl_leg_render_command(action: a, unit: u))) {
+        Absent => Absent
+        Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(systemctl_leg_render_diagnosis(unit: u))) }
       }
     ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
     ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
@@ -6317,7 +6338,10 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegSystemctl { step: _, action: _, unit: _ } => []
+    ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => []
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => []
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
@@ -7014,40 +7038,19 @@ fn tree_archive_member_of_line(line: String, archive_owner: NonEmptyStr) -> Tree
 
 fn approval_broker_tree_install(
   owner: NonEmptyStr,
-  base_root: String,
+  locus: ReleaseLocus,
   source_root: String,
-  revision: ReleaseRevisionBinding,
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  approval_broker_tree_install_at(
-    owner: owner,
-    spine: [base_root, release_locus_releases_dir(root: base_root)],
-    locus: release_locus_dir(root: base_root, revision: revision),
-    source_root: source_root,
-    revision: revision,
-    executables: executables,
-    transport: transport,
+  tree_install_in_realm(
+    realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
+    revision: locus.revision, executables: executables, transport: transport,
   )
 }
 
 // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
 // /releases/ segment), so one install serves both rather than a copy per locus.
-fn approval_broker_tree_install_at(
-  owner: NonEmptyStr,
-  spine: List<String>,
-  locus: String,
-  source_root: String,
-  revision: ReleaseRevisionBinding,
-  executables: List<String>,
-  transport: HostEffectElevationRoute,
-) -> ApprovalBrokerTreeInstallVerdict {
-  tree_install_in_realm(
-    realm: TreeInstallElevated { owner: owner }, spine: spine, locus: locus, source_root: source_root,
-    revision: revision, executables: executables, transport: transport,
-  )
-}
-
 // THE TREE INSTALL, IN EITHER REALM (TreeInstallRealm): the one fold both the elevated deploy install
 // and the staged release build run.
 fn tree_install_in_realm(
@@ -7593,7 +7596,7 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
 // incident never got.
 // ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
 // the declared executable plus release_locus_tree_subdirs -- the same declarations
-// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
+// approval_broker_tree_install consumes at install time. Adding a fourth payload root to the
 // carrier moves install and verify together; verify can no longer pass over a snapshot missing a
 // root the install copies (review 90757).
 fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
@@ -7612,34 +7615,31 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
 // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
 // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
 // workers into one refused apply step.
-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_verify_at(locus: HelperLocus, tree: ReleaseLocus, transport: HostEffectTransport) -> DarkState {
   dark_run_legs(
-    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
+    legs: dark_helper_verify_legs(locus: locus, dir: tree.locus),
     transport: transport,
   )
 }
 
-fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
-  let dir = helper_locus_dir(locus: locus, revision: revision)
+fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: String, transport: HostEffectTransport) -> DarkState {
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
-    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: tree.locus)),
   }) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
-      match approval_broker_tree_install_at(
+      match approval_broker_tree_install(
         owner: locus.owner,
-        spine: spine,
-        locus: dir,
+        locus: tree,
         source_root: source_root,
-        revision: revision,
         executables: [gunbc_release_bin_name],
         transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: tree.locus), transport: transport)
       }
   }
 }
@@ -7685,11 +7685,11 @@ fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, dig
 }
 
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
+  let base_root: String = i.spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: i.spec.service.service_user,
-    base_root: i.spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: i.revision),
     source_root: i.source_root,
-    revision: i.revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: i.transport),
   ) {
@@ -9394,20 +9394,17 @@ fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<
   )
 }
 
-// PURE: the test status as a reading. Exit 0 present, 1 absent-or-unstattable, anything else (or a
-// refused transport) unreadable.
+// PURE: the test status as a reading. The 0/1/other law is NOT spelled out here -- it is
+// extdeps.posix.test_utility's path_existence_reading_of_exit, the one reader of what a `test` status
+// means, so this fold and this module's own path_existence_reading cannot drift from each other.
+// A transport that refused is unreadable with the transport's own words, which no exit-code mapping can
+// carry.
 fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
-      if o.exit_code == 0 {
-        PathPresent
-      } else if o.exit_code == 1 {
-        PathAbsentOrUnstattable
-      } else {
-        PathExistenceUnreadable { reason: join(["`test` on ", path, " exited ", to_string(o.exit_code), ": ", o.stderr], "") as NonEmptyStr }
-      }
+      path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
   }
 }
 
@@ -10489,7 +10486,7 @@ fn microvm_controller_stdin_step(name: String, command: ArgvCommand, stdin_paylo
 // path is its own step so a failure names the directory that failed rather
 // than a batch. The retired pipeline ran `install -d -m 0755 -o OWNER -g OWNER`
 // for each of these via install_d_owned_for_user; the flags are the same words.
-fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
+fn microvm_controller_owned_dir_argv(path: NonEmptyStr) -> List<String> {
   coreutils_install_directory_owned_argv(
     mode: install_d_shared_mode,
     owner: microvm_controller_owner,
@@ -10744,7 +10741,7 @@ fn revision_job_install_file_step(name: String, source: String, dest: String) ->
   )
 }
 
-fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerInstallStep {
+fn revision_job_owned_dir_step(name: String, path: NonEmptyStr) -> MicrovmControllerInstallStep {
   microvm_controller_argv_step(name: name, command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: path)))
 }
 
@@ -10947,7 +10944,7 @@ fn microvm_controller_install_steps(
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
-          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()) as String)),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()))),
         ),
         microvm_controller_argv_step(
           name: "cell readiness store dir",
@@ -11285,9 +11282,8 @@ fn realize_microvm_controller_install_on_host(
                 MicrovmControllerTreeStep { name: name } =>
                   match approval_broker_tree_install(
                     owner: microvm_controller_owner,
-                    base_root: microvm_controller_root,
+                    locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
                     source_root: source_root,
-                    revision: revision,
                     executables: [gunbc_release_bin_name],
                     transport: transport,
                   ) {

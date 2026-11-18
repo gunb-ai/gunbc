@@ -1,0 +1,90 @@
+module gunbc.machine_intake.bmc_read_policy
+
+import std.measure { Second, second }
+import extdeps.bmc.ipmi { IpmiRetryBound, ipmi_retry_bound_or_seam }
+
+// ONE ROW, ONE STORY: the authenticated BMC read policy for the managed-credential lane — the retry
+// COUNT and the per-response timeout in SECONDS for every ipmitool command that authenticates. This is
+// a workflow fact, not an interface fact (gunbc.design_argument::interface_realization_policy): the
+// renderer in extdeps.bmc.ipmi spells the argv, the values live HERE, and every caller consumes this
+// row (review 94250, 2026-11-12 — the choice existed in the interface module once per authenticated
+// operation before it moved here). Why these values: each retry of an authenticating command is another
+// charge against the controller's lockout budget (Bad Password Threshold, srv15 ruling; the census
+// reads counted against it the same way), so the bound is one shot and one short wait — the retry cap
+// smart-crane-730 accepted for PXE on 2026-11-11. A structural witness pins that the bound is never
+// dropped from an authenticating argv, and the row below pins its shape: edit a zero in and the
+// witnesses go red — zero mints no carrier and no argv.
+// The ruling and review receipts named above are carried as data, not left to prose: see the
+// sighting on gunbc.integration_concern::authenticated_lanplus_retry_bound_pinned_only_in_declared_ops
+// (reviews 94250, 94264, 94277; the 2026-11-11 acceptance; review 94474, source_annotations).
+data bmc_ipmi_policy_retries: Nat = 1
+
+data bmc_ipmi_policy_response_timeout: Second = second(count: 1)
+
+// THE ROW, CARRIED: the policy values minted through the interface module's sole checked door
+// (review 94277, 2026-11-12; guarantee_ladder: "a brand or Validated<T> is cosmetic until
+// construction enforces it"). Callers pass THIS to every authenticated operation; the operation's
+// transport splices the declared words into -R/-N, so there is no list slot a caller can drop or leave
+// empty (omission refuses as DeclaredInputUnbound; empty is a NonEmptyStr type error) - but the inputs
+// are words, not the carrier type: positivity is enforced by this door plus the witness-pinned rows,
+// not by the transport signature (see the rung statement in extdeps/bmc/ipmi.dag, filed as a typed
+// row in gunbc.guarantee_stall.ipmi_transport_timing_inputs_take_words_not_carriers_stall; same rung as
+// IpmiCipherSuite). Zero retries or a non-positive timeout mints
+// nothing at the door, and the door refusing here is the loud failure (fail_closed: "A failure arm
+// refuses, never widens" — no silent widen, no escape hatch). The refusal arm is the record-shaped
+// Never of ipmi_retry_bound_or_seam (extdeps/bmc/ipmi.dag; review 95151, 2026-11-13, the compiler
+// floor: values inhabit declared types): every field of the refused carrier is filled by a typed
+// pure_dag_seam_unreachable seam, so the arm inhabits IpmiRetryBound instead of pushing a list into
+// a record-typed position, and no value of the carrier is fabricated (std/error_primitives; the
+// interpreter's free_call arm refuses with a typed error naming the seam). These rows are
+// compile-time constants the accepted door can only accept, which is what makes the seam arm a seam
+// and not an escape hatch: edit a zero in and the witnesses below go red at the door's own contract
+// before any authenticated read is spelled.
+fn bmc_ipmi_retry_bound() -> IpmiRetryBound {
+  ipmi_retry_bound_or_seam(retries: bmc_ipmi_policy_retries, response_timeout: bmc_ipmi_policy_response_timeout)
+}
+
+// THE COLD-RESET WATCH-POLL ROW (decision X on gunbc#16529, msg_4588a441): the retry count and per-response timeout
+// for the `-v mc info` polls that watch a controller after a cold reset attempt, and for nothing else. The baseline
+// read, the power reads and the reset itself keep the row above.
+//
+// WHY NOT THE ROW ABOVE. With one attempt per request, ONE dropped datagram on a request ipmitool sends once (Set
+// Session Privilege Level) from a controller that never reset reads as that stage unanswered -- a loss of availability
+// -- and the next poll answering reads as a recovery, which with an available baseline and equal power is an accepted
+// reset that never happened. Two attempts retry one dropped datagram per request. (Get Channel Authentication
+// Capabilities is asked twice by ipmitool itself, so it absorbs one lost datagram at either row.)
+//
+// WHY NOT IPMITOOL'S DEFAULT (4). The poll runs under the 20 s read deadline (mtcollins1_boot_ipmi_read_deadline).
+// From ipmitool 1.8.19 (extdeps.bmc.ipmitool_lanplus_timing; lanplus.h sha256
+// ef29e07b6ff56eca1435c6212761c6054376b035d166b9fbf9c508bd19471a06, lanplus.c sha256
+// 0b1355193c081ceee5038fd0a6078e8f15fe5688732702ee0fe3ad9fba4dc068, hpm2.c sha256
+// 4c348ac0a958f0ff4850aad2203b6e065a0b9b951849c75570e835e482d14572, ipmi_channel.c sha256
+// aa6a3d75fd8e19bc635d87d69038a6882f914062cc59e022e73968e22419186b) one unanswered request costs R·N + R(R−1)/2
+// seconds, at most doubled when recv() < 0 (an ICMP refusal); Get Channel Authentication Capabilities is asked twice
+// (ipmi_get_auth_capabilities_cmd) before ipmitool reports no answer; the session open is 3 × N when it succeeds on its
+// first iteration and at most 4 × 3 × N; one mc
+// info makes at least six requests, and at least one more for cipher-suite discovery when the argv names no -C, as
+// these polls' does (the unit's route carries no cipher suite). Wall time of one poll:
+//
+//   bound   silent controller, both auth-caps requests unanswered   alive controller answering each request on its
+//           (no refusals / ICMP refusal on each attempt)            last attempt, open on the first iteration,
+//                                                                   without -C (at least)
+//   R4/N1   20 s / 40 s                                              73 s
+//   R2/N1    6 s / 12 s                                              24 s
+//   R1/N1    2 s /  4 s                                              10 s
+//
+// Under R4 a silent controller reaches the 20 s deadline even without refusals and is killed (exit 124) before it
+// prints the stage line that names the silence. Under R2 it ends in at most 12 s on that stage line, 8 s inside the
+// deadline before process start-up and exit, so a silent controller is a missing response through its stage line. A `-v` poll that still hits the deadline with
+// neither an answered line nor a stage line can then only be a controller answering slowly, which is a failed probe,
+// never a loss (gunbc.host.bmc_cold_reset cold_reset_failed_poll). The table is not transcribed: the figures are
+// computed from these rows by the extdeps functions in test.claim.host.bmc_cold_reset_witness, so editing a row moves
+// them there.
+data bmc_ipmi_watch_poll_retries: Nat = 2
+
+data bmc_ipmi_watch_poll_response_timeout: Second = second(count: 1)
+
+// THE WATCH-POLL ROW, CARRIED through the same checked door as the row above.
+fn bmc_ipmi_watch_poll_retry_bound() -> IpmiRetryBound {
+  ipmi_retry_bound_or_seam(retries: bmc_ipmi_watch_poll_retries, response_timeout: bmc_ipmi_watch_poll_response_timeout)
+}

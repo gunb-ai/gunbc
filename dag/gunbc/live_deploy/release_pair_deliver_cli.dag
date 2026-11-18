@@ -1,0 +1,817 @@
+module gunbc.live_deploy.release_pair_deliver_cli
+// THE EXECUTING CONSUMER of the staged wet plan (PR-2a). This module turns the lab's release pair into a real,
+// observed delivery: release_pair_deliver_run OBSERVES origin/main's head (what to deploy), DISCOVERS the release-bins
+// run for that exact head, FETCHES its pack, OBSERVES the fetched serve member's digest and the consumer build-key
+// verdict ON the fetched pack, and only then feeds those OBSERVED results through release_pair_install_plan ->
+// deliver_release_pair. No stage takes a predecessor's result as an input it did not observe. Discovery and command
+// minting stay gh-only through extdeps.tools.gh's admitted builders (git is not in the sealed program census); the
+// digest is admitted through extdeps.crypto.hash::sha256sum_line_digest.
+//
+// RUNG: the decode fns are total pure functions over ProcessOutcome and are witnessed green by execution
+// (release_pair_deliver_cli_witness); the effectful entry release_pair_deliver_run composes those legs through the
+// admissible command seam and is executed by the pair-delivery unit's own run — its consumer/trigger frontier is the
+// PR3b unit registered under roadmap item `lab-converges-release-pair`. It typechecks in the same claim closure as
+// the witnessed decode fns; its wet behaviour is proven at the paired deploy, not by a hand step.
+
+import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.tools.gnu_coreutils { readlink_command }
+import gunbc.ci.repository_ci_profile { gunbc_repository_slug }
+import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.gh {
+  gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
+}
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+  release_locus_dir,
+}
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
+  ReleaseBoundToTree,
+  ReleaseMixed,
+  ReleaseSurfaceMixed,
+  ReleaseBindingUnobserved,
+  LabServePairVerdict,
+  PairBoundToServe,
+  PairServeRefused,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
+import extdeps.git { git_fetch_shallow_revision_command, git_worktree_add_detached_command, git_rev_parse_head_command }
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_ssh_target,
+}
+import product.host_identity { HostIdentity }
+import gunbc.live_deploy.deployed_tree_observation {
+  observe_deployed_tree_at,
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+}
+import gunbc.live_deploy.release_pair_delivery {
+  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
+  release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
+  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
+  ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+  release_pair_occupied_link_benign,
+  SourceReceiptWrite,
+}
+import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.live_deploy.spec {
+  release_pair_deliver_base_root_env,
+  release_pair_deliver_serve_unit_env,
+  release_pair_deliver_repo_root_env,
+}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_link_create_new, filesystem_create_new,
+  FilesystemLinked, FilesystemCreated,
+  filesystem_read_outcome, FilesystemLinkTargetOccupied,
+}
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_body }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
+}
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_pair_serve_gate }
+
+// THE SINGLE AUTHORITY for where the incoming pack lands (dir + serve member) is release_pair_delivery's
+// release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
+// decode fns below, so the CLI never re-spells the incoming directory.
+
+// The repo whose release-bins run carries the pair and the workflow that publishes it are NOT spelled here — they
+// are read from their single authorities so a rename cannot drift: gunbc.ci.repository_ci_profile::gunbc_repository_slug
+// and gunbc.generated_artifact::artifact_location(FleetConvergeYamlArtifact).name. The entry consumes them directly.
+// Why the pair keeps serving when the fetch leg did not produce a pack (consumed by pack_fetch's PackAbsent).
+data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack download for the bound head failed on the executing host"
+// Why the pair keeps serving when the pack was fetched but its digest could not be observed (consumed by pack_fetch).
+data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's sha256 could not be observed on the executing host"
+// Why the pair keeps serving when the build-key verdict did not admit the fetched pack (consumed by pack_verify).
+data release_pair_verdict_refused_reason: NonEmptyStr = "the consumer build-key check did not admit the fetched release-bins pack on the executing host"
+// The gh api path that OBSERVES origin/main's head (the head TO DEPLOY), DERIVED from the one repo-slug row so the
+// slug is written once (single_authority). Consumed by the staged fn's call to gh_main_head_command.
+fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
+  join(["repos/", slug, "/commits/main"], "")
+}
+
+// THE DEDICATED DELIVERY CLONE, separate from the runtime checkout at /opt/gunbc/gunbc. Every placement of a
+// candidate source (and its worktree) is served from a fetch INTO THIS clone; the source head is then OBSERVED
+// from that placed tree. Placing straight from the runtime checkout is exactly the wrong-subject defect item-2
+// closes: /opt/gunbc/gunbc's own HEAD is not the delivered source and must never be what the source receipt names
+// (@ref(gunbc.design_argument::single_authority) — the delivery clone is the sole placement origin).
+fn release_pair_delivery_repo_dir(base_root: String) -> String {
+  join([base_root, "/delivery-repo"], "")
+}
+
+// The ssh-agent-context attempt tag for the source-head observation leg (a diagnostic label for the placed-tree
+// read over the fleet locus; the observation authority is observe_deployed_tree_at, not this label).
+data release_pair_source_head_attempt_raw: String = "pair-deliver-source-head"
+
+// Why the pair keeps serving when origin/main's head could not be observed (consumed by the entry's head leg).
+data release_pair_no_head_reason: NonEmptyStr = "origin/main's head could not be observed on the executing host"
+// Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run
+// leg). A BENIGN CI wait: the pack is not ready yet (still building / run not yet successful), keep last-good, retry.
+data release_pair_no_run_for_head_reason: NonEmptyStr = "the bound head has no successful release-bins run to fetch"
+// Why the pair keeps serving when the run DISCOVERY command itself could not run (auth expired, network, rate limit,
+// wrong workflow name). NOT a CI wait — the delivery could not OBSERVE whether a pack exists, so it is a refusal the
+// timer must surface (fail_closed), never a green tick that silently stops tracking main (review 96216).
+data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins run discovery (gh run list) could not be executed on the host (auth, network, rate limit, or workflow name); this is a delivery refusal, not a CI wait"
+// Why the pair refuses when the discovery RAN but its stdout is NON-EMPTY yet unparseable (no tab separator / empty
+// head field): the observation is untrustworthy (a gh output-shape or jq change), so this is a refusal, NOT the
+// benign "no successful run" wait — otherwise delivery would silently stop tracking main forever (review 96219).
+data release_pair_run_list_malformed_reason: NonEmptyStr = "the release-bins run discovery returned unparseable output (expected <run-id>TAB<head-sha>); refusing to guess a run"
+// NOTE: the already-at-head benign-wait reason (review 96219) now lives in release_pair_delivery (with PlanWaits
+// and release_pair_converged_noop, its reader) and is imported above — it is no longer spelled here.
+
+// ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
+// The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
+// admitted builders (gh_main_head_command via `gh api .../commits/main --jq .sha`; gh_release_bins_run_list_command
+// for the fleet-converge run at a head), the fetch through gh_run_download_command, and the pack's digest through
+// extdeps.crypto.hash.sha256sum_file_command. This module does NOT build argv itself: the sealed ArgvCommand is
+// minted only at those admitted sites (git is not in the program census, so origin/main's head is observed via the
+// cataloged gh program). The effectful entry composes those commands through the command seam and hands each leg's
+// ProcessOutcome to the decode fns below.
+
+// ── pure observation-decode fns (ProcessOutcome -> typed observation) ────────────────────────────────────────────
+// The head the executing host OBSERVED on origin/main: Present only when a command that ran (exit 0) printed a
+// non-empty head; none on an absent output or a refusal (a failed git rev-parse is NOT a head).
+fn release_pair_decode_head(outcome: ProcessOutcome) -> NonEmptyStr? {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      if (trim(s: t) as String) == "" {
+        none
+      } else {
+        Present { value: trim(s: t) as NonEmptyStr }
+      }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+// The release-bins run for the head: Present only when the discovery printed a run id; none on absent (no success run
+// for the head — a typed refusal the entry turns into keep-last-good) or on a refusal (gh itself failed).
+// The run-list observation, both sides read from the run metadata the gh call returned: the run id (to download
+// its pack) and the run's head_sha — the BINARY side of the pair, decoded and checked, not assumed from the query
+// filter. head_sha is the binary-side observation the fold compares against the observed source head; it is
+// threaded into the fold when the source-side placement lands (node://lab-converges-release-pair, git-census Hold).
+type ReleasePairRunObservation {
+  run_id: NonEmptyStr
+  head_sha: NonEmptyStr
+}
+
+// The run-list decode is a declared three-way sum, NOT an option collapsed onto none (review 96216): "a successful
+// run exists for the head", "no successful run for the head yet (benign CI wait)" and "discovery itself refused"
+// are three distinct outcomes that must not be conflated — only the middle one is a benign wait.
+type ReleasePairRunLookup
+  = RunLookupFound { run: ReleasePairRunObservation }
+  | RunLookupNoneForHead
+  | RunLookupDiscoveryRefused { reason: NonEmptyStr }
+
+fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      if (trim(s: t) as String) == "" {
+        RunLookupNoneForHead
+      } else {
+        let parts = split(s: trim(s: t), delimiter: "\t")
+        // first/last return String? — a cast does NOT eliminate the absence (the CI parse-only lane misses this;
+        // only the full resolve caught it). Match Present/Absent first, then compare and cast the UNWRAPPED Strings.
+        // Fail-closed (gunbc.design_argument::fail_closed): an absent end, an empty run/head field, or a run==head
+        // single-field line (no tab) is a NAMED malformed refusal — never a guessed run. Only a well-formed
+        // "<run-id>TAB<head-sha>" line with two DISTINCT non-empty fields is Found.
+        match first(l: parts) {
+          Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+          Present { value: run_field } =>
+            match last(l: parts) {
+              Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+              Present { value: head_field } =>
+                if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
+                  RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
+                } else {
+                  RunLookupFound {
+                    run: ReleasePairRunObservation {
+                      run_id: run_field as NonEmptyStr,
+                      head_sha: head_field as NonEmptyStr,
+                    },
+                  }
+                }
+            }
+        }
+      }
+    ProcessOutputAbsent => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
+    ProcessRefused { exit_code: _, stderr: _ } => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
+  }
+}
+
+// THE DIGEST BINDING: the observed `sha256sum` line's first field, admitted only as a valid lower_hex_64 through
+// extdeps.crypto.hash::sha256sum_line_digest (the same parser the belt's member_observe uses — never re-parsed here);
+// a refusal, an empty output, or a non-hex/wrong-width line is a named digest-unreadable, never a false PackPresent.
+fn release_pair_pack_digest_bound(digest_outcome: ProcessOutcome, pack_dir: String, member_src: String) -> PackFetch {
+  match digest_outcome {
+    ProcessOutputPresent { text: d } =>
+      match sha256sum_line_digest(line: d) {
+        Present { value: dg } => PackPresent {
+          sha256: dg.hex,
+          pack_dir: pack_dir as NonEmptyStr,
+          binary_source: member_src as NonEmptyStr,
+        }
+        none => PackAbsent { reason: release_pair_digest_unreadable_reason }
+      }
+    ProcessOutputAbsent => PackAbsent { reason: release_pair_digest_unreadable_reason }
+    ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
+  }
+}
+
+// THE FETCH OBSERVATION: a pack the executing host OBSERVED. Present only when the download ran (exit 0 — `gh run
+// download` is silent on success — or present stdout) AND the digest leg OBSERVED a valid hex; a refused download is
+// a named PackAbsent, never a falsely-bound PackPresent. dir and serve-member source are the entry's OBSERVED values.
+fn release_pair_pack_fetch(
+  fetch_outcome: ProcessOutcome,
+  digest_outcome: ProcessOutcome,
+  pack_dir: String,
+  member_src: String,
+) -> PackFetch {
+  match fetch_outcome {
+    ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
+    ProcessOutputAbsent => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
+    ProcessOutputPresent { text: _ } => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
+  }
+}
+
+// THE BUILD-KEY VERDICT OBSERVED on that fetched pack: VerifiedOn(pack_dir) only when the consumer build-key check
+// ran clean (exit 0); Refused with a named reason otherwise. The pack_dir named here is the SAME directory the entry
+// observed the fetch wrote into; release_pair_install_plan then refuses unless verify and fetch name the same pack
+// (the typed same-pack_dir comparison), so a verdict for a different directory cannot authorize an install.
+// THE CONSUMER KEY CHECK IS A MULTI-STATEMENT POSIX PROGRAM, not a single argv (review 96241 finding 2).
+// release_pair_verify_dispatch yields the fleet pack's consumer key-check PROGRAM — `[ -n "$RELEASE_BINS_KEY" ]`,
+// a `-f` guard per downloaded member, a digest compute-and-compare, and a `grep -qxF` source-closure check — built
+// from a typed shell AST in gunbc.fleet.fleet_release_bins_key and rendered by release_bins_script_text. It is a
+// genuine multi-statement program with control flow and shell variables, so it CANNOT collapse to one sealed
+// ArgvCommand (a program plus a fixed argv): the medium must be a shell. The restart was the case where systemctl
+// already modelled the effect as an argv and running it via sh was wrong; THIS is the reviewer's declared-scaffold
+// case — kept as a declared row (below), not a bare comment, so the debt is on the ledger with a dissolution trigger.
+// Admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
+data release_pair_verify_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.release_pair_delivery",
+    decl_name: "release_pair_verify_dispatch",
+    field: WholeDeclaration
+  }
+}
+
+data release_pair_verify_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: release_pair_verify_dispatch ships the fleet consumer key-check as a rendered sh -c program; the CLI runs it via posix_sh_program_command. It stays a genuine multi-statement shell program today (test guards, a digest compute-and-compare, a grep -qxF closure check, shell variables). DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), so no hand-authored medium-as-string program remains in the pair-delivery verify path and the dispatch yields a typed program rather than a script String.")
+
+fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) -> PackVerify {
+  match verify_outcome {
+    ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
+    ProcessOutputAbsent => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
+    ProcessRefused { exit_code: _, stderr: _ } => Refused { reason: release_pair_verdict_refused_reason }
+  }
+}
+
+// ── the effectful entry: THE executing consumer of the dry plan ──────────────────────────────────────────────────
+// The consumer the fold's plan was written for. It OBSERVES every stage through the admitted command seam and hands
+// each OBSERVED ProcessOutcome to the decode fns above — no stage is handed its predecessor's result as an input it
+// did not observe. It (1) observes origin/main's head (what to DEPLOY) via the cataloged gh program, (2) discovers the
+// fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
+// (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
+// ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
+// that yield nothing are typed outcomes — a benign PlanWaits ONLY when there is genuinely nothing to deliver yet:
+// no successful run for the head (RunLookupNoneForHead, review 96214) or the pair is already at head (review 96219),
+// never a guess. A fetch/digest failure AFTER a run was found is a REFUSAL (PlanKeepsLastGood, red), not a wait
+// (review 96234: gh auth expired / disk full must not keep the timer green). Whether a tick
+// exits green (a wait) or red (a refusal) follows from the DeliveryPlan VARIANT (PlanWaits vs PlanKeepsLastGood),
+// never from comparing the reason text: the old string classifier is gone (review 96225). Executed by the
+// pair-delivery unit's own run (roadmap item lab-converges-release-pair, PR3b); its decision halves are witnessed by
+// release_pair_deliver_cli_witness and the plan arms by release_pair_delivery_plan_witness.
+
+fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr, host_identity: NonEmptyStr) -> DeliveryPlan {
+  let head_outcome = run_shell_command_capture(
+    command: gh_main_head_command(api_path: release_pair_main_head_api_path(slug: gunbc_repository_slug)),
+    transport: LocalExec,
+  )
+  match release_pair_decode_head(outcome: head_outcome) {
+    none => PlanKeepsLastGood { kept: serving, reason: release_pair_no_head_reason }
+    Present { value: main_head } =>
+      // STEADY-STATE SHORT-CIRCUIT BEFORE THE FETCH (review 96219 / 96225): the pure release_pair_converged_noop
+      // route decides, from the OBSERVED serving binding and the OBSERVED head, whether this tick is a benign no-op.
+      // If the serving pair already equals the head, it returns PlanWaits and NO fetch runs (no re-download of the
+      // same pack, no re-link of the same revision — the create-only link would fail red on a healthy pair). Absent
+      // means the head is new (or the tree is not installed), so the entry proceeds to discovery and the fetch. The
+      // fold still checks source/binary drift on the ticks that DO fetch, so short-circuiting a healthy pair cannot
+      // mask a real mismatch.
+      match release_pair_converged_noop(serving: serving, head: main_head) {
+        Present { value: noop } => noop
+        none => {
+      let run_outcome = run_shell_command_capture(
+        command: gh_release_bins_run_list_command(
+          repo: gunbc_repository_slug as String,
+          workflow: artifact_location(a: FleetConvergeYamlArtifact).name,
+          commit: main_head as String,
+        ),
+        transport: LocalExec,
+      )
+      match release_pair_decode_run(outcome: run_outcome) {
+        RunLookupDiscoveryRefused { reason } => PlanKeepsLastGood { kept: serving, reason: reason }
+        // Nothing to deliver yet is a BENIGN WAIT (review 96214), not a refusal: no successful release-bins run
+        // exists for the head (CI still building), so keep serving and retry green next tick.
+        RunLookupNoneForHead => PlanWaits { kept: serving, reason: release_pair_no_run_for_head_reason }
+        RunLookupFound { run } =>
+          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root, revision: main_head as String)
+          let member_src = release_pair_incoming_serve_source(base_root: base_root, revision: main_head as String)
+          let fetch_outcome = run_shell_command_capture(
+            command: gh_run_download_command(
+              run_id: run.run_id as String,
+              repo: gunbc_repository_slug as String,
+              artifact: ci_release_bins_artifact_name,
+              dir: pack_dir,
+            ),
+            transport: LocalExec,
+          )
+          let digest_outcome = run_shell_command_capture(
+            command: sha256sum_file_command(path: member_src),
+            transport: LocalExec,
+          )
+          let fetch = release_pair_pack_fetch(
+            fetch_outcome: fetch_outcome,
+            digest_outcome: digest_outcome,
+            pack_dir: pack_dir,
+            member_src: member_src,
+          )
+          let verify = match release_pair_verify_dispatch(fetch: fetch) {
+            // The consumer key-check is a genuine multi-statement sh program (test guards + digest compare + grep -qxF
+            // closure check), so it runs under posix_sh; that is a DECLARED scaffold with a dissolution trigger, not
+            // an ad-hoc shell — see release_pair_verify_shell_scaffold / release_pair_verify_shell_dissolution_trigger.
+            Present { value: script } =>
+              release_pair_pack_verify(
+                verify_outcome: run_shell_command_capture(
+                  command: posix_sh_program_command(script: script),
+                  transport: LocalExec,
+                ),
+                pack_dir: pack_dir,
+              )
+            none => Refused { reason: release_pair_verdict_refused_reason }
+          }
+          // SOURCE-SIDE F1 (item-2) + idempotent placement (review 96353): the delivered source head is the head
+          // OBSERVED from a tree placed from the DEDICATED DELIVERY CLONE (<base_root>/delivery-repo), NEVER the gh head
+          // query and NEVER /opt/gunbc/gunbc. First probe that the clone is seeded (seeding is a deploy step under the
+          // operator gate -- never bootstrapped here), then OBSERVE the target locus /source BEFORE adding: already at the
+          // requested head => REUSE (no fetch, no add -- a re-run after a later-leg failure is idempotent); a tree at some
+          // OTHER head => REFUSE (never remove or overwrite it silently); absent => fetch + worktree-add, then OBSERVE the
+          // placed tree. 'unobservable' is reserved for the observe step; every placement condition carries its own reason.
+          let delivery_repo = release_pair_delivery_repo_dir(base_root: base_root)
+          let source_dir = join([release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head as CommitSha }), "/source"], "")
+          // Is the dedicated delivery clone seeded? git itself answers; only a ProcessOutputPresent (a printed head) counts,
+          // never a wildcard (review 96360). Any other ProcessOutcome is "not seeded / not readable" -> PlacementCloneMissing.
+          let clone_present = release_pair_delivery_clone_present(
+            outcome: run_shell_command_capture(
+              command: git_rev_parse_head_command(repository_dir: delivery_repo),
+              transport: LocalExec,
+            ),
+          )
+          match prepare_fleet_ssh_agent_context(attempt_raw: release_pair_source_head_attempt_raw) {
+            // Context prep is part of observing, so its failure carries the observe step's 'unobservable' reason.
+            FleetSshContextRefused { cause: _ } =>
+              PlanKeepsLastGood { kept: serving, reason: release_pair_source_head_unobservable_reason }
+            FleetSshContextReady { context: context, receipt: _ } =>
+              match release_pair_source_placement_decision(
+                clone_present: clone_present,
+                clone_path: delivery_repo,
+                pre_observed: observe_deployed_tree_at(
+                  context: context,
+                  target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
+                  repo: source_dir as NonEmptyStr,
+                ),
+                requested: main_head as CommitSha,
+              ) {
+                // The delivery clone is absent. Seeding it is a deploy step under the operator gate -- NEVER bootstrap it
+                // here. Its own typed refusal, distinct from 'unobservable' (review 96353).
+                PlacementCloneMissing { reason: why } =>
+                  PlanKeepsLastGood { kept: serving, reason: why }
+                // Already placed at the requested head: REUSE it -- no fetch, no add. A re-run after any later-leg failure
+                // lands here again, so placement is idempotent and never a clobber.
+                PlacementReuse { revision: source_head } =>
+                  release_pair_install_plan(
+                    base_root: base_root,
+                    serving: serving,
+                    main_head: run.head_sha as CommitSha,
+                    source_head: source_head,
+                    fetch: fetch,
+                    verify: verify,
+                    serve_unit: serve_unit,
+                  )
+                // A placed tree on a DIFFERENT head: REFUSE. Never remove or overwrite it silently (review 96353).
+                PlacementPresentAtOtherHead { reason: why } =>
+                  PlanKeepsLastGood { kept: serving, reason: why }
+                // Absent: fetch the head into the clone and hang a detached worktree at the locus /source. The placement
+                // legs are best-effort; the OBSERVE step is the sole authority that the tree is there and on the requested
+                // head -- a failed fetch/add leaves it unreadable and release_pair_source_head_verdict refuses 'unobservable'.
+                PlacementAdd => {
+                  // Fetch the head into the clone; a REFUSED fetch refuses with its OWN reason (never a misleading
+                  // 'unobservable' / 'other head' from the later observe). Exit-0 (stdout present or absent) is progress.
+                  match release_pair_source_fetch_verdict(
+                    outcome: run_shell_command_capture(
+                      command: git_fetch_shallow_revision_command(
+                        repository_dir: delivery_repo,
+                        remote: "origin",
+                        revision: main_head as String,
+                      ),
+                      transport: LocalExec,
+                    ),
+                    rev: main_head as String,
+                  ) {
+                    ActionRefused { reason: why } =>
+                      PlanKeepsLastGood { kept: serving, reason: why }
+                    ActionPlaced =>
+                      // Hang the detached worktree; a REFUSED add refuses with its OWN reason (review 96360).
+                      match release_pair_source_add_verdict(
+                        outcome: run_shell_command_capture(
+                          command: git_worktree_add_detached_command(
+                            repository_dir: delivery_repo,
+                            path: source_dir,
+                            revision: main_head as String,
+                          ),
+                          transport: LocalExec,
+                        ),
+                      ) {
+                        ActionRefused { reason: why } =>
+                          PlanKeepsLastGood { kept: serving, reason: why }
+                        // Both actions placed -- NOW the observe step is the sole authority on the placed tree.
+                        ActionPlaced =>
+                          match release_pair_source_head_verdict(
+                            observed: observe_deployed_tree_at(
+                              context: context,
+                              target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
+                              repo: source_dir as NonEmptyStr,
+                            ),
+                            requested: main_head as CommitSha,
+                          ) {
+                            SourceHeadRefused { reason: reason } =>
+                              PlanKeepsLastGood { kept: serving, reason: reason }
+                            SourceHeadObserved { revision: source_head } =>
+                              release_pair_install_plan(
+                                base_root: base_root,
+                                serving: serving,
+                                main_head: run.head_sha as CommitSha,
+                                source_head: source_head,
+                                fetch: fetch,
+                                verify: verify,
+                                serve_unit: serve_unit,
+                              )
+                          }
+                      }
+                  }
+                }
+              }
+          }
+      }
+      }
+      }
+  }
+}
+
+// The typed result of mapping the serve gate's OBSERVED deployed binding onto the fold's keep-last-good binding.
+// A bound tree maps to a usable binding; the mixed / surface-mixed / unobserved states are REFUSALS in their own
+// right, NOT RevisionNotInstalled. Collapsing them to RevisionNotInstalled made the fold read a poison state as
+// "proceed to a fresh fetch" (RevisionNotInstalled never short-circuits), which contradicts fail_closed: a state you
+// cannot trust must refuse, not fetch. The refusal is carried in the sum and handled by the entry (review 96348 —
+// the refusal IS the mapping's job, not a separate predicate bolted on after it).
+type ServingMapping
+  = ServingMapped { binding: ReleaseRevisionBinding }
+  | ServingRefused { reason: NonEmptyStr }
+
+// The refusal reason a poison (mixed / surface-mixed / unobserved) deployed state maps to. The exit code follows
+// the variant, never this text (re-wording it cannot flip green<->red).
+data release_pair_serving_poison_reason: NonEmptyStr = "the deployed pair is in an untrustworthy (mixed / surface-mixed / unobserved) state; never deliver a pair from it"
+
+// Maps the OBSERVED deployed binding (from the serve gate) onto the fold's keep-last-good binding. What keep-last-
+// good protects is the revision the deployed TREE is on, so the usable arm is read from the bound arm's GitObjectId
+// via the single GitObjectId->hex authority (extdeps.git.object_store). The mixed / surface-mixed / unobserved arms
+// are the REFUSED arm (gunbc.design_argument::fail_closed): the caller surfaces them as red and never reaches the
+// fold with a poison state. There is no separate poison predicate — refusing them is exactly this mapping (96348).
+fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ServingMapping {
+  match binding {
+    ReleaseBoundToTree { revision: r, surface: _ } =>
+      ServingMapped { binding: RevisionBoundAtEmission { revision: git_object_id_wire_hex(oid: r) as CommitSha } }
+    ReleaseMixed { tree_revision: _, process_revision: _ } =>
+      ServingRefused { reason: release_pair_serving_poison_reason }
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } =>
+      ServingRefused { reason: release_pair_serving_poison_reason }
+    ReleaseBindingUnobserved { cause: _ } =>
+      ServingRefused { reason: release_pair_serving_poison_reason }
+  }
+}
+
+// REVIEW 96121 (SOURCE-SIDE F1). The delivered pair's SOURCE half is the head OBSERVED from a PLACED source tree,
+// never the value of the gh origin/main head query. The placement leg adds the tree detached from the delivery clone
+// at the requested revision; the source head we deliver is that tree's OWN observed HEAD (a GitObjectId read by the
+// canonical observer, rendered through the single extdeps.git.object_store hex authority), and it must EQUAL the
+// revision we asked to place. A placed tree whose observed HEAD differs from the requested revision is a REFUSAL
+// (red) -- we never install a pair whose source we could not confirm; and a tree whose HEAD cannot be observed is
+// likewise a refusal, because with no observation there is no bound source to deliver (fail_closed). The exit code
+// follows the variant, not the reason text.
+type SourceHeadVerdict
+  = SourceHeadObserved { revision: CommitSha }
+  | SourceHeadRefused { reason: NonEmptyStr }
+
+data release_pair_source_head_mismatch_reason: NonEmptyStr = "the placed source tree's observed HEAD does not equal the requested revision; refusing to deliver a pair on an unverified source"
+data release_pair_source_head_unobservable_reason: NonEmptyStr = "the placed source tree's HEAD could not be observed; refusing to deliver a pair on an unobserved source"
+
+fn release_pair_source_head_verdict(observed: DeployedTreeObservation, requested: CommitSha) -> SourceHeadVerdict {
+  match observed {
+    DeployedTreeObserved { revision: oid, tree: _, content: _ } =>
+      let observed_hex = git_object_id_wire_hex(oid: oid)
+      if observed_hex == (requested as String) {
+        SourceHeadObserved { revision: requested }
+      } else {
+        SourceHeadRefused { reason: release_pair_source_head_mismatch_reason }
+      }
+    DeployedTreeUnobservable { cause: _ } =>
+      SourceHeadRefused { reason: release_pair_source_head_unobservable_reason }
+  }
+}
+
+// Idempotent placement decision (review 96353). Before the actuator adds anything it OBSERVES the target source tree
+// at <release_locus_dir(main_head)>/source, so a re-run after a later-leg failure REUSES an already-correct placement
+// rather than refusing, and a tree sitting on a DIFFERENT head is REFUSED (never silently clobbered or removed). Each
+// distinct condition is a distinct variant with a distinct reason: an unseeded delivery clone (seeding is a deploy step
+// under the operator gate -- never bootstrapped here), a placed tree already at the requested head (reuse, no add), a
+// placed tree at some OTHER head (refuse), or an absent tree (add). 'unobservable' is reserved for the OBSERVE step
+// alone (release_pair_source_head_verdict) and is never reused as a placement condition.
+// @ref(gunbc.design_argument::single_authority)
+type PlacementDecision
+  = PlacementCloneMissing { reason: NonEmptyStr }
+  | PlacementReuse { revision: CommitSha }
+  | PlacementPresentAtOtherHead { reason: NonEmptyStr }
+  | PlacementAdd
+
+// Reason prefixes: the condition is the variant; the interpolated path/head is operator detail. A witness reconstructs
+// the exact expected string from the same inputs, so no string predicate is needed to assert them.
+data release_pair_delivery_clone_missing_prefix: NonEmptyStr = "delivery clone not seeded / not readable at "
+data release_pair_source_placed_at_other_head_prefix: NonEmptyStr = "placed source tree is at "
+
+fn release_pair_source_placement_decision(
+  clone_present: Bool,
+  clone_path: String,
+  pre_observed: DeployedTreeObservation,
+  requested: CommitSha,
+) -> PlacementDecision {
+  if !clone_present {
+    PlacementCloneMissing {
+      reason: join([release_pair_delivery_clone_missing_prefix as String, clone_path], "") as NonEmptyStr,
+    }
+  } else {
+    match pre_observed {
+      DeployedTreeObserved { revision: oid, tree: _, content: _ } =>
+        let observed_hex = git_object_id_wire_hex(oid: oid)
+        if observed_hex == (requested as String) {
+          PlacementReuse { revision: requested }
+        } else {
+          PlacementPresentAtOtherHead {
+            reason: join([release_pair_source_placed_at_other_head_prefix as String, observed_hex, ", not ", requested as String], "") as NonEmptyStr,
+          }
+        }
+      DeployedTreeUnobservable { cause: _ } => PlacementAdd
+    }
+  }
+}
+
+// (1) The delivery clone counts as present ONLY when the seed-probe actually printed a head (ProcessOutputPresent).
+// There is NO wildcard success: ProcessOutputAbsent (exit 0 but no stdout) and ProcessRefused (nonzero exit) are BOTH
+// "not seeded / not readable" and route to PlacementCloneMissing (review 96360). ProcessOutcome's variants, from source
+// (gunbc.command_runner): ProcessOutputPresent { text: String } | ProcessOutputAbsent | ProcessRefused { exit_code: Int, stderr: String }.
+fn release_pair_delivery_clone_present(outcome: ProcessOutcome) -> Bool {
+  match outcome {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// (2) A placement ACTION (the clone-side fetch, or the worktree-add) either PLACED (the command ran to exit 0 -- stdout
+// present OR absent, since git fetch/worktree write their progress to stderr) or was REFUSED, and a refusal carries its
+// OWN typed reason -- it must not collapse later into the observe step's 'unobservable' or a 'tree at another head'
+// (review 96360). Kept pure so the refusal reasons are witnessed; the observe step stays the authority on the tree only
+// once both actions have placed.
+type PlacementActionVerdict
+  = ActionPlaced
+  | ActionRefused { reason: NonEmptyStr }
+
+fn release_pair_source_fetch_verdict(outcome: ProcessOutcome, rev: String) -> PlacementActionVerdict {
+  match outcome {
+    ProcessOutputPresent { text: _ } => ActionPlaced
+    ProcessOutputAbsent => ActionPlaced
+    ProcessRefused { exit_code: _, stderr: e } =>
+      ActionRefused { reason: join(["fetch of ", rev, " refused: ", e], "") as NonEmptyStr }
+  }
+}
+
+fn release_pair_source_add_verdict(outcome: ProcessOutcome) -> PlacementActionVerdict {
+  match outcome {
+    ProcessOutputPresent { text: _ } => ActionPlaced
+    ProcessOutputAbsent => ActionPlaced
+    ProcessRefused { exit_code: _, stderr: e } =>
+      ActionRefused { reason: join(["worktree add refused: ", e], "") as NonEmptyStr }
+  }
+}
+
+// ── the unit's own operator entry (zero-arg `function:` target) ──────────────────────────────────────────────
+// Config that is the UNIT'S OWN static identity (where the release locus lives, which serve unit to restart, the repo
+// root that locates the dashboard instance) may come from the environment. What keep-last-good PROTECTS — the served
+// revision — is NEVER from env: it is OBSERVED through the pair serve gate (belt_pair_serve_gate -> the deployed-tree
+// observation at the sealed locus), so a caller cannot claim a serving binding and have last-good protect a fiction.
+// An unobservable/mixed pair at the gate is a typed refusal (the gate's own not-bound arm handles the first deploy);
+// the actuator delivers nothing and exits non-zero rather than trust a hand-written head.
+// (The three env-var NAME rows live in gunbc.live_deploy.spec, shared with the emitted unit that sets them.)
+
+fn release_pair_deliver_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: release_pair_deliver_base_root_env).value {
+    Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_BASE_ROOT not set — the release locus root is the unit's own identity (fail-closed)")
+    Present { value: base_root } =>
+      if trim(s: base_root) == "" {
+        exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_BASE_ROOT is empty (fail-closed)")
+      } else {
+        release_pair_deliver_read_serve_unit(base_root: base_root)
+      }
+  }
+}
+
+fn release_pair_deliver_read_serve_unit(base_root: String) -> ProcessExit {
+  match shell.Env.Get(name: release_pair_deliver_serve_unit_env).value {
+    Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_SERVE_UNIT not set (fail-closed)")
+    Present { value: serve_unit_name } =>
+      if trim(s: serve_unit_name) == "" {
+        exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_SERVE_UNIT is empty (fail-closed)")
+      } else {
+        release_pair_deliver_read_repo_root(base_root: base_root, serve_unit: serve_unit_name)
+      }
+  }
+}
+
+fn release_pair_deliver_read_repo_root(base_root: String, serve_unit: String) -> ProcessExit {
+  match shell.Env.Get(name: release_pair_deliver_repo_root_env).value {
+    Absent => exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_REPO_ROOT not set (fail-closed)")
+    Present { value: repo_root } =>
+      if trim(s: repo_root) == "" {
+        exit_failure(reason: "pair-deliver: GUNBC_PAIR_DELIVER_REPO_ROOT is empty (fail-closed)")
+      } else {
+        release_pair_deliver_observe_and_deliver(base_root: base_root, serve_unit: serve_unit, repo_root: repo_root)
+      }
+  }
+}
+
+fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: String, repo_root: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: _ } =>
+      exit_failure(reason: "pair-deliver: the repo root resolves to no dashboard instance — the served pair cannot be located (fail-closed)")
+    DashboardInstanceResolved { instance: instance } =>
+      match belt_pair_serve_gate(instance: instance) {
+        PairServeRefused { binding: _, reason: why } =>
+          exit_failure(reason: join(["pair-deliver: the serve gate refused (", why, ") — keep serving, deliver nothing (fail-closed)"], ""))
+        PairBoundToServe { binding: binding } =>
+          match release_pair_deliver_serving(binding: binding) {
+            // Poison observed deployed state (mixed / surface-mixed / unobserved): REFUSE RED at the mapping itself
+            // (review 96348). It never reaches the fold, so there is no RevisionNotInstalled fall-through to a fresh
+            // fetch, and no separate poison predicate to keep in sync with the mapping.
+            ServingRefused { reason: why } =>
+              exit_failure(reason: join(["pair-deliver: ", why, " (fail-closed, review 96348)"], ""))
+            ServingMapped { binding: serving } =>
+              release_pair_deliver_actuate(
+                base_root: base_root,
+                serving: serving,
+                serve_unit: serve_unit as NonEmptyStr,
+                host_identity: instance.host_identity,
+              )
+          }
+      }
+  }
+}
+
+// Run the staged wet pipeline and PERFORM its observed effects: place the fetched serve member at the per-revision
+// locus (create-only hard link), write the per-revision tree receipt naming the placed revision + its digest, then
+// restart the serve unit through the plan's OWN command. Every step is a real effect; if any fails the rest is NOT
+// performed (fail-closed: never restart onto a half-placed pair). Keep-last-good performs NO effect and exits success —
+// the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
+// THE SERVE RESTART IS A RENDERED STRING FROM THE SINGLE REGISTERED PRIVILEGED AUTHORITY, declared scaffold (review
+// 96241 finding 2). The reviewer's typed-argv ask is legitimate, but typing it means CONVERTING
+// gunbc.live_deploy.operations::systemctl_restart_command — the one sudo restart authority, registered at
+// gunbc.auth.privileged_effect_registry:1376 and shared by other apply legs — from a String builder to an ArgvCommand
+// builder. That conversion is its OWN authority transition (privileged builder + registry + census), not this PR's, and
+// adding a second ArgvCommand restart beside it would create an unregistered sudo restart. So both shell-as-medium
+// legs on this path (this restart and the consumer key-check verify) take the reviewer's declared-scaffold option,
+// each a declared row with a dissolution trigger, no new mint and no census change here — both shell-as-medium
+// STEPS here are admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
+data release_pair_restart_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.operations",
+    decl_name: "systemctl_restart_command",
+    field: WholeDeclaration
+  }
+}
+
+data release_pair_restart_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the pair-delivery restart renders operations::systemctl_restart_command to a String and posix_sh_program_command's it; the service restart should be a sealed argv like start/enable. DISSOLVES WHEN operations::systemctl_restart_command returns ArgvCommand under its existing privileged_effect_registry row (its other String consumers migrate to shell_command_text_of_argv at their call sites), leaving no shell-as-medium medium in the pair-delivery restart leg.")
+
+// PLACE-LEG HELPERS (review 96241 finding 1): split so both the AlreadyPlaced resume and the NotYetPlaced fresh path
+// share ONE write-then-restart. They perform the effects; the pure resume DECISION is release_pair_resume_decision (fold).
+// The restart carries the rendered command from the SINGLE registered privileged restart authority
+// (operations::systemctl_restart_command, privileged_effect_registry). Its typed-argv realization (review 96241
+// finding 2) needs a privileged ArgvCommand mint the manager owns — tracked, not silently widened into a second
+// sudo restart builder here.
+fn release_pair_restart_serve(restart: String) -> ProcessExit {
+  match run_shell_command_capture(command: posix_sh_program_command(script: restart), transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: _ } =>
+      exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
+    _ => ExitSuccess
+  }
+}
+
+fn release_pair_deliver_write_receipt(receipt: SourceReceiptWrite, body: String, restart: String) -> ProcessExit {
+  let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
+  match filesystem_create_new(
+    path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,
+  ) {
+    FilesystemCreated { path: _ } => release_pair_restart_serve(restart: restart)
+    _ => exit_failure(reason: "pair-deliver: the tree receipt could not be created (fail-closed: do not restart a half-placed pair)")
+  }
+}
+
+fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr, host_identity: NonEmptyStr) -> ProcessExit {
+  match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit, host_identity: host_identity) {
+    // THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT (review 96225 + 96234).
+    // PlanWaits — genuinely nothing to deliver YET (no successful run for the head, or the pair is already at head):
+    //   the serve unit keeps serving last-good and the timer retries. GREEN. The reason is carried for observability
+    //   but is never compared to decide this.
+    // PlanKeepsLastGood — the delivery was REFUSED for a real defect (gh head unobservable, discovery refused, pack
+    //   absent from a refused download / unreadable digest, pack unverified, source/binary drift, missing placement):
+    //   surface the reason and exit non-zero so a broken delivery is a located diagnostic, not silence (fail_closed,
+    //   review 96234: an expired gh auth or full disk must NOT stay green). The reason is never discarded.
+    // Re-wording a reason cannot flip green<->red — only choosing the wrong arm can, and every arm is witnessed.
+    // The wait reason is carried in the arm (observable to callers and witnesses); a steady-state no-op tick stays
+    // quiet on the journal rather than flooding it every 600s (the refusal below is the loud path).
+    PlanWaits { kept: _, reason: _ } => ExitSuccess
+    PlanKeepsLastGood { kept: _, reason: reason } =>
+      exit_failure(reason: join(["pair-deliver kept last good, not a no-op — ", reason as String], ""))
+    PlanToInstall { place_binary: place, write_source_receipt: receipt, restart_command: restart, revision: _ } => {
+      // RESUME / IDEMPOTENCE (review 96241 finding 1). The link and receipt are CREATE-ONLY, so a tick that created
+      // the link and then died on the receipt or the restart would hit FilesystemLinkCreateFailed on EVERY later tick
+      // and stay red forever. The source receipt we WOULD write is the completion authority (written last, after the
+      // link lands), so read it first: byte-identical content means the pair is already placed and only the restart
+      // remains; absent means nothing placed yet (run the create legs, tolerating a link a half-done tick left); a
+      // DIFFERENT receipt is a foreign/stale placement at the per-revision locus and refuses red.
+      let body = release_locus_tree_receipt_body(
+        revision_hex: receipt.revision as String,
+        installed_digest: receipt.digest as String,
+      )
+      let rread = Filesystem.Read(path: receipt.destination)
+      match release_pair_resume_decision(
+        receipt_read: filesystem_read_outcome(content: rread.content, success: rread.success, error: rread.error),
+        expected_body: body,
+      ) {
+        // Already placed for this exact revision — the restart leg is all that remains (a re-tick converges, not reds).
+        AlreadyPlaced => release_pair_restart_serve(restart: restart)
+        // A foreign or stale receipt at the per-revision locus — refuse (red control: a mismatched placement refuses).
+        MismatchRefusal { reason } =>
+          exit_failure(reason: join(["pair-deliver refused a foreign placement — ", reason as String], ""))
+        // Nothing placed yet (or the read itself was refused — the ordinary fresh tick, not the red one): place it.
+        NotYetPlaced => {
+          let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
+          match filesystem_link_create_new(
+            source: place.source, path: place.destination,
+            success: link.success, error: link.error, error_kind: link.error_kind,
+          ) {
+            // Linked now: proceed to write the receipt.
+            FilesystemLinked { path: _ } => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+            // The locus link already exists (a tick died after the link, before the receipt). Benign ONLY if it
+            // already points at THIS revision's fetched member — read it back with the admitted readlink_command and
+            // compare; an occupied link pointing elsewhere is a foreign placement and refuses (manager guard B).
+            FilesystemLinkTargetOccupied { path: p } =>
+              match release_pair_occupied_link_benign(
+                link_read: run_shell_command_capture(command: readlink_command(path: p), transport: LocalExec),
+                expected_source: place.source,
+              ) {
+                true => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+                false => exit_failure(reason: "pair-deliver: the per-revision release locus link is occupied by a target other than this revision's fetched member (or is not a symlink) — refusing rather than adopting a foreign placement (fail-closed, review 96241 f1)")
+              }
+            _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
+          }
+        }
+      }
+    }
+  }
+}
+

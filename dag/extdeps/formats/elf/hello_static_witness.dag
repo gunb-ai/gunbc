@@ -1,17 +1,30 @@
 module extdeps.formats.elf.hello_static_witness
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr, int_lists_equal, witness_encode_decode_roundtrip_ehdr }
 import extdeps.formats.elf.segments { decode_elf64_phdr }
 import extdeps.formats.elf.types { ElfClassNotElf64, ElfRejected, InvalidElfMagic, UnsupportedElfClass, decode_elf64_ehdr }
 import std.types { Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.formats.elf.hello_static_witness",
+      decl_name: "static_hello_elf64_ehdr_bytes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data static_hello_elf64_ehdr_bytes: List<Int> = [

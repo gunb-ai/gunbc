@@ -15,10 +15,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // isolated from the corpus, so a fixture module may take the bound declaration's own module path
 // and declare it differently; the binding row is compiled into the seed and names that path, so
 // the shape judgment (v1.compiler.infer kernel_mint_shape_diagnostics) runs on the fixture's
-// declaration. Each refusal is read by its diagnostic CLASS and SUBJECT, never by a count of
-// diagnostics, so a fixture refusing for an unrelated reason does not satisfy a red.
+// declaration. THE NAMING IS PART OF THE WITNESS: the judgment selects the binding row by the
+// module the fixture DECLARES, and returns nothing for any other name -- so the fixture spells
+// the bound name exactly, `module std.optional` at the mirroring path "std/optional.dag", the
+// spelling dag/test/claim/infer_kernel_import_collision_witness already proves the harness can
+// carry. A fixture under any other module name selects no row, refuses nothing, and matches
+// nothing: every control below would pass on the guard never having run. Each refusal is read by
+// its diagnostic CLASS and SUBJECT, never by a count of diagnostics, so a fixture refusing for an
+// unrelated reason does not satisfy a red.
 
-fn optional_fixture_path() -> NonEmptyStr { "v2/std/optional.dag" as NonEmptyStr }
+fn optional_fixture_path() -> NonEmptyStr { "std/optional.dag" as NonEmptyStr }
 
 fn shape_mismatch_count(source: String) -> Int {
   match compile_fixture(fixture: MultiModuleCompileFixture { sources: [FixtureSource { path: optional_fixture_path(), content: source }], entry: optional_fixture_path() }) {
@@ -32,20 +38,42 @@ fn shape_mismatch_rows(rows: List<CompileDiagnosticCensusRow>) -> Int {
   count(rows |> filter(r => (r.diagnostic_class as String) == "KernelMintShapeMismatch" && r.subject_name == "Optional" && r.blocking))
 }
 
-data conforming_optional_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
+data conforming_optional_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
 
-data payload_is_a_concrete_type_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: Int \}\n"
+data payload_is_a_concrete_type_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: Int \}\n"
 
-data payload_is_a_second_parameter_source: String = "module v2.std.optional\n\ntype Optional<A, B>\n  = Absent\n  | Present \{ value: B \}\n"
+data payload_is_a_second_parameter_source: String = "module std.optional\n\ntype Optional<A, B>\n  = Absent\n  | Present \{ value: B \}\n"
 
-data payload_field_is_renamed_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ held: T \}\n"
+data payload_field_is_renamed_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ held: T \}\n"
 
-data third_arm_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n  | Unknown\n"
+data third_arm_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n  | Unknown\n"
 
-// THE POSITIVE CONTROL: the declaration as the corpus writes it raises no shape mismatch. Without
-// it the reds below would also pass on a check that refuses everything.
+// THE MINT'S OWN DRIFT, EXERCISED THROUGH THE SAME JUDGMENT. The mint is built by the kernel and cannot
+// be re-spelled from a fixture, so what this control pins is the judgment the mint is now put through
+// too (v1.compiler.infer kernel_mint_shape_diagnostics judges kernel_optional_type_node() by these
+// same four facts): a coproduct spelled WITHOUT its type parameter -- the exact shape the mint drifted
+// to before review 95641 (params [] and an unbound payload) -- refuses on the first fact. The mint's
+// own conformance is pinned by the positive control below: it runs the mint-side judgment on every
+// fixture compile, so a mint that stops being `Optional<T>` with `Present \{ value: T \}` raises a
+// KernelMintShapeMismatch here and turns that control red.
+data missing_type_parameter_source: String = "module std.optional\n\ntype Optional\n  = Absent\n  | Present \{ value: Int \}\n"
+
+// THE POSITIVE CONTROL: the declaration as the corpus writes it COMPLETES the fixture compile and
+// raises no shape mismatch. Completing is part of the assertion, not an assumption: a compile
+// REFUSED for any reason -- an unrelated diagnostic, or the guard miswired to refuse everything --
+// carries zero matching rows, and reading only that zero is the vacuity this control had. A
+// refusal is red here while the reds below stay red only on their named class and subject, so a
+// check that refuses everything turns this control red instead of green.
+fn compile_completed_without_shape_mismatch(source: String) -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture { sources: [FixtureSource { path: optional_fixture_path(), content: source }], entry: optional_fixture_path() }) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => shape_mismatch_rows(rows: rows) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
 test fn the_conforming_declaration_is_admitted() -> Bool {
-  shape_mismatch_count(source: conforming_optional_source) == 0
+  compile_completed_without_shape_mismatch(source: conforming_optional_source)
 }
 
 // Same arm names, same field name, different type. A name-level comparison admits this.
@@ -65,6 +93,13 @@ test fn a_renamed_payload_field_is_refused() -> Bool {
 
 test fn a_third_arm_is_refused() -> Bool {
   shape_mismatch_count(source: third_arm_source) >= 1
+}
+
+// The judgment as the mint drifted it: a coproduct with NO type parameter. The mint-side judgment
+// refuses this shape by the first fact, and the positive control above refuses to stay green if the
+// mint itself ever carries it.
+test fn a_declaration_spelled_without_a_type_parameter_is_refused() -> Bool {
+  shape_mismatch_count(source: missing_type_parameter_source) >= 1
 }
 
 // THE CONSUMER. An arm reached through the `T?` sugar carries the bound declaration's identity,

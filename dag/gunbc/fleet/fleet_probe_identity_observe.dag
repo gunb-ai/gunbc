@@ -2,6 +2,7 @@ module gunbc.fleet.fleet_probe_identity_observe
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
+import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_home_of }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
@@ -80,14 +81,17 @@ fn passwd_home_observation(user: ProcessOutcome, passwd: ProcessOutcome?) -> Pas
         Present { value: passwd_outcome } =>
           match passwd_outcome {
             ProcessOutputPresent { text: line } => {
-              let fields = split(s: line, delimiter: ":")
-              match fields.skip(n: 5).first() {
-                Present { value: raw_home } =>
-                  if trim(s: raw_home) == "" {
-                    PasswdHomeAbsent
-                  } else {
-                    PasswdHomeObserved { home: trim(s: raw_home) }
-                  }
+              let entries = etc_passwd_entries(text: line)
+              match entries.first() {
+                Present { value: e } => match etc_passwd_home_of(entries: entries, name: e.name) {
+                  Present { value: home } =>
+                    if trim(s: home) == "" {
+                      PasswdHomeAbsent
+                    } else {
+                      PasswdHomeObserved { home: trim(s: home) }
+                    }
+                  Absent => PasswdHomeRefused { cause: join(["passwd entry has no home field: ", trim(s: line)], "") }
+                }
                 Absent => PasswdHomeRefused { cause: join(["passwd entry has no home field: ", trim(s: line)], "") }
               }
             }

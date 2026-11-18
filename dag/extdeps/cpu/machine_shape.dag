@@ -1,16 +1,29 @@
 module extdeps.cpu.machine_shape
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import std.machine_shape { DomainId, ExecutionDomain, LevelId, MachineShape, MachineShapeConstruction, MemoryLevel, MemoryShape, execution_shape_independent_lanes }
 import std.optional { Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/CPU_cache"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.machine_shape",
+      decl_name: "ShapeFromCatalogInput",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type ShapeFromCatalogInput

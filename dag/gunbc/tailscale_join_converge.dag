@@ -1,0 +1,1342 @@
+module gunbc.tailscale_join_converge
+
+// EVERY ENROLLED HOST IS A MEMBER OF THE TAILNET, OR THE CONVERGE REFUSES -- AND THE ROUTER KNOWS IT BY NAME.
+//
+// WHY THIS MODULE EXISTS. The router addresses its upstreams by TAILNET NAME
+// (gunbc.fleet.fleet_tailnet::tailnet_host_from, the single authority for what a host is called on the
+// tailnet), which is what makes an IP change need no code change. That address is only reachable if the host
+// is a MEMBER, and as of 2026-11-15 srv3, srv4, h11-a16 and butch were not members as srv1 sees them, with
+// h11 not even having the binary installed. Nothing in the fleet converged that: the machine-name converge
+// (gunbc.tailscale_machine_name_converge) can only rename a device that has already joined, and `tailscale
+// set` on an unjoined node has no prefs to change. So membership was a hand step on a keyboard -- the kind of
+// step performed once, forgotten on the next host, and discovered when the router cannot resolve anything.
+//
+// WHAT IT CONVERGES, PER HOST, IN ORDER: the package (installed if absent, through the admitted apt route),
+// the credential file (placed by the one custody authority, never by this module writing a file itself), the
+// membership (`tailscale up`, with the auth key read from its FILE and never from argv), and then the
+// read-back -- not "the command exited 0", which upstream's own `up` can answer with a login that never
+// completed, but the two facts the router actually depends on, asked FROM THE ROUTER: the host's tailnet name
+// RESOLVES on srv1 through NSS, and it ANSWERS a tailnet-only ping.
+//
+// IDEMPOTENCE IS THE DESIGN, NOT A MODE. A host already Running is a Noop with no mutation and no credential
+// placement. The ordering matters more than it looks: the credential is a REUSABLE enrollment key, so a
+// converge that touched it on every run of every host would spread a fleet-wide secret across machines that
+// joined long ago, on the theory that reading a status line is cheap. The status read comes first, and the
+// key file is placed only on the arm that will use it.
+//
+// ONE AUTHORITY FOR THE NAME, END TO END. The hostname the node is told to claim and the name the router is
+// asked about are both projections of tailnet_host_from(HostIdentity) -- the first through
+// canonical_hostname_for_fleet_slot, the second through the labels that function joins. There is no string in
+// this module that is a tailnet name because someone typed it, which is the failure that makes a join
+// "succeed" on a node nobody can find.
+//
+// WHAT IT REFUSES, AND WHY EACH REFUSAL IS NOT A FAILURE TO HANDLE:
+//   A HOST WITH NO ALLOCATED HOSTNAME. tailnet_host_from is Absent, so there is no name to join under and
+//     none to read back; joining under the OS hostname would create a member the router will never address,
+//     and it would do it quietly.
+//   AN EXPIRED AUTH KEY, consulted on the arm that would use it (gunbc.tailscale_fleet_auth_key::
+//     tailscale_fleet_auth_key_usable_on). An expired key fails the login, and a login failure reads like a
+//     network fault; refusing on the calendar says which one it was. A host that is already a member is a
+//     Noop regardless, because upstream is explicit that expiry stops enrollments and not membership.
+//   A BACKEND STATE THAT IS NOT RUNNING, including Starting and NeedsMachineAuth. The fleet's key is
+//     pre-approved, so NeedsMachineAuth means the key is not what the model says it is -- a custody and
+//     roster question, not something to retry past.
+//   AN UNREADABLE PACKAGE QUERY OR STATUS. dpkg-query's "unknown" and a status document that will not parse
+//     are refusals, never defaults: "not installed" and "installed" produce opposite legs, and a guessed one
+//     installs or skips a package on a host nobody looked at.
+//   A TAG MISMATCH BETWEEN THE KEY AND THE JOIN. Upstream says a tagged key's node "assumes the identity of
+//     the auth key's tags", so advertising a different tag would not add a role -- it would leave the node in
+//     the key's tag while the plan claimed another, and every reachability judgment this converge then makes
+//     would be about a tag the node is not in.
+//   A PING THAT ANSWERS AS SOMEBODY ELSE. The read-back compares the node name in the pong against the
+//     expected tailnet name and refuses on a mismatch: an address answering from a stale peer record is not
+//     the host that was just joined.
+//   ANYTHING THE TYPED SURFACES REFUSE. The argv builders, the custody row and placement, the ssh targets,
+//     the sealed write and the portable-word check all carry their own refusal arms, and this module
+//     propagates them. No leg here is ever composed as a shell string.
+//
+// WHAT IT DOES NOT DO: approve a device in the admin console (the key is pre-approved, which is the operator
+// decision that makes the join non-interactive); restart or reauthenticate a daemon (`--force-reauth` is not
+// offered by extdeps.tailscale.join at all, because it may drop the connection it is being run over); or
+// render the router's upstream configuration, which is held for its own read-only diff.
+
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.package_managers.apt {
+  apt_get_install_command,
+  package_tailscale,
+  AptGetInstallCommand,
+  AptGetInstallCommandReady,
+  AptGetInstallCommandRefused,
+}
+import extdeps.package_managers.dpkg {
+  DpkgInstalledState,
+  DpkgPackageInstalled,
+  DpkgPackageNotInstalled,
+  DpkgPackageUnknown,
+  DpkgQueryUndecidable,
+  dpkg_query_status_command,
+  dpkg_query_status_verdict_of,
+}
+import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
+import extdeps.tailscale.join {
+  JoinStateJoinedWithRequiredTag,
+  JoinStateJoinedWithoutRequiredTag,
+  JoinStateNotJoined,
+  JoinStateUnreadable,
+  PingAnswered,
+  PingNoAnswer,
+  PingUnreadable,
+  TailscaleJoinState,
+  TailscalePingCommandBuilt,
+  TailscalePingCommandRefused,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
+  tailscale_ping_command,
+  tailscale_ping_spec_of,
+  tailscale_ping_verdict,
+  tailscale_up_join_command,
+  tailscale_up_join_spec_of,
+  tailscale_up_join_state_is_joined,
+  tailscale_up_join_state_of,
+}
+import extdeps.units.iso8601_calendar {
+  Iso8601CivilDate,
+  iso8601_civil_date,
+  iso8601_civil_from_days,
+  iso8601_utc_epoch_seconds,
+}
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
+import gunbc.auth.access_token_source { WorkloadIdentityToken }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialFetchRefused,
+  SecretCredentialReady,
+  SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused,
+  fetch_secret_ref_credential,
+}
+import gunbc.fleet.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
+import product.host_identity { host_identity_eq }
+import extdeps.tailscale.machine_name { tailscale_status_json_argv }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.file_access { FileTreeScope }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  SshTargetResolution,
+  SshTargetRefused,
+  SshTargetResolved,
+}
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.fleet.host_credential_custody_converge {
+  CustodyHost,
+  CustodyHostSubject,
+  CustodyHostSubjectAdmitted,
+  CustodyHostSubjectRefused,
+  CustodyPlaced,
+  CustodyPlacement,
+  CustodyPlacementRefused,
+  CustodyRun,
+  ElevatedLeg,
+  ElevatedLegRan,
+  ElevatedLegRefused,
+  custody_action_wire,
+  custody_host,
+  custody_placement_refusal_wire,
+  custody_row_placement,
+  custody_run_settled,
+  converge_host_credential_custody,
+  run_elevated_leg,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  HostCustodyCredential,
+  TailscaleFleetAuthKey,
+  host_credential_custody_row,
+}
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.secret_provision { Secret }
+import gunbc.tailscale_fleet_auth_key {
+  tailscale_fleet_auth_key_file,
+  tailscale_fleet_auth_key_secret_ref,
+  tailscale_fleet_auth_key_host_path,
+  tailscale_fleet_auth_key_policy,
+  tailscale_fleet_auth_key_usable_on,
+  tailscale_fleet_node_tag,
+}
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmission,
+  TypedRemoteFileWriteAdmissionRefused,
+  typed_remote_file_write_seal,
+}
+import product.host_identity { HostIdentity }
+import std.list { list_member }
+import std.measure { Second, second, second_count, seconds_per_day }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
+import std.algebra { string_contains, trim }
+
+// The bounded waits, both this fleet's choice, both load-bearing: upstream blocks FOREVER by default on `up`
+// and gives up after five seconds by default on `ping`, which are the two wrong answers for a converge -- one
+// that never reports, and one that reports a fault on a peer that was merely slow.
+data tailscale_join_up_timeout: Second = second(count: 120)
+data tailscale_join_ping_count: Int = 1
+data tailscale_join_ping_timeout: Second = second(count: 15)
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE POPULATION: EVERY ENROLLED HOST, WHICH IS NOT EVERY HOST THAT EXISTS.
+//
+// The authority is the enrolment roster itself (gunbc.fleet.fleet_enrollment::fleet_enrollments) rather than
+// a list kept here, because a second list of hosts is exactly the drift this fleet is designed against: the
+// roster already has to be right for a host to be reached at all, and a host someone enrols should get its
+// tailnet membership without also being added to a second ledger someone has to remember. Enrolment is the
+// fact that makes a machine part of the fleet; tailnet membership is OWED BY that fact, not granted by an
+// extra opt-in row -- which is why a host missing from this population is simply an unenrolled host, and why
+// no arm here widens by adding a name.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+fn tailscale_join_population() -> List<HostIdentity> {
+  tailscale_join_population_from(intents: fleet_enrollments, seen: [])
+}
+
+// Deduplicated by construction rather than assumed: the roster is a List, an enrolment can legitimately
+// appear twice for one host, and a converge that planned a host twice would place its credential twice -- a
+// different action count than the one the operator reviews.
+fn tailscale_join_population_from(intents: List<HostEnrollmentIntent>, seen: List<HostIdentity>) -> List<HostIdentity> {
+  match intents {
+    Empty => seen
+    Cons { head: head, tail: tail } =>
+      if list_member(xs: seen, x: head.host, eq: (a, b) => a == b) {
+        tailscale_join_population_from(intents: tail, seen: seen)
+      } else {
+        tailscale_join_population_from(intents: tail, seen: concat(seen, [head.host]))
+      }
+  }
+}
+
+fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
+  list_member(xs: tailscale_join_population(), x: host, eq: (a, b) => a == b)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE OBSERVATION LEGS: BOTH NON-ROOT, BOTH READ-ONLY, ORDERED BY WHAT THEY DECIDE.
+//
+// The status read is the cheap one that decides whether ANYTHING ELSE HAPPENS, so it runs first and the
+// package query runs only on the arm that could need it -- dpkg-query is cheap too, but its answer is the one
+// that can produce a root mutation, and a converge that asks "should I install" before "am I already a
+// member" has answered a question it did not need to.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE STATUS READ, from the host itself. The argv row is machine_name's, not a fork: same binary, same
+// document, and this module reads a different member of it (extdeps.tailscale.join).
+fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleJoinState {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: tailscale_status_json_argv()) {
+    TypedArgvExecRefused { reason: reason } => JoinStateUnreadable { cause: reason }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        // A non-zero `status` is not "not joined". Tailscale exits non-zero when the daemon is not reachable
+        // at all, which is a host in a state this converge has no model for; installing a package and joining
+        // is not the response to not understanding the host.
+        JoinStateUnreadable { cause: concat("status leg exit=", to_string(r.exit_code)) }
+      } else {
+        tailscale_up_join_state_of(status_json: trim(s: r.stdout), required_tag: tailscale_fleet_node_tag)
+      }
+  }
+}
+
+// THE PACKAGE READ. dpkg-query exits 0 even for an unknown package and prints `unknown <name> unknown`, so
+// the exit code cannot answer this question and the STATUS FIELD decides (extdeps.package_managers.dpkg);
+// anything that is not exactly `install ok installed` is not-installed, and `unknown`/undecidable stay
+// separate refusals rather than being folded into "not installed".
+fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState {
+  match typed_argv_exec_over_fleet_ssh(
+    target: target,
+    context: context,
+    argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
+  ) {
+    TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        DpkgQueryUndecidable { reason: concat("dpkg-query leg exit=", to_string(r.exit_code)) }
+      } else {
+        dpkg_query_status_verdict_of(
+          exit_code: r.exit_code,
+          stdout: r.stdout,
+          stderr: r.stderr,
+        )
+      }
+  }
+}
+
+// The package answer the PLAN needs, which is the query only when a query can change an action.
+fn tailscale_join_package_state_for(
+  state: TailscaleJoinState,
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+) -> DpkgInstalledState {
+  if tailscale_up_join_state_is_joined(state: state) {
+    DpkgPackageInstalled
+  } else {
+    tailscale_join_observe_package(target: subject.target, context: context)
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE PLAN: PURE, TOTAL, AND WITNESSED ARM BY ARM.
+//
+// No legs, no clock, no IO: (join state, package state, key usability) in, one arm out, with the name taken
+// from the one authority inside. That is what makes the properties the operator cares about checkable
+// without a host: a host that is a member of the tag-keyed tailnet is a Noop even when the key is expired and
+// the package is missing; a host that is Running under some OTHER identity is never a Noop; and every
+// non-Noop arm carries a name that came from tailnet_host_from.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+type TailscaleJoinPackageAction = JoinPackageInstall | JoinPackageAlreadyInstalled
+
+type TailscaleJoinPlan
+  = JoinPlanNoop { host: HostIdentity, tailnet_name: NonEmptyStr, reason: String }
+  | JoinPlanPlaceAndJoin {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      hostname: DnsLabel,
+      package_action: TailscaleJoinPackageAction,
+    }
+  // JOINED, BUT NOT AS THE FLEET TAG: the host is a member of the tailnet under an identity the fleet's
+  // policy does not key on -- hand-joined under a personal account, or owned by a user. Not a Noop, not a
+  // re-join this converge may perform: the remedy is an operator-approved re-authentication under the key
+  // that carries the tag, and this arm is where that refusal is located. It carries what the node DID
+  // present, so the operator sees the identity they are being asked to replace.
+  | JoinPlanNotFleetMember {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      required_tag: NonEmptyStr,
+      observed_tags: List<String>,
+    }
+  | JoinPlanRefused { host: HostIdentity, cause: String }
+
+fn tailscale_join_plan(
+  host: HostIdentity,
+  join_state: TailscaleJoinState,
+  package_state: DpkgInstalledState,
+  key_usable: Bool,
+) -> TailscaleJoinPlan {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Absent =>
+      JoinPlanRefused {
+        host: host,
+        cause: "no allocated hostname, so there is no tailnet name to join under and none to read back",
+      }
+    Present { value: hostname } =>
+      match tailnet_host_from(machine: host) {
+        // Unreachable in practice -- both projections read the same allocation -- and still refused rather
+        // than assumed, because the two are separate functions and an assumption that they agree is exactly
+        // the drift a name-authority exists to prevent.
+        Absent =>
+          JoinPlanRefused { host: host, cause: "the tailnet name is absent while the hostname is present" }
+        Present { value: tailnet_name } =>
+          match join_state {
+            // THE NOOP, FIRST AND UNCONDITIONAL: no key check, no package check. An existing member of the
+            // tag-keyed tailnet is not a candidate for either, and this is the arm that keeps a routine fleet
+            // converge from re-placing a reusable enrollment key on hosts that joined long ago. It is
+            // unconditional over a FLEET MEMBER, and a fleet member is a JOINED HOST THAT CARRIES THE FLEET
+            // TAG -- `BackendState == Running` alone never reaches this arm
+            // (extdeps.tailscale.join: WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY).
+            JoinStateJoinedWithRequiredTag { self_tags: _ } =>
+              JoinPlanNoop {
+                host: host,
+                tailnet_name: tailnet_name,
+                reason: "backend state is Running and the node carries the fleet tag",
+              }
+            // JOINED, BUT NOT AS THE FLEET TAG -- SO NOT A FLEET MEMBER, AND NOT A Noop. ken is the specimen
+            // (operator_host_e2d4b7, read 2026-11-18 by still-fox-404): Running under a personal account,
+            // presenting no tags, resolvable under the tailnet's MagicDNS suffix and outside every grant the
+            // fleet's policy is keyed on. Reporting Noop over that is a silent success over the wrong state.
+            // THE CONVERGE DOES NOT RE-JOIN IT EITHER: `tailscale up --force-reauth` with the fleet key would
+            // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
+            // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
+            // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
+            // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
+            JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
+              JoinPlanNotFleetMember {
+                host: host,
+                tailnet_name: tailnet_name,
+                required_tag: tailscale_fleet_node_tag,
+                observed_tags: self_tags,
+              }
+            JoinStateUnreadable { cause: cause } =>
+              JoinPlanRefused { host: host, cause: concat("join state unreadable: ", cause) }
+            JoinStateNotJoined { state: state } =>
+              match package_state {
+                DpkgPackageUnknown =>
+                  JoinPlanRefused {
+                    host: host,
+                    cause: "dpkg reports the package as unknown, and install-versus-skip cannot be guessed",
+                  }
+                DpkgQueryUndecidable { reason: reason } =>
+                  JoinPlanRefused { host: host, cause: concat("package state undecidable: ", reason) }
+                DpkgPackageNotInstalled { status: _ } =>
+                  tailscale_join_plan_requiring_key(
+                    host: host,
+                    tailnet_name: tailnet_name,
+                    hostname: hostname,
+                    state: state,
+                    key_usable: key_usable,
+                    package_action: JoinPackageInstall,
+                  )
+                DpkgPackageInstalled =>
+                  tailscale_join_plan_requiring_key(
+                    host: host,
+                    tailnet_name: tailnet_name,
+                    hostname: hostname,
+                    state: state,
+                    key_usable: key_usable,
+                    package_action: JoinPackageAlreadyInstalled,
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE ARMS THAT ACTUALLY NEED THE CREDENTIAL. The key's expiry is consulted HERE and nowhere earlier, which
+// is the whole reason an expiry refusal costs the fleet nothing: the Noop arm above never asks.
+fn tailscale_join_plan_requiring_key(
+  host: HostIdentity,
+  tailnet_name: NonEmptyStr,
+  hostname: DnsLabel,
+  state: String,
+  key_usable: Bool,
+  package_action: TailscaleJoinPackageAction,
+) -> TailscaleJoinPlan {
+  if !key_usable {
+    JoinPlanRefused {
+      host: host,
+      cause: "the pinned auth key is expired, so this join cannot be authorized; existing members are unaffected (upstream: an expired key \"will not work after that date, but the nodes it authorized continue to work\")",
+    }
+  } else if string_contains(s: state, pattern: "NeedsMachineAuth") {
+    // Pre-approval is a property of the KEY (gunbc.tailscale_fleet_auth_key), and a node sitting in
+    // NeedsMachineAuth on a tailnet with device approval on means the key is not what that record says it is.
+    // Approving by hand would leave the model and the tailnet disagreeing about why the host is reachable.
+    JoinPlanRefused {
+      host: host,
+      cause: concat(
+        "backend state is ", state,
+        ", which on this tailnet means the key is not pre-approved",
+      ),
+    }
+  } else if !tailscale_join_tag_consistency() {
+    JoinPlanRefused {
+      host: host,
+      cause: "the key's tag and the tag the join advertises are not one tag, so the identity that lands would not be the one the plan claims",
+    }
+  } else {
+    JoinPlanPlaceAndJoin {
+      host: host,
+      tailnet_name: tailnet_name,
+      hostname: hostname,
+      package_action: package_action,
+    }
+  }
+}
+
+// THE TAG CONSISTENCY CHECK, a refusal and not an advisory, refusing only what has a documented consequence.
+// Upstream: a node created by a tagged key "assumes the identity of the auth key's tags", while
+// `--advertise-tags` requests tags at join. If the two disagree, the identity that lands is the KEY's, so an
+// advertise of a different tag does not add a role -- it produces a node in the key's tag while the fleet's
+// plan says it is in another, and every ACL-based reachability judgment made downstream would be about a tag
+// the node is not in.
+fn tailscale_join_tag_consistency() -> Bool {
+  match tailscale_fleet_auth_key_policy.key_tags.first() {
+    Present { value: only } =>
+      tailscale_fleet_auth_key_policy.key_tags.count() == 1 && only == tailscale_fleet_node_tag
+    Absent => false
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE APPLY LEGS.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE INSTALL COMMAND. The package name is the one row apt.dag carries for it and the command is that
+// module's admitted install route, not a hand-spelled apt-get. It runs elevated because apt is a root
+// mutation, and it runs ONLY on the arm the plan chose.
+fn tailscale_join_install_command() -> AptGetInstallCommand {
+  apt_get_install_command(package: package_tailscale)
+}
+
+// THE JOIN COMMAND, built from the plan's own hostname and the custody key file. Its credential argument is
+// the file reference -- the argv can carry a path and nothing else, structurally
+// (extdeps.tailscale.join::tailscale_auth_key_file_argument).
+fn tailscale_join_up_command(hostname: DnsLabel) -> TailscaleUpJoinCommand {
+  tailscale_up_join_command(
+    spec: tailscale_up_join_spec_of(
+      key_file: tailscale_fleet_auth_key_file,
+      hostname: hostname,
+      advertise_tags: [tailscale_fleet_node_tag],
+      timeout: tailscale_join_up_timeout,
+    )
+  )
+}
+
+// An elevated leg's outcome as a refusal, so the three mutating legs read the same way: Absent means the leg
+// ran and succeeded, Present carries the reason nothing was done or the thing done did not work.
+fn tailscale_join_elevated_refusal(leg: ElevatedLeg, label: String) -> String? {
+  match leg {
+    ElevatedLegRan { exit_code: code, stdout: _, stderr: err } =>
+      if code == 0 {
+        Absent
+      } else {
+        Present {
+          value: concat(
+            concat(concat(label, " exit="), to_string(code)),
+            if string_non_empty(value: trim(s: err)) { concat(": ", trim(s: err)) } else { "" },
+          )
+        }
+      }
+    ElevatedLegRefused { reason: reason } =>
+      Present { value: concat(concat(label, " not run: "), reason) }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE READ-BACK, ASKED FROM THE ROUTER.
+//
+// Two legs, because they fail differently and the router depends on both. RESOLVES is asked of srv1's NSS
+// (getent ahostsv4), because that is the path the router's own upstream lookups take -- `tailscale ping`
+// resolves machine names out of Tailscale's own peer list (cmd/tailscale/cli/ping.go) and so cannot answer
+// it. ANSWERS is asked of `tailscale ping`, because only it proves the tailnet path AND names the node that
+// replied, which is what rules out an address answering from a stale peer record.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+type TailscaleJoinNameResolution
+  = NameResolved { reply: String }
+  | NameNotFound { name: NonEmptyStr }
+  | NameUnreadable { cause: String }
+
+// The judgment on one `getent ahostsv4` leg. getent(1) EXIT STATUS "2 One or more supplied key could not be
+// found in the database" is the not-found ANSWER, reported as such rather than as an unreadable leg -- "the
+// name does not resolve" is a finding the operator needs, not a failure to look. The name must appear in the
+// reply because the claim under test is that THIS NAME resolves; the man page documents the databases and the
+// address family, not a column layout for ahostsv4, so the check is containment and the raw reply travels in
+// the verdict rather than a re-shaped version of it.
+fn tailscale_join_name_resolved_verdict(
+  name: NonEmptyStr,
+  exit_code: Int,
+  stdout: String,
+  stderr: String,
+) -> TailscaleJoinNameResolution {
+  let reply = trim(s: stdout)
+  if exit_code == getent_key_not_found_exit {
+    NameNotFound { name: name }
+  } else if exit_code != 0 {
+    NameUnreadable { cause: concat("getent leg exit=", to_string(exit_code)) }
+  } else if !string_non_empty(value: reply) {
+    NameUnreadable { cause: "getent answered with an empty reply" }
+  } else if !string_contains(s: reply, pattern: name as String) {
+    NameUnreadable { cause: concat("getent answered without the queried name: ", reply) }
+  } else {
+    NameResolved { reply: reply }
+  }
+}
+
+fn tailscale_join_observe_name_resolution(
+  router: SshTarget,
+  context: FleetSshExecutionContext,
+  name: NonEmptyStr,
+) -> TailscaleJoinNameResolution {
+  match typed_argv_exec_over_fleet_ssh(
+    target: router,
+    context: context,
+    argv: argv_words(command: getent_hosts_command(name: name)),
+  ) {
+    TypedArgvExecRefused { reason: reason } => NameUnreadable { cause: reason }
+    TypedArgvExecConverged { result: r } =>
+      tailscale_join_name_resolved_verdict(
+        name: name,
+        exit_code: r.exit_code,
+        stdout: r.stdout,
+        stderr: r.stderr,
+      )
+  }
+}
+
+// Whether the node named in a pong is the host this converge just joined. Separate from the comparison so
+// the branded name and the upstream's unbranded string meet in one place with the cast visible.
+fn tailscale_ping_pong_is_expected(expected: NonEmptyStr, node_name: String) -> Bool {
+  node_name == expected as String
+}
+
+type TailscaleJoinAnswer
+  = JoinPeerAnswered { node_name: String, line: String }
+  | JoinPeerSilent { detail: String }
+  | JoinPeerAnsweredWrongPeer { expected: NonEmptyStr, got: String }
+  | JoinAnswerUnreadable { cause: String }
+
+fn tailscale_join_observe_answer(
+  router: SshTarget,
+  context: FleetSshExecutionContext,
+  expected_name: NonEmptyStr,
+) -> TailscaleJoinAnswer {
+  match tailscale_ping_command(
+    spec: tailscale_ping_spec_of(
+      destination: expected_name,
+      count: tailscale_join_ping_count,
+      timeout: tailscale_join_ping_timeout,
+    )
+  ) {
+    TailscalePingCommandRefused { cause: cause } => JoinAnswerUnreadable { cause: cause }
+    TailscalePingCommandBuilt { command: command } =>
+      match typed_argv_exec_over_fleet_ssh(
+        target: router,
+        context: context,
+        argv: argv_words(command: command),
+      ) {
+        TypedArgvExecRefused { reason: reason } => JoinAnswerUnreadable { cause: reason }
+        TypedArgvExecConverged { result: r } =>
+          match tailscale_ping_verdict(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+            PingAnswered { node_name: node_name, line: line } =>
+              // THE NAME IN THE PONG IS THE READ-BACK. An address answering is not the claim; this host's
+              // tailnet name answering is.
+              if tailscale_ping_pong_is_expected(expected: expected_name, node_name: node_name) {
+                JoinPeerAnswered { node_name: node_name, line: line }
+              } else {
+                JoinPeerAnsweredWrongPeer { expected: expected_name, got: node_name }
+              }
+            PingNoAnswer { detail: detail } => JoinPeerSilent { detail: detail }
+            PingUnreadable { cause: cause } => JoinAnswerUnreadable { cause: cause }
+          }
+      }
+  }
+}
+
+type TailscaleJoinReadback = JoinReadbackOk | JoinReadbackFailed { cause: String }
+
+fn tailscale_join_readback(
+  router: SshTarget,
+  context: FleetSshExecutionContext,
+  expected: NonEmptyStr,
+) -> TailscaleJoinReadback {
+  match tailscale_join_observe_name_resolution(router: router, context: context, name: expected) {
+    NameUnreadable { cause: cause } => JoinReadbackFailed { cause: concat("name resolution leg: ", cause) }
+    NameNotFound { name: name } =>
+      JoinReadbackFailed {
+        cause: concat("the router's resolver does not answer for ", name as String, " (getent exit 2)"),
+      }
+    NameResolved { reply: _ } =>
+      match tailscale_join_observe_answer(router: router, context: context, expected_name: expected) {
+        JoinPeerAnswered { node_name: _, line: _ } => JoinReadbackOk
+        JoinPeerSilent { detail: detail } =>
+          JoinReadbackFailed { cause: concat("the router got no pong from ", expected as String, ": ", detail) }
+        JoinPeerAnsweredWrongPeer { expected: expected_peer, got: got } =>
+          JoinReadbackFailed { cause: concat("the pong named ", got, ", not ", expected_peer as String) }
+        JoinAnswerUnreadable { cause: cause } => JoinReadbackFailed { cause: concat("ping leg: ", cause) }
+      }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE PER-HOST CONVERGE.
+//
+// The credential is an INPUT rather than something this module fetches. The payload's only destination in
+// this module is the custody write -- it is never printed, never placed in an argv, and never part of a
+// receipt -- and the resolved-version identity is what makes the pinned version's existence an OBSERVED
+// fact on the run rather than an assumption carried from the source
+// (gunbc.tailscale_fleet_auth_key records the pin this was read against).
+//
+// THE WET ENTRY AT THE FOOT OF THIS MODULE IS ITS EXECUTING CONSUMER (review 95837 asked for exactly
+// this; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is consumed by a
+// named consumer over an executing route, or it is dangling, however well modeled"). One dispatch runs
+// one host: tailscale_join_converge_ci_wet reads the named host from the environment, gates on the
+// live-clock expiry check BEFORE fetching anything, fetches the pinned version through
+// gunbc.auth.secret_ref_credential under the accessor identity the accessor roster row names, calls
+// tailscale_join_host, and writes the outcome receipt the workflow artifact step uploads. It is wired
+// the way every other fleet-converge entry is: gunbc.fleet.tailscale_join_step names it as a
+// gunbc-run-step target and gunbc.fleet.fleet_converge_workflow dispatches mode tailscale_join_converge.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+type TailscaleJoinOutcome
+  = JoinConvergedNoop { host: HostIdentity, tailnet_name: NonEmptyStr }
+  | JoinConverged {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      installed: Bool,
+      placement_action: String,
+      // Whether the converge's own removal of the placed key copy succeeded. A join is a join either way
+      // (the read-back already proved membership), but a left-behind copy of a reusable enrollment key is a
+      // fact the caller must be able to see and act on -- never one the model hides (
+      // @ref(gunbc.design_argument::epistemic_humility)).
+      key_removed: Bool,
+      removal_cause: String?,
+    }
+  | JoinRefused { host: HostIdentity, cause: String }
+  // THE REFUSAL FOR A HOST THAT IS JOINED UNDER THE WRONG IDENTITY. Separate from `JoinRefused` on
+  // purpose: a `JoinRefused` is the converge missing an input it could in principle go and get (a name, a
+  // usable key, a readable package state), while this is an OBSERVED STATE OF A HOST that the converge has
+  // no authority to change -- the node's tailnet identity belongs to the operator. `observed_tags` carries
+  // what the node presented, so the log shows the identity that has to be replaced, not just that something
+  // was wrong.
+  | JoinRefusedNotFleetMember {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      required_tag: NonEmptyStr,
+      observed_tags: List<String>,
+    }
+
+fn tailscale_join_host(
+  host: HostIdentity,
+  context: FleetSshExecutionContext,
+  key_material: Secret,
+  resolved_version: SmResolvedVersionIdentity,
+  today: Optional<Iso8601CivilDate>,
+) -> TailscaleJoinOutcome {
+  match administrator_ssh_target(host: operator_host_srv1) {
+    // The read-back is asked FROM the router, so a router this converge cannot reach over its own transport
+    // means the join cannot be confirmed -- and an unconfirmed join is a refusal, not a success with a note.
+    SshTargetRefused { endpoint: endpoint, refusal: _ } =>
+      JoinRefused { host: host, cause: concat("srv1 is not an ssh target this converge can use: ", endpoint) }
+    SshTargetResolved { target: router } =>
+      match custody_host(host: host) {
+        // The custody subject is the same admission every other credential placement on this host goes
+        // through: a host with no runner spec is not a host a converge may write a credential onto.
+        CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }
+        CustodyHostSubjectAdmitted { subject: subject } => {
+          let state = tailscale_join_observe_status(target: subject.target, context: context)
+          let package_state = tailscale_join_package_state_for(state: state, subject: subject, context: context)
+          let plan = tailscale_join_plan(
+            host: host,
+            join_state: state,
+            package_state: package_state,
+            key_usable: tailscale_fleet_auth_key_usable_on(today: today),
+          )
+          tailscale_join_act_on_plan(
+            plan: plan,
+            subject: subject,
+            router: router,
+            context: context,
+            key_material: key_material,
+            resolved_version: resolved_version,
+          )
+        }
+      }
+  }
+}
+
+fn tailscale_join_act_on_plan(
+  plan: TailscaleJoinPlan,
+  subject: CustodyHost,
+  router: SshTarget,
+  context: FleetSshExecutionContext,
+  key_material: Secret,
+  resolved_version: SmResolvedVersionIdentity,
+) -> TailscaleJoinOutcome {
+  match plan {
+    JoinPlanRefused { host: host, cause: cause } => JoinRefused { host: host, cause: cause }
+    JoinPlanNotFleetMember {
+      host: host,
+      tailnet_name: tailnet_name,
+      required_tag: required_tag,
+      observed_tags: observed_tags,
+    } =>
+      // NOTHING IS READ BACK AND NOTHING IS DISPATCHED. The host is Running, so a name-resolution-plus-pong
+      // read-back from the router would PASS -- and a passing read-back is exactly what would let this state
+      // be reported as converged. The key is neither written nor placed nor used.
+      JoinRefusedNotFleetMember {
+        host: host,
+        tailnet_name: tailnet_name,
+        required_tag: required_tag,
+        observed_tags: observed_tags,
+      }
+    JoinPlanNoop { host: host, tailnet_name: tailnet_name, reason: _ } =>
+      // The Noop is still read back FROM THE ROUTER. A host that believes it is Running while srv1 can
+      // neither resolve nor reach it is precisely the state the fleet was in -- four hosts "not on the
+      // tailnet as srv1 sees them" -- and a converge that trusted the host's own report would have called
+      // that converged.
+      match tailscale_join_readback(router: router, context: context, expected: tailnet_name) {
+        JoinReadbackOk => JoinConvergedNoop { host: host, tailnet_name: tailnet_name }
+        JoinReadbackFailed { cause: cause } => JoinRefused { host: host, cause: cause }
+      }
+    JoinPlanPlaceAndJoin {
+      host: host,
+      tailnet_name: tailnet_name,
+      hostname: hostname,
+      package_action: package_action,
+    } =>
+      tailscale_join_place_and_join(
+        host: host,
+        tailnet_name: tailnet_name,
+        hostname: hostname,
+        package_action: package_action,
+        subject: subject,
+        router: router,
+        context: context,
+        key_material: key_material,
+        resolved_version: resolved_version,
+      )
+  }
+}
+
+// THE ARM THAT ACTS, in the order the dependencies force: package, credential, join, read-back. Each step is
+// a refusal that stops the run rather than a step that logs and continues -- a join attempted without its
+// binary, without its credential, or against a host the router cannot name is a join whose success would mean
+// nothing.
+fn tailscale_join_place_and_join(
+  host: HostIdentity,
+  tailnet_name: NonEmptyStr,
+  hostname: DnsLabel,
+  package_action: TailscaleJoinPackageAction,
+  subject: CustodyHost,
+  router: SshTarget,
+  context: FleetSshExecutionContext,
+  key_material: Secret,
+  resolved_version: SmResolvedVersionIdentity,
+) -> TailscaleJoinOutcome {
+  let material = key_material as String
+  if !string_non_empty(value: material) {
+    // An empty credential produces a login failure whose cause is a secret nobody read. The pinned version
+    // existing is not the same fact as its payload being bytes, and this is where the two come apart.
+    JoinRefused { host: host, cause: "the pinned auth key version resolved to no bytes" }
+  } else {
+    // THE PACKAGE FIRST: `tailscale up` cannot run without the binary, and h11 is a host that has never had
+    // it. The leg is the plan's arm, so it is SKIPPED -- not merely failed -- when the package is present.
+    match tailscale_join_install_leg(package_action: package_action, subject: subject, context: context) {
+      Present { value: why } => JoinRefused { host: host, cause: why }
+      Absent =>
+        // THE CREDENTIAL, THROUGH THE ONE CUSTODY AUTHORITY: the row (path, owner, mode, which pinned secret
+        // version) comes from host_credential_custody_row, its placement from custody_row_placement, and the
+        // write itself goes through the custody converge that owns the elevated legs, the read-back and the
+        // receipts. This module writes no file and states no path of its own.
+        match tailscale_join_place_key(
+          subject: subject,
+          context: context,
+          material: material,
+          resolved_version: resolved_version,
+        ) {
+          Absent => JoinRefused { host: host, cause: "the custody placement returned no verdict" }
+          Present { value: PlacementRefused { cause: cause } } => JoinRefused { host: host, cause: cause }
+          Present { value: PlacementPlaced { action: action } } =>
+            match tailscale_join_up_command(hostname: hostname) {
+              TailscaleUpJoinCommandRefused { cause: cause } => JoinRefused { host: host, cause: cause }
+              TailscaleUpJoinCommandBuilt { command: command } =>
+                match tailscale_join_elevated_refusal(
+                  leg: run_elevated_leg(
+                    subject: subject,
+                    context: context,
+                    argv: argv_words(command: command),
+                    stdin_payload: "",
+                  ),
+                  label: "tailscale up",
+                ) {
+                  Present { value: why } => JoinRefused { host: host, cause: why }
+                  Absent =>
+                    // THE READ-BACK IS THE SUCCESS CONDITION, not the exit code above: upstream's `up` can
+                    // exit 0 on a login that never completed, and the router's two answers are what the fleet
+                    // actually depends on.
+                    match tailscale_join_readback(router: router, context: context, expected: tailnet_name) {
+                      JoinReadbackFailed { cause: cause } => JoinRefused { host: host, cause: cause }
+                      JoinReadbackOk =>
+                        // THE PLACED COPY DOES NOT OUTLIVE THE JOIN IT WAS PLACED FOR. The custody comment
+                        // says the host file is a copy "for the duration of a join"; this leg is what makes
+                        // that sentence true. rm -f is coreutils' idempotent teardown (absent is success),
+                        // and its failure does not undo the membership the read-back just proved -- so the
+                        // outcome carries the cause instead of the run losing a proven join.
+                        match tailscale_join_remove_key_leg(subject: subject, context: context) {
+                          Absent =>
+                            JoinConverged {
+                              host: host,
+                              tailnet_name: tailnet_name,
+                              installed: package_action == JoinPackageInstall,
+                              placement_action: action,
+                              key_removed: true,
+                              removal_cause: Absent,
+                            }
+                          Present { value: why } =>
+                            JoinConverged {
+                              host: host,
+                              tailnet_name: tailnet_name,
+                              installed: package_action == JoinPackageInstall,
+                              placement_action: action,
+                              key_removed: false,
+                              removal_cause: Present { value: why },
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+
+// THE REMOVAL LEG, run once the read-back has proved membership: it deletes THE COPY THIS CONVERGE PLACED,
+// the one the custody row calls "a copy for the duration of a join". The argv is coreutils' own idempotent
+// force removal (absent is success, so a host that never got the file -- or already lost it -- answers 0),
+// built by the rm authority extdeps.tools.gnu_coreutils rather than spelled here, and pointed at exactly
+// one path: the custody row's own.
+fn tailscale_join_remove_key_leg(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+) -> String? {
+  tailscale_join_elevated_refusal(
+    leg: run_elevated_leg(
+      subject: subject,
+      context: context,
+      argv: coreutils_rm_force_argv(paths: [tailscale_fleet_auth_key_host_path as String]),
+      stdin_payload: "",
+    ),
+    label: "rm placed key copy",
+  )
+}
+
+// THE INSTALL LEG, present only when the plan asked for it.
+fn tailscale_join_install_leg(
+  package_action: TailscaleJoinPackageAction,
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+) -> String? {
+  match package_action {
+    JoinPackageAlreadyInstalled => Absent
+    JoinPackageInstall =>
+      match tailscale_join_install_command() {
+        AptGetInstallCommandReady { command: command } =>
+          tailscale_join_elevated_refusal(
+            leg: run_elevated_leg(
+              subject: subject,
+              context: context,
+              argv: argv_words(command: command),
+              stdin_payload: "",
+            ),
+            label: "apt-get install",
+          )
+        AptGetInstallCommandRefused { cause: cause } =>
+          Present { value: concat("apt-get install not run: ", cause) }
+      }
+  }
+}
+
+// The two answers the placement can give: a refusal with the custody ledger's own words, or the action it
+// took, as the ledger wires it. Modelled as a sum rather than two optionals so no arm can be both.
+type TailscaleJoinPlacement = PlacementRefused { cause: String } | PlacementPlaced { action: String }
+
+fn tailscale_join_place_key(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  material: String,
+  resolved_version: SmResolvedVersionIdentity,
+) -> TailscaleJoinPlacement? {
+  let row = host_credential_custody_row(c: TailscaleFleetAuthKey)
+  match custody_row_placement(row: row) {
+    CustodyPlacementRefused { cause: cause } =>
+      Present { value: PlacementRefused { cause: custody_placement_refusal_wire(r: cause) } }
+    CustodyPlaced { row: placed, key_dir: key_dir, upper_ancestors: ancestors } =>
+      match typed_remote_file_write_seal(
+        path: placed.path as FilePath,
+        content: material,
+        allowed_scope: FileTreeScope { root_path: key_dir },
+      ) {
+        TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
+          Present { value: PlacementRefused { cause: cause as String } }
+        TypedRemoteFileWriteAdmitted { write: write } => {
+          let run = converge_host_credential_custody(
+            subject: subject,
+            context: context,
+            placement_row: placed,
+            key_dir: key_dir,
+            upper_ancestors: ancestors,
+            write: write,
+            store_payload: material as Secret,
+            sm_version: resolved_version,
+          )
+          if custody_run_settled(run: run) {
+            Present { value: PlacementPlaced { action: custody_action_wire(a: run.action) } }
+          } else {
+            Present { value: PlacementRefused { cause: "the custody converge did not settle the credential file" } }
+          }
+        }
+      }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE WET ENTRY -- the executing consumer of everything above this line.
+//
+// THE SHAPE IS THE FLEET'S, NOT AN INVENTION: one dispatch runs one host, the way
+// gunbc.fleet.host_credential_custody_converge::host_credential_custody_converge_ci_wet runs one
+// credential. gunbc.fleet.tailscale_join_step names tailscale_join_converge_ci_wet as its gunbc-run-step
+// target and gunbc.fleet.fleet_converge_workflow dispatches mode "tailscale_join_converge"; the item-5
+// live phase (srv3, srv4, butch, h11-a16, one at a time) is that dispatch, one job per host.
+//
+// ORDER IS A SAFETY PROPERTY, NOT STYLE: the expiry gate reads the clock and refuses BEFORE the secret
+// is fetched -- an expired key never causes a Secret Manager read, and its refusal receipt is loud
+// (what to do is in the line itself). Every decision below is a pure function of inputs the witness
+// supplies; this function only threads environment reads through them and writes the receipts they say.
+// The fetched credential is handed to tailscale_join_host and appears nowhere else -- not in the stamp,
+// not in the receipt, never in an argv (the key crosses the wire only as a file= reference).
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data tailscale_join_host_env_name: String = "TAILSCALE_JOIN_HOST"
+
+data tailscale_join_attempt_raw: String = "tailscale-join-converge-ci"
+
+data tailscale_join_receipt_path: String = "target/tailscale-join-converge-receipt.txt"
+
+// THE HOST THE DISPATCH NAMED, checked against the enrolled population -- the same fold the converge
+// itself runs, so a dispatch cannot smuggle a host the fleet never enrolled into a join.
+type TailscaleJoinHostSelection = JoinHostSelected { host: HostIdentity } | JoinHostUnrostered { supplied: String }
+
+fn tailscale_join_host_selection(supplied: String) -> TailscaleJoinHostSelection {
+  match tailscale_join_first_matching(supplied: supplied, candidates: tailscale_join_population()) {
+    Present { value: host } => JoinHostSelected { host: host }
+    Absent => JoinHostUnrostered { supplied: supplied }
+  }
+}
+
+fn tailscale_join_first_matching(
+  supplied: String,
+  candidates: List<HostIdentity>,
+) -> Optional<HostIdentity> {
+  match candidates {
+    Empty => Absent
+    Cons { head: head, tail: tail } =>
+      if host_identity_eq(a: head, b: supplied as HostIdentity) {
+        Present { value: head }
+      } else {
+        tailscale_join_first_matching(supplied: supplied, candidates: tail)
+      }
+  }
+}
+
+// TODAY, READ FROM THE LIVE CLOCK, in the one shape the clock prints (gunbc.clock_read: an ISO-8601
+// instant "YYYY-MM-DDThh:mm:ssZ") -- PARSED BY THE CALENDAR AUTHORITY ITSELF, not by a second parser:
+// extdeps.units.iso8601_calendar's own instant reader (which refuses any text that is not exactly that
+// shape, time and Z included) and its exact civil-from-days inverse, divided by the measure module's
+// seconds-per-day. A misprinted stamp yields Absent -- which tailscale_fleet_auth_key_usable_on fails
+// closed on. An unreadable clock is not an unexpired key
+// (DESIGN §2, gunbc.design_argument::minimize_redundancy; review 95852 deleted the first draft's
+// hand-written digit parser, a second authority for the same wire form).
+fn tailscale_join_today_from_clock(reading: NonEmptyStr?) -> Optional<Iso8601CivilDate> {
+  match reading {
+    Absent => Absent
+    Present { value: text } =>
+      match iso8601_utc_epoch_seconds(text: text as String) {
+        Absent => Absent
+        Present { value: at } =>
+          Present { value: iso8601_civil_from_days(days: second_count(at) / seconds_per_day()) }
+      }
+  }
+}
+
+// THE LOUD REFUSAL (operator instruction of 2026-11-15: "model the expiry and make the join step refuse
+// loudly on an expired key"). The line names the host, says REFUSED, carries the key's expiry date, and
+// states the recovery -- regenerate in the Tailscale admin console, add a new pinned secret version --
+// so the CI log is actionable by itself. An unreadable clock gets its own line: it is not an expiry, and
+// conflating the two would blame the key for the runner's broken clock.
+fn tailscale_join_expiry_refusal_wire(host: HostIdentity, today: Optional<Iso8601CivilDate>) -> String {
+  match today {
+    Absent =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " REFUSED: the clock is unreadable, so the fleet auth key's expiry cannot be checked; an ",
+          "uncheckable key is not a usable key. Repair the runner clock (tailscale_join_today_from_clock ",
+          "refuses a malformed stamp) and re-dispatch.\n",
+        ],
+        "",
+      )
+    Present { value: day } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " REFUSED: the fleet tailscale auth key expired on year=",
+          to_string(day.year),
+          " month=",
+          to_string(day.month),
+          " day=",
+          to_string(day.day),
+          " (a key that expired stops new joins upstream; nodes it already enrolled keep working). ",
+          "Recovery: regenerate the key in the Tailscale admin console with the same policy and add a ",
+          "new version of the pinned secret; the version pin and the accessor identity do not change.\n",
+        ],
+        "",
+      )
+  }
+}
+
+// THE OUTCOME, IN THE RECEIPT'S WORDS. Pure, so the witness checks every arm -- including that the
+// removal residue shows up as key_removed=false WITH its cause rather than as a silent success, and
+// that no arm can print key material.
+fn tailscale_join_outcome_receipt(outcome: TailscaleJoinOutcome) -> String {
+  match outcome {
+    JoinConvergedNoop { host: host, tailnet_name: tailnet_name } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=noop tailnet_name=",
+          tailnet_name as String,
+          " key=never_read\n",
+        ],
+        "",
+      )
+    JoinConverged {
+      host: host,
+      tailnet_name: tailnet_name,
+      installed: installed,
+      placement_action: placement_action,
+      key_removed: key_removed,
+      removal_cause: removal_cause,
+    } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=converged tailnet_name=",
+          tailnet_name as String,
+          " installed=",
+          tailscale_join_bool_word(b: installed),
+          " placement=",
+          placement_action,
+          " key_removed=",
+          tailscale_join_bool_word(b: key_removed),
+          " removal_cause=",
+          tailscale_join_cause_word(cause: removal_cause),
+          "\n",
+        ],
+        "",
+      )
+    JoinRefused { host: host, cause: cause } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=refused cause=",
+          cause,
+          "\n",
+        ],
+        "",
+      )
+    // THE RECEIPT THAT NAMES THE REMEDY WITHOUT PERFORMING IT. The line is deliberately shaped so the
+    // failure cannot be read as a join that worked: `outcome=refused_not_fleet_member`, the tag the policy
+    // keys on, what the node actually presents, `key=never_used`, and the recovery as an operator act.
+    JoinRefusedNotFleetMember {
+      host: host,
+      tailnet_name: tailnet_name,
+      required_tag: required_tag,
+      observed_tags: observed_tags,
+    } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=refused_not_fleet_member tailnet_name=",
+          tailnet_name as String,
+          " fleet_tag=",
+          required_tag as String,
+          " presents_tags=",
+          tailscale_join_observed_tags_word(tags: observed_tags),
+          " key=never_used",
+          " REFUSED: the node is Running on the tailnet but under an identity this fleet's policy does not",
+          " key on -- hand-joined, or owned by a user account -- so it sits outside every grant written",
+          " against ",
+          required_tag as String,
+          ". Recovery, and it is an OPERATOR-approved act, not this converge's: re-authenticate the host",
+          " under the fleet's pre-approved key (`tailscale up --auth-key=file:<placed key> --force-reauth`;",
+          " a tagged key makes the node assume the key's tag -- tailscale.com/kb/1085/auth-keys). This",
+          " converge never re-authenticates a host it did not join.\n",
+        ],
+        "",
+      )
+  }
+}
+
+// What the node presented, in the receipt's words. `none` is the hand-joined reading -- a node carrying NO
+// tags -- and it is printed as a word rather than an empty list because "carries no tags" and "the tag list
+// could not be read" are different facts for whoever acts on this line.
+fn tailscale_join_observed_tags_word(tags: List<String>) -> String {
+  match tags {
+    Empty => "none"
+    Cons { head: head, tail: Empty } => head
+    Cons { head: head, tail: tail } =>
+      concat(concat(head, ","), tailscale_join_observed_tags_word(tags: tail))
+  }
+}
+
+fn tailscale_join_bool_word(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn tailscale_join_cause_word(cause: String?) -> String {
+  match cause {
+    Absent => "none"
+    Present { value: c } => c
+  }
+}
+
+// Whether the dispatch as a whole succeeded: a converged or noop host is done; a refusal -- any refusal,
+// including a refusal to place a file -- fails the job, because a fleet host left off the tailnet is the
+// failure this converge exists to prevent.
+fn tailscale_join_run_settled(outcome: TailscaleJoinOutcome) -> Bool {
+  match outcome {
+    JoinConvergedNoop { host: _, tailnet_name: _ } => true
+    JoinConverged { host: _, tailnet_name: _, installed: _, placement_action: _, key_removed: _, removal_cause: _ } => true
+    JoinRefused { host: _, cause: _ } => false
+    // A host on the tailnet under the wrong identity is the failure this converge exists to prevent, stated
+    // as a refusal: the job does not settle.
+    JoinRefusedNotFleetMember {
+      host: _,
+      tailnet_name: _,
+      required_tag: _,
+      observed_tags: _,
+    } => false
+  }
+}
+
+fn write_tailscale_join_receipt_then_exit(body: String, ok: Bool) -> ProcessExit {
+  let w = Filesystem.Write(path: tailscale_join_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(
+      reason: join(["tailscale_join_converge: receipt write failed: ", w.error, "\n", body], ""),
+    )
+  } else if ok {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+// ONE DISPATCH, ONE HOST. Reads: TAILSCALE_JOIN_HOST, the host this run joins (the workflow binds it to
+// the dispatch's `host` input, the same input that pinned the job's runner). The clock gates the fetch;
+// the fetch gates the converge. No arm prints the credential: the refused arms name CAUSES, and only
+// tailscale_join_host ever sees the Secret itself.
+fn tailscale_join_converge_ci_wet() -> ProcessExit {
+  let stamp = concat("probed_at=", probed_at_word(reading: clock_now_probed_at()) as String)
+  let today = tailscale_join_today_from_clock(reading: clock_now_probed_at())
+  match actions_variable_read(name: tailscale_join_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      write_tailscale_join_receipt_then_exit(
+        body: join([stamp, " ", v, " ", d, "; the dispatch must name the join host\n"], ""),
+        ok: false,
+      )
+    ActionsVariablePresent { value: raw } =>
+      match tailscale_join_host_selection(supplied: raw) {
+        JoinHostUnrostered { supplied: s } =>
+          write_tailscale_join_receipt_then_exit(
+            body: join(
+              [
+                stamp,
+                " tailscale_join REFUSED: host '",
+                s,
+                "' is not a rostered fleet join host (gunbc.fleet.fleet_enrollments via ",
+                "tailscale_join_population); refusing to touch an unenrolled machine\n",
+              ],
+              "",
+            ),
+            ok: false,
+          )
+        JoinHostSelected { host: host } =>
+          if tailscale_fleet_auth_key_usable_on(today: today) {
+            match prepare_fleet_ssh_agent_context(attempt_raw: tailscale_join_attempt_raw) {
+              FleetSshContextRefused { cause: cause } =>
+                write_tailscale_join_receipt_then_exit(
+                  body: join([stamp, " tailscale_join host=", host as String, " ssh-context-refused: ", cause, "\n"], ""),
+                  ok: false,
+                )
+              FleetSshContextReady { context: context, receipt: context_receipt } =>
+                match fetch_secret_ref_credential(
+                  secret_ref: tailscale_fleet_auth_key_secret_ref,
+                  token_source: WorkloadIdentityToken,
+                ) {
+                  SecretCredentialAccessUpsertRequired { plan: _ } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: needs an accessor grant (gunbc.auth.fleet_secret_accessor_roster), ",
+                          "which a CI run cannot apply\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialFetchRefused { reason: r } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join([stamp, " tailscale_join host=", host as String, " fetch-refused: token refused: ", r as String, "\n"], ""),
+                      ok: false,
+                    )
+                  SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: the AccessVersion response did not decode\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialResolvedVersionMismatch { requested: rq, resolved: rs } =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: requested ",
+                          rq,
+                          " but Secret Manager answered about ",
+                          rs,
+                          "\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
+                    let run = tailscale_join_host(
+                      host: host,
+                      context: context,
+                      key_material: credential,
+                      resolved_version: resolved_version,
+                      today: today,
+                    )
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          "\nssh_context=",
+                          context_receipt,
+                          "\n",
+                          tailscale_join_outcome_receipt(outcome: run),
+                        ],
+                        "",
+                      ),
+                      ok: tailscale_join_run_settled(outcome: run),
+                    )
+                  }
+                }
+            }
+          } else {
+            write_tailscale_join_receipt_then_exit(
+              body: join([stamp, "\n", tailscale_join_expiry_refusal_wire(host: host, today: today)], ""),
+              ok: false,
+            )
+          }
+      }
+  }
+}

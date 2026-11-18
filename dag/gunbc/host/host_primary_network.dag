@@ -20,6 +20,7 @@ import extdeps.iproute2.ip_show {
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWrite, RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired, FleetHostFileStanding, HostFileIdentical, HostFileDiffers, HostFileAbsent, HostFileUnobservable,
+  fleet_host_file_scope,
 }
 import gunbc.host.host_primary_network_desired {
   PrimaryAddressing, PrimaryDhcp4, HostPrimaryNetworkDesired, srv1_primary_network_desired, host_primary_network_rows,
@@ -159,6 +160,7 @@ fn primary_network_netplan_file(r: PrimaryNetworkRow) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "primary-network-netplan" as NonEmptyStr,
     path: primary_network_netplan_path(),
+    scope: fleet_host_file_scope,
     content: r.netplan_text,
     mode: RemoteFileModeOwnerReadWrite,
     validation: NoValidation,
@@ -173,6 +175,7 @@ fn primary_network_cloud_init_guard() -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "cloud-init-network-config-disabled" as NonEmptyStr,
     path: primary_network_cloud_init_guard_path as FilePath,
+    scope: fleet_host_file_scope,
     content: cloud_init_network_config_disabled_text as String,
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,

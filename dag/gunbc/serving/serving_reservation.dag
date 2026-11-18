@@ -289,8 +289,14 @@ data serving_host_reservations: List<ServingHostReservation> = [
 //     check has a caller;
 //   - the Strata RELEASE pinned by artifact digest (the ExecStart python/serve/server.py binary) -- the deploy that
 //     reproduces the byte-exact engine from the pin;
-//   - the engine's GPU CARDS + 35 W POWER CAP (A2, GPUs 0+1 / 2+3 per msg_cc2ab16d) -- the runner GPU-width consumer
-//     that stops counting a serving card as free;
+//   - the engine's GPU CARDS + 35 W POWER CAP (A2, GPUs 0+1 / 2+3 per msg_cc2ab16d) -- RETIRED, NOT AWAITING A
+//     CONSUMER: the operator's 2026-11-17 report removed all four A2s from butch physically (to be sold) and
+//     made butch CI only, no serving, so there is no card left for a runner GPU-width consumer to count and no
+//     cap left to admit. The cards' identity and their last seated reading are kept in
+//     gunbc.fleet.fleet_physical_inventory; the cap decision and its four intents are gone from
+//     gunbc.serving.gpu_power_state_policy. What still OWNS a consumer here is the serving memory charge below,
+//     which is held by srv14_serving_memory_charge_retirement_frontier -- the cards going does NOT by itself
+//     free the 192 GiB the runner is holding back for them;
 //   - the engine's API-KEY REFERENCE (~/strata-pool/api_key, msg_cc2ab16d) -- the router key-state consumer that
 //     forwards it; the model must still never carry a literal key when it lands;
 //   - the memory-cap DROP-IN itself (/etc/systemd/system/strata-pool@{a,b}.service.d/60-memory-cap.conf, hand-installed
@@ -299,6 +305,39 @@ data serving_host_reservations: List<ServingHostReservation> = [
 //     the ceiling the runner charges and the ceiling the unit carries cannot drift.
 data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "Delete when each butch (srv14) fact below is modelled TOGETHER with the production consumer that reads it -- port and bind with the router/deploy that reads the replica's listen address (0.0.0.0 on ports 18081/18082); the Strata release with the deploy that reproduces the byte-exact engine from an artifact digest; the GPU cards and 35 W power cap with the runner GPU-width consumer that stops counting a serving card as free; the API-key reference with the router key-state consumer that forwards it; and the hand-installed memory-cap drop-in 60-memory-cap.conf (as srv3's and srv4's are) with the future Strata engine unit renderer that renders MemoryMax/MemoryHigh/MemorySwapMax from it. Until then they are facts with no consumer over an executing route and must not be staged here." as NonEmptyStr
+)
+
+// THE HELD HALF OF THE BUTCH SERVING RETIREMENT (node://adhoc-abcfa9d2-8a2, group B). The A2 cards and their
+// 35 W cap are retired; the SERVING MEMORY CHARGE is NOT, and deliberately so -- see the two triggers below.
+// WHY THIS IS A HOLD AND NOT AN OMISSION: butch's reservation withholds real RAM from the runner pool today.
+// Each replica charges memory_max 96 GiB (gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory,
+// read off the 60-memory-cap.conf drop-ins 2026-11-12T03:48:46Z), so the pair withholds 192 GiB; and
+// gunbc.runner.runner_slot_allocation spends it monotonically -- committed_width_with_serving subtracts
+// host_memory_reserved from usable RAM, and host_memory_reserved returns Present{0} for a host with NO
+// reservation row. Deleting the row is therefore NOT neutral: it raises butch's runner memory envelope by the
+// full 192 GiB, widening its CI runners by bytes nothing has measured. The operator has forbidden any increase
+// to a CI memory budget without explicit sign-off, and budgets are to come down, not up; so this retirement
+// waits for a measurement rather than a subtraction. The same money is coupled a second time: srv14's fixed
+// overhead subtracts the two engine cgroups' anon+shmem at the read instant (40,400,416,768 B,
+// gunbc.host.host_memory_observation srv14_strata_engine_residency_at_read) precisely so those bytes are not
+// double-charged, and the witness test.claim.runner.srv14_runner_capacity_witness pins BOTH 4,842,987,520
+// (with the subtraction, the committed bound) and 45,243,404,288 (without it). Deleting the residency rows
+// would move butch's overhead to ~42 GiB -- the wrong direction on the wrong evidence, charging CI for bytes
+// that are no longer resident. THE FOLLOWING DISSOLVES when BOTH triggers have landed, and not before:
+//   (1) the live retirement on butch of strata-pool@a, strata-pool@b AND a2-power-cap.service -- a converge
+//       dispatch routed through the butch CI runner lane (tidy-swift-586), which runs AFTER that lane's srv14
+//       address PR and the tailnet join, since the units must be retired by the same lane bringing butch onto
+//       CI; the operator's session read them already inactive/FAILED at 2026-11-16T22:36Z, but a model row
+//       retires on a retirement performed and witnessed, not on a unit having stopped; AND
+//   (2) a re-measured quiescent read on butch after (1) -- a fresh /proc/meminfo MemAvailable high-water with
+//       the engines gone, in the shape of srv14_memavailable_quiescent_read, so the base residency and hence
+//       the runner width rest on a reading of the box as it then is. This is the path the overhead's own
+//       provenance already names for superseding the quiescent bound.
+// Then the reservation row, butch_a/b_strata_engine_memory, and the residency subtraction retire together, and
+// the operator is put the ruling with the measured number if any CI budget is to rise. Until then these rows
+// stay, and srv14's width keeps resolving exactly as it does today.
+data srv14_serving_memory_charge_retirement_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when both triggers land: (1) strata-pool@a, strata-pool@b and a2-power-cap.service retired live on butch, by the converge dispatch routed through the butch CI runner lane (tidy-swift-586) after its srv14 address PR and the tailnet join; and (2) a re-measured quiescent /proc/meminfo high-water read on butch after that retirement. Only then may srv14_strata_reservation's serving memory charge (2 x 96 GiB MemoryMax from gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory), the butch_a/b engine-memory rows, and the srv14_strata_engine_residency_at_read subtraction in gunbc.host.host_memory_observation be retired together -- and any CI memory budget rise they imply needs the operator's explicit sign-off with the measured number attached. Deleting the reservation row before this dissolves RAISES butch's runner memory envelope by 192 GiB and reds test.claim.runner.srv14_runner_capacity_witness. While this is unbound, srv14 is also not enrollable as a remote-build serving host: it stays out of gunbc.compute.remote_build_serving_setup remote_build_serving_candidate_hosts, and no remote-build observe or converge may be dispatched to it, because gunbc.compute.host_capacity host_capacity_build_seat prices a builder's seat against the same envelope this charge is holding back -- the converger would install a builder over bytes no quiescent read has measured." as NonEmptyStr
 )
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {

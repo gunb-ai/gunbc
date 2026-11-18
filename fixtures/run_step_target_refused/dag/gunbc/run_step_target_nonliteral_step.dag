@@ -1,0 +1,12 @@
+module gunbc.run_step_target_nonliteral_step
+
+import std.types { Int, String }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE CONDITION-2 CONTROL (fail closed on non-literal, never skip). The callee is the real constructor, but the
+// entry half is a VARIABLE, not a string literal -- the un-checkable route. The check must REFUSE it typed at the
+// site (RunStepTargetArgumentNotLiteral), not silently pass it. This is the shape that made the keypair-mint
+// subject carry a typed mint_target rather than two loose strings this helper could re-assemble.
+fn run_step_target_nonliteral_helper(name: String) -> Int {
+  gunbc_run_step_target(module: "gunbc.run_step_target_fixture_home", function: name)
+}

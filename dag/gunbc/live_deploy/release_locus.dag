@@ -1,7 +1,7 @@
 module gunbc.live_deploy.release_locus
 
 import std.types { String, List, NonEmptyStr, CommitSha, Bool }
-import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name, release_locus_tree_receipt_revision_key, release_locus_tree_receipt_digest_key }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
 // THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
@@ -73,6 +73,32 @@ fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
+// A RELEASE LOCUS IS ONE RECORD, NOT A HANDFUL OF STRINGS THAT CAN DRIFT APART. The install that lays
+// a tree into a locus needs the spine (the parent directories it may create), the locus directory and
+// the revision the locus is named for; when those were three arguments, a caller could pair a locus
+// built for one revision with a different revision argument and nothing in the signature stopped it
+// (review 95699). `release_locus_record` is the ONE mint for the release shape: it derives spine and
+// locus from (base_root, revision) together, so a caller that mints cannot pair a locus with a
+// revision it was not minted for. `helper_release_locus_record` is the one mint for the root-helper
+// snapshot shape under a HelperLocus; it likewise derives the directory from the revision it names.
+// The type's constructor stays open (a record is a plain carrier), so the guarantee is "these two
+// folds are the sanctioned mints; every release/helper install obtains its locus through one of them,"
+// NOT "a mismatched record is unwritable" -- the constructor is public. Stated at that rung per
+// gunbc.design_argument::guarantee_ladder: the reported rung equals the rung the code establishes.
+type ReleaseLocus {
+  revision: ReleaseRevisionBinding
+  spine: List<String>
+  locus: String
+}
+
+fn release_locus_record(base_root: String, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    revision: revision,
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
+  }
+}
+
 // A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
 // device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
 fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
@@ -113,6 +139,24 @@ fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> Str
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
     RevisionNotInstalled => release_locus_dir_unbound_poison
+  }
+}
+
+// THE ONE MINT FOR THE ROOT-HELPER SNAPSHOT INSTALL. Its directory is helper_locus_dir(locus, revision) --
+// derived from the SAME revision the record carries. The root-helper snapshot install port
+// (live_deploy_apply_root_helper_snapshot_on_host, reached from deploy_apply_ports_on_host and the fleet
+// board-function converge delivery) now mints the directory once from (locus, revision) instead of its two
+// call sites hand-computing helper_locus_dir beside an independent revision argument (review 95713: a
+// hand-copied dir could drift from the revision it was built for -- the very split this record exists to
+// remove). Other helper_locus_dir callers (the board-function converge / srv1 gpu-power-cap unit renderers,
+// the attempt-system-unit launch) compute a path for their OWN verify/display purpose, not the install
+// directory; they are unrelated and unchanged. The spine is a caller-supplied list (the helper's parent
+// dirs are not derived from a base root the way the release spine is).
+fn helper_release_locus_record(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding) -> ReleaseLocus {
+  ReleaseLocus {
+    revision: revision,
+    spine: spine,
+    locus: helper_locus_dir(locus: locus, revision: revision),
   }
 }
 
@@ -162,8 +206,8 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
   if !success {
     TreeReceiptUnreadable { detail: error }
   } else {
-    let rev = tree_receipt_field(text: body, key: "candidate_revision")
-    let dig = tree_receipt_field(text: body, key: "installed_digest")
+    let rev = tree_receipt_field(text: body, key: release_locus_tree_receipt_revision_key)
+    let dig = tree_receipt_field(text: body, key: release_locus_tree_receipt_digest_key)
     if rev == "" {
       TreeReceiptMalformed { detail: "the tree receipt carries no candidate_revision line, so it cannot say which candidate the copy was for" as NonEmptyStr }
     } else if dig == "" {
@@ -172,4 +216,110 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
       TreeReceiptObserved { revision: rev as NonEmptyStr, installed_digest: dig as NonEmptyStr }
     }
   }
+}
+
+// ── THE PAIR IS DELIVERED AS ONE UNIT, OR THE LAST GOOD PAIR KEEPS SERVING ───────────────────────
+// THE LAB SERVES A PAIR, NOT A BINARY. The belt fold refuses to serve unless the serving binary and the
+// source tree it reads carry the SAME main head (gunbc.live_deploy.release_binding::lab_pair_serve_verdict).
+// A person at a terminal used to make that pair by hand — fetch CI's release bins, check out the matching
+// source, drop both into a locus, restart the serve — and a hand redeploy is exactly where a MIXED pair is
+// born: the two halves land at different times, so in between the lab serves a binary from one head against
+// a tree from another, and the gate refuses. This fold is that delivery as ONE authority: the observed facts
+// of a candidate delivery in, a bound pair out, or a refusal that keeps the last good pair serving. Its
+// consumer is the co-located install stage @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan),
+// which consults this fold and turns a PairInstalled into the ordered typed install and a PairRefused into
+// PlanKeepsLastGood. The install stage is itself consumed by the executing route — the lab's own delivery unit
+// (a NAMED, TRACKED later change, declared frontier: roadmap work item `lab-converges-release-pair`, PR3b — unit
+// gunbc-srv1-lab-codex-feedback-v0-pair-delivery .service, its trigger the sibling .timer on a 600 s OnUnitActiveSec,
+// to be emitted and registered in emit.dag/spec.dag/apply_legs.dag) runs the observed fetch -> build-key verify ->
+// install stages in order, so a node merged to main reaches the served standings with no hand redeploy.
+//
+// THE REFUSAL HAS ONE PLACE (gunbc.fail_closed::fail_closed, "every degradation is typed and named"): every
+// refusal arm returns the `serving` binding it was handed as `kept`, so "keep the last good locus serving" is
+// not re-decided at each call site — the fold that could refuse is the ONLY fold that decides what keeps
+// serving. The red controls (a head whose release bins are not built yet, whose pack fails build-key
+// verification, or whose fetched source is not the head delivered for) are PairRefused arms: on the modelled
+// leg it cannot install BOTH halves, so the previous pair keeps serving and the refusal is visible.
+//
+// WHAT IT ESTABLISHES, at the rung the code reaches (gunbc.design_argument::guarantee_ladder): given the
+// caller's OBSERVED inputs — the pack fetch that yielded the binary digest and the consumer verify script's
+// build-key verdict for that SAME fetched pack, neither recomputed here — the installed pair is bound exactly
+// when the pack exists (not none), was verified on the fetched pack, and the fetched source head IS the main
+// head being delivered for. It does NOT itself download or hash bytes; the delivery stages' fetch and verify
+// effects carry that (gh_run_download_argv + the consumer build-key verify dispatch).
+//
+// The OBSERVED build-key verdict of the consumer script, carrying the digest it verified against. Its single
+// producer is the staged plan's verification derivation (it names this digest ONLY when the verify observation ran
+// on the same pack_dir the fetch observed); the fold cross-checks it against the binary it binds, so a verdict for
+// an unverified — or different — pack cannot be handed to the fold to authorize an install (fail_closed).
+type VerifiedPack { digest: NonEmptyStr }
+
+// THE PAIR CARRIES ONE HEAD, ONE DIGEST, AND THE FILE THAT WAS DELIVERED (reviews 96050, 96059). The pair is the
+// delivered binary as ONE identity: the single head (deliver_release_pair builds a pair only where source_head ==
+// main_head, so storing main_head too duplicated one fact), the CI-verified digest that names it in the release
+// locus, and the path of the file the fetch OBSERVED (its placement source). Carrying the source here — not
+// re-deriving it at the placement site — is what makes the install a single authority: the file placed is provably
+// the file fetched, with no path left for the executing unit to invent (review 96059).
+type DeliveredReleasePair {
+  head: CommitSha
+  binaries_sha256: NonEmptyStr
+  binary_source: NonEmptyStr
+}
+
+type ReleasePairDelivery
+  = PairInstalled { pair: DeliveredReleasePair, locus: ReleaseLocus }
+  | PairRefused { reason: NonEmptyStr, kept: ReleaseRevisionBinding }
+
+data release_pair_bins_unbuilt_reason: NonEmptyStr = "the release bins for this main head are not built yet — no release-bins pack was handed off for the head, so there is no verified binary to pair the source with; the lab keeps serving the last good pair"
+data release_pair_pack_unverified_reason: NonEmptyStr = "the release-bins pack for this main head failed build-key verification (--verify-build-artifacts refused it), so its binaries are not trusted; the lab keeps serving the last good pair"
+data release_pair_source_head_mismatch_reason: NonEmptyStr = "the fetched source head is not the main head being delivered for, so the source half of the pair would not match the binary half; the lab keeps serving the last good pair"
+data release_pair_source_missing_reason: NonEmptyStr = "a binary digest was reported for this head but no fetched file was observed to carry it, so the install would have no modeled placement source; the lab keeps serving the last good pair"
+
+// ONE HEAD, ONE PAIR, OR THE LAST GOOD PAIR KEEPS SERVING. `binaries_sha256` and `binary_source` are `none` when
+// the observed fetch produced no pack for the head (unbuilt); when a pack was fetched they are its OBSERVED digest
+// and the path of the file the fetch produced. `verified` is a `VerifiedPack?` — the OBSERVED build-key verdict,
+// carrying the digest the consumer script verified against. It is `none` when no verdict was observed (pack not
+// verified); its single producer, @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan), emits
+// it only when the verify observation names the SAME pack_dir the fetch observed. The fold then CROSS-CHECKS that
+// the verdict's digest equals the `binaries_sha256` it is about to bind, and refuses otherwise — so a caller
+// cannot hand a verdict for a pack it did not verify (fail_closed: the wrong state cannot be USED, not merely
+// warned against). Every refusal returns the handed-in `serving` binding as `kept`, so a refused
+// delivery installs nothing and restarts nothing — the previous pair keeps serving with the refusal visible. A
+// digest reported WITHOUT an observed source file is incoherent and is refused as its own named degradation
+// (fail_closed), rather than binding a pair whose placement source is unknown.
+fn deliver_release_pair(base_root: String, serving: ReleaseRevisionBinding, main_head: CommitSha, source_head: CommitSha, binaries_sha256: NonEmptyStr?, binary_source: NonEmptyStr?, verified: VerifiedPack?) -> ReleasePairDelivery {
+  match binaries_sha256 {
+    none => PairRefused { reason: release_pair_bins_unbuilt_reason, kept: serving }
+    Present { value: sha } =>
+      match verified {
+        none => PairRefused { reason: release_pair_pack_unverified_reason, kept: serving }
+        Present { value: vp } =>
+          // The verdict must name the very pack being bound: its digest equals the binary digest, or it verified
+          // something else and this pack is, for our purposes, unverified (fail_closed cross-check).
+          if (vp.digest as String) != (sha as String) {
+            PairRefused { reason: release_pair_pack_unverified_reason, kept: serving }
+          } else if (source_head as String) != (main_head as String) {
+            PairRefused { reason: release_pair_source_head_mismatch_reason, kept: serving }
+          } else {
+            match binary_source {
+              none => PairRefused { reason: release_pair_source_missing_reason, kept: serving }
+              Present { value: src } =>
+                // source_head == main_head here (the arm above), so the pair names its single head once (source_head);
+                // the pair carries the fetched file so the install places exactly what was fetched (review 96059).
+                let pair = DeliveredReleasePair { head: source_head, binaries_sha256: sha, binary_source: src }
+                PairInstalled {
+                  pair: pair,
+                  locus: release_locus_record(base_root: base_root, revision: delivered_pair_revision(pair: pair)),
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE PAIR'S ONE IDENTITY. The serve unit's release_revision, the locus directory it names, and the standings
+// readback all read this ONE value — the head whose CI release bins were verified against its source — so the
+// identity is spelled once and never hand-copied (one authority).
+fn delivered_pair_revision(pair: DeliveredReleasePair) -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: pair.head }
 }

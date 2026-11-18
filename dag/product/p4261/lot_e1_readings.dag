@@ -1,0 +1,1006 @@
+module product.p4261.lot_e1_readings
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_c, p4261_e1_s1583323120218 }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, terminal_ref_equal }
+import product.electrical.continuity {
+  BenchConditions,
+  Unpowered,
+  Energized,
+  ModuleRemoved,
+  ModuleUnrecorded,
+  DiodeModeObservation,
+  DiodeDisplay,
+  RedBlack,
+  ProbesUnrecorded,
+  ForwardMillivolts,
+  OverLimit,
+  EvidenceRef,
+  OperatorStatement,
+  AfterIncidents,
+  BeforeIncidents,
+  BetweenIncidents,
+  ProbeRecord,
+  PointRecorded,
+  PointInferred,
+  both_points_recorded,
+  both_points_inferred,
+  terminal_text,
+}
+import product.electrical.bench_session {
+  AssetAlteration,
+  PartRemoved,
+  BenchIncident,
+  NotInspected,
+  DamageSeen,
+  BenchRecord,
+  ResistanceObservation,
+  ResistanceDisplay,
+  DisplayValue,
+  DisplayZeroWithoutBaseline,
+  DisplayOverRange,
+  DisplayAboveBaseline,
+  DisplayAtProbeBaseline,
+  ProbePolarity,
+  RedOnFirst,
+  RedOnSecond,
+  PolarityUnrecorded,
+  AutoRanging,
+  ReadingStability,
+  KeptMoving,
+  StabilityUnrecorded,
+  StatedPlainly,
+  resistance_text,
+  resistance_display_text,
+}
+import product.p4261.carrier { MeasuredBoard, AnalysisSelection }
+import product.p4261.readings { BoardState, board_after, board_intact, board_readings, board_netlist }
+import product.electrical.measured_netlist { MeasuredNetlist, node_text, link_text }
+import product.p4261.e1_design { e1_component }
+import product.p4261.e1_b {
+  e1_q300,
+  e1_q300_lone_lead,
+  e1_q300_lead_a,
+  e1_q300_lead_b,
+  e1_q301_lead_b,
+  e1_q301_b_via,
+  e1_ground_ref,
+  e1_u1_p5,
+  e1_q21,
+  e1_q22,
+  e1_back_cluster,
+  e1_f1_near,
+  e1_f1_far,
+  e1_f300_one,
+  e1_f300_other,
+  e1_terminal,
+  e1_unstored_photo,
+}
+
+// TWO LOT E1s READ SIDE BY SIDE AFTER THE 2026-11-13 ENABLE ATTEMPT. The enable attempt on S/N
+// 1583323120148 (p4261_e1_c) lifted Q300's lone lead off its pad, which was resoldered, and its input
+// transistors' pins were probed while the board was powered. The unpowered readings that followed are
+// recorded here as that board's, in its state after both events; the same readings taken on the untouched
+// lot E1 S/N 1583323120218 (p4261_e1_s1583323120218, its own asset) are that board's, and a fold puts the
+// two side by side. Each board's rows carry its own asset, so a reading of one never stands for the other.
+//
+// WHEN AND HOW. Both boards unpowered with J20's leads off. Every resistance on an auto-ranging meter, read
+// by the operator at the bench and reported through the operator's live session; the probes-together
+// display was about 0.7 ohm when it was read on S/N 1583323120148 and was not read on S/N 1583323120218,
+// nor before the underside parts A and B were read on either board.
+// S/N 1583323120148: Q300's checks, the input transistors' twelve rows and the U1_P5 leg check on the
+// evening of 2026-11-13, after the attempt; the fuses, the gate checks A to C and Q300's recheck on the
+// evening of 2026-11-14, and the underside parts A and B late that evening, after which part B was
+// removed (the events below). S/N 1583323120218: everything on the evening of 2026-11-14, A and B last,
+// before S/N 1583323120148's.
+//
+// THE INPUT TRANSISTORS ARE NAMED AS THE OPERATOR NAMED THEM. L is the seven-lead transistor nearer U1_P5,
+// which the operator called Q21 on 2026-11-13; a photograph of 2026-11-14 shows U1_P5 beside the body
+// labelled Q21_P5. R is the one nearer the fuse, which the operator called Q22; its own label was not read
+// in these sittings. The labels Q1_P5 and Q6_P5 are printed below R's legs 5 to 7, beside two round vias
+// (photographs of 2026-11-14, sha256 daebc0a935a8b10f and b2680c90ee172735), and which parts they mark is
+// not established. So every point on R is recorded as inferred, with that basis.
+//
+// A READING AT THE PROBES' OWN LEVEL IS KEPT AS THE OPERATOR'S WORDS. A display of 0 to about 1 ohm on an
+// auto-ranging meter is the probes' level, not a figure: an ohm count cannot hold 0.6, and
+// product.electrical.bench_session admits no auto-ranged reading as a join. So those readings are
+// DisplayZeroWithoutBaseline with the words reported, and every larger display is its value.
+//
+// UNITS. The operator typed 'mohm' for the megohm readings (0.6, 10, 15 and 16); milliohms are below the
+// meter's leads, and the operator confirmed megohms to the reviewer on 2026-11-14.
+
+data lot_unpowered_module_off: BenchConditions = BenchConditions { power: Unpowered, module: ModuleRemoved }
+
+// The comparison sheet asked for the module to be recorded absent on S/N 1583323120218; the operator did
+// not report it.
+data lot_unpowered_module_unrecorded: BenchConditions = BenchConditions { power: Unpowered, module: ModuleUnrecorded }
+
+// ── S/N 1583323120148: THE EVENTS THAT DIVIDE ITS STATES ──────────────────────────────────────────
+
+data lot_e1_c_q300_lift_key: NonEmptyStr = "e1c-2026-11-13-q300-lone-lead-lifted-and-resoldered"
+
+data lot_e1_c_probing_key: NonEmptyStr = "e1c-2026-11-13-input-transistor-pins-probed-powered"
+
+// Q300's lone lead came off its pad under the override clip during the first powered try, and the operator
+// resoldered it the same evening. Recorded as a bench incident, which divides the board's states, and not
+// as a part removed and refitted: product.electrical.bench_session keeps a refitted removal as one event
+// for two changes, whose states it refuses to tell apart, and every reading here is of the board after
+// the resolder.
+data lot_e1_c_q300_lift: BenchIncident = BenchIncident {
+  key: lot_e1_c_q300_lift_key,
+  asset: p4261_e1_c,
+  bridged: [],
+  record: both_points_inferred(first_basis: "no point joined: the event lifted a lead", second_basis: "no point joined: the event lifted a lead"),
+  conditions: BenchConditions { power: Energized, module: ModuleRemoved },
+  observed: "Q300's lone lead lifted off its pad under the clip holding the override, and was resoldered by the operator the same evening",
+  inspection: DamageSeen { description: "the lone lead off its pad; after the resolder, a photograph shows the lead on its own pad with a heavy fillet, the trace to the via intact and no bridge" },
+  evidence: OperatorStatement { stated_on: "2026-11-13", verbatim: "it seems like q300 snapped up - the lone lead came off the board / i got everything fixed up fine" },
+}
+
+// The operator feared a short while probing the input transistors' end legs on the powered board. Which
+// legs, if any, the probe joined is not known, so no terminal is named as bridged.
+data lot_e1_c_probing: BenchIncident = BenchIncident {
+  key: lot_e1_c_probing_key,
+  asset: p4261_e1_c,
+  bridged: [],
+  record: both_points_inferred(first_basis: "no point recorded: the operator named no legs", second_basis: "no point recorded: the operator named no legs"),
+  conditions: BenchConditions { power: Energized, module: ModuleRemoved },
+  observed: "the input transistors' pins probed by hand on the powered board during the enable attempt; the operator thought legs had been shorted, then read both end pins as expected",
+  inspection: NotInspected,
+  evidence: OperatorStatement { stated_on: "2026-11-13", verbatim: "i think i shorted those legs when i was measuring htem" },
+}
+
+data lot_e1_c_after_both: List<NonEmptyStr> = [lot_e1_c_q300_lift_key, lot_e1_c_probing_key]
+
+data lot_e1_c_b_removal_key: NonEmptyStr = "e1c-2026-11-14-underside-part-b-removed"
+
+// The operator removed part B from S/N 1583323120148 late on 2026-11-14, after every reading in this
+// module, and it fractured coming off, so no reading of it off the board exists. Recorded as a part removed
+// and not refitted, which divides the board's states: every reading here of S/N 1583323120148 is of the
+// board before it, and the board after it holds only the readings taken since (below). Afterwards the
+// operator measured 0.40 mm "between the pad centres" with a micrometer; the intact B on S/N 1583323120218
+// measures 1.1 by 0.5 mm, whose terminations' centres cannot be 0.40 mm apart, so the figure is not their
+// centre spacing, and what it spanned stays unresolved. A photograph of the empty footprint, sent to the operator's
+// live session and not saved here, shows both solder-covered pads in place, the upper trace reaching B1's
+// pad and the lower running from B2's pad toward the round via, with no torn pad or bridge seen; a
+// photograph cannot show a pad partly lifted or a crack beneath one. The words are the reviewer's summary,
+// which the operator forwarded to be recorded.
+data lot_e1_c_b_removal: AssetAlteration = AssetAlteration {
+  key: lot_e1_c_b_removal_key,
+  asset: p4261_e1_c,
+  part: gate_part_b,
+  performed_on: "2026-11-14",
+  change: PartRemoved { refitted: false },
+  evidence: OperatorStatement { stated_on: "2026-11-14", verbatim: "FYI - please record this stuff - Understood—0.40 mm measured with a micrometer, between the pad centres. [...] Current standing: B is removed; it fractured during removal; no off-board resistance result is available." },
+}
+
+// ── THE POINTS ────────────────────────────────────────────────────────────────────────────────────
+
+data r_basis: NonEmptyStr = "R, the seven-lead input transistor nearer the fuse, which the operator called Q22 on 2026-11-13; its own label was not read in these sittings (the labels Q1_P5 and Q6_P5 printed below its legs mark parts not yet identified)"
+
+fn l_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_q21, name: n)
+}
+
+fn r_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_q22, name: n)
+}
+
+fn u1_lead(n: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_u1_p5, name: n)
+}
+
+data p6: ElectricalTerminalRef = e1_terminal(c: e1_back_cluster, name: "P6")
+
+// Check B and C: one probe on the gate's metal lead where it bends out near the body, the other on the pad
+// beyond the foot. Whether the second probe met bare pad or the solder over the foot was not recorded; on
+// the foot it shows only that the lead is continuous, not that it is joined to the board (the reviewer,
+// 2026-11-14).
+data l_gate_lead: ElectricalTerminalRef = l_pin(n: "pin 1 lead, at its bend near the body")
+
+data l_gate_pad: ElectricalTerminalRef = l_pin(n: "pin 1 pad, or the solder over its foot (which, unrecorded)")
+
+data r_gate_lead: ElectricalTerminalRef = r_pin(n: "pin 1 lead, at its bend near the body")
+
+data r_gate_pad: ElectricalTerminalRef = r_pin(n: "pin 1 pad, or the solder over its foot (which, unrecorded)")
+
+// THE TWO UNDERSIDE PARTS ON THE GATE NETWORK. On the operator's underside photograph whose file name ends
+// 220626_002.JPG, two small unmarked two-terminal parts sit at the two ends of a long trace behind the input
+// transistors. The reviewer marked them A and B on a copy (p4261_underside_gate_path_points.png), and the
+// operator confirmed those are the labels the operator had drawn: A the left part and B the right as the
+// photograph is held (not the top side's L and R), end 1 of each the top one, on the long trace, and end 2
+// the bottom one, toward its own round via. They are photo labels, not board designators; the parts'
+// designators and values, and which board the photograph shows, were not recorded. The operator's first
+// find, on 2026-11-14, was a via beside one gate pad reading 0 ohm to a part directly behind it on this
+// side; which board, gate and part end it was are unrecorded, and is not a row here. THE PARTS' SIZE, from
+// the intact part: on 2026-11-15 the operator measured B on S/N 1583323120218 at 1.1 mm long and 0.5 mm wide
+// with its end caps ("the total length of the resistor is 1.1mm, and .5mm wide"), an 0402 body (1.0 by
+// 0.5 mm nominal). That settles the size the live session first guessed and the reviewer withdrew as an
+// estimate, and withdraws the 01005 candidate drawn from the 0.40 mm read on S/N 1583323120148's empty
+// footprint, a figure that stays an unresolved measurement.
+data gate_part_a: ComponentInstanceIdentity = e1_component(local: "underside part A on the gate network (photo label, not a designator)")
+
+data gate_part_b: ComponentInstanceIdentity = e1_component(local: "underside part B on the gate network (photo label, not a designator)")
+
+data gate_a_1: ElectricalTerminalRef = e1_terminal(c: gate_part_a, name: "end 1 (top, on the long trace)")
+
+data gate_a_2: ElectricalTerminalRef = e1_terminal(c: gate_part_a, name: "end 2 (bottom, toward its via)")
+
+data gate_b_1: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 1 (top, on the long trace)")
+
+data gate_b_2: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 2 (bottom, toward its via)")
+
+data gate_b_2_via: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "the round via beside end 2")
+
+// B's two bare pads, after B came off S/N 1583323120148: the board's lands, not the part's terminations.
+data gate_b_1_pad: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 1's bare pad (B removed)")
+
+data gate_b_2_pad: ElectricalTerminalRef = e1_terminal(c: gate_part_b, name: "end 2's bare pad (B removed)")
+
+// "the via next to B2 has continuity": the operator named no second point. B's end 2, which the via sits
+// beside, stands for it; R's gate, which goes to end 2, is the other candidate.
+data via_second_basis: NonEmptyStr = "the operator's 'the via next to B2 has continuity' names no second point; B's end 2, which the via sits beside, stands for it (R's gate, which goes to end 2, is the other candidate)"
+
+// "J20 black": the return lead on J20's latch-side row, read as one with the row's position 1 on the E1-b.
+data return_basis: NonEmptyStr = "the operator's 'J20 black', the return lead on J20's latch-side row"
+
+// "a big transistor's tab": which of the two tabs, unrecorded; the two tabs read as one on both boards.
+data tab_basis: NonEmptyStr = "'a big transistor's tab', which one unrecorded; L's tab stands for it, the two tabs reading as one"
+
+data second_on_return: ProbeRecord = ProbeRecord { first: PointRecorded, second: PointInferred { basis: return_basis } }
+
+data second_on_tab: ProbeRecord = ProbeRecord { first: PointRecorded, second: PointInferred { basis: tab_basis } }
+
+data both_on_r: ProbeRecord = both_points_inferred(first_basis: r_basis, second_basis: r_basis)
+
+data second_on_r: ProbeRecord = ProbeRecord { first: PointRecorded, second: PointInferred { basis: r_basis } }
+
+data first_on_r: ProbeRecord = ProbeRecord { first: PointInferred { basis: r_basis }, second: PointRecorded }
+
+// ── HOW A ROW IS WRITTEN ────────────────────────────────────────────────────────────────────────────
+
+fn at_probe_level(shown: NonEmptyStr) -> ResistanceDisplay {
+  DisplayZeroWithoutBaseline { reported: shown }
+}
+
+fn about(ohms: Nat) -> ResistanceDisplay {
+  DisplayValue { ohms: ohms, approximate: true }
+}
+
+fn shown(ohms: Nat) -> ResistanceDisplay {
+  DisplayValue { ohms: ohms, approximate: false }
+}
+
+fn on_c(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, display: ResistanceDisplay, stability: ReadingStability, said: List<EvidenceRef>) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_c, first: first, second: second, record: record, conditions: lot_unpowered_module_off,
+    polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: StatedPlainly,
+    order: BetweenIncidents { after: lot_e1_c_after_both, before: [lot_e1_c_b_removal_key] }, evidence: said,
+  }
+}
+
+fn on_s(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, display: ResistanceDisplay, stability: ReadingStability, said: List<EvidenceRef>) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_s1583323120218, first: first, second: second, record: record, conditions: lot_unpowered_module_unrecorded,
+    polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: StatedPlainly,
+    order: BeforeIncidents { keys: [] }, evidence: said,
+  }
+}
+
+fn diode_on(asset: PhysicalAssetIdentity, conditions: BenchConditions, red: ElectricalTerminalRef, black: ElectricalTerminalRef, display: DiodeDisplay, said: EvidenceRef) -> DiodeModeObservation {
+  DiodeModeObservation { asset: asset, probes: RedBlack { red: red, black: black }, display: display, conditions: conditions, evidence: said }
+}
+
+fn diode_c(red: ElectricalTerminalRef, black: ElectricalTerminalRef, display: DiodeDisplay, said: EvidenceRef) -> DiodeModeObservation {
+  diode_on(asset: p4261_e1_c, conditions: lot_unpowered_module_off, red: red, black: black, display: display, said: said)
+}
+
+fn diode_s(red: ElectricalTerminalRef, black: ElectricalTerminalRef, display: DiodeDisplay, said: EvidenceRef) -> DiodeModeObservation {
+  diode_on(asset: p4261_e1_s1583323120218, conditions: lot_unpowered_module_unrecorded, red: red, black: black, display: display, said: said)
+}
+
+fn mv(millivolts: Nat) -> DiodeDisplay {
+  ForwardMillivolts { millivolts: millivolts }
+}
+
+// ── WHAT THE OPERATOR SAID, AND THE PHOTOGRAPHS ─────────────────────────────────────────────────────
+
+data c_q300_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "1. ~1ohm 2.  ~1ohm 3. ~1ohm 4. ~14kohm --- diode mode: 1. 1.8v 2. .4v 3. 1.9v 4. .777v 5. .434v 6. .556v" }
+
+data c_transistors_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "1. both .7ohm, 2. both .7ohm, 3. both .7ohm, 4. same 5. L .700Kohm, right open 6. L 31kohm (rising) R open 7. L .139v R open 8. L 1.9 (rising) R (open) 9. both are similar, when red is on the tab is ~15 mohms, the other way its ~15kohms 10. both open when red on tab, otherwise both .45v 11. L 10mohms, R open 12, both 3.7kohms" }
+
+data c_leg_check_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-13", verbatim: "#6: 3ohms - the others were accurate (1-5 i meant) / 7. open 8. ~1ohm 9. ~1ohm" }
+
+data c_fuses_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "5. fuses: 218 - both .6ohm - 148 .7ohm" }
+
+data c_gate_checks_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "A, A are both open - B, C are baseline" }
+
+data c_q300_recheck_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "optional: 14kohm" }
+
+data c_q300_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-13", locator: "session upload of 2026-11-13, sent again 2026-11-14 (sha256 6455002175c60acccefca765ca293412af21bbcf4de3890857409248bb275da0): Q300 and Q301 on S/N 1583323120148, the lone lead resoldered on its own pad, the via beside it filled, no bridge; a dark line across it, a hair, since brushed off")
+
+data c_label_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "session upload of 2026-11-14 (sha256 d23e6c474620af6884dd9715eb302ce3f54618eab124bb83058f4ce4b15d6bb5): the label 'S/N 1583323120148 / 694-24261-0000-201 E1 / Model: P4261'")
+
+data s_label_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "session upload of 2026-11-14, sent again late that evening with four top-side photographs (sha256 b21bad311396625ad1e4965f4e869c9e8573b107e5f7af3a0c2db0ca5554ffca): the label 'S/N: 1583323120218 / 694-24261-0000-201 E1 / Model: P4261 / Made In USA' beside the printed board number 180-14261-DAAF-B00")
+
+data gate_parts_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-14", locator: "the operator's underside photograph whose file name ends 220626_002.JPG, and the reviewer's copy marking A1, A2, B1 and B2 on it (p4261_underside_gate_path_points.png); session uploads of 2026-11-14, not saved by the session; which board it shows was not said")
+
+data gate_parts_labels_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "Their labels match the ones I drew: A on the left, B on the right, 1 at the top on the shared trace, 2 at the bottom toward the via. Go ahead with theirs." }
+
+data s_gate_parts_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "218: 1. 5.8, 2. 5.8ohm, 3. open 4. 12ohm 5. L goes to A2 and R goes to B2, L is open to B2 and R is open to A2 (gate leads)" }
+
+data c_gate_parts_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "148 is the same but, B1 -> B2 seems open for some reason, i tried to measure it 50 times but its always open - the via next to B2 has continuity, its that resistor i think" }
+
+data s_part_1_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "1. .6mohm 2. .6mohm 3. open 4. 10ohm 5. 0ohm 6. 1ohm" }
+
+data s_u1_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "U1_P5: 3: 2ohm 4 2ohm 5. 2ohm 7. [not taken] 9. ~1ohm 10. ~1ohm" }
+
+data s_transistors_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "1. L, 1ohm R, 1ohm 2. both .6ohm (i'll say it L then R for the next items) 3. both .6ohm 4. both .3ohm 5. both open 6. both 16mohm 7. open for both 8. both 1.6v 9. L: 25kohm/25kohm, R: 25k/20kohm 10. both .46v with red on pin 2, otherwise open" }
+
+// The first of these four was cut off in what reached the session; the operator's live session
+// transcribed it as 0 ohm, and that is what is recorded.
+data s_q300_ohms_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "lone lead to via 0 ohm, lone lead to Q301 b 1 ohm, a to J20 black 1 ohm, lone lead to J20 black open (as the operator's live session transcribed the four)" }
+
+data s_q300_diode_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-14", verbatim: "1. lone -> a - 1.8v, 2. .451v 3. 1.9v 4. .8v 5. .4v, 6 - .6v" }
+
+data s_fuses_said: EvidenceRef = c_fuses_said
+
+// ── S/N 1583323120148, AFTER THE ATTEMPT ────────────────────────────────────────────────────────────
+
+data lot_e1_c_q300_resistances: List<ResistanceObservation> = [
+  on_c(first: e1_q300_lone_lead, second: e1_q301_b_via, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [c_q300_said, c_q300_photo]),
+  on_c(first: e1_q300_lone_lead, second: e1_q301_lead_b, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [c_q300_said]),
+  on_c(first: e1_q300_lead_a, second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [c_q300_said]),
+  on_c(first: e1_q300_lone_lead, second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: about(ohms: 14000), stability: StabilityUnrecorded, said: [c_q300_said]),
+  on_c(first: e1_q300_lone_lead, second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: about(ohms: 14000), stability: StabilityUnrecorded, said: [c_q300_recheck_said]),
+]
+
+data lot_e1_c_q300_diodes: List<DiodeModeObservation> = [
+  diode_c(red: e1_q300_lone_lead, black: e1_q300_lead_a, display: mv(millivolts: 1800), said: c_q300_said),
+  diode_c(red: e1_q300_lead_a, black: e1_q300_lone_lead, display: mv(millivolts: 400), said: c_q300_said),
+  diode_c(red: e1_q300_lone_lead, black: e1_q300_lead_b, display: mv(millivolts: 1900), said: c_q300_said),
+  diode_c(red: e1_q300_lead_b, black: e1_q300_lone_lead, display: mv(millivolts: 777), said: c_q300_said),
+  diode_c(red: e1_q300_lead_a, black: e1_q300_lead_b, display: mv(millivolts: 434), said: c_q300_said),
+  diode_c(red: e1_q300_lead_b, black: e1_q300_lead_a, display: mv(millivolts: 556), said: c_q300_said),
+]
+
+data lot_e1_c_transistor_resistances: List<ResistanceObservation> = [
+  on_c(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 3"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 5"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 6"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 7"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 3"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 5"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 6"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 7"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  // Gate to source, each probe direction.
+  on_c(first: l_pin(n: "pin 1"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnFirst, display: shown(ohms: 700), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "pin 1"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnSecond, display: about(ohms: 31000), stability: KeptMoving, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 1"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnFirst, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 1"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnSecond, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_transistors_said]),
+  // Tab (drain) to source, each probe direction.
+  on_c(first: l_pin(n: "tab"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnFirst, display: about(ohms: 15000000), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "tab"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnSecond, display: about(ohms: 15000), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "tab"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnFirst, display: about(ohms: 15000000), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "tab"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnSecond, display: about(ohms: 15000), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  // Each gate to U1_P5's pin 2 (GATE), each source to U1_P5's pin 1 (OUT), the count confirmed by the leg check.
+  on_c(first: l_pin(n: "pin 1"), second: u1_lead(n: "pin 2"), record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 10000000), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 1"), second: u1_lead(n: "pin 2"), record: first_on_r, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: l_pin(n: "pin 2"), second: u1_lead(n: "pin 1"), record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 3700), stability: StabilityUnrecorded, said: [c_transistors_said]),
+  on_c(first: r_pin(n: "pin 2"), second: u1_lead(n: "pin 1"), record: first_on_r, polarity: PolarityUnrecorded, display: about(ohms: 3700), stability: StabilityUnrecorded, said: [c_transistors_said]),
+]
+
+data lot_e1_c_transistor_diodes: List<DiodeModeObservation> = [
+  diode_c(red: l_pin(n: "pin 1"), black: l_pin(n: "pin 2"), display: mv(millivolts: 139), said: c_transistors_said),
+  // 1.9 V and still rising as read: the meter charging a path, not a junction's drop.
+  diode_c(red: l_pin(n: "pin 2"), black: l_pin(n: "pin 1"), display: mv(millivolts: 1900), said: c_transistors_said),
+  diode_c(red: r_pin(n: "pin 1"), black: r_pin(n: "pin 2"), display: OverLimit, said: c_transistors_said),
+  diode_c(red: r_pin(n: "pin 2"), black: r_pin(n: "pin 1"), display: OverLimit, said: c_transistors_said),
+  diode_c(red: l_pin(n: "tab"), black: l_pin(n: "pin 2"), display: OverLimit, said: c_transistors_said),
+  diode_c(red: l_pin(n: "pin 2"), black: l_pin(n: "tab"), display: mv(millivolts: 450), said: c_transistors_said),
+  diode_c(red: r_pin(n: "tab"), black: r_pin(n: "pin 2"), display: OverLimit, said: c_transistors_said),
+  diode_c(red: r_pin(n: "pin 2"), black: r_pin(n: "tab"), display: mv(millivolts: 450), said: c_transistors_said),
+]
+
+// The leg check: U1_P5's leads counted from its pin-1 mark against landmarks, and the two transistors
+// against each other. The first five rows came back as the operator's 'accurate', without figures; they
+// are statements, below, not readings.
+data lot_e1_c_leg_check_resistances: List<ResistanceObservation> = [
+  on_c(first: u1_lead(n: "pin 7"), second: p6, record: both_points_recorded, polarity: PolarityUnrecorded, display: shown(ohms: 3), stability: StabilityUnrecorded, said: [c_leg_check_said]),
+  on_c(first: l_pin(n: "pin 1"), second: r_pin(n: "pin 1"), record: second_on_r, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_leg_check_said]),
+  on_c(first: l_pin(n: "pin 2"), second: r_pin(n: "pin 2"), record: second_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [c_leg_check_said]),
+  on_c(first: l_pin(n: "tab"), second: r_pin(n: "tab"), record: second_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [c_leg_check_said]),
+]
+
+// Checks A to C of 2026-11-14: the gates to each other in both probe directions, and each gate's lead to
+// its pad.
+data lot_e1_c_gate_check_resistances: List<ResistanceObservation> = [
+  on_c(first: l_pin(n: "pin 1"), second: r_pin(n: "pin 1"), record: second_on_r, polarity: RedOnFirst, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_gate_checks_said]),
+  on_c(first: l_pin(n: "pin 1"), second: r_pin(n: "pin 1"), record: second_on_r, polarity: RedOnSecond, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_gate_checks_said]),
+  on_c(first: l_gate_lead, second: l_gate_pad, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "baseline"), stability: StabilityUnrecorded, said: [c_gate_checks_said]),
+  on_c(first: r_gate_lead, second: r_gate_pad, record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "baseline"), stability: StabilityUnrecorded, said: [c_gate_checks_said]),
+]
+
+data lot_e1_c_fuse_resistances: List<ResistanceObservation> = [
+  on_c(first: e1_f1_near, second: e1_f1_far, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_fuses_said]),
+  on_c(first: e1_f300_one, second: e1_f300_other, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".7ohm"), stability: StabilityUnrecorded, said: [c_fuses_said]),
+]
+
+// The underside parts, read after the untouched board's, late on 2026-11-14. Part B reads open end to end
+// on every one of about fifty tries, where the untouched board's reads 5.8 ohm. The operator found the via
+// beside its end 2 continuous and took the part itself to be open ('its that resistor i think'): that is
+// the operator's reading of the readings, not a reading of the part, whose end caps have not been looked
+// at or photographed on this board.
+data lot_e1_c_gate_part_resistances: List<ResistanceObservation> = [
+  on_c(first: gate_b_1, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [c_gate_parts_said, gate_parts_labels_said]),
+]
+
+// A STATEMENT WITHOUT A FIGURE IS NOT A READING. The operator's 'accurate' for the leg check's first five
+// rows says each read as the count predicted (leads 3 to 5 under 100 ohm to a tab, leads 9 and 10 at the
+// probes' level to the return), and gives no display to compare.
+type StatedWithoutFigure {
+  asset: PhysicalAssetIdentity
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  record: ProbeRecord
+  stated: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+data lot_e1_c_stated_without_figures: List<StatedWithoutFigure> = [
+  StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 3"), second: l_pin(n: "tab"), record: second_on_tab, stated: "under 100 ohm, as the count predicts", evidence: c_leg_check_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 4"), second: l_pin(n: "tab"), record: second_on_tab, stated: "under 100 ohm, as the count predicts", evidence: c_leg_check_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 5"), second: l_pin(n: "tab"), record: second_on_tab, stated: "under 100 ohm, as the count predicts", evidence: c_leg_check_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 9"), second: e1_ground_ref, record: second_on_return, stated: "at the probes' level, as the count predicts", evidence: c_leg_check_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: u1_lead(n: "pin 10"), second: e1_ground_ref, record: second_on_return, stated: "at the probes' level, as the count predicts", evidence: c_leg_check_said },
+]
+
+// AFTER B CAME OFF, 2026-11-15: the board's first readings in its state after the removal. The probes
+// together showed 1 ohm, the baseline the operator compared against; it is not a row, and on an auto-ranging
+// meter a reading at it is still the operator's words and joins nothing (product.electrical.bench_session).
+// A, still fitted, reads 5.1 ohm end to end, about 4 ohm above that baseline: the in-circuit path's reading,
+// not A's nominal value, and not B's. B1's bare pad reads at the
+// baseline to A1, so on this board the two parts' end 1s do share the long trace; and B2's bare pad reads
+// at the baseline to the round via below it. Both of B's connections survived the removal. The operator
+// had cleared the footprint of fragments before these readings.
+data c_after_removal_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-15", verbatim: "1. baseline, 1ohm 2. 5.1ohm 3. b1 pad -> a1, baseline: b2 pad --> via == baseline 4. no more fragments, i cleared them already" }
+
+fn after_removal(first: ElectricalTerminalRef, second: ElectricalTerminalRef, display: ResistanceDisplay) -> ResistanceObservation {
+  ResistanceObservation {
+    asset: p4261_e1_c, first: first, second: second, record: both_points_recorded, conditions: lot_unpowered_module_off,
+    polarity: PolarityUnrecorded, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]) }, evidence: [c_after_removal_said],
+  }
+}
+
+data lot_e1_c_after_removal_resistances: List<ResistanceObservation> = [
+  after_removal(first: gate_a_1, second: gate_a_2, display: about(ohms: 5)),
+  after_removal(first: gate_b_1_pad, second: gate_a_1, display: at_probe_level(shown: "baseline")),
+  after_removal(first: gate_b_2_pad, second: gate_b_2_via, display: at_probe_level(shown: "baseline")),
+]
+
+// The rest of the underside readings on S/N 1583323120148 the operator gave as 'the same' as the untouched
+// board's, with no figures, and the via beside B's end 2 as continuous: statements, kept beside the
+// readings and out of the netlist.
+data lot_e1_c_gate_parts_stated: List<StatedWithoutFigure> = [
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_1, second: gate_a_2, record: both_points_recorded, stated: "the same as the untouched board's (5.8 ohm there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_1, second: gate_b_1, record: both_points_recorded, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_a_2, second: gate_b_2, record: both_points_recorded, stated: "the same as the untouched board's (12 ohm there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: l_pin(n: "pin 1"), second: gate_a_2, record: both_points_recorded, stated: "the same as the untouched board's (goes to, there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: l_pin(n: "pin 1"), second: gate_b_2, record: both_points_recorded, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: r_pin(n: "pin 1"), second: gate_b_2, record: first_on_r, stated: "the same as the untouched board's (goes to, there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: r_pin(n: "pin 1"), second: gate_a_2, record: first_on_r, stated: "the same as the untouched board's (open there)", evidence: c_gate_parts_said },
+  StatedWithoutFigure { asset: p4261_e1_c, first: gate_b_2_via, second: gate_b_2, record: ProbeRecord { first: PointRecorded, second: PointInferred { basis: via_second_basis } }, stated: "has continuity", evidence: c_gate_parts_said },
+]
+
+data lot_e1_c_board: MeasuredBoard = MeasuredBoard {
+  analysis: AnalysisSelection { after: lot_e1_c_after_both, module: ModuleRemoved },
+  asset: p4261_e1_c,
+  continuity: [],
+  diode_readings: concat(lot_e1_c_q300_diodes, lot_e1_c_transistor_diodes),
+  source_draws: [],
+  bench: BenchRecord {
+    incidents: [lot_e1_c_q300_lift, lot_e1_c_probing],
+    attachments: [],
+    alterations: [lot_e1_c_b_removal],
+    voltages: [],
+    resistances: concat(concat(concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances), lot_e1_c_gate_part_resistances), lot_e1_c_after_removal_resistances),
+  },
+  phases: [],
+  transitions: [],
+  pole_closures: [],
+}
+
+// ── S/N 1583323120218, UNTOUCHED ────────────────────────────────────────────────────────────────────
+
+data lot_e1_s218_resistances: List<ResistanceObservation> = [
+  // Part 1, the readings that decide.
+  on_s(first: u1_lead(n: "pin 2"), second: l_pin(n: "pin 1"), record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 600000), stability: StabilityUnrecorded, said: [s_part_1_said, s_label_photo]),
+  on_s(first: u1_lead(n: "pin 2"), second: r_pin(n: "pin 1"), record: second_on_r, polarity: PolarityUnrecorded, display: about(ohms: 600000), stability: StabilityUnrecorded, said: [s_part_1_said]),
+  on_s(first: u1_lead(n: "pin 1"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_part_1_said]),
+  on_s(first: l_pin(n: "pin 1"), second: r_pin(n: "pin 1"), record: second_on_r, polarity: PolarityUnrecorded, display: shown(ohms: 10), stability: StabilityUnrecorded, said: [s_part_1_said]),
+  on_s(first: l_pin(n: "pin 2"), second: r_pin(n: "pin 2"), record: second_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "0ohm"), stability: StabilityUnrecorded, said: [s_part_1_said]),
+  on_s(first: l_pin(n: "tab"), second: r_pin(n: "tab"), record: second_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "1ohm"), stability: StabilityUnrecorded, said: [s_part_1_said]),
+  // Part 2, U1_P5's leads; lead 7 to P6 was not taken.
+  on_s(first: u1_lead(n: "pin 3"), second: l_pin(n: "tab"), record: second_on_tab, polarity: PolarityUnrecorded, display: shown(ohms: 2), stability: StabilityUnrecorded, said: [s_u1_said]),
+  on_s(first: u1_lead(n: "pin 4"), second: l_pin(n: "tab"), record: second_on_tab, polarity: PolarityUnrecorded, display: shown(ohms: 2), stability: StabilityUnrecorded, said: [s_u1_said]),
+  on_s(first: u1_lead(n: "pin 5"), second: l_pin(n: "tab"), record: second_on_tab, polarity: PolarityUnrecorded, display: shown(ohms: 2), stability: StabilityUnrecorded, said: [s_u1_said]),
+  on_s(first: u1_lead(n: "pin 9"), second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [s_u1_said]),
+  on_s(first: u1_lead(n: "pin 10"), second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: at_probe_level(shown: "~1ohm"), stability: StabilityUnrecorded, said: [s_u1_said]),
+  // Part 3, the two transistors.
+  on_s(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 3"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "1ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 5"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 6"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "pin 2"), second: l_pin(n: "pin 7"), record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".3ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 3"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "1ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 5"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 6"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 2"), second: r_pin(n: "pin 7"), record: both_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".3ohm"), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "pin 1"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnFirst, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "pin 1"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnSecond, display: about(ohms: 16000000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 1"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnFirst, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "pin 1"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnSecond, display: about(ohms: 16000000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "tab"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnFirst, display: about(ohms: 25000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: l_pin(n: "tab"), second: l_pin(n: "pin 2"), record: both_points_recorded, polarity: RedOnSecond, display: about(ohms: 25000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "tab"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnFirst, display: about(ohms: 25000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  on_s(first: r_pin(n: "tab"), second: r_pin(n: "pin 2"), record: both_on_r, polarity: RedOnSecond, display: about(ohms: 20000), stability: StabilityUnrecorded, said: [s_transistors_said]),
+  // Part 4, Q300.
+  on_s(first: e1_q300_lone_lead, second: e1_q301_b_via, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "0ohm"), stability: StabilityUnrecorded, said: [s_q300_ohms_said]),
+  on_s(first: e1_q300_lone_lead, second: e1_q301_lead_b, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "1ohm"), stability: StabilityUnrecorded, said: [s_q300_ohms_said]),
+  on_s(first: e1_q300_lead_a, second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: at_probe_level(shown: "1ohm"), stability: StabilityUnrecorded, said: [s_q300_ohms_said]),
+  on_s(first: e1_q300_lone_lead, second: e1_ground_ref, record: second_on_return, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_q300_ohms_said]),
+  // Part 5, the fuses.
+  on_s(first: e1_f1_near, second: e1_f1_far, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_fuses_said]),
+  on_s(first: e1_f300_one, second: e1_f300_other, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: ".6ohm"), stability: StabilityUnrecorded, said: [s_fuses_said]),
+]
+
+// The underside parts A and B, late on 2026-11-14. The operator numbered the answers 1 to 4 in the order the
+// four readings were asked (A1 to A2, B1 to B2, A1 to B1, A2 to B2) and gave the gate leads as a fifth; the
+// probes-together value asked for first was not given. That order is also the only one the operator's '148
+// is the same but, B1 -> B2 seems open' allows, since it makes this board's B1 to B2 something other than
+// open. 'ohm' was typed on the second and fourth answers, and the first is taken in ohms too. 5.8 ohm is
+// held as about 6, an ohm count; the figures as given are in the statement. 'Goes to' is kept as the
+// operator's words with no figure, so in the netlist it is a link and joins nothing
+// (product.electrical.measured_netlist).
+data lot_e1_s218_gate_part_resistances: List<ResistanceObservation> = [
+  on_s(first: gate_a_1, second: gate_a_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 6), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_b_1, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: about(ohms: 6), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_a_1, second: gate_b_1, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: gate_a_2, second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: shown(ohms: 12), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said, gate_parts_photo]),
+  on_s(first: l_pin(n: "pin 1"), second: gate_a_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: at_probe_level(shown: "goes to"), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: l_pin(n: "pin 1"), second: gate_b_2, record: both_points_recorded, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: r_pin(n: "pin 1"), second: gate_b_2, record: first_on_r, polarity: PolarityUnrecorded, display: at_probe_level(shown: "goes to"), stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+  on_s(first: r_pin(n: "pin 1"), second: gate_a_2, record: first_on_r, polarity: PolarityUnrecorded, display: DisplayOverRange, stability: StabilityUnrecorded, said: [s_gate_parts_said, gate_parts_labels_said]),
+]
+
+// WHAT THESE READINGS CANNOT ALL BE. Every point here is joined by passive copper and parts, where no
+// path reads more than two paths that meet add to, so three groups of readings cannot all hold. They are
+// owed again figure by figure before any is built on, and nothing here says which is wrong. On S/N
+// 1583323120218, L's gate goes to A2 and A2 reads 12 ohm to B2, which puts L's gate within about 12 ohm
+// of B2, yet L's gate reads open to B2 (and R's gate to A2 likewise). On both boards A1 reads open to B1
+// although the photograph shows the long trace running between them, and on S/N 1583323120218 the 12 ohm
+// from A2 to B2 is about A's 5.8 and B's 5.8 in series, which is what a path through both parts and a
+// whole trace reads, near the 10 ohm read between the gates earlier that evening. On S/N 1583323120148,
+// 'the same' would put 12 ohm between A2 and B2 with each gate going to its own end 2, yet its gates read
+// open to each other three times after the attempt (the leg check of 2026-11-13 and check A both ways),
+// and with B open no path through both parts reads 12 ohm. Since then, with B off S/N 1583323120148, B1's
+// bare pad reads at the probes' level to A1: on that board the trace does join the two end 1s, so the open
+// read between A1 and B1 there was not the trace, and on S/N 1583323120218 it is owed again. Part B open on
+// S/N 1583323120148 also does not
+// account for L's gate reading 700 ohm one way and 31 kohm the other to its source there (the reviewer,
+// 2026-11-14), which stays a question of its own.
+
+data lot_e1_s218_diodes: List<DiodeModeObservation> = [
+  diode_s(red: l_pin(n: "pin 1"), black: l_pin(n: "pin 2"), display: OverLimit, said: s_transistors_said),
+  diode_s(red: l_pin(n: "pin 2"), black: l_pin(n: "pin 1"), display: mv(millivolts: 1600), said: s_transistors_said),
+  diode_s(red: r_pin(n: "pin 1"), black: r_pin(n: "pin 2"), display: OverLimit, said: s_transistors_said),
+  diode_s(red: r_pin(n: "pin 2"), black: r_pin(n: "pin 1"), display: mv(millivolts: 1600), said: s_transistors_said),
+  diode_s(red: l_pin(n: "tab"), black: l_pin(n: "pin 2"), display: OverLimit, said: s_transistors_said),
+  diode_s(red: l_pin(n: "pin 2"), black: l_pin(n: "tab"), display: mv(millivolts: 460), said: s_transistors_said),
+  diode_s(red: r_pin(n: "tab"), black: r_pin(n: "pin 2"), display: OverLimit, said: s_transistors_said),
+  diode_s(red: r_pin(n: "pin 2"), black: r_pin(n: "tab"), display: mv(millivolts: 460), said: s_transistors_said),
+  diode_s(red: e1_q300_lone_lead, black: e1_q300_lead_a, display: mv(millivolts: 1800), said: s_q300_diode_said),
+  diode_s(red: e1_q300_lead_a, black: e1_q300_lone_lead, display: mv(millivolts: 451), said: s_q300_diode_said),
+  diode_s(red: e1_q300_lone_lead, black: e1_q300_lead_b, display: mv(millivolts: 1900), said: s_q300_diode_said),
+  diode_s(red: e1_q300_lead_b, black: e1_q300_lone_lead, display: mv(millivolts: 800), said: s_q300_diode_said),
+  diode_s(red: e1_q300_lead_a, black: e1_q300_lead_b, display: mv(millivolts: 400), said: s_q300_diode_said),
+  diode_s(red: e1_q300_lead_b, black: e1_q300_lead_a, display: mv(millivolts: 600), said: s_q300_diode_said),
+]
+
+data lot_e1_s218_board: MeasuredBoard = MeasuredBoard {
+  analysis: AnalysisSelection { after: [], module: ModuleUnrecorded },
+  asset: p4261_e1_s1583323120218,
+  continuity: [],
+  diode_readings: lot_e1_s218_diodes,
+  source_draws: [],
+  bench: BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: concat(lot_e1_s218_resistances, lot_e1_s218_gate_part_resistances) },
+  phases: [],
+  transitions: [],
+  pole_closures: [],
+}
+
+// ── PUTTING TWO BOARDS SIDE BY SIDE ─────────────────────────────────────────────────────────────────
+
+// THE GRAIN TWO BOARDS' DISPLAYS ARE COMPARED AT. These are in-circuit readings on an auto-ranging meter,
+// taken by hand at different times: each includes every parallel path on its board, and a value that
+// keeps rising depends on how long it was held. So two displays agree when both are at the probes' level
+// (a few ohms or less), both are beyond what an in-circuit path reads (10 Mohm or more, or over range), or
+// both are values within a factor of three of each other; anything else differs, and a display with no
+// value recorded compares with nothing. In diode mode a reading under 1000 mV is a junction conducting
+// and agrees with another within 150 mV; a reading of 1000 mV or more, still charging as read, or over
+// the limit, is no junction conducting. A finer rule would claim precision these readings do not have.
+data probe_level_ohms: Nat = 3
+
+data beyond_reach_ohms: Nat = 10000000
+
+data agreement_factor: Nat = 3
+
+data junction_ceiling_millivolts: Nat = 1000
+
+data junction_tolerance_millivolts: Nat = 150
+
+type DisplayMagnitude
+  = AtProbeLevel
+  | ValueOhms { ohms: Nat }
+  | BeyondInCircuitReach
+  | ValueUnrecorded
+
+fn display_magnitude(d: ResistanceDisplay) -> DisplayMagnitude {
+  match d {
+    DisplayZeroWithoutBaseline { reported: _ } => AtProbeLevel
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => AtProbeLevel
+    DisplayValue { ohms, approximate: _ } => if ohms <= probe_level_ohms { AtProbeLevel } else { if ohms >= beyond_reach_ohms { BeyondInCircuitReach } else { ValueOhms { ohms: ohms } } }
+    DisplayOverRange => BeyondInCircuitReach
+    DisplayAboveBaseline => ValueUnrecorded
+  }
+}
+
+type ReadingAgreement
+  = DisplaysAgree
+  | DisplaysDiffer
+  | NotComparable { why: NonEmptyStr }
+
+data no_value_recorded: ReadingAgreement = NotComparable { why: "a display whose value was not recorded compares with nothing" }
+
+fn within_factor(a: Nat, b: Nat) -> Bool {
+  a <= b * agreement_factor && b <= a * agreement_factor
+}
+
+fn agree_if(same: Bool) -> ReadingAgreement {
+  if same { DisplaysAgree } else { DisplaysDiffer }
+}
+
+fn magnitude_is_probe_level(m: DisplayMagnitude) -> Bool {
+  match m {
+    AtProbeLevel => true
+    ValueOhms { ohms: _ } => false
+    BeyondInCircuitReach => false
+    ValueUnrecorded => false
+  }
+}
+
+fn magnitude_is_beyond(m: DisplayMagnitude) -> Bool {
+  match m {
+    AtProbeLevel => false
+    ValueOhms { ohms: _ } => false
+    BeyondInCircuitReach => true
+    ValueUnrecorded => false
+  }
+}
+
+fn magnitude_unrecorded(m: DisplayMagnitude) -> Bool {
+  match m {
+    AtProbeLevel => false
+    ValueOhms { ohms: _ } => false
+    BeyondInCircuitReach => false
+    ValueUnrecorded => true
+  }
+}
+
+fn magnitude_value(m: DisplayMagnitude) -> Nat? {
+  match m {
+    AtProbeLevel => Absent
+    ValueOhms { ohms } => Present { value: ohms }
+    BeyondInCircuitReach => Absent
+    ValueUnrecorded => Absent
+  }
+}
+
+fn magnitudes_agree(a: DisplayMagnitude, b: DisplayMagnitude) -> ReadingAgreement {
+  if magnitude_unrecorded(m: a) || magnitude_unrecorded(m: b) { no_value_recorded } else {
+    match magnitude_value(m: a) {
+      Present { value: va } => match magnitude_value(m: b) {
+        Present { value: vb } => agree_if(same: within_factor(a: va, b: vb))
+        Absent => DisplaysDiffer
+      }
+      Absent => agree_if(same: (magnitude_is_probe_level(m: a) && magnitude_is_probe_level(m: b)) || (magnitude_is_beyond(m: a) && magnitude_is_beyond(m: b)))
+    }
+  }
+}
+
+fn displays_agree(a: ResistanceDisplay, b: ResistanceDisplay) -> ReadingAgreement {
+  magnitudes_agree(a: display_magnitude(d: a), b: display_magnitude(d: b))
+}
+
+type JunctionReading
+  = JunctionConducts { millivolts: Nat }
+  | NoJunctionConduction
+
+fn junction_reading(d: DiodeDisplay) -> JunctionReading {
+  match d {
+    ForwardMillivolts { millivolts } => if millivolts < junction_ceiling_millivolts { JunctionConducts { millivolts: millivolts } } else { NoJunctionConduction }
+    OverLimit => NoJunctionConduction
+  }
+}
+
+fn junction_millivolts(j: JunctionReading) -> Nat? {
+  match j {
+    JunctionConducts { millivolts } => Present { value: millivolts }
+    NoJunctionConduction => Absent
+  }
+}
+
+fn nat_distance(a: Nat, b: Nat) -> Nat {
+  if a >= b { a - b } else { b - a }
+}
+
+fn diode_displays_agree(a: DiodeDisplay, b: DiodeDisplay) -> ReadingAgreement {
+  match junction_millivolts(j: junction_reading(d: a)) {
+    Present { value: ma } => match junction_millivolts(j: junction_reading(d: b)) {
+      Present { value: mb } => agree_if(same: nat_distance(a: ma, b: mb) <= junction_tolerance_millivolts)
+      Absent => DisplaysDiffer
+    }
+    Absent => match junction_millivolts(j: junction_reading(d: b)) {
+      Present { value: _ } => DisplaysDiffer
+      Absent => DisplaysAgree
+    }
+  }
+}
+
+// WHICH READINGS ARE THE SAME READING ON TWO BOARDS: the same two points, and the red probe on the same one
+// of them when both readings recorded it. A reading whose probe placement was not recorded stands beside
+// either direction.
+fn red_point(o: ResistanceObservation) -> ElectricalTerminalRef? {
+  match o.polarity {
+    RedOnFirst => Present { value: o.first }
+    RedOnSecond => Present { value: o.second }
+    PolarityUnrecorded => Absent
+  }
+}
+
+fn same_points(a: ResistanceObservation, b: ResistanceObservation) -> Bool {
+  (terminal_ref_equal(a: a.first, b: b.first) && terminal_ref_equal(a: a.second, b: b.second)) || (terminal_ref_equal(a: a.first, b: b.second) && terminal_ref_equal(a: a.second, b: b.first))
+}
+
+fn compatible_red(a: ResistanceObservation, b: ResistanceObservation) -> Bool {
+  match red_point(o: a) {
+    Absent => true
+    Present { value: ra } => match red_point(o: b) {
+      Absent => true
+      Present { value: rb } => terminal_ref_equal(a: ra, b: rb)
+    }
+  }
+}
+
+fn readings_match(a: ResistanceObservation, b: ResistanceObservation) -> Bool {
+  same_points(a: a, b: b) && compatible_red(a: a, b: b)
+}
+
+fn diode_red(o: DiodeModeObservation) -> ElectricalTerminalRef {
+  match o.probes {
+    RedBlack { red, black: _ } => red
+    ProbesUnrecorded { a, b: _ } => a
+  }
+}
+
+fn diode_black(o: DiodeModeObservation) -> ElectricalTerminalRef {
+  match o.probes {
+    RedBlack { red: _, black } => black
+    ProbesUnrecorded { a: _, b } => b
+  }
+}
+
+fn diode_oriented(o: DiodeModeObservation) -> Bool {
+  match o.probes {
+    RedBlack { red: _, black: _ } => true
+    ProbesUnrecorded { a: _, b: _ } => false
+  }
+}
+
+fn diodes_match(a: DiodeModeObservation, b: DiodeModeObservation) -> Bool {
+  let direct = terminal_ref_equal(a: diode_red(o: a), b: diode_red(o: b)) && terminal_ref_equal(a: diode_black(o: a), b: diode_black(o: b))
+  let crossed = terminal_ref_equal(a: diode_red(o: a), b: diode_black(o: b)) && terminal_ref_equal(a: diode_black(o: a), b: diode_red(o: b))
+  if diode_oriented(o: a) && diode_oriented(o: b) { direct } else { direct || crossed }
+}
+
+fn is_differ(a: ReadingAgreement) -> Bool {
+  match a {
+    DisplaysAgree => false
+    DisplaysDiffer => true
+    NotComparable { why: _ } => false
+  }
+}
+
+fn is_not_comparable(a: ReadingAgreement) -> Bool {
+  match a {
+    DisplaysAgree => false
+    DisplaysDiffer => false
+    NotComparable { why: _ } => true
+  }
+}
+
+// A reading compared with every matching reading on the other board: it differs if any of them differs.
+fn combined(agreements: List<ReadingAgreement>) -> ReadingAgreement {
+  if any(agreements, a => is_differ(a: a)) { DisplaysDiffer } else {
+    match filter(agreements, a => is_not_comparable(a: a)).first() {
+      Present { value: n } => n
+      Absent => DisplaysAgree
+    }
+  }
+}
+
+type ComparedReading {
+  altered: ResistanceObservation
+  reference: List<ResistanceObservation>
+  agreement: ReadingAgreement
+}
+
+type ComparedDiodeReading {
+  altered: DiodeModeObservation
+  reference: List<DiodeModeObservation>
+  agreement: ReadingAgreement
+}
+
+// The altered board's readings beside the reference board's, in one state of each. Readings with no
+// counterpart on the other board are listed apart and compared with nothing.
+type BoardsSideBySide {
+  altered: BoardState
+  reference: BoardState
+  resistances: List<ComparedReading>
+  diodes: List<ComparedDiodeReading>
+  only_on_altered: List<ResistanceObservation>
+  only_on_reference: List<ResistanceObservation>
+  diodes_only_on_altered: List<DiodeModeObservation>
+  diodes_only_on_reference: List<DiodeModeObservation>
+  stated_on_altered: List<StatedWithoutFigure>
+}
+
+fn compare_one(a: ResistanceObservation, reference: List<ResistanceObservation>) -> ComparedReading {
+  let ms = filter(reference, r => readings_match(a: a, b: r))
+  ComparedReading { altered: a, reference: ms, agreement: combined(agreements: map(ms, r => displays_agree(a: a.display, b: r.display))) }
+}
+
+fn compare_one_diode(a: DiodeModeObservation, reference: List<DiodeModeObservation>) -> ComparedDiodeReading {
+  let ms = filter(reference, r => diodes_match(a: a, b: r))
+  ComparedDiodeReading { altered: a, reference: ms, agreement: combined(agreements: map(ms, r => diode_displays_agree(a: a.display, b: r.display))) }
+}
+
+fn diodes_of(b: MeasuredBoard) -> List<DiodeModeObservation> {
+  filter(b.diode_readings, o => physical_asset_identity_eq(a: o.asset, b: b.asset))
+}
+
+fn side_by_side(altered: BoardState, reference: BoardState, altered_diodes: List<DiodeModeObservation>, reference_diodes: List<DiodeModeObservation>, stated: List<StatedWithoutFigure>) -> BoardsSideBySide {
+  let ar = board_readings(s: altered).resistances
+  let rr = board_readings(s: reference).resistances
+  BoardsSideBySide {
+    altered: altered,
+    reference: reference,
+    resistances: map(filter(ar, a => any(rr, r => readings_match(a: a, b: r))), a => compare_one(a: a, reference: rr)),
+    diodes: map(filter(altered_diodes, a => any(reference_diodes, r => diodes_match(a: a, b: r))), a => compare_one_diode(a: a, reference: reference_diodes)),
+    only_on_altered: filter(ar, a => !any(rr, r => readings_match(a: a, b: r))),
+    only_on_reference: filter(rr, r => !any(ar, a => readings_match(a: a, b: r))),
+    diodes_only_on_altered: filter(altered_diodes, a => !any(reference_diodes, r => diodes_match(a: a, b: r))),
+    diodes_only_on_reference: filter(reference_diodes, r => !any(altered_diodes, a => diodes_match(a: a, b: r))),
+    stated_on_altered: filter(stated, s => physical_asset_identity_eq(a: s.asset, b: altered.board.asset)),
+  }
+}
+
+// S/N 1583323120148 after both of its events, beside S/N 1583323120218 untouched. Absent if the altered
+// board's state does not resolve against its own record.
+fn lot_e1_side_by_side() -> BoardsSideBySide? {
+  match board_after(b: lot_e1_c_board, keys: lot_e1_c_after_both, module: ModuleRemoved) {
+    Absent => Absent
+    Present { value: altered } => Present {
+      value: side_by_side(
+        altered: altered,
+        reference: board_intact(b: lot_e1_s218_board, module: ModuleUnrecorded),
+        altered_diodes: diodes_of(b: lot_e1_c_board),
+        reference_diodes: diodes_of(b: lot_e1_s218_board),
+        stated: concat(lot_e1_c_stated_without_figures, lot_e1_c_gate_parts_stated),
+      )
+    }
+  }
+}
+
+// ── WHAT IT PRINTS ──────────────────────────────────────────────────────────────────────────────────
+
+fn agreement_text(a: ReadingAgreement) -> String {
+  match a {
+    DisplaysAgree => "AGREES"
+    DisplaysDiffer => "DIFFERS"
+    NotComparable { why } => join(["NOT COMPARABLE (", why as String, ")"], "")
+  }
+}
+
+fn polarity_words(o: ResistanceObservation) -> String {
+  match red_point(o: o) {
+    Present { value: r } => join([", red on ", terminal_text(t: r)], "")
+    Absent => ""
+  }
+}
+
+fn compared_line(c: ComparedReading) -> String {
+  join([
+    agreement_text(a: c.agreement), ": ", terminal_text(t: c.altered.first), " to ", terminal_text(t: c.altered.second), polarity_words(o: c.altered),
+    " -- altered board ", resistance_display_text(d: c.altered.display),
+    "; reference board ", join(map(c.reference, r => resistance_display_text(d: r.display)), " / "),
+  ], "")
+}
+
+fn diode_display_words(d: DiodeDisplay) -> String {
+  match d {
+    ForwardMillivolts { millivolts } => join([to_string(millivolts), " mV"], "")
+    OverLimit => "over the limit"
+  }
+}
+
+fn compared_diode_line(c: ComparedDiodeReading) -> String {
+  join([
+    agreement_text(a: c.agreement), ": diode mode, red on ", terminal_text(t: diode_red(o: c.altered)), ", black on ", terminal_text(t: diode_black(o: c.altered)),
+    " -- altered board ", diode_display_words(d: c.altered.display),
+    "; reference board ", join(map(c.reference, r => diode_display_words(d: r.display)), " / "),
+  ], "")
+}
+
+fn stated_line(s: StatedWithoutFigure) -> String {
+  join(["STATED, NO FIGURE (altered board): ", terminal_text(t: s.first), " to ", terminal_text(t: s.second), ", ", s.stated as String], "")
+}
+
+fn side_by_side_lines(s: BoardsSideBySide) -> List<String> {
+  concat(concat(concat(concat(concat(concat(
+    map(filter(s.resistances, c => is_differ(a: c.agreement)), c => compared_line(c: c)),
+    map(filter(s.diodes, c => is_differ(a: c.agreement)), c => compared_diode_line(c: c))),
+    map(filter(s.resistances, c => !is_differ(a: c.agreement)), c => compared_line(c: c))),
+    map(filter(s.diodes, c => !is_differ(a: c.agreement)), c => compared_diode_line(c: c))),
+    map(s.only_on_altered, o => join(["ONLY ON THE ALTERED BOARD: ", resistance_text(o: o)], ""))),
+    map(s.only_on_reference, o => join(["ONLY ON THE REFERENCE BOARD: ", resistance_text(o: o)], ""))),
+    map(s.stated_on_altered, x => stated_line(s: x)))
+}
+
+// One board's measured netlist in its state (product.p4261.readings board_netlist): the joined nodes, then
+// every link, one to a line.
+fn netlist_lines(title: String, net: MeasuredNetlist) -> List<String> {
+  concat(concat(
+    [title],
+    map(filter(net.nodes, n => count(n.members) > 1), n => join(["NODE: ", node_text(n: n)], ""))),
+    map(net.links, l => join(["LINK: ", link_text(l: l)], "")))
+}
+
+fn write_report(path: NonEmptyStr, lines: List<String>) -> ProcessExit {
+  let written = Filesystem.Write(path: path as String, content: join(concat(lines, [""]), "\n"))
+  if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+}
+
+// S/N 1583323120148 after part B's removal, its own state: its measured netlist.
+fn after_removal_lines() -> List<String> {
+  match board_after(b: lot_e1_c_board, keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]), module: ModuleRemoved) {
+    Absent => ["MEASURED NETLIST, S/N 1583323120148 after part B's removal: the state does not resolve against the board's record"]
+    Present { value: s } => netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after part B's removal:", net: board_netlist(s: s))
+  }
+}
+
+// The two lot E1s side by side, the differences first, then each board's measured netlist, into a file.
+fn write_lot_e1_side_by_side(path: NonEmptyStr) -> ProcessExit {
+  match lot_e1_side_by_side() {
+    Absent => exit_failure(reason: "the altered board's state does not resolve against its own record")
+    Present { value: s } => write_report(path: path, lines: concat(concat(concat(
+      side_by_side_lines(s: s),
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after both events, before part B's removal:", net: board_netlist(s: s.altered))),
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120218 untouched:", net: board_netlist(s: s.reference))), after_removal_lines()))
+  }
+}

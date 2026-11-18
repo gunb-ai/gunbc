@@ -1,14 +1,27 @@
 module extdeps.cloud_init.cloud_init
 
 import std.types { String, NonEmptyStr, Bool, List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloudinit.readthedocs.io/en/latest/howto/disable_cloud_init.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud_init.cloud_init",
+      decl_name: "CloudInitDisposition",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // cloud-init is a DISTINCT upstream from Ubuntu and from subiquity, and it gets its own module for the same reason extdeps.os.ubuntu_autoinstall already cites cloudinit.readthedocs.io separately for the NoCloud datasource rather than folding it into the subiquity anchor: they are different projects with different release cadences and different documentation, and a fact about cloud-init's lifecycle is not a fact about the distribution that ships it. What this module owns is narrow and load-bearing: how cloud-init is turned OFF, and what that does and does not imply about the files it wrote while it was on.

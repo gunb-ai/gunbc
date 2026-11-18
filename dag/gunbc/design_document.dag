@@ -6,17 +6,22 @@ import std.markdown {
 }
 import gunbc.markdown_helpers { h2, h3, p, li, li_blocks, ul, ol, hr, cell, row }
 import extdeps.languages.markdown { serialize_markdown_source }
+import std.algebra { string_contains }
 import gunbc.design_ruling {
   DesignRuling,
+  design_rulings,
   plans_are_intentions_and_realization_is_downstream,
   planning_scheduling_is_cut,
+  effort_estimates_are_public_and_live_in_gunbc,
   planning_execution_is_anchored_on_fabric,
   formal_work_opts_into_the_planning_process,
   work_item_acceptance_is_the_managers_or_an_escalation,
   where_refinements_retire_for_checked_constructors,
+  absence_class_witnesses_enrolled_by_operator_ruling,
   job_roster_closed_to_growth,
   ci_job_budgets_closed_to_growth,
   regeneration_jobs_added_to_roster,
+  required_gate_rows_grow_by_operator_ruling,
   conformance_needs_attention,
   consumption_interrogated_separately,
   dependencies_are_admitted_by_their_consumer,
@@ -39,6 +44,7 @@ import gunbc.design_ruling {
   project_documentation_projections_are_not_checkout_artifacts,
   machine_width_composition_has_an_intersection_carrier,
 }
+import gunbc.product_names { product_names_reference_blocks }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   v1_maintenance_standing_ref,
@@ -85,6 +91,25 @@ fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextI
 
 fn ruling(r: DesignRuling) -> String {
   concat("(ruling ", concat(documentary_ref_symbol_text(reference: r.reference), ")"))
+}
+
+// The operator rulings this document NAMES by symbol, DERIVED rather than listed. A ruling is cited
+// exactly when its own `ruling(r:)` row actually renders into the document, so this reads the cited
+// set back out of the rendered bytes. That makes the paragraphs the single authority: a citing
+// paragraph (`ruling(r: X)`) is the one and only edit, and the inventory cannot fork it. This is the
+// document's citation inventory and the single authority for the population the resolver/render
+// witness checks (gunbc.documentary_refs generated_document_declaration_refs). It is deliberately NOT
+// the whole ledger: gunbc.design_ruling design_rulings() grows without bound and is loaded apart from
+// this document (DESIGN.md: "dated operator rulings ... cited below by symbol"), so it is filtered
+// only to name each ruling's `reference` back out of the render -- the subset returned is exactly what
+// the document cites. A ruling named by a paragraph whose declaration is then renamed or deleted
+// fails to resolve or render in gunbc.documentary_refs_witness.
+fn document_cited_rulings() -> List<DesignRuling> {
+  let rendered = expected_design_md()
+  filter(
+    xs: design_rulings(),
+    predicate: r => string_contains(s: rendered, pattern: ruling(r: r)),
+  )
 }
 
 fn see(r: DesignRow) -> String {
@@ -506,7 +531,7 @@ fn changing_blocks() -> List<MarkdownBlock> {
         li(text: "**Realization is downstream.** Work items, their order and their staffing are a selection made against the intention (*Selection precedes convergence*), and may be redrawn whenever the work is picked up without the plan changing. A work item names the intention it serves; the intention does not list its work items. An intention is achieved when its done-when holds on the repository, assessed against an independent observation, not when its work items are checked off."),
         li(text: "**Formal work opts in.** A formal change names, in its brief and its pull request, the intention it serves (by `gunbc.plans` symbol) and the work items it owns; a decision it needs from the operator is recorded in `gunbc.design_ruling` and cited, never kept in the plan or the pull request alone. Pull requests are orthogonal to work items: one may carry several items or part of one, so a work item, not a pull request, is the unit of progress. Ad hoc work -- a fix, an investigation, an operator's one-off request -- is admitted without an intention, and becomes formal by naming one."),
         li(text: concat("**Done is an acceptance.** A work item is done when an accepted event is recorded for it in the item event log, with its evidence (its red control now passes and its handback was delivered); a merged pull request, a checkbox or prose is not done. The manager of the session that owns the work item decides the acceptance; a session with no manager raises it to the operator as an escalation ", concat(ruling(r: work_item_acceptance_is_the_managers_or_an_escalation), "."))),
-        li(text: concat("**No schedule.** There is no schedule type, time-period record, forecast or synchronized today list; what to work on next is the operator's choice ", concat(ruling(r: planning_scheduling_is_cut), ". An order or date field appears only when a named consumer decides something from it."))),
+        li(text: concat("**No schedule.** There is no schedule type, time-period record, forecast or synchronized today list; what to work on next is the operator's choice ", concat(ruling(r: planning_scheduling_is_cut), ". Narrowed 2026-11-17 by "), concat(ruling(r: effort_estimates_are_public_and_live_in_gunbc), ": a dated effort estimate with a basis is the clock, not a schedule; it lives in gunbc.roadmap.roadmap_effort_estimate, appended and never edited, with overdue derived against the acceptance log and no date ever a dependency. An order or date field appears only when a named consumer decides something from it."))),
         li(text: concat("**Execution and display.** Execution converges on fabric dispatch (`product.fabric`, `gunbc.compute`, `gunbc.fabric`) ", concat(ruling(r: planning_execution_is_anchored_on_fabric), ". A work item's lifecycle (claimed, released, accepted, retired) and its fabric execution are separate authorities joined by one binding, and in progress is derived from an active execution, never written. Any view of the work, the control plane's dashboard or a gunbc page, is a projection of plans, work items and both logs."))),
         li(text: "**Where it stands.** The first intention written this way is `gunbc.plans.planning_consolidation`; the other plans still hold their how as prose until they are rewritten, and the realization home is not yet decided."),
       ]),
@@ -576,6 +601,8 @@ fn ci_contract_blocks() -> List<MarkdownBlock> {
       li(text: concat("**The memory envelope is part of the verdict** ", concat(ruling(r: memory_envelope_is_part_of_the_verdict), ". Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`). Three authorities, kept apart: the slot says what is admitted; the exit verdict reads the two terminal readings a swapless slot can produce; and liveness — a working set over memory.high can hold under the throttle below memory.max indefinitely, with no OOM kill and no swap — is observed while the run executes, from outside it (`gunbc.host.memory_stall_refusal` `supervised_subject_verdict`; class `gunbc.recurring_failure_mode::swap_zero_read_as_a_thrash_refusal`)."))),
       li(text: concat("**What a green `", concat(required_ci_context_name as String, "` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose trigger is the native compiler judging the population the drop declares. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter."))),
       li(text: concat("**The job roster and its budgets are closed to growth** ", concat(ruling(r: job_roster_closed_to_growth), concat(" ", concat(ruling(r: ci_job_budgets_closed_to_growth), ": adding a job needs operator sign-off, and the operator has banned any increase to a CI time or memory budget without their explicit sign-off or approval, and has stated that memory budgets are to be lowered, not raised. The second ruling row holds the operator's words and, labelled separately, the interim interpretation of what counts as a time-budget increase. The reasoning an author owes for a new job is stated at `witness_floor_lane_jobs`."))))),
+      li(text: concat("**A required gate row is admitted by the operator, at the grain that was measured** ", concat(ruling(r: required_gate_rows_grow_by_operator_ruling), ". `v2.workflow.required_floor` `required_gate_authored_modules` grows one exact module name at a time, on a ruling; a family prefix would admit every sibling in the namespace, measured or not. A witness no lane executes is not a check: a retired class keeps its RED enrolled, so the row is what makes the refusal real."))),
+      li(text: concat("**The filesystem absence class rides the required gate** ", concat(ruling(r: absence_class_witnesses_enrolled_by_operator_ruling), ". Both witnesses of the class -- the read-outcome witness and the absence-establishment witness -- are rows of `v2.workflow.required_floor` `required_gate_authored_modules`, each admitted at its own name and never by a family prefix, so the refusal each one carries is judged on the required path instead of staying enrolled and never executed."))),
       li(text: concat("**An instrument is a row, not a flag** ", concat(ruling(r: instrument_is_a_row_not_a_flag), ". Investigation does not require one (see *Proportionate evidence* under the how-to-work claim). When a measurement warrants an instrument, a `gunbc test <label>` address is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2). A new wide instrument must first name its real consumer, discriminator and acceptable cost; required completeness is never certified by grep."))),
       li(text: concat("**Instrument measurements queue per dispatch, not one behind all** ", concat(ruling(r: instrument_measurement_queues_run_in_parallel), ". `gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_concurrency_group` keys the concurrency group on the dispatch ref plus the dispatch label, so unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped. Isolation between runs on the shared self-hosted pool is the SLOT's, not the queue's: `gunbc.runner.runner_slot_desired` declares the per-slot shape and `gunbc.host.memory_envelope` enforces it. That is what isolation means for an instrument run, not a claim that the live fleet carries it: live runner units drift from the declared shape (`gunbc.recurring_failure_mode::the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot refusing on drift), so until that trigger runs, parallel measurements rest on a declared authority that is not fully installed."))),
     ]),
@@ -598,6 +625,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     changing_blocks(),
     self_hosting_blocks(),
     conformance_reference_blocks(),
+    product_names_reference_blocks(),
     ci_contract_blocks(),
   ], bs => bs)
 }

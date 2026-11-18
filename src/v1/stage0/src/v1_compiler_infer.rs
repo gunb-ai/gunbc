@@ -22,7 +22,6 @@ use self::GroundedTest::*;
 use self::GroundedViewMatch::*;
 use self::GroundedViewShape::*;
 use self::HostTextSourceReading::*;
-use self::InferMachineWidth::*;
 use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
@@ -51,7 +50,6 @@ pub use crate::std_algebra::{
     kernel_carrier_admits_numeral, list_snoc_item, AlgebraProfile, AlgebraTypeTemplate,
     CollectionSizeEffect, FreeMonoid, FreeSemigroup,
 };
-pub use crate::std_checked_arithmetic::nat_magnitude;
 use crate::std_coercion::ArithmeticCarrierSelection::{
     ArithmeticCarrierAmbiguous, ArithmeticCarrierUndecided, ArithmeticNoCarrier,
 };
@@ -110,8 +108,6 @@ pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
     sub_value_to_evidence, InductiveField, RecursionShape, SubValueRelation,
 };
-pub use crate::std_integer::Signedness;
-use crate::std_integer::Signedness::Unsigned;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{
     interface_summary_rollup, signature_contract, ExportEntry, ExportKind, InterfaceSummary,
@@ -152,16 +148,14 @@ use crate::std_literal_elaboration::SignedViewReading::{SignedViewAgrees, Signed
 pub use crate::std_literal_elaboration::{
     carrier_grounding, declaration_is_grounded_natural, elaborate_literal_at,
     kernel_crossing_refusal_message, kernel_grounding_crossing, kernel_grounding_for,
-    kernel_grounding_width_crossing, kernel_mint_declaration_for,
-    literal_elaboration_refusal_message, literal_source_kind_of, signed_view_disagreement_message,
-    signed_view_reading, CarrierGroundingLookup, GroundedConstructorShape, GroundedDeclaredForm,
-    GroundedFieldDeclaration, GroundedFieldShape, KernelCrossingRefusal, KernelGrounding,
-    KernelGroundingArm, KernelGroundingCrossing, KernelGroundingLookup, KernelGroundingView,
-    KernelMintDeclarationLookup, LiteralElaboration, LiteralElaborationOutcome,
-    LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding, SignedViewDisagreement,
-    SignedViewReading,
+    kernel_mint_declaration_for, literal_elaboration_refusal_message, literal_source_kind_of,
+    signed_view_disagreement_message, signed_view_reading, CarrierGroundingLookup,
+    GroundedConstructorShape, GroundedDeclaredForm, GroundedFieldDeclaration, GroundedFieldShape,
+    KernelCrossingRefusal, KernelGrounding, KernelGroundingArm, KernelGroundingCrossing,
+    KernelGroundingLookup, KernelGroundingView, KernelMintDeclarationLookup, LiteralElaboration,
+    LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
+    SignedViewDisagreement, SignedViewReading,
 };
-pub use crate::std_measure::{bit_width, BitWidth};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -292,8 +286,9 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
     BuiltinFunction, DeclarationOnly, EmptyCollectionConstructor, KernelMethodOnly,
 };
 pub use crate::v1_compiler_infer_method::{
-    bare_call_non_declaration_binding, builtin_host_display_deferred_param_names,
-    builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
+    bare_call_non_declaration_binding, builtin_accepts_surplus_positional,
+    builtin_host_display_deferred_param_names, builtin_host_text_param_names,
+    builtin_kernel_seed_diagnostics, builtin_param_names,
     builtin_receiver_self_host_text_param_names, builtin_signature, infer_builtin_call_type,
     is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
     template_renders_receiver_elements_as_host_text, NonDeclarationBinding,
@@ -12485,6 +12480,59 @@ pub fn function_value_call_named_arg_diags(
     }
 }
 
+pub fn builtin_positional_arity_diags(
+    func_name: String,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if crate::v1_compiler_infer_method::builtin_accepts_surplus_positional(func_name.clone()) {
+        Rc::new(vec![])
+    } else {
+        match crate::v1_compiler_infer_method::builtin_signature(func_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(sig) => {
+                let capacity = (sig.params.clone().len() as i64);
+                let positional_args = Rc::new({
+                    let mut __result = Vec::new();
+                    for ta in typed_args.iter().cloned() {
+                        if match crate::v1_std_core::arg_name_at(
+                            ta.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ) {
+                            std::option::Option::None => true,
+                            Some(_) => false,
+                        } {
+                            __result.push(ta);
+                        }
+                    }
+                    __result
+                });
+                let supplied = (positional_args.clone().len() as i64);
+                if (supplied.clone() > capacity.clone()) {
+                    match positional_args
+                        .clone()
+                        .get((capacity.clone()) as usize)
+                        .cloned()
+                    {
+                        Some(overflow) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::CallPositionalSurplus {
+                                callee: func_name.clone(),
+                                supplied: supplied.clone(),
+                                capacity: capacity.clone(),
+                                span: overflow.span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    }
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+        }
+    }
+}
+
 pub fn function_value_named_application_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -14227,178 +14275,6 @@ pub fn grounded_cast_verdict(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum InferMachineWidth {
-    WidthNotConstrained,
-    WidthReadable {
-        signedness: Signedness,
-        bits: BitWidth,
-    },
-    WidthUnreadable {
-        cause: String,
-    },
-}
-
-pub fn infer_machine_width_of(
-    t: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<InferMachineWidth> {
-    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-        t.clone(),
-        source_indices.clone(),
-        env.clone(),
-    ) {
-        std::option::Option::None => Rc::new(InferMachineWidth::WidthNotConstrained),
-        Some(head) => {
-            let composition = match crate::v1_compiler_infer_env::alias_rhs_head_of_declaration(
-                head.clone(),
-                env.clone(),
-            ) {
-                Some(inner) => inner.clone(),
-                std::option::Option::None => head.clone(),
-            };
-            if !crate::std_decl_ref::declaration_ref_eq(
-                composition,
-                crate::std_decl_ref::decl_ref(
-                    "std.machine_constraints".to_string(),
-                    "Compose".to_string(),
-                ),
-            ) {
-                Rc::new(InferMachineWidth::WidthNotConstrained)
-            } else {
-                if ((t.children.clone().len() as i64) != 2) {
-                    Rc::new(InferMachineWidth::WidthUnreadable {
-                        cause: "a machine-width composition carries a carrier and one width"
-                            .to_string(),
-                    })
-                } else {
-                    match t.children.clone().first().cloned() {
-    std::option::Option::None => Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "a machine-width composition carries a carrier and one width".to_string(),
-}),
-    Some(carrier) => match t.children.clone().get((1) as usize).cloned() {
-    std::option::Option::None => Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "a machine-width composition carries a carrier and one width".to_string(),
-}),
-    Some(width) => match crate::v1_compiler_infer_env::type_reference_declaration_ref(width.clone(), source_indices.clone(), env.clone()) {
-    std::option::Option::None => Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "the width position resolves to no declaration".to_string(),
-}),
-    Some(width_head) => if !crate::std_decl_ref::declaration_ref_eq(width_head.clone(), crate::std_decl_ref::decl_ref("std.machine_constraints".to_string(), "MachineWidth".to_string())) {
-                    Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "the width position is not std.machine_constraints MachineWidth".to_string(),
-})
-                } else {
-                    match width.children.clone().first().cloned() {
-    std::option::Option::None => Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "the width carries no literal argument".to_string(),
-}),
-    Some(lit) => match (*lit.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: ref __rc_value, .. } if matches!(__rc_value.as_ref(), LiteralValue::LitInt { value: _, .. }) => { let LiteralValue::LitInt { value: v, .. } = __rc_value.as_ref() else { unreachable!() }; if infer_unsigned_width_carrier(carrier.clone(), source_indices.clone(), env.clone()) {
-                        Rc::new(InferMachineWidth::WidthReadable {
-    signedness: Signedness::Unsigned,
-    bits: crate::std_measure::bit_width(crate::std_checked_arithmetic::nat_magnitude(v.clone())),
-})
-                    } else {
-                        Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "the carrier is outside the unsigned reading this ruling reaches".to_string(),
-})
-                    } },
-    _ => Rc::new(InferMachineWidth::WidthUnreadable {
-    cause: "the width argument is not an integer literal".to_string(),
-}),
-},
-}
-                },
-},
-},
-}
-                }
-            }
-        }
-    }
-}
-
-pub fn infer_unsigned_width_carrier(
-    carrier: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-        carrier,
-        source_indices,
-        env.clone(),
-    ) {
-        std::option::Option::None => false,
-        Some(d) => {
-            let resolved = match crate::v1_compiler_infer_env::alias_rhs_head_of_declaration(
-                d.clone(),
-                env.clone(),
-            ) {
-                Some(inner) => inner.clone(),
-                std::option::Option::None => d.clone(),
-            };
-            crate::std_decl_ref::declaration_ref_eq(
-                resolved,
-                crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-            )
-        }
-    }
-}
-
-pub fn resolved_width_cast_verdict(
-    src_node: Rc<Node>,
-    source_declaration: Option<Rc<DeclarationRef>>,
-    target_declaration: Option<Rc<DeclarationRef>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<GroundedCastVerdict> {
-    match target_declaration.clone() {
-        std::option::Option::None => Rc::new(GroundedCastVerdict::GroundedCastNotDecided),
-        Some(td) => {
-            if !crate::std_decl_ref::declaration_ref_eq(
-                td.clone(),
-                crate::std_decl_ref::decl_ref("std.integer".to_string(), "Int".to_string()),
-            ) {
-                Rc::new(GroundedCastVerdict::GroundedCastNotDecided)
-            } else {
-                match source_declaration.clone() {
-                    std::option::Option::None => {
-                        Rc::new(GroundedCastVerdict::GroundedCastNotDecided)
-                    }
-                    Some(sd) => match (*infer_machine_width_of(src_node, source_indices, env))
-                        .clone()
-                    {
-                        InferMachineWidth::WidthReadable {
-                            signedness, bits, ..
-                        } => {
-                            match (*crate::std_literal_elaboration::kernel_grounding_width_crossing(
-                                kernel_grounding_rows(),
-                                sd.clone(),
-                                signedness.clone(),
-                                bits.clone(),
-                                td.clone(),
-                            ))
-                            .clone()
-                            {
-                                KernelGroundingCrossing::CrossingTotalWidening => {
-                                    Rc::new(GroundedCastVerdict::GroundedCastAdmitted)
-                                }
-                                KernelGroundingCrossing::CrossingRefused { cause: _, .. } => {
-                                    Rc::new(GroundedCastVerdict::GroundedCastNotDecided)
-                                }
-                            }
-                        }
-                        _ => Rc::new(GroundedCastVerdict::GroundedCastNotDecided),
-                    },
-                }
-            }
-        }
-    }
-}
-
 pub fn validate_cast(
     source_inferred: Option<Rc<InferredNode>>,
     source_declaration: Option<Rc<DeclarationRef>>,
@@ -14409,12 +14285,11 @@ pub fn validate_cast(
     module_name: String,
     source_reading: Rc<HostTextSourceReading>,
     int_refinement_cast_domain: bool,
-    env: Rc<TypeEnv>,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
             let source_name =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), src_node.clone());
+                crate::v1_std_core::authored_name_at(source_indices, src_node.clone());
             let grounded = match source_declaration.clone() {
                 Some(d) => grounded_cast_verdict(d.clone(), target_reading.clone()),
                 std::option::Option::None => Rc::new(GroundedCastVerdict::GroundedCastNotDecided),
@@ -14433,13 +14308,6 @@ pub fn validate_cast(
                 },
                 std::option::Option::None => (source_name.clone() == target_name.clone()),
             };
-            let width_verdict = resolved_width_cast_verdict(
-                src_node.clone(),
-                source_declaration.clone(),
-                target_declaration.clone(),
-                source_indices.clone(),
-                env,
-            );
             if is_identity_cast.clone() {
                 std::option::Option::None
             } else {
@@ -14449,56 +14317,63 @@ pub fn validate_cast(
                 } {
                     std::option::Option::None
                 } else {
-                    if match (*width_verdict.clone()).clone() {
-                        GroundedCastVerdict::GroundedCastAdmitted => true,
+                    if match (*grounded.clone()).clone() {
+                        GroundedCastVerdict::GroundedCastRefused { cause: _, .. } => true,
                         _ => false,
                     } {
-                        std::option::Option::None
-                    } else {
-                        if match (*grounded.clone()).clone() {
-                            GroundedCastVerdict::GroundedCastRefused { cause: _, .. } => true,
-                            _ => false,
-                        } {
-                            {
-                                let cause = match (*grounded.clone()).clone() {
-                                    GroundedCastVerdict::GroundedCastRefused {
-                                        cause: c, ..
-                                    } => c.clone(),
-                                    _ => "".to_string(),
-                                };
-                                let msg = v1_rt::concat(
+                        {
+                            let cause = match (*grounded.clone()).clone() {
+                                GroundedCastVerdict::GroundedCastRefused { cause: c, .. } => {
+                                    c.clone()
+                                }
+                                _ => "".to_string(),
+                            };
+                            let msg = v1_rt::concat(
+                                v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "invalid cast: ".to_string(),
-                                                    source_name.clone(),
-                                                ),
-                                                " as ".to_string(),
+                                                "invalid cast: ".to_string(),
+                                                source_name.clone(),
                                             ),
-                                            target_name.clone(),
+                                            " as ".to_string(),
                                         ),
-                                        " -- ".to_string(),
+                                        target_name.clone(),
                                     ),
-                                    cause.clone(),
-                                );
+                                    " -- ".to_string(),
+                                ),
+                                cause.clone(),
+                            );
+                            Some(crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                }),
+                                module_name.clone(),
+                            ))
+                        }
+                    } else {
+                        if crate::std_coercion::dag_cast_requires_proof(
+                            source_name.clone(),
+                            target_name.clone(),
+                        ) {
+                            {
+                                let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " is a refinement cast, not a re-typing -- an arbitrary ".to_string()), source_name.clone()), " has no ".to_string()), target_name.clone()), "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)".to_string());
+                                let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                });
                                 Some(crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    }),
+                                    diag.clone(),
                                     module_name.clone(),
                                 ))
                             }
                         } else {
-                            if crate::std_coercion::dag_cast_requires_proof(
-                                source_name.clone(),
-                                target_name.clone(),
-                            ) {
+                            if int_refinement_cast_domain.clone() {
                                 {
-                                    let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " is a refinement cast, not a re-typing -- an arbitrary ".to_string()), source_name.clone()), " has no ".to_string()), target_name.clone()), "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)".to_string());
-                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
+                                    let diag = Rc::new(CompilerDiagnostic::RefinementCastRefused {
+                                        source: source_name.clone(),
+                                        target: target_name.clone(),
                                         span: span.clone(),
                                     });
                                     Some(crate::v1_std_core::make_error_node(
@@ -14507,55 +14382,40 @@ pub fn validate_cast(
                                     ))
                                 }
                             } else {
-                                if int_refinement_cast_domain.clone() {
-                                    {
-                                        let diag =
-                                            Rc::new(CompilerDiagnostic::RefinementCastRefused {
-                                                source: source_name.clone(),
-                                                target: target_name.clone(),
-                                                span: span.clone(),
-                                            });
-                                        Some(crate::v1_std_core::make_error_node(
-                                            diag.clone(),
+                                match (*source_reading.clone()).clone() {
+                                    HostTextSourceReading::HostTextRouteAbsentNominal => {
+                                        nominal_cast_refusal(
+                                            source_name.clone(),
+                                            target_name.clone(),
+                                            span.clone(),
                                             module_name.clone(),
-                                        ))
+                                        )
                                     }
-                                } else {
-                                    match (*source_reading.clone()).clone() {
-                                        HostTextSourceReading::HostTextRouteAbsentNominal => {
-                                            nominal_cast_refusal(
-                                                source_name.clone(),
-                                                target_name.clone(),
-                                                span.clone(),
-                                                module_name.clone(),
-                                            )
-                                        }
-                                        HostTextSourceReading::HostTextRouteAbsentKernel {
-                                            kernel: NonTextKernel::NonTextKernelBool,
-                                            ..
-                                        } => nominal_cast_refusal(
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: NonTextKernel::NonTextKernelBool,
+                                        ..
+                                    } => nominal_cast_refusal(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                    ),
+                                    HostTextSourceReading::HostTextRouteAbsentKernel {
+                                        kernel: _,
+                                        ..
+                                    } => validate_cast_in_table_domain(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                        span.clone(),
+                                        module_name.clone(),
+                                    ),
+                                    HostTextSourceReading::HostTextSourceAdmissible => {
+                                        validate_cast_in_table_domain(
                                             source_name.clone(),
                                             target_name.clone(),
                                             span.clone(),
                                             module_name.clone(),
-                                        ),
-                                        HostTextSourceReading::HostTextRouteAbsentKernel {
-                                            kernel: _,
-                                            ..
-                                        } => validate_cast_in_table_domain(
-                                            source_name.clone(),
-                                            target_name.clone(),
-                                            span.clone(),
-                                            module_name.clone(),
-                                        ),
-                                        HostTextSourceReading::HostTextSourceAdmissible => {
-                                            validate_cast_in_table_domain(
-                                                source_name.clone(),
-                                                target_name.clone(),
-                                                span.clone(),
-                                                module_name.clone(),
-                                            )
-                                        }
+                                        )
                                     }
                                 }
                             }
@@ -18544,20 +18404,29 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                             emissions: infer_emissions_concat(
                                                 arg_emissions.clone(),
                                                 infer_emissions_of_diagnostics(v1_rt::concat(
-                                                    relocated_algebra_evidence_diags(
-                                                        v1_rt::concat(
-                                                            method_resolution.diagnostics.clone(),
-                                                            template_subst_diags.clone(),
+                                                    v1_rt::concat(
+                                                        relocated_algebra_evidence_diags(
+                                                            v1_rt::concat(
+                                                                method_resolution
+                                                                    .diagnostics
+                                                                    .clone(),
+                                                                template_subst_diags.clone(),
+                                                            ),
+                                                            span.clone(),
+                                                            scope.module_name.clone(),
                                                         ),
-                                                        span.clone(),
-                                                        scope.module_name.clone(),
+                                                        algebra_method_host_text_crossing_diags(
+                                                            func_name.clone(),
+                                                            method_resolution.semantics.clone(),
+                                                            method_receiver.clone(),
+                                                            remaining.clone(),
+                                                            bridge_result_type.clone(),
+                                                            scope.clone(),
+                                                        ),
                                                     ),
-                                                    algebra_method_host_text_crossing_diags(
+                                                    builtin_positional_arity_diags(
                                                         func_name.clone(),
-                                                        method_resolution.semantics.clone(),
-                                                        method_receiver.clone(),
-                                                        remaining.clone(),
-                                                        bridge_result_type.clone(),
+                                                        typed_args.clone(),
                                                         scope.clone(),
                                                     ),
                                                 )),
@@ -18790,7 +18659,7 @@ Rc::new(InferResult {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone())))))),
+    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), v1_rt::concat(builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_positional_arity_diags(func_name.clone(), typed_args.clone(), scope.clone()))))))),
 })
 }
                                 } else {
@@ -20654,7 +20523,6 @@ if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) 
                 scope.module_name.clone(),
                 source_reading.clone(),
                 int_refinement_cast_domain,
-                scope.type_env.clone(),
             );
             let cast_diags = match cast_diag.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),
@@ -34988,6 +34856,30 @@ pub fn build_ancestry_precedence(
 
 pub fn kernel_optional_type_node() -> Rc<Node> {
     {
+        let t_param = Rc::new(Node {
+            ident: std::option::Option::None,
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "T".to_string(),
+            span: kernel_span("T".to_string()),
+            ident_span: Some(kernel_span("T".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        });
         let present_value_field = Rc::new(Node {
             ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -34997,8 +34889,8 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: t_param.clone(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -35070,7 +34962,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
             connective: Connective::Disj,
-            params: Rc::new(vec![]),
+            params: Rc::new(vec![t_param.clone()]),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -39760,61 +39652,40 @@ pub fn kernel_mint_shape_diagnostics(
     Rc::new({
         let mut __result = Vec::new();
         for row in kernel_mint_declaration_rows().iter().cloned() {
-            __result.extend(
-                (*if (row.declaration.module_path.clone() != module_name.clone()) {
-                    Rc::new(vec![])
-                } else {
-                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                declaration_name: row.declaration.decl_name.clone(),
-                                cause: v1_rt::concat(
-                                    v1_rt::concat(
-                                        "the seed mints no kernel type named '".to_string(),
-                                        row.minted_name.clone(),
-                                    ),
-                                    "'".to_string(),
-                                ),
-                                span: module_span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
-                            row.declaration.clone(),
-                            env.clone(),
-                        ) {
-                            std::option::Option::None => {
-                                Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                        declaration_name: row.declaration.decl_name.clone(),
-                                        cause: "this module does not declare it".to_string(),
-                                        span: module_span.clone(),
-                                    }),
-                                    module_name.clone(),
-                                )])
-                            }
-                            Some(decl) => {
-                                match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
-                                    std::option::Option::None => Rc::new(vec![]),
-                                    Some(cause) => {
-                                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                                declaration_name: row.declaration.decl_name.clone(),
-                                                cause: cause.clone(),
-                                                span: decl.span.clone(),
-                                            }),
-                                            module_name.clone(),
-                                        )])
-                                    }
-                                }
-                            }
-                        }
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
+            __result.extend((*if (row.declaration.module_path.clone() != module_name.clone()) {
+        Rc::new(vec![])
+    } else {
+        if (row.minted_name.clone() != kernel_optional_mint_name()) {
+            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+    declaration_name: row.declaration.decl_name.clone(),
+    cause: v1_rt::concat(v1_rt::concat("the seed mints no kernel type named '".to_string(), row.minted_name.clone()), "'".to_string()),
+    span: module_span.clone(),
+}), module_name.clone())])
+        } else {
+            match crate::v1_compiler_infer_env::declaration_node_of_ref(row.declaration.clone(), env.clone()) {
+    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+    declaration_name: row.declaration.decl_name.clone(),
+    cause: "this module does not declare it".to_string(),
+    span: module_span.clone(),
+}), module_name.clone())]),
+    Some(decl) => match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
+    std::option::Option::None => match kernel_optional_shape_refusal(kernel_optional_type_node(), env.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(mint_cause) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+    declaration_name: row.declaration.decl_name.clone(),
+    cause: v1_rt::concat("the kernel mint itself is malformed: ".to_string(), mint_cause.clone()),
+    span: module_span.clone(),
+}), module_name.clone())]),
+},
+    Some(cause) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+    declaration_name: row.declaration.decl_name.clone(),
+    cause: cause.clone(),
+    span: decl.span.clone(),
+}), module_name.clone())]),
+},
+}
+        }
+    }).iter().cloned());
         }
         __result
     })

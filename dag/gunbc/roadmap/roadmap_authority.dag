@@ -981,6 +981,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       execution: bound(contract: namespace_reference_derived_closure_execution_contract()),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Dependencies derived from resolved references are what make a file's closure independent of which unrelated files are loaded."),
+      centering: plan(text: "One module only, in the native-seven closure: derive its dependency set from the declarations its qualified references resolve to, compare it to the set its import list produced, and hand back the two sets and their difference with a reason per differing module. The six-arm acceptance witness stays red; this slice establishes one arm (pool independence) on one real module."),
     ),
     roadmap_node(
       identity: "rn_BSBQTHTILASNV5W76PTDINPUB8",
@@ -1004,7 +1005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-v2-import-completion",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Decide whether an import list binds, and make it enforceable",
           boundary: "The symbol index is built from a tree-wide census, while the compiled population is the import closure. One answer is needed: either the import list binds and a name resolving outside it refuses, or bare references are reconciled for every file. #12782 made the 77 files' implicit imports explicit with zero binding change.",
           displaced_cost: "A file that declares any import silently gets no bare edges, so the compiled population is decided by accident.",
@@ -1012,7 +1013,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "Strict binding: a reference outside the declared closure refuses, located at file and name. Reconciliation: a permitted bare dependency enters the population and its effect summary. The existing import-list flip control stays as the regression probe.",
           out_of_scope: "Quieting the effect-summary join. (Deleting import syntax, XL-7, is withdrawn.)",
           handback: "The chosen repair, its transition population named, and the flip control enrolled."
-        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path.")),
+        ), on: "2026-09-30", note: "Not yet centered: decide after declaration-identity-switchover lands; lean: do not make import lists bind — the refusal comes from the switch-over's single definition of in-scope, and the import grammar is scheduled for deletion (XL-7)."), on: "2026-11-08", note: "Superseded premise: import-grammar deletion (XL-7) is withdrawn, and imports are the terminal name mechanism (gunbc.design_ruling imports_are_the_terminal_name_mechanism). The binding decision is made with imports staying; a name is decided by declaration, explicit import, or qualified path."), on: "2026-11-16", note: "The question this node asks is answered by gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted: an import list does not bind, because the import concept is deleted before v2 is accepted; in-scope is the switch-over's single definition. The out_of_scope parenthesis (XL-7 withdrawn) is superseded by that ruling and left as written. Serves gunbc.plans.names_without_imports.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Imports must either bind or be derived before resolution can say what a name sees."),
     ),
@@ -1032,6 +1033,90 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       ), on: "2026-09-30", note: "Not yet centered: after seed retirement per interlock.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Every rival way of deciding a name is deleted in one motion."),
+    ),
+    roadmap_node(
+      identity: "rn_F7X5W11359B0PQ90BYD7V73VJA",
+      id: "names-bind-to-the-unique-declaration",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/compiler/resolve.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 0: every declaration reference is fully qualified, a bare name is a lexical binder or unbound, the ambient tables are deleted, and the closure is read from the references",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 0 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified and gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded (2026-11-17). In v2.compiler.resolve a declaration reference is admitted only through the qualified door (try_resolve_qualified_name_node, qualified_head_scope_binding), binding by the path's one declaration and refusing, located and typed, when the path has no declaration or two providers; a bare head is answered by a lexical binder (parameter, let, match or lambda binder, type parameter) or refuses as unbound; the four AmbientBindingTable arms and their census are deleted, and no occurrence resolution is BoundAmbient afterwards. A subject's closure is the declaration-demand fixed point: the authored qualified references seed it and the compiler's generated demands (std.generated_provider: conversion routes, list and map heads, template heads, canonical operations, target support) extend it (namespace-reference-derived-closure); the ingest step realizes it by reading, and the seed's entry closure is read from the same demands in place of its import closure (declared_import_closure), which is the one seed change this layer owns.",
+          displaced_cost: "Measured 2026-11-16 (gunbc.plans.names_without_imports section 7): 110 bare sites in the native-seven closure, 304 in the gate closures and 4,974 across production bind today only through a stopgap table or not at all, and 42,011 qualified references already exist beside them; the program review of 2026-11-17 found that binding bare names by repository-wide spelling uniqueness would be an ambient namespace, which the 2026-10-15 ruling forbids. One spelling for every declaration reference removes the question and every table with it.",
+          first_slice: "The seed loads by qualified references: one native-seven module with its import lines deleted and its references spelled by path, loaded and typechecked by the seed and by v2 through the qualified door; its RED the same module with one reference left bare, refusing as unbound in both.",
+          red_control: "A bare head no lexical binder answers refuses as unbound, never falls to a table; a qualified reference to an absent path refuses naming the path; two providers for one path refuse naming both, and neither wins by load order; after the tables are deleted no occurrence resolution reads BoundAmbient and the census fold has no rows; a subject's demand closure equals the closure its former import list produced for every module in the native-seven closure, generated demands included, or the difference is listed by declaration with its cause.",
+          out_of_scope: "Declaring homes for names that have none (layer 1 and after); deleting the import grammar corpus-wide (import-grammar-and-lines-deleted); any shorter spelling or sugar.",
+          handback: "The qualified-only resolver with its discriminating claims, the four table arms deleted, the seed loading one module by its references, and the bare-name reading over the native-seven closure showing no site bound through a table."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 0 of gunbc.plans.names_without_imports: the one rule that replaces the ambient tables and is the semantics import deletion needs."),
+      centering: plan(text: "Seed loader slice only, on a fleet host under the memory envelope: run gunbc run --dry-run --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/test/claim/lexical_scope.dag unchanged (29 claims), then with the entry's import member lists stripped, then with its import lines deleted and its references spelled by path. Hand back the three verdict sets and nothing else; the ruling on the seed loader is the operator's from those three. Change no production source."),
+    ),
+    roadmap_node(
+      identity: "rn_9PXMHJ474EV2TEQ6MKEG198ZDJ",
+      id: "native-seven-names-homed",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 1: every name the native-seven closure uses has one declared home, and every declaration reference in the closure is spelled by its path",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 1 (section 3), and native-seven directly (gunbc.design_ruling::n7_requires_only_its_own_closure). The 54 non-roster names with no production declaration in the 161-module closure (2026-11-16 reading: starts_with 28 sites, first 28, split 27, replace 18, to_string 13, code_point 10, map_keys, sorted_map_keys, key_eq, sort_by, set_contains, empty_set, set_insert, map_get, flat_map and a tail of one to three sites) each get one declaration at a ruled home (std.host_text for host-text operations, std.algebra for lists, maps and sets, per the H1 to H4 rulings), one row each in roster_head_rows where the home's signature differs from the builtin's. Then the generator rewrites every declaration reference in the closure to its fully qualified path, with the current import semantics as its oracle, and the import lines leave those modules in the same landing (gunbc.design_ruling::declaration_references_are_fully_qualified). No import is added anywhere.",
+          displaced_cost: "Native-seven stops at the first unbound name per module, and 1,229 bare sites of names with no declaration sit in its closure; the waves so far homed layer 3 names (substring, char_at corpus-wide) while the closure still stops on split and starts_with. The program review of 2026-11-17 found that homing with an import at each site creates work layer 3 deletes; under the qualified rule no such bridge exists.",
+          first_slice: "The six names with ten or more sites (starts_with, first, split, replace, to_string, code_point): home declared, policy row where needed, their sites rewritten to the path in the closure, native-seven rerun and its first stop recorded before and after.",
+          red_control: "A name homed without its calling modules' claims green under both compilers is not homed; a home whose signature differs from the builtin's without a policy row is refused in review; a module in the closure that still carries an import line or a bare declaration reference at handback keeps this open; the bare-name reading over the closure after each landing shows the name moved from no-declaration to one home.",
+          out_of_scope: "Names and modules outside the native-seven closure (compiler-closure-names-homed-and-types-merged, corpus-names-homed-and-collisions-discharged); the resolver and loader rule itself (names-bind-to-the-unique-declaration), which lands first.",
+          handback: "Zero names with no declaration in the native-seven closure by the reading, every module in the closure import-free with every declaration reference qualified, and native-seven's recorded first stop no longer a name."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 1 of gunbc.plans.names_without_imports: the 54 names and one ambiguity between native-seven and its typed endpoint."),
+      centering: plan(text: "First six names only (starts_with, first, split, replace, to_string, code_point): declare each at its ruled home (std.host_text for host-text operations, std.algebra for lists) with a roster_head_rows policy row where the signature differs from the builtin's, rewrite their sites in the 161-module native-seven closure to the qualified path through roster_import_sweep, add no import anywhere, and rerun gunbc test //v2/test/claim/parse/expression_bodied_fn_decl_parse:all before and after. Hand back the first stop before and after, per name. A surprising stop is a valid handback, never a reason to touch a seventh name."),
+    ),
+    roadmap_node(
+      identity: "rn_T8N6SCYHTV6MAJQDQW7KVNG5G3",
+      id: "compiler-closure-names-homed-and-types-merged",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 2: the two compiler closures use only declared names, spelled by their paths; the dual std type declarations are merged on their own evidence",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 2 (section 3), and SelfHostCorpusEmitsCleanly over the two retained closures (gunbc.compiler_frontend_program_interlock). The 278 modules of v2.compiler.source_root_eval and v2.cli.compile_cli: the names with no declaration beyond layer 1's (2026-11-16 reading: 80 names, 2,316 sites, adding to_string 46 and sort_by 16) are homed the same way, and the generator rewrites every declaration reference in both closures to its path and removes their import lines (gunbc.design_ruling::declaration_references_are_fully_qualified). SEPARATELY, and not gating this handback: the dag std types redeclared under src/v2/std (String against v2.std.text, Int, UInt8 and PositiveInt against v2.std.integer, FilePath, Unit, SourceSpan, TerminationProof) are merged so that a compiler-side projection constructs or reads the one declaration and never redeclares it (kernel-type layer rule, 2026-10-18); under the qualified rule each duplicate has its own path and is a design debt, not an ambiguity, so the merges are accepted one type at a time on their own claims (the program review of 2026-11-17 asked that operation homing and type-authority merges not be fused).",
+          displaced_cost: "The emitter chain (second-generation onward) emits what resolves natively; a closure that still binds through tables or carries import lines cannot be emitted as one program under the ruled grammar.",
+          first_slice: "The homing half: the names with ten or more sites in the two closures beyond layer 1's, homed and their sites rewritten; the self-host instrument rerun before and after.",
+          red_control: "A name in either closure with no production declaration keeps this open; a module in either closure that still carries an import line or a bare declaration reference at handback keeps it open; a type merge that changes a declaration's signature without a policy row is refused in review; the ambiguous-import column of the reading is retired under the rule and is not an acceptance input.",
+          out_of_scope: "The rest of the production corpus (corpus-names-homed-and-collisions-discharged); emission itself; the type merges' own acceptance, which is per type and not this node's handback.",
+          handback: "The two closures at zero no-declaration names by the reading, every module in them import-free with every declaration reference qualified, and the self-host instrument at its previous or better stop."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 2 of gunbc.plans.names_without_imports: what the compiler closures need before they emit with one meaning."),
+    ),
+    roadmap_node(
+      identity: "rn_M4EY6JW75D1BTSJ8R9SFHG23NH",
+      id: "corpus-names-homed-and-collisions-discharged",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 3a: every production module uses only declared names, spelled by their paths, and the corpus is rewritten in one landing",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified. Across the 5,910 production modules: the 432 names with no declaration (2026-11-16 reading: 46,923 sites, led by concat 18,514, fold 4,860, to_string 4,521, map 4,205, filter 3,406, count 3,364, any 1,441, split 1,270, flat_map 1,139) homed through the policy table extended per name; then the generator run once over the corpus, test and fixture modules included, rewriting every declaration reference to its path and removing every import line, with the current import semantics as the oracle: the rewritten tree resolves and typechecks to the same bindings, module by module, or the difference is listed with its reason. Collisions are not a population under the rule: two declarations with one spelling have two paths, and the 1,617 import members the 2026-11-16 reading called ambiguous need no discharge.",
+          displaced_cost: "A corpus rewritten in pieces leaves two grammars live for the whole interval and every landing in it paying for both; one generated landing with an oracle is the replacement-migration doctrine applied (gunbc.design_argument::replacement_migration).",
+          first_slice: "The generator's oracle: for one production subtree, the rewritten modules' bindings equal the pre-rewrite bindings by declaration identity, with one planted divergence refused.",
+          red_control: "A production module with a bare head that has no declaration keeps this open; a module whose post-rewrite bindings differ from its pre-rewrite bindings by identity is listed with its reason or the landing refuses; a merge that changes a declaration's signature without a policy row is refused in review; the claim corpus is green under both compilers at the landing head.",
+          out_of_scope: "Deleting the import grammar (import-grammar-and-lines-deleted), which follows this landing so that a file with an import line can still be read while the oracle runs.",
+          handback: "The generator's corpus-wide run receipt, zero no-declaration names by the reading, zero import lines in the tree, and the claim corpus green under both compilers at the landing head."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 3a of gunbc.plans.names_without_imports: the corpus state that makes the import cut one landing."),
+    ),
+    roadmap_node(
+      identity: "rn_SR452WVJTR99AYEWSNT29J5Y6K",
+      id: "import-grammar-and-lines-deleted",
+      owner: "namespace",
+      carriers: carrier(path: "src/v2/compiler/parse.dag"),
+      line: ticket(t: fields(
+          headline: "Layer 3b: the import concept is gone: no import production in either compiler's grammar once the corpus is rewritten",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted, gunbc.design_ruling::declaration_references_are_fully_qualified and gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded. After corpus-names-homed-and-collisions-discharged has rewritten the tree, the v2 grammar loses its import production and its module-header production: an import line or a module header refuses at parse with a located diagnostic naming the replacement (each declaration spells its own full path), and the seed's parser refuses them the same way (2026-10-15 rule 2: v1 mirrors v2). Loading is already by declaration demands from layer 0, so this node deletes grammar and nothing else.",
+          displaced_cost: "Two ways to see a name, an import closure deciding the compiled population by accident, and an import retry are each a second authority the design forbids (gunbc.design_argument::single_authority); every landing until the cut pays for keeping them agreed.",
+          first_slice: "The grammar production removed from v2 with a parse-refusal claim over a planted import line, and the same refusal in the seed.",
+          red_control: "A .dag file containing an import line or a module header refuses at parse in both compilers after the cut; a tree with neither parses, resolves and typechecks identically before and after the grammar change; the claim corpus is green under both compilers at the landing head.",
+          out_of_scope: "Any meaning change at a site (the policy table, per name, before this); the loader (layer 0); any shorter spelling or sugar.",
+          handback: "Both grammars without the production, the parse-refusal claims, and native-production-admission consuming this node."
+        )),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 3b of gunbc.plans.names_without_imports: the cut that ends the import concept before v2 is accepted."),
     ),
 
     roadmap_node(
@@ -1444,6 +1529,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: picking the module takes judgment.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "A v2-emitted module passing its own discriminating tests is the first behavior receipt the promotion needs."),
+      centering: plan(text: "One module only, the smallest low-dependency module the compatible-corpus row's output names: emit it through the v2 door, build it in the real crate, run its own claims, then plant one broken variant and show the planted break fails with provenance naming the v2 generator. Hand back the receipt and the module's name; a module that will not build is the handback, not a reason to pick another."),
     ),
     roadmap_node(
       identity: "rn_1J8QK4XTB6PM09VZDR3HNW5CEY",
@@ -1496,6 +1582,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-09-30", note: "Not yet centered: far; needs generation three.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "admit_promotion returning promoted for a real candidate is the generator root cut (D9)."),
+    ),
+    roadmap_node(
+      identity: "rn_YQT00YD4K8DFY8K2S357ZYEN9Y",
+      id: "emitted-contracts-held",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/self_host_behavioral_equivalence_receipt.dag"),
+      line: ticket(t: fields(
+          headline: "Every rostered emitted module holds its own .dag contract on a discriminating corpus",
+          boundary: "The interlock milestone SelfHostEmittedContractsHeld (gunbc.compiler_frontend_program_interlock), read by gunbc.compiler_frontend_program_status from the latest deliberately taken behavioral-equivalence receipt identity-joined to the behavioral transport roster: every module the emitter roster names holds its own .dag contract when the emitted build is driven on a discriminating corpus. The seed is the regression oracle, never the specification (gunbc.design_ruling::v2_better_than_the_seed): a divergence is a v2 regression or a recorded seed correction, and matching bytes is not evidence.",
+          displaced_cost: "The milestone is a prerequisite of SelfHostSeedRetirement and until this change no work item discharged it, so the program could not say what remained between generation two and deleting the seed.",
+          first_slice: "Take one behavioral-equivalence receipt over the current emitter roster at a named head and read the milestone from it, whatever it says; an empty series (BehavioralEquivalenceSeriesEmpty) is the first red.",
+          red_control: "A module named by the roster with no receipt row, or a row whose contract run was not taken deliberately at the receipt's head, keeps the milestone Outstanding; a seed divergence with no disposition keeps it Outstanding; no row is minted from matching bytes.",
+          out_of_scope: "Admitting the successor (v1-emitter-fixed-point) and deleting the seed (v1-emitter-delete); widening the roster.",
+          handback: "SelfHostEmittedContractsHeld reads CLEAR in gunbc.compiler_frontend_program_status, with the receipt it was read from."
+        )),
+      parent: in_project(project: "v2-emitter-production", contribution: "A v2-built compiler is not a successor until every module it emits holds its own contract; this is the interlock prerequisite between generation two and seed retirement that had no work item."),
     ),
     roadmap_node(
       identity: "rn_3KTM8Q5VXB2NRJ7HDW9FZ0CPGA",
@@ -1696,7 +1798,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-products-v1-free",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Build and run every product without the old code present",
         boundary: "With the old runner gone and the hand-written queue worked through, the products build and run with the old directory absent. Anything that must stay gets an explicit reason.",
         displaced_cost: "Separates 'the products no longer need the old code' from 'the old runner is gone', so neither claim waits on the other's leftovers.",
@@ -1704,7 +1806,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A product that still reads or links anything from the old directory, without a stated reason, fails the check.",
         out_of_scope: "Not the repository-wide hand-written-Rust goal, and no deleting generated code.",
         handback: "The builds, the product runs, and the list of anything deliberately kept."
-      ), on: "2026-09-30", note: "Not yet centered: terminal.")),
+      ), on: "2026-09-30", note: "Not yet centered: terminal."), on: "2026-11-16", note: "This node's acceptance is the seed-deletion observation that SelfHostSeedRetirement (gunbc.compiler_frontend_program_status) needs before it can be read: the operator ruled the observation is the v1 deletion program's acceptance gate, not a separate instrument (gunbc.design_ruling::seed_deletion_observation_is_the_v1_programs_acceptance_gate). The handback's builds, product runs and kept-list are that evidence; the program's acceptance confirms and winds down the rest of v1. Serves gunbc.plans.v2_self_host.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v1-deletion-program", contribution: "The products build and run with no v1 code in their closure."),
     ),
@@ -2312,14 +2414,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-unique-on-chain",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: updated(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "Every name is decided one canonical way: by declaration, explicit import, or qualified path (gunbc.design_ruling imports_are_the_terminal_name_mechanism). Rows are the binding capabilities that still have open work. The staged namespace-XL migration program (stage chain, subject roster, baseline capture, rehearsal, waves, atomic cutover) was withdrawn on 2026-11-10 and its machinery deleted; this project is the binding semantics, not that program.",
           approach: "Each capability lands on its own row and is proven by the resolver refusing on the route (exact, ambiguous and unbound outcomes; import and qualified-path binding; cross-tree admission). The declaration-identity switch-over makes every consumer read the declaration resolve chose; the rival mechanisms are deleted after it.",
           red_control: "A name answered two ways by two code paths is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "Every name is decided one canonical way by declaration, explicit import, or qualified path, and the legacy deciding mechanisms are deleted."
-        )),
+        ), on: "2026-11-16", note: "Operator ruling gunbc.design_ruling::imports_are_deleted_before_v2_is_accepted restores import deletion as this project's goal, sequenced before v2's acceptance as the production route and after native-seven: the edge native-production-admission <- namespace-unique-on-chain is declared, and the handback's 'explicit import' arm ends when the cut lands. The intention is gunbc.plans.names_without_imports. The boundary text above records the 2026-11-08 reading and is not rewritten here."), on: "2026-11-17", note: "gunbc.design_ruling::declaration_references_are_fully_qualified: every declaration reference is spelled by its full path, always; a bare name is a lexical binder or unbound; the explicit-import arm of this node's handback is superseded and the ambiguity-discharge member closes as vacuous under the rule. The layer nodes are re-cut accordingly.")),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
 
@@ -2546,13 +2648,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "dp-m3-extdeps-scope-halved",
       owner: "debt",
       carriers: carrier(path: "dag/gunbc/extdeps_scope_frontier.dag"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: level_fields(
           headline: "DP-M3: extdeps-scope closure halved",
           boundary: "The legacy extdeps scope manifest (dag/gunbc/legacy_extdeps_scope_frontier.tsv via gunbc.extdeps_scope_frontier) halved, and gunbc.instruments.extdeps_scope_placement_gate enrolled on an executing route before anything is counted.",
           approach: "Enrol the gate first (a gate that runs nowhere is an inert lens, gunbc.design_argument::how_to_work), then drain one extdeps file per change: add its ExternalModelScope and delete its manifest line together.",
           red_control: "A manifest line deleted without its file declaring its scope, or a count taken while the gate runs nowhere, keeps this open.",
           displaced_cost: "An undeclared external-authority placement is a gunbc.design_argument::single_authority citation nobody can check.",
           handback: "The gate enrolled and the manifest at half its current size."
+        ),
+          on: "2026-11-16",
+          note: "Accepted for its literal hand-back: the placement gate enrolled on an executing route and the legacy manifest halved from 352 rows to 176 (wc -l on dag/gunbc/legacy_extdeps_scope_frontier.tsv; gunbc#16511, c7efe927c4f6). The migrated subjects are storage-grain scaffolds, not resolved references: 833 files carry 844 subject: ExternalSubjectRef rows and no consumer asks whether the named module declares the named thing, so a phantom costs one keystroke and passes every existing witness. Until dp-m3-subject-ref-resolved lands its consumer over the full carrier population, no further bulk drain runs against this milestone."
         )),
       parent: in_project(project: "debt-payoff", contribution: "External facts must live in their upstream module (gunbc.design_argument::single_authority); the legacy scope manifest is the roster of files that do not yet declare where they sit."),
     ),
@@ -2602,6 +2707,133 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "debt-payoff", contribution: "Rung drops on the native route are declared safety regressions with a finite runway; restoring them returns the route to its prior rung."),
     ),
     roadmap_node(
+      identity: "rn_NNZV6UA6MA76X6P719W9QCO1Z3",
+      id: "dp-m2-codex-direct-argv-policy",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/codex_app_server_press.dag"),
+      line: ticket(t: level_fields(
+          headline: "DP-M2: the Codex trip stops paying an SSH wall's price at a direct-exec seam",
+          boundary: "One authority transition: the Codex-trip arm stops admitting CODEX_HOME through the SSH portable-word wall and is bounded instead by what its own seam owes. Measured on main: codex_press_account_trip_argv_admission (dag/gunbc/codex_app_server_press.dag) admits the words through gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv (dag/gunbc/typed_argv_exec.dag) -- a wall admitting only [A-Za-z0-9._-/@:=] whose own commentary (typed_argv_exec.dag) justifies it by the ssh remote half, where exec carries a command STRING the remote user's shell re-parses (the deployment argument gunbc.remote_shell_command carries in its own commentary: RFC 4254 section 6.5 gives the exec request one string-typed command field and does not mandate a shell, while OpenSSH's sshd runs it through the target user's login shell), whose refusal diagnostic reads ssh remote argv is shell-reinterpreted, and which states that the portable-word check is not duplicated here because typed_argv_shell_safe_refusal_argv exists at the SshShell seam. The Codex route has no such string and no ssh: the module never names ssh, and the admitted words go to extdeps.shell.exec::RunArgvStdin (dag/extdeps/shell/exec.dag), whose transport is argv: [program, arguments] with stdin_payload -- no shell, no word splitting -- reached from codex_observed_standing_for_instance (codex_app_server_press.dag) and observe_codex_account_preflight . The shell route is the OTHER operation: extdeps.shell.exec::Run is the one that ships bash -s on stdin . So refusing a semicolon or a space at the Codex seam restricts which pathnames may be named; it prevents no injection. The Codex boundary's witness checks argv structure and value preservation -- an adversarial CODEX_HOME carrying a semicolon and one carrying a space each arrive as ONE argv value with their bytes intact, with no shell run -- and checks that the SSH portable-word wall is not applied at a direct-exec seam. Named consumers of the transition: the two production callers above, which hand Admitted.arguments straight to RunArgvStdin. A restricted Codex-home alphabet, if anyone wants one, needs its own authority and its own rationale, not a borrowed SSH wall.",
+          approach: "1-3 files, 50-150 changed lines, one red-on-base/green-on-head claim. Files: dag/gunbc/codex_app_server_press.dag (codex_press_account_trip_argv_admission, its wall call, and the commentary above the arm naming the wall the trip's single shell-safety authority), dag/test/claim/codex_app_server_press_witness.dag (the arm codex_press_account_trip_admission_refuses_adversarial_codex_home, which asserts CodexTripArgvRefused on /tmp/codex-home; reboot), dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness.dag (adversarial_codex_home_renders_no_shell_control_word, same value). Both witnesses already plant that value and today pin the refusal; this node re-cuts them to pin structure and preservation instead, on the dry claim route that already executes them (the roots of record are gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs, declared in dag/gunbc/ci/ci_layer_roots.dag, executed by .github/workflows/witnesses.yml). For scale: the PR that introduced this shape, gunbc#16536 (fe606a8ed62b), was 7 files and 250 insertions over 101 deletions because it re-cut five sibling arms too; this node is the residue, so 3 files is the ceiling. No new wall is authored here and no alphabet is introduced -- a wanted Codex-home restriction is a separate node with its own rationale, per the source-annotation rule that a check must say what it is for.",
+          red_control: "A CODEX_HOME carrying a semicolon or a space refused at the direct-exec seam keeps this open: the structure-and-preservation claim is red on base, where both named witnesses still expect CodexTripArgvRefused, and turns green only when the adversarial value reaches RunArgvStdin as one preserved argv element.",
+          displaced_cost: "Every Codex home outside [A-Za-z0-9._-/@:=] is unadministrable on this route today -- a space or a semicolon in a path is a legal and ordinary filename -- and the refusal buys no injection safety at a seam that passes argv structurally, while the borrowed wall's ssh commentary misstates what the check is for, so the next reader cannot tell a pathname rule from an injection rule.",
+          handback: "The two named witnesses execute red-on-base and green-on-head on the dry claim route: the adversarial CODEX_HOME arrives as ONE argv value with its bytes intact, no shell runs on the route, and no direct-exec seam in the Codex path calls the SSH portable-word wall."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M2 retired shell residue by moving spawns onto typed argv; one wall that change left standing is an SSH wall quoted at a direct-exec seam, where it can only restrict pathnames."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NQG5SWMS74ZGXDH6X55TQ8",
+      id: "extdeps-subject-ref-facts-host-census",
+      owner: "debt",
+      carriers: carrier(path: "src/v2/std/decl_index.dag"),
+      line: ticket(t: fields(
+          headline: "extdeps-subject-ref-facts: a host census reads an ExternalModelScope data declaration's subject as typed fields, so DP-M3b has subjects to resolve",
+          boundary: "A keyed decl_facts_at node (src/v2/std/decl_index.dag decl_facts_at) over an ExternalModelScope exposes only flat authored_string_lexemes: there is no subject/declaration/module_path field edge and record_field_projection is Absent, so a typed subject read cannot be built from it. Root cause measured by the DP-M3b worker (bright-wolf-535, PR #16609): marshal_decl_fact_node(DataItem) routes through marshal_data_initializer_projection, ctx.lookup_fn_node is None for extdeps scopes never loaded into the interpreter, so it falls to constructor_resolution_refused_projection, and marshal_plain_record_projection fails closed unless the type resolves in the importing module's type env. The existing resolver (src/v2/std/decl_ref_resolution_host.dag: v2.std.decl_ref_resolution_host, resolve_declaration_ref_live, declaration_ref_resolution_census_live) takes refs as input and discovers no subjects. The operator ruled DP-M3b option A on 2026-11-17 (A is fine), and the worker measured that A cannot be built inside DP-M3b. So a typed subject read needs a NEW host builtin (working name extdeps_subject_ref_facts): a BuiltinSignature added to the builtin_function_registry of src/v1/04_method.dag (type BuiltinSignature), which regenerates src/v1/stage0/src/v1_compiler_infer_method.rs; a primitive_identity_slug entry added to the roster of dag/std/primitive_projection.dag, which regenerates src/v1/stage0/src/std_primitive_projection.rs; the dispatch roster entry, which regenerates src/v1/stage0/src/v1_interpreter_dispatch_generated.rs; an eval in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts over decls_parse_only_fail_closed; the census data type and fn in src/v2/std/decl_index.dag beside DataDeclTypeFact and data_decl_type_facts; and a SeedGrowthJustification for the new seed. The three generated files are regenerated by the v1 compiler and never hand-edited; the dispatch bijection witnesses stay green: test.claim.v1_interpreter_primitive_dispatch_authority_acceptance, the surface witness in dag/gunbc/v1/v1_interpreter_primitive_surface, and the roster witness in test.claim.interpreter_dispatch_bijection_real_roster_witness.",
+          displaced_cost: "Without this census DP-M3b stays blocked: option A hands the resolver typed subject.declaration \{module_path, decl_name} values, but the only read available over an ExternalModelScope today is the untyped, flat authored_string_lexemes. Left undone, a reader guesses the subject positionally -- the failure mode gunbc.bare_name_resolved_by_proximity_standing_in_for_resolution refuses -- and the DP-M3 milestone's consumer half stalls with the 844 migrated subject refs never reaching the resolver that already exists.",
+          first_slice: "Declare the builtin end to end without hand-editing any generated file: add the BuiltinSignature to builtin_function_registry in src/v1/04_method.dag, the primitive_identity_slug entry in dag/std/primitive_projection.dag, the eval in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts, and the census data type plus fn in src/v2/std/decl_index.dag beside data_decl_type_facts; attach a SeedGrowthJustification (gunbc.seed_growth::SeedGrowthJustification) whose hand_authored_declarations is the seed census -- the new eval_extdeps_subject_ref_facts fn in src/v1/stage0/src/coproduct_reflection.rs cloned from eval_data_decl_type_facts, its BuiltinSignature in src/v1/04_method.dag, its primitive identity in dag/std/primitive_projection.dag, and its census type plus fn in src/v2/std/decl_index.dag (the three generated files are regenerated, not hand-authored rows); a reason; an owning_dissolution_lane; and a trigger, so the hand-written eval is a declared row and never a silent escape hatch per gunbc.design_argument::self_hosting; the trigger must name the condition that deletes the eval: an emitted v2 fold resolves an ExternalModelScope data declaration's subject in-DAG, i.e. marshal_data_initializer_projection no longer falls to constructor_resolution_refused_projection for extdeps scopes because the scope is loaded so ctx.lookup_fn_node resolves the subject type in the importing module's type env and record_field_projection is Present -- at which point the eval and its roster rows are deleted; regenerate src/v1/stage0/src/v1_compiler_infer_method.rs, src/v1/stage0/src/std_primitive_projection.rs and src/v1/stage0/src/v1_interpreter_dispatch_generated.rs through the v1 compiler; then land one claim that reads one ExternalModelScope data declaration and returns subject.declaration \{module_path, decl_name} as typed fields, red on base and green on head.",
+          red_control: "For an ExternalModelScope data declaration the census returns subject.declaration \{module_path, decl_name} as typed fields (a typed read of both), a non-literal subject row REFUSES rather than being guessed positionally, and the three generated files match the v1 compiler's regeneration with the dispatch bijection witnesses (authority, surface and roster) holding.",
+          out_of_scope: "This is the declaration of the census node only; no implementation lands in this plan PR. Resolution belongs to dp-m3-subject-ref-resolved, which consumes the typed subjects this census discovers -- this node discovers and types them and resolves nothing. The three generated files are never hand-edited, no subject resolution is added to the census, and DP-M3b's own ticket text is left untouched; the only change to it is the new dependency edge.",
+          handback: "Return the census builtin reading an ExternalModelScope data declaration's subject.declaration \{module_path, decl_name} as typed fields, the refusal on a non-literal subject row, the three regenerated files with the authority, surface and roster bijection witnesses green, and the SeedGrowthJustification -- the prerequisite dp-m3-subject-ref-resolved then resolves against."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M3b's option A read of typed subject refs cannot be built inside DP-M3b: the only read over an ExternalModelScope is the untyped authored_string_lexemes, so a host census must first return subject.declaration \{module_path, decl_name} as typed fields for the existing resolver to consume."),
+    ),
+    roadmap_node(
+      identity: "rn_H3NLOAANZ5KMIP89PZHKFN2N5A",
+      id: "dp-m3-subject-ref-resolved",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/extdeps_scope_frontier.dag"),
+      line: ticket(t: level_fields(
+          headline: "DP-M3: the 844 subject refs the drain migrated meet the resolver that already exists",
+          boundary: "One authority transition: an ExternalSubjectRef stops being a value that is compared and becomes a reference that resolves. Measured on main: 833 files under dag/ and src/ carry 844 rows of subject: ExternalSubjectRef (grep over the tree) -- the type is extdeps.external_authority::ExternalSubjectRef (dag/extdeps/external_authority.dag), holding a DeclarationRef of module_path plus decl_name -- and 859 files declare extdeps_model_scope. Nothing asks whether the named module declares the named thing. The model says so in its own words (dag/gunbc/extdeps_scope_frontier.dag, WHAT THE RULE DOES NOT BUY): nothing resolves an ExternalSubjectRef module_path/decl_name against the declarations of the module it names, the claim corpus reads the field only as a value, and String offers string_contains and split but no substring and no index, so a text scan cannot bound a name. Its only consumer today compares hand-typed values: test.claim.external_model_scope_witness::adopted_vendor_scopes_coherent_by_execution (dag/test/claim/external_model_scope_witness.dag) compares two literals through extdeps.external_authority::external_subject_ref_eq, and the module's other 29 claims build synthetic refs (fn subject, fn synthetic_scope) or check carrier text. The boundary: the resolver that already exists is applied to that population -- v2.std.decl_ref_resolution_host::resolve_declaration_ref_live and ::declaration_ref_resolution_census_live (src/v2/std/decl_ref_resolution_host.dag), built on the containment-tree module census rather than a text scan, with typed arms ModuleAbsent, DeclarationAbsent, FieldAbsent and Ambiguous -- refusing a name the declaring module does not declare, a prefix-only service match (spelling cron where the module declares service cron.Tab, the frontier's own named failure), a reference to a module that is neither the carrier nor its sanctioned subject-carrier sibling, and a name declared twice. It executes over the full 844-row population. No second checker is written: 33 .dag files already import this resolver, including dag/test/claim/long/decl_ref_resolution_witness.dag and dag/test/claim/long/carrier_reference_integrity_witness.dag, which resolve named carriers red-on-base.",
+          approach: "3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim, host grain. Measured reasons for that grain, so the node does not repeat a dead end: the full-population parse-grain walk in claims is OFFLINE by operator decision -- src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag is excluded from CI discovery by gunbc.ci.ci_layer_roots::witness_exclusion_substrings (dag/gunbc/ci/ci_layer_roots.dag) because the interpreted parse measured ~33s per module on 2026-07-22 -- and the construction door cannot carry it either, because v2.compiler.compile::required_compile_lens_roster (src/v2/compiler/compile.dag) admits only a pure fold over the tree being compiled, which cannot see a sanctioned subject-carrier sibling's declarations. So the consumer lands at the census grain the resolver was minted for, joining the consumers it already has -- dag/gunbc/generated_artifact_producer_coverage.dag, dag/gunbc/integration_concern.dag, src/v2/lens/common/outside_modeled_guarantee_join.dag and the claim witnesses dag/test/claim/long/decl_ref_resolution_witness.dag, dag/test/claim/long/carrier_reference_integrity_witness.dag, dag/test/claim/fleet_naming_witness.dag and dag/test/claim/decl_ref_keyed_read_agreement_witness.dag -- and NOT as a new corpus-wide CI job: gunbc.rung_drop.cited_symbol_census declares that very check retired (declared 2026-08-23, standing Retired with trigger fired 2026-08-25), so a second corpus-wide job would resurrect a rung the model has already dropped. The carrier population is enumerated from the same walk the census already runs; the four phantom arms are planted as red controls. ZERO bulk carrier migration in this node: no carrier file is edited and the legacy manifest stays at its measured 176 rows (wc -l on dag/gunbc/legacy_extdeps_scope_frontier.tsv, halved from 352 by gunbc#16511, c7efe927c4f6) -- no further drain runs until this consumer executes.",
+          red_control: "The four phantom classes, each planted and each green on base under every existing witness because all of them read the row as text or as a value: a name the target module never declared; a prefix-only service match; a reference to a module that is neither the carrier nor a sanctioned subject-carrier sibling; a name declared twice in the target module. Each must refuse under the resolver.",
+          displaced_cost: "844 rows read as an authority claim and are checked as a string, so the model's subject story rests on rows nobody reads: a phantom costs one editing keystroke, the drain cannot be re-run against any criterion, and every further drain PR pays the same hand re-verification cost with no consumer to amortize it against.",
+          handback: "One executing consumer over all 844 subject rows on the census route the resolver already runs, green on main and red on each of the four planted phantoms, with the manifest unmoved at 176 rows by this node."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M3 halved the legacy scope manifest and enrolled its gate; the subjects that migration moved are still storage-grain, so the second half of that milestone is the consumer that reads them."),
+    ),
+    roadmap_node(
+      identity: "rn_0HLUS1PYYH39HTYZ7O5PDAEZOB",
+      id: "dp-m5-consumer-family-converted",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/roadmap/attempt_system_unit_launch.dag"),
+      line: ticket(t: level_fields(
+          headline: "DP-M5: the attempt-spool read family is converted onto the typed read fold",
+          boundary: "DP-M5 has been measurement only: gunbc#16496 (2eefc8a1fe64) moved one line of prose in the adoption standing, and gunbc#16509 (1a923810e054) enrolled two witnesses by name in v2.workflow.required_floor -- no production consumer was converted. This node converts ONE cohesive family: the four identities that read the attempt spool and the worktree's git pointers under the instance root, all projecting raw std.resources Filesystem scalars outside extdeps.filesystem.filesystem_io::filesystem_read_outcome (dag/extdeps/filesystem/filesystem_io.dag, whose FilesystemReadOutcome already separates Read, Absent and CouldNotLook). Measured, with each collapse named: gunbc.roadmap.attempt_system_unit_launch::attempt_system_unit_read_answer (dag/gunbc/roadmap/attempt_system_unit_launch.dag) maps !read.success to AttemptSystemUnitAnswerMissing, which attempt_system_unit_harness_start_from_observation reads as Pending -- so an unreadable answer keeps an attempt waiting on a reply it cannot see, while the domain already carries AttemptSystemUnitAnswerUnreadable { detail } reserved for decode failure; ::attempt_system_unit_read_claimed_body drops read.error into the fixed reason claimed request body unreadable while the sibling stat fold beside it carries its cause; gunbc.roadmap.roadmap_belt_actuate::belt_prior_attempt_recovery (dag/gunbc/roadmap/roadmap_belt_actuate.dag) takes the else arm to SessionRecoveryNone, so an unreadable attempt log reads as no prior session to recover; ::belt_commit_git_trust collapses two reads into the prose causes worktree gitfile is missing or unreadable and worktree commondir is missing or unreadable, with no read.error, on the route belt_commit_git uses to decide committer identity -- an untrusted trust decides ExecRefused . Each is converted onto filesystem_read_outcome or that module's typed domain fold, with a could-not-look control per converted site whose absent arm takes a different action.",
+          approach: "One family, four identities, two production files plus their claim witnesses: 3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim. Production: dag/gunbc/roadmap/attempt_system_unit_launch.dag (2 Filesystem.Read sites) and dag/gunbc/roadmap/roadmap_belt_actuate.dag (9 of them; 14 files in that directory hold sites, and this node touches none of the others). Witnesses: dag/test/claim/roadmap/attempt_system_unit_launch_witness.dag (68 test fns) and dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag (150), where the four could-not-look claims are enrolled. The executing route is the dry claim corpus -- the roots of record are gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs (dag/gunbc/ci/ci_layer_roots.dag: dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit), executed by .github/workflows/witnesses.yml -- the same route gunbc#16509 used. Two of the sites are today reached only from wet witnesses (dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag, dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag) and one, belt_prior_attempt_recovery, is reached from NO witness at all; wet is not a dispatcher -- no file under .github/workflows passes --wet -- so the four new claims must be dry claims on that route, not additions to the wet ones. Success is a smaller writable state space at these four sites, not an updated count in the standing.",
+          red_control: "A converted site where an unreadable path still reads as absent: the answer file that exists but cannot be read reports Pending, the recovery reports SessionRecoveryNone, the claimed-body refusal still cannot tell unreadable from absent, or the gitfile refusal still says missing or unreadable in one arm. Red on base at each of the four sites, green on head.",
+          displaced_cost: "The standing keeps its prose count while these four sites keep their conflation: a launcher or belt that cannot read a spool artifact takes the absent path's action, which for an attempt means waiting on an answer that may already be written, or launching a replacement for a session that may already exist, and no check can see the difference.",
+          handback: "Four identities converted, each with its own could-not-look claim, executing red-on-base and green-on-head on the dry claim route."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M5 established absence as an established fact and enrolled its witnesses; a family of production consumers still folds could-not-look into absent, and this node converts that family."),
+    ),
+    roadmap_node(
+      identity: "rn_LBPUUNXDZTY1HATA9CE7H6YF19",
+      id: "debt-grandfathered-fold-enrolled",
+      owner: "debt",
+      carriers: carrier(path: "src/v2/workflow/floor_grandfathered_roster.dag"),
+      line: ticket(t: level_fields(
+          headline: "Debt: the grandfathered-removals fold is enrolled on a route that runs",
+          boundary: "One authority transition: the fold gunbc#16506 (97d819858c5b) shipped stops being a model with fixtures and becomes a gate on an executing route. src/v2/workflow/floor_grandfathered_roster.dag (2,841 lines) declares type GrandfatheredRemoval, data floor_grandfathered_removals, fn floor_grandfathered_holds, fn removal_withdraws, fn roster_change_verdict, fn first_undisposed_removal and fn roster_change_admitted ; the module's own commentary says an addition is refused by roster_change_verdict -- NOTHING ON THE ACCEPTANCE PATH CALLS IT -- and v2.workflow.required_floor repeats it. Measured consumer set: the grep for these folds outside the declaring module returns ONE file, dag/test/claim/floor_eval_step_budget_witness.dag (26 test fns), whose five verdict calls all pass planted three-row lists, and whose own comment says exactly that -- fixtures rather than folding the live roster; no .rs file anywhere mentions grandfathered. The boundary: THAT fold, not a second checker, is called on a route that runs today over the live roster (the cut behind floor_grandfathered_cut_size, which that witness only asserts is above 3000 rows) and the live removal rows, so a change that adds a hold or leaves a removal undisposed refuses where it is today admitted. Measured route reality, so the node enrolls on something that runs: the wet schedule is not a route -- v2.workflow.local_repo_wet_terminal::local_repo_wet_schedule (src/v2/workflow/local_repo_wet_terminal.dag) has no dispatcher, its only host reader is src/v1/stage0/src/cli_run/required_floor_runner.rs which validates the rows and refuses any expectation but ExpectedToHold (the refusal text: has no executor arm in this lane; only ExpectedToHold is realizable today), and no file under .github/workflows passes --wet. The route that does run is the dry claim corpus .github/workflows/witnesses.yml executes on every pull request, which already runs those 26 claims from the roots of gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs.",
+          approach: "1-3 files, 50-150 changed lines, one red-on-base/green-on-head claim: the existing fold gains its executing consumer inside src/v2/workflow/floor_grandfathered_roster.dag and dag/test/claim/floor_eval_step_budget_witness.dag, where the fixtures already reach it and the live cut and removal rows are reachable on the same route. Do not write a second checker -- the frontier is declared in this same module and naming another one is the failure mode this program keeps hitting. Do not enroll on the wet schedule: measured above, it has no dispatcher. If no executing route can carry the live-roster claim, the honest handback is that there is none, with that recorded where the verdict is declared rather than a schedule row invented to look like one.",
+          red_control: "A removal row on the live roster with no disposition, or a hold added with no removal behind it, leaves every existing check green today because only planted three-row fixtures reach the verdict; after enrollment the same state refuses on the executing claim, red on base and green on head.",
+          displaced_cost: "A roster of exempted witness rows whose removal is modelled but never consulted: the model says an undisposed removal is refused, no route asks the question, and so the one file that decides which stale rows stay exempted can drift in exactly the direction the fold was written to stop.",
+          handback: "One executing claim over the live roster, calling the fold #16506 already shipped, red on base and green on head."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "The debt batch that declared the grandfathered removals shipped the verdict and its fixtures; the acceptance path never calls it, so the roster's one real invariant is currently unenforced."),
+    ),
+    roadmap_node(
+      identity: "rn_AG04P6UEWDXRCNG3OWIC6M5PQF",
+      id: "dp-m4-discovery-floor-semantic",
+      owner: "debt",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run/non_fold_residue.rs"),
+      line: ticket(t: level_fields(
+          headline: "DP-M4: the discovery floor says what discovery must find, not how many rows",
+          boundary: "One authority transition: the discovery-health criterion stops being a count a payoff PR may move and becomes a statement of what discovery must find. Measured on main: the criterion is entries.len() >= 64 in src/v1/stage0/src/cli_run.rs, inside the host test nfr_live_union_is_populated_unique_and_tripled), reading super::non_fold_residue_roster_entries() (src/v1/stage0/src/cli_run/non_fold_residue.rs), which walks dag/ and src/v2/ for the .dag files declaring data non_fold_residue_frontier and keys each row as the carrier path joined to its declared subject path. The DP-M4 payoff PR that retired rows also moved this criterion: commit 922b0efb4780 (gunbc#16499, slice H) changed that same line from >= 100 to >= 64, so the measurement was renegotiated inside the change it measures. Measured population today: 99 rows over 42 carriers -- 56 rows across 24 carriers under dag/, 43 across 18 under src/v2/ -- leaving 35 rows of slack under a floor that has no relation to what discovery is for. The replacement names the population instead: every rostered row resolves to a declaration the module it names actually declares (my scan of main: all 99 resolve -- 91 bare rows joining their own carrier, 8 spelled as another module's path with the declaration present there), and every file under the two roots that declares the frontier contributes its rows to the union -- so neither a stale row nor a subtree the walk has stopped reaching can pass. Named consumers of both sides: non_fold_residue_site_is_rostered, which the complexity-linearity audit asks per wildcard site in src/v1/stage0/src/cli_run.rs and which the refusal path asks -- so the same roster already decides a claim-visible fact.",
+          approach: "1-3 files, 50-150 changed lines, one red-on-base/green-on-head claim. Files: src/v1/stage0/src/cli_run.rs (replace the count assertion inside nfr_live_union_is_populated_unique_and_tripled), src/v1/stage0/src/cli_run/non_fold_residue.rs (the resolution and carrier-completeness folds, beside the walk that already parses every carrier and the rostered fact), and at most one .dag claim module if the two properties are better witnessed there than in the host test. The route that runs today is the cargo test route that assertion already sits on, and the two semantic properties are asked there and nowhere else. No count is reintroduced at any threshold, and no new schedule, roster or CI job is created to hold the check.",
+          red_control: "A discovery regression the count floor misses and the semantic check catches: rename a rostered declaration without retiring its row (the union keeps its 99 rows, so the floor stays green while a row points at nothing), or drop the src/v2/compiler carriers from the walk (29 rows over 9 carriers go missing and 70 remain, still over 64). Both are green on base; both refuse on head.",
+          displaced_cost: "While the criterion is a number, any payoff PR that legitimately retires rows must edit the criterion -- which is exactly what slice H did -- so the measurement stopped measuring and the floor became a figure negotiated with the corpus instead of a claim about it; and any population above the floor passes, however wrong its rows.",
+          handback: "The count floor is gone. The two named semantic properties execute on the route that assertion ran on, are green on main at 99 rows over 42 carriers, and refuse on each planted regression."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "DP-M4's payoff PRs retired frontier rows and, in one of them, moved the floor that measures whether the frontier is still being discovered; this node replaces that criterion with one the corpus cannot be negotiated against."),
+    ),
+    roadmap_node(
+      identity: "rn_QUMPMHS49PJ96ARB5LM6YLVUHF",
+      id: "lab-standings-track-main",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/release_binding.dag"),
+      line: ticket(t: fields(
+          headline: "The lab's standings serve origin/main, with source and binary advancing as one pair",
+          boundary: "One authority transition: the srv1 lab stops serving a plan from a hand-pinned checkout under an unpaired binary, and serves only under a release binding that holds. Measured on main, the refresh is already model-emitted -- gunbc.live_deploy.emit::live_deploy_belt_standings_refresh_unit_file (dag/gunbc/live_deploy/emit.dag, which runs belt_observe_once_cli) and ::live_deploy_belt_standings_refresh_timer_unit_file, whose OnBootSec and OnUnitInactiveSec are gunbc.live_deploy.belt_cadence::belt_standings_refresh_backstop (dag/gunbc/live_deploy/belt_cadence.dag: 600 seconds) with AccuracySec at the tick cadence, and whose staleness gate derives belt_standings_refresh_staleness_horizon = 2 * backstop + belt_tick_run_bound because the fold itself measures 13-16 minutes with a 2700-second ceiling (emit.dag). The agreement authority already exists and is already gated: gunbc.live_deploy.release_binding::DeployedReleaseBinding (dag/gunbc/live_deploy/release_binding.dag) with ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed and ReleaseBindingUnobserved, compared against the tree's OBSERVED revision, and ::release_binding_holds refuses Unobserved -- its production consumer is gunbc.roadmap.roadmap_launch_deployment_receipt, which imports it. The release-bin provenance exists too: gunbc.ci.ci_release_bins::ci_emitted_release_bins (dag/gunbc/ci/ci_release_bins.dag), the release-bins.tgz pack, staged and verified by the steps emit.dag names. What is missing is the pairing at the lab: the instance gunbc-srv1-lab-codex-feedback-v0 reads the plan from a detached pinned checkout (operator measurement 2026-11-16: /opt/gunbc-lab/codex-provider-feedback-v0/source at 727573bf) run by an older binary (gunbc 50ef0dd9), so a node merged to main never appears without a hand redeploy, and nothing converges that checkout -- gunbc.live_deploy.release_locus already names the neighbouring hole, that the receipt proves which candidate was copied and not that the bytes match the deploying checkout. The boundary: source and the CI-built binary advance as one pair on a modeled schedule; a main whose release binary is not yet built, or a source/binary disagreement, keeps the last good pair serving and refuses visibly through the binding's own arms -- never a new plan under an old binary, never the reverse, and no hand-maintained lab branch.",
+          displaced_cost: "Every merge to main is invisible to the lab until a human redeploys, so the standings the operator reads drift from the plan being worked; and because the pin exists to keep source and binary matched, any ad-hoc advance of one half is a live mismatch risk on the host that dispatches work.",
+          first_slice: "Model the pair before touching a unit: one fold deciding, from the observed tree revision and the running release identity, whether the lab's serving pair is bound, and refusing serve when it is not. 3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim -- candidates: a convergence leg over the lab's source root in dag/gunbc/live_deploy/repository_convergence.dag or ::release_locus.dag, the pairing fold beside ::release_binding_holds in dag/gunbc/live_deploy/release_binding.dag, and a claim under dag/test/claim/live_deploy reusing the release-bin provenance of gunbc.ci.ci_release_bins (sha256-verified unpack) rather than building on srv1. Reuse belt_standings_refresh_backstop for the cadence and account for the 13-16 minute fold plus the measured ~19 minute cold restart, since a restart drops serving. If the pair-advance needs a new install or download leg on srv1, that leg is OUT OF SCOPE here and gets its own node: it is a second transition with its own readback, and bundling it would put a unit install behind the same claim as an agreement fold.",
+          red_control: "A main head with no matching release binary that gets served anyway, or a stale pair served with no visible refusal: both are green on main today, where no consumer asks the question at the lab at all, and both must refuse on head through the binding's ReleaseMixed or ReleaseBindingUnobserved arm.",
+          out_of_scope: "Building binaries on srv1, srv1 unit installs and any new download leg (separate node, separate readback), and the deploy roster that deploy-converge-serve-quiesced and fleet-converge-artifact-closure already own.",
+          handback: "The pairing fold with its named consumer on the refresh route, the refusal visible through the existing binding arms, the cadence reused from belt_standings_refresh_backstop with the fold and restart budgets accounted, and the red control executed red-on-base and green-on-head."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A serving host that cannot converge its own source and binary keeps its prerequisites unfounded: the lab's standings are the readback the roadmap depends on, and today they are converged by hand."),
+    ),
+    roadmap_node(
+      identity: "rn_HU66GO90952PAFHSG2A5UNZQWW",
+      id: "lab-converges-release-pair",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/release_locus.dag"),
+      line: ticket(t: fields(
+          headline: "The lab delivers its own release pair: fetch, verify, install and restart as one unit",
+          boundary: "One authority transition: the lab's release pair is delivered by a modeled leg instead of by a person standing at a terminal. Measured on main, no host-side delivery route exists. The only consumer of the CI artifact is CI itself: gunbc.fleet.fleet_workflow_steps::ci_release_bins_download_step fetches it and ::ci_release_bins_unpack_verify_step (its run built by gunbc.fleet.fleet_release_bins_key::release_bins_consumer_script_dispatch) verifies the handed-off bins against the build key and runs --verify-build-artifacts fail-closed, unpacking release-bins.tgz (gunbc.ci.ci_release_bins::ci_release_bins_archive_name, rostered by ::ci_emitted_release_bins and ::ci_floor_required_artifact_names) into a job's target/release. Nothing under dag/gunbc/live_deploy fetches an artifact: host units ExecStart from a per-revision release locus that a deploy already installed, addressed by gunbc.live_deploy.release_locus::release_locus_record, ::release_locus_binary_path and ::release_revision_execstart_text over type ReleaseRevisionBinding. gunbc.live_deploy.board_function_converge_unit states the hole in its own commentary -- hosts with no live deployment have no delivery route yet, their plans standing refusing or unrealized until a fleet-wide host-converge release exists. The boundary: a modeled schedule takes one main head, fetches its CI release bins and the matching source, verifies them against the same release provenance, installs BOTH into one new release locus as a single unit, and restarts the lab's serve from it, keeping the last good locus serving whenever any step refuses -- so a node merged to main reaches the served /standings.json with no hand redeploy. The pair it installs must also enter the deploy intent's artifact closure -- gunbc.live_deploy.deploy_artifact_closure::deployment_artifact_read_set, which dag/test/claim/live_deploy/deploy_artifact_closure_witness.dag already executes -- rather than becoming a file on the host that no intent owns. The cadence accounts for the host-side budgets the model already carries (the belt fold measures 13-16 minutes against the unit's 2700-second ceiling, per the comment above gunbc.live_deploy.emit::live_deploy_belt_standings_refresh_unit_file) and for the operator-measured ~19 minute cold restart, since a restart drops serving.",
+          displaced_cost: "Every merge waits on a human to move two artifacts that CI already produced and verified, so the lab lags main by however long nobody got to it -- and the hand advance is the same act that can put a new plan under an old binary, which is the failure the pairing node exists to refuse.",
+          first_slice: "3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim. Candidates: dag/gunbc/live_deploy/release_locus.dag (one revision binding carrying the source head and the verified release together, so the pair has one identity and the refusal has one place), dag/gunbc/live_deploy/emit.dag (the lab's delivery unit plus its timer, in the timer form gunbc.live_deploy.belt_cadence already emits, calling the existing consumer verify script rather than a new one), and one claim module under dag/test/claim/live_deploy. Reuse gunbc.ci.ci_release_bins for the pack and roster and gunbc.fleet.fleet_workflow_steps plus gunbc.fleet.fleet_release_bins_key for download and verification -- build nothing on srv1, which is why the pairing node declared this leg out of scope rather than shrinking itself. It depends on lab-standings-track-main: installing a pair is only safe once something decides whether a pair is bound.",
+          red_control: "A main head whose release bins are not built yet, or whose pack fails the build-key verification, gets installed and served anyway. On base that claim cannot be met at all -- there is no delivery leg to refuse, which is the measurement above -- and on head the same input leaves the last good locus serving with the refusal visible.",
+          out_of_scope: "The pairing and binding decision itself (lab-standings-track-main owns it), srv1 provisioning, and a fleet-wide host-converge release for hosts with no live deployment, which gunbc.live_deploy.board_function_converge_unit already names as its own missing authority.",
+          handback: "One delivered pair with its readback: the served /standings.json names the source head and the release identity it was built from -- the identity the unit's ExecStart already carries through release_revision_execstart_text -- the timer sits on the modeled cadence with the fold and cold-restart budgets accounted, and any refused step leaves the previous pair serving."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Convergence that needs a person is not convergence: the lab's release pair has a producer in CI and a consumer on the host, and nothing modeled joins them."),
+    ),
+    
+    roadmap_node(
       identity: "rn_TTZHRWWETX4EQ6HDABTT8AKMCV",
       id: "factory",
       owner: "harness",
@@ -2617,69 +2849,35 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "The machine that lands and verifies work (harness, workers, CI/floor, daily workspace) is what turns every other project's tasks into landed, verified changes without operator hand-integration."),
     ),
     roadmap_node(
-      identity: "rn_XRTQ4F2DMG80F0C5XTE81ZNQ0B",
-      id: "factory-attempt-slots-cutover-authorized",
+      identity: "rn_F1QXAKK2KYT3GCPMGDZ74V0Y21",
+      id: "factory-attempt-execution-on-fabric-lease",
       owner: "harness",
-      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_session_attempt_slots_cutover.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/planning_consolidation.dag"),
       line: ticket(t: fields(
-        headline: "The attempt-slots cutover carries an instance's slots only when an authorization the tick reads says so",
-        boundary: "gunbc.roadmap.roadmap_belt_actuate runs belt_attempt_slots_cutover_pass on every tick, before settlement, with no gate in code. gunbc.roadmap.roadmap_session_attempt_slots_cutover says the srv1 run stays gated on its own operator authorization, but that gate is prose. Its one declared moved root (replaced_attempt_slots_roots) is the srv1 lab instance, so the first tick of a lab binary built from main carries the lab's attempt slots unasked. The srv1 lab avoided this only by running a lab-only branch that bound the cutover as NotRun (loyal-deer-449/lab-r2, closed PR #15987). Make the authorization a typed input the pass reads: absent authorization is NotRun for that instance, a present one names the instance and the operator ruling or approval it came from.",
-        displaced_cost: "Every lab redeploy from main either carries the slots without the operator's decision or needs a hand-kept lab branch to stop it, and that branch is a second authority over whether the cutover runs.",
-        first_slice: "Add the authorization carrier and make belt_attempt_slots_cutover_pass return NotRun for an instance without one; no change to what an authorized run does.",
-        red_control: "(1) A tick for the srv1 lab instance with no authorization reports the cutover NotRun and moves no slot; RED on main, where it carries. (2) The same tick with an authorization for that instance carries exactly as today. (3) An authorization naming a different instance does not authorize this one.",
-        out_of_scope: "Running the srv1 cutover itself, and any change to which roots are declared moved.",
-        handback: "The carrier, the gated pass, and the three controls with the red run on main."
+        headline: "Attempt execution holds fabric's lease through the shared attempt lifecycle, and the belt's own slots, placement leases and capture-owed state are deleted",
+        boundary: "Execution converges on fabric (gunbc.design_ruling::planning_execution_is_anchored_on_fabric), and gunbc.plans.planning_consolidation records the belt beside it keeping its own attempt state, metering, exit spool, worktree claim and session slots. Three srv1 lab defects (2026-11-04) are that duplicate's symptoms. Bug 10: the drain started a request whose placement lease was already released, because gunbc.roadmap.attempt_system_unit_launch carries the admitted generation only as a nonce; the shared generation check (std.durable_compare_and_set ExpectSlotGeneration, already consumed by gunbc.compute.attempt_lifecycle) answers this. Bug 4: an attempt that predates commit-step records waits forever in CaptureOwed (gunbc.roadmap.roadmap_attempt_continuation); capture keyed by the attempt and safe to repeat has no owed state. And gunbc.roadmap.roadmap_belt_actuate runs belt_attempt_slots_cutover_pass on every tick with no gate in code, so a lab redeploy from main migrates its slots without the operator's decision; it ends with the belt's slot store, not with a gate. Measured at da9e9f5ec155 by git grep over dag: CasExpectation in 39 files (2 under gunbc/roadmap), DurableHoldState in 4 (0), file_compare_and_set_windowed in 9 (0). The realization's home awaits the audit planning_consolidation names. This node replaces factory-attempt-slots-cutover-authorized, factory-drain-start-permit-generation-bound and factory-legacy-attempt-capture-owed (#16504), withdrawn by the operator on 2026-11-15 rather than patched on the belt.",
+        displaced_cost: "Two attempt and lease systems are kept, every lab defect fixed on the belt is work the cutover deletes, and a lab redeploy from main runs a state migration nobody decided.",
+        first_slice: "The audit gunbc.plans.planning_consolidation names: for each belt, attempt, dispatch and session module, what execution needs from it, which fabric or compute authority already answers it (gunbc.compute.attempt_lifecycle, product.capacity.lease, gunbc.fabric.fabric_event_log), and what is deleted; handed to the operator as the realization-home decision before any cut.",
+        red_control: "(1) An attempt start whose lease was released, or re-admitted at a newer generation, refuses through the shared generation check and starts nothing. (2) Capture run again on any attempt, including one that predates commit-step records, reaches the same terminal outcome and never rests in an owed state. (3) No module runs belt_attempt_slots_cutover_pass or keeps a roadmap-local slot or lease store. Each RED on main.",
+        out_of_scope: "The work-item lifecycle and item events (gunbc.roadmap.roadmap_event_log), which stay a separate authority joined to execution by one binding.",
+        handback: "The audit and the operator's realization-home decision; then, per cut, the deleted modules, the controls green and the moved citations."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "A lab or production deploy from main no longer decides a state migration on its own."),
+      parent: in_project(project: "factory", contribution: "Work runs on one execution and lease model."),
     ),
     roadmap_node(
-      identity: "rn_0YE3QHR24XGK833Z7D86DTG3YW",
-      id: "factory-drain-start-permit-generation-bound",
+      identity: "rn_VE9DT9JA8RC2C17TYAA2ZG2HDZ",
+      id: "factory-principal-display-never-raw",
       owner: "harness",
-      carriers: carrier(path: "dag/gunbc/roadmap/attempt_system_unit_launch.dag"),
+      carriers: carrier(path: "dag/gunbc/principal_projection.dag"),
       line: ticket(t: fields(
-        headline: "The drain starts an attempt only while the placement lease it was admitted under is still held at that generation",
-        boundary: "srv1 lab bug 10 (2026-11-04): the drain started a request whose placement lease had already been released. gunbc.roadmap.attempt_system_unit_launch AttemptSystemUnitStartRequest carries the slot generation of the launch it admitted only as a nonce that tells requests apart; nothing on the drain side re-reads the slot or lease against that generation before starting the unit. A start must consume a permit bound to (slot, generation): the drain reads the slot's current generation and lease standing immediately before start, and a mismatch or released lease refuses the start with a typed cause and leaves the spool entry for settlement.",
-        displaced_cost: "A start under a released lease runs a worker that no seat accounts for, which is the double-promise the placement ledger exists to prevent, and it is found only by hand reconciliation afterwards.",
-        first_slice: "Read the slot generation and lease standing in the drain before start, and refuse a start whose request generation differs or whose lease is released.",
-        red_control: "(1) A start request whose slot was released after admission refuses and starts nothing; RED on main. (2) A start request whose slot was re-admitted at a newer generation refuses. (3) A start request at the current generation with the lease held starts as today.",
-        out_of_scope: "How a released lease is settled (gunbc.roadmap.roadmap_session_placement SettleRetireUncharged covers that).",
-        handback: "The permit check in the drain and the three controls with the red run on main."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "Every running worker holds the seat it was admitted under."),
-    ),
-    roadmap_node(
-      identity: "rn_H92JMXJFA06M5TB4DXNX8MT4R7",
-      id: "factory-legacy-attempt-capture-owed",
-      owner: "harness",
-      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag"),
-      line: ticket(t: fields(
-        headline: "An attempt that ended before commit-step records existed does not wait forever on capture owed",
-        boundary: "srv1 lab bug 4 (2026-11-04), partly fixed by #16210 (recovery records without cause_class, stale slots after a reboot, v4 submission captures). The remaining case: belt_capture_absence_for_attempt finds no AttemptCommitOutcomeLast, or one older than the attempt's head, and returns CaptureNotAttempted; continuation_plan then refuses with CaptureOwed and leaves the case to the belt's commit lane. Whether that lane ever runs the commit step for an attempt that ended before the record existed is unestablished. Establish it first; if the lane does pick such attempts up, record that with a witness and close this node; if it does not, give the commit lane a route that captures (or declares uncapturable with a typed cause) a legacy attempt so continuation can proceed.",
-        displaced_cost: "A node whose last attempt predates the commit-step record cannot be continued or started fresh without a hand edit of attempt state.",
-        first_slice: "A witness over a fixture attempt that ended with no commit-step record, showing what the commit lane does with it on main.",
-        red_control: "A legacy attempt with no commit-step record reaches a terminal capture outcome, or a typed uncapturable cause, within one belt pass, and continuation_plan then admits Continue or Start fresh; RED if it stays CaptureOwed across passes.",
-        out_of_scope: "The legacy classes #16210 already handles.",
-        handback: "The witness showing the commit lane's behavior on main, and either that witness green as the closing evidence or the new route with it green."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "Old attempt state never blocks a node from moving again."),
-    ),
-    roadmap_node(
-      identity: "rn_XGKBKHRNTW6AB4SBSQ6KD9XK8Y",
-      id: "factory-issue-page-principal-display",
-      owner: "harness",
-      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_page.dag"),
-      line: ticket(t: fields(
-        headline: "The issue page names a principal in words, never by its raw identifier",
-        boundary: "srv1 lab item 12 (2026-11-04): the issue page's Return To row shows the raw principal identifier. #16191 hid other raw form fields but not this row. The row in gunbc.roadmap.roadmap_page goes through issue_rail_person and event_principal_display_with_profile, which fall back to the raw label for any principal without a stored profile. Decide the display for a principal with no profile (a session id rendered as a session, an operator as the operator) at that one function, so every rail row that names a principal shares it.",
-        displaced_cost: "The operator reads opaque identifiers on the page they act from and has to look up who a row means.",
-        first_slice: "Give event_principal_display_with_profile a typed rendering for each principal kind without a stored profile.",
-        red_control: "A page render for a node whose Return To principal has no stored profile contains no raw principal identifier; RED on main.",
-        out_of_scope: "Profile storage itself, and rows #16191 already changed.",
-        handback: "The rendering change and the page witness with its red run on main."
+        headline: "No rendered surface shows a raw principal identifier; a principal that cannot be named renders as a typed error",
+        boundary: "Operator direction (2026-11-15): a raw principal identifier on a rendered surface is an error in every case. gunbc.roadmap.roadmap_page event_principal_display renders principal_ref_label as the name of an authenticated principal, and event_principal_display_with_profile falls back to it for any principal with no stored profile, under a stated never-blocks law that renders exactly that fallback. srv1 lab item 12 (the issue page's Return To row) is one instance. principal_ref_label is also the wire label that principal_ref_parse_label reads back, used by about 18 non-test modules at da9e9f5ec155 (git grep -l over dag), so the defect is the wire form used as display text, not the label. Replaces factory-issue-page-principal-display (#16504), which fixed only the issue page.",
+        displaced_cost: "The operator reads opaque identifiers on the surfaces they act from and has to look up who a row means, and each surface that adds a principal row can leak one again.",
+        first_slice: "Record the operator's direction as a gunbc.design_ruling row superseding the never-blocks fallback, then give the display projection a typed arm for a principal it cannot name, rendered as a visible located error marker instead of the label.",
+        red_control: "(1) A page render whose principal has no stored profile contains no raw principal identifier and shows the typed undisplayable marker; RED on main. (2) The render sites a stated search finds using principal_ref_label as display text reach the principal through the one display projection instead, with the search command, revision and inspected population named.",
+        out_of_scope: "Profile storage itself, and wire and storage uses of principal_ref_label.",
+        handback: "The ruling row, the projection change, the controls with the red run on main, and the moved render sites with the search stated."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The daily workspace is readable without lookups."),
@@ -2724,13 +2922,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
-        headline: "A served entry restarts from a stored program image instead of resolving and typing its closure again",
-        boundary: "srv1 lab items 9 and 13 (2026-11-04): restarting serve takes about 11 minutes, and each harness worker rests at about 6.7 GiB, both spent rebuilding the resolved and typed program the process last held. Persist that program keyed by entry, closure and compiler digest, and load it on start, under the demand engine's materialization rules (gunbc.design_argument::demand_before_materialization): the key must represent every declared input, and a missed or mismatched key recomputes, never serves a stale image. Measure first how much of the resting memory is the image and how much is evaluation heap; the memory half of this node is only as large as that measurement shows.",
+        headline: "The roadmap serve entry runs as a native-served program, so a restart starts the stored built product instead of resolving and typing its closure again",
+        boundary: "srv1 lab items 9 and 13 (2026-11-04): restarting serve takes about 11 minutes, and each harness worker rests at about 6.7 GiB. Measured on fleet-converge run 43637222454 (serve_entry_verdict, 1436-module closure): resolve_entry_graph_inclusive is about 175 of 176 s of the pre-entry, peak RSS about 5.7 GiB. Serve runs on gunbc run, the v1 seed interpreter, so persisting a program image inside it is SeedFeatureCompletion and refused (gunbc.v1.v1_maintenance_standing::v1_seed_standing). The admitted route is native serving: the entry runs as a native serve driver (gunbc.native_serve), resolve and typing run once at build time, and the built product is already stored, keyed and re-verified by the seed's native product cache, which refuses a mismatched or corrupted product and rebuilds. Folding that cache's key into std.materialization_provider request_key is owed only when its own stated trigger holds (the provider serves the native artifact as its only producer). The seed-embedded descriptor gunbc.roadmap.roadmap_native_ingress.roadmap_native_ingress_program carries this node's realized state: startup is Absent -- the startup handler is deferred and owed on this node.",
         displaced_cost: "Every deploy holds the service down for the restart, and every worker's resting memory limits how many workers a host can run.",
-        first_slice: "Measure restart time and resting memory split into resolve, type and image versus evaluation heap, on one served entry at one revision.",
-        red_control: "(1) A restart with a matching stored image skips resolve and typing and serves the same responses as a cold start. (2) A restart whose compiler digest or closure differs recomputes. (3) A corrupted image refuses and recomputes rather than serving.",
-        out_of_scope: "Reducing the cold compile itself (demand-serve-entry-compile-time).",
-        handback: "The measurement, the stored image with its key, the three controls, and the restart and resting-memory figures before and after."
+        first_slice: "Run the roadmap serve entry natively off srv1 and name each refusal between it and serving; fix those at their earliest unjustified boundary.",
+        red_control: "(1) The natively served roadmap entry answers a fixed request set with the same responses as the interpreted serve at the same revision; RED on main, where it does not serve natively. (2) A restart with an unchanged closure and compiler starts the stored product without resolve or typing, with the pre-entry receipt showing it. (3) A changed closure or compiler digest, or a corrupted stored product, rebuilds and never serves the stale product.",
+        out_of_scope: "Reducing the cold compile itself (demand-serve-entry-compile-time), and moving srv1 lab or production units onto the native route, which is a deploy step its owner takes.",
+        handback: "The refusals found and fixed, the three controls, and restart time and resting memory before and after, measured off srv1 at one revision."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "demand-engine", contribution: "The served program is materialized once per key and reused across restarts."),
@@ -2770,6 +2968,142 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
     ),
     roadmap_node(
+      identity: "rn_D3470QB6GPYD3PWSJMNGGMFV27",
+      id: "native-emit-match-binding-keeps-its-type",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/04_infer.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
+        boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). The cause, measured in PR #16534 against a pattern-side substitution pass: the seed's kernel Optional mint (v1.compiler.infer kernel_optional_type_node) declared no type parameter and typed Present.value unbound, so the existing generic substitution received an empty slot map. Scrutinee expansion in src/v1/04_patterns.dag is not at fault and needs no second substitution pass. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
+        displaced_cost: "Every program that matches on a variant and converts the bound value cannot be emitted natively, so native serving and any other native target is blocked by an ordinary pattern the rest of the compiler accepts.",
+        first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal.",
+        red_control: "The generic-binding fixtures emit natively and the non-generic control keeps emitting, RED on main where each refuses at emit; the mint-shape witness's fixtures declare the module the kernel binding names (std.optional), its conforming control requires a completed fixture compile, and a declaration spelled without its type parameter refuses with KernelMintShapeMismatch through that route. A recurring_failure_mode row records the class with its rung and receipts.",
+        out_of_scope: "Other native-emission refusals in the roadmap serve entry's closure; each is found and fixed under demand-serve-program-image.",
+        handback: "The fix site and reason, the generic-binding and mint-shape controls passing on a seed built from heal's mirror and failing on main, the failure-mode row, and the roadmap serve entry's next refusal, if any."
+      ), on: "2026-11-15", note: "PR #16534 carries this slice.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Native emission accepts what typecheck accepts for variant bindings."),
+    ),
+    roadmap_node(
+      identity: "rn_5Y4YAYGG7Y4EVCDN7T9XT1Z89P",
+      id: "fleet-converge-artifact-closure",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/intent.dag"),
+      line: ticket(t: fields(
+        headline: "Fleet convergence refuses to enable a unit whose read artifacts it has not installed",
+        boundary: "deploy-intent-owns-artifact-closure makes the deploy closure check generic over an enable authority and each unit's declared reads, and applies it to gunbc.live_deploy.spec deployment_owned_steps. Units enabled by fleet convergence rather than by the deploy are not in that roster: board-function-converge (gunbc.fleet.board_function_admission), gpu-power-cap (gunbc.fleet.gpu_power_cap_converge) and the serving replicas (gunbc.serving.srv1_serving_launch). The gpu-power-cap unit runs from the board-function converge snapshot, so a converge that enables it without that snapshot fails it the same way lab bug 5 failed the drain.",
+        displaced_cost: "A fleet unit whose artifact convergence did not install fails only at run time, and the cause is found from that unit's logs.",
+        first_slice: "Name the fleet-converge enable authority for each of the three units, and declare each unit's reads in its own module.",
+        red_control: "A fleet convergence whose enabled units read an artifact it does not install refuses before enabling any of them, naming the unit and the artifact; RED on main.",
+        out_of_scope: "The deploy roster, which deploy-intent-owns-artifact-closure covers, and moving any srv1 unit.",
+        handback: "The enable authority per unit, the read declarations, and the control with its red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A fleet convergence cannot leave a unit without what it needs."),
+    ),
+    roadmap_node(
+      identity: "rn_V2SSDWZR3G2KNSQ1BGRARSKTE2",
+      id: "fleet-no-route-masks-a-running-unit",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/a_running_unit_masked_loses_its_drop_ins_at_the_next_reload.dag"),
+      line: ticket(t: fields(
+        headline: "No built runner route masks a unit that is still running",
+        boundary: "fleet-cap-bracket-keeps-running-units repairs the cap bracket's masking pass. The recurring failure mode gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload still lists built routes that mask an active unit: drain_runner_slot_over with MaskWhileRunning, the default slot_drain_plan, and withdraw. Masking a running unit drops its drop-ins at the next reload, which failed required CI on srv4 runners. The class's rung is the minimum across its routes, so it stays below ceiling until every route is repaired.",
+        displaced_cost: "A masked running runner fails required CI jobs at random, and each failure costs a rerun and someone reading the log.",
+        first_slice: "Decide whether any route needs to mask an active unit; if none does, delete the MaskWhileRunning arm so the state cannot be constructed. A busy slot is drained without masking (for example a runtime Restart=no drop-in, then waiting for its job to end); until that route exists the cap bracket on a busy host refuses, a liveness cost #16519 declared (review 95796).",
+        red_control: "For each listed route, a pass over a fixture host with a running runner unit issues no mask for that unit and a stopped unit is still masked; RED on main for each route that masks today. The failure-mode row's rung is raised to what the executed evidence shows.",
+        out_of_scope: "The cap bracket's own masking pass (fleet-cap-bracket-keeps-running-units).",
+        handback: "The decision on MaskWhileRunning with its reason, the per-route controls with red runs on main, and the updated failure-mode row."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
+      identity: "rn_EP54CSQWDFDY1JRAD5Q0HJV8F8",
+      id: "per-function-claim-run-loads-string-dispatched-names",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "A per-function claim run reaches every function the modeled-realization dispatcher calls by name",
+        boundary: "Found on 2026-11-15 while executing the fleet-cap-bracket-keeps-running-units controls (PR #16519). gunbc run --claim-run --function <fn> builds fn_nodes from the entry's import closure, but the modeled-realization dispatcher in the seed interpreter (run_in_context_with_args) looks up modeled_realization_admitted_in, operation_realization_duplicate, operation_realization_index, operation_handler_selection and virtual_clock_after by string. Those names are outside an isolated per-function closure that does not import them, so a witness whose closure misses the dispatcher's implicit dependencies refuses under a per-function run while the same function passes under a whole-tree claim_batch. Not every modeled-frame control is affected: #16519 recorded per-function controls that got past the dispatcher and failed on an ambient filesystem read instead. Adding a runtime_key_readers row and entry does not fix it, because realization_of has no caller on the run path (probe seed 087bf2bb). Repro: gunbc run --claim-run --source-root dag --source-root src --entry dag/test/claim/modeled_filesystem_witness.dag --function two_contenders_for_one_unit_get_one_hold fails on main (measured on #16519: about 75 s, 2.3 GiB). For an affected control the route that runs today is a whole-tree claim_batch (measured on #16519 at about 15 GiB and 30 minutes, and refused on page thrash on a busy shared host). v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing); this is admitted only if it serves the v2 self-host program by making witness evidence executable.",
+        displaced_cost: "An affected control has to be run as a whole-tree batch instead of a per-function run, and a per-function false failure is easy to mistake for a real one.",
+        first_slice: "Name the string-dispatched functions as roots of the run's loaded index (or have the dispatcher realize through a declared import), so the per-function closure contains what the dispatcher calls.",
+        red_control: "two_contenders_for_one_unit_get_one_hold passes under a per-function --claim-run and agrees with its whole-tree claim_batch verdict; RED on main.",
+        out_of_scope: "The whole-tree claim_batch memory cost.",
+        handback: "The route by which the dispatcher's callees enter the run's index, the control passing per function and failing on main, and the v1 standing classification."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
+      identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
+      id: "list-append-refuses-an-element-argument",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/04_infer.dag"),
+      line: ticket(t: fields(
+        headline: "list_append refuses an element where a list is required",
+        boundary: "Found on 2026-11-15 by the deploy-artifact closure work (PR #16535, side chat finding F2). std.algebra list_append takes two FreeMonoid<T> values, but list_append([\"a\"], \"bc\") is accepted by the claim run and evaluates to [\"a\", \"bc\"]: a String reaches a FreeMonoid<T> parameter unchecked. This is below the ordinary floor (gunbc.design_argument::guarantee_ladder: values inhabit declared types), and it hides the list_push/list_append mix-up that authors make. Repro module: import std.algebra { list_append }, std.list { list_cover }, std.types { String, List, Bool }; fn eq_str(a: String, b: String) -> Bool { a == b }; test fn probe() -> Bool { list_cover(held: list_append([\"a\"], \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) } passes and must be refused. argument-type-compatibility-grounding covers the v2 exemption, not this generic-parameter case.",
+        displaced_cost: "A wrong-type argument to a generic list operation runs and returns a plausible list, so the mistake is found only by a reviewer or a wrong answer downstream.",
+        first_slice: "Find where the generic parameter binding admits a non-collection argument for FreeMonoid<T> and make it refuse with a located argument-type diagnostic.",
+        red_control: "The repro refuses at typecheck naming the argument and parameter, and list_append over two lists and list_push over a list and an element still pass; RED on main.",
+        out_of_scope: "Other generic-parameter positions, unless the same rule covers them.",
+        handback: "The rule repaired and where, the controls, and a recurring_failure_mode row for the class."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Generic collection parameters refuse a non-collection argument."),
+    ),
+    roadmap_node(
+      identity: "rn_9VRS5PZJDA30H78V0QH694Q70W",
+      id: "effect-summary-env-carries-listed-imports",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/listed_imported_free_fn_named_like_an_algebra_method_has_no_effect_join_callee.dag"),
+      line: ticket(t: fields(
+        headline: "The effect summary finds a callee through the module's own imports",
+        boundary: "PR #16555 repaired gunbc.recurring_failure_mode::listed_imported_free_fn_named_like_an_algebra_method_has_no_effect_join_callee by letting the census gates yield to a listed import. Its next trigger remains, scoped to the environment it was measured in: when an entry's effect summary runs over the sparse, namespace-only function env (129 parents, none declaring the imported skip, on the approval_broker_tree_install effect join reaching portable_remote_words), the env carries none of the module's listed imports, so callee identity there depends on the census fallback, while the resolve pass over a richer env (194 parents) binds the same call. Entries whose graphs supply the richer env already resolve: #16555 recorded a_binary_only_plan_installs_and_restarts_without_publishing_the_tree and a_twin_apply_neither_writes_nor_restarts_the_host_broker reaching host_effect_realize green on main. In the sparse env the two passes can disagree on which declaration a bare call binds to.",
+        displaced_cost: "In the sparse env a call that resolves can still refuse effect joining, which blocks whole entries at resolve, as it blocked an_unbound_revision_refuses_before_any_observation until #16555.",
+        first_slice: "Give the effect-summary env the module's listed imports, and remove the census fallback from the effect join where the import answers.",
+        red_control: "A probe whose effect summary runs over the sparse, namespace-only env and whose bare call binds through a listed import only, with the census fallback removed, joins its callee's effects; RED before that env carries the imports. an_unbound_revision_refuses_before_any_observation stays green.",
+        out_of_scope: "Routing of non-imported method-template names to the method bridge.",
+        handback: "The env change, the probe, and the failure-mode row's rung raised to what the evidence shows."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Resolve and effect summary agree on a call's callee."),
+    ),
+    roadmap_node(
+      identity: "rn_X5XSR3QY6G0J91JHYJ0S317PFS",
+      id: "fabric-slot-roster-covers-srv3",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_slot_allocation.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The fabric slot roster and the released-set control agree on which hosts carry fabric slots",
+        boundary: "test.claim.runner.runner_host_cap_bracket_witness a_fabric_slot_is_never_in_the_released_set fails on main: it requires a nonempty srv3 fabric population, but gunbc.runner.runner_slot_allocation fabric_execution_slot_identities lists only the two srv1 slots, so runner_host_fabric_member_units(\"srv3\") is empty. Either the roster is missing srv3's fabric slots or the control names a host that carries none. Found during PR #16519 (88 of 89 controls pass; this one was red before and after).",
+        displaced_cost: "A control that is red on main for a data reason trains readers to ignore red in the witness, which hides a real regression.",
+        first_slice: "Read srv3's current runner layout and decide whether it carries fabric slots; correct the roster or the control to match.",
+        red_control: "a_fabric_slot_is_never_in_the_released_set passes over a nonempty fabric population for the host it names; RED on main.",
+        out_of_scope: "Moving any runner unit on srv3 or srv1.",
+        handback: "The srv3 layout reading with its source, the corrected roster or control, and the control passing."
+      ), on: "2026-11-18", note: "THE CONTROL WAS THE STALE SIDE; THE ROSTER WAS FRESH.\n\nThe srv3 layout reading the handback asked for is a ruling, not an observation to go fetch: gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (operator, 2026-11-09) retired srv3's and srv4's fabric execution slots and gave every committed slot on either host to GitHub Actions, gunbc.runner.runner_slot_retirement runner_fabric_slot_retirement_carries_removal keeps each retired cell refusing a grant, and gunbc.runner.runner_slot_provision (the slot 11/12 reading) states that the host carrying a fabric member today is srv1 ALONE. The same population is asserted at length two elsewhere: test.claim.runner.runner_slot_retirement_witness pins fabric_execution_slot_identities to two members, and test.claim.runner.runner_service_activation_witness says outright that it holds no srv3 member at all. So the roster's two srv1 members (13 microVM shakedown, 14 revision job) are correct, and runner_host_fabric_member_units(host: srv3) being empty is the ruling rather than a hole in the roster.\n\nWHAT WAS FIXED, THEN, IS THE CONTROL: it named srv3 as a literal, so it failed on a host the operator had emptied instead of on the release it claims to check. It now takes its subject from fabric_execution_slot_identities and refuses when that roster is empty -- an empty population has no unit to keep out of the released set, so the disjointness would be vacuously true; an emptied roster is a finding, not a pass. That keeps the fix from being undone by the next ruling that moves a slot. The stale restatement in gunbc/runner/runner_host_file_converge.dag that transcribed srv3/srv4 slots 6 and 7 as fabric members now names the roster instead of copying it.\n\nEVIDENCE AND STANDING: red on main reproduced at d3e46b86c4ef (FAIL a_fabric_slot_is_never_in_the_released_set); the corrected control passes by claim-run, one function per process, and the sweep of the file's other controls was waived by the dispatching manager on the ground that this edit adds no helper, edits no other control, and leaves the roster it reads untouched -- so nothing else in the file could have moved. NOT accepted -- the standing here is fixed-pending-review; acceptance stays with the operator and the belt observes it.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "The slot roster matches the hosts that carry slots."),
+    ),
+    roadmap_node(
+      identity: "rn_20NKA9WYGMKXA5JPA4YM8KXD5X",
+      id: "deploy-release-roster-carries-every-owned-step",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/member_observe.dag"),
+      line: ticket(t: fields(
+        headline: "The release roster observes every member the deploy owns, so an all-kept plan clears the artifact gate in production",
+        boundary: "Found while landing the deploy-artifact closure gate (PR #16587, 2026-11-17). The gate (gunbc.live_deploy.apply_legs deploy_artifact_closure_gate) counts an artifact as present when the release plan verified it KEPT, through plan_kept_owned_artifacts. gunbc.live_deploy.member_observe deployment_member_roster does not carry two of the deploy's owned steps: the attempt-unit drain path unit (AttemptUnitDrainPathUnit) and the approval broker front door (ApprovalBrokerFrontDoor). The production verifier therefore never emits a KEEP row for them. A plan that keeps everything halts at the gate on their reads (the launcher snapshot directory; the broker release tree and its digest env file) even when they are installed. That is fail-closed, not a false admission. The witness test.claim.live_deploy.live_deploy_apply_plan_witness all_kept_roster appends both members by hand to show the gate's keep coverage, so that control does not exercise the production roster for these two.",
+        displaced_cost: "An unchanged redeploy of srv1 halts at the artifact gate until someone writes the two members into the plan by hand or forces a rewrite, and each halt costs a read of the refusal.",
+        first_slice: "Give each of the two member kinds its own desired and observed identity, grounded in what it is: the drain path unit is a systemd unit file, and the broker front door is a Tailscale serve route. gunbc.live_deploy.emit identity_member_of_step binds both as DirectoryRoot today, and member_observe reads a DirectoryRoot as a directory's standing, which verifies neither. Then add both to deployment_member_roster through that per-kind identity. Adding DirectoryRoot rows to the roster does not satisfy this node.",
+        red_control: "(1) Through the production observation path (desired_member_identity and observed_member_on_host over a supplied host reading), each member kind yields KeepMember when its installed identity equals the desired one, and a rewrite when it differs (a drifted unit file; a route serving another backend). RED on main, where neither kind has an observation of its own. (2) As a separate consumer check, the_all_kept_plan_clears_the_deploy_artifact_gate passes with the production deployment_member_roster and no hand-appended members. converged_effect_plan assigns KeepMember without observing, so (2) alone does not accept this node.",
+        out_of_scope: "Reader ordering after the tree converger (integration concern deploy-readers-must-order-after-tree-converger).",
+        handback: "The per-kind desired and observed identities with the upstream each is grounded in, the observation controls (keep and drift for each kind) passing and red on main, the gate consumer check on the production roster, and all_kept_roster deleted from the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A redeploy that changes nothing proceeds without a hand step."),
+    ),
+    roadmap_node(
       identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
       id: "factory-dogfood-route",
       owner: "harness",
@@ -2785,6 +3119,40 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       ), on: "2026-10-03", note: "Operator ruling 2026-10-03: the dogfood clock is what matters most for the first-external target.")),
       execution: bound(contract: dogfood_route_execution_contract()),
       parent: in_project(project: "factory", contribution: "The factory is proven by one request crossing every stage on the real route, not by each stage passing alone."),
+    ),
+    roadmap_node(
+      identity: "rn_8JYZHD6GVDME0EYZ3PX0QRBD0Z",
+      id: "dogfood-g1-shared-computation-record",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
+      line: ticket(t: fields(
+          headline: "Dogfood G1: the immutable subject and the shared computation are each established by their own record, read by the route's receipt",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G1: one attempt's verification runs through the materialization provider over the bounded store, and the receipt reads an immutable-subject record and a shared-computation record written by that run (the reader gunb-ai/gunbc#13097 declared as a frontier, shared_computation_observe_for_attempt, consumed by DogfoodRouteReceipt). Lands alone against main after factory-attempt-execution-on-fabric-lease, so there is one writer of attempt records to bind to; never as a stack.",
+          displaced_cost: "gunb-ai/gunbc#13097 carried this work and closed unmerged on 2026-10-09: a stacked PR whose base moved, a conflict in the generated emit file, and seven witness failures identical on main. Until the record exists the route's receipt is withheld at this stage and the dogfood window cannot start.",
+          first_slice: "The reader consumed: DogfoodRouteReceipt reads the shared-computation record of one real attempt, with SharedComputationAbsent typed by its closed cause, and refuses on an attempt that has none.",
+          red_control: "An attempt whose verification did not go through the provider yields SharedComputationAbsent with its cause, never a complete stage; a receipt read over a record from another attempt refuses; deleting the reader's consumer makes the route's acceptance red.",
+          out_of_scope: "Metering (G3, landed), result returned (G4, landed), isolated execution (G5, its own node); the belt-to-fabric cut itself.",
+          handback: "The two records written by one real attempt on the route, the receipt reading them, and the stage no longer owed."
+        )),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the one dogfood stage whose record was attempted and lost to a stacked base."),
+      centering: plan(text: "One real attempt only, after factory-attempt-execution-on-fabric-lease: verification through the materialization provider over the bounded store, the shared-computation record written by that run, DogfoodRouteReceipt reading it, SharedComputationAbsent typed on an attempt without one. Lands alone against main; never as a stack. Hand back the records and the receipt's reading."),
+    ),
+    roadmap_node(
+      identity: "rn_X05JQFPT0MQG81ASDVDNMXTXAF",
+      id: "dogfood-g5-isolated-execution-record",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
+      line: ticket(t: fields(
+          headline: "Dogfood G5: a record binds the granted unit's observed start and exit to its grant and fence, and cleanup returns both",
+          boundary: "Serves gunbc.plans.factory_dogfood, layer 2 (section 3). The stage factory-dogfood-route's first slice owes to G5: one attempt runs as a capped systemd unit under a placement grant and a fence (the dogfood bar, operator ruling 2026-10-03; microVM isolation out of scope), and a record binds the unit's observed start and exit to that grant and fence; cleanup returns the grant and the fence and is its own record. The receipt reads both.",
+          displaced_cost: "Without the record the route can show a placed grant and a finished unit without being able to say they were the same attempt, so isolation is asserted, not observed; the stage is owed and the receipt withheld.",
+          first_slice: "One real attempt's unit start and exit observed and bound to its grant record, read by the receipt; its RED a unit record naming another attempt's grant, refused.",
+          red_control: "A unit record whose grant or fence names another attempt refuses; an attempt with a grant and no unit record is owed, never complete; cleanup that does not return the placed grant keeps the stage owed.",
+          out_of_scope: "MicroVM isolation (F5, microvm-runtime-durable-state); the G1 records; billing.",
+          handback: "The binding and cleanup records of one real attempt, the receipt reading them, and the stage no longer owed."
+        )),
+      parent: in_project(project: "factory", contribution: "Layer 2 of gunbc.plans.factory_dogfood: the dogfood stage that had no record and no node."),
+      centering: plan(text: "One real attempt only, on srv2's capped-unit route: bind the unit's observed start and exit to its placement grant and fence in one record, have DogfoodRouteReceipt read it, and plant a record naming another attempt's grant to show the refusal. Hand back the record, the receipt's reading, and the planted refusal."),
     ),
     roadmap_node(
       identity: "rn_TCZ82BX9PRSBAW1Z4WVSFQT023",
@@ -2824,7 +3192,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_VQ8RGFT438E36PHK9WXJ5TCJMC",
       id: "v2-compiler-live",
       owner: "self-host",
-      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compiler_frontend_program_interlock.dag" },
+        Pointer { label: "plan", path: "dag/gunbc/plans/v2_self_host.dag" },
+      ],
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
           boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
@@ -2834,6 +3205,134 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "SelfHostSeedRetirement reads CLEAR in gunbc.compiler_frontend_program_status, and every member project's handback is met."
         )),
       parent: in_project(project: "gunbc-project-root", contribution: "Self-hosting is the root's identity. This program makes the self-hosted compiler the one that actually runs, and it ends when the old seed is gone."),
+    ),
+    roadmap_node(
+      identity: "rn_5A53SMVX18G72TGH0215TV1HYM",
+      id: "universe-ingest-replaces-file-acquisition",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/module_acquisition.dag"),
+      line: ticket(t: fields(
+          headline: "The bundle is ingested into one universe of declarations and the files are discarded",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::source_is_ingested_into_one_universe_and_files_are_discarded: one ingest step takes the source bundle, parses it, publishes every declaration by its full path into the universe, keeps a declaration-to-text mapping for literals and locations only, and discards the files; v2.compiler.module_acquisition and v2.compiler.source_authority become that step's realization, gunbc.source_layout and the two-tree layout become its mapping, and nothing after ingest names a file. Two providers for one path refuse at ingest. A test declaration is an ordinary declaration whose selection is a property of the subject.",
+          displaced_cost: "Every stage after acquisition today can name a file, a tree or a module header, so meaning depends on where a declaration was stored and the compiler carries file concerns everywhere; the operator's vision is a file-less system where things are purely named.",
+          first_slice: "One subject ingested from a bundle, every stage after it reading declarations by path only, with the text mapping answering one literal's location; its RED a stage that reads a path after ingest, refused in review by the phase-admission domain.",
+          red_control: "A declaration moved between files in the bundle changes no identity and no behavior; two bundles with the same declarations in different files yield the same universe; a duplicate path refuses at ingest naming both providers; no stage after ingest consumes a file path.",
+          out_of_scope: "Fracturing the universe (one universe for now); sugar for headers or shorter spellings.",
+          handback: "The ingest step executing on the native route with its controls, the stages after it free of file names, and the mapping as the only survivor of the files."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's first separation: code from the files that carried it."),
+    ),
+    roadmap_node(
+      identity: "rn_YXN3SJDH0F69CMYJSVDK1R9RA5",
+      id: "one-declaration-identity-carrier",
+      owner: "namespace",
+      carriers: carrier(path: "dag/std/decl_ref.dag"),
+      line: ticket(t: fields(
+          headline: "One structural declaration identity, rendered with dots, used by every consumer",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. std.decl_ref DeclarationRef (module path, declaration name, tagged member coordinate) and v2.std.qualified_name QualifiedName (a symbol sequence) become one carrier: a nonempty path plus a tagged member or type-parameter coordinate; equality, hashing, dependency edges, citations, generated-provider demands and resolver output all use it; dots are its one rendering, citations included, and `::` is retired from std.decl_ref's display key, the @ref grammar and the sweep. A path names exactly one thing (zero violations today).",
+          displaced_cost: "Two carriers for one identity, and two spellings for one path, are a fork by gunbc.design_argument::single_authority; std.decl_ref itself warns that its display key can collapse distinct references.",
+          first_slice: "The merged carrier with the equality and rendering laws as claims, and the sweep's citation check reading it; the @ref grammar accepting dots.",
+          red_control: "Two references equal by rendering and distinct by structure refuse to compare equal; a citation with `::` refuses after the cut; a path that is both a prefix and a declaration refuses.",
+          out_of_scope: "Shorter spellings or sugar.",
+          handback: "One carrier, its laws executing, `::` gone from the tree."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's identity law: one structure, one rendering."),
+    ),
+    roadmap_node(
+      identity: "rn_M9XZQ1K5Y7756T4C5FWQ8Z3CKS",
+      id: "sealed-phases-and-the-checked-carrier",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/normalized_tree.dag"),
+      line: ticket(t: fields(
+          headline: "Four sealed phases, and evaluation and emission consume only the checked carrier",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::phase_admission_is_a_conformance_pattern and the conformance domain conformance-phase-admission: the compiler has four phases, parsed, resolved, checked, emitted, each a sole_constructor carrier (ParseTree stops being a bare Node alias); a CheckedProgram exists whose constructor proves every reference resolves, every obligation is discharged, every target-required operation has a realization and no provider is unavailable; evaluation and emission accept nothing else. A partial analysis (GroundingNotDerived, an unresolved provider) may exist for tooling and never reaches a build.",
+          displaced_cost: "A bare Node can be handed to any stage as if a phase had established it, and partial facts reach emission; the alternative kept today is a roster of tolerated unknowns, which the operator ruled out as a ratchet.",
+          first_slice: "ParseTree sealed, with the RED a resolve called on a Node that no parse produced.",
+          red_control: "A stage constructed from a raw representation refuses at the type; a program with one not-derived grounding has no CheckedProgram; the evaluator and the emitter have no input type but CheckedProgram.",
+          out_of_scope: "What each phase establishes (its own module); the eight-phase ladder the audit sketched (four is the ruling).",
+          handback: "The four carriers sealed, CheckedProgram consumed by both the evaluator and the emitter, and the last roster of tolerated unknowns deleted."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's phase law: states are types and transitions are their only constructors."),
+    ),
+    roadmap_node(
+      identity: "rn_914G3PJ530KJHSZT5K1EV78SCE",
+      id: "typed-refusals-own-control-flow",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/diagnostic.dag"),
+      line: ticket(t: fields(
+          headline: "Production code branches on typed refusals; diagnostics render them",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. Every v2 production outcome that a caller branches on is a closed refusal type with its located evidence; a Diagnostic is a rendering of such a value for an audience and is read by no production module to decide anything. The 32 production modules under src/v2 that read diagnostics_fatal_reason today (2026-11-17 count) branch on the typed value instead.",
+          displaced_cost: "A rendered reason symbol stands in for a closed type at 32 sites, so message wording is semantics and a renamed reason is a silent behavior change.",
+          first_slice: "One resolve outcome made a closed type, its two production readers moved to it, with the RED a reason-symbol read that no longer compiles.",
+          red_control: "No production module under src/v2 reads diagnostics_fatal_reason or matches a rendered string; a refusal's wording can change with no claim changing.",
+          out_of_scope: "Diagnostic rendering policy (audience, wording).",
+          handback: "Zero production readers of reason symbols, the closed refusal types, and the renderer as their only consumer."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's failure law: typed, located, rendered after."),
+    ),
+    roadmap_node(
+      identity: "rn_88E7PHHNRJ71E3ZB8JHSM3FDM8",
+      id: "one-text-carrier",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/text.dag"),
+      line: ticket(t: fields(
+          headline: "One text carrier, a sequence of Unicode scalars, with the host crossing as its only wrapper",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. v2.std.text String (FreeMonoid<Char>) and the kernel String are one carrier for one meaning; bytes decode to it with stated fidelity; identifiers and symbols are not arbitrary text; a host string appears only at an explicit effect or wire boundary through the one declared crossing (gunbc.structural_realization_bindings UnicodeScalarSequenceUnfold); gunbc.rung_drop text_boundary_identity_wall is retired by that crossing executing on the native route.",
+          displaced_cost: "Two String declarations and an identity wall at the tokenizer mean the same source can carry two meanings of text, and every string operation has had to be homed twice.",
+          first_slice: "The tokenizer reading host text through the one crossing with its claims, and one of the two String declarations deleted in the native-seven closure.",
+          red_control: "A host string reaching a structural position without the crossing refuses; a second String declaration in the retained closures keeps this open; the rung drop is retired by its own restoration trigger, never by prose.",
+          out_of_scope: "Diagnostic text and path text roles beyond the crossing (later wrappers, if a consumer needs them).",
+          handback: "One String, the crossing executing natively, the drop retired."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's text law: one carrier, explicit crossings."),
+    ),
+    roadmap_node(
+      identity: "rn_BAE8SV9B7FFF0908MPZ9RHY2QG",
+      id: "operations-are-declarations",
+      owner: "self-host",
+      carriers: carrier(path: "dag/std/primitives.dag"),
+      line: ticket(t: fields(
+          headline: "An operation is a declaration with a realization row, and operators lower to references",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. gunbc.design_ruling::operations_are_declarations_with_realizations: the five mechanisms that carry operations today (68 std.primitives contracts, 120 builtin_registry_surface_names, 40 primitive_projection rows, the CanonicalOperation enum consumed by infer, target_serialize and the three target models, and the seed's 134 v1_rt functions) converge on one shape, a declared fn with a per-target realization row as std.algebra fold_list already has; a surface operator lowers to a reference to the declared operation of its operand's algebra; the only primitives are v2.std.node's five connectives and six behaviors.",
+          displaced_cost: "One shape spelled five ways is five places meaning is decided; each wave that homes a name has had to touch several of them.",
+          first_slice: "CanonicalOperation's Add arm replaced by a reference to the declared add of the operand's algebra, with the checker, the serializer and one target consuming the declaration; the RED an operator whose algebra declares no such operation, refusing typed.",
+          red_control: "No enum, table or roster answers an operation by spelling; a target without a realization row for a demanded declaration refuses typed; the seed mirrors each move.",
+          out_of_scope: "Deleting the seed's runtime (dies with the seed); new operations.",
+          handback: "The five mechanisms reduced to declarations and realization rows, the operator lowering executing natively."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's operation law: declarations and realizations, nothing primitive but the substrate."),
+    ),
+    roadmap_node(
+      identity: "rn_MC7EJBANKKA6XYYEQJTXDVK1D9",
+      id: "one-standard-library",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/integer.dag"),
+      line: ticket(t: fields(
+          headline: "The retained compiler closures contain no two declarations for one concept",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. Every pair across dag/std and src/v2/std is classified: the same concept collapses to one declaration (integers, optionality, collection carriers, scalars, algebra); the same carrier in a different role gets a role wrapper over one carrier; a genuinely different concern is renamed into the compiler's own namespace so it is not called the language's standard type. v2.std is not a second standard library. Under the fully-qualified rule each pair is already distinct by path, so this is design debt with its own acceptance per type, not an ambiguity.",
+          displaced_cost: "Two authorities answer one semantic question, and every consumer of the pair chooses one by habit.",
+          first_slice: "Int: std.integer and v2.std.integer merged or the compiler's renamed, with the Oct 18 kernel-type layer rule's claims executing.",
+          red_control: "A second declaration for one classified concept in either retained closure keeps this open; a renamed compiler-internal type no longer spelled as a standard type.",
+          out_of_scope: "Types outside the two retained closures.",
+          handback: "The classification table executed: zero same-concept pairs in the retained closures."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's library law: one std."),
+    ),
+    roadmap_node(
+      identity: "rn_5CQTJHEEPD2TXTARM3W7CNR50D",
+      id: "external-specimen-compiles",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/instrument_targets.dag"),
+      line: ticket(t: fields(
+          headline: "A program outside the compiler's own closure compiles natively, using features the closure does not select",
+          boundary: "Serves gunbc.plans.v2_self_host, the vision-realized milestone (its second done-when list), layer 5. One specimen program that is not part of any compiler closure, chosen to exercise constructs the compiler's own source never uses, compiles, checks and runs through the native route with its claims green; it is an instrument row (gunbc.instrument_targets) judged by the emitted binary, never a lane handing the corpus to the seed. Native-seven is the first specimen of the native route and never the definition of the supported language.",
+          displaced_cost: "A self-hosting closure defines the supported language by accident: whatever the compiler happens to use works, and nothing else is known to.",
+          first_slice: "The specimen chosen and its unselected features listed against the closure's construct census; one construct passing natively.",
+          red_control: "A construct the specimen uses and the closure does not is refused early and precisely or passes; the specimen's claims are green on the native route; the row is judged by the emitted binary.",
+          out_of_scope: "Choosing more than one specimen; performance.",
+          handback: "The specimen's native run receipt and its construct list."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The vision's completeness law: the language is what is specified, not what the compiler uses."),
     ),
     roadmap_node(
       identity: "rn_4DXSRQ0TDK36EBTJHKF9YFRJ3A",
@@ -3156,7 +3655,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "literal-elaboration",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
           boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550 open), maps (#12758 open).",
           displaced_cost: "An unelaborated literal refuses its whole file, and importers then fail as unbound.",
@@ -3164,7 +3663,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A map literal with duplicate keys of an extensional key type refuses (keys domain, std.algebra algebra_profile_equality_extensional).",
           out_of_scope: "Core type merges.",
           handback: "The plans' remaining PRs merged, with the specimens green."
-        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review."), on: "2026-11-16", note: "Re-read against GitHub: #12550 merged 2026-09-30 and #12758 merged 2026-10-01, so the first slice is landed and the boundary's two 'open' marks are stale. Not accepted here: the handback asks for the specimens green, which is a run fact this change did not take. Serves gunbc.plans.v2_self_host as a parent of native-seven.")),
       parent: in_project(project: "v2-frontend", contribution: "Literals and constructs elaborated from their annotation is what lets the std files the native seven import ingest at all."),
     ),
     roadmap_node(
@@ -3172,7 +3671,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shared-check-lets-and-matches",
       owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Lets and match binders are judged by the one relation",
           boundary: "v2.compiler.infer judges let annotations and match binders through the #12566 inhabitance relation.",
           displaced_cost: "Binders typed inline pass wrong values the relation would refuse.",
@@ -3180,7 +3679,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A binder at the wrong type refuses. The same value at the right type is accepted.",
           out_of_scope: "Generic records; cross-module declarations.",
           handback: "The PRs merged, with the per-kind coverage rows moved to \"derived\"."
-        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12582 and #12637 open."), on: "2026-11-16", note: "Re-read against main e346a2c89daa and GitHub. #12582 merged 2026-09-30; #12637 closed UNMERGED 2026-10-06 and was superseded by #12566 (merged 2026-09-30, declared returns judged by the one relation); #12641 merged 2026-09-30. The first slice is therefore landed. What remains is the executed evidence that both binder kinds reach the inhabitance judgment through one reader: gunbc#15931 (one test file, three claims, closed unmerged 2026-11-08 by the keen-otter wind-down, head preserved at archive/keen-otter-2026-11-08/pr-15931) names the shared reader v2.compiler.infer infer_payload_binder_derived_type as the one-occurrence mutation; its PR body's seam infer_frame_with_binder_type is wrong (it constructs only the let row). Acceptance also states the rung on gunbc.recurring_failure_mode bind_and_match_binders_not_typed_from_their_dependency_sibling, which reads RungUnread after both halves climbed. The handback's per-kind coverage rows name no carrier in the tree; accepting records that as the stated divergence. Serves gunbc.plans.v2_self_host as a parent of native-seven, with slack against the emitter chain.")),
       parent: in_project(project: "v2-shared-type-check", contribution: "Lets and match binders are the next constructs the one relation must judge."),
     ),
     roadmap_node(
@@ -4683,6 +5182,285 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
+    roadmap_node(
+      identity: "rn_A0SYP0J1P3JE8W8OBX6M3BD777",
+      id: "roadmap-operator-attested-acceptance",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_operator_acceptance.dag"),
+      line: ticket(t: fields(
+        headline: "The operator can accept a node on a written attestation, kept visibly apart from executed work",
+        boundary: "Operator acceptance today (roadmap_acceptance_record_cli in gunbc.roadmap.roadmap_event_cli, the law in gunbc.roadmap.roadmap_operator_acceptance) closes a node only on an EXECUTED red control and a DELIVERED handback, so an old or prose-only node with neither can only be Retired (kind=retire, gunbc.design_ruling::operator_may_arbitrarily_retire_any_work_item) and never accepted. Give the operator a typed attestation arm beside the executed arm -- e.g. OperatorAttested { note: NonEmptyStr, author } -- admitted in place of an executed red control, written only by the operator's principal. Every consumer of the receipt must render it as ATTESTED and never as executed: gunbc.roadmap.roadmap_model (the RoadmapAcceptanceReceipt schema, receipt_evidence_complete, receipt_matches_node), gunbc.roadmap.roadmap_operator_acceptance (roadmap_operator_acceptance_receipt_line, roadmap_operator_acceptance_receipt_is_closable), gunbc.roadmap.roadmap_event_log (roadmap_acceptance_receipt_members and the standing projection), gunbc.roadmap.roadmap_verification_receipt (the native receipt parser), gunbc.roadmap.roadmap_issue_command (issue_command_acceptance_evidence_law), gunbc.roadmap.roadmap_event_cli (roadmap_acceptance_record_cli), and the readers gunbc.roadmap.roadmap_presentation (issue_standing_text, standing_chip_nodes) and gunbc.roadmap.roadmap_page (the closing page). A manager or worker principal that attempts to write an attestation is refused with a typed reason; a non-operator must not be able to make a manual acceptance read as tested work.",
+        displaced_cost: "Today a node whose evidence no longer exists -- or that never had an executed control -- has no honest closing except Retired, which loses the operator's judgement that it was actually done. Either the operator retires real work or leaves it dangling; there is no way to record a considered manual acceptance without it being mistaken for a tested one.",
+        first_slice: "Add the typed attestation arm to the acceptance receipt beside the executed arm -- a distinct variant, never coerced into executed -- gated on the operator's principal, and carry that kind through the standing so it is labeled ATTESTED at every reader.",
+        red_control: "A witness admits an attested acceptance carrying a non-empty note and the operator author; a planted empty note refuses; a manager or worker principal attempting to write the attestation refuses with a typed reason; a witness shows standings, the closing page and every reader carry the attested kind distinctly as ATTESTED and never as executed -- a coercion of an attested receipt into the executed arm reds.",
+        out_of_scope: "Do NOT coerce the attestation into the executed arm, do NOT weaken the executed red-control/handback requirement for the executed path, and do NOT edit any pinned oracle: widening issue_command_acceptance_evidence_law's closed set to admit an attested arm needs its own design ruling quoting the operator (\"i think manual acceptance should be allowed with a note\", 2026-11-17) and is not taken here.",
+        handback: "Return the attested receipt arm with its note and operator author, the typed non-operator refusal, the standing/closing-page rendering that keeps ATTESTED distinct from executed, and the witnesses named above."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The factory's closing half is how work is accepted; the operator needs an honest, distinguishable way to close old or prose-only nodes without pretending they were executed."),
+    ),
+    roadmap_node(
+      identity: "rn_T9WMSXR8TINTG2USDRXH82NQKJ",
+      id: "roadmap-criteria-digest-validated-at-write",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
+      line: ticket(t: fields(
+        headline: "A mistyped criteria digest is refused when the acceptance is written, not when the page closes",
+        boundary: "roadmap_acceptance_record_cli (gunbc.roadmap.roadmap_event_cli) admits an acceptance receipt whose criteria_digest does not equal node_criteria_digest (gunbc.roadmap.roadmap_model, roadmap_criteria_digest) of the node on the declared plan; only the closing page-join live_receipts_join_declared_nodes (gunbc.roadmap.roadmap_model, via receipt_matches_node) enforces the digest, so a mistyped digest is admitted at write and fails later -- a fail-closed gap. Refuse, at write time, a receipt whose criteria_digest does not equal the node's plan digest, with a typed located diagnostic. Also give a runnable way to print a node's plan digest: none exists today, so the last recorder had to write a throwaway module.",
+        displaced_cost: "Every recorder re-derives the digest by hand or writes a throwaway module to obtain it, and a single mistyped character is admitted silently at write and surfaces only as a page-join failure much later, far from the mistake that caused it.",
+        first_slice: "At the write route, compare the receipt's criteria_digest against node_criteria_digest of the node on the declared plan and refuse a mismatch with a typed located diagnostic; add a runnable command that prints a named node's plan digest.",
+        red_control: "A receipt whose criteria_digest differs from the declared node's plan digest refuses at write with the located diagnostic; a receipt carrying the matching digest is admitted; the runnable print command reproduces node_criteria_digest for a named node, so a recorder needs no throwaway module.",
+        out_of_scope: "Keep live_receipts_join_declared_nodes as the closing backstop -- this moves the check earlier, it does not remove it; and do not change what the digest is computed over (the node's criteria rows via roadmap_criteria_digest).",
+        handback: "Return the write-time refusal with its typed located diagnostic, the admitted-on-match case, and the runnable plan-digest print command."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
+    ),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // the schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
+    // binds its days, claims that name a leaf, the in-flight set and the realized durations derived
+    // from the log, the schedule from now, its bottlenecks and its offer, the leaf-grain frontier and
+    // the dispatch that carries a leaf, the typed handback, the projection every reader reads and the
+    // page that renders it. DECLARATION ONLY: the rows are the units, each one PR, each with its red
+    // control in its own ticket. No leaf is a node here: a leaf has no identity until it is claimed.
+    roadmap_node(
+      identity: "rn_01M7NPVR8MY69FQRA0RE37AHAB",
+      id: "roadmap-schedule-leaf-expansion",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A decomposition reads as leaf occurrences with the edges between them",
+        boundary: "roadmap_decompositions expands into leaf OCCURRENCES: one per leaf, a FindingsOf family at its declared assumed count carried as a simulation input, and dependency edges between occurrences -- stage k on stage k-1, and each waits_on row aimed into the child's stage. The expansion writes nothing; every schedule and every readiness below reads it.",
+        displaced_cost: "Without it a schedule can only count items, so an item with three parallel leaves holds the critical path for one leaf's days and the offer keeps naming work that cannot start. Every unit below reads this expansion.",
+        first_slice: "Expand one decomposition that has a FindingsOf family and two stages into its occurrences, with the occurrence edges, at a declared count.",
+        red_control: "A planted waits_on naming a stage the parent's decomposition does not have refuses by CONSUMING THE CARRIER'S EXISTING CLAIM: gunbc.roadmap.roadmap_decomposition's own well-formedness witness is what refuses, and the expansion calls it rather than re-checking a row the carrier has already admitted.",
+        out_of_scope: "No scheduling, no calendar, no in-flight set, no dispatch. No leaf is minted as a node in gunbc.roadmap.roadmap_authority: a leaf has no identity until it is claimed.",
+        handback: "The occurrence list for one decomposition at a declared count, the refusal output for the planted stage, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8N43DQ0V7XT2EZKX04",
+      id: "roadmap-schedule-list-scheduling",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "List scheduling that answers in days, lanes and a critical path",
+        boundary: "Over the expansion: longest remaining path first, a worker count taken as an INPUT, and a zero-day Join placed without a worker. It answers, per leaf, its start and finish day; the lane it sits in; how many leaves are in flight each day; and the critical path. Days stay abstract until the calendar unit binds them. The answer is COMPUTED from the decomposition carriers and the item event log; it MAY be cached, and a cache is derived and never authoritative, so every read recomputes it (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), which narrows @ref(gunbc.design_ruling::planning_scheduling_is_cut)). No schedule type, time-period record, forecast state or synchronized today list is written as such, and the worker count stays an input shown as an input. Its consumers are the bottleneck-and-offer row and the projection.",
+        displaced_cost: "Without it the days a decomposition carries are an input nobody can test against reality, and there is no critical path to define a bottleneck or an offer. Every later schedule unit reads this answer.",
+        first_slice: "Schedule two chains and one family at a declared count, under two worker counts, and print the two answers side by side.",
+        red_control: "A two-leaf chain under one worker finishes at the SUM of the two days; two independent leaves under two workers finish at the MAX of the two. Both answers come from one run.",
+        out_of_scope: "No calendar, no claimed leaves, no decision about who works. The worker count is shown as an input and never becomes a fact.",
+        handback: "The schedule output for both fixtures (start and finish per leaf, lanes, in-flight count per day, critical path), the two refusal outputs, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8PQK11YFYV0QV0SM74",
+      id: "roadmap-schedule-calendar-binding",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Day zero is the read date, and a week has five working days",
+        boundary: "The schedule's abstract days become dates: day 0 is the date the read was taken, and a week has five working days. The binding is kept out of the scheduler so the scheduler stays testable on days alone and the calendar is read separately. No date here is a dependency or a gate -- the dependency reading is the edges -- and no date is authoritative between reads: a cached date is derived and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)), and the dated clock stays @ref(gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc).",
+        displaced_cost: "Without it the days in the answer are not the days anyone will see: an item finishing on day 0 of a read taken on a Friday would read as a Friday finish.",
+        first_slice: "Bind one schedule answer to a read date and print the start and finish dates along its critical path.",
+        red_control: "A leaf finishing on a non-working day reads as the NEXT working day, never as the weekend; the same schedule read one week later moves every date by seven days and changes nothing else.",
+        out_of_scope: "No scheduling policy change: the order and the worker count come from the scheduler unit unchanged.",
+        handback: "The dated output for one read, the weekend output and the one-week-later output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8QQ2EYRW11GZWGRFTB",
+      id: "roadmap-claim-names-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "A claim names the leaf it claims, in the decomposition's own spelling",
+        boundary: "The Claimed payload names the LEAF PATH -- item, stage index, piece index, and the member index for a family at its declared count -- spelled as the decomposition spells it, the same three indexes the carrier's well-formedness check reads. A path the decomposition does not have refuses at append.",
+        displaced_cost: "Without it the in-flight set, the realized durations and the offer can only be spoken of per item, which is where the belt stops today: two workers cannot take one item's leaves side by side. A claim that names only its item is refused at append, from the first landing (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)); what the refusal leaves outstanding is tracked and prioritized rather than admitted.",
+        first_slice: "Append one Claimed naming a leaf path the decomposition has and one naming a path it does not, and show both outputs.",
+        red_control: "A planted Claimed whose path is not in the decomposition refuses AT APPEND, by consuming the carrier's existing claim rather than re-checking the spelling here.",
+        out_of_scope: "The ruled shape is not reopened here (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)): no migration arm is built, and a live item-level claim that predates the landing is re-recorded against its leaf or released -- the set of such claims is a work item of its own. No leaf becomes a node.",
+        handback: "The accepted append, the refused append output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8R27QGW6MFE9WB6G4F",
+      id: "roadmap-leaf-in-flight-set",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "Which leaves are in flight, derived and never written",
+        boundary: "The in-flight leaves are those with a Claimed and nothing after it: no Released, no HandedBack, no Retired, no acceptance. The set is DERIVED from the log and never written down, so it cannot go stale.",
+        displaced_cost: "Without it in flight is a list somebody maintains, and the first missed release makes it wrong: the offer and the highlight would both point at leaves nobody holds.",
+        first_slice: "Derive the in-flight set for one item over a planted log of claims, releases and acceptances.",
+        red_control: "A leaf claimed and then released is NOT in flight; the same log replayed without the release puts it back.",
+        out_of_scope: "No in-flight record is ever written; what a claim carries belongs to roadmap-claim-names-leaf.",
+        handback: "The derived set for the planted log with and without the release, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8S3EY06Q6JCZA2F57G",
+      id: "roadmap-leaf-realized-duration",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A completed leaf's realized duration, read from the log, replaces its prior",
+        boundary: "A leaf's claimed-to-accepted working days are read from the log. Where a realized value exists the schedule takes it and REPORTS WHICH VALUE IT USED; otherwise it takes the prior. Realized values replace the declared priors as they accumulate: the priors are simulation inputs.",
+        displaced_cost: "Without it the plan keeps quoting the day counts it started with, the estimates never meet the work, and the next round of estimates has no source.",
+        first_slice: "Fold one item's completed leaves into its schedule and print, per leaf, whether the realized value or the prior was used.",
+        red_control: "An accepted leaf with NO claim has no realized duration and the fold SAYS SO in its output -- it does not read as zero days and does not fall back to the prior silently.",
+        out_of_scope: "No change to the scheduler's order; no estimate is re-issued here, which is gunbc.roadmap.roadmap_effort_estimate's work.",
+        handback: "The fold output for a leaf with a realized duration and for an accepted leaf with no claim, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
+      id: "roadmap-schedule-from-now",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "The schedule read from today: in-flight leaves pinned, the rest scheduled around them",
+        boundary: "In-flight leaves are pinned at their claim day with their REMAINING days; only unclaimed leaves are scheduled around them, under the same policy and worker count. The answer is the schedule as of the read. A claimed leaf's day comes from the item event log, so the pin rests on a realized fact and not on a forecast; the rest is recomputed at the read, and any cache of it is derived and never authoritative (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)).",
+        displaced_cost: "Without it the schedule restarts every leaf at today and loses the week already spent: work in flight is scheduled a second time and everything behind it slips by the days already worked.",
+        first_slice: "Schedule one item with two in-flight leaves and four unclaimed leaves, and print the pinned rows apart from the scheduled ones.",
+        red_control: "A leaf claimed three days ago with five days of work finishes at DAY TWO of the read; a leaf whose remaining days cannot be worked out is refused rather than pinned at zero.",
+        out_of_scope: "No new scheduling policy; no bottlenecks and no offer, which is the next row's answer.",
+        handback: "The from-now output for the fixture with the pinned rows named, the day-two control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8VN1APM29K9AV9YE29",
+      id: "roadmap-schedule-bottlenecks-and-offer",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "Bottlenecks and the offer, from the schedule as of today",
+        boundary: "A bottleneck is an item with an in-flight or startable leaf ON THE CRITICAL PATH. The offer is the unclaimed startable leaf with the longest remaining path, excluding items the belt withholds. Both are computed from the carriers and the log, may be cached as derived data that is never authoritative, and are recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), narrowing @ref(gunbc.design_ruling::planning_scheduling_is_cut)). The offer is shown on the projection beside the bottlenecks, so what is planned from the critical path stays visible to the operator.",
+        displaced_cost: "Without them the schedule is a picture nobody acts on: what to start next, and what is holding the line, are the two questions the projection and the page exist to answer.",
+        first_slice: "Compute bottlenecks and the offer for one fixture whose critical path runs through two items, and show both answers.",
+        red_control: "With the critical path through X and Y the offer is X's startable leaf, NOT an off-path leaf that happens to start the same day; an item the belt withholds is never offered.",
+        out_of_scope: "No dispatch and no capacity arithmetic: the dispatch row reads this offer.",
+        handback: "The bottleneck list and the offer for the fixture, the off-path control output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
+      id: "roadmap-spawn-frontier-leaf-grain",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_readiness.dag"),
+      line: ticket(t: fields(
+        headline: "The spawn frontier at leaf grain, with the item predicate still as the gate",
+        boundary: "A leaf is ready when every leaf it depends on is ACCEPTED and its item is dispatchable by today's readiness (gunbc.roadmap.roadmap_readiness). The item predicate STAYS the gate: nothing starts a leaf whose item may not start.",
+        displaced_cost: "Without it the frontier is item-grain, so only the first leaf of an item is visible to the belt and the leaves waiting on a stage-1 sibling stay invisible until the whole item moves.",
+        first_slice: "Compute the leaf frontier for one item with two stages and print, per leaf, which dependency leaf is not yet accepted.",
+        red_control: "A leaf whose stage-1 sibling is unaccepted is NOT ready even when its item is dispatchable; a leaf whose item is not dispatchable is not ready even when every dependency leaf is accepted.",
+        out_of_scope: "No dispatch; the item readiness predicate itself does not change.",
+        handback: "The frontier output for the two planted cases, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8XJ9DVYGSNMZKP8WKJ",
+      id: "roadmap-dispatch-carries-leaf",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag"),
+      line: ticket(t: fields(
+        headline: "A dispatch names the leaf it dispatches, and one leaf has one dispatch",
+        boundary: "The live dispatch row carries the leaf path beside its node_id, and one leaf has one dispatch: two dispatches on one leaf refuse; two leaves of one item are admitted, each in its own dispatch. This is what makes a leaf addressable. The belt takes its desired members from the offered leaf, bounded by BeltCapacity, with the readiness predicate still the gate on what may start at all. That the offer is the belt's selection basis is the INTERPRETATION recorded in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read) -- the operator's \"the planning we did now is relevant\" read onto this unit's done-when -- an interpretation, not operator words, and correctable by the operator.",
+        displaced_cost: "Without it the belt cannot put two workers on one item's leaves at all: the item is the only addressable thing, and every schedule above this row stays a picture.",
+        first_slice: "Dispatch two leaves of one item in two dispatches, then a second dispatch on a leaf already dispatched, and show all three outputs.",
+        red_control: "Two dispatches on one leaf refuse; two leaves of one item in two dispatches are admitted -- both in the same run.",
+        out_of_scope: "No new dispatch machinery: the leaf path travels beside the node id it already carries. BeltCapacity's meaning does not change. Whether the offer is the belt's selection basis is not this row's call: it stands as the labelled INTERPRETATION in @ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read), and the operator corrects it.",
+        handback: "The three outputs, the capacity bound as observed, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8Y40BD0A4SBDMW0J60",
+      id: "roadmap-typed-handback",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "The handback is typed, and only an accepted handback moves the carrier",
+        boundary: "The handback is typed: Close with its acceptance evidence; Split with a replacement decomposition, carried as an edit to the carrier on a branch; ReEstimate with its days; Findings with its members, for a probe leaf. It is accepted by the claim's return_to principal, and the carrier changes only through an accepted handback. A Split is accepted the way any work item is (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager), on @ref(gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation)), and no operator gate stands on a split that lengthens the critical path -- the view flags the moved path so the operator sees it rather than approves it.",
+        displaced_cost: "Without it the four things a handback can mean are one undifferentiated message, and any handback can rewrite a decomposition on the way past. The authority law says a carrier changes through an accepted change, and the handback is where that is enforced.",
+        first_slice: "Accept a Close and a Findings on two planted leaves, and refuse a Findings on a leaf whose evidence is a Builds.",
+        red_control: "A Findings handback from a leaf whose evidence is Builds refuses; a handback offered by a principal that is not the claim's return_to principal refuses; the carrier is unchanged after either refusal.",
+        out_of_scope: "No operator gate on a Split that lengthens the critical path (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)): it is accepted as any work item is, and this row's view only has to flag the moved path. A Split stays an edit on a branch, never an in-place rewrite.",
+        handback: "The accepted and refused handback outputs, the carrier unchanged on the refusals, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR8ZNA89SDC0ZXCHA2DS",
+      id: "roadmap-work-item-projection",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "One projection row per work item, served as JSON from the daily workspace",
+        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per work item as JSON from the daily workspace, at the path projection.json beside standings.json -- the path a consumer fetches to find the projection, declared here because a reader detects the projection by fetching it. The row's shape is declared here, because it is what a consumer of the projection is built against: node, intention, layer, item_state; leaves -- one entry per leaf occurrence, each with its leaf path as the decomposition spells it, its start day and finish day from the schedule answer, and on_critical_path; in_flight -- the derived set, each entry with its leaf path, its claim's assignee and its claim's return_to; latest_event; acceptance_evidence; events -- the item's past events with the timestamp each one was recorded at (claimed, released, acceptance recorded, retired), read from the event log at the read and kept in no store of this row's own, so a consumer can draw the progress already made and not only the plan ahead; and read_on, the date the document was read, together with the inputs that read used (worker_count, the day priors, the assumed findings counts), each shown as an input and not as a fact. It IS planning_consolidation section 1's projection; every consumer reads this row and keeps no state of its own, and a field this row does not serve is not part of the projection.",
+        displaced_cost: "Without it each reader folds the log itself, and the readers are where the drift lives; there is no one place to read what is true about an item on the day of the read.",
+        first_slice: "Serve the projection for one item with leaves in flight, then the same item after a planted release, and show both rows against the shape above, field for field.",
+        red_control: "A row's in-flight leaves are the derived set and never a stored list, and a served row that omits a declared field of the shape above -- a leaf without its on_critical_path, an in-flight entry without its claim's assignee or return_to, an event without the timestamp it was recorded at, a row without read_on and its inputs -- is not the projection; the events a row carries are the event log's own rows at that read, never a copy this row keeps; a planted binding of this row to an intention that does not exist refuses at load, by the binding carrier's own check.",
+        out_of_scope: "No rendering; no operator to-do list on the row -- section 1's projection states, it does not nag. No reader outside this repository is named or bound here.",
+        handback: "The two JSON rows, the planted-binding refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR90N2HGC2XA1WMQFRFK",
+      id: "roadmap-timeline-page",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_page.dag"),
+      line: ticket(t: fields(
+        headline: "The timeline, rendered from the projection alone",
+        boundary: "gunbc.roadmap.roadmap_page carries the timeline: one row per item ordered by first start, leaves stacked where they run parallel, the in-flight strip, a read-day line at today, in-flight rows highlighted, bottlenecks in red, and the offer at the top. It renders the roadmap-work-item-projection row and nothing else -- no reader state, no second fold of the log.",
+        displaced_cost: "Without it the schedule is a dump nobody supervises a week of work with; a projection with no renderer is a file.",
+        first_slice: "Render the timeline for one read with two items, one of them in flight, and show the page apart from the JSON it came from.",
+        red_control: "Every mark on a row is explained by its projection row: the page reads the projection and nothing else, and a planted value that exists only in the page refuses.",
+        out_of_scope: "No schedule, in-flight set or offer is derived here; no consumer outside this repository is bound here.",
+        handback: "The rendered page for the fixture read, the planted-value refusal output, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
+    ),
+    roadmap_node(
+      identity: "rn_01M7NPVR91VNF088PHY2G7X5PK",
+      id: "roadmap-return-to-principal-records-acceptance",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_operator_acceptance.dag"),
+      line: ticket(t: fields(
+        headline: "The claim's return_to principal may record the acceptance of that claim's own node",
+        boundary: "Acceptances keep being recorded under the operator's principal for now, and the later route gets its own row: the principal a claim carries in its return_to may author AcceptanceRecorded FOR THAT CLAIM'S NODE, under the same receipt law gunbc.roadmap.roadmap_operator_acceptance states. It is gated on the acceptance-guidance carrier planning_consolidation section 7 layer 4 names. This row is the return_to arm of rn_A0SYP0J1P3JE8W8OBX6M3BD777 (roadmap-operator-attested-acceptance) -- one receipt law, two admissible authors -- and it waits on that row.",
+        displaced_cost: "Without it every acceptance runs through one principal, so the principal a claim is returned to cannot attest to the work it accepted, and the operator stays in the path of every handback.",
+        first_slice: "Let a claim's return_to principal author AcceptanceRecorded for that claim's node under the same receipt, and show the accepted append.",
+        red_control: "An AcceptanceRecorded authored by a principal that is neither the operator nor the claim's return_to principal refuses AT APPEND, and the log is unchanged after the refusal.",
+        out_of_scope: "The operator's own attestation path does not change; no new claim type appears; acceptances recorded under the operator's principal stay the route until the guidance carrier says otherwise.",
+        handback: "The accepted append, the refused append output with the log unchanged, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-self-host", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -4702,6 +5480,31 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
+    edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
+    // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
+    // child depends on parent, the direction the witness reads. roadmap-return-to-principal-records-acceptance
+    // is the return_to arm of roadmap-operator-attested-acceptance (rn_A0SYP0J1P3JE8W8OBX6M3BD777), so it
+    // waits on that row: the edge names it by NAME, because the graph's endpoint law reads the node field
+    // (id_exists compares e.parent against n.node), not the rn_ identity string.
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-operator-attested-acceptance"),
+    edge(child: "roadmap-schedule-list-scheduling", parent: "roadmap-schedule-leaf-expansion"),
+    edge(child: "roadmap-schedule-calendar-binding", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-leaf-in-flight-set", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-list-scheduling"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
+    edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),
+    edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),
+    edge(child: "roadmap-typed-handback", parent: "roadmap-claim-names-leaf"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-schedule-bottlenecks-and-offer"),
+    edge(child: "roadmap-work-item-projection", parent: "roadmap-leaf-in-flight-set"),
+    edge(child: "roadmap-timeline-page", parent: "roadmap-work-item-projection"),
+    edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-claim-names-leaf"),
+
     edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
     edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
     edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),
@@ -4748,7 +5551,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
     edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
 
     edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
     edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
@@ -4788,13 +5590,16 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-install-owned"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale"),
     edge(child: "v2-target-realization-gate", parent: "shared-check-lets-and-matches"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-legacy-choice-retirement", parent: "v1-interpreter-delete"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "declaration-identity-switchover"),
     edge(child: "namespace-v2-import-completion", parent: "declaration-identity-switchover"),
     edge(child: "v2-emitter-native-bootstrap", parent: "second-generation"),
     edge(child: "v1-emitter-fixed-point", parent: "emitter-produces-main-rs"),
     edge(child: "v1-emitter-delete", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-emitter-delete", parent: "native-frontier-required-lane"),
+    edge(child: "emitted-contracts-held", parent: "second-generation"),
+    edge(child: "v1-emitter-delete", parent: "emitted-contracts-held"),
     edge(child: "pderive-source-slot-binding", parent: "declaration-identity-switchover"),
     edge(child: "primitive-identity-join", parent: "v1-interpreter-primitive-roster"),
     edge(child: "v1-emitter-quarantine", parent: "native-production-admission"),
@@ -4809,6 +5614,40 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "second-generation", parent: "native-seven"),
     edge(child: "native-production-admission", parent: "native-frontier-required-lane"),
     edge(child: "native-production-admission", parent: "demand-d13-dependency-demand"),
+    edge(child: "native-production-admission", parent: "namespace-unique-on-chain"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-binding-kernel"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-reference-derived-closure"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "names-bind-to-the-unique-declaration"),
+    edge(child: "native-seven", parent: "native-seven-names-homed"),
+    edge(child: "compiler-closure-names-homed-and-types-merged", parent: "native-seven-names-homed"),
+    edge(child: "second-generation", parent: "compiler-closure-names-homed-and-types-merged"),
+    edge(child: "corpus-names-homed-and-collisions-discharged", parent: "compiler-closure-names-homed-and-types-merged"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "corpus-names-homed-and-collisions-discharged"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "names-bind-to-the-unique-declaration"),
+    edge(child: "import-grammar-and-lines-deleted", parent: "namespace-ambiguity-discharge"),
+    edge(child: "native-production-admission", parent: "import-grammar-and-lines-deleted"),
+    edge(child: "dogfood-g1-shared-computation-record", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "dogfood-g5-isolated-execution-record", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "factory-dogfood-route", parent: "dogfood-g1-shared-computation-record"),
+    edge(child: "factory-dogfood-route", parent: "dogfood-g5-isolated-execution-record"),
+    edge(child: "fabric-worker-event-log", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "service-evidence-capture", parent: "factory-dogfood-route"),
+    edge(child: "factory-dogfood-route", parent: "ci-executed-coverage-receipt"),
+    edge(child: "factory", parent: "factory-dogfood-route"),
+    edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
+    edge(child: "factory", parent: "serve-held-open-response"),
+    edge(child: "fabric-worker-event-log", parent: "factory-dogfood-route"),
+    edge(child: "external-specimen-compiles", parent: "universe-ingest-replaces-file-acquisition"),
+    edge(child: "external-specimen-compiles", parent: "one-declaration-identity-carrier"),
+    edge(child: "external-specimen-compiles", parent: "sealed-phases-and-the-checked-carrier"),
+    edge(child: "external-specimen-compiles", parent: "typed-refusals-own-control-flow"),
+    edge(child: "external-specimen-compiles", parent: "one-text-carrier"),
+    edge(child: "external-specimen-compiles", parent: "operations-are-declarations"),
+    edge(child: "external-specimen-compiles", parent: "one-standard-library"),
+    edge(child: "external-specimen-compiles", parent: "v1-products-v1-free"),
+    edge(child: "names-bind-to-the-unique-declaration", parent: "namespace-reference-derived-producer-bounded"),
+    edge(child: "compiler-closure-names-homed-and-types-merged", parent: "declaration-identity-switchover"),
+    edge(child: "corpus-names-homed-and-collisions-discharged", parent: "namespace-v2-import-completion"),
     edge(child: "demand-m1c", parent: "demand-m1b"),
     edge(child: "demand-m2", parent: "demand-m1c"),
     edge(child: "demand-m3b", parent: "demand-m2"),

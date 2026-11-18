@@ -1094,14 +1094,7 @@ fn belt_event_path_standing_json(s: BeltEventPathStanding) -> JsonValue {
   }
 }
 
-data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
-
-data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
-
-fn gunbc_rlm_launch_deployment_receipt_staging_path() -> String {
-  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.json"], "")
-}
-
-fn gunbc_rlm_launch_deployment_receipt_staging_digest_path() -> String {
-  join([gunbc_rlm_launch_deployment_receipt_artifact_dir, "/receipt.sha256"], "")
-}
+// The receipt's COMMITTED LOCATION — where the wet CLI stages it and under what artifact name the
+// workflow publishes it — is a fact about the artifact, not about the record this module renders. It
+// lives in gunbc.roadmap.roadmap_launch_deployment_receipt_location, which the CLI, the CI run step and
+// the workflow all read directly; nothing here imports it, because no fact of the record depends on it.

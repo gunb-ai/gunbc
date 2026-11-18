@@ -160,15 +160,15 @@ fn spool_declaration(kind: SpoolKind) -> SpoolDeclaration {
 // attempt-unit-spool, publication-spool), read off the declared stages. Absent means the spool does not declare the
 // role: the unit spool's refusal is an answers/ file (out of scope, the answer-store frontier) and the publication
 // helper works the request in place, so it has no claimed directory.
-fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<String> {
+fn spool_role_dir(kind: SpoolKind, role: SpoolRole) -> Optional<NonEmptyStr> {
   match spool_stage_of(stages: spool_declaration(kind: kind).chain, role: role) {
-    Present { value: s } => Present { value: s.directory as String }
+    Present { value: s } => Present { value: s.directory }
     Absent =>
       match spool_stage_of(stages: spool_declaration(kind: kind).terminals, role: role) {
-        Present { value: s } => Present { value: s.directory as String }
+        Present { value: s } => Present { value: s.directory }
         Absent =>
           match spool_stage_of(stages: spool_declaration(kind: kind).parked, role: role) {
-            Present { value: s } => Present { value: s.directory as String }
+            Present { value: s } => Present { value: s.directory }
             Absent => Absent
           }
       }
@@ -622,9 +622,9 @@ fn spool_root_dir(store: SpoolStore) -> String {
 }
 
 // The directory a role stands in, absent for a role the spool has no directory for.
-fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<String> {
+fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<NonEmptyStr> {
   match spool_role_dir(kind: store.kind, role: role) {
-    Present { value: d } => Present { value: join([spool_root_dir(store: store), "/", d], "") }
+    Present { value: d } => Present { value: join([spool_root_dir(store: store), "/", d], "") as NonEmptyStr }
     Absent => Absent
   }
 }
@@ -723,10 +723,10 @@ fn spool_watched_roles(kind: SpoolKind) -> List<SpoolRole> {
 // The directories of the named roles under one instance root, in role order. A role the kind declares no
 // directory for contributes nothing: that is declared absence, pinned by the declaration control that every
 // watched and every owned role yields exactly one directory.
-fn spool_role_dirs(kind: SpoolKind, instance_root: String, roles: List<SpoolRole>) -> List<String> {
+fn spool_role_dirs(kind: SpoolKind, instance_root: String, roles: List<SpoolRole>) -> List<NonEmptyStr> {
   roles |> flat_map(r => match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: r) {
     Present { value: d } => [d]
-    Absent => [] as List<String>
+    Absent => [] as List<NonEmptyStr>
   })
 }
 
