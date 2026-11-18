@@ -3646,10 +3646,12 @@ fn fleet_converge_gunbc_run_step_timeout_minutes(phases: List<Second>) -> Int {
 data fleet_converge_mtcollins1_kvm_observer_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1KvmObserverObserve)
 
 fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins KVM observer, no boot: under the unit hold, log in, establish the viewer, one still, release" },
     id: Present { value: "mtcollins1_kvm_observer_observe" },
-    run: gunbc_ci_mtcollins1_kvm_observer_observe_invoke(),
+    run: run_text,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3659,7 +3661,8 @@ fn fleet_converge_mtcollins1_kvm_observer_observe_step() -> Outcome<Step> {
     if_condition: Present { value: fleet_converge_mtcollins1_kvm_observer_observe_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_kvm_observer_probe_bound()]) }
-  })
+  }) }
+  )
 }
 
 // THE PROBE'S always() RELEASE (gunbc.machine_intake.mtcollins1_kvm_observer_observe
@@ -3930,10 +3933,12 @@ data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = join(["
 data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
 
 fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins vendor UI status mapping: fetch the virtual-media page and the scripts it names, commit the status-0 branch with its offsets (reads only)" },
     id: Present { value: "mtcollins1_ui_status_asset_observe" },
-    run: gunbc_ci_mtcollins1_ui_status_asset_observe_invoke(),
+    run: run_text,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -3945,7 +3950,8 @@ fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Outcome<Step> {
     // bounded Secret Manager read, then the probe's own declared bound (its login, its bounded page
     // ladder, its bounded asset fetches and its logout, each counted once).
     timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_ui_status_asset_probe_bound()]) }
-  })
+  }) }
+  )
 }
 
 // THE RECEIPT IS UPLOADED WHATEVER THE STEP DID, and `always()` is what makes that sentence true:
@@ -6401,10 +6407,12 @@ fn fleet_converge_fan_policy_phase_step_if_expression() -> Expression {
 data fleet_converge_fan_policy_phase_step_if: String = serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
 
 fn fleet_converge_fan_policy_phase_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "fan_policy_phase" },
-    run: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
+    run: run_text,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6423,7 +6431,8 @@ fn fleet_converge_fan_policy_phase_step() -> Outcome<Step> {
     // the fan series' one budget, the fold the fan_observe step uses, never the flat aux figure.
     continue_on_error: none,
     timeout_minutes: Present { value: fleet_converge_mtcollins1_fan_series_step_timeout_minutes() }
-  })
+  }) }
+  )
 }
 
 fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
