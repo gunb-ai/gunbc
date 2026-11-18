@@ -6596,22 +6596,37 @@ concat(
 }
 
 
-fn fleet_converge_fleet_identity_unreadable_text() -> String? {
-  fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates())
+fn fleet_converge_fleet_identity_unreadable_text() -> Outcome<String?> {
+  // The reader candidates are typed carriers (a step that cannot render refuses); the
+  // mint-reading text scan reads Step fields, so the carriers are unwrapped once here via
+  // sequence_outcome and a Rejected candidate refuses generation rather than being scanned as a Step.
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_fleet_identity_reader_candidates(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_candidates) {
+      outcome_accepted(value: fleet_identity_unreadable_text(candidates: zesty_candidates))
+    }
+  )
 }
 
 fn fleet_converge_fleet_identity_text_unreadable() -> Bool {
   match fleet_converge_fleet_identity_unreadable_text() {
-    Present { value: _ } => true
-    Absent => false
+    Rejected { diagnostics: _ } => true
+    Accepted { value: v } => match v {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
 
 fn fleet_converge_fleet_identity_unreadable_refusal() -> String {
   match fleet_converge_fleet_identity_unreadable_text() {
-    Present { value: t } =>
-      join(["REFUSED gunbc.fleet.fleet_converge_workflow: a step after the fleet identity mint carries text extdeps.github.expressions cannot read, so whether it reads steps.wif_auth.outputs (and when) is undecided; no workflow is emitted rather than a mint that might strand or over-admit it. Text: ", t], "")
-    Absent => "REFUSED gunbc.fleet.fleet_converge_workflow: unreachable -- the fleet identity reader scan reported no unreadable text"
+    Rejected { diagnostics: d } =>
+      join(["REFUSED gunbc.fleet.fleet_converge_workflow: a fleet identity reader step refused to render, so it cannot be checked for mint-reading condition text; no workflow is emitted rather than one that might strand or over-admit the mint. Diagnostic: ", diagnostics_reason_lexemes(diagnostics: d)], "")
+    Accepted { value: opt } => match opt {
+      Present { value: t } =>
+        join(["REFUSED gunbc.fleet.fleet_converge_workflow: a step after the fleet identity mint carries text extdeps.github.expressions cannot read, so whether it reads steps.wif_auth.outputs (and when) is undecided; no workflow is emitted rather than a mint that might strand or over-admit it. Text: ", t], "")
+      Absent => "REFUSED gunbc.fleet.fleet_converge_workflow: unreachable -- the fleet identity reader scan reported no unreadable text"
+    }
   }
 }
 
