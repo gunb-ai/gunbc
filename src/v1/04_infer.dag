@@ -1782,6 +1782,13 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       },
       scope: scope)
   }
+  else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
+  }
   else if nominal_coproduct_applied_argument_conflict(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
@@ -5161,6 +5168,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
+  | RefusedStructuredAtScalar
   | RefusedValueAtNever
   | RefusedCallableMismatch
 
@@ -5560,6 +5568,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductAtScalar }
+  } else if structured_value_at_kernel_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedStructuredAtScalar }
   } else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductCoproductHeadMismatch }
   } else {
@@ -5807,6 +5817,50 @@ fn collection_versus_established_identity(declared: Node, produced: Node, scope:
 fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
     && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+}
+
+// THE GENERAL FORM OF THE HEAD-KIND CLASH AT A KERNEL SCALAR. The judgment above is its product half
+// (gunbc#13391); this is the whole of it, and it is the dispositioning that
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel names as its next
+// rung: the wall there decides on the KIND OF THE OFFENDING VALUE -- kernel_value_declared_type_mismatch_bounded
+// opens by exiting whenever the produced value's authored name is not a kernel type -- so an actual
+// that is NOT a kernel (a carrier, a record, an applied generic) leaves the inhabitance judgment
+// before any formal is consulted, and the pair fell to declared_type_conformance_diags_core's
+// abstention at `!both_ground` and to this relation's InhabitanceUnmodeled. Measured on
+// gunbc.recurring_failure_mode a_carrier_body_under_a_scalar_declared_return_is_accepted (silent-owl-221,
+// 2026-11-18): a fn declared `-> String` whose body's trailing expr is `outcome_accepted(value: "x")`,
+// a `String` parameter applied to an `Outcome<String>`, and a record's `String` field built with one
+// were ALL accepted at phase=closure_typecheck with zero blocking errors, and the run aborted later,
+// unlocated, in a primitive cast ('cannot cast Outcome to NonEmptyStr', NoSuchField{type_name: Outcome})
+// -- the checker's judgment and the runtime disagreed with nothing joining them, which is the floor of
+// gunbc.design_argument::guarantee_ladder (values inhabit their declared types) failing.
+//
+// THE DECISION IS KEYED ON THE FORMAL, NEVER ON THE ACTUAL'S KIND. A declared head that exposes as a
+// kernel scalar -- through a where-refinement too, by the same authority the product half uses -- has
+// exactly one inhabitant shape: that kernel, or a spelling the earlier arms admit (an alias of it,
+// alias_identity_in_judgment; a refinement of it, refinement_inhabitance; an optional layer, the
+// cardinality arms; a callable, the arrow arms). Any NOMINAL STRUCTURED head is a different identity
+// with no route to the kernel, so it does not inhabit: the two head-name authorities give that question
+// in one classifier each, and both read an unapplied declaration AND an application whose constructor
+// peels to their connective -- so the carrier written `Outcome<String>` is judged and not only a spelled
+// `Outcome`, which is the same lesson #13198 recorded for the product-versus-coproduct arm (judging by
+// the spelled head kind of one shape is the fork). Containers are excluded by those authorities on their
+// own stated ground -- element compatibility is container_element_nominal_brand_mismatch's judgment --
+// and a kernel name, an Optional, a callable and a where-refinement are excluded by them too, each for
+// the reason written at its own definition; a produced head that exposes Opaque or Stuck without a
+// resolvable declaration names no identity and is left to InhabitanceUnmodeled rather than refused on
+// namelessness. The refusal is one verdict in this relation, consumed by declared_type_conformance_diags_core
+// beside the product half, so the fn body, the record field, the let and the data initializer and the
+// direct call argument are judged by the ONE relation -- not by a second relation keyed on carriers,
+// which is the fork that row exists to prevent.
+fn structured_value_at_kernel_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  if !declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope) {
+    false
+  } else if nominal_product_head_name(n: produced, scope: scope) != "" {
+    true
+  } else {
+    nominal_coproduct_head_name(n: produced, scope: scope) != ""
+  }
 }
 
 // A VALUE NEVER INHABITS NEVER. Never has no producer, so any produced value that is not itself
@@ -6435,6 +6489,8 @@ fn inhabitance_refusal_position_label(
       concat(base, " [RefusedValueAtNever]")
     RefusedCallableMismatch =>
       concat(base, " [RefusedCallableMismatch]")
+    RefusedStructuredAtScalar =>
+      concat(base, " [RefusedStructuredAtScalar: a declared head that exposes as a kernel scalar is inhabited only by that kernel; the produced value exposes a structured head (a product, or a coproduct including a carrier), which is a different declaration with no route to it]")
     _ => base
   }
 }

@@ -15,7 +15,6 @@ module test.claim.carrier_body_under_scalar_declared_return_probe
 
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
-  CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
@@ -23,6 +22,8 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Int, Bool, List }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -32,26 +33,70 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Rejected<String>` with `fn outcome_accepted<T>(value: T) -> Outcome<T>` is v2.std.diagnostic's
 // carrier and its Accepted constructor's smart constructor in two lines, so the probe measures the
 // checker's judgment about the SHAPE (a coproduct application under a kernel scalar), not about the
-// name. The corpus pair is measured separately against the real import in the entry-compile probe.
+// name.
 
-data carrier_prelude: String = "import std.types { String }\ntype Outcome<T> = Accepted<T> | Rejected<String>\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted(value: value) }\n"
+data carrier_prelude: String = "import std.types { String }\ntype Outcome<T> = Accepted { value: T } | Rejected { reason: String }\nfn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }\n"
 
 fn probe_source(body: String) -> String {
   concat("module probe_carrier_scalar\n", concat(carrier_prelude, body))
 }
 
-fn blocking_total(source: String) -> Int {
-  match compile_dag_diagnostic_census(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
+fn cause_length(cause: String) -> Int {
+  string_length(s: cause)
+}
+
+fn not_runnable_cause(c: CompileDiagnosticCensus) -> String {
+  match c {
+    CensusObserved { rows: _ } => ""
+    CensusNotRunnable { cause: cause_text } => cause_text
   }
 }
 
-fn blocking_class(source: String, wanted: String) -> Int {
-  match compile_dag_diagnostic_census(source: source) {
+fn rows_of_census(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
+  match c {
+    CensusNotRunnable { cause: _ } => []
+    CensusObserved { rows: rows } => rows
+  }
+}
+
+fn row_text(rows: List<CompileDiagnosticCensusRow>, rest: String) -> String {
+  match rows {
+    Empty => concat(rest, "-")
+    Cons { head: head_row, tail: tail_rows } => {
+      let with_class: String = concat(rest, head_row.diagnostic_class)
+      let with_subject: String = concat(concat(with_class, "/"), head_row.subject_name)
+      let with_count: String = concat(with_subject, to_string(value: head_row.count))
+      let with_block: String = concat(with_count, " blocking=")
+      let with_flag: String = concat(with_block, bool_text(value: head_row.blocking))
+      concat(with_flag, row_text(rows: tail_rows, rest: ";"))
+    }
+  }
+}
+
+fn bool_text(value: Bool) -> String {
+  if value {
+    "Y"
+  } else {
+    "N"
+  }
+}
+
+fn census_of(body: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source: probe_source(body: body))
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: cause_text } => 0 - cause_length(cause: cause_text)
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+  }
+}
+
+fn blocking_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: cause_text } => 0 - cause_length(cause: cause_text)
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -73,67 +118,78 @@ data shape_c_body: String = "type Box { text: String }\nfn probe() -> Box { Box 
 
 data shape_c_control_body: String = "type Box { text: String }\nfn probe() -> Box { Box { text: \"x\" } }\n"
 
-fn report(label: String, total: Int, not_inhabited: Int) -> String {
-  concat(
-    concat(concat(label, " total="), to_string(total)),
-    concat(" DTNI=", to_string(not_inhabited))
-  )
+// The classes a refusal for this pair could land under, each named with its seam in the seed:
+// DeclaredTypeNotInhabited (the conformance chain's own class), TypeMismatch (its terminal arm),
+// TypeError (the call-argument seam's class), DirectCallArgumentType (the call-argument wall).
+data probe_classes: List<String> = [
+  "DeclaredTypeNotInhabited",
+  "TypeMismatch",
+  "TypeError",
+  "DirectCallArgumentType"
+]
+
+fn class_counts_named(classes: List<String>, c: CompileDiagnosticCensus) -> String {
+  match classes {
+    Empty => ""
+    Cons { head: first, tail: rest } => {
+      let hits: Int = blocking_class(c: c, wanted: first)
+      let labelled: String = concat(first, "=")
+      let with_count: String = concat(labelled, to_string(value: hits))
+      match rest {
+        Empty => with_count
+        Cons { head: _, tail: _ } => concat(concat(with_count, ","), class_counts_named(classes: rest, c: c))
+      }
+    }
+  }
+}
+
+fn class_counts(c: CompileDiagnosticCensus) -> String {
+  class_counts_named(classes: probe_classes, c: c)
+}
+
+fn report(label: String, c: CompileDiagnosticCensus) -> String {
+  let total: Int = blocking_total(c: c)
+  let labelled: String = concat(label, " total=")
+  let with_total: String = concat(labelled, to_string(value: total))
+  let classes_label: String = concat(with_total, " {")
+  concat(concat(classes_label, class_counts(c: c)), "}")
+}
+
+fn step(prev: String, label: String, c: CompileDiagnosticCensus) -> String {
+  concat(concat(prev, " | "), report(label: label, c: c))
 }
 
 test fn carrier_under_scalar_three_shape_probe_reports_observed_counts() -> ProcessExit {
-  let a: Int = blocking_total(source: probe_source(body: shape_a_body));
-  let a_class: Int =
-    blocking_class(source: probe_source(body: shape_a_body), wanted: "DeclaredTypeNotInhabited");
-  let a_control: Int = blocking_total(source: probe_source(body: shape_a_control_body));
-  let idle: Int = blocking_total(source: probe_source(body: idle_control_body));
-  let b: Int = blocking_total(source: probe_source(body: shape_b_body));
-  let b_class: Int =
-    blocking_class(source: probe_source(body: shape_b_body), wanted: "DeclaredTypeNotInhabited");
-  let b_control: Int = blocking_total(source: probe_source(body: shape_b_control_body));
-  let c: Int = blocking_total(source: probe_source(body: shape_c_body));
-  let c_class: Int =
-    blocking_class(source: probe_source(body: shape_c_body), wanted: "DeclaredTypeNotInhabited");
-  let c_control: Int = blocking_total(source: probe_source(body: shape_c_control_body));
-  let part1: String =
-    concat(
-      report(label: "A", total: a, not_inhabited: a_class),
-      concat(" | ", report(label: "A+", total: a_control, not_inhabited: 0))
-    );
-  let part2: String =
-    concat(
-      concat(" | ", report(label: "idle", total: idle, not_inhabited: 0)),
-      concat(" | ", report(label: "B", total: b, not_inhabited: b_class))
-    );
-  let part3: String =
-    concat(
-      concat(" | ", report(label: "B+", total: b_control, not_inhabited: 0)),
-      concat(" | ", report(label: "C", total: c, not_inhabited: c_class))
-    );
-  let part4: String = concat(concat(" | ", report(label: "C+", total: c_control, not_inhabited: 0)), " (total=-1 means the census route reported not-runnable)");
+  let census_a: CompileDiagnosticCensus = census_of(body: shape_a_body)
+  let census_a_control: CompileDiagnosticCensus = census_of(body: shape_a_control_body)
+  let census_idle: CompileDiagnosticCensus = census_of(body: idle_control_body)
+  let census_b: CompileDiagnosticCensus = census_of(body: shape_b_body)
+  let census_b_control: CompileDiagnosticCensus = census_of(body: shape_b_control_body)
+  let census_c: CompileDiagnosticCensus = census_of(body: shape_c_body)
+  let census_c_control: CompileDiagnosticCensus = census_of(body: shape_c_control_body)
+  let step1: String = report(label: "A", c: census_a)
+  let step2: String = step(prev: step1, label: "A+", c: census_a_control)
+  let step3: String = step(prev: step2, label: "idle", c: census_idle)
+  let step4: String = step(prev: step3, label: "B", c: census_b)
+  let step5: String = step(prev: step4, label: "B+", c: census_b_control)
+  let step6: String = step(prev: step5, label: "C", c: census_c)
+  let step7: String = step(prev: step6, label: "C+", c: census_c_control)
+  let blocking_a: List<CompileDiagnosticCensusRow> = census_blocking_rows(rows: rows_of_census(c: census_a))
+  let blocking_c: List<CompileDiagnosticCensusRow> = census_blocking_rows(rows: rows_of_census(c: census_c))
+  let note: String = concat(concat(" || A rows=", row_text(rows: blocking_a, rest: "")), concat(" || C rows=", row_text(rows: blocking_c, rest: "")))
+  // THE ANSWER IS ENCODED IN THE EXIT CODE as seven digits, because claim_batch prints the code and
+  // not the reason: digits are A, A+, idle, B, B+, C, C+ blocking-row counts (-1 shows as the digit
+  // sequence borrowing, so read the code as the decimal expansion of the seven counts, each 0..9).
+  let d1: Int = blocking_total(c: census_a)
+  let d2: Int = blocking_total(c: census_a_control)
+  let d3: Int = blocking_total(c: census_idle)
+  let d4: Int = blocking_total(c: census_b)
+  let d5: Int = blocking_total(c: census_b_control)
+  let d6: Int = blocking_total(c: census_c)
+  let d7: Int = blocking_total(c: census_c_control)
+  let code_value: Int = ((((((d1 * 10) + d2) * 10 + d3) * 10 + d4) * 10 + d5) * 10 + d6) * 10 + d7
   ExitFailure {
-    code: 1,
-    reason: concat(concat(concat(part1, part2), concat(part3, part4)),
-      concat(" | classes: A=", class_breakdown(source: probe_source(body: shape_a_body))))
-  }
-}
-
-// The full blocking-row census for shape A, so a refusal landing under a different class name is
-// still seen. Rows carry the class, the subject name and the count.
-fn class_breakdown(source: String) -> String {
-  match compile_dag_diagnostic_census(source: source) {
-    CensusObserved { rows: rows } => rows_of(rows: census_blocking_rows(rows: rows), rest: "")
-    CensusNotRunnable { cause: c } => concat("NOT-RUNNABLE: ", c)
-  }
-}
-
-fn rows_of(rows: List<CompileDiagnosticCensusRow>, rest: String) -> String {
-  match rows {
-    [] => concat(rest, "none")
-    [head, ...tail] =>
-      concat(
-        concat(concat(concat(head.diagnostic_class, ":"), to_string(head.count)),
-          concat("(", concat(head.subject_name, ") "))),
-        rows_of(rows: tail, rest: rest)
-      )
+    code: code_value,
+    reason: concat(step7, note)
   }
 }
