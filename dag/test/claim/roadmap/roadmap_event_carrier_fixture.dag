@@ -178,18 +178,29 @@ fn roadmap_event_carrier_mutation_targets(instance: HostDashboardInstance) -> Li
 // that asked it about a path it had just swept failed for proving the thing it meant to prove (measured
 // 2026-11-17 at this fixture's first wet run, and filed as node://adhoc-513fffd2-68f). Presence is answered
 // below, by the same testimony that answers absence.
+//
+// THE SHAPE DECISION, ONCE, ON A STRING. Three conjuncts and no filesystem: an admitted scratch sits under `/tmp/`,
+// is longer than the prefix alone, and carries no `.` or `..` segment. The mint asks this BEFORE anything exists,
+// which is the whole point of separating it -- and the gate underneath asks it too, by calling this function rather
+// than restating it, so the answer a path gets before it is created and the answer it gets afterwards cannot drift
+// apart (`gunbc.design_argument::single_authority`: "a second place that independently decides it is a fork").
+fn roadmap_carrier_template_is_admissible(template: String) -> Bool {
+  starts_with(s: template, prefix: "/tmp/")
+    && string_length(s: template) > 5
+    && all(absolute_path_segments(path: template), segment => segment != ".." && segment != ".")
+}
+
+// THE SAME SHAPE DECISION PLUS THE ONE CONJUNCT THAT NEEDS A PATH ON DISK. Presence is the only part of the question
+// that cannot be answered before the create, which is why admission is two decisions and not one.
 fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
-  starts_with(s: root, prefix: "/tmp/")
-    && string_length(s: root) > 5
-    && all(absolute_path_segments(path: root), segment => segment != ".." && segment != ".")
-    && roadmap_carrier_path_is_present(path: root)
+  roadmap_carrier_template_is_admissible(template: root) && roadmap_carrier_path_is_present(path: root)
 }
 
 // A SCRATCH IS A CAPABILITY, NOT A STRING — and the capability is the filesystem re-check, not the type. A normal
 // scoped caller obtains a `RoadmapEventCarrierScratch` only as the value `roadmap_event_carrier_mint_scratch`
 // returns when `shell.Mktemp.DirWithTemplate` reports success on a template this file owns, and it is the only type
 // `roadmap_event_carrier_sweep` accepts and the only one provisioning admits. It is NOT unconstructible: this
-// language has no private constructor, and both controls below build one by hand: each mktemp's its own parent,
+// language has no private constructor, and the two sweep controls below build one by hand: each mktemp's its own parent,
 // scaffolds the scenario inside it with this file's own primitives, and then wraps the path in the type, because the
 // control has to be able to name the directory it is about to torture. Holding the type therefore establishes nothing
 // on its own. What keeps a hand-built token from being a skeleton key is that admission and sweep each re-prove the
@@ -251,21 +262,40 @@ fn roadmap_event_carrier_run_scoped(template: NonEmptyStr, body: fn(RoadmapEvent
 }
 
 fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarrierMint {
-  let made = shell.Mktemp.DirWithTemplate(template: template as FilePath)
-  let path: String = made.path as String
-  if !made.success {
-    RoadmapEventCarrierMintRefused { detail: concat("mktemp could not mint a scratch from template ", template as String) }
-  } else if !roadmap_carrier_root_is_minted_scratch(root: path) {
-    RoadmapEventCarrierMintRefused { detail: concat("the directory minted at ", path) }
-  } else if !roadmap_carrier_seal_create(root: path) {
-    // The seal could not be planted, so this directory is one the fixture cannot later prove it owns. Nothing is
-    // provisioned into it and it is removed here, by the only party with a right to: the process that just mkdtemplated
-    // it. If that removal ALSO fails the detail says so, because a leak the witness cannot see is the leak the next
-    // run reads.
-    let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
-    RoadmapEventCarrierMintRefused { detail: concat(concat("the fixture could not plant its ownership seal inside ", path), roadmap_carrier_mint_cleanup_words(cleaned: cleaned)) }
+  //  THE ADMISSION RUNS BEFORE THE CREATE. The shape question is decidable from the template's text, so nothing has to
+  //  exist to ask it, and asking it afterwards meant every refusal downstream of the create implied a tidy-up nobody
+  //  performed -- the class that records this is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect),
+  //  and the
+  //  control that pins it is a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind in this file.
+  //  The gate asks the SAME predicate the post-create check asks, by calling it rather than restating it, so the answer
+  //  a path gets before it exists and the answer it gets afterwards cannot drift apart
+  //  (gunbc.design_argument::single_authority). The post-create half below is not decoration and is not folded away:
+  //  readable-and-owned-by-this-uid is a fact about the directory that was actually made, and no text about a template
+  //  can establish it.
+  if !roadmap_carrier_template_is_admissible(template: template as String) {
+    RoadmapEventCarrierMintRefused { detail: concat("the template ", template as String, " is outside the admitted scratch shape; nothing was created") }
   } else {
-    RoadmapEventCarrierMinted { scratch: RoadmapEventCarrierScratch { path: path, template: template as String } }
+    let made = shell.Mktemp.DirWithTemplate(template: template as FilePath)
+    let path: String = made.path as String
+    if !made.success {
+      RoadmapEventCarrierMintRefused { detail: concat("mktemp could not mint a scratch from template ", template as String) }
+    } else if !roadmap_carrier_root_is_minted_scratch(root: path) {
+      //  The create already happened, so this refusal is not complete until the thing it made is reclaimed; the
+      //  reclamation's OWN failure is said out loud, because a refusal that implies a tidy-up which did not occur is
+      //  precisely the harm the class row records.
+      let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
+      let words = concat("the directory minted at ", path, " is not a readable scratch directory owned by this caller; reclamation")
+      RoadmapEventCarrierMintRefused { detail: concat(words, roadmap_carrier_mint_cleanup_words(cleaned: cleaned)) }
+    } else if !roadmap_carrier_seal_create(root: path) {
+      //  The seal could not be planted, so this directory is one the fixture cannot later prove it owns. Nothing is
+      //  provisioned into it and it is removed here, by the only party with a right to: the process that just
+      //  mkdtemplated it. If that removal ALSO fails the detail says so, because a leak the witness cannot see is the
+      //  leak the next run reads.
+      let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
+      RoadmapEventCarrierMintRefused { detail: concat(concat("the fixture could not plant its ownership seal inside ", path), roadmap_carrier_mint_cleanup_words(cleaned: cleaned)) }
+    } else {
+      RoadmapEventCarrierMinted { scratch: RoadmapEventCarrierScratch { path: path, template: template as String } }
+    }
   }
 }
 
@@ -706,4 +736,106 @@ test fn the_wet_carrier_reclaims_its_own_root_when_the_sweep_refuses() -> Bool {
       }
     }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE PURE HALF OF THE ADMISSION, CLAIMED ON ITS OWN. `roadmap_carrier_template_is_admissible` is decidable from
+//  the template's text alone, so it needs no host, no filesystem and no wet lane: these four claims can run in any
+//  lane that executes claims at all. They exist because the shape decision is now asked BEFORE the create, and a
+//  gate that runs before an effect can only be tested on text — there is nothing on disk to observe yet.
+
+test fn the_shape_admission_accepts_an_admitted_scratch_template() -> Bool {
+  claim("a template under /tmp/ with a real suffix is admitted", roadmap_carrier_template_is_admissible(template: "/tmp/x.XXXXXX"))
+}
+
+test fn the_shape_admission_refuses_a_foreign_root_a_parent_escape_the_bare_prefix_and_a_relative_path() -> Bool {
+  let refused_foreign = !(roadmap_carrier_template_is_admissible(template: "/var/tmp/x.XXXXXX"))
+  let refused_escape = !(roadmap_carrier_template_is_admissible(template: "/tmp/../etc/x.XXXXXX"))
+  let refused_bare = !(roadmap_carrier_template_is_admissible(template: "/tmp/"))
+  let refused_relative = !(roadmap_carrier_template_is_admissible(template: "tmp/x.XXXXXX"))
+  claim(
+    "a foreign root, a parent escape, the bare prefix alone and a relative path are all refused",
+    refused_foreign && refused_escape && refused_bare && refused_relative,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE THIRD CONTROL, beside the two sweep controls above it. WHAT IT HOLDS: a template the admission does not
+//  accept must be refused WITHOUT leaving a directory behind. Not "refused loudly" — the three refusal arms were
+//  always loud, and loudness is what hid this defect, because a reader auditing error handling sees three correct
+//  refusals and walks past the one thing wrong with them, which is that the create happened first. The row this
+//  control came from is gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect,
+//  and its harm is exactly a refusal that implies a tidy-up nobody performed.
+//
+//  WHY THE SHAPE OF THIS CLAIM IS WHAT IT IS. The expectation is stated independently of which repair lands, per
+//  the class row: a pre-create guard must refuse with NOTHING created, and a cleanup-after-refusal repair must
+//  refuse with the directory GONE by the time the call returns. Both satisfy "no leftover"; neither is allowed to
+//  earn green by asserting that a directory existed at the moment of refusal, which describes today's broken state
+//  rather than either repair. So the claim asks only: did it refuse, was the refusal not the mktemp arm, and does
+//  anything still sit at the path it named?
+//
+//  THE PREMISE, GUARDED LOUDLY. If mktemp itself fails the control has learned nothing, so that arm FAILS the claim
+//  by name rather than passing: a control that can go green because its premise was never established is the thing
+//  gunbc.design_argument::fail_closed forbids. The parent is /var/tmp, measured 2026-11-17 on the box that runs
+//  this witness as mode 1777 drwxrwxrwt root:root with the witness running as uid 1000, so creation succeeds there
+//  and the admission is what decides. Never /var/lib/gunbc: the row must not prove its point by committing the harm
+//  it records, and its parent does not exist, so mktemp would fail first and the control would go red for the wrong
+//  reason.
+
+data leak_control_template: String = "/var/tmp/gunbc_carrier_leak_control.XXXXXX"
+
+data mktemp_arm_words: String = "mktemp could not mint a scratch from template "
+
+data minted_arm_words: String = "the directory minted at "
+
+data leaked_through_words: String = "MINTED_OUTSIDE_SHAPE:"
+
+fn leak_control_path_of(detail: String, words: String) -> String {
+  substring(s: detail, start: string_length(s: words), end: string_length(s: detail))
+}
+
+test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind() -> Bool {
+  let mint = roadmap_event_carrier_mint_scratch(template: leak_control_template as NonEmptyStr)
+  let detail: String = match mint {
+    RoadmapEventCarrierMintRefused { detail: d } => d
+    RoadmapEventCarrierMinted { scratch: s } => concat(leaked_through_words, s.path)
+  }
+  let verdict = if starts_with(s: detail, prefix: leaked_through_words) {
+    claim(
+      concat(
+        "a template outside the admitted shape was MINTED rather than refused; the scratch sits at ",
+        leak_control_path_of(detail: detail, words: leaked_through_words),
+      ),
+      false,
+    )
+  } else if starts_with(s: detail, prefix: mktemp_arm_words) {
+    claim(
+      concat(
+        "the control's premise is unestablished: mktemp itself refused, so the admission was never reached and /var/tmp ",
+        "is not writable as this control assumes -- ",
+        detail,
+      ),
+      false,
+    )
+  } else if starts_with(s: detail, prefix: minted_arm_words) {
+    claim(
+      concat(
+        "the admission refused AFTER creating, and the directory survives at ",
+        leak_control_path_of(detail: detail, words: minted_arm_words),
+      ),
+      false,
+    )
+  } else {
+    claim("the admission refused without creating, and nothing was left to reclaim", true)
+  }
+  //  Clean up what this control may have made, but never let the cleanup decide: verdict is already computed, and a
+  //  failed removal is reported by the next run's own probe rather than silently rescuing this one.
+  let cleaned = if starts_with(s: detail, prefix: minted_arm_words) {
+    shell.Remove.RecursiveForce(path: leak_control_path_of(detail: detail, words: minted_arm_words) as FilePath).success
+  } else if starts_with(s: detail, prefix: leaked_through_words) {
+    shell.Remove.RecursiveForce(path: leak_control_path_of(detail: detail, words: leaked_through_words) as FilePath).success
+  } else {
+    true
+  }
+  verdict && cleaned
 }
