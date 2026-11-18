@@ -81,6 +81,5 @@ fn gunbc_ci_srv1_root_mutation_approval_invoke() -> Outcome<String> {  bind_outc
     zesty_c, "\n",
   ], ""))
       }
-    )
   )
 

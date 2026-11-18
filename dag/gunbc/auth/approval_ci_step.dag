@@ -205,7 +205,6 @@ fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> O
     zesty_c, "\n",
   ], ""))
       }
-    )
   )
 
 
@@ -223,6 +222,5 @@ fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcom
     zesty_c
   ))
       }
-    )
   )
 

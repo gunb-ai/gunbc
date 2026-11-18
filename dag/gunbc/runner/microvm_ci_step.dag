@@ -204,6 +204,5 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> Outcome<String> {  bind_outc
     zesty_c
   ))
       }
-    )
   )
 

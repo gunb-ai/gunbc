@@ -130,7 +130,6 @@ fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {  bind_outco
     zesty_c, "\n",
   ], ""))
       }
-    )
   )
 
 
@@ -384,7 +383,6 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {  bind_outcome(
     zesty_c, "\n",
   ], ""))
       }
-    )
   )
 
 
@@ -439,7 +437,6 @@ fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {  bind_outcome(
     gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
   ], ""))
       }
-    )
   )
 
 

@@ -170,7 +170,6 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {  bind_outcome(
     zesty_c
   ))
       }
-    )
   )
 
 
@@ -354,6 +353,5 @@ fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> Outcome<String> {  bind_
     zesty_c, "\n",
   ], ""))
       }
-    )
   )
 
