@@ -5232,6 +5232,54 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
   }
 }
 
+// THE ADMITTION STEP FOR THIS MODE. It reuses the ONE admission fold (admit_dashboard_deploy_dispatch_inputs
+// checks the generic transaction inputs -- expected_revision, plan_hash, the plan/apply run pointers -- and
+// nothing mode- or prod-instance-specific, so the fold is shared with dashboard_deploy). But the run-log
+// step NAME and id must label THIS mode, not dashboard_deploy: a reader of the desired-instance-deploy job
+// must see an admission labelled for the instance-scoped deploy (receipt honesty). It must NOT reuse the
+// shared dashboard-labelled step, whose name reads "dashboard_deploy".
+fn fleet_converge_desired_instance_admit_inputs_step() -> Step {
+  RunStep {
+    name: Present { value: "Refuse an undeployable desired_instance_deploy dispatch by name, before approval and before the fold (admit_dashboard_deploy_dispatch_inputs, the shared transaction gate; labelled for this mode)" },
+    id: Present { value: "admit_desired_instance_deploy_inputs" },
+    run: gunbc_ci_admit_dashboard_deploy_inputs_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
+        kv(key: fleet_converge_plan_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: fleet_converge_apply_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE RECEIPT-IDENTITY RESOLVE STEP. It reads the run's packed subject from GUNBC_DEPLOY_INSTANCE_ID and
+// writes the PER-INSTANCE receipt_name and receipt_dir (from the authoritative receipt helpers) to the step's
+// outputs, which the upload and exactly-one-receipt assertion steps reference. It runs BEFORE the deploy so
+// the receipt location is fixed regardless of the deploy's outcome; the assert and upload run always(). It
+// must precede them so `${{ steps.desired_instance_receipt_identity.outputs.* }}` is populated.
+fn fleet_converge_desired_instance_receipt_identity_step() -> Step {
+  RunStep {
+    name: Present { value: "Resolve the per-instance live-deploy receipt name and dir from the packed subject (live_deploy_ci_instance_receipt_identity_from_ci; never the srv1-live constant)" },
+    id: Present { value: "desired_instance_receipt_identity" },
+    run: gunbc_ci_desired_instance_receipt_identity_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: live_deploy_ci_instance_id_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
 // THE JOB-SIDE EXACTLY-ONE-RECEIPT ASSERTION, same fold as the dashboard's (it counts the live-deploy
 // apply receipt in the shared dir; apply XOR named refusal, zero never). Only the concluded step differs.
 fn fleet_converge_desired_instance_deploy_receipt_assert_step() -> Step {
@@ -5241,7 +5289,7 @@ fn fleet_converge_desired_instance_deploy_receipt_assert_step() -> Step {
     run: gunbc_ci_assert_dashboard_deploy_receipts_invoke(),
     shell: none,
     env: Present { value: [
-      kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: gunbc_live_deploy_receipt_artifact_dir)),
+      kv(key: live_deploy_receipt_assert_dir_env_name, value: yaml_string(s: "${{ steps.desired_instance_receipt_identity.outputs.receipt_dir }}")),
       kv(key: live_deploy_deploy_conclusion_env_name, value: yaml_string(s: "${{ steps.desired_instance_deploy.conclusion }}")),
     ] },
     working_directory: none,
@@ -5263,7 +5311,7 @@ fn fleet_converge_desired_instance_deploy_job() -> Job {
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
       ],
-      fleet_converge_admit_dashboard_deploy_inputs_step(),
+      fleet_converge_desired_instance_admit_inputs_step(),
       fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_desired_instance_deploy_selected_inputs),
       fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
       [
@@ -5284,13 +5332,14 @@ fn fleet_converge_desired_instance_deploy_job() -> Job {
         ),
         fleet_converge_checkout_verify_step(if_condition: none),
         fleet_converge_host_budget_preflight_step(),
+        fleet_converge_desired_instance_receipt_identity_step(),
         fleet_converge_desired_instance_deploy_step(),
         fleet_converge_desired_instance_deploy_receipt_assert_step(),
         fleet_converge_receipt_upload_step(
           id: "desired_instance_receipt_upload",
-          name: "Upload live-deploy transaction receipt",
-          artifact: gunbc_live_deploy_receipt_artifact_name,
-          path: gunbc_live_deploy_receipt_artifact_dir,
+          name: "Upload the per-instance live-deploy receipt (name and dir from the resolve step, never the srv1-live constant)",
+          artifact: "${{ steps.desired_instance_receipt_identity.outputs.receipt_name }}",
+          path: "${{ steps.desired_instance_receipt_identity.outputs.receipt_dir }}",
           if_condition: "always()",
         ),
       ]

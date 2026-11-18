@@ -66,6 +66,7 @@ import gunbc.fleet.fleet_converge_workflow {
 }
 import gunbc.live_deploy.apply { live_deploy_desired_apply_selection, DesiredApplySelection, DesiredApplySelected, DesiredApplyRefused, ci_deploy_srv1_access, live_deploy_ci_instance_id_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder, live_deploy_parse_ci_instance_subject, CiInstanceSubject, CiInstanceSubjectParsed, CiInstanceSubjectRefused, live_deploy_desired_instance_deploy_decide, InstanceScopedDeployDecision, InstanceScopedDeployAdmitted, InstanceScopedDeployRefused }
 import gunbc.live_deploy.desired { desired_deployment_roster, srv1_lab_desired_deployment, srv1_production_desired_deployment }
+import gunbc.live_deploy.apply_receipt { gunbc_live_deploy_receipt_artifact_name }
 import gunbc.deployment_risk { prod_role_selection }
 import gunbc.fleet.fleet_intent { operator_host_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
@@ -373,4 +374,53 @@ test fn the_subject_host_input_offers_the_packed_lab_option() -> Bool {
   }
   any(opts, o => o == lab_packed)
     && any(opts, o => o == (operator_host_srv1 as String))
+}
+
+// THE RECEIPT UPLOAD AND THE EXACTLY-ONE ASSERTION READ THE PER-INSTANCE RESOLVE OUTPUT, never the
+// srv1-live-bound constant. The wet fold writes its receipt under the chosen instance's own name and dir
+// (live_deploy_write_apply_receipt uses live_deploy_apply_receipt_dir_for(the instance)), so the job that
+// uploads and asserts must point at the SAME per-instance location. A lab deploy that named the srv1-live
+// receipt would be a receipt-honesty defect; this witness locks the fix.
+test fn the_receipt_upload_and_assert_read_the_resolve_output() -> Bool {
+  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let upload_ok = any(steps, st => match st {
+    UsesStep { name: _, id: Present { value: i }, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      i == "desired_instance_receipt_upload"
+        && any(step_input_strings(st: st), s => string_contains(s: s, pattern: "steps.desired_instance_receipt_identity.outputs.receipt_name"))
+        && any(step_input_strings(st: st), s => string_contains(s: s, pattern: "steps.desired_instance_receipt_identity.outputs.receipt_dir"))
+    _ => false
+  })
+  let assert_ok = any(steps, st => match st {
+    RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      i == "desired_instance_deploy_receipt_assert"
+        && any(step_input_strings(st: st), s => string_contains(s: s, pattern: "steps.desired_instance_receipt_identity.outputs.receipt_dir"))
+    _ => false
+  })
+  upload_ok && assert_ok
+}
+
+// THE ADMIT STEP IS LABELLED FOR THIS MODE. It reuses the shared admission fold (that reuse is fine -- the
+// fold checks only the generic transaction inputs), but its run-log NAME and id must name the instance-scoped
+// mode, not dashboard_deploy, so a reader of this job sees the admission labelled for the mode it runs in.
+test fn the_admit_step_is_labelled_for_the_mode() -> Bool {
+  let steps = fleet_converge_desired_instance_deploy_job().steps
+  any(steps, st => match st {
+    RunStep { name: Present { value: n }, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      i == "admit_desired_instance_deploy_inputs"
+        && string_contains(s: n, pattern: "desired_instance_deploy")
+        && !string_contains(s: n, pattern: "dashboard_deploy dispatch")
+    _ => false
+  })
+}
+
+// RED CONTROL -- THE JOB NEVER NAMES THE SRV1-LIVE RECEIPT ARTIFACT: if any step's env or with value rendered
+// the srv1-live-bound receipt name, the lab deploy would be receipted under srv1-live. No such value may
+// contain it. The srv1-live name is a non-empty constant, so this is not vacuously true; the positive witness
+// above proves the per-instance resolve output is what is used instead.
+test fn the_desired_instance_job_never_uploads_the_srv1_live_receipt() -> Bool {
+  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let srv1_live_name = gunbc_live_deploy_receipt_artifact_name
+  let names_it_nonempty = string_contains(s: srv1_live_name, pattern: "srv1-live")
+  let any_names_it = any(steps, st => any(step_input_strings(st: st), s => string_contains(s: s, pattern: srv1_live_name)))
+  names_it_nonempty && !any_names_it
 }

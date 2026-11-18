@@ -112,6 +112,24 @@ fn gunbc_ci_desired_instance_deploy_invoke() -> String {
   )
 }
 
+// THE RECEIPT-IDENTITY RESOLVER step target. It reads the run's packed subject from the env and writes the
+// per-instance receipt name and dir to GITHUB_OUTPUT (a non-mutating read + output write), so the job's
+// receipt upload/assert steps reference the SAME per-instance location the wet fold writes to, rather than
+// the srv1-live-bound constant. See live_deploy_ci_instance_receipt_identity_from_ci.
+data gunbc_ci_desired_instance_receipt_identity_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.live_deploy.apply",
+  function: "live_deploy_ci_instance_receipt_identity_from_ci",
+)
+
+fn gunbc_ci_desired_instance_receipt_identity_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_desired_instance_receipt_identity_target,
+    claim_run: false,
+    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: "desired-instance-deploy-identity")
+  )
+}
+
 fn gunbc_ci_microvm_controller_install_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
