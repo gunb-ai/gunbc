@@ -3493,14 +3493,14 @@ data h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat: Integra
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_reach_report_sighting_revision,
-      evidence: [
-        CitesDeclaration {
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.fleet.fleet_enrollment", decl_name: "fleet_enrollments"),
         },
-        CitesDeclaration {
+        tail: [CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_address_standing"),
-        },
-      ],
+        }],
+      },
       account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the operator's and fleet-automation's public keys were already on ubuntu@ken, node-orch@srv2's was added, ubuntu has passwordless sudo, and the box answers ssh at 192.168.1.236 -- the very address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's. The report changes no verdict here: this host's enrollment row stays HostKeyLoginRefused with the reason the roster states once, because gunbc.runner.runner_connectivity_recovery::host_reach_admission_for_fleet_host puts that verdict in front of sudo-bearing recovery effects, and an effect admitted on a report could be applied at srv9. The probes from srv1 (2026-11-15 and 2026-11-16) are refused because srv1 holds none of the three private keys: they describe srv1's credentials, not this box. WHAT DISSOLVES IT: one fleet-converge dispatch as the fleet-automation principal -- the route that can reach this host -- returning host-authored output naming the account and its key population, beside the lease/ARP read naming which MAC holds .236 and a host key confirmed from this unit's own console. The receipt's sha256 is this row's dissolution, and the enrollment row moves with it.",
     },
     tail: [],
@@ -3535,14 +3535,14 @@ data h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer: IntegrationConcer
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_reach_report_sighting_revision,
-      evidence: [
-        CitesDeclaration {
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
         },
-        CitesDeclaration {
+        tail: [CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported"),
-        },
-      ],
+        }],
+      },
       account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the hand install could not bring the GPUs up because the board holds its fans at a 20% idle floor until something asks for more, the operator set fan zones A and B to 100% from the BMC's own control, and that setting reverts to the floor on every power-off. Nothing in this repository has read or written this board's fan control, and this row asks no one to: it names the requirement and leaves the mode row to the cooling lane, which owns the board-function and fan-mode grain this belongs to. The figures themselves stay transcribed-and-unclosed in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.",
     },
     tail: [],
