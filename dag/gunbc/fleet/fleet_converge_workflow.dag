@@ -3727,21 +3727,24 @@ data fleet_converge_workspace_transcript_rate_observe_step_if: String = fleet_co
 // workspace_checkpoint_measure receipt, which replaces this with its measured upload time and margin.
 data fleet_converge_workspace_instrument_step_timeout_minutes: Duration = 120
 
-fn fleet_converge_workspace_instrument_step(name: String, id: String, run: String, if_condition: String, extra_env: List<YamlKeyValue>) -> Step {
-  RunStep {
-    name: Present { value: name },
-    id: Present { value: id },
-    run: run,
-    shell: none,
-    env: Present { value: concat([kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))], extra_env) },
-    working_directory: none,
-    if_condition: Present { value: if_condition },
-    continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_workspace_instrument_step_timeout_minutes }
-  }
+fn fleet_converge_workspace_instrument_step(name: String, id: String, run: Outcome<String>, if_condition: String, extra_env: List<YamlKeyValue>) -> Outcome<Step> {
+  bind_outcome(
+    o: run,
+    f: fn(r) outcome_accepted(value: RunStep {
+      name: Present { value: name },
+      id: Present { value: id },
+      run: r,
+      shell: none,
+      env: Present { value: concat([kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))], extra_env) },
+      working_directory: none,
+      if_condition: Present { value: if_condition },
+      continue_on_error: none,
+      timeout_minutes: Present { value: fleet_converge_workspace_instrument_step_timeout_minutes }
+    })
+  )
 }
 
-fn fleet_converge_workspace_source_pack_step() -> Step {
+fn fleet_converge_workspace_source_pack_step() -> Outcome<Step> {
   fleet_converge_workspace_instrument_step(name: "Workspace source pack: the operator workspace minus credentials and build output, into the workspace bucket by its SHA-256", id: "workspace_source_pack", run: gunbc_ci_workspace_source_pack_invoke(), if_condition: fleet_converge_workspace_source_pack_step_if, extra_env: [
     kv(key: workspace_agent_state_slot_env as String, value: yaml_string(s: "${{ github.event.inputs.agent_state_slot }}")),
   ])
@@ -3757,7 +3760,7 @@ fn fleet_converge_workspace_source_pack_receipt_upload_step() -> Step {
   )
 }
 
-fn fleet_converge_workspace_checkpoint_measure_step() -> Step {
+fn fleet_converge_workspace_checkpoint_measure_step() -> Outcome<Step> {
   fleet_converge_workspace_instrument_step(name: "Workspace checkpoint stage 0: btrfs snapshot vs kopia scan vs chunk upload and gated commit, timed", id: "workspace_checkpoint_measure", run: gunbc_ci_workspace_checkpoint_measure_invoke(), if_condition: fleet_converge_workspace_checkpoint_measure_step_if, extra_env: [
     kv(key: workspace_source_object_env as String, value: yaml_string(s: "${{ github.event.inputs.workspace_source_object }}")),
   ])
@@ -3773,7 +3776,7 @@ fn fleet_converge_workspace_checkpoint_measure_receipt_upload_step() -> Step {
   )
 }
 
-fn fleet_converge_workspace_checkpoint_restore_step() -> Step {
+fn fleet_converge_workspace_checkpoint_restore_step() -> Outcome<Step> {
   fleet_converge_workspace_instrument_step(name: "Workspace checkpoint stage 1: barrier, uncommitted chunk, destroy, restore from the head closure, byte-equality", id: "workspace_checkpoint_restore", run: gunbc_ci_workspace_checkpoint_restore_invoke(), if_condition: fleet_converge_workspace_checkpoint_restore_step_if, extra_env: [])
 }
 
@@ -6688,11 +6691,11 @@ fn fleet_converge_job_work_steps() -> List<Outcome<Step>> {
     outcome_accepted(value: fleet_converge_r2_cache_object_write_mint_receipt_upload_step()),
     fleet_converge_r2_conditional_put_race_probe_step(),
     outcome_accepted(value: fleet_converge_r2_conditional_put_race_probe_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_workspace_source_pack_step()),
+    fleet_converge_workspace_source_pack_step(),
     outcome_accepted(value: fleet_converge_workspace_source_pack_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_workspace_checkpoint_measure_step()),
+    fleet_converge_workspace_checkpoint_measure_step(),
     outcome_accepted(value: fleet_converge_workspace_checkpoint_measure_receipt_upload_step()),
-    outcome_accepted(value: fleet_converge_workspace_checkpoint_restore_step()),
+    fleet_converge_workspace_checkpoint_restore_step(),
     outcome_accepted(value: fleet_converge_workspace_checkpoint_restore_receipt_upload_step()),
     fleet_converge_workspace_transcript_rate_observe_step(),
     outcome_accepted(value: fleet_converge_workspace_transcript_rate_observe_receipt_upload_step()),
