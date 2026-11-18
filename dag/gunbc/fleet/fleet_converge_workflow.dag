@@ -8613,11 +8613,8 @@ fn fleet_converge_assemble_workflow(jobs: List<Job>) -> Workflow {
   }
 }
 
-fn fleet_converge_workflow_of() -> Outcome<Workflow> {
-  match sequence_outcome(xs: fleet_converge_jobs(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }) {
-    Accepted { value: zesty_jobs } => Accepted { value: fleet_converge_assemble_workflow(jobs: []), diagnostics: None }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
+fn fleet_converge_workflow_jobs_of() -> Outcome<List<Job>> {
+  sequence_outcome(xs: fleet_converge_jobs(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit })
 }
 
 type FleetConvergeYamlGenerationOutcome
@@ -8637,9 +8634,17 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  match fleet_converge_workflow_of() {
+  match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
-    Accepted { value: wf } =>
+    Accepted { value: wf_jobs } => fleet_converge_render_jobs(jobs: wf_jobs)
+  }
+}
+
+// The accepted jobs become a plain Workflow via let (never an Accepted{value: <fresh record>},
+// which is the shape the runtime mis-evaluates), then the census gate and the admission/projection
+// chain run against that plain Workflow -- identical bytes to the merge-base `data` path.
+fn fleet_converge_render_jobs(jobs: List<Job>) -> FleetConvergeYamlGenerationOutcome {
+  let wf = fleet_converge_assemble_workflow(jobs: jobs);
   // THE CENSUS GATE, FIRST (review 96120; gunbc.design_argument::fail_closed). The release-bins
   // retention chore deletes cached entries, and the only number that bounds what it keeps is the
   // census. If the census is not computable -- or computes zero, or negative -- no workflow is
@@ -8655,7 +8660,6 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
         Absent => fleet_converge_yml_after_run_scoped_admission(wf)
       }
     }
-  }
   }
 }
 
