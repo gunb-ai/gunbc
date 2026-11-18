@@ -8806,6 +8806,15 @@ fn zesty_qall() -> Int {
     + zesty_force_outcome(fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if))
     + zesty_fs(fleet_converge_event_sha_checkout_step())
 }
+fn zesty_qbody() -> Int {
+  count([gunbc_ci_runner_spec()])
+    + count([fleet_converge_dispatch_event_if])
+    + count([fleet_converge_plan_revision_output_name])
+    + count([fleet_converge_plan_revision_job_id])
+    + count([gunbc_ci_prelude_allowance_minutes])
+    + count([fleet_converge_plan_revision_step_if])
+    + count([fleet_converge_job_needs(id: fleet_converge_plan_revision_job_id)])
+}
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_workflow_jobs_of() {
     Rejected { diagnostics: d } => FleetConvergeYamlGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
