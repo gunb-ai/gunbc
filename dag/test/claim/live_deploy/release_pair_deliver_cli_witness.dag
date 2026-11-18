@@ -27,6 +27,7 @@ import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_source_head_mismatch_reason, release_pair_source_head_unobservable_reason,
   release_pair_source_placement_decision, PlacementCloneMissing, PlacementReuse, PlacementPresentAtOtherHead, PlacementAdd,
   release_pair_delivery_clone_missing_prefix, release_pair_source_placed_at_other_head_prefix,
+  release_pair_delivery_clone_present, release_pair_source_fetch_verdict, release_pair_source_add_verdict, ActionPlaced, ActionRefused,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
@@ -416,4 +417,62 @@ test fn witness_source_placement_rerun_is_idempotent() -> Bool {
         _ => false
       }
   }
+}
+
+// ============================================================================
+// FAIL-CLOSED PLACEMENT ACTIONS (review 96360): the clone-probe has NO wildcard success (only ProcessOutputPresent is
+// "seeded"); a REFUSED fetch or worktree-add refuses with its OWN typed reason, never collapsing into the observe step's
+// 'unobservable' or a misleading 'tree at another head'. Each is witnessed over all three ProcessOutcome variants.
+// ============================================================================
+
+// RED CONTROL: the delivery clone counts as present ONLY on ProcessOutputPresent (the probe printed a head). The old
+// wildcard success made ProcessOutputAbsent / ProcessRefused read as "seeded" and route to a fetch; both must read NOT
+// present so the decision emits PlacementCloneMissing ("delivery clone not seeded / not readable at <path>").
+test fn witness_delivery_clone_present_requires_output() -> Bool {
+  let present = release_pair_delivery_clone_present(outcome: ProcessOutputPresent { text: head_hex as String })
+  let absent_is_present = release_pair_delivery_clone_present(outcome: ProcessOutputAbsent)
+  let refused_is_present = release_pair_delivery_clone_present(outcome: ProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" })
+  present && (!absent_is_present) && (!refused_is_present)
+}
+
+// RED CONTROL: a refused clone-side FETCH refuses with its own reason naming the revision and the command's stderr; exit-0
+// (stdout present OR absent -- git fetch writes progress to stderr) is placement progress, not a refusal.
+test fn witness_source_fetch_refused_reason_is_own() -> Bool {
+  let refused = match release_pair_source_fetch_verdict(
+    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: couldn't find remote ref" },
+    rev: head_hex as String,
+  ) {
+    ActionRefused { reason: r } => (r as String) == (join(["fetch of ", head_hex as String, " refused: ", "fatal: couldn't find remote ref"], "") as String)
+    ActionPlaced => false
+  }
+  let ok_present = match release_pair_source_fetch_verdict(outcome: ProcessOutputPresent { text: "" }, rev: head_hex as String) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  let ok_absent = match release_pair_source_fetch_verdict(outcome: ProcessOutputAbsent, rev: head_hex as String) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  refused && ok_present && ok_absent
+}
+
+// RED CONTROL: a refused WORKTREE-ADD refuses with its own reason naming the command's stderr (distinct from fetch and from
+// 'unobservable'); exit-0 (stdout present OR absent) is placement progress. A silent discard would surface the failure later
+// as a misleading 'tree at another head'.
+test fn witness_source_add_refused_reason_is_own() -> Bool {
+  let refused = match release_pair_source_add_verdict(
+    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: already registered" },
+  ) {
+    ActionRefused { reason: r } => (r as String) == (join(["worktree add refused: ", "fatal: already registered"], "") as String)
+    ActionPlaced => false
+  }
+  let ok_present = match release_pair_source_add_verdict(outcome: ProcessOutputPresent { text: "" }) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  let ok_absent = match release_pair_source_add_verdict(outcome: ProcessOutputAbsent) {
+    ActionPlaced => true
+    ActionRefused { reason: _ } => false
+  }
+  refused && ok_present && ok_absent
 }
