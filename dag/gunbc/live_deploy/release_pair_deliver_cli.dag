@@ -48,7 +48,10 @@ import gunbc.live_deploy.release_pair_delivery {
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
   release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
   release_pair_release_bins_artifact_name,
+  ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+  SourceReceiptWrite,
 }
+import extdeps.exec.command { ArgvCommand }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.spec {
   release_pair_deliver_base_root_env,
@@ -59,6 +62,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_link_create_new, filesystem_create_new,
   FilesystemLinked, FilesystemCreated,
+  filesystem_read_outcome, FilesystemLinkTargetOccupied,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_body }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -438,6 +442,26 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // restart the serve unit through the plan's OWN command. Every step is a real effect; if any fails the rest is NOT
 // performed (fail-closed: never restart onto a half-placed pair). Keep-last-good performs NO effect and exits success —
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
+// PLACE-LEG HELPERS (review 96241 finding 1): split so both the AlreadyPlaced resume and the NotYetPlaced fresh path
+// share ONE write-then-restart. They perform the effects; the pure resume DECISION is release_pair_resume_decision (fold).
+fn release_pair_restart_serve(restart: ArgvCommand) -> ProcessExit {
+  match run_shell_command_capture(command: restart, transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: _ } =>
+      exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
+    _ => ExitSuccess
+  }
+}
+
+fn release_pair_deliver_write_receipt(receipt: SourceReceiptWrite, body: String, restart: ArgvCommand) -> ProcessExit {
+  let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
+  match filesystem_create_new(
+    path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,
+  ) {
+    FilesystemCreated { path: _ } => release_pair_restart_serve(restart: restart)
+    _ => exit_failure(reason: "pair-deliver: the tree receipt could not be created (fail-closed: do not restart a half-placed pair)")
+  }
+}
+
 fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBinding, serve_unit: NonEmptyStr) -> ProcessExit {
   match release_pair_deliver_run(base_root: base_root, serving: serving, serve_unit: serve_unit) {
     // THE EXIT CODE FOLLOWS FROM THE VARIANT, NEVER THE REASON TEXT (review 96225 + 96234).
@@ -455,32 +479,40 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
     PlanKeepsLastGood { kept: _, reason: reason } =>
       exit_failure(reason: join(["pair-deliver kept last good, not a no-op — ", reason as String], ""))
     PlanToInstall { place_binary: place, write_source_receipt: receipt, restart_command: restart, revision: _ } => {
-      let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
-      match filesystem_link_create_new(
-        source: place.source, path: place.destination,
-        success: link.success, error: link.error, error_kind: link.error_kind,
+      // RESUME / IDEMPOTENCE (review 96241 finding 1). The link and receipt are CREATE-ONLY, so a tick that created
+      // the link and then died on the receipt or the restart would hit FilesystemLinkCreateFailed on EVERY later tick
+      // and stay red forever. The source receipt we WOULD write is the completion authority (written last, after the
+      // link lands), so read it first: byte-identical content means the pair is already placed and only the restart
+      // remains; absent means nothing placed yet (run the create legs, tolerating a link a half-done tick left); a
+      // DIFFERENT receipt is a foreign/stale placement at the per-revision locus and refuses red.
+      let body = release_locus_tree_receipt_body(
+        revision_hex: receipt.revision as String,
+        installed_digest: receipt.digest as String,
+      )
+      let rread = Filesystem.Read(path: receipt.destination)
+      match release_pair_resume_decision(
+        receipt_read: filesystem_read_outcome(content: rread.content, success: rread.success, error: rread.error),
+        expected_body: body,
       ) {
-        FilesystemLinked { path: _ } => {
-          let body = release_locus_tree_receipt_body(
-            revision_hex: receipt.revision as String,
-            installed_digest: receipt.digest as String,
-          )
-          let w = Filesystem.WriteCreateNew(path: receipt.destination, content: body)
-          match filesystem_create_new(
-            path: receipt.destination, success: w.success, error: w.error, error_kind: w.error_kind,
+        // Already placed for this exact revision — the restart leg is all that remains (a re-tick converges, not reds).
+        AlreadyPlaced { } => release_pair_restart_serve(restart: restart)
+        // A foreign or stale receipt at the per-revision locus — refuse (red control: a mismatched placement refuses).
+        MismatchRefusal { reason } =>
+          exit_failure(reason: join(["pair-deliver refused a foreign placement — ", reason as String], ""))
+        // Nothing placed yet (or the read itself was refused — the ordinary fresh tick, not the red one): place it.
+        NotYetPlaced { } => {
+          let link = Filesystem.LinkCreateNew(source: place.source, path: place.destination)
+          match filesystem_link_create_new(
+            source: place.source, path: place.destination,
+            success: link.success, error: link.error, error_kind: link.error_kind,
           ) {
-            FilesystemCreated { path: _ } =>
-              // The restart is the sealed ArgvCommand the fold carries (extdeps.systemd.systemctl::systemctl_restart_command);
-              // the runtime dispatch routes it straight at the exec seam — no posix shell re-parsing it (review 96241 finding 2).
-              match run_shell_command_capture(command: restart, transport: LocalExec) {
-                ProcessRefused { exit_code: _, stderr: _ } =>
-                  exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
-                _ => ExitSuccess
-              }
-            _ => exit_failure(reason: "pair-deliver: the tree receipt could not be created (fail-closed: do not restart a half-placed pair)")
+            // Linked now, OR the per-revision locus link already exists from a tick that died before the receipt was
+            // written — both mean the locus points at this revision's fetched member, so continue to write the receipt.
+            FilesystemLinked { path: _ } => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+            FilesystemLinkTargetOccupied { path: _ } => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+            _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
           }
         }
-        _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
       }
     }
   }

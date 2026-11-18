@@ -54,6 +54,7 @@ import gunbc.live_deploy.release_locus {
 }
 import extdeps.systemd.systemctl { systemctl_restart_command }
 import extdeps.exec.command { ArgvCommand }
+import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -142,6 +143,36 @@ fn release_pair_converged_noop(serving: ReleaseRevisionBinding, head: NonEmptySt
 // THE ONE name of the already-at-head benign wait. Declared here (with the other plan-arm reasons) because the
 // short-circuit above emits it and the wet entry surfaces it in the keep-serving log.
 data release_pair_already_at_head_reason: NonEmptyStr = "the pair is already serving the current origin/main head — nothing to deliver this tick (benign no-op, review 96219)"
+
+// THE RESUME STATE for an already-attempted placement of THIS revision (review 96241 finding 1). The link and the
+// source receipt are create-only effects, so a tick that created the link and then died on the receipt or the restart
+// would otherwise hit FilesystemLinkCreateFailed on EVERY later tick and stay red forever — a non-idempotent effect
+// under retry. The source receipt the delivery WOULD write is the completion authority (it is written last, after the
+// link lands): byte-identical content means the pair is already placed at the per-revision locus (resume at the
+// restart leg, skipping the create legs); absent means nothing is placed yet (run the create legs, tolerating an
+// already-occupied link left by a half-done tick); DIFFERENT content means a foreign or stale placement sits at the
+// per-revision locus — refuse rather than silently overwrite it (fail_closed).
+data ReleasePairResume
+  = AlreadyPlaced { }
+  | NotYetPlaced { }
+  | MismatchRefusal { reason: NonEmptyStr }
+
+data release_pair_receipt_mismatch_reason: NonEmptyStr = "the per-revision release locus already holds a source receipt whose content differs from the one this delivery would write — a foreign or stale placement; refusing rather than overwriting (fail-closed)"
+
+// DECIDE the resume arm from the receipt read and the body we would write. The read comes from filesystem_read_outcome
+// over Filesystem.Read at the receipt path; a read refusal (absent / unreadable) is NOT a mismatch — it is "nothing
+// placed yet," which is the ordinary fresh-tick path, not the red one. Only a present receipt with different bytes is
+// the red refusal. Exit policy lives in the actuator (AlreadyPlaced and NotYetPlaced both proceed; MismatchRefusal is
+// red) — this function names the state, never the exit.
+fn release_pair_resume_decision(receipt_read: FilesystemReadOutcome, expected_body: String) -> ReleasePairResume {
+  match receipt_read {
+    FilesystemReadSucceeded { content: content } => match content == expected_body {
+      true => AlreadyPlaced { }
+      false => MismatchRefusal { reason: release_pair_receipt_mismatch_reason }
+    }
+    FilesystemReadRefused { error: _ } => NotYetPlaced { }
+  }
+}
 
 // THE PACK THE UNIT FETCHES INTO IS A DIRECTORY IT OWNS, never a checked-out deploy source — the lab's serve tree
 // must not be polluted by the incoming pack, so the fetch writes here and the placement steps read from it.
