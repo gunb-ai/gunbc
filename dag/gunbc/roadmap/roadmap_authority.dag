@@ -2985,6 +2985,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "The slot roster matches the hosts that carry slots."),
     ),
     roadmap_node(
+      identity: "rn_20NKA9WYGMKXA5JPA4YM8KXD5X",
+      id: "deploy-release-roster-carries-every-owned-step",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/member_observe.dag"),
+      line: ticket(t: fields(
+        headline: "The release roster observes every member the deploy owns, so an all-kept plan clears the artifact gate in production",
+        boundary: "Found while landing the deploy-artifact closure gate (PR #16587, 2026-11-17). The gate (gunbc.live_deploy.apply_legs deploy_artifact_closure_gate) counts an artifact as present when the release plan verified it KEPT, through plan_kept_owned_artifacts. gunbc.live_deploy.member_observe deployment_member_roster does not carry two of the deploy's owned steps: the attempt-unit drain path unit (AttemptUnitDrainPathUnit) and the approval broker front door (ApprovalBrokerFrontDoor). The production verifier therefore never emits a KEEP row for them. A plan that keeps everything halts at the gate on their reads (the launcher snapshot directory; the broker release tree and its digest env file) even when they are installed. That is fail-closed, not a false admission. The witness test.claim.live_deploy.live_deploy_apply_plan_witness all_kept_roster appends both members by hand to show the gate's keep coverage, so that control does not exercise the production roster for these two.",
+        displaced_cost: "An unchanged redeploy of srv1 halts at the artifact gate until someone writes the two members into the plan by hand or forces a rewrite, and each halt costs a read of the refusal.",
+        first_slice: "Give each of the two members an observation in member_observe (identity read and desired identity per member kind, following the existing arms) and add them to deployment_member_roster through the same step-path authority identity_member_of_step uses.",
+        red_control: "the_all_kept_plan_clears_the_deploy_artifact_gate passes with the production deployment_member_roster and no hand-appended members; RED on main, where the roster lacks them and the gate halts naming their reads.",
+        out_of_scope: "Reader ordering after the tree converger (integration concern deploy-readers-must-order-after-tree-converger).",
+        handback: "The two member observations, the roster change, the control passing on the production roster and red on main, and all_kept_roster deleted from the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A redeploy that changes nothing proceeds without a hand step."),
+    ),
+    roadmap_node(
       identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
       id: "factory-dogfood-route",
       owner: "harness",
