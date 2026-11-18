@@ -5493,6 +5493,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-leaf-in-flight-set", parent: "roadmap-claim-names-leaf"),
     edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-claim-names-leaf"),
     edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-list-scheduling"),
+    // A realized duration is a count of WORKING days, and the Monday..Friday week is
+    // roadmap-schedule-calendar-binding's rule, not this row's: the fold imports
+    // gunbc.roadmap.roadmap_schedule_calendar::working_days_between rather than restating a second week rule
+    // (operator ruling 2026-11-18: make the calendar binding a parent and import its rule, holidays unmodelled).
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),

@@ -1,0 +1,740 @@
+module test.claim.roadmap.roadmap_leaf_realized_duration
+
+// THE DECLARATION of the realized-duration unit (roadmap-leaf-realized-duration), a unit of
+// gunb-ai/gunbc#16650's chain to the roadmap Gantt. A leaf's PRIOR is the day count its carrier declared
+// (WorkPiece.days, read through gunbc.roadmap.roadmap_decomposition::piece_member_days); its REALIZED duration is
+// what the work took -- the working days from the day the leaf was CLAIMED to the day the item was ACCEPTED, read
+// out of the item's own event log. Where a realized value exists the schedule takes IT and the fold REPORTS which
+// value it used; where none exists it takes the prior and the fold says that too. Every log below is PLANTED with
+// the log's own pure encoders (gunbc.roadmap.roadmap_event_log::roadmap_event_envelope and roadmap_event_wire_text)
+// -- never a live log -- and read back through the log's one decoder.
+//
+// THE HANDBACK, named the way the unit names its own: the fold output for a leaf with a realized duration, the fold
+// output for an accepted leaf with NO claim, and the diff.
+//
+// THE RED CONTROL is the accepted leaf nobody ever claimed: it has NO realized duration and the fold SAYS SO in its
+// output -- it does not read as zero days and it does not fall back to the prior silently (the row is the
+// PriorNamedOutLoud arm naming AcceptedWithoutClaim; an ordinary prior row is a different arm with different words).
+//
+// WHAT THE CLAIMS HOLD THE UNIT TO, in the ticket's own terms: the fold reports WHICH VALUE IT USED per leaf (the
+// first slice, the handback); the red control fires twice over -- the arm and the count, and the distinction from an
+// ordinary prior; the scheduler's ORDER is untouched (out_of_scope is binding: same carriers, same lanes, same
+// sequence of leaves, same lane per leaf, and only the day numbers move); no estimate is re-issued (the carrier still
+// declares 5 after the fold realized 4); a Pathless claim names no leaf and is COUNTED; a claim under a retired
+// standing starts no clock and is COUNTED, the standing being ASKED of the log's own fold rather than re-decided
+// here; an instant that is not the one the producers write REFUSES by name; a log that will not order itself REFUSES
+// rather than fabricating a first claim; an undecodable line REFUSES with its number; a revoked acceptance is no
+// acceptance; the working-day count is #16697's calendar rule (a Monday-to-Monday span is five working days across
+// seven calendar ones); and the fold is COMPUTED ON READ -- the same lines re-read answer identically, and one more
+// line changes the answer.
+//
+// LOCAL RECIPE (claims are executed, not parsed):
+//   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/roadmap_leaf_realized_duration_witness.dag \
+//     --functions first_slice_folds_one_items_completed_leaves_into_its_schedule_and_prints_per_leaf_whether_the_realized_value_or_the_prior_was_used,red_control_an_accepted_leaf_with_no_claim_has_no_realized_duration_and_never_reads_as_zero_days,red_control_an_accepted_leaf_with_no_claim_does_not_fall_back_to_the_prior_silently,the_handback_outputs_are_the_realized_row_the_no_claim_row_and_the_diff,the_realized_value_replaces_only_the_day_count_and_leaves_the_schedulers_order_untouched,the_carriers_prior_is_never_overwritten_by_a_realized_value,a_pathless_claim_names_no_leaf_yields_no_realized_value_and_is_counted_visibly,a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_visibly,a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_with_a_typed_cause_naming_the_event,a_log_that_will_not_order_itself_refuses_the_fold_rather_than_inventing_a_first_claim,an_undecodable_line_refuses_the_whole_fold_naming_the_line_number,a_revoked_acceptance_is_no_acceptance_and_no_realized_span_is_read_from_it,a_leaf_with_no_prior_is_refused_by_name_and_never_priced_at_zero_days,the_working_day_count_is_the_calendar_s_rule_and_crosses_a_weekend_by_five_days_not_seven,the_fold_is_computed_on_read_from_the_same_lines_and_is_never_authoritative_between_reads
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.content_hash { content_hash_atom }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_model {
+  AcceptanceNodeReopensActiveFrontier, AtPath, HandbackDelivered, LeafPath, Pathless, RedControlExecuted,
+  RoadmapAcceptanceReceipt, RoadmapNodeId,
+}
+import gunbc.roadmap.roadmap_decomposition {
+  Expansion, WorkDecomposition, decomposition, expand_decomposition, leaf, piece_member_days,
+}
+import gunbc.roadmap.roadmap_event_log {
+  AcceptanceRecordedEvent, AcceptanceRevokedEvent, Claimed, EarnedByPullRequest, EventPrincipal,
+  EventPrincipalAuthenticated, Retired, RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId,
+  roadmap_event_envelope, roadmap_event_wire_text, roadmap_node_standing, roadmap_standing_is_retired,
+}
+import gunbc.roadmap.roadmap_schedule {
+  NotScheduled, NoWorkingDayPrior, Schedule, Scheduled, ScheduleAnswer, ScheduledLeaf, path_key, schedule,
+}
+import gunbc.roadmap.roadmap_schedule_calendar { date_text, days_between, is_working_day }
+import gunbc.roadmap.roadmap_leaf_realized_duration {
+  AcceptedWithoutClaim, ClaimInstantUnreadable, ForkedOrDanglingCausalChain, Folded, LeafDurationRow,
+  PriorFromCarrier, PriorNamedOutLoud, RealizedFold, RealizedFromLog, RealizedSchedule, Refused, UndecodableLine,
+  WorkInFlight, duration_days, is_named_out_loud, is_realized, realized_duration_fold, realized_duration_unit_note,
+  realized_row_output, realized_schedule_output,
+}
+
+// ─── THE FIXTURES ─────────────────────────────────────────────────────────────────────────────────
+// ONE ITEM, THREE LEAVES, ONE BELT LANE: a three-stage chain whose stages declare 5, 2 and 3 days. #16695's
+// scheduler places them at abstract working days 0..5, 5..7, 7..10 with critical_length 10; the fold prices the SAME
+// carriers at a duration input and may change nothing but the day counts.
+fn item() -> RoadmapNodeId { "gantt.item" as RoadmapNodeId }
+
+fn carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.item", waits_on: [], stages: [
+    [leaf(label: "first", days: 5)],
+    [leaf(label: "second", days: 2)],
+    [leaf(label: "third", days: 3)],
+  ])
+}
+
+// The expansion the schedule is computed over: one occurrence of every leaf, built by the decomposition's OWN
+// expander -- never a hand-built occurrence list.
+fn expansion() -> Expansion { expand_decomposition(d: carrier(), findings_count: 1) }
+
+fn lanes(count: Int) -> BeltCapacity { BeltCapacity { max_concurrent: count } }
+
+// A calendar date from its three numbers, the same way the calendar authority's own fixtures build one.
+fn d(year: Int, month: Int, day: Int) -> Iso8601CivilDate {
+  Iso8601CivilDate { year: year, month: month, day: day }
+}
+
+// The fixture's three leaves, each at its own stage, piece 0, member 0 -- the paths #16695 keys its ScheduledLeaf
+// rows by, and the paths a claim's grain has to name to realize anything.
+fn leaf_first() -> LeafPath { LeafPath { item: item(), stage: 0, piece: 0, member: 0 } }
+fn leaf_second() -> LeafPath { LeafPath { item: item(), stage: 1, piece: 0, member: 0 } }
+fn leaf_third() -> LeafPath { LeafPath { item: item(), stage: 2, piece: 0, member: 0 } }
+// A FOURTH leaf the fixture's carrier does NOT declare -- the shape a widened expansion brings with it, and the one
+// place this unit is handed a leaf with no prior to price.
+fn leaf_fourth() -> LeafPath { LeafPath { item: item(), stage: 3, piece: 0, member: 0 } }
+
+fn author() -> EventPrincipal {
+  EventPrincipalAuthenticated {
+    ref: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: "briansrls" as NonEmptyStr,
+    }
+  }
+}
+
+// A CLAIM LINE, planted through the log's own pure encoders. `path` is the claim's grain: `none` for the historical
+// Pathless shape, Present for a claim that names a leaf. `at` is RoadmapEvent.recorded_at -- the ONLY timestamp a
+// claim carries -- and the producers write the whole-second UTC instant extdeps.clock's
+// `date -u +%Y-%m-%dT%H:%M:%SZ` mints, so that is what an honest fixture plants; the dishonest one plants "t3" and
+// must be refused.
+fn claim_env(path: LeafPath?, at: String, parent: RoadmapEventId?) -> RoadmapEventEnvelope {
+  let grain = match path { Absent => Pathless Present { value: p } => AtPath { path: p } }
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: author(), parent: parent,
+    kind: Claimed { assignee: author(), return_to: author(), grain: grain },
+    recorded_at: at,
+  })
+}
+
+// THE ACCEPTANCE, planted the same way: its receipt declares its own calendar day (the log's date reader validates
+// that day) and its event carries the whole-second instant it was recorded at.
+fn receipt(day: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: item(),
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap.roadmap_leaf_realized_duration_witness" as NonEmptyStr,
+      witness_fn: "fixture" as NonEmptyStr,
+      executed_on: "2026-11-20" as NonEmptyStr,
+    },
+    handback: HandbackDelivered {
+      first_artifact: "roadmap-leaf-realized-duration-fold" as NonEmptyStr,
+      further_artifacts: [],
+    },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: day as NonEmptyStr,
+  }
+}
+
+fn acceptance_env(day: String, at: String, parent: RoadmapEventId?) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: author(), parent: parent,
+    kind: AcceptanceRecordedEvent {
+      receipt: receipt(day: day),
+      evidence: EarnedByPullRequest {
+        pr_url: "https://github.com/gunb-ai/gunbc/pull/16683" as NonEmptyStr,
+        merged_at: "2026-11-20T17:00:00Z" as NonEmptyStr,
+        head_sha: "b1bd67e0" as NonEmptyStr,
+      },
+    },
+    recorded_at: at,
+  })
+}
+
+fn wire(envs: List<RoadmapEventEnvelope>) -> List<String> { map(envs, e => roadmap_event_wire_text(env: e)) }
+
+// THE HONEST LOG: the first leaf claimed on Monday 2026-11-16 and the third on Tuesday 2026-11-17, and the item
+// accepted on Friday 2026-11-20. THE SECOND LEAF IS NEVER CLAIMED -- the red control sits inside the ordinary
+// completed log rather than in a special fixture, because that is what a real completed item looks like when one
+// leaf's claim was never recorded.
+fn completed_envs() -> List<RoadmapEventEnvelope> {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: first.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: third.id })
+  [first, third, accepted]
+}
+
+fn completed_lines() -> List<String> { wire(envs: completed_envs()) }
+
+fn completed_fold() -> RealizedFold { fold_lines(lines: completed_lines()) }
+
+// THE FOLD OF ONE ARBITRARY LOG over the fixture's carriers -- the shape every claim below reads.
+fn fold_lines(lines: List<String>) -> RealizedFold {
+  realized_duration_fold(d: carrier(), e: expansion(), workers: lanes(1), item: item(), lines: lines)
+}
+
+fn row_for(fold: RealizedSchedule, key: String) -> LeafDurationRow? {
+  first_where(fold.rows, r => path_key(p: r.path) == key)
+}
+
+// A row for the string comparisons to need. A missing row makes the comparison FALSE (its days are -1, its lane
+// -1), never a crash and never a vacuous pass.
+fn row_or_none(fold: RealizedSchedule, key: String) -> LeafDurationRow {
+  match row_for(fold: fold, key: key) {
+    Present { value: r } => r
+    Absent => LeafDurationRow {
+      path: leaf_first(), start_day: -1, finish_day: -1, prior: none,
+      duration: PriorNamedOutLoud { working_days: -1, cause: AcceptedWithoutClaim } }
+  }
+}
+
+// THE PRIOR-ONLY SCHEDULE: #16695's own scheduler at no duration input -- what the realized one is diffed against,
+// and what the order has to stay identical to.
+fn prior_answer() -> ScheduleAnswer {
+  match schedule(d: carrier(), e: expansion(), workers: lanes(1)) {
+    NotScheduled { refusal: _ } => ScheduleAnswer {
+      workers: lanes(1), leaves: [], in_flight_per_day: [], horizon: -1, critical_path: [], critical_length: -1 }
+    Scheduled { answer: answer } => answer
+  }
+}
+
+// THE SCHEDULER'S ORDER AS ONE STRING: leaf, lane, in sequence. Two schedules that placed the same leaves in the
+// same lanes in the same order print the same string, whatever their day counts say.
+fn order_text(leaves: List<ScheduledLeaf>) -> String {
+  join(map(leaves, l => join([path_key(p: l.path), "@lane", to_string(l.lane)], "")), ",")
+}
+
+// ─── THE FIRST SLICE ──────────────────────────────────────────────────────────────────────────────
+// FOLD ONE ITEM'S COMPLETED LEAVES INTO ITS SCHEDULE AND PRINT, PER LEAF, WHETHER THE REALIZED VALUE OR THE PRIOR
+// WAS USED. Monday's claim and Friday's acceptance realize FOUR working days for the first leaf (its prior was five)
+// and THREE for the third (whose prior was three, so the realized value happens to agree); the second leaf was never
+// claimed and is the red control. Each printed row is asserted to the character.
+fn first_slice_folds_one_items_completed_leaves_into_its_schedule_and_prints_per_leaf_whether_the_realized_value_or_the_prior_was_used() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      count(fold.rows) == 3
+        // Every leaf got a row: none was refused for want of a prior.
+        && count(fold.unpriced) == 0
+        && count(filter(fold.rows, r => is_realized(row: r))) == 2
+        && count(filter(fold.rows, r => is_named_out_loud(row: r))) == 1
+        // Priced at the realized counts: 4 + 2 + 3 = 9 working days, not the priors' 5 + 2 + 3 = 10.
+        && fold.answer.critical_length == 9
+        && fold.answer.horizon == 9
+        // The realized row, to the character: WHICH value, how many working days, the span it was read from, the
+        // prior it replaced, and the unit note every count from this unit owes a reader.
+        && realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")) == join([
+          "gantt.item#0#0#0: days 0 to 4 | realized from the log: 4 working days, claimed 2026-11-16,",
+          " accepted 2026-11-20 | the prior was 5 working days (working days (Mon-Fri, no holiday calendar))"], "")
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").prior {
+             Absent => false
+             Present { value: days } => days == 5
+           })
+        && is_realized(row: row_or_none(fold: fold, key: "gantt.item#2#0#0"))
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#2#0#0").duration) == 3
+        && row_or_none(fold: fold, key: "gantt.item#2#0#0").start_day == 6
+        && row_or_none(fold: fold, key: "gantt.item#2#0#0").finish_day == 9
+        // The summary names its own tally and its own unit, so a working day cannot be read for a calendar day.
+        && string_contains(s: realized_schedule_output(fold: completed_fold()), pattern: "2 realized from the log")
+        && string_contains(s: realized_schedule_output(fold: completed_fold()), pattern: "1 named out loud")
+        && string_contains(s: realized_schedule_output(fold: completed_fold()),
+             pattern: realized_duration_unit_note())
+  }
+}
+
+// ─── THE RED CONTROL, TWICE OVER ──────────────────────────────────────────────────────────────────
+// AN ACCEPTED LEAF WITH NO CLAIM HAS NO REALIZED DURATION AND THE FOLD SAYS SO -- and it does not read as zero days.
+// The row is the NAMED arm naming AcceptedWithoutClaim; the count it carries is the carrier's PRIOR (2), never 0; and
+// no row of a fold that priced real work is a zero-day row anywhere.
+fn red_control_an_accepted_leaf_with_no_claim_has_no_realized_duration_and_never_reads_as_zero_days() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.accepted
+        && count(filter(fold.rows, r => is_named_out_loud(row: r))) == 1
+        && (match row_for(fold: fold, key: "gantt.item#1#0#0") {
+             Absent => false
+             Present { value: r } =>
+               // THE ARM, not merely the words: an ordinary prior is a different arm, so no reader -- of the print or
+               // of the type -- can take this row for a fallback that went unremarked.
+               (match r.duration {
+                 PriorNamedOutLoud { working_days: days, cause: AcceptedWithoutClaim } => days == 2 && days != 0
+                 _ => false
+               })
+               && !is_realized(row: r)
+               && duration_days(duration: r.duration) == 2
+               && string_contains(s: realized_row_output(row: r), pattern: "NO REALIZED DURATION")
+               && string_contains(s: realized_row_output(row: r), pattern: "NEVER CLAIMED")
+               && !string_contains(s: realized_row_output(row: r), pattern: "realized from the log")
+           })
+        // Nothing in a fold that priced work priced a leaf at zero days.
+        && count(filter(fold.rows, r => duration_days(duration: r.duration) == 0)) == 0
+  }
+}
+
+// THE RED CONTROL'S OTHER HALF: it does not fall back to the prior SILENTLY, and the difference has to be
+// CARRYABLE, not just printable. The same leaf, in a log where nobody claimed anything and nobody accepted anything,
+// is a DIFFERENT arm with different words: two folds that both print "2 working days" stay distinguishable in the
+// type and in the print. If they were not, the red control would be silent and this claim would go red.
+fn red_control_an_accepted_leaf_with_no_claim_does_not_fall_back_to_the_prior_silently() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: accepted } => match fold_lines(lines: []) {
+      // An empty log folds: nothing claimed, nothing accepted, nothing owed.
+      Refused { refusal: _ } => false
+      Folded { fold: untouched } =>
+        accepted.accepted && !untouched.accepted
+          && is_named_out_loud(row: row_or_none(fold: accepted, key: "gantt.item#1#0#0"))
+          && !is_named_out_loud(row: row_or_none(fold: untouched, key: "gantt.item#1#0#0"))
+          && (match row_or_none(fold: untouched, key: "gantt.item#1#0#0").duration {
+               PriorFromCarrier { working_days: days } => days == 2
+               _ => false
+             })
+          && string_contains(s: realized_row_output(row: row_or_none(fold: untouched, key: "gantt.item#1#0#0")),
+               pattern: "the prior:")
+          && !string_contains(s: realized_row_output(row: row_or_none(fold: untouched, key: "gantt.item#1#0#0")),
+               pattern: "NO REALIZED DURATION")
+          // Same leaf, same count, two answers a reader cannot confuse.
+          && realized_row_output(row: row_or_none(fold: untouched, key: "gantt.item#1#0#0"))
+            != realized_row_output(row: row_or_none(fold: accepted, key: "gantt.item#1#0#0"))
+    }
+  }
+}
+
+// ─── THE HANDBACK ───────────────────────────────────────────────────────────────────────────────────
+// THE FOLD OUTPUT FOR A LEAF WITH A REALIZED DURATION, THE FOLD OUTPUT FOR AN ACCEPTED LEAF WITH NO CLAIM, AND THE
+// DIFF -- the three artifacts the ticket's handback names, each asserted to the character. The diff quotes both
+// numbers per leaf and the critical length either side, which is what makes it visible that the priors met the work.
+fn the_handback_outputs_are_the_realized_row_the_no_claim_row_and_the_diff() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")) == join([
+        "gantt.item#0#0#0: days 0 to 4 | realized from the log: 4 working days, claimed 2026-11-16,",
+        " accepted 2026-11-20 | the prior was 5 working days (working days (Mon-Fri, no holiday calendar))"], "")
+        && realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#1#0#0")) == join([
+          "gantt.item#1#0#0: days 4 to 6 | NO REALIZED DURATION -- the item's acceptance stands and this leaf was",
+          " NEVER CLAIMED; the prior stands at 2 working days (never zero, never a silent fallback)",
+          " (working days (Mon-Fri, no holiday calendar))"], "")
+        && schedule_diff(prior: prior_answer(), fold: fold) == join([
+          "critical length 10 -> 9 working days; leaves gantt.item#0#0#0 5 -> 4,",
+          " gantt.item#1#0#0 2 -> 2, gantt.item#2#0#0 3 -> 3"], "")
+  }
+}
+
+// THE DIFF: what the realized durations changed against the schedule #16695 computed from the same carriers at no
+// duration input.
+fn schedule_diff(prior: ScheduleAnswer, fold: RealizedSchedule) -> String {
+  join(["critical length ", to_string(prior.critical_length), " -> ", to_string(fold.answer.critical_length),
+    " working days; leaves ",
+    join(map(prior.leaves, b => match row_for(fold: fold, key: path_key(p: b.path)) {
+      Absent => join([path_key(p: b.path), " ", to_string(b.finish_day - b.start_day), " -> absent"], "")
+      Present { value: r } => join([path_key(p: b.path), " ", to_string(b.finish_day - b.start_day),
+        " -> ", to_string(duration_days(duration: r.duration))], "")
+    }), ", ")], "")
+}
+
+// ─── OUT_OF_SCOPE, ENFORCED ───────────────────────────────────────────────────────────────────────
+// NO CHANGE TO THE SCHEDULER'S ORDER. The realized value replaces a leaf's day COUNT and nothing else: over the same
+// carriers, the same expansion and the same lane count, the fold's answer must place THE SAME LEAVES IN THE SAME
+// LANES IN THE SAME SEQUENCE, with the same worker count and the same critical path -- and differ only in the day
+// numbers. If the fold re-sorted, re-ranked or re-laned anything, this goes red.
+fn the_realized_value_replaces_only_the_day_count_and_leaves_the_schedulers_order_untouched() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      let before = prior_answer()
+      let after = fold.answer
+      after.workers.max_concurrent == before.workers.max_concurrent
+      && count(after.leaves) == count(before.leaves)
+      && order_text(leaves: before.leaves) == order_text(leaves: after.leaves)
+      && join(map(after.critical_path, p => path_key(p: p)), ",")
+        == join(map(before.critical_path, p => path_key(p: p)), ",")
+      // ...and only the day numbers moved, and only where the log realized one.
+      && before.critical_length == 10 && after.critical_length == 9
+      && (match first_where(before.leaves, b => path_key(p: b.path) == "gantt.item#0#0#0") {
+           Absent => false
+           Present { value: b } => b.start_day == 0 && b.finish_day == 5
+         })
+      && row_or_none(fold: fold, key: "gantt.item#0#0#0").start_day == 0
+      && row_or_none(fold: fold, key: "gantt.item#0#0#0").finish_day == 4
+      && row_or_none(fold: fold, key: "gantt.item#1#0#0").start_day == 4
+      && row_or_none(fold: fold, key: "gantt.item#1#0#0").finish_day == 6
+  }
+}
+
+// ─── NO ESTIMATE IS RE-ISSUED HERE ────────────────────────────────────────────────────────────────
+// THE PRIOR IS A SIMULATION INPUT AND STAYS ONE. Re-issuing an estimate is gunbc.roadmap.roadmap_effort_estimate's
+// work, and this node's ticket rules it out: after the fold has realized 4 working days for a leaf whose carrier
+// declared 5, the carrier still declares 5. Nothing is written back, and the realized value exists only in the read.
+fn the_carriers_prior_is_never_overwritten_by_a_realized_value() -> Bool {
+  match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      // The fold really did price it at 4.
+      duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 4
+        // ...and the carrier is untouched, still quoting the prior it declared.
+        && (match piece_member_days(d: carrier(), path: leaf_first()) {
+             Absent => false
+             Present { value: days } => days == 5
+           })
+        && (match piece_member_days(d: carrier(), path: leaf_second()) {
+             Absent => false
+             Present { value: days } => days == 2
+           })
+        // A second read of the same carriers and the same log answers identically: the fold consumed nothing.
+        && (match fold_lines(lines: completed_lines()) {
+             Refused { refusal: _ } => false
+             Folded { fold: again } => realized_schedule_output(fold: Folded { fold: again })
+               == realized_schedule_output(fold: Folded { fold: fold })
+           })
+  }
+}
+
+// ─── FAIL CLOSED ON THE PRIOR ─────────────────────────────────────────────────────────────────────
+// A LEAF WITH NO PRIOR IS REFUSED BY NAME, NEVER PRICED AT ZERO. The mismatch is the one #16695's own witness uses
+// -- an expansion over a four-stage carrier read against the carrier that holds only the first three -- so the leaf
+// carrying no prior is a leaf the fold is HANDED, not one it invented. #16695's scheduler refuses at the duration
+// input and names the path; the fold passes that refusal through as it stands, producing no answer at all rather
+// than an answer with a 0 in it. And once the log realizes that same leaf, the fold FOLDS: the refusal was about the
+// count nobody declared, not about the path being unknown -- and the row it prints carries no prior rather than a
+// fabricated one.
+fn a_leaf_with_no_prior_is_refused_by_name_and_never_priced_at_zero_days() -> Bool {
+  let refused = realized_duration_fold(
+    d: carrier(), e: expand_decomposition(d: wide_carrier(), findings_count: 1), workers: lanes(1),
+    item: item(), lines: completed_lines())
+  let names_the_leaf_it_cannot_price = match refused {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } => match refusal {
+      ScheduleRefusedAtRealizedInput { refusal: from_the_scheduler } => match from_the_scheduler {
+        NoWorkingDayPrior { paths: paths } =>
+          // The arm that carries the carrier paths THEMSELVES -- no prose to parse -- and exactly the one path the
+          // narrow carrier does not declare.
+          count(paths) == 1
+            && (match paths.first() {
+                 Absent => false
+                 Present { value: p } => path_key(p: p) == "gantt.item#3#0#0"
+               })
+        _ => false
+      }
+      _ => false
+    }
+  }
+  let prints_it_without_a_number = match refused {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } =>
+      string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }),
+        pattern: "gantt.item#3#0#0")
+        && !string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }),
+             pattern: "0 working days")
+  }
+  // The same fold, with the fourth leaf's claim in the log: realized, priced, and its absent prior left ABSENT.
+  let realized_instead = realized_duration_fold(
+    d: carrier(), e: expand_decomposition(d: wide_carrier(), findings_count: 1), workers: lanes(1),
+    item: item(), lines: fourth_leaf_realized_lines())
+  match realized_instead {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      names_the_leaf_it_cannot_price && prints_it_without_a_number
+        && count(fold.unpriced) == 0
+        && is_realized(row: row_or_none(fold: fold, key: "gantt.item#3#0#0"))
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#3#0#0").duration) == 2
+        && (match row_or_none(fold: fold, key: "gantt.item#3#0#0").prior {
+             Absent => true
+             Present { value: _ } => false
+           })
+        // ...and the print says the carrier declared none, rather than leaving "the prior was 0" to be inferred.
+        && string_contains(s: realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#3#0#0")),
+             pattern: "no prior declared by the carrier")
+  }
+}
+
+// The carrier the fixture's expansion is widened over: the same item with a fourth stage its carrier does not have.
+fn wide_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.item", waits_on: [], stages: [
+    [leaf(label: "first", days: 5)],
+    [leaf(label: "second", days: 2)],
+    [leaf(label: "third", days: 3)],
+    [leaf(label: "fourth", days: 4)],
+  ])
+}
+
+// The completed log WITH the fourth leaf's claim -- Wednesday to Friday, two working days -- so the leaf the narrow
+// carrier cannot price is realized from the log instead.
+fn fourth_leaf_realized_lines() -> List<String> {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: first.id })
+  let fourth = claim_env(path: Present { value: leaf_fourth() }, at: "2026-11-18T09:00:00Z",
+    parent: Present { value: third.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: fourth.id })
+  wire(envs: [first, third, fourth, accepted])
+}
+
+// ─── FAIL CLOSED, COUNTED VISIBLY ─────────────────────────────────────────────────────────────────
+// A HISTORICAL PATHLESS CLAIM NAMES NO LEAF, so it yields no realized value AT ALL -- and it is COUNTED, not
+// dropped and not guessed at. One Pathless claim and an acceptance: no leaf was ever named, so every leaf is the red
+// control, the count says one, and nothing was realized.
+fn a_pathless_claim_names_no_leaf_yields_no_realized_value_and_is_counted_visibly() -> Bool {
+  let first = claim_env(path: none, at: "2026-11-16T09:00:00Z", parent: none)
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: first.id })
+  match fold_lines(lines: wire(envs: [first, accepted])) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.pathless_claims == 1
+        && fold.accepted
+        && count(filter(fold.rows, r => is_realized(row: r))) == 0
+        && count(filter(fold.rows, r => match r.duration {
+             PriorNamedOutLoud { working_days: days, cause: AcceptedWithoutClaim } => days != 0
+             _ => false
+           })) == 3
+        // Counted VISIBLY: the number reaches the printed answer, so a reader sees that a claim named no leaf
+        // rather than wondering why nothing was realized.
+        && string_contains(s: realized_schedule_output(fold: fold), pattern: "1 Pathless claims")
+        // ...and it was not mistaken for a claim that arrived after the item was retired.
+        && fold.retired_standing_claims == 0
+  }
+}
+
+// A CLAIM RECORDED AFTER THE ITEM WAS RETIRED STARTS NO CLOCK, and is counted -- because whether a claim counted at
+// all is the STANDING FOLD's question, asked here of gunbc.roadmap.roadmap_event_log::roadmap_standing_step_acc and
+// roadmap_standing_is_retired and never answered locally. The fixture claims the first leaf, retires the item, then
+// claims the second: the first claim stands (it was recorded before the retirement), the second starts nothing, is
+// COUNTED in retired_standing_claims, is NOT passed off as Pathless, and does NOT become the second leaf's first
+// claim. The witness asks the same authority the fold asks, so a drift in the fold's answer shows up here.
+fn a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_visibly() -> Bool {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let retired = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: author(), parent: Present { value: first.id },
+    kind: Retired { reason: "superseded by the operator" as NonEmptyStr },
+    recorded_at: "2026-11-17T09:00:00Z",
+  })
+  let late = claim_env(path: Present { value: leaf_second() }, at: "2026-11-18T09:00:00Z",
+    parent: Present { value: retired.id })
+  let envs = [first, retired, late]
+  match fold_lines(lines: wire(envs: envs)) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.retired_standing_claims == 1
+        && fold.pathless_claims == 0
+        && !fold.accepted
+        // The claim made before the retirement is still this leaf's first claim: the clock it started stands.
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+             WorkInFlight { claimed_on: claimed_on } => date_text(date: claimed_on) == "2026-11-16"
+             _ => false
+           })
+        // The claim made AFTER it named a leaf and started nothing: that leaf reads as never claimed, at its prior.
+        && (match row_or_none(fold: fold, key: "gantt.item#1#0#0").duration {
+             PriorFromCarrier { working_days: days } => days == 2
+             _ => false
+           })
+        // THE AUTHORITY, asked directly: the log's own standing fold says this item is retired, which is the fact
+        // the unit relied on rather than restating.
+        && roadmap_standing_is_retired(standing: roadmap_node_standing(envs: envs))
+  }
+}
+
+// ─── FAIL CLOSED, TYPED REFUSALS ──────────────────────────────────────────────────────────────────
+// A CLAIM WHOSE recorded_at IS NOT THE WHOLE-SECOND UTC INSTANT ITS PRODUCERS WRITE REFUSES, with a typed cause
+// naming the event and the text. A claim carries no day of its own, so the instant is the only evidence there is; a
+// fixture that plants the placeholder "t3" is refused rather than having a day invented for it -- which is the point
+// of the check, not an inconvenience to work around.
+fn a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_with_a_typed_cause_naming_the_event() -> Bool {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "t3", parent: none)
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: first.id })
+  match fold_lines(lines: wire(envs: [first, accepted])) {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } =>
+      (match refusal {
+        ClaimInstantUnreadable { event_id: event_id, recorded_at: recorded_at } =>
+          event_id == (first.id as String) && recorded_at == "t3"
+        _ => false
+      })
+      // The refusal prints what it refused, so nobody has to read the source to know which line to fix.
+      && string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }), pattern: "t3")
+      && string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }),
+           pattern: (first.id as String))
+  }
+}
+
+// A LOG THAT WILL NOT ORDER ITSELF REFUSES THE FOLD rather than inventing a first claim. Two shapes, both refused by
+// the log's own ordering authority (roadmap_event_causal_chain): a FORK (two events nobody put under anybody) and a
+// DANGLING history (an event naming a parent the log does not hold). A "first claim" read out of either would be a
+// fabricated first, so neither gets an answer -- and the same claims DO fold once the history is a chain, which is
+// what makes these refusals about the ORDER rather than about the claims.
+fn a_log_that_will_not_order_itself_refuses_the_fold_rather_than_inventing_a_first_claim() -> Bool {
+  let fork_a = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let fork_b = claim_env(path: Present { value: leaf_second() }, at: "2026-11-16T10:00:00Z", parent: none)
+  let accepted_after_fork = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: fork_b.id })
+  let refused_fork = match fold_lines(lines: wire(envs: [fork_a, fork_b, accepted_after_fork])) {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } => match refusal {
+      ForkedOrDanglingCausalChain => true
+      _ => false
+    }
+  }
+  let lone = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let orphan = claim_env(path: Present { value: leaf_second() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: ("ffffffffffffffff" as NonEmptyStr) as RoadmapEventId })
+  let refused_dangling = match fold_lines(lines: wire(envs: [lone, orphan])) {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } => match refusal {
+      ForkedOrDanglingCausalChain => true
+      _ => false
+    }
+  }
+  // The same two leaves, chained, fold.
+  let chained_a = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let chained_b = claim_env(path: Present { value: leaf_second() }, at: "2026-11-16T10:00:00Z",
+    parent: Present { value: chained_a.id })
+  let chained_acceptance = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: chained_b.id })
+  let folds_when_chained = match fold_lines(lines: wire(envs: [chained_a, chained_b, chained_acceptance])) {
+    Folded { fold: _ } => true
+    Refused { refusal: _ } => false
+  }
+  refused_fork && refused_dangling && folds_when_chained
+}
+
+// AN UNDECODABLE LINE REFUSES THE WHOLE FOLD, naming WHICH line it refused and why. Nothing is skipped: a log with a
+// line this unit cannot read has no first claim to read either, and quietly dropping the damaged line is how a
+// realized duration starts being a guess.
+fn an_undecodable_line_refuses_the_whole_fold_naming_the_line_number() -> Bool {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: first.id })
+  let lines = concat([roadmap_event_wire_text(env: first)], ["not json at all",
+    roadmap_event_wire_text(env: accepted)])
+  match fold_lines(lines: lines) {
+    Folded { fold: _ } => false
+    Refused { refusal: refusal } =>
+      (match refusal {
+        UndecodableLine { line_number: line_number, reason: reason } =>
+          line_number == 2 && string_length(s: reason) > 0
+        _ => false
+      })
+      && string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }), pattern: "line 2")
+  }
+}
+
+// A REVOKED ACCEPTANCE IS NO ACCEPTANCE: the claimed-to-accepted span is not read from it. The first leaf was
+// claimed on Monday, the item was accepted on Friday, and the acceptance was then taken back -- so nothing has been
+// realized, the leaf stays in flight, the fold says the item is not accepted, and the schedule runs on the prior.
+fn a_revoked_acceptance_is_no_acceptance_and_no_realized_span_is_read_from_it() -> Bool {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: first.id })
+  let revoked = roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: author(), parent: Present { value: accepted.id },
+    kind: AcceptanceRevokedEvent {
+      receipt: receipt(day: "2026-11-20"),
+      disposition: AcceptanceNodeReopensActiveFrontier,
+      revoked_by: "briansrls" as NonEmptyStr,
+      revoked_on: "2026-11-21" as NonEmptyStr,
+      reason: "the witness did not execute" as NonEmptyStr,
+    },
+    recorded_at: "2026-11-21T09:00:00Z",
+  })
+  match fold_lines(lines: wire(envs: [first, accepted, revoked])) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      !fold.accepted
+        && count(filter(fold.rows, r => is_realized(row: r))) == 0
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+             WorkInFlight { claimed_on: claimed_on } => date_text(date: claimed_on) == "2026-11-16"
+             _ => false
+           })
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 5
+  }
+}
+
+// ─── THE WEEK RULE IS THE CALENDAR'S ──────────────────────────────────────────────────────────────
+// THE REALIZED COUNT IS WORKING DAYS, COUNTED BY #16697's RULE AND NOT BY A SECOND ONE. A leaf claimed on Monday
+// 2026-11-16 and accepted on Monday 2026-11-23 spans SEVEN calendar days and FIVE working days: a count that ignored
+// the week would say seven, and the fold must say five. The comparison is made against the calendar authority's own
+// days_between, imported -- so the unit is graded by the rule it imports, not by its own arithmetic. The instant is
+// read as its producers write it, at an hour local-time drift would move: 23:30Z stays on its own day.
+fn the_working_day_count_is_the_calendar_s_rule_and_crosses_a_weekend_by_five_days_not_seven() -> Bool {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T23:30:00Z", parent: none)
+  let accepted = acceptance_env(day: "2026-11-23", at: "2026-11-23T00:05:00Z",
+    parent: Present { value: first.id })
+  let monday = d(year: 2026, month: 11, day: 16)
+  let next_monday = d(year: 2026, month: 11, day: 23)
+  match fold_lines(lines: wire(envs: [first, accepted])) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+         RealizedFromLog { working_days: working_days, claimed_on: claimed_on, accepted_on: accepted_on } =>
+           // FIVE working days across SEVEN calendar days, and the two ends are the days the instants fell on.
+           working_days == 5
+             && days_between(from: monday, to: next_monday) == 7
+             && working_days != days_between(from: monday, to: next_monday)
+             && date_text(date: claimed_on) == "2026-11-16"
+             && date_text(date: accepted_on) == "2026-11-23"
+             && is_working_day(date: claimed_on)
+             && is_working_day(date: accepted_on)
+         _ => false
+       })
+      && string_contains(s: realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")),
+           pattern: "realized from the log: 5 working days")
+      && string_contains(s: realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")),
+           pattern: realized_duration_unit_note())
+  }
+}
+
+// ─── COMPUTED ON READ, NEVER WRITTEN ──────────────────────────────────────────────────────────────
+// THE ANSWER IS RECOMPUTED EVERY READ AND IS NEVER AUTHORITATIVE BETWEEN READS. Two reads of the same lines answer
+// identically -- the fold is a function of the log, not a store. And ONE MORE LINE changes the answer: the second
+// leaf's claim, recorded later, realizes it, which no written-down answer would notice. That is the difference
+// between a derived read and a carrier that has quietly become the truth.
+fn the_fold_is_computed_on_read_from_the_same_lines_and_is_never_authoritative_between_reads() -> Bool {
+  let same_twice = match completed_fold() {
+    Refused { refusal: _ } => false
+    Folded { fold: a } => match fold_lines(lines: completed_lines()) {
+      Refused { refusal: _ } => false
+      Folded { fold: b } =>
+        realized_schedule_output(fold: Folded { fold: a })
+          == realized_schedule_output(fold: Folded { fold: b })
+          && count(a.rows) == count(b.rows)
+          // The second leaf still has no realized duration on either read: no read wrote anything down.
+          && is_named_out_loud(row: row_or_none(fold: a, key: "gantt.item#1#0#0"))
+          && is_named_out_loud(row: row_or_none(fold: b, key: "gantt.item#1#0#0"))
+    }
+  }
+  // One more line -- the missing claim -- and the read CHANGES. A written-down answer would have stayed at the
+  // prior, which is exactly the failure the ruling this unit cites forbids.
+  let grew = match fold_lines(lines: completed_plus_the_missing_claim_lines()) {
+    Refused { refusal: _ } => false
+    Folded { fold: grown } =>
+      is_realized(row: row_or_none(fold: grown, key: "gantt.item#1#0#0"))
+        && duration_days(duration: row_or_none(fold: grown, key: "gantt.item#1#0#0").duration) == 2
+        // The other two leaves keep what they had: the read grew, it did not drift.
+        && duration_days(duration: row_or_none(fold: grown, key: "gantt.item#0#0#0").duration) == 4
+    }
+  same_twice && grew
+}
+
+// THE SAME LOG with the one line it was missing: the second leaf's claim, recorded Wednesday, hung off the history
+// it belongs to. Wednesday to Friday is two working days -- and the leaf that had no realized duration now has one,
+// on the read alone.
+fn completed_plus_the_missing_claim_lines() -> List<String> {
+  let first = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z", parent: none)
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: first.id })
+  let missing = claim_env(path: Present { value: leaf_second() }, at: "2026-11-18T09:00:00Z",
+    parent: Present { value: third.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
+    parent: Present { value: missing.id })
+  wire(envs: [first, third, missing, accepted])
+}
