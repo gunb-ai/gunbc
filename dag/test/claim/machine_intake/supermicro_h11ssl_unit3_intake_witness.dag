@@ -14,13 +14,23 @@ import std.decl_ref { DeclarationRef }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments, HostEnrollmentIntent, HostKeyLoginAdmitted, HostKeyLoginRefused, HostReachPolicy }
+import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_fleet_host }
+import gunbc.runner.runner_broker_progress_watchdog { HostReachAdmitted, HostReachRefused }
+import gunbc.fleet.fleet_fan_tach_expectation { fleet_fan_tach_expectations, HostFanTachExpectation }
+import gunbc.fleet.fleet_intent { fleet_intent_known_hosts, supermicro_h11ssl_unit3_host, ComputeHost }
 import gunbc.integration_concern {
   ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
   RequirementEstablished,
   RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
   h11ssl_unit3_edge_gate_refusal_revision,
+  h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer,
+  h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
   h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+  h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_intake_sighting_revision,
   h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
   site_pxe_edge_pinned_chainloader_member_absent_from_srv4,
@@ -54,7 +64,11 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
   supermicro_h11ssl_unit3_gpu_report,
+  supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported,
+  supermicro_h11ssl_unit3_power_cap_setter_prior_life,
   supermicro_h11ssl_unit3_install_nic_port_label,
+  supermicro_h11ssl_unit3_fan_zone_duty_needed_reported,
+  supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported,
   supermicro_h11ssl_unit3_lan_name_sighting,
   supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing,
   supermicro_h11ssl_unit3_seen_host_key_fingerprint,
@@ -253,8 +267,24 @@ test fn witness_every_reported_figure_owes_its_read() -> Bool {
     supermicro_h11ssl_unit3_install_nic_port_label,
     supermicro_h11ssl_unit3_seen_host_key_fingerprint,
     supermicro_h11ssl_unit3_gpu_report,
+    supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported,
+    supermicro_h11ssl_unit3_fan_zone_duty_needed_reported,
+    supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported,
   ]
   all(figures, figure_owes_a_read)
+}
+
+// THE CAP SETTER POINTS AT THE FIGURE IT EXPLAINS, BY CITATION. A power cap that arrives at boot is only
+// evidence of hand state if the row that says so is bound to the figure it bears on: a rename of the figure
+// must move this row, and the figure must keep owing its read.
+test fn witness_power_cap_setter_names_the_figure_it_bears_on() -> Bool {
+  decl_ref_names(
+    ref: supermicro_h11ssl_unit3_power_cap_setter_prior_life.bears_on_row,
+    module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation",
+    decl_name: "supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported"
+  )
+    && figure_owes_a_read(supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported)
+    && (text(supermicro_h11ssl_unit3_power_cap_setter_prior_life.standing) != "")
 }
 
 // THE PHYSICAL MAINTENANCE ROW AND THE BOOT-PATH STANDING POINT AT EACH OTHER, BY CITATION. The CMOS
@@ -343,11 +373,11 @@ test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address(
 
 // THE GPU FIGURE OWES THE BUS-TO-SLOT PAIRING, not just a device count: the cooling lane cites slots,
 // and a count without a slot pairing cannot be used by it.
-test fn witness_the_gpu_figure_owes_the_bus_to_slot_pairing() -> Bool {
+test fn witness_the_gpu_figure_reads_ids_by_sysfs_and_leaves_the_pairing_unread() -> Bool {
   match supermicro_h11ssl_unit3_gpu_report.standing {
     TranscribedUncited { read_obligation: owed } =>
-      string_contains(s: text(owed), pattern: "dmidecode -t slot")
-        && string_contains(s: text(owed), pattern: "lspci")
+      string_contains(s: text(owed), pattern: "/sys/bus/pci/devices")
+        && string_contains(s: text(owed), pattern: "UNREAD")
     CitedToAuthority { authority: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
@@ -378,10 +408,10 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
           secret_placement: placement,
           who_owes_which_step: _,
         } =>
-          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname")
-            && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding")
+          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission")
+            && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding")
             && decl_ref_names(ref: secret_precedent, module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref")
-            && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth", decl_name: "srv15_arrival_federation_provision")
+            && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier")
             && string_contains(s: text(convention), pattern: "-admin")
             && string_contains(s: text(placement), pattern: "stdin")
         RotationRouteStandingCommitted { standing: _ } => false
@@ -433,8 +463,26 @@ test fn witness_the_edge_sighting_binds_the_install_port_and_keeps_the_caveats()
 // conjoining a string probe and a list-length probe in one arm makes THIS entry's typecheck run past fifteen
 // minutes (measured twice), while either alone elaborates in well under a minute -- a fact about the checker that
 // belongs in the record because it changes how claims here have to be written.
-test fn witness_the_baseboard_row_holds_three_named_obligations() -> Bool {
-  length(supermicro_h11ssl_unit3_baseboard_row_standing.owed_reads) == 3
+// What the board row owes is asserted BY NAME, not by a count: a count copied from the list is a change
+// detector that a genuine addition trips, and it says nothing about WHICH read is missing. (Its own claim:
+// a string probe conjoined with a length probe in one arm has been measured driving this entry's typecheck
+// past fifteen minutes, while either alone elaborates in well under a minute.)
+fn baseboard_obligation_named(needle: NonEmptyStr) -> Bool {
+  supermicro_h11ssl_unit3_baseboard_row_standing.owed_reads.any(r => string_contains(s: r, pattern: needle))
+}
+
+test fn witness_the_baseboard_row_names_every_obligation_it_owes() -> Bool {
+  baseboard_obligation_named(needle: "dmidecode -t baseboard")
+    && baseboard_obligation_named(needle: "ipmitool lan print")
+    && baseboard_obligation_named(needle: "sel elist")
+    && baseboard_obligation_named(needle: "GetZoneDuty")
+}
+
+// The name obligation is CLOSED, and a closed obligation must not stay in a list of owed reads -- that list
+// is what the next reader works from.
+test fn witness_the_closed_name_obligation_has_left_the_owed_list() -> Bool {
+  !supermicro_h11ssl_unit3_baseboard_row_standing.owed_reads.any(r =>
+    string_contains(s: r, pattern: "hostname_allocation"))
 }
 
 test fn witness_the_baseboard_row_is_held_in_the_right_home() -> Bool {
@@ -467,4 +515,161 @@ test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
   length(concern.sightings.tail) == 3
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "NOT entered in gunbc.design_ruling")
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "smart-crane-730")
+}
+
+// ── THE OPERATOR'S REPORT DOES NOT OPEN THE GATE ───────────────────────────────────────────────
+//
+// gunbc.fleet.fleet_enrollment holds this unit's reach policy, and that arm is an EFFECT GATE: it is what
+// lets the fleet dispatch at a host (gunbc.runner.runner_connectivity_recovery::
+// host_reach_admission_for_fleet_host). The operator reported on 2026-11-16 that the three fleet access
+// principals' keys sit on this unit's ubuntu account with passwordless sudo -- and the same report puts
+// the unit's ssh answer at the address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as
+// srv9's. So an effect admitted on that word could be applied at a DIFFERENT machine than the row names.
+// The claims here hold the line the rework drew: this host's row is refused, the transport gate is shut,
+// and the report stands in the register as an open row that names the read which would ground it. None of
+// this says the report is false; it says the model has not repeated it.
+
+fn this_unit_is_enrolled() -> Bool {
+  fleet_enrollments.any(e => host_identity_eq(a: e.host, b: operator_host_e2d4b7))
+}
+
+fn this_unit_reaches_as_refused() -> Bool {
+  fleet_enrollments.any(e =>
+    host_identity_eq(a: e.host, b: operator_host_e2d4b7)
+      && match e.reach_policy {
+           HostKeyLoginRefused { reason: _ } => true
+           HostKeyLoginAdmitted => false
+         })
+}
+
+fn reach_gate_is_open_for_this_unit() -> Bool {
+  match host_reach_admission_for_fleet_host(host: operator_host_e2d4b7) {
+    HostReachAdmitted => true
+    HostReachRefused { host: _, reason: _ } => false
+  }
+}
+
+fn the_no_read_row_stands_open() -> Bool {
+  match h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat.disposition {
+    Open => true
+    _ => false
+  }
+}
+
+test fn keys_reported_in_place_leave_this_unit_refused_and_the_gate_shut() -> Bool {
+  this_unit_is_enrolled()
+    && this_unit_reaches_as_refused()
+    && reach_gate_is_open_for_this_unit() == false
+    && the_no_read_row_stands_open()
+}
+
+// The pair cannot drift in EITHER direction. If the gate is opened -- which only a read returning
+// host-authored output may do -- the register row that says "no read the fleet can repeat" must no longer
+// stand Open, or the model would be carrying a receipt and an admission that deny each other. And while the
+// row is Open the gate must be shut. This is the tripwire that replaces the arm the rework removed: the
+// status is checked on the two rows that hold it, not on a variant minted for one machine.
+test fn an_opened_gate_dissolves_the_no_read_row_or_reds() -> Bool {
+  match reach_gate_is_open_for_this_unit() {
+    true => the_no_read_row_stands_open() == false && this_unit_reaches_as_refused() == false
+    false => the_no_read_row_stands_open()
+  }
+}
+
+// The unit is REPORTED to answer ssh on the very address a fleet authority claims for srv9. The link
+// between those facts is a citation, not a paragraph: the row that reports the address must name, as a
+// declaration, the authority that claims the same address for another host. The address VALUE is not
+// re-stated here -- witness_the_lan_name_sighting_and_the_address_standing_name_one_address already binds
+// the two sightings of it -- so this claim checks only the link, and retires when the lease read lands.
+test fn the_address_under_conflict_names_the_authority_that_claims_it() -> Bool {
+  match supermicro_h11ssl_unit3_install_nic_address_standing {
+    AddressSeenOnlyInStaleNeighbourEntry { address: _, claimed_by_authority: conflict, read_obligation: _ } =>
+      (conflict.module_path as String) == "gunbc.fleet.fleet_intent_network"
+        && (conflict.decl_name as String) == "srv9_host_lan_endpoint"
+    // Once the lease/ARP read lands the standing moves to its confirmed variant and there is no
+    // competing authority left to name: the claim retires with the collision it was guarding.
+    AddressConfirmed { address: _, confirmed_at: _ } => true
+  }
+}
+
+// The keys being placed by hand is recorded ON the route concern, and that concern still stands open: a
+// later sighting exists, it cites the register row that now carries the report, and the disposition is
+// still Open. Promotion to Integrated while the install ROUTE is still unmodeled is what this claim is for.
+test fn the_roster_concern_carries_the_hand_placement_and_stays_open() -> Bool {
+  let concern = h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster
+  length(concern.sightings.tail) > 0
+    && concern.affected.tail.any(d =>
+      (d.module_path as String) == "gunbc.integration_concern"
+        && (d.decl_name as String) == "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat")
+    && match concern.disposition { Open => true _ => false }
+}
+
+// ── THE FAN FLOOR, AND THE FACT THAT THE FLEET HOLDS NO ROW FOR THIS HOST ───────────────────────
+//
+// The operator set zones A and B to 100% by hand and reports the board falls back to 20% on every
+// power-off. The two duty rows must stay in the TRANSCRIBED standing -- a citation to an authority, or a
+// receipt, is the only thing that may move them, and neither exists. And the requirement those figures
+// imply is checked where the model keeps requirements: as an open register row against the fan layer,
+// naming the tach-expectation grain it cannot be minted into. The fan layer itself is checked for the row
+// the report implies is missing: this host has no HostFanTachExpectation, which is what
+// gunbc.fleet.fleet_health::host_goal refuses the whole fleet over once a host is rostered.
+
+fn fan_row_belongs_to_this_unit(row: HostFanTachExpectation) -> Bool {
+  host_identity_eq(a: row.host, b: operator_host_e2d4b7)
+}
+
+// The grade, not the wording: transcribed today, and a receipt would legitimately promote it. What is NOT
+// allowed for these two rows is a citation to an AUTHORITY -- no Supermicro manual or board document states
+// what duty THIS unit's operator set by hand, so a `CitedToAuthority` standing on these figures would mean a
+// number had been sourced to a document instead of read off the board.
+test fn the_fan_duty_stays_reported_and_the_fleet_holds_no_fan_row_for_this_host() -> Bool {
+  match supermicro_h11ssl_unit3_fan_zone_duty_needed_reported.standing {
+    TranscribedUncited { read_obligation: _ } => true
+    ObservedByReceipt { observed: _ } => true
+    CitedToAuthority { authority: _ } => false
+  }
+    && match supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported.standing {
+         TranscribedUncited { read_obligation: _ } => true
+         ObservedByReceipt { observed: _ } => true
+         CitedToAuthority { authority: _ } => false
+       }
+    && !fleet_fan_tach_expectations.any(fan_row_belongs_to_this_unit)
+}
+
+// The requirement is registered AGAINST the fan layer: the open row's gap must name the expectation
+// population as the model it is missing, and its standing must still be the un-established one while no
+// board-profile figure or fan-mode row exists for this family. A row quietly promoted to
+// RequirementEstablished, or filed against some other module, reds here.
+test fn the_fan_requirement_is_registered_against_the_fan_layer() -> Bool {
+  let gap = h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer
+  match gap.kind {
+    SuspectedCapabilityGap { model: model, requirement: _, standing: standing } =>
+      (model.module_path as String) == "gunbc.fleet.fleet_fan_tach_expectation"
+        && (model.decl_name as String) == "fleet_fan_tach_expectations"
+        && match standing {
+             RequirementUnestablished { decided_by: _ } => true
+             RequirementEstablished { by: _ } => false
+           }
+    SuspectedFork { authorities: _ } => false
+  }
+    && match gap.disposition { Open => true _ => false }
+}
+
+// ── A SUPPLY ROW IS NOT A SCHEDULE TARGET ───────────────────────────────────────────────────────
+//
+// This unit's ComputeHost row exists so the fleet can state where the machine is, and it is deliberately
+// NOT in gunbc.fleet.fleet_intent::fleet_intent_known_hosts, the population that turns a supply row into
+// fleet work: joining it before the board has a fan expectation would refuse the health check for every
+// host at once. The gate is carried as a register row, and this claim binds the two: while the host is
+// out of that population the gate must stand Open, and the row it gates must be this host's.
+fn known_hosts_holds_this_host(host: ComputeHost) -> Bool {
+  (host.identity as String) == (operator_host_e2d4b7 as String)
+}
+
+test fn the_supply_row_is_stated_while_the_join_to_fleet_work_is_held_open() -> Bool {
+  (supermicro_h11ssl_unit3_host.identity as String) == (operator_host_e2d4b7 as String)
+    && !fleet_intent_known_hosts.any(known_hosts_holds_this_host)
+    && match h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population.disposition {
+         Open => true
+         _ => false
+       }
 }

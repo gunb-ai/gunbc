@@ -2,7 +2,7 @@ module gunbc.integration_concern.h11ssl_unit3_hand_staged_edge_artifacts_have_no
 
 // One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
 // there is no list to append to. Ported from main's block in gunbc.integration_concern
-// at merge 20: main 18cabce704f (#16564).
+// at --row-only.
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
@@ -17,8 +17,17 @@ import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSight
 // could not express it, not as a defect in the hand work: the operator did what was needed at the
 // bench, and the model is what is short of a standing.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// The main revision the operator's reach report was received against (2026-11-16). The commit that
+// carries the sighting below is a descendant of this one; the revision recorded is the tree the report
+// was read against, not the sha of the commit that writes it down, which does not exist yet.
 // The main revision the edge gate was found refusing a branch dispatch against: the session branch head
 // the read-only edge observation was dispatched from, and refused at.
+// The head review 96009 read when it surfaced the build-pool reservation as a second answer to "which
+// hosts hold a build slot" (2026-11-17). The revision recorded is the tree that review read, not the sha
+// of the commit that writes this sighting down, which does not exist yet.
+// The head that carries the build-pool carve rule (gunbc.runner.runner_slot_desired), read when the fork above was
+// closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
+// writes this down.
 // The MAIN revision the read-only edge observation ran against -- the ref the observe was dispatched at,
 // and therefore the model state its readings are a statement about.
 // THE EDGE MODEL RENDERS THE EDGE, SO IT CANNOT NAME WHAT WAS STAGED BESIDE IT.

@@ -4,6 +4,9 @@ import gunbc.fleet.fleet_intent {
   ComputeHost,
   ExecutionSurface,
   compute_host_primary_cpu,
+  PrimaryCpuMeasured,
+  PrimaryCpuAbsentFromSurvey,
+  PrimaryCpuCensusUnread,
   fleet_intent_execution_surface,
   srv1_host,
 }
@@ -208,8 +211,11 @@ fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
 // mismatch still refuses loudly, and no silent widening is introduced by the gap.
 fn fleet_execution_target(host: ComputeHost, surface: ExecutionSurface, os: Os) -> ExecutionTarget? {
   match compute_host_primary_cpu(host: host) {
-    Absent => none
-    Present { value: cpu } =>
+    // No execution target for a host whose survey holds no CPU, and none for a host nobody has surveyed: an
+    // architecture no one read would be the fabricated default this module already refuses elsewhere.
+    PrimaryCpuAbsentFromSurvey { host: _ } => none
+    PrimaryCpuCensusUnread { host: _ } => none
+    PrimaryCpuMeasured { cpu: cpu } =>
       Present {
         value: ExecutionTarget {
           architecture: cpu.catalog.architecture,
