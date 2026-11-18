@@ -9106,45 +9106,54 @@ pub fn structured_value_at_kernel_scalar_declared_type(
             crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
         let produced_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
+        let declared_last = crate::v1_std_core::qualified_last_segment(declared_name.clone());
+        let produced_last = crate::v1_std_core::qualified_last_segment(produced_name.clone());
+        let produced_exposure = expected_type_head_exposure(produced.clone(), scope.clone());
         if !declared_head_is_kernel_scalar_through_refinement(declared.clone(), scope.clone()) {
             false
         } else {
-            if crate::v1_compiler_infer_types::alias_identity_in_judgment(
-                declared.clone(),
-                produced.clone(),
-                source_indices.clone(),
-                Rc::new(TextJudgment::TextJudgedIn {
-                    env: scope.type_env.clone(),
-                }),
-            ) {
+            if ((produced_name.clone() == "".to_string())
+                || crate::std_types::is_kernel_type(produced_last.clone()))
+            {
                 false
             } else {
-                if produced_is_kernel_grounded_carrier_or_its_alias(
-                    declared_name,
-                    produced_name.clone(),
-                    scope.type_env.clone(),
-                ) {
+                if ((declared_last.clone() != "".to_string())
+                    && (produced_last.clone() == declared_last.clone()))
+                {
                     false
                 } else {
-                    if declared_realizes_as_kernel_numeric(
+                    if crate::v1_compiler_infer_types::alias_identity_in_judgment(
                         declared.clone(),
                         produced.clone(),
                         source_indices.clone(),
+                        Rc::new(TextJudgment::TextJudgedIn {
+                            env: scope.type_env.clone(),
+                        }),
                     ) {
                         false
                     } else {
-                        if crate::std_types::is_container_type(
-                            crate::v1_std_core::qualified_last_segment(produced_name.clone()),
+                        if produced_is_kernel_grounded_carrier_or_its_alias(
+                            declared_name.clone(),
+                            produced_name.clone(),
+                            scope.type_env.clone(),
                         ) {
                             false
                         } else {
-                            {
-                                let exposure =
-                                    expected_type_head_exposure(produced.clone(), scope.clone());
-                                if (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(exposure.clone()) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(exposure.clone())) {
-                                    true
+                            if declared_realizes_as_kernel_numeric(
+                                declared.clone(),
+                                produced.clone(),
+                                source_indices.clone(),
+                            ) {
+                                false
+                            } else {
+                                if crate::std_types::is_container_type(produced_last.clone()) {
+                                    false
                                 } else {
-                                    ((nominal_product_head_name(produced.clone(), scope.clone()) != "".to_string()) || (nominal_coproduct_head_name(produced.clone(), scope.clone()) != "".to_string()))
+                                    if (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(produced_exposure.clone()) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(produced_exposure.clone())) {
+                                        true
+                                    } else {
+                                        ((nominal_product_head_name(produced.clone(), scope.clone()) != "".to_string()) || (nominal_coproduct_head_name(produced.clone(), scope.clone()) != "".to_string()))
+                                    }
                                 }
                             }
                         }
