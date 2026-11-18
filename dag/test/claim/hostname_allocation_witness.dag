@@ -445,7 +445,7 @@ test fn witness_h11_pending_draw_is_dan_at_the_recorded_ticket() -> Bool {
   let ticket_and_name = match next_name_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
     Present { value: n } => match n {
       DrawnHumanName { name: h, draw: d } =>
-        match d { HumanNameDraw { entropy: e } => e == 630127021373 } &&
+        d.entropy == 630127021373 &&
         (human_name_canonical_hostname(name: h) as String) == "dan"
       LegacyHostname { label: _ } => false
     }
@@ -461,10 +461,7 @@ test fn witness_h11_pending_draw_is_dan_at_the_recorded_ticket() -> Bool {
 // next_name into name, and only then does "dan" resolve.
 test fn witness_h11_current_name_still_legacy_and_dan_reserved_not_resolved() -> Bool {
   let still_legacy = match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
-    Present { value: n } => match n {
-      LegacyHostname { label: l } => (l as String) == "h11-a16"
-      DrawnHumanName { name: _, draw: _ } => false
-    }
+    Present { value: label } => (label as String) == "h11-a16"
     Absent => false
   }
   let not_resolved = match resolve_host_selector(selector: "dan") {
