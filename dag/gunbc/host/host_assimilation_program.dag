@@ -191,7 +191,14 @@ fn step_in_program(step: HostStandupStep, intent: HostEnrollmentIntent) -> Bool 
 // Phases whose participation is modeled but that no REAL fleet enrollment carries yet. This is the
 // set the spine-claimed claim keys on (by phase, never by label or count); its frontier row below is
 // the declaration that admits them, and deleting the row's phase from this list is how it dissolves.
-data phases_awaiting_a_real_enrollment: List<HostStandupAssimilationPhase> = [InferenceServingProvision]
+//
+// DISSOLVED 2026-11-16, the way this row says it dissolves. The phase it awaited -- InferenceServingProvision
+// -- is owed by a real enrollment now: the third Supermicro H11SSL-i (host-e2d4b7) carries
+// CiRunnerParticipation and InferenceServingParticipation in gunbc.fleet.fleet_enrollment. The type and its
+// reader stay, because a frontier is a ledger that can refill whenever a phase is modeled before any host
+// owes it; what is gone is the claim's reliance on the live population being incomplete, which is restated
+// against a population the claim supplies.
+data phases_awaiting_a_real_enrollment: List<HostStandupAssimilationPhase> = []
 
 fn step_phase_awaits_a_real_enrollment(step: HostStandupStep, awaiting: List<HostStandupAssimilationPhase>) -> Bool {
   match step.phase {

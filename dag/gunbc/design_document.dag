@@ -6,8 +6,10 @@ import std.markdown {
 }
 import gunbc.markdown_helpers { h2, h3, p, li, li_blocks, ul, ol, hr, cell, row }
 import extdeps.languages.markdown { serialize_markdown_source }
+import std.algebra { string_contains }
 import gunbc.design_ruling {
   DesignRuling,
+  design_rulings,
   plans_are_intentions_and_realization_is_downstream,
   planning_scheduling_is_cut,
   effort_estimates_are_public_and_live_in_gunbc,
@@ -89,6 +91,25 @@ fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextI
 
 fn ruling(r: DesignRuling) -> String {
   concat("(ruling ", concat(documentary_ref_symbol_text(reference: r.reference), ")"))
+}
+
+// The operator rulings this document NAMES by symbol, DERIVED rather than listed. A ruling is cited
+// exactly when its own `ruling(r:)` row actually renders into the document, so this reads the cited
+// set back out of the rendered bytes. That makes the paragraphs the single authority: a citing
+// paragraph (`ruling(r: X)`) is the one and only edit, and the inventory cannot fork it. This is the
+// document's citation inventory and the single authority for the population the resolver/render
+// witness checks (gunbc.documentary_refs generated_document_declaration_refs). It is deliberately NOT
+// the whole ledger: gunbc.design_ruling design_rulings() grows without bound and is loaded apart from
+// this document (DESIGN.md: "dated operator rulings ... cited below by symbol"), so it is filtered
+// only to name each ruling's `reference` back out of the render -- the subset returned is exactly what
+// the document cites. A ruling named by a paragraph whose declaration is then renamed or deleted
+// fails to resolve or render in gunbc.documentary_refs_witness.
+fn document_cited_rulings() -> List<DesignRuling> {
+  let rendered = expected_design_md()
+  filter(
+    xs: design_rulings(),
+    predicate: r => string_contains(s: rendered, pattern: ruling(r: r)),
+  )
 }
 
 fn see(r: DesignRow) -> String {
