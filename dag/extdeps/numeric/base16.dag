@@ -282,3 +282,15 @@ fn base16_word_value_upper(word: String, max_digits: Int) -> Int? {
       })
   }
 }
+
+// IS THIS TEXT UPPERCASE-ONLY HEXADECIMAL, the canonical spelling? Mirrors base16_text_is_lowercase:
+// every character is a digit in the UPPER alphabet (base16_upper_digit_value_at is Present); the first
+// non-member (a lowercase a-f, or any non-hex char) answers false. This is the uppercase half of the
+// same case-check the lowercase module exposes -- the membership test reads from the one rows alphabet,
+// not a range. (An empty string is vacuously uppercase; the caller bounds the length.) A consumer that
+// reads a field the upstream prints in uppercase (extdeps.linux.proc_net_tcp's %08X address and %04X
+// port columns) refuses the non-canonical lowercase spelling with this.
+fn base16_text_is_uppercase(hex: String) -> Bool {
+  let cps = hex |> chars
+  any(cps, cp => match base16_upper_digit_value_at(cp: cp) { Absent => true, Present { value: digit } => false }) == false
+}

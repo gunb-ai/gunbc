@@ -93,6 +93,16 @@ test fn decoder_refuses_a_lowercase_port_word() -> Bool {
     && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:01bb"))
 }
 
+// A LOWERCASE ADDRESS WORD IS REFUSED AT THE SYNTAX LEVEL -- the same uppercase rule as the port
+// (root_generalization). The kernel prints the __be32 address %08X, so "0100007f" is non-canonical; the
+// row parse fails closed on the whole address column (base16_text_is_uppercase) and refuses naming the
+// line, rather than silently storing the lowercase address. RED: drop the address check and the row
+// parses (the dotted-address accessor is a separate read), so the malformed row would be accepted.
+test fn decoder_refuses_a_lowercase_address_word() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007f:01BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007f:01BB"))
+}
+
 // 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,
 // RFC 6335 §6); a row whose local port word is 0000 answers TcpPortUnbound -- the decoder never mints
 // Port 0.
