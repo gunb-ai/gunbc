@@ -115,13 +115,23 @@ fn roadmap_rendered_ghost_count_over(pairs: List<ClosingContractTaskPair>, doc: 
     |> count
 }
 
-fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
-  match closing_contract_task_pairs_projection() {
+// THE RULE, IN ONE PLACE: a REFUSED pairs projection counts every node in the document (a refused projection
+// sanctions nothing, so every rendered node is unsanctioned); a PROJECTED one counts the ghosts over its pairs.
+// The live nullary, the ghost probe and the altered-copy probe all bring their own pairs and their own document,
+// and all three ask THIS. It used to be spelled three times -- the same refusal arm in three bodies that could
+// drift apart while each still looked right on its own, which is what gunbc.design_argument::root_generalization
+// means by a generalization left beside surviving leaves.
+fn roadmap_rendered_ghost_count_with(pairs: ClosingContractTaskPairsProjection, doc: RoadmapDocument) -> Int {
+  match pairs {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
-    ClosingContractTaskPairsProjected { pairs: pairs } =>
-      roadmap_rendered_ghost_count_over(pairs: pairs, doc: doc)
+    ClosingContractTaskPairsProjected { pairs: ps } =>
+      roadmap_rendered_ghost_count_over(pairs: ps, doc: doc)
   }
+}
+
+fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
+  roadmap_rendered_ghost_count_with(pairs: closing_contract_task_pairs_projection(), doc: doc)
 }
 
 // THE PROBE DOCUMENT OVER A BASE THE CALLER HOLDS, with the same one extra section. The nullary's base
@@ -163,11 +173,7 @@ fn roadmap_ghost_probe_node() -> RoadmapNode {
 // THE GHOST PROBE OVER A CALLER'S PAIRS AND BASE — the hermetic entry point (see
 // roadmap_rendered_ghost_count_over for why the pairs are the caller's to bring).
 fn roadmap_ghost_node_red_probe_count_with(pairs: ClosingContractTaskPairsProjection, base: RoadmapDocument) -> Int {
-  let doc = ghost_probe_document_over(base: base, ghost: roadmap_ghost_probe_node())
-  match pairs {
-    ClosingContractTaskPairsProjectionRefused { detail: _ } => count(doc_all_nodes(doc: doc))
-    ClosingContractTaskPairsProjected { pairs: ps } => roadmap_rendered_ghost_count_over(pairs: ps, doc: doc)
-  }
+  roadmap_rendered_ghost_count_with(pairs: pairs, doc: ghost_probe_document_over(base: base, ghost: roadmap_ghost_probe_node()))
 }
 
 fn roadmap_ghost_node_red_probe_count() -> Int {
@@ -200,11 +206,7 @@ fn roadmap_altered_copy_red_probe_count_with(pairs: ClosingContractTaskPairsProj
   match roadmap_altered_copy_probe_node() {
     Absent => 0
     Present { value: ghost } => {
-      let doc = ghost_probe_document_over(base: base, ghost: ghost)
-      match pairs {
-        ClosingContractTaskPairsProjectionRefused { detail: _ } => count(doc_all_nodes(doc: doc))
-        ClosingContractTaskPairsProjected { pairs: ps } => roadmap_rendered_ghost_count_over(pairs: ps, doc: doc)
-      }
+      roadmap_rendered_ghost_count_with(pairs: pairs, doc: ghost_probe_document_over(base: base, ghost: ghost))
     }
   }
 }
