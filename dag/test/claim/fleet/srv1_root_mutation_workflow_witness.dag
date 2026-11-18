@@ -27,7 +27,7 @@ import gunbc.fleet.fleet_workflow_steps {
   gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes,
   gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minute_count,
 }
-import extdeps.github.actions { Job, Step, RunStep, UsesStep, InputChoice, InputString }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep, InputChoice, InputString, InputBoolean, InputEnvironment }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
@@ -368,6 +368,8 @@ test fn the_subject_host_input_offers_the_packed_lab_option() -> Bool {
   let opts = match fleet_converge_subject_host_input.type {
     InputChoice { options: o } => o
     InputString => []
+    InputBoolean => []
+    InputEnvironment => []
   }
   any(opts, o => o == lab_packed)
     && any(opts, o => o == (operator_host_srv1 as String))
