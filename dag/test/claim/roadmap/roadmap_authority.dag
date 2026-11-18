@@ -926,13 +926,7 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
   match roadmap_authority_fixture_envelopes() {
     Absent => false
     Present { value: envs } => {
-      // NO DRIFT FROM THE ENCODER: every committed file re-encoded from the table above must be byte
-      // for byte the file on disk. A hand-edit here reddens before any projection is consulted.
-      all(roadmap_authority_fixture_files(), f => {
-        let r = Filesystem.Read(path: roadmap_authority_fixture_path(f: f))
-        r.success && r.content == roadmap_authority_fixture_bytes(f: f)
-      })
-      && match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+      match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
         RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
         RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
           let declared_receipts = receipts |> filter(r => id_exists(id: r.node))
@@ -956,6 +950,18 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
       }
     }
   }
+}
+
+// THE COMMITTED BYTES ARE THE ENCODER'S OWN. Separated from the receipts witness on purpose: a byte that
+// drifted and a receipt that joined wrong are different failures, and a witness that folds them together
+// reports one of them and hides which. Every committed file is re-encoded from the fixture table and
+// compared byte for byte, so a hand-edit to the log reddens here, before any projection is consulted --
+// and the fixture cannot be quietly edited into agreement with a projection that has moved.
+test fn witness_committed_fixture_bytes_are_the_encoders_own() -> Bool {
+  all(roadmap_authority_fixture_files(), f => {
+    let r = Filesystem.Read(path: roadmap_authority_fixture_path(f: f))
+    r.success && r.content == roadmap_authority_fixture_bytes(f: f)
+  })
 }
 
 // A LIVE RECEIPT ON A NODE THE LOG HAS RETIRED REFUSES, with the node named. The receipt is the
