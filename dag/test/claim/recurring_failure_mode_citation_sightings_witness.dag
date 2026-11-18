@@ -28,14 +28,21 @@ module test.claim.recurring_failure_mode_citation_sightings_witness
 import std.algebra { count_equal, fold_list, length, list_append }
 import v2.std.text { string_all_chars_in }
 import std.decl_ref { DeclarationRef }
+import std.types { NonEmptyStr }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.recurring_failure_mode {
   AtCeiling,
   BelowCeiling,
+  FoundOnRung,
   RecurringFailureMode,
   RungRead,
   RungStanding,
   RungUnread,
 }
+import gunbc.recurring_failure_mode.a_bare_type_name_binds_the_wrong_declaration {
+  a_bare_type_name_binds_the_wrong_declaration,
+}
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved {
   FrozenResolverRunSighting,
   declaration_reference_cites_a_declaration_nothing_resolved,
@@ -332,4 +339,112 @@ test fn the_pair_predicate_refuses_a_rebuilt_binary_a_repeated_tree_and_prose() 
     && !pair_holds(before: before, after: prose_tree)
     && one_instrument_one_binary(before: before, after: prose_tree)
     && !run_records_are_well_shaped(before: before, after: prose_tree)
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  THE GUARD ON ONE ROW'S STANDING, AND WHY IT LIVES HERE RATHER THAN BESIDE THAT ROW.
+//  gunbc.recurring_failure_mode.a_bare_type_name_binds_the_wrong_declaration received its first
+//  specimen on 2026-11-18: a bare type-position name in an import-bearing file that compiled and
+//  executed, with the RESOLVING ROUTE NOT ESTABLISHED. The row's standing stayed unread on
+//  purpose, because a sighting that something compiled says nothing about which declaration it
+//  bound. That is a claim about the row's own future, and a claim about the future belongs in a
+//  check, not in prose: a consistency assertion sitting in the same file as the row it polices can
+//  be weakened in the very commit that changes the row, and the diff still reads as though the
+//  guard exists. So this is a separate module, and the row edit and this one cannot land together.
+//
+//  WHAT IS NOT CLAIMED HERE, stated first because the shape invites over-reading. This is NOT a
+//  corpus law that a read rung requires a populated evidence field: measured at main on 2026-11-18,
+//  95 of the 227 rows reporting RungRead have evidence: [], and the ledger's own header explains
+//  why that is legitimate -- evidence witnesses the CLASS through computed references, receipts
+//  carry the prose the authored fold consumes, and the two are deliberately different capabilities.
+//  A claim asserting otherwise would be red at main for 95 rows and would mis-state what the field
+//  means. What is asserted is narrower and specific to this row: while its only sighting is of the
+//  observed-to-compile basis, it may not report a rung.
+//
+//  The basis vocabulary below is LOCAL to this witness for the same reason. The ledger has no
+//  evidence-grade type, and minting one here would seat a second authority beside the guarantee
+//  ladder's own law (gunbc.design_argument::single_authority: "a second place that independently
+//  decides it is a fork"). If a second row ever needs the distinction, the vocabulary moves to the
+//  ledger then, with its own authority debate, rather than by accident.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+type ResolutionSightingBasis
+  = Observed_to_compile
+  | Resolution_route_observed
+
+//  An observed-to-compile sighting establishes that a build did not stop. It does not establish that
+//  a bare name bound the declaration the reader expects, nor which channel resolved it, so on its own
+//  it cannot support any rung. Only a sighting in which the resolving route was actually observed --
+//  a resolver read, or a resolve run with tracing -- can.
+fn sighting_establishes_a_rung(basis: ResolutionSightingBasis) -> Bool {
+  match basis {
+    Resolution_route_observed => true
+    Observed_to_compile => false
+  }
+}
+
+fn rung_is_unread(row: RecurringFailureMode) -> Bool {
+  match row.rung {
+    RungUnread { cause: _cause } => true
+    RungRead { found_at: _found_at, standing: _standing } => false
+  }
+}
+
+//  True when `row` reports a rung that the sighting it rests on does not establish. One basis per call
+//  because the row has exactly one sighting; a second sighting of either kind extends this to a list
+//  over the same predicate rather than to a new rule.
+fn reported_rung_outruns_the_sightings(row: RecurringFailureMode, basis: ResolutionSightingBasis) -> Bool {
+  match row.rung {
+    RungUnread { cause: _cause } => false
+    RungRead { found_at: _found_at, standing: _standing } => !sighting_establishes_a_rung(basis: basis)
+  }
+}
+
+//  THE ROW AS IT STANDS. Green today, and it is the assertion that has teeth: the moment anything
+//  reads the observed-to-compile specimen as a resolution and raises this row's rung, this claim goes
+//  red without anyone having to remember the caveat.
+test fn the_bare_type_name_row_holds_its_unread_standing_against_its_only_sighting() -> Bool {
+  let row = a_bare_type_name_binds_the_wrong_declaration
+  claim(
+    "the bare-type-name row's standing is still unread, which is what its single observed-to-compile sighting establishes and nothing more",
+    rung_is_unread(row: row)
+  )
+    && claim(
+      "and its standing does not outrun that sighting: an observed-to-compile sighting establishes that a build did not stop, not which declaration a bare type name bound",
+      !reported_rung_outruns_the_sightings(row: row, basis: Observed_to_compile)
+    )
+}
+
+//  THE DISCRIMINATOR. A guard that only ever sees one row and one basis cannot tell a refusal from a
+//  restatement, so the same row is rebuilt with its standing raised and offered both bases. It must be
+//  refused on the observed-to-compile basis and accepted on the route-observed one: that pair is what
+//  makes the refusal turn on the BASIS rather than on the row's identity.
+test fn a_read_standing_bought_with_an_observed_to_compile_sighting_is_refused() -> Bool {
+  let row = a_bare_type_name_binds_the_wrong_declaration
+  let climbed = RecurringFailureMode {
+    identity: "a_bare_type_name_binds_the_wrong_declaration" as NonEmptyStr,
+    rung: RungRead {
+      found_at: FoundOnRung { rung: Mitigatable },
+      standing: BelowCeiling {
+        current: FoundOnRung { rung: Mitigatable },
+        ceiling: StructurallyGuaranteed,
+        blocker: ClimbableButUnbuilt,
+        trigger_capability: "a type-position reference resolves to exactly one declaration identity visible through the reading module or its direct imports",
+      },
+    },
+    receipts: ["the same receipts as the real row; only the standing differs, so what is refused is the standing"],
+    evidence: [],
+  }
+  claim(
+    "a row reporting a read rung while its only sighting is observed-to-compile is refused",
+    reported_rung_outruns_the_sightings(row: climbed, basis: Observed_to_compile)
+  )
+    && claim(
+      "the very same row is NOT refused when the sighting observed the resolving route, so the refusal turns on the basis and not on the row being this one",
+      !reported_rung_outruns_the_sightings(row: climbed, basis: Resolution_route_observed)
+    )
+    && claim(
+      "and the synthetic differs from the row on record in the standing alone, which is what makes the pair above a test of the standing",
+      !rung_is_unread(row: climbed) && rung_is_unread(row: row)
+    )
 }
