@@ -54,6 +54,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.live_deploy.operations { systemctl_restart_command }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -171,6 +172,23 @@ fn release_pair_resume_decision(receipt_read: FilesystemReadOutcome, expected_bo
       false => MismatchRefusal { reason: release_pair_receipt_mismatch_reason }
     }
     FilesystemReadRefused { error: _ } => NotYetPlaced { }
+  }
+}
+
+// IS AN OCCUPIED LINK BENIGN (review 96241 finding 1, manager guard B)? LinkCreateNew on a path that already exists
+// yields FilesystemLinkTargetOccupied. That is benign ONLY when the existing link already points at THIS revision's
+// fetched member — i.e. a prior tick created it and then died before the receipt — so the fresh tick may resume to
+// write the receipt. Read the link back with the admitted readlink_command (extdeps.tools.gnu_coreutils): it prints
+// the target and refuses on a non-symlink, so a refusal or any DIFFERENT target is NOT this revision's placement and
+// must refuse, never be silently adopted (a silent widen). Pure over the readlink ProcessOutcome so it is witnessed.
+fn release_pair_occupied_link_benign(link_read: ProcessOutcome, expected_source: String) -> Bool {
+  match link_read {
+    ProcessOutputPresent { text: t } => match trim(s: t) == expected_source {
+      true => true
+      false => false
+    }
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
   }
 }
 

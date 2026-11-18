@@ -20,6 +20,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.tools.gnu_coreutils { readlink_command }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gh {
   gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
@@ -49,6 +50,7 @@ import gunbc.live_deploy.release_pair_delivery {
   release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
   release_pair_release_bins_artifact_name,
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+  release_pair_occupied_link_benign,
   SourceReceiptWrite,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -441,6 +443,25 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // restart the serve unit through the plan's OWN command. Every step is a real effect; if any fails the rest is NOT
 // performed (fail-closed: never restart onto a half-placed pair). Keep-last-good performs NO effect and exits success —
 // the unit ran and correctly delivered nothing. This IS the unit's own delivery, not a hand step.
+// THE SERVE RESTART IS A RENDERED STRING FROM THE SINGLE REGISTERED PRIVILEGED AUTHORITY, declared scaffold (review
+// 96241 finding 2). The reviewer's typed-argv ask is legitimate, but typing it means CONVERTING
+// gunbc.live_deploy.operations::systemctl_restart_command — the one sudo restart authority, registered at
+// gunbc.auth.privileged_effect_registry:1376 and shared by other apply legs — from a String builder to an ArgvCommand
+// builder. That conversion is its OWN authority transition (privileged builder + registry + census), not this PR's, and
+// adding a second ArgvCommand restart beside it would create an unregistered sudo restart. So both shell-as-medium
+// legs on this path (this restart and the consumer key-check verify) take the reviewer's declared-scaffold option,
+// each a declared row with a dissolution trigger, no new mint and no census change here (manager decision).
+data release_pair_restart_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.operations",
+    decl_name: "systemctl_restart_command",
+    field: WholeDeclaration
+  }
+}
+
+data release_pair_restart_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the pair-delivery restart renders operations::systemctl_restart_command to a String and posix_sh_program_command's it; the service restart should be a sealed argv like start/enable. DISSOLVES WHEN operations::systemctl_restart_command returns ArgvCommand under its existing privileged_effect_registry row (its other String consumers migrate to shell_command_text_of_argv at their call sites), leaving no shell-as-medium medium in the pair-delivery restart leg.")
+
 // PLACE-LEG HELPERS (review 96241 finding 1): split so both the AlreadyPlaced resume and the NotYetPlaced fresh path
 // share ONE write-then-restart. They perform the effects; the pure resume DECISION is release_pair_resume_decision (fold).
 // The restart carries the rendered command from the SINGLE registered privileged restart authority
@@ -509,10 +530,19 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
             source: place.source, path: place.destination,
             success: link.success, error: link.error, error_kind: link.error_kind,
           ) {
-            // Linked now, OR the per-revision locus link already exists from a tick that died before the receipt was
-            // written — both mean the locus points at this revision's fetched member, so continue to write the receipt.
+            // Linked now: proceed to write the receipt.
             FilesystemLinked { path: _ } => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
-            FilesystemLinkTargetOccupied { path: _ } => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+            // The locus link already exists (a tick died after the link, before the receipt). Benign ONLY if it
+            // already points at THIS revision's fetched member — read it back with the admitted readlink_command and
+            // compare; an occupied link pointing elsewhere is a foreign placement and refuses (manager guard B).
+            FilesystemLinkTargetOccupied { path: p } =>
+              match release_pair_occupied_link_benign(
+                link_read: run_shell_command_capture(command: readlink_command(path: p), transport: LocalExec),
+                expected_source: place.source,
+              ) {
+                true => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+                false => exit_failure(reason: "pair-deliver: the per-revision release locus link is occupied by a target other than this revision's fetched member (or is not a symlink) — refusing rather than adopting a foreign placement (fail-closed, review 96241 f1)")
+              }
             _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
           }
         }
