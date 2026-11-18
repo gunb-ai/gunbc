@@ -4801,10 +4801,12 @@ fn fleet_converge_mtcollins1_boot_step() -> Outcome<Step> {
 }
 
 fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins unit 1 PXE MAC-discovery cycle under the unit hold (hold, one-shot PXE selection, PXE/controller handoff, release)" },
     id: Present { value: "mtcollins1_pxe_mac_discovery" },
-    run: gunbc_ci_mtcollins1_pxe_mac_discovery_invoke(),
+    run: run_text,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4814,14 +4816,17 @@ fn fleet_converge_mtcollins1_pxe_mac_discovery_step() -> Outcome<Step> {
     if_condition: Present { value: fleet_converge_mtcollins1_pxe_mac_discovery_step_if_observed },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
-  })
+  }) }
+  )
 }
 
 fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Outcome<Step> {
-  outcome_accepted(value: RunStep {
+  bind_outcome(
+    o: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
     name: Present { value: "Mt. Collins unit 1 controller cold reset under the unit hold (read, one IPMI cold reset attempt, watch availability lost then recovered, read; no chassis-power command)" },
     id: Present { value: "mtcollins1_bmc_cold_reset" },
-    run: gunbc_ci_mtcollins1_bmc_cold_reset_invoke(),
+    run: run_text,
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -4831,7 +4836,8 @@ fn fleet_converge_mtcollins1_bmc_cold_reset_step() -> Outcome<Step> {
     if_condition: Present { value: fleet_converge_mtcollins1_bmc_cold_reset_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: minute_count(mtcollins1_bmc_cold_reset_step_timeout_minutes()) }
-  })
+  }) }
+  )
 }
 
 fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
@@ -4868,15 +4874,16 @@ fn fleet_converge_site_pxe_edge_admitted_artifact_id_interpolation() -> String {
   interpolate(expression: ContextAccess { context: Steps, path: [site_pxe_edge_admit_step_id as String, "outputs", site_pxe_edge_admitted_artifact_id_output as String] })
 }
 
-fn fleet_converge_site_pxe_edge_receipt_steps(reading: DispatchFieldModeReading) -> List<Step> {
+fn fleet_converge_site_pxe_edge_receipt_steps(reading: DispatchFieldModeReading) -> List<Outcome<Step>> {
   let gate = fleet_converge_site_pxe_edge_receipt_step_if(reading: reading)
   let pointer = fleet_converge_dispatch_input_interpolation(input: reading.field as String)
   let artifact_id = fleet_converge_site_pxe_edge_admitted_artifact_id_interpolation()
-  [
-    RunStep {
+  let admit_step = bind_outcome(
+    o: gunbc_ci_site_pxe_edge_receipt_admit_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
       name: Present { value: "Admit the site PXE edge run pointer for its live-evidence record and hand on the artifact id" },
       id: Present { value: site_pxe_edge_admit_step_id as String },
-      run: gunbc_ci_site_pxe_edge_receipt_admit_invoke(),
+      run: run_text,
       shell: none,
       env: Present { value: [
         kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
@@ -4886,8 +4893,30 @@ fn fleet_converge_site_pxe_edge_receipt_steps(reading: DispatchFieldModeReading)
       if_condition: Present { value: gate },
       continue_on_error: none,
       timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-    },
-    UsesStep {
+    }) }
+  )
+  let cite_step = bind_outcome(
+    o: gunbc_ci_site_pxe_edge_receipt_cite_invoke(),
+    f: fn(run_text) { outcome_accepted(value: RunStep {
+      name: Present { value: "Cite the downloaded site PXE edge record: the identity is the by-id download's own, the bytes are its file" },
+      id: Present { value: site_pxe_edge_cite_step_id as String },
+      run: run_text,
+      shell: none,
+      env: Present { value: [
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: site_pxe_edge_pointer_env_name as String, value: yaml_string(s: pointer)),
+        kv(key: site_pxe_edge_artifact_id_env_name as String, value: yaml_string(s: artifact_id)),
+        kv(key: site_pxe_edge_download_path_env_name as String, value: yaml_string(s: interpolate(expression: ContextAccess { context: Steps, path: [site_pxe_edge_download_step_id as String, "outputs", download_artifact_download_path_output] }))),
+      ] },
+      working_directory: none,
+      if_condition: Present { value: gate },
+      continue_on_error: none,
+      timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    }) }
+  )
+  [
+    admit_step,
+    outcome_accepted(value: UsesStep {
       name: Present { value: "Download the site PXE edge live-evidence record by artifact id from the admitted run" },
       id: Present { value: site_pxe_edge_download_step_id as String },
       uses: download_artifact_action,
@@ -4903,23 +4932,8 @@ fn fleet_converge_site_pxe_edge_receipt_steps(reading: DispatchFieldModeReading)
       if_condition: Present { value: gate },
       continue_on_error: none,
       timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
-    },
-    RunStep {
-      name: Present { value: "Cite the downloaded site PXE edge record: the identity is the by-id download's own, the bytes are its file" },
-      id: Present { value: site_pxe_edge_cite_step_id as String },
-      run: gunbc_ci_site_pxe_edge_receipt_cite_invoke(),
-      shell: none,
-      env: Present { value: [
-        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-        kv(key: site_pxe_edge_pointer_env_name as String, value: yaml_string(s: pointer)),
-        kv(key: site_pxe_edge_artifact_id_env_name as String, value: yaml_string(s: artifact_id)),
-        kv(key: site_pxe_edge_download_path_env_name as String, value: yaml_string(s: interpolate(expression: ContextAccess { context: Steps, path: [site_pxe_edge_download_step_id as String, "outputs", download_artifact_download_path_output] }))),
-      ] },
-      working_directory: none,
-      if_condition: Present { value: gate },
-      continue_on_error: none,
-      timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-    },
+    }),
+    cite_step,
   ]
 }
 
@@ -6465,7 +6479,7 @@ concat(
     outcome_accepted(value: fleet_converge_mtcollins1_boot_pair_build_step()),
     fleet_converge_mtcollins1_boot_admit_step(),
   ],
-    lift_steps(fleet_converge_site_pxe_edge_receipt_steps(reading: mtcollins1_boot_site_pxe_edge_run_reading)),
+    fleet_converge_site_pxe_edge_receipt_steps(reading: mtcollins1_boot_site_pxe_edge_run_reading),
   ),
     [
     outcome_accepted(value: fleet_converge_mtcollins1_boot_wif_auth_step()),
