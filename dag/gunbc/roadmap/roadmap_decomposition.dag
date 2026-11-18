@@ -1,13 +1,14 @@
 module gunbc.roadmap.roadmap_decomposition
 
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool, List, Map }
 import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
+
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 
 // THE RECURSIVE DECOMPOSITION OF EVERY OPEN BOUND WORK ITEM, DONE UP FRONT (operator, 2026-11-17: "basically i'm
@@ -349,6 +350,70 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
   }
 }
 
+// THE APPEND-TIME GUARD: the ONE place that decides whether a Claimed of a given GRAIN may be recorded
+// against `node`. It lives here, beside decomposition_has_leaf_path -- the leaf authority -- so the well-
+// formedness judgment is never re-spelled at a call site (single_authority: consumers import this one
+// check, they do not copy it). The minting producers that can reach it (roadmap_event_cli, roadmap_serve)
+// route a Claimed through it before appending; roadmap_issue_command cannot import it (cycle:
+// roadmap_authority imports this module which imports roadmap_event_log which roadmap_issue_command imports).
+// The two decode sites never mint, so they never call it.
+//
+// The decision is by decomposition COUNT, read through decomposition_for (the carrier's own authority),
+// exactly as the operator ruled (2026-11-18): a count of 0 means there is no leaf to name, so a Pathless
+// is admitted and a Leaf names a path in nothing (refused, leaf-path-unknown); a count of 1 applies the
+// first-landing ruling -- a Claimed must name a leaf (Pathless refused), the leaf must belong to THIS
+// item (else leaf-wrong-item), and it must be a leaf the decomposition actually has (else leaf-path-
+// unknown); a count above 1 is ambiguous and refuses EVERY Claimed with a typed decomposition-ambiguous
+// reason -- the guard never silently picks one decomposition to check against. Every refusal is typed
+// (fail_closed), never a boolean that a caller could invert or ignore. The CLI front-end computes this
+// verdict BEFORE appending (kinds that carry no grain skip it), so the append and exit block is one
+// block, not a copy per grain branch (minimize_redundancy).
+type ClaimedGrainRefusal
+  = LeafPathUnknown { path: LeafPath }
+  | LeafWrongItem { path: LeafPath, expected: RoadmapNodeId }
+  | PathlessOnDecomposed { node: RoadmapNodeId }
+  | DecompositionAmbiguous { node: RoadmapNodeId, count: Int }
+
+type ClaimedGrainVerdict
+  = Admitted { grain: ClaimGrain }
+  | Refused { reason: ClaimedGrainRefusal }
+
+fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> ClaimedGrainVerdict {
+  let ds = decomposition_for(node: node)
+  let c = count(ds)
+  if c > 1 {
+    Refused { reason: DecompositionAmbiguous { node: node, count: c } }
+  } else if c == 0 {
+    match grain {
+      Pathless => Admitted { grain: Pathless }
+      AtPath { path } => Refused { reason: LeafPathUnknown { path: path } }
+    }
+  } else {
+    match grain {
+      Pathless => Refused { reason: PathlessOnDecomposed { node: node } }
+      AtPath { path } =>
+        if path.item != node {
+          Refused { reason: LeafWrongItem { path: path, expected: node } }
+        } else if decomposition_has_leaf_path(path: path) {
+          Admitted { grain: grain }
+        } else {
+          Refused { reason: LeafPathUnknown { path: path } }
+        }
+    }
+  }
+}
+
+// Render the guard's typed refusal as a human-readable string. The CLI and the served route both
+// call this so the ruled reason appears identically no matter which front-end is refused.
+fn roadmap_claimed_grain_refusal_text(reason: ClaimedGrainRefusal) -> String {
+  match reason {
+    LeafPathUnknown { path } => "the claimed leaf stage/" + to_string(value: nat_to_int(n: path.stage)) + "/" + to_string(value: nat_to_int(n: path.piece)) + "/" + to_string(value: nat_to_int(n: path.member)) + " is not a leaf the item's decomposition has"
+    LeafWrongItem { path, expected } => "the claimed leaf names item '" + (path.item as String) + "' but the claim is being recorded against '" + (expected as String) + "'"
+    PathlessOnDecomposed { node } => "the item '" + (node as String) + "' has a decomposition, so its claim must name a leaf (a whole-item claim is refused from the first landing)"
+    DecompositionAmbiguous { node, count } => "the item '" + (node as String) + "' has " + to_string(value: count) + " decompositions; a claim is refused until exactly one is declared"
+  }
+}
+
 fn parent_stage_count(item: RoadmapNodeId) -> Int {
   fold(decomposition_for(node: item), init: 0, f: fn(acc, d) { acc + count(d.stages) })
 }
@@ -510,6 +575,8 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "namespace-legacy-choice-retirement", waits_on: [
     waits(item: "v1-interpreter-delete", from_stage: 1, into_stage: 0),
     waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
+    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 0),
+    waits(item: "declaration-identity-switchover", from_stage: 0, into_stage: 0),
   ], stages: [
     [
       leaf(label: "delete name-string matching", days: 5),
@@ -1434,12 +1501,15 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // at member 0, one per member of a produced/read family at its DECLARED count, and one per member of a
 // FindingsOf family at a SIMULATION-input count -- an ASSUMED count the carrier itself declares none of.
 // The edge relation is stage k depending on stage k-1, plus every waits_on row aimed into the child's own
-// stage. The expansion WRITES NOTHING. Its executing consumer today is the leaf-expansion witness
+// stage. The expansion WRITES NOTHING. It carries no order or date field of its own: the occurrences are an
+// unordered set and the edges are the dependency relation, not a sequence -- an order or date field would
+// appear only where a named consumer decides something from it (DESIGN.md *Plans are intentions*, ruling
+// gunbc.design_ruling::planning_scheduling_is_cut). Its executing consumer today is the leaf-expansion witness
 // (test.claim.roadmap.roadmap_schedule_leaf_expansion_witness), which reads the occurrences and their edges
-// through the accessors below. Its declared frontier consumer is roadmap-schedule-list-scheduling -- the next
-// link in gunb-ai/gunbc#16650's chain to the roadmap Gantt -- which will read expand_decomposition and these
-// accessors to order occurrences into a schedulable list; the trigger is that unit landing over this branch. No
-// schedule, calendar, in-flight set, or readiness unit is built or claimed HERE (out of scope). It mints no
+// through the accessors below. Its only later consumer is the declared frontier roadmap-schedule-list-scheduling,
+// declared in the approved roadmap gunb-ai/gunbc#16650, which reads expand_decomposition and these accessors and
+// decides under its OWN ticket what to do with the occurrences; the trigger is that unit landing over this
+// branch. This change builds no schedule, calendar, or in-flight set and claims none (out of scope). It mints no
 // gunbc.roadmap.roadmap_authority node -- a leaf has no identity until claimed. Occurrences are keyed by the
 // single carrier LeafPath (imported from gunbc.roadmap.roadmap_model above); nothing here re-spells that tuple.
 //
@@ -1497,7 +1567,7 @@ type ExpansionRefusal =
 // The expansion is fail-closed: it either holds the occurrences and their edges, or a typed, located refusal.
 type Expansion
   = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge> }
-  | Refused { cause: ExpansionRefusal }
+  | ExpansionRejected { cause: ExpansionRefusal }
 
 // Members: emit `remaining` occurrences with the given count source. `remaining` is a Nat walked DOWN by
 // structural recursion (Zero / Succ), exactly like the stage and piece walkers -- there is no Int loop bound to
@@ -1616,8 +1686,22 @@ fn all_occurrences(d: WorkDecomposition, findings_count: Nat) -> OccurrenceBuild
   stages_occurrences(item: d.node, stages: d.stages, stage: Zero, findings_count: findings_count)
 }
 
-fn occurrences_at_stage(occs: List<Occurrence>, stage: Int) -> List<Occurrence> {
-  filter(occs, o => nat_to_int(n: o.path.stage) == stage)
+// Group the occurrences by stage ONCE, into a total function stage -> occurrences. Both edge builders below look
+// a stage up here instead of scanning the whole occurrence list per occurrence / per row: the old
+// occurrences_at_stage was a full filter invoked inside an outer scan, a proven quadratic fold that DESIGN.md
+// *How to work* says is ALWAYS fixed regardless of realized n ("a copied accumulator, a quadratic fold ... n is
+// small here is not time-stable"). Building the map is one pass; each new member is PREPENDED with
+// concat([o], prev) -- concat copies only the one-element left list, never the growing group -- so the build is
+// not a copied-accumulator fold either. Member order is reversed by prepending; occurrence order is
+// order-insensitive here (the witness checks counts and per-edge endpoints, not sequence).
+fn occurrences_by_stage(occs: List<Occurrence>) -> Map<Int, List<Occurrence>> {
+  let groups: Map<Int, List<Occurrence>> = fold(occs, init: empty_map(), f: fn(m, o) {
+    match map_lookup(m: m, key: nat_to_int(n: o.path.stage)) {
+      Present { value: prev } => map_insert(m: m, key: nat_to_int(n: o.path.stage), value: concat([o], prev))
+      Absent => map_insert(m: m, key: nat_to_int(n: o.path.stage), value: [o])
+    }
+  })
+  groups
 }
 
 // THE single place the "holds no single decomposition" rule is computed -- the same rule decomposition_has_leaf_path
@@ -1662,13 +1746,17 @@ fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_cou
   }
 }
 
-// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1.
+// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1. The lower
+// group is a single map lookup (from occurrences_by_stage), not a scan of the whole list per occurrence -- the
+// prior version filtered occs once per occurrence, a quadratic fold DESIGN.md *How to work* says is always fixed.
+// A stage with no predecessor group (including stage 0, whose predecessor -1 is absent) simply contributes no
+// edges; nothing is fabricated.
 fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
+  let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   flat_map(occs, o =>
-    if nat_to_int(n: o.path.stage) <= 0 {
-      []
-    } else {
-      map(occurrences_at_stage(occs: occs, stage: nat_to_int(n: o.path.stage) - 1), u => OccurrenceEdge { from: u.path, to: o.path })
+    match map_lookup(m: groups, key: nat_to_int(n: o.path.stage) - 1) {
+      Absent => []
+      Present { value: lower } => map(lower, u => OccurrenceEdge { from: u.path, to: o.path })
     }
   )
 }
@@ -1685,13 +1773,20 @@ type WaitsEdges
   | WaitsRejected { cause: ExpansionRefusal }
 
 fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: Nat) -> WaitsEdges {
+  let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   fold(d.waits_on, init: WaitsBuilt { edges: [] }, f: fn(acc, w) {
     match acc {
       WaitsRejected { cause } => acc
       WaitsBuilt { edges } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
         Rejected { cause } => WaitsRejected { cause: cause }
-        Resolved { occurrences: ps } =>
-          WaitsBuilt { edges: concat(flat_map(occurrences_at_stage(occs: occs, stage: w.into_stage), c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+        Resolved { occurrences: ps } => match map_lookup(m: groups, key: w.into_stage) {
+          // No child occurrence sits at into_stage: this row adds no edges (the parent is still resolved and
+          // validated above, so a bad parent still refuses -- this is not a dropped parent). Mirrors the old
+          // filter-to-empty behavior, now via a map lookup instead of a full scan (how_to_work: no quadratic).
+          Absent => WaitsBuilt { edges: edges }
+          Present { value: cs } =>
+            WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+        }
       }
     }
   })
@@ -1706,13 +1801,13 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
 // decomposition does it emit occurrences and edges. No branch here mints from an un-guarded count.
 fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion {
   if !decomposition_dependencies_well_formed(d: d) {
-    Refused { cause: DependencyClaimRefused { item: d.node } }
+    ExpansionRejected { cause: DependencyClaimRefused { item: d.node } }
   } else {
     match all_occurrences(d: d, findings_count: findings_count) {
-      OccsRejected { item: bad } => Refused { cause: NonPositiveDeclaredCount { item: bad } }
+      OccsRejected { item: bad } => ExpansionRejected { cause: NonPositiveDeclaredCount { item: bad } }
       OccsBuilt { occurrences: occs } =>
         match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
-          WaitsRejected { cause } => Refused { cause: cause }
+          WaitsRejected { cause } => ExpansionRejected { cause: cause }
           WaitsBuilt { edges } => Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), edges) }
         }
     }
@@ -1724,47 +1819,67 @@ fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion 
 // than one.
 fn expand_node(item: RoadmapNodeId, findings_count: Nat) -> Expansion {
   match unique_decomposition(item: item) {
-    UniqueRejected { cause } => Refused { cause: cause }
+    UniqueRejected { cause } => ExpansionRejected { cause: cause }
     UniqueFound { d: d } => expand_decomposition(d: d, findings_count: findings_count)
   }
 }
 
-fn occurrence_is_declared(o: Occurrence) -> Bool {
-  o.count_source == Declared
-}
-
-fn occurrence_is_assumed(o: Occurrence) -> Bool {
-  o.count_source == Assumed
-}
-
-// An occurrence is OFFERED CLAIMABLE under a policy DISTINCT from "its count is declared": it may be offered
+// An occurrence is OFFERED CLAIMABLE under a policy DISTINCT from a mere count test: it may be offered
 // only when its count is DECLARED *and* its path actually resolves under the carrier's own
-// decomposition_has_leaf_path. This is deliberately not a rename of occurrence_is_declared -- an ASSUMED
-// FindingsOf member is not declared (so not offered), and a declared member whose index the carrier does not
-// acknowledge is likewise not offered. It composes existing authority (the carrier's leaf predicate) rather
-// than restating it.
+// decomposition_has_leaf_path. It composes the count_source test with existing authority (the carrier's
+// leaf predicate) rather than restating it -- an ASSUMED FindingsOf member is not declared (so not offered),
+// and a declared member whose index the carrier does not acknowledge is likewise not offered.
+// The count_source is matched directly here and in the witness: a two-case type needs no is_* wrapper.
 fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
-  occurrence_is_declared(o: o) && decomposition_has_leaf_path(path: o.path)
+  o.count_source == Declared && decomposition_has_leaf_path(path: o.path)
 }
 
-// The working-day PRIOR a leaf OCCURRENCE carries, read straight off the decomposition the expansion was run on,
-// through its single carrier LeafPath -- the schedule's "how long does this leaf take" question answered by
-// reading the SAME WorkPiece.days the expansion walked, never by copying it (single_authority). A member of a
-// family takes the family's per-member days; a Join, Decision or Composite carries no duration, so it reads as
-// zero days -- the Join is the zero-day barrier the scheduler places without a worker. A path the decomposition
-// does not have reads as zero: nothing here mints a day count for a leaf that is not there. It is keyed off the
-// decomposition VALUE (the one expand_decomposition was handed), so a planted decomposition reads its own days.
-fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Int {
-  match d.stages[nat_to_int(n: path.stage)] {
-    Absent => 0
-    Present { value: st } => match st.pieces[nat_to_int(n: path.piece)] {
-      Absent => 0
-      Present { value: p } => match p {
-        Leaf { label, days, evidence } => days
-        Family { label, days, population, owner } => days
-        Join { label } => 0
-        Decision { label, alternatives } => 0
-        Composite { label, stages } => 0
+// ---- The priced prior of one occurrence (roadmap-schedule-list-scheduling, gunb-ai/gunbc#16650)
+//
+// A schedule needs the WORKING-DAY prior an occurrence carries. The days live in the decomposition (WorkPiece.days
+// is the single authority for them); this only LOOKS UP the prior a member path carries and answers Absent when the
+// path has no duration to give: a non-leaf (Join / Decision / Composite), a leaf asked for anything but member 0, a
+// bounded family whose member index its population does not hold, or a stage / piece that is not there. Answering
+// Present { value: 0 } for any of those would mint a zero-day leaf for a path that carries no duration -- a
+// fabricated default and a plausible output invented where the real answer is a refusal
+// (@ref(gunbc.design_argument::fail_closed): "no plausible output is fabricated"; "A diff landing a silent widen,
+// fabricated default ... is a hard reject"). Refusing is the consumer's job; this function's job is to answer
+// Absent, never a made-up day count.
+//
+// The shape follows decomposition_has_leaf_path exactly -- the same Nat indexes crossed once via nat_to_int, the
+// same list reads, the same arm-by-arm answer -- so the two cannot drift on WHICH path carries a duration: that
+// function answers whether a worker may CLAIM the leaf, this one answers what a SIMULATION pays for it.
+// A FindingsOf family is the one arm the two answer differently, and deliberately: decomposition_has_leaf_path
+// refuses a findings member because no such leaf exists to claim until the probe produces it, while an expansion
+// emits those very members as occurrences with count_source Assumed -- a declared simulation input
+// (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
+// carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
+// NOT bounded by population_members (which answers 1 for a FindingsOf carrier, a count the probe does not hold);
+// it is bounded by the member set the expansion itself emitted, which the scheduler checks against its own
+// occurrence set (MemberIndexBeyondExpansion) instead of here. A Produced or Reading family IS bounded by its
+// declared count in both.
+
+fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Optional<Int> {
+  let stage_index: Int = nat_to_int(n: path.stage)
+  let piece_index: Int = nat_to_int(n: path.piece)
+  let member_index: Int = nat_to_int(n: path.member)
+  match d.stages[stage_index] {
+    Absent => Absent
+    Present { value: st } => match st.pieces[piece_index] {
+      Absent => Absent
+      Present { value: pc } => match pc {
+        Leaf { label, days, evidence } => if member_index == 0 { Present { value: days } } else { Absent }
+        Family { label, days, population, owner } =>
+          if population_is_findings(p: population) {
+            Present { value: days }
+          } else if member_index < population_members(p: population) {
+            Present { value: days }
+          } else {
+            Absent
+          }
+        Join { label } => Absent
+        Decision { label, alternatives } => Absent
+        Composite { label, stages } => Absent
       }
     }
   }

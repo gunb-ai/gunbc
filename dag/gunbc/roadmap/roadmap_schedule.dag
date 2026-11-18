@@ -1,34 +1,57 @@
 module gunbc.roadmap.roadmap_schedule
 
+// WHY THIS UNIT IS INSIDE THE DESIGN (reconciled with the scheduling cut). gunbc.design_ruling::planning_scheduling_is_cut
+// (2026-11-11) cut the STORED schedule and the daily workspace's own consumption of it -- "what to work on next is the
+// operator's choice." gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read (2026-11-18, and on main)
+// NARROWS that cut in the operator's words -- "we cut the scheduling and are redoing it now - but yes, you should
+// compute it/cache it/re-read it - the planning we did now is relevant": a schedule ANSWER computed at the read --
+// start and finish per leaf, the lanes, the critical path and the next-leaf offer -- is NOT a schedule type, a
+// time-period record, a forecast state or a synchronized today list, because it is recomputed on every read and no
+// cache of it is ever authoritative. What follows is exactly such an answer: computed, never stored as a schedule,
+// recomputed on read (see `schedule_read`). Its named consumers decide from its day and lane fields: the
+// bottleneck-and-offer row (which leaf to offer next among those the readiness predicate already admits, bounded by
+// BeltCapacity) and the roadmap-work-item-projection that renders the planning page. Days here are ABSTRACT until the
+// calendar-binding unit binds them; nothing in this file writes a date, a stored schedule, or a today list.
+
 // THE LIST SCHEDULER (roadmap-schedule-list-scheduling). It reads the leaf-expansion's OUTPUT -- the flat
 // occurrence list and their edges (Expansion) -- and answers, for an abstract worker count handed in as a
 // SIMULATION INPUT: per leaf occurrence its start and finish day, the lane it sits in, how many leaves are in
 // flight on each day, and the critical path. Days stay ABSTRACT (a day is a count, not a date) until the
-// calendar unit binds them; this unit writes no calendar and no claim.
+// calendar unit binds them; this unit writes no calendar and no claim. That grain is carried as a typed frontier
+// row that already tracks it -- see the field markers below.
 //
 // The priority is LONGEST REMAINING PATH FIRST: every occurrence's rank is its own working days plus the longest
-// remaining path through the successors it waits nothing on; a ready occurrence with the largest rank is placed
+// remaining path through the successors it waits nothing on; the occurrence with the largest rank is placed
 // next, on the lane that frees earliest. A ZERO-DAY JOIN is placed without a worker: the expansion emits no
 // occurrence for a Join, so a Join consumes no lane and adds no in-flight leaf -- it is the day-zero barrier the
 // stage edges already carry, and it never appears as a scheduled leaf.
 //
 // The worker count is shown as an input and NEVER becomes a fact: it is echoed back inside the answer labelled
-// `workers`, and a non-positive worker count is a typed refusal rather than a coerced value.
+// `workers`, carried by the concurrency carrier this repo already decided on -- `roadmap_belt::BeltCapacity`
+// (`max_concurrent`), the same one `roadmap_forecast::ScheduleForecastAssumptions.worker_concurrency_cap` takes --
+// because "how many run at once" is one quantity with one authority (`single_authority`). A capacity that is not
+// positive refuses by name, in step with that lane's own `WorkerConcurrencyCapInvalid`: this unit does NOT re-type
+// another lane's carrier (making `BeltCapacity.max_concurrent` a `PositiveInt` would be a change to the belt
+// authority, outside this ticket's boundary), and it does not mint a second cap scalar.
 //
 // single_authority: occurrences, their edges, their LeafPaths and their count sources are IMPORTED from the
 // expansion; their working-day priors are read back through the SAME carrier via piece_member_days. Nothing here
-// re-expands a decomposition or copies a row. fail_closed: a refused expansion, a non-positive worker count, and a
-// cyclic occurrence graph each answer with a typed Refused cause rather than a fabricated schedule.
+// re-expands a decomposition or copies a row. fail_closed: a refused expansion, a non-positive worker count, an
+// occurrence whose carrier path carries no working-day prior, a cyclic occurrence graph, and a run that leaves
+// occurrences unplaced each answer as one `ScheduleRefusal` arm -- typed, located by the carrier paths it carries,
+// and countable -- rather than a fabricated schedule, a partial schedule, or prose.
 // schedule_answers_are_computed_cached_and_re_read: the answer is COMPUTED from the expansion on every call; a
-// cache passed to `schedule_read` is derived and NEVER authoritative -- the read recomputes and ignores it.
+// cache handed to `schedule_read` is derived and NEVER authoritative -- the read recomputes, supersedes the cached
+// answer, and says how many cached leaves no longer match.
 
 import std.types { Bool, Int, List, String, Map }
-import std.algebra { empty_map, map_insert, map_lookup, map_contains_key }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push, list_reverse }
 import std.integer { nat_to_int }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import std.list { first_where }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_decomposition {
-  Expansion, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
+  Expansion, ExpansionRefusal, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
   piece_member_days,
 }
 
@@ -36,6 +59,10 @@ import gunbc.roadmap.roadmap_decomposition {
 // COUNT SOURCE kept visible -- an Assumed occurrence is a simulation input, and it stays marked so downstream.
 type ScheduledLeaf {
   path: LeafPath
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family. These are
+  // WORKING-DAY counts read through roadmap_decomposition::piece_member_days, so they INHERIT the grain that row
+  // already tracks on WorkPiece.days (owning lane: std.measure); this unit does not re-track it and writes no
+  // calendar instant -- roadmap-schedule-calendar-binding is the lane that binds the grain to dates.
   start_day: Int
   finish_day: Int
   lane: Int
@@ -44,9 +71,11 @@ type ScheduledLeaf {
 
 // THE SCHEDULE ANSWER, the computed fields bundled so callers read them without matching the coproduct.
 type ScheduleAnswer {
-  workers: Int
+  workers: BeltCapacity
   leaves: List<ScheduledLeaf>
   in_flight_per_day: List<Int>
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same
+  // inherited grain as ScheduledLeaf.start_day (marker there; the tracked row lives on WorkPiece.days).
   horizon: Int
   critical_path: List<LeafPath>
   critical_length: Int
@@ -55,11 +84,46 @@ type ScheduleAnswer {
 // THE SCHEDULE ANSWER. `workers` is the worker count shown as an INPUT (never derived into a fact). `leaves` places
 // every scheduled occurrence; `in_flight_per_day` is the count of leaves running on each day from 0 to horizon-1;
 // `horizon` is the last finish day; `critical_path` is the longest remaining path as a chain of LeafPaths and
-// `critical_length` its total days. The failure arm is named `NotScheduled` (not `Refused`) so it never collides
-// with the `Refused` constructor that comes in with the imported `Expansion`.
+// `critical_length` its total days.
+//
+// WHY THIS IS NOT THE FORECAST'S CRITICAL PATH (conformance: "Diverges with no reason -- the only red").
+// gunbc.roadmap.roadmap_forecast already answers a critical-path question and cites the method row
+// `critical_path_method_used`; this unit does not re-answer it, and the two quantities are distinguishable:
+//   * the forecast projects a THREE-POINT CALIBRATION over ROADMAP ITEM nodes -- `NodeScheduleForecast` per
+//     `RoadmapNodeId`, durations held as `std.measure` milliseconds measured against a `ForecastAnchorObservation`,
+//     with `critical_path_minimum` and `capacity_constrained_minimum` as statistical LOWER BOUNDS;
+//   * this unit places the LEAF OCCURRENCES of one admitted expansion deterministically, from the working-day priors
+//     the carrier declares, and answers per-leaf start/finish, lane, in-flight per day and the dependency chain that
+//     decides the finish. No anchor, no calibration population, no milliseconds: days stay abstract until
+//     roadmap-schedule-calendar-binding binds them.
+// What IS shared rather than re-decided: the concurrency carrier (`roadmap_belt::BeltCapacity`), the cap-invalid
+// refusal's name and shape, the `path_key`/`LeafPath` carrier, and the composition law the rank obeys -- sequence
+// sums and parallel takes the larger, which is `std.realization_measurement::time_measure_seq` /
+// `time_measure_par` (`schedule_batch_critical_path`); this module's pass is the fixpoint over THIS occurrence graph
+// that turns that law into a per-node priority, which no existing row computes.
+//
+// THE REFUSAL IS A COPRODUCT, NOT A SENTENCE (fail_closed: "A failure arm refuses, never widens, and every
+// degradation is typed, located and countable"; source_annotations: "Prose is not forbidden; unclassified prose
+// is"). Five distinct causes can refuse this answer, and a consumer -- roadmap-schedule-bottlenecks-and-offer, then
+// roadmap-work-item-projection -- must know WHICH one fired and WHICH carrier paths caused it without parsing text.
+// The expansion arm carries the parent's own `ExpansionRefusal` row rather than restating it (single_authority), and
+// the two path-located arms carry the `LeafPath`s themselves -- the same carrier the answer is keyed by. Any prose a
+// report wants is rendered FROM the arm; nothing downstream parses it.
+//
+// `NotScheduled` (not `Refused`) so the constructor never collides with the `Refused` that comes in with the
+// imported `Expansion`.
+type ScheduleRefusal
+  = OverRefusedExpansion { cause: ExpansionRefusal }
+  | ConcurrencyCapInvalid { cap: BeltCapacity }
+  | NoWorkingDayPrior { paths: List<LeafPath> }
+  | CyclicOccurrenceGraph
+  | UnplacedOccurrences { paths: List<LeafPath> }
+  | MemberIndexBeyondExpansion { paths: List<LeafPath> }
+
 type Schedule
   = Scheduled { answer: ScheduleAnswer }
-  | NotScheduled { cause: String }
+  | NotScheduled { refusal: ScheduleRefusal }
+
 
 // An occurrence reduced for scheduling: its carrier LeafPath, the string key the maps are keyed by, its working-day
 // prior read back through the carrier, and its count source (Declared or Assumed) kept for the answer.
@@ -70,21 +134,39 @@ type SchedNode {
   source: OccurrenceCount
 }
 
-// One Bellman-Ford relaxation pass over the occurrence ranks.
-type Relaxed { changed: Bool, rank: Map<String, Int> }
+// THE BOOKKEEPING THE ORDERING PASS CARRIES. `ready` holds the occurrences whose internal predecessors have ALL
+// been emitted; `order` is the emitted sequence, one append per emit, so it is a FORWARD topological order --
+// every predecessor before its successor -- and the passes that need the other direction ask std.algebra's
+// `list_reverse` for it once rather than pretending an accumulator is backwards. (std.algebra:176 is explicit that
+// `list_push` is FreeMonoid's SNOC: a push accumulator reads forwards. Reading it as if it were a prepend was the
+// orientation bug this comment now forbids.) `indeg` counts the internal predecessors still unemitted;
+// `unemitted` counts the occurrences not yet emitted.
+type TopoState {
+  ready: List<SchedNode>
+  order: List<SchedNode>
+  indeg: Map<String, Int>
+  unemitted: Int
+}
 
-// The ranks either settle (a DAG) or keep growing past the node count (a cycle the scheduler will not schedule).
-type RankResult
-  = Ranked { rank: Map<String, Int> }
+// WHAT THE ORDERING PASS ANSWERS: an emission order in which every predecessor precedes its successor, or the typed
+// fact that the occurrence graph has a cycle. There is no third arm and no partial order handed back as if it were
+// complete: a sort that comes out short IS a cycle on this graph, and that is the construction the refusal rests on
+// -- not a separate pass being trusted to agree with this one.
+type TopoOutcome
+  = Ordered { order: List<SchedNode> }
   | Cyclic
 
-// THE SCHEDULED RUN STATE: each lane's free day (a Map lane-index -> day, so no indexed list rewrite), each
-// scheduled key's finish day, the leaves placed so far, and the occurrences not yet placed.
-type RunState {
-  lanes: Map<Int, Int>
-  finish: Map<String, Int>
+// THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
+// is free at day 0, the same default the lane scan reads, so the map is never pre-seeded and never rewritten by
+// index), each placed occurrence's finish day, the leaves in the order they were placed -- which IS the answer's
+// order, highest rank first, built with one append per placement -- the bucket of occurrences currently at the rank
+// being placed, and that rank.
+type PlaceState {
   placed: List<ScheduledLeaf>
-  remaining: List<SchedNode>
+  finish: Map<String, Int>
+  lanes: Map<Int, Int>
+  bucket: List<SchedNode>
+  rank_now: Int
 }
 
 // A total read over a String-keyed map: the stored value, or `dflt` when the key is absent.
@@ -95,8 +177,8 @@ fn look_or<V>(m: Map<String, V>, key: String, dflt: V) -> V {
   }
 }
 
-// A total read over an Int-keyed map (the lane-free map).
-fn look_int(m: Map<Int, Int>, key: Int, dflt: Int) -> Int {
+// A total read over an Int-keyed map (the lane-free-day map and the rank-bucket map).
+fn look_key<V>(m: Map<Int, V>, key: Int, dflt: V) -> V {
   match map_lookup(m: m, key: key) {
     Present { value: v } => v
     Absent => dflt
@@ -114,166 +196,240 @@ fn edge_to_key(e: OccurrenceEdge) -> String {
 
 // THE STABLE STRING KEY of a leaf occurrence: the carrier LeafPath's four indexes joined. Two occurrences share a
 // key only when they share a path, so the key is the path read a second way -- never a second authority over it.
+// The (item, stage, piece) identity of an occurrence path -- the same path_key spelling WITHOUT the member index, so
+// one family occurrence's member set is counted from the expansion's own rows.
+fn occurrence_piece_key(p: LeafPath) -> String {
+  join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece))], "")
+}
+
+// How many members the expansion produced for each (item, stage, piece), in ONE pass over the occurrences it
+// emitted. Asking this per occurrence (re-filtering the whole occurrence list each time) is the quadratic fold
+// shape gunbc.design_argument::how_to_work says is always fixed, whatever the realized n.
+fn member_counts(occs: List<Occurrence>) -> Map<String, Int> {
+  fold(occs, init: empty_map(), f: fn(acc, o) {
+    let k = occurrence_piece_key(p: o.path)
+    map_insert(m: acc, key: k, value: look_or(m: acc, key: k, dflt: 0) + 1)
+  })
+}
+
 fn path_key(p: LeafPath) -> String {
   join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece)), "#", to_string(nat_to_int(n: p.member))], "")
 }
 
-// Append `v` to the list stored at `key` (a successor / predecessor adjacency list).
-fn push_key(m: Map<String, List<String>>, key: String, v: String) -> Map<String, List<String>> {
-  map_insert(m: m, key: key, value: concat(look_or(m: m, key: key, dflt: []), [v]))
+// Add one occurrence to the successor / predecessor list stored at `key`. `list_push` is std.algebra's declared
+// home of the single-item append; the `concat(acc, [x])` form that stood here copied the whole accumulated list at
+// every edge, which is the copied-accumulator shape gunbc.design_argument::how_to_work fixes at the root.
+fn push_node(m: Map<String, List<SchedNode>>, key: String, n: SchedNode) -> Map<String, List<SchedNode>> {
+  let none_yet: List<SchedNode> = []
+  map_insert(m: m, key: key, value: list_push(xs: look_or(m: m, key: key, dflt: none_yet), item: n))
 }
 
-// The successor / predecessor adjacency over the scheduled occurrence keys.
+// The successor / predecessor adjacency over the scheduled occurrence keys, held as the neighbouring NODES so the
+// ordering, ranking and placement passes never look a key up again.
 type Adjacency {
-  succ: Map<String, List<String>>
-  pred: Map<String, List<String>>
+  succ: Map<String, List<SchedNode>>
+  pred: Map<String, List<SchedNode>>
 }
 
-// Build a key -> successor-list and key -> predecessor-list pair from the edges whose BOTH endpoints are scheduled
-// occurrences. An edge whose `from` is a parent occurrence (a waits_on aim reaching outside this decomposition) is
-// DROPPED: that predecessor is satisfied before this abstract schedule begins, so it is an already-done edge, not a
-// day this schedule pays for. This unit schedules ONE expansion's own occurrences; parents arrive from above.
+// Build the successor and predecessor lists from the edges whose BOTH endpoints are scheduled occurrences. An edge
+// whose `from` is a parent occurrence (a waits_on aim reaching outside this decomposition) is DROPPED: that
+// predecessor is satisfied before this abstract schedule begins, so it is an already-done edge, not a day this
+// schedule pays for. This unit schedules ONE expansion's own occurrences; parents arrive from above. The `Absent`
+// arm below is unreachable by construction -- `internal` just filtered to edges whose endpoints are in `member` --
+// and it is kept as a typed no-op rather than a fabricated node, so the pass cannot invent a neighbour.
 fn adjacency(nodes: List<SchedNode>, edges: List<OccurrenceEdge>) -> Adjacency {
-  let member: Map<String, Bool> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: true) })
+  let member: Map<String, SchedNode> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
   let internal = filter(edges, e => map_contains_key(m: member, key: edge_from_key(e: e)) && map_contains_key(m: member, key: edge_to_key(e: e)))
-  let succ: Map<String, List<String>> = fold(internal, init: empty_map(), f: fn(acc, e) { push_key(acc, edge_from_key(e: e), edge_to_key(e: e)) })
-  let pred: Map<String, List<String>> = fold(internal, init: empty_map(), f: fn(acc, e) { push_key(acc, edge_to_key(e: e), edge_from_key(e: e)) })
+  let succ: Map<String, List<SchedNode>> = fold(internal, init: empty_map(), f: fn(acc, e) {
+    match map_lookup(m: member, key: edge_to_key(e: e)) {
+      Absent => acc
+      Present { value: n } => push_node(m: acc, key: edge_from_key(e: e), n: n)
+    }
+  })
+  let pred: Map<String, List<SchedNode>> = fold(internal, init: empty_map(), f: fn(acc, e) {
+    match map_lookup(m: member, key: edge_from_key(e: e)) {
+      Absent => acc
+      Present { value: n } => push_node(m: acc, key: edge_to_key(e: e), n: n)
+    }
+  })
   Adjacency { succ: succ, pred: pred }
 }
 
-// ONE relaxation pass: rank(k) = days(k) + max rank over successors. A value that grows marks `changed`.
-fn relax(keys: List<String>, succ: Map<String, List<String>>, days_map: Map<String, Int>, rank: Map<String, Int>) -> Relaxed {
-  fold(keys, init: Relaxed { changed: false, rank: rank }, f: fn(acc, k) {
-    let best = fold(look_or(m: succ, key: k, dflt: []), init: 0, g: fn(m, s) {
-      let r = look_or(m: acc.rank, key: s, dflt: 0)
-      if r > m { r } else { m }
-    })
-    let cand = look_or(m: days_map, key: k, dflt: 0) + best
-    let cur = look_or(m: acc.rank, key: k, dflt: 0)
-    if cand > cur { Relaxed { changed: true, rank: map_insert(m: acc.rank, key: k, value: cand) } } else { acc }
+// THE OUTSTANDING-PREDECESSOR COUNT of each occurrence, read off the adjacency the expansion's own edges built
+// (external endpoints were dropped there, so a parent arriving from above imposes no wait -- see `adjacency`).
+fn indegrees(nodes: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
+  let no_succs: List<SchedNode> = []
+  let seeded = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: 0) })
+  fold(nodes, init: seeded, f: fn(acc, n) {
+    fold(look_or(m: succ, key: n.key, dflt: no_succs), init: acc, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) + 1) })
   })
 }
 
-// Relax until stable. For a DAG of n nodes the longest simple path has at most n-1 edges, so it settles within
-// `max_pass` = n passes; if it is STILL growing at pass n the graph has a cycle and there is no terminating
-// schedule -- refuse (fail_closed).
-fn rank_fix(keys: List<String>, succ: Map<String, List<String>>, days_map: Map<String, Int>, rank: Map<String, Int>, pass: Int, max_pass: Int) -> RankResult {
-  let step = relax(keys: keys, succ: succ, days_map: days_map, rank: rank)
-  if !step.changed {
-    Ranked { rank: step.rank }
-  } else if pass >= max_pass {
-    Cyclic
-  } else {
-    rank_fix(keys: keys, succ: succ, days_map: days_map, rank: step.rank, pass: pass + 1, max_pass: max_pass)
+// EMIT one ready occurrence: append it to the order, take one outstanding predecessor off each of its successors,
+// and put on the ready queue exactly those successors that just ran out of predecessors (the fold appends, so the
+// queue is FIFO; which ready node is emitted next cannot change the answer, because placement is driven by rank,
+// not by emission order). Each edge is touched once,
+// so the ordering pass costs one walk of the graph. What stood here was a Bellman-Ford relaxation that re-scanned
+// every node and every edge once PER NODE -- a proven quadratic shape, gunbc.design_argument::how_to_work: it is
+// fixed at the root whatever the realized n.
+fn topo_step(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoState {
+  match state.ready {
+    Empty => state
+    Cons { head: n, tail: rest } => {
+      let no_succs: List<SchedNode> = []
+      let succs = look_or(m: succ, key: n.key, dflt: no_succs)
+      let dec = fold(succs, init: state.indeg, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) - 1) })
+      let freed = fold(succs, init: rest, h: fn(acc, s) { if look_or(m: dec, key: s.key, dflt: 0) == 0 { list_push(xs: acc, item: s) } else { acc } })
+      TopoState { ready: freed, order: list_push(xs: state.order, item: n), indeg: dec, unemitted: state.unemitted - 1 }
+    }
   }
 }
 
-// The key with the largest rank, stable on ties (the first such key in the list wins). "" when the list is empty.
-fn argmax_rank(keys: List<String>, rank: Map<String, Int>) -> String {
-  fold(keys, init: "", f: fn(best, k) {
-    if best == "" {
-      k
-    } else {
-      let rb = look_or(m: rank, key: best, dflt: 0)
-      let rk = look_or(m: rank, key: k, dflt: 0)
-      if rk > rb { k } else { best }
+// Run the ordering pass to exhaustion. `unemitted` is carried rather than recounted, and a sort that ends with
+// occurrences still unemitted IS a cycle on this graph: the same pass that would have produced the order reports it
+// short, so nothing here rests on a second pass agreeing with the first.
+fn topo_run(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoOutcome {
+  match state.ready {
+    Empty => if state.unemitted > 0 { Cyclic } else { Ordered { order: state.order } }
+    Cons { head: n, tail: rest } => topo_run(state: topo_step(state: state, succ: succ), succ: succ)
+  }
+}
+
+// ONE rank pass over the emission order read BACKWARDS -- the reversal taken once, from std.algebra's own
+// `list_reverse`. A successor is emitted only after every one of its predecessors has been, so the reversed order
+// puts every successor before its predecessor and rank(k) = days(k) + max rank over successors is already settled
+// for every successor by the time k is read. One walk of the graph; there is no fixed-point iteration left to
+// iterate. Walking the FORWARD order instead would read every successor as unset (rank 0) and collapse every rank
+// to the node's own days -- the chain would lose its length and a successor could be placed before its
+// predecessor -- so the direction here is the whole correctness of the pass.
+fn rank_pass(order_back: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
+  let no_succs: List<SchedNode> = []
+  fold(order_back, init: empty_map(), f: fn(rank, n) {
+    let best = fold(look_or(m: succ, key: n.key, dflt: no_succs), init: 0, g: fn(m, s) {
+      let r = look_or(m: rank, key: s.key, dflt: 0)
+      if r > m { r } else { m }
+    })
+    map_insert(m: rank, key: n.key, value: n.days + best)
+  })
+}
+
+// The largest rank over the occurrences -- the critical length, the shortest span any schedule of these occurrences
+// under any worker count can cover.
+fn max_rank_of(order: List<SchedNode>, rank: Map<String, Int>) -> Int {
+  fold(order, init: 0, f: fn(m, n) {
+    let r = look_or(m: rank, key: n.key, dflt: 0)
+    if r > m { r } else { m }
+  })
+}
+
+// The occurrences grouped by rank. The groups are built by appending while walking the FORWARD topological order,
+// so each group is itself predecessor-first: equal ranks are placed deterministically, and a zero-day tie (where
+// rank stops strictly decreasing along an edge) still cannot place a successor before its predecessor.
+fn rank_buckets(order: List<SchedNode>, rank: Map<String, Int>) -> Map<Int, List<SchedNode>> {
+  let empty_bucket: List<SchedNode> = []
+  fold(order, init: empty_map(), f: fn(acc, n) {
+    let r = look_or(m: rank, key: n.key, dflt: 0)
+    map_insert(m: acc, key: r, value: list_push(xs: look_key(m: acc, key: r, dflt: empty_bucket), item: n))
+  })
+}
+
+// The occurrence with the largest rank, stable on ties (the first in the list wins); `none` on an empty list, so no
+// placeholder occurrence is ever emitted.
+fn argmax_node_rank(nodes: List<SchedNode>, rank: Map<String, Int>) -> SchedNode? {
+  let seed: SchedNode? = none
+  fold(nodes, init: seed, f: fn(best, n) {
+    match best {
+      Present { value: b } => if look_or(m: rank, key: n.key, dflt: 0) > look_or(m: rank, key: b.key, dflt: 0) { Present { value: n } } else { best }
+      Absent => Present { value: n }
     }
   })
 }
 
-// The critical path as a chain of LeafPaths: start at the maximum-rank node and follow its maximum-rank successor
-// until none is left. rank(n) = days(n) + max rank over successors, so each step stays on a longest path. A cycle
-// would not terminate, but rank_fix has already refused one, so this halts. An empty successor key resolves Absent
-// in `node_of`, which ends the walk -- no placeholder path is ever emitted.
-fn follow_critical(n: SchedNode, succ: Map<String, List<String>>, rank: Map<String, Int>, node_of: Map<String, SchedNode>) -> List<LeafPath> {
-  let next = argmax_rank(keys: look_or(m: succ, key: n.key, dflt: []), rank: rank)
-  match map_lookup(m: node_of, key: next) {
-    Absent => [n.path]
-    Present { value: child } => concat([n.path], follow_critical(n: child, succ: succ, rank: rank, node_of: node_of))
+// The critical path as a chain of LeafPaths: start at the maximum-rank occurrence and follow its maximum-rank
+// successor until it has none. rank(n) = days(n) + max rank over successors, so every step stays on a longest path.
+// The walk halts because the ordering pass refused every cycle before this could be called -- same graph, one pass
+// reporting to the next. The chain is appended as it is walked, which is the direction the answer reports it in.
+fn follow_critical(n: SchedNode, succ: Map<String, List<SchedNode>>, rank: Map<String, Int>, acc: List<LeafPath>) -> List<LeafPath> {
+  let no_succs: List<SchedNode> = []
+  let next = argmax_node_rank(nodes: look_or(m: succ, key: n.key, dflt: no_succs), rank: rank)
+  match next {
+    Absent => list_push(xs: acc, item: n.path)
+    Present { value: child } => follow_critical(n: child, succ: succ, rank: rank, acc: list_push(xs: acc, item: n.path))
   }
 }
 
-// The lane whose free day is earliest; ties choose the lower lane index, so placement is deterministic.
+// The lane whose free day is earliest; ties choose the lower lane index, so placement is deterministic. The scan
+// runs over `workers` -- the concurrency input, which is also the answer's own width -- and never over the
+// placements accumulated so far.
 fn pick_lane(lanes: Map<Int, Int>, workers: Int) -> Int {
-  scan_lanes(i: 0, workers: workers, lanes: lanes, best_lane: 0, best_free: look_int(m: lanes, key: 0, dflt: 0))
+  scan_lanes(i: 0, workers: workers, lanes: lanes, best_lane: 0, best_free: look_key(m: lanes, key: 0, dflt: 0))
 }
 
 fn scan_lanes(i: Int, workers: Int, lanes: Map<Int, Int>, best_lane: Int, best_free: Int) -> Int {
   if i >= workers {
     best_lane
   } else {
-    let f = look_int(m: lanes, key: i, dflt: 0)
+    let f = look_key(m: lanes, key: i, dflt: 0)
     if f < best_free { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: i, best_free: f) }
     else { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: best_lane, best_free: best_free) }
   }
 }
 
-// Whether every scheduled-predecessor of `n` already has a finish day. (External parents were dropped from `pred`,
-// so they impose no wait.)
-fn is_ready(n: SchedNode, pred: Map<String, List<String>>, finish: Map<String, Int>) -> Bool {
-  all(look_or(m: pred, key: n.key, dflt: []), p => map_contains_key(m: finish, key: p))
-}
-
-// The ready occurrence with the largest rank (longest remaining path first), stable on ties.
-fn best_ready(remaining: List<SchedNode>, rank: Map<String, Int>, pred: Map<String, List<String>>, finish: Map<String, Int>) -> SchedNode? {
-  let seed: SchedNode? = none
-  fold(remaining, init: seed, f: fn(best, n) {
-    if !is_ready(n: n, pred: pred, finish: finish) {
-      best
-    } else {
-      match best {
-        Present { value: b } => if look_or(m: rank, key: n.key, dflt: 0) > look_or(m: rank, key: b.key, dflt: 0) { Present { value: n } } else { best }
-        Absent => Present { value: n }
-      }
-    }
-  })
-}
-
-// The finish day of the latest already-scheduled predecessor of `n` (0 when it has none scheduled).
-fn dep_finish(n: SchedNode, pred: Map<String, List<String>>, finish: Map<String, Int>) -> Int {
-  fold(look_or(m: pred, key: n.key, dflt: []), init: 0, g: fn(m, p) {
-    let f = look_or(m: finish, key: p, dflt: 0)
+// The finish day of the latest already-placed predecessor of `n` (0 when it has none placed). A predecessor cannot
+// be placed after its successor: placement walks ranks downwards and every predecessor ranks above its successor.
+fn dep_finish(n: SchedNode, pred: Map<String, List<SchedNode>>, finish: Map<String, Int>) -> Int {
+  let no_preds: List<SchedNode> = []
+  fold(look_or(m: pred, key: n.key, dflt: no_preds), init: 0, g: fn(m, p) {
+    let f = look_or(m: finish, key: p.key, dflt: 0)
     if f > m { f } else { m }
   })
 }
 
-// THE LIST SCHEDULE: place occurrences one at a time -- longest remaining path first, on the lane that frees
-// earliest, no earlier than all its scheduled predecessors have finished -- until nothing remains. `placed`
-// accumulates the ScheduledLeaf records. (rank_fix has already refused a cycle, so a ready node always exists.)
-fn run(state: RunState, succ: Map<String, List<String>>, pred: Map<String, List<String>>, rank: Map<String, Int>, workers: Int) -> List<ScheduledLeaf> {
-  if count(state.remaining) == 0 {
-    state.placed
-  } else {
-    match best_ready(remaining: state.remaining, rank: rank, pred: pred, finish: state.finish) {
-      Absent => state.placed
-      Present { value: n } => {
-        let lane = pick_lane(lanes: state.lanes, workers: workers)
-        let lane_free = look_int(m: state.lanes, key: lane, dflt: 0)
-        let dep = dep_finish(n: n, pred: pred, finish: state.finish)
-        let start_day = if dep > lane_free { dep } else { lane_free }
-        let finish_day = start_day + n.days
-        let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
-        run(
-          state: RunState {
-            lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
-            finish: map_insert(m: state.finish, key: n.key, value: finish_day),
-            placed: concat(state.placed, [leaf]),
-            remaining: filter(state.remaining, m => m.key != n.key),
-          },
-          succ: succ, pred: pred, rank: rank, workers: workers
+// THE LIST SCHEDULE: place occurrences by descending rank (longest remaining path first), each on the lane that
+// frees earliest, no earlier than all its placed predecessors have finished. Every occurrence the ordering pass
+// emitted lands in exactly one rank bucket, so walking the buckets from the top down covers the whole set; whether
+// it did is CHECKED by `unplaced_occurrences` in `schedule`, not assumed here. The leaf list is pushed and read
+// back once; the rank walk over empty buckets is bounded by the critical length, which the answer's own per-day
+// series already spans.
+fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map<Int, List<SchedNode>>, workers: Int) -> PlaceState {
+  match state.bucket {
+    Cons { head: n, tail: rest } => {
+      let lane = pick_lane(lanes: state.lanes, workers: workers)
+      let lane_free = look_key(m: state.lanes, key: lane, dflt: 0)
+      let dep = dep_finish(n: n, pred: pred, finish: state.finish)
+      let start_day = if dep > lane_free { dep } else { lane_free }
+      let finish_day = start_day + n.days
+      let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
+      place_all(
+        state: PlaceState {
+          placed: list_push(xs: state.placed, item: leaf),
+          finish: map_insert(m: state.finish, key: n.key, value: finish_day),
+          lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
+          bucket: rest,
+          rank_now: state.rank_now,
+        },
+        pred: pred, buckets: buckets, workers: workers
+      )
+    }
+    Empty =>
+      if state.rank_now < 0 {
+        state
+      } else {
+        let empty_bucket: List<SchedNode> = []
+        place_all(
+          state: PlaceState { placed: state.placed, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
+          pred: pred, buckets: buckets, workers: workers
         )
       }
-    }
   }
 }
 
-// The days 0 .. last-1 as a list (empty when last <= 0), used to index the per-day in-flight count.
-fn day_range(last: Int) -> List<Int> {
-  range_from(0, last)
-}
-
-fn range_from(i: Int, last: Int) -> List<Int> {
-  if i >= last { [] } else { concat([i], range_from(i + 1, last)) }
+// THE COMPLETENESS CHECK, read off the placement's own finish map: the occurrences it did not place, located by
+// their carrier paths. A truncated schedule is never handed back as a complete one (fail_closed: a failure arm
+// refuses, it never widens), and the reachability of that arm is established by this pass rather than assumed of
+// two passes that were never compared.
+fn unplaced_occurrences(nodes: List<SchedNode>, finish: Map<String, Int>) -> List<LeafPath> {
+  map(filter(nodes, n => !map_contains_key(m: finish, key: n.key)), n => n.path)
 }
 
 // The maximum finish day over the placed leaves -- the horizon, the day the schedule empties.
@@ -281,51 +437,112 @@ fn horizon_of(leaves: List<ScheduledLeaf>) -> Int {
   fold(leaves, init: 0, g: fn(m, l) { if l.finish_day > m { l.finish_day } else { m } })
 }
 
-// How many leaves are in flight on each day, indexed from day 0 to horizon-1. A leaf with days == 0 (a zero-day
-// Join would be one, but the expansion emits no Join occurrence) spans no day and is counted on none.
+// How many leaves are in flight on each day, indexed from day 0 to horizon-1. ONE pass over the leaves turns each
+// interval [start, finish) into a +1 at its start day and a -1 at its finish day; ONE walk over the days, appending
+// the running count in day order, folds those deltas into the series. What stood here filtered every leaf once per day. A leaf spanning no day adds its
+// +1 and its -1 on the same day and is counted on none (the expansion emits no zero-day occurrence today -- a Join
+// carries none -- but the answer does not depend on that).
 fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
-  map(day_range(last: horizon), d => count(filter(leaves, l => l.start_day <= d && d < l.finish_day)))
+  let delta = fold(leaves, init: empty_map(), f: fn(m, l) {
+    let opened = map_insert(m: m, key: l.start_day, value: look_key(m: m, key: l.start_day, dflt: 0) + 1)
+    map_insert(m: opened, key: l.finish_day, value: look_key(m: opened, key: l.finish_day, dflt: 0) - 1)
+  })
+  count_days(d: 0, horizon: horizon, running: 0, delta: delta, acc: [])
 }
 
-// THE SCHEDULE, computed from an Expansion and a worker count (a SIMULATION INPUT). Refusals: the expansion was
-// itself refused; the worker count is not a positive count; the occurrence graph has a cycle.
-fn schedule(d: WorkDecomposition, e: Expansion, workers: Int) -> Schedule {
+fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: List<Int>) -> List<Int> {
+  if d >= horizon {
+    acc
+  } else {
+    let now = running + look_key(m: delta, key: d, dflt: 0)
+    count_days(d: d + 1, horizon: horizon, running: now, delta: delta, acc: list_push(xs: acc, item: now))
+  }
+}
+
+// THE SCHEDULE, computed from an Expansion and a worker count (a SIMULATION INPUT). Refusals, each typed and
+// located: the expansion was itself refused; the worker count is not a positive count; an occurrence carries no
+// working-day prior on the carrier it is read against; the occurrence graph has a cycle; the run leaves occurrences
+// unplaced (a partial schedule is never returned as a complete one). Each is a `ScheduleRefusal` arm, located by the
+// carrier paths it carries -- never a sentence a consumer has to parse.
+fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedule {
+  let worker_count: Int = workers.max_concurrent
   match e {
-    Refused { cause: _ } =>
-      NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the expansion it was handed refused (the decomposition is not well-formed); a schedule is computed only over an admitted expansion" }
+    ExpansionRejected { cause: cause } =>
+      NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
     Expanded { occurrences: occs, edges: edges } => {
-      if workers <= 0 {
-        NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the worker count is a SIMULATION INPUT and must be a positive count; 0 or fewer is never a fact about who works" }
+      if worker_count <= 0 {
+        NotScheduled { refusal: ConcurrencyCapInvalid { cap: workers } }
       } else {
-        let nodes = map(occs, o => SchedNode { path: o.path, key: path_key(p: o.path), days: piece_member_days(d: d, path: o.path), source: o.count_source })
-        let keys = map(nodes, n => n.key)
-        let adj = adjacency(nodes: nodes, edges: edges)
-        let days_map: Map<String, Int> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n.days) })
-        let rank0: Map<String, Int> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n.days) })
-        let node_of: Map<String, SchedNode> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
-        match rank_fix(keys: keys, succ: adj.succ, days_map: days_map, rank: rank0, pass: 1, max_pass: count(nodes)) {
-          Cyclic => NotScheduled { cause: "roadmap-schedule-list-scheduling refuses: the occurrence dependency graph has a cycle; no list schedule terminates on it" }
-          Ranked { rank: rank } => {
-            let lane_seed: Map<Int, Int> = empty_map()
-            let lanes0 = fold(range_from(0, workers), init: lane_seed, f: fn(acc, l) { map_insert(m: acc, key: l, value: 0) })
-            let placed = run(
-              state: RunState { lanes: lanes0, finish: empty_map(), placed: [], remaining: nodes },
-              succ: adj.succ, pred: adj.pred, rank: rank, workers: workers
-            )
-            let horizon = horizon_of(leaves: placed)
-            let crit_start = argmax_rank(keys: keys, rank: rank)
-            let critical_path = match map_lookup(m: node_of, key: crit_start) {
-              Absent => []
-              Present { value: n } => follow_critical(n: n, succ: adj.succ, rank: rank, node_of: node_of)
+        // EVERY occurrence's working-day prior is read back through its OWN carrier path. An occurrence whose path
+        // is not on the decomposition being read against has NO day count, and one is never minted for it
+        // (fail_closed: no plausible output is fabricated): the whole answer refuses, CARRYING the carrier paths that
+        // hold no prior. `piece_member_days` is asked twice -- once to find the unpriced paths, once to price the
+        // nodes -- because it is the ONE authority on the day count; nothing here caches or restates its answer.
+        // A member index must sit inside the member set the EXPANSION itself produced for that (item, stage, piece).
+        // A findings population declares no member count of its own -- its count is the ASSUMED findings count handed
+        // to expand_decomposition -- so the expansion's own member set is the bound; inventing a population count
+        // here would mean re-expanding, which this unit never does. Those member-set sizes come from ONE grouping
+        // pass over the occurrences the expansion emitted (`member_counts`), not from re-filtering the occurrence
+        // list once per occurrence.
+        let counts = member_counts(occs: occs)
+        let beyond = map(
+          filter(occs, o => nat_to_int(n: o.path.member) >= look_or(m: counts, key: occurrence_piece_key(p: o.path), dflt: 0)),
+          o => o.path
+        )
+        if count(beyond) > 0 {
+          NotScheduled { refusal: MemberIndexBeyondExpansion { paths: beyond } }
+        } else {
+          let unpriced = map(
+            filter(occs, o => match piece_member_days(d: d, path: o.path) { Present { value: _ } => false, Absent => true }),
+            o => o.path
+          )
+          if count(unpriced) > 0 {
+            NotScheduled { refusal: NoWorkingDayPrior { paths: unpriced } }
+          } else {
+          let empty_paths: List<LeafPath> = []
+          let empty_placed: List<ScheduledLeaf> = []
+          let nodes = flat_map(occs, o => priced_node(d: d, o: o))
+            let adj = adjacency(nodes: nodes, edges: edges)
+            let indeg = indegrees(nodes: nodes, succ: adj.succ)
+            let empty_nodes: List<SchedNode> = []
+            match topo_run(
+              state: TopoState { ready: filter(nodes, n => look_or(m: indeg, key: n.key, dflt: 0) == 0), order: empty_nodes, indeg: indeg, unemitted: count(nodes) },
+              succ: adj.succ
+            ) {
+              Cyclic => NotScheduled { refusal: CyclicOccurrenceGraph }
+              Ordered { order: order } => {
+                let rank = rank_pass(order_back: list_reverse(xs: order), succ: adj.succ)
+                let buckets = rank_buckets(order: order, rank: rank)
+                let top_rank = max_rank_of(order: order, rank: rank)
+                let empty_bucket: List<SchedNode> = []
+                let placed_state = place_all(
+                  state: PlaceState { placed: empty_placed, finish: empty_map(), lanes: empty_map(), bucket: look_key(m: buckets, key: top_rank, dflt: empty_bucket), rank_now: top_rank },
+                  pred: adj.pred, buckets: buckets, workers: worker_count
+                )
+                // The placement's OWN finish map decides whether the answer is complete; a placement that left an
+                // occurrence out refuses instead of being wrapped as `Scheduled`.
+                let unplaced = unplaced_occurrences(nodes: nodes, finish: placed_state.finish)
+                if count(unplaced) > 0 {
+                  NotScheduled { refusal: UnplacedOccurrences { paths: unplaced } }
+                } else {
+                  let placed = placed_state.placed
+                  let horizon = horizon_of(leaves: placed)
+                  let crit_start = argmax_node_rank(nodes: nodes, rank: rank)
+                  let critical_path = match crit_start {
+                    Absent => empty_paths
+                    Present { value: n } => follow_critical(n: n, succ: adj.succ, rank: rank, acc: empty_paths)
+                  }
+                  Scheduled { answer: ScheduleAnswer {
+                    workers: workers,
+                    leaves: placed,
+                    in_flight_per_day: in_flight(leaves: placed, horizon: horizon),
+                    horizon: horizon,
+                    critical_path: critical_path,
+                    critical_length: top_rank,
+                  } }
+                }
+              }
             }
-            Scheduled { answer: ScheduleAnswer {
-              workers: workers,
-              leaves: placed,
-              in_flight_per_day: in_flight(leaves: placed, horizon: horizon),
-              horizon: horizon,
-              critical_path: critical_path,
-              critical_length: look_or(m: rank, key: crit_start, dflt: 0),
-            } }
           }
         }
       }
@@ -333,49 +550,132 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: Int) -> Schedule {
   }
 }
 
-// COMPUTED, MAY BE CACHED, ALWAYS RE-READ (gunbc.schedule_answers_are_computed_cached_and_re_read). A caller may
-// hand a previously computed `cached` Schedule, but the cache is DERIVED and never authoritative: the read
-// RECOMPUTES from the decomposition, the expansion and the worker count and returns the fresh answer, discarding
-// the cache. The cache argument exists only to show it is ignored -- reading never trusts it.
-fn schedule_read(d: WorkDecomposition, e: Expansion, workers: Int, cached: Schedule) -> Schedule {
-  schedule(d: d, e: e, workers: workers)
-}
-
-// ACCESSORS so a reader consumes a Schedule without matching its coproduct (and without naming its constructors
-// beside the imported Expansion's). `schedule_answer` yields the computed fields, or none when the schedule refused.
-fn schedule_is_scheduled(s: Schedule) -> Bool {
-  match s {
-    Scheduled { answer: _ } => true
-    NotScheduled { cause: _ } => false
+// The run node an occurrence prices to, or nothing when the decomposition carries no working-day prior for it. The
+// `Absent` arm is not a silent drop: every such occurrence has already refused the whole answer above, and the arm
+// is here so nothing can be invented for a path the carrier does not price.
+fn priced_node(d: WorkDecomposition, o: Occurrence) -> List<SchedNode> {
+  match piece_member_days(d: d, path: o.path) {
+    Present { value: days } => [SchedNode { path: o.path, key: path_key(p: o.path), days: days, source: o.count_source }]
+    Absent => []
   }
 }
 
+// WHAT A RE-READ ANSWERS, and where the cache the caller held stands against it
+// (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read: the schedule is COMPUTED from the
+// carriers; it MAY be cached; a cache is DERIVED and NEVER authoritative; the answer is RECOMPUTED ON READ). The
+// answer a read serves is ALWAYS the recomputed one -- the cache never wins -- and the arm says what the cache got
+// wrong, so a stale cache is DETECTED at the read instead of being served silently or dropped silently.
+// `ReadRefused` is the recomputation's own typed refusal: a cached answer is never a reason to answer when the
+// recomputation itself refuses.
+type ScheduleRead
+  = ReadRefused { refusal: ScheduleRefusal }
+  | CacheHeldNothing { answer: ScheduleAnswer }
+  | CacheMatches { answer: ScheduleAnswer }
+  | CacheSuperseded { answer: ScheduleAnswer, stale_leaves: Int, stale_answer_fields: Int }
+
+// THE ONE READ CONSUMERS USE (roadmap-schedule-bottlenecks-and-offer, then roadmap-work-item-projection): hand it the
+// decomposition, its expansion, the worker count, and whatever you last cached; it recomputes and answers.
+fn schedule_read(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, cached: Schedule) -> ScheduleRead {
+  match schedule(d: d, e: e, workers: workers) {
+    NotScheduled { refusal: refusal } => ReadRefused { refusal: refusal }
+    Scheduled { answer: fresh } => match cached {
+      // Nothing usable was cached: the caller holds no answer, or holds a cached refusal.
+      NotScheduled { refusal: _ } => CacheHeldNothing { answer: fresh }
+      Scheduled { answer: held } => {
+        // Every divergence between the cached answer and the recomputed one is counted, in BOTH directions, each
+        // leaf located by the one path_key: placed differently or not at all in the cache, and cached leaves that
+        // are no longer placed. The aggregate fields are compared too, so a cache carried over from a different
+        // worker count or horizon cannot masquerade as a matching one.
+        let moved = count(filter(fresh.leaves, l => match scheduled_at(a: held, path: l.path) {
+          Absent => true
+          Present { value: k } => !(k.start_day == l.start_day && k.finish_day == l.finish_day && k.lane == l.lane
+            && k.count_source == l.count_source)
+        }))
+        let dropped = count(filter(held.leaves, k => match scheduled_at(a: fresh, path: k.path) {
+          Absent => true
+          Present { value: _ } => false
+        }))
+        let fields = stale_answer_fields(fresh: fresh, held: held)
+        if moved + dropped + fields == 0 { CacheMatches { answer: fresh } }
+        else { CacheSuperseded { answer: fresh, stale_leaves: moved + dropped, stale_answer_fields: fields } }
+      }
+    }
+  }
+}
+
+// Which aggregate fields of a cached answer no longer match the recomputed one: the worker count, the horizon, the
+// critical length, and the shapes of the in-flight series and of the critical path (spelled through the one
+// path_key, never a restated key format).
+fn stale_answer_fields(fresh: ScheduleAnswer, held: ScheduleAnswer) -> Int {
+  let w = if fresh.workers.max_concurrent == held.workers.max_concurrent { 0 } else { 1 }
+  let h = if fresh.horizon == held.horizon { 0 } else { 1 }
+  let c = if fresh.critical_length == held.critical_length { 0 } else { 1 }
+  let f = if count(fresh.in_flight_per_day) == count(held.in_flight_per_day) { 0 } else { 1 }
+  let p = if join(map(fresh.critical_path, q => path_key(p: q)), ",") == join(map(held.critical_path, q => path_key(p: q)), ",") { 0 } else { 1 }
+  w + h + c + f + p
+}
+
+// ACCESSORS so a reader consumes a ScheduleRead without matching its coproduct: the answer the read serves (none
+// when the recomputation refused), and how many cached leaves the recomputation superseded.
+fn schedule_read_answer(r: ScheduleRead) -> ScheduleAnswer? {
+  match r {
+    ReadRefused { refusal: _ } => none
+    CacheHeldNothing { answer: a } => Present { value: a }
+    CacheMatches { answer: a } => Present { value: a }
+    CacheSuperseded { answer: a, stale_leaves: _, stale_answer_fields: _ } => Present { value: a }
+  }
+}
+
+fn schedule_read_refusal(r: ScheduleRead) -> ScheduleRefusal? {
+  match r {
+    ReadRefused { refusal: r } => Present { value: r }
+    _ => none
+  }
+}
+
+fn schedule_read_stale_leaves(r: ScheduleRead) -> Int {
+  match r {
+    CacheSuperseded { answer: _, stale_leaves: n, stale_answer_fields: _ } => n
+    _ => 0
+  }
+}
+
+// How many AGGREGATE fields of the cached answer the recomputation superseded (worker count, horizon, critical
+// length, in-flight shape, critical-path keys). Zero with a non-zero stale_leaves means the cache was right about
+// the totals and wrong about the placement.
+fn schedule_read_stale_answer_fields(r: ScheduleRead) -> Int {
+  match r {
+    CacheSuperseded { answer: _, stale_leaves: _, stale_answer_fields: n } => n
+    _ => 0
+  }
+}
+
+// ACCESSORS so a reader consumes a Schedule without matching its coproduct (and without naming its constructors
+// beside the imported Expansion's). Each hands back the TYPED thing -- the answer, or the refusal -- rather than a
+// Bool that flattens which arm fired; a reader that must act differently per cause reads `schedule_refusal` and
+// matches its arm, and one that only needs the fields reads `schedule_answer`.
 fn schedule_answer(s: Schedule) -> ScheduleAnswer? {
   match s {
     Scheduled { answer: a } => Present { value: a }
-    NotScheduled { cause: _ } => none
+    NotScheduled { refusal: _ } => none
+  }
+}
+
+fn schedule_refusal(s: Schedule) -> ScheduleRefusal? {
+  match s {
+    Scheduled { answer: _ } => none
+    NotScheduled { refusal: r } => Present { value: r }
   }
 }
 
 // The placed leaf for a carrier path, if it was scheduled -- the witness reads a leaf's day and lane this way,
-// through the same path key the schedule is keyed by.
+// through the single path_key the schedule is keyed by (both sides go through path_key; no second key format).
 fn scheduled_at(a: ScheduleAnswer, path: LeafPath) -> ScheduledLeaf? {
   first_where(a.leaves, l => path_key(p: l.path) == path_key(p: path))
 }
 
-// The schedule's path key spelled from its parts, so a reader locates a placed leaf (or names a critical-path
-// entry) WITHOUT rebuilding a carrier LeafPath. This is the SAME key path_key derives -- one format, not a second
-// authority over path identity.
-fn leaf_key(node: String, stage: Int, piece: Int, member: Int) -> String {
-  join([node, "#", to_string(stage), "#", to_string(piece), "#", to_string(member)], "")
-}
-
-fn scheduled_by_index(a: ScheduleAnswer, node: String, stage: Int, piece: Int, member: Int) -> ScheduledLeaf? {
-  let want = leaf_key(node: node, stage: stage, piece: piece, member: member)
-  first_where(a.leaves, l => path_key(p: l.path) == want)
-}
-
-// The critical path spelled as path keys, in order from the start of the longest remaining path.
+// The critical path spelled as path keys, in order from the start of the longest remaining path -- each key is the
+// single path_key applied to the path, never a restated format.
 fn critical_path_keys(a: ScheduleAnswer) -> List<String> {
   map(a.critical_path, p => path_key(p: p))
 }
@@ -384,13 +684,8 @@ fn scheduled_leaf_count(a: ScheduleAnswer) -> Int {
   count(a.leaves)
 }
 
-// Wrap a computed answer as a cache the read will IGNORE -- used to show the cache never wins (the re-read control).
+// THE DERIVED CACHE RECORD: wrap a computed answer as the Schedule a later `schedule_read` may be handed. It is a
+// cache and nothing more -- the read recomputes and never serves it, which is what makes a stale one superseded.
 fn as_cache(a: ScheduleAnswer) -> Schedule {
   Scheduled { answer: a }
-}
-
-// Whether a placed leaf's count source is the ASSUMED simulation count (a FindingsOf member), kept visible in the
-// answer so a downstream reader sees it was scheduled from a simulation input, not a declared count.
-fn occurrence_count_is_assumed(c: OccurrenceCount) -> Bool {
-  c == Assumed
 }

@@ -782,7 +782,7 @@ test fn the_pair_delivery_timer_starts_the_delivery_unit_on_its_cadence() -> Boo
 
 test fn the_pair_delivery_oneshot_runs_the_wet_delivery_cli() -> Bool {
   let spec = live_spec()
-  let unit = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_unit_file(spec: spec))
+  let unit = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_unit_file(spec: spec, base_root: "/opt/gunbc/releases" as NonEmptyStr))
   any(unit, l => string_contains(s: l, pattern: "--entry dag/gunbc/live_deploy/release_pair_deliver_cli.dag"))
     && any(unit, l => string_contains(s: l, pattern: "--function release_pair_deliver_once_cli"))
     && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_BASE_ROOT=/opt/gunbc/releases"))
@@ -993,7 +993,7 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories, role_singletons: base.role_singletons,
             service: DeploymentServiceConfig {
@@ -1002,7 +1002,7 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
               instance_root: ir, repo_root: rr,
               service_user: wrong_user,
               service_uid: uid, listen: l,
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
@@ -1032,7 +1032,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
@@ -1040,7 +1040,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
               provider_state_root: ps,
               instance_root: ir, repo_root: wrong_root,
               service_user: su, service_uid: uid, listen: l,
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
@@ -1075,7 +1075,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
@@ -1084,7 +1084,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
               instance_root: ir, repo_root: rr,
               service_user: su, service_uid: uid,
               listen: HttpServerListenConfig { host: l.host, port: wrong_port },
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
