@@ -45,7 +45,7 @@ module gunbc.roadmap.roadmap_schedule
 // answer, and says how many cached leaves no longer match.
 
 import std.types { Bool, Int, List, String, Map }
-import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push, list_reverse }
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import std.list { first_where }
@@ -135,12 +135,15 @@ type SchedNode {
 }
 
 // THE BOOKKEEPING THE ORDERING PASS CARRIES. `ready` holds the occurrences whose internal predecessors have ALL
-// been emitted; `order_rev` is the emitted sequence built backwards (a push per emit), so reading it forwards is a
-// topological order and reading it backwards puts every successor before its predecessor; `indeg` counts the
-// internal predecessors still unemitted; `unemitted` counts the occurrences not yet emitted.
+// been emitted; `order` is the emitted sequence, one append per emit, so it is a FORWARD topological order --
+// every predecessor before its successor -- and the passes that need the other direction ask std.algebra's
+// `list_reverse` for it once rather than pretending an accumulator is backwards. (std.algebra:176 is explicit that
+// `list_push` is FreeMonoid's SNOC: a push accumulator reads forwards. Reading it as if it were a prepend was the
+// orientation bug this comment now forbids.) `indeg` counts the internal predecessors still unemitted;
+// `unemitted` counts the occurrences not yet emitted.
 type TopoState {
   ready: List<SchedNode>
-  order_rev: List<SchedNode>
+  order: List<SchedNode>
   indeg: Map<String, Int>
   unemitted: Int
 }
@@ -150,16 +153,16 @@ type TopoState {
 // complete: a sort that comes out short IS a cycle on this graph, and that is the construction the refusal rests on
 // -- not a separate pass being trusted to agree with this one.
 type TopoOutcome
-  = Ordered { order_rev: List<SchedNode> }
+  = Ordered { order: List<SchedNode> }
   | Cyclic
 
 // THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
 // is free at day 0, the same default the lane scan reads, so the map is never pre-seeded and never rewritten by
-// index), each placed occurrence's finish day, the leaves placed so far built by PUSHING (`placed_rev`, read back
-// once at the end -- appending to an accumulating list is the copied-accumulator shape), the bucket of occurrences
-// currently at the rank being placed, and that rank.
+// index), each placed occurrence's finish day, the leaves in the order they were placed -- which IS the answer's
+// order, highest rank first, built with one append per placement -- the bucket of occurrences currently at the rank
+// being placed, and that rank.
 type PlaceState {
-  placed_rev: List<ScheduledLeaf>
+  placed: List<ScheduledLeaf>
   finish: Map<String, Int>
   lanes: Map<Int, Int>
   bucket: List<SchedNode>
@@ -262,8 +265,10 @@ fn indegrees(nodes: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<
   })
 }
 
-// EMIT one ready occurrence: push it onto the order, take one outstanding predecessor off each of its successors,
-// and put on the ready list exactly those successors that just ran out of predecessors. Each edge is touched once,
+// EMIT one ready occurrence: append it to the order, take one outstanding predecessor off each of its successors,
+// and put on the ready queue exactly those successors that just ran out of predecessors (the fold appends, so the
+// queue is FIFO; which ready node is emitted next cannot change the answer, because placement is driven by rank,
+// not by emission order). Each edge is touched once,
 // so the ordering pass costs one walk of the graph. What stood here was a Bellman-Ford relaxation that re-scanned
 // every node and every edge once PER NODE -- a proven quadratic shape, gunbc.design_argument::how_to_work: it is
 // fixed at the root whatever the realized n.
@@ -275,7 +280,7 @@ fn topo_step(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoState 
       let succs = look_or(m: succ, key: n.key, dflt: no_succs)
       let dec = fold(succs, init: state.indeg, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) - 1) })
       let freed = fold(succs, init: rest, h: fn(acc, s) { if look_or(m: dec, key: s.key, dflt: 0) == 0 { list_push(xs: acc, item: s) } else { acc } })
-      TopoState { ready: freed, order_rev: list_push(xs: state.order_rev, item: n), indeg: dec, unemitted: state.unemitted - 1 }
+      TopoState { ready: freed, order: list_push(xs: state.order, item: n), indeg: dec, unemitted: state.unemitted - 1 }
     }
   }
 }
@@ -285,18 +290,21 @@ fn topo_step(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoState 
 // short, so nothing here rests on a second pass agreeing with the first.
 fn topo_run(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoOutcome {
   match state.ready {
-    Empty => if state.unemitted > 0 { Cyclic } else { Ordered { order_rev: state.order_rev } }
+    Empty => if state.unemitted > 0 { Cyclic } else { Ordered { order: state.order } }
     Cons { head: n, tail: rest } => topo_run(state: topo_step(state: state, succ: succ), succ: succ)
   }
 }
 
-// ONE rank pass, walking the emission order BACKWARDS. A successor is emitted only after every one of its
-// predecessors has been, so the backwards order puts every successor before its predecessor and
-// rank(k) = days(k) + max rank over successors is already settled for every successor when k is read. One walk of
-// the graph; there is no fixed-point iteration left to iterate.
-fn rank_pass(order_rev: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
+// ONE rank pass over the emission order read BACKWARDS -- the reversal taken once, from std.algebra's own
+// `list_reverse`. A successor is emitted only after every one of its predecessors has been, so the reversed order
+// puts every successor before its predecessor and rank(k) = days(k) + max rank over successors is already settled
+// for every successor by the time k is read. One walk of the graph; there is no fixed-point iteration left to
+// iterate. Walking the FORWARD order instead would read every successor as unset (rank 0) and collapse every rank
+// to the node's own days -- the chain would lose its length and a successor could be placed before its
+// predecessor -- so the direction here is the whole correctness of the pass.
+fn rank_pass(order_back: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
   let no_succs: List<SchedNode> = []
-  fold(order_rev, init: empty_map(), f: fn(rank, n) {
+  fold(order_back, init: empty_map(), f: fn(rank, n) {
     let best = fold(look_or(m: succ, key: n.key, dflt: no_succs), init: 0, g: fn(m, s) {
       let r = look_or(m: rank, key: s.key, dflt: 0)
       if r > m { r } else { m }
@@ -307,19 +315,19 @@ fn rank_pass(order_rev: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> 
 
 // The largest rank over the occurrences -- the critical length, the shortest span any schedule of these occurrences
 // under any worker count can cover.
-fn max_rank_of(order_rev: List<SchedNode>, rank: Map<String, Int>) -> Int {
-  fold(order_rev, init: 0, f: fn(m, n) {
+fn max_rank_of(order: List<SchedNode>, rank: Map<String, Int>) -> Int {
+  fold(order, init: 0, f: fn(m, n) {
     let r = look_or(m: rank, key: n.key, dflt: 0)
     if r > m { r } else { m }
   })
 }
 
-// The occurrences grouped by rank, each group left in the ordering pass's own predecessor-first order (the group is
-// built by pushing while walking the backwards order, which puts it back forwards), so equal ranks are placed
-// deterministically and a zero-day tie still respects the partial order.
-fn rank_buckets(order_rev: List<SchedNode>, rank: Map<String, Int>) -> Map<Int, List<SchedNode>> {
+// The occurrences grouped by rank. The groups are built by appending while walking the FORWARD topological order,
+// so each group is itself predecessor-first: equal ranks are placed deterministically, and a zero-day tie (where
+// rank stops strictly decreasing along an edge) still cannot place a successor before its predecessor.
+fn rank_buckets(order: List<SchedNode>, rank: Map<String, Int>) -> Map<Int, List<SchedNode>> {
   let empty_bucket: List<SchedNode> = []
-  fold(order_rev, init: empty_map(), f: fn(acc, n) {
+  fold(order, init: empty_map(), f: fn(acc, n) {
     let r = look_or(m: rank, key: n.key, dflt: 0)
     map_insert(m: acc, key: r, value: list_push(xs: look_key(m: acc, key: r, dflt: empty_bucket), item: n))
   })
@@ -340,12 +348,12 @@ fn argmax_node_rank(nodes: List<SchedNode>, rank: Map<String, Int>) -> SchedNode
 // The critical path as a chain of LeafPaths: start at the maximum-rank occurrence and follow its maximum-rank
 // successor until it has none. rank(n) = days(n) + max rank over successors, so every step stays on a longest path.
 // The walk halts because the ordering pass refused every cycle before this could be called -- same graph, one pass
-// reporting to the next. The chain is built by pushing and read back once.
+// reporting to the next. The chain is appended as it is walked, which is the direction the answer reports it in.
 fn follow_critical(n: SchedNode, succ: Map<String, List<SchedNode>>, rank: Map<String, Int>, acc: List<LeafPath>) -> List<LeafPath> {
   let no_succs: List<SchedNode> = []
   let next = argmax_node_rank(nodes: look_or(m: succ, key: n.key, dflt: no_succs), rank: rank)
   match next {
-    Absent => reverse_list(xs: list_push(xs: acc, item: n.path))
+    Absent => list_push(xs: acc, item: n.path)
     Present { value: child } => follow_critical(n: child, succ: succ, rank: rank, acc: list_push(xs: acc, item: n.path))
   }
 }
@@ -394,7 +402,7 @@ fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map
       let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
       place_all(
         state: PlaceState {
-          placed_rev: list_push(xs: state.placed_rev, item: leaf),
+          placed: list_push(xs: state.placed, item: leaf),
           finish: map_insert(m: state.finish, key: n.key, value: finish_day),
           lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
           bucket: rest,
@@ -409,7 +417,7 @@ fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map
       } else {
         let empty_bucket: List<SchedNode> = []
         place_all(
-          state: PlaceState { placed_rev: state.placed_rev, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
+          state: PlaceState { placed: state.placed, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
           pred: pred, buckets: buckets, workers: workers
         )
       }
@@ -429,17 +437,9 @@ fn horizon_of(leaves: List<ScheduledLeaf>) -> Int {
   fold(leaves, init: 0, g: fn(m, l) { if l.finish_day > m { l.finish_day } else { m } })
 }
 
-// THE ONE LIST REVERSAL. Every accumulator here is built by pushing and read back through this single reverse-once;
-// appending to an accumulating list is the copied-accumulator shape gunbc.design_argument::how_to_work fixes at the
-// root, whatever the realized n.
-fn reverse_list<T>(xs: List<T>) -> List<T> {
-  let seed: List<T> = []
-  fold(xs, init: seed, f: fn(acc, x) { list_push(xs: acc, item: x) })
-}
-
 // How many leaves are in flight on each day, indexed from day 0 to horizon-1. ONE pass over the leaves turns each
-// interval [start, finish) into a +1 at its start day and a -1 at its finish day; ONE walk over the days folds those
-// deltas into the running count. What stood here filtered every leaf once per day. A leaf spanning no day adds its
+// interval [start, finish) into a +1 at its start day and a -1 at its finish day; ONE walk over the days, appending
+// the running count in day order, folds those deltas into the series. What stood here filtered every leaf once per day. A leaf spanning no day adds its
 // +1 and its -1 on the same day and is counted on none (the expansion emits no zero-day occurrence today -- a Join
 // carries none -- but the answer does not depend on that).
 fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
@@ -452,7 +452,7 @@ fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
 
 fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: List<Int>) -> List<Int> {
   if d >= horizon {
-    reverse_list(xs: acc)
+    acc
   } else {
     let now = running + look_key(m: delta, key: d, dflt: 0)
     count_days(d: d + 1, horizon: horizon, running: now, delta: delta, acc: list_push(xs: acc, item: now))
@@ -506,17 +506,17 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
             let indeg = indegrees(nodes: nodes, succ: adj.succ)
             let empty_nodes: List<SchedNode> = []
             match topo_run(
-              state: TopoState { ready: filter(nodes, n => look_or(m: indeg, key: n.key, dflt: 0) == 0), order_rev: empty_nodes, indeg: indeg, unemitted: count(nodes) },
+              state: TopoState { ready: filter(nodes, n => look_or(m: indeg, key: n.key, dflt: 0) == 0), order: empty_nodes, indeg: indeg, unemitted: count(nodes) },
               succ: adj.succ
             ) {
               Cyclic => NotScheduled { refusal: CyclicOccurrenceGraph }
-              Ordered { order_rev: order_rev } => {
-                let rank = rank_pass(order_rev: order_rev, succ: adj.succ)
-                let buckets = rank_buckets(order_rev: order_rev, rank: rank)
-                let top_rank = max_rank_of(order_rev: order_rev, rank: rank)
+              Ordered { order: order } => {
+                let rank = rank_pass(order_back: list_reverse(xs: order), succ: adj.succ)
+                let buckets = rank_buckets(order: order, rank: rank)
+                let top_rank = max_rank_of(order: order, rank: rank)
                 let empty_bucket: List<SchedNode> = []
                 let placed_state = place_all(
-                  state: PlaceState { placed_rev: empty_placed, finish: empty_map(), lanes: empty_map(), bucket: look_key(m: buckets, key: top_rank, dflt: empty_bucket), rank_now: top_rank },
+                  state: PlaceState { placed: empty_placed, finish: empty_map(), lanes: empty_map(), bucket: look_key(m: buckets, key: top_rank, dflt: empty_bucket), rank_now: top_rank },
                   pred: adj.pred, buckets: buckets, workers: worker_count
                 )
                 // The placement's OWN finish map decides whether the answer is complete; a placement that left an
@@ -525,7 +525,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
                 if count(unplaced) > 0 {
                   NotScheduled { refusal: UnplacedOccurrences { paths: unplaced } }
                 } else {
-                  let placed = reverse_list(xs: placed_state.placed_rev)
+                  let placed = placed_state.placed
                   let horizon = horizon_of(leaves: placed)
                   let crit_start = argmax_node_rank(nodes: nodes, rank: rank)
                   let critical_path = match crit_start {
