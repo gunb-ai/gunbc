@@ -2,8 +2,8 @@ module gunbc.plans.v2_self_host
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.markdown_helpers { h2, p, li, ul, ol, quote, cell, row }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
 
 fn v2_self_host_body() -> List<MarkdownBlock> {
   [
@@ -37,47 +37,15 @@ fn v2_self_host_body() -> List<MarkdownBlock> {
       li(text: "The realization partition (crates, native bundles, cache entries) is derived from the declaration graph, never from file or module membership (`v2-emitter-native-crate-partition` is re-read under the universe ruling)."),
       li(text: "The design document says what the compiler does: the single-authority and substrate claims in `gunbc.design_argument` no longer describe imports, module headers or name-to-path as the binding and storage rules, and the fourteen statements of the 2026-11-17 audit are rows there, rendered by regen."),
     ]),
-    p(text: "**The vision milestone, staged.** Read the same way as the namespace layers: each item is a measured separation of one hidden context, justified by the done-when above, and realized by one node under `v2-compiler-live` bound to this intention at layer 5 (`gunbc.roadmap.roadmap_intention_binding`). Their order among themselves is a selection; what fixes it is that the identity carrier precedes dots-for-citations, the universe ingest precedes the import cut's loader half, and the checked carrier precedes any claim that a roster of tolerated unknowns may be deleted."),
-    ul(items: [
-      li(text: "`universe-ingest-replaces-file-acquisition`: the bundle-to-universe step; files discarded; the text mapping kept; the two-tree layout and `gunbc.source_layout` become the ingest's realization."),
-      li(text: "`one-declaration-identity-carrier`: `DeclarationRef` and `QualifiedName` merged; dots the one rendering, citations included; `::` retired."),
-      li(text: "`sealed-phases-and-the-checked-carrier`: `ParseTree` sealed; four phases; `CheckedProgram` the only input to evaluation and emission."),
-      li(text: "`typed-refusals-own-control-flow`: the 32 production modules that branch on a diagnostic's reason symbol branch on typed refusals; diagnostics render."),
-      li(text: "`one-text-carrier`: one sequence-of-scalars carrier with the host crossing as its only wrapper; the tokenizer identity wall retired."),
-      li(text: "`operations-are-declarations`: the five mechanisms converge on declaration plus realization row; `CanonicalOperation` becomes declarations; operators lower to references."),
-      li(text: "`one-standard-library`: zero duplicate concepts in the retained closures; `v2.std` internals renamed, semantic duplicates merged."),
-      li(text: "`external-specimen-compiles`: a program outside the compiler's own closure compiles natively, with features the closure does not select."),
-    ]),
-    h2(text: "2. The backward structure, read at e346a2c89daa"),
-    p(text: "This section is reasoning, not a phase list. It is derived from two authorities, the interlock's `milestone_prerequisites` and the declared edges of `gunbc.roadmap.roadmap_authority`, and it is replaceable whenever either changes. Read from the goal downward: each layer states what must already be true for the layer above it."),
-    ol(items: [
-      li(text: "**The goal.** The seed families are absent and every product runs without them (`v1-products-v1-free`); the seed-deletion observation is the acceptance gate (ruling `gunbc.design_ruling::seed_deletion_observation_is_the_v1_programs_acceptance_gate`)."),
-      li(text: "**Just before it.** The old generator is deleted (`v1-emitter-delete`, needing the required lane and the admitted successor) and the old runner is deleted (`v1-interpreter-delete`, needing `v1-interpreter-quarantine`, which needs `native-production-admission`, which needs the required lane and, by the operator's 2026-11-16 ruling, the namespace program `namespace-unique-on-chain`). The interlock's four prerequisites sit here: the required lane (`native-frontier-required-lane`), the admitted successor (`v1-emitter-fixed-point`), every retained artifact produced (`emitter-produces-main-rs`), and every emitted module holding its own contract (`emitted-contracts-held`)."),
-      li(text: "**Before the successor is admitted.** The v2-built compiler rebuilds itself (`v2-emitter-native-bootstrap`), which needs the built v2 CLI to compile and emit `v2.compiler.compile` (`second-generation`)."),
-      li(text: "**Before the second generation.** Two independent lines meet: the emitter chain reaches the crate partition (`v2-emitter-producer-provenance`, `v2-emitter-direct-rust-door`, `v2-emitter-production-compatible-corpus-module`, `v2-emitter-first-behavioral-module`, `v2-emitter-native-crate-partition`: five serial steps), and v2 parses and types its own test target (`native-seven`), which needs its four parents (`literal-elaboration`, `shared-check-lets-and-matches`, `declaration-provider-outcomes`, `native-test-verdict-realization`)."),
-    ]),
+    p(text: "**The vision milestone, staged.** Each separation is one node under `v2-compiler-live`, bound to this intention at layer 5; the items are those layer-5 bindings in `gunbc.roadmap.roadmap_intention_binding`, and the prerequisite order among them is carried by the declared edges of `gunbc.roadmap.roadmap_authority`. Neither is restated here, because a plan is an intention and not the realization (`gunbc.design_argument::plans_are_intentions`, `gunbc.design_argument::single_authority`). Their order among themselves is a selection; what fixes it is that the identity carrier precedes dots-for-citations, the universe ingest precedes the import cut's loader half, and the checked carrier precedes any claim that a roster of tolerated unknowns may be deleted."),
+    h2(text: "2. The backward structure"),
+    p(text: "Read backward from the goal, each layer states what must already be true for the one above it. That structure is not restated here: it is the interlock's `milestone_prerequisites` and the declared edges of `gunbc.roadmap.roadmap_authority` (read at commit e346a2c89daa), and it is replaceable whenever either changes; a plan states the intention, not its realization (`gunbc.design_argument::plans_are_intentions`). The goal this intention points at is the seed's absence from the tree (`v1-products-v1-free`), gated by the seed-deletion observation (ruling `gunbc.design_ruling::seed_deletion_observation_is_the_v1_programs_acceptance_gate`)."),
     p(text: "**The cone.** Walking the declared edges back from the goal reaches 31 nodes, of which 13 have no open parent (32 and 14 once the namespace edge below is counted; `namespace-unique-on-chain` is a project node whose eleven members declare no edges to it, so its own cone is read from membership). The longest chain from that frontier to the goal is 11 landings and runs through the emitter chain, which is serial: one worker at a time, starting at `v2-emitter-producer-provenance`, the open producer-authority question that `v2-emitter-direct-rust-door` was reported as carrying. The native-seven line has about three landings of slack against it. Of the 111 nodes under the v2 projects, 83 are on no path to the goal."),
     h2(text: "3. What is outside the cone, and what that means"),
     p(text: "The following are not prerequisites of this intention. They are quality, safety and cost work that each belongs to another intention or is admitted ad hoc; selecting them over the cone is a selection the operator makes against the shared CI heal slot, not a dependency this plan asserts: `compiler-guarantee` (35 nodes, the ladder climb), the egress rows under `v2-compiler-live` (numeric, crypto, encoding, effects, content hash), `emission-minimum-cost` and `cardinality-absence`. The namespace program is NOT outside: by `gunbc.design_ruling::v2_landing_waits_on_the_namespace_program` it gates production admission, while staying outside native-seven (`gunbc.design_ruling::n7_requires_only_its_own_closure`)."),
     p(text: "A node outside the cone is not wrong to work on. It is wrong to report it as moving the compiler closer to running, which is the confusion `v2-compiler-live` recorded as its displaced cost."),
     h2(text: "4. Milestones and their homes"),
-    p(text: "Every interlock milestone, the work item that discharges it, and how the status module reads it today. A milestone with no work item was the gap this plan was written to close."),
-    TableBlock {
-      header: row(cells: [cell(text: "Milestone"), cell(text: "Work item"), cell(text: "Standing read by `gunbc.compiler_frontend_program_status`")]),
-      alignments: [AlignNone, AlignNone, AlignNone],
-      rows: [
-        row(cells: [cell(text: "S2 `SelfHostWholeCorpusPopulationDerived`"), cell(text: "`v2-frontend` (cited in its handback)"), cell(text: "NotDerivable: the whole-corpus census was retired by `gunbc.design_ruling::bad_process_is_worse_than_no_process`; the scope is the two compiler closures.")]),
-        row(cells: [cell(text: "S3 `SelfHostCargoPhaseEnrolled`"), cell(text: "`v2-emitter-production` (cited in its handback)"), cell(text: "NotDerivable: the phase roster does not model whether a phase executes cargo; the v2-bootstrap rows do, but no carrier says so.")]),
-        row(cells: [cell(text: "S4a `SelfHostRatchetObservationEnrolled`"), cell(text: "`native-frontier-required-lane`"), cell(text: "Outstanding.")]),
-        row(cells: [cell(text: "S4b `SelfHostRatchetGateEnrolled`"), cell(text: "`native-frontier-required-lane` (read here as the same step; see open question 3)"), cell(text: "Outstanding, at an authored identity: leaves only by the edit that lands the step.")]),
-        row(cells: [cell(text: "S5 `SelfHostCorpusEmitsCleanly`"), cell(text: "`second-generation` and `v2-emitter-native-bootstrap`; `v2-frontend` cites it"), cell(text: "Outstanding over the two retained closures.")]),
-        row(cells: [cell(text: "`SelfHostEmittedContractsHeld`"), cell(text: "`emitted-contracts-held` (added with this plan under `v2-emitter-production`)"), cell(text: "Read from the latest deliberately taken behavioral-equivalence receipt, identity-joined to the transport roster.")]),
-        row(cells: [cell(text: "`SelfHostEmitterProducesEveryRetainedArtifact`"), cell(text: "`emitter-produces-main-rs`"), cell(text: "Outstanding while any EmitterProducedDivergentRegistration remains.")]),
-        row(cells: [cell(text: "`SelfHostSuccessorPromotionAdmitted`"), cell(text: "`v1-emitter-fixed-point`"), cell(text: "NotDerivable: whether admit_promotion ever returned promoted for a real candidate is a run fact no carrier holds.")]),
-        row(cells: [cell(text: "`SelfHostNativeRouteRequiredLane`"), cell(text: "`native-frontier-required-lane`"), cell(text: "Outstanding while `gunbc.rung_drop` v2_native_route_off_the_merge_path stands.")]),
-        row(cells: [cell(text: "S6 `SelfHostSeedRetirement`"), cell(text: "`v1-emitter-delete`, `v1-interpreter-delete`, `v1-products-v1-free`"), cell(text: "NotDerivable until a seed-deletion observation exists.")]),
-      ],
-    },
+    p(text: "The milestone-to-work-item home and the milestone's standing are not restated here. The home is carried by `gunbc.roadmap.roadmap_authority` and the layers of `gunbc.roadmap.roadmap_intention_binding`; the standing is read from `gunbc.compiler_frontend_program_status`, which derives it from the event log rather than holding it here (a plan is an intention, not a status board: `gunbc.design_argument::plans_are_intentions`). A milestone with no work item was the gap this plan was written to close."),
     h2(text: "5. The near-term milestone"),
     p(text: "`native-seven` is the operator's chosen near-term target (2026-11-16): a visible, end-to-end proof that keeps the program's motivation concrete. It is on the cone, since `second-generation` needs it, and it has slack against the emitter chain, so it is not the critical path. Both facts are stated so that progress on it is reported as what it is: a real prerequisite met early, not the program's bottleneck moving."),
     h2(text: "6. Decisions taken 2026-11-16, and what is still open"),
