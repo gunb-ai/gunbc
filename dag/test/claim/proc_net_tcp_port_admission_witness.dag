@@ -35,7 +35,7 @@ fn row_refused(line: String) -> Bool {
 }
 
 fn table_refuses_naming_line(line: String) -> Bool {
-  match proc_net_tcp_table(text: line) { ProcNetTcpUnparseable { line: _ } => true, _ => false }
+  match proc_net_tcp_table(text: line) { ProcNetTcpUnparseable { line: named } => named == line, _ => false }
 }
 
 fn row_bound_to_443(line: String) -> Bool {
@@ -81,6 +81,16 @@ test fn decoder_refuses_a_port_word_wider_than_four_digits() -> Bool {
 test fn decoder_refuses_a_port_word_narrower_than_four_digits() -> Bool {
   row_refused(line: kernel_row_with_local(local: "0100007F:1BB"))
     && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:1BB"))
+}
+
+// A LOWERCASE PORT WORD IS REFUSED AT THE SYNTAX LEVEL. %04X prints UPPERCASE, so "01bb" is the
+// non-canonical spelling: base16's either-case reader would take it as 0x01BB = 443, so this column
+// reads through base16_word_value_upper, which refuses the lowercase a-f via the rows' UPPER column
+// and the row is refused naming the line. RED: swap in either-case base16_word_value and "01bb" reads
+// as 443 -- the reviewer's F1.
+test fn decoder_refuses_a_lowercase_port_word() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:01bb"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:01bb"))
 }
 
 // 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,

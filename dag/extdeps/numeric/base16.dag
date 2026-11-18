@@ -251,3 +251,34 @@ fn base16_word_value(word: String, max_digits: Int) -> Int? {
       })
   }
 }
+
+// THE UPPERCASE HALF OF THE LOOKUP, over the SAME rows (mirrors base16_lower_digit_value_at at the
+// top of this module): a digit whose code point is in the rows' UPPER column, and the digits 0-9
+// (whose lower and upper spellings coincide). This is the uppercase alphabet said once -- code_point
+// (row.upper) over base16_digit_rows -- not a second ASCII interval (gunbc.design_argument::
+// single_authority); it refuses the lowercase a-f because those code points live only in the lower
+// column.
+fn base16_upper_digit_value_at(cp: Int) -> Int? {
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
+    if code_point(row.upper) == cp { Present { value: row.value } } else { acc })
+}
+
+// A BOUNDED UPPERCASE HEXADECIMAL WORD AS ONE INTEGER: the same operation as base16_word_value, but
+// the CANONICAL-CASE policy is uppercase instead of either -- for the consumer that reads a field the
+// upstream prints in uppercase and must refuse the non-canonical spelling rather than read '01bb' as
+// 0x01BB. extdeps.linux.proc_net_tcp reads the kernel's %04X port column this way. The case POLICY is
+// chosen here beside the either-case and lowercase ones; the alphabet stays in the rows.
+fn base16_word_value_upper(word: String, max_digits: Int) -> Int? {
+  let cps = word |> chars
+  if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { none } else {
+    fold(cps, init: Present { value: 0 }, f: (acc, cp) =>
+      match acc {
+        Absent => none
+        Present { value: v } =>
+          match base16_upper_digit_value_at(cp: cp) {
+            Absent => none
+            Present { value: d } => Present { value: v * 16 + d }
+          }
+      })
+  }
+}

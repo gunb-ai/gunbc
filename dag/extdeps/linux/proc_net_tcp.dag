@@ -3,7 +3,7 @@ module extdeps.linux.proc_net_tcp
 import std.types { NonEmptyStr, List, Bool, Int, Port, checked_port }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import extdeps.numeric.base16 { base16_word_value }
+import extdeps.numeric.base16 { base16_word_value, base16_word_value_upper }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -79,15 +79,18 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
               Absent => none
               Present { value: port_hex } =>
                 // THE KERNEL PRINTS THIS COLUMN AS %04X (net/ipv4/tcp_ipv4.c, get_tcp4_sock): exactly
-                // four uppercase hex digits. That fixed width is the upstream's own SYNTAX and this
-                // module's concern -- not a stand-in for the port range. base16 gives the hex-digit
-                // syntax and a length CEILING (max_digits: 4 refuses a 6-digit word like "0001BB");
-                // base16 takes no floor, so this module supplies the missing one and refuses a short
-                // word like "1BB". The DOMAIN bound is separate and stays std.types checked_port.
+                // four UPPERCASE hex digits. That fixed width and case are the upstream's own SYNTAX and
+                // this module's concern -- not a stand-in for the port range. base16 gives the hex-digit
+                // syntax; its either-case base16_word_value would read '01bb' as 0x01BB = 443, so this
+                // column reads through base16_word_value_upper (the rows' UPPER column is the alphabet
+                // authority), which refuses the lowercase a-f as the non-canonical spelling. base16 gives
+                // a length CEILING (max_digits: 4 refuses a 6-digit word like "0001BB") but no floor, so
+                // this module supplies the missing one and refuses a short word like "1BB". The DOMAIN
+                // bound is separate and stays std.types checked_port.
                 if string_length(s: port_hex) < 4 {
                   none
                 } else {
-                  match base16_word_value(word: port_hex, max_digits: 4) {
+                  match base16_word_value_upper(word: port_hex, max_digits: 4) {
                     Absent => none
                     Present { value: port } =>
                       if port == 0 {

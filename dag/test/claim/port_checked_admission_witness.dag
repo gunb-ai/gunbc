@@ -23,13 +23,16 @@ fn refuses(n: Int) -> Bool {
   match checked_port(n: n) { Present { value: _ } => false, Absent => true }
 }
 
-// THE BOUNDARY AND THE INTERIOR. The fold round-trips the 16-bit service range, 0 excluded.
-// RED: drop the upper bound and refuses(70000) answers false; accept 0 and refuses(0) answers false;
-// tighten below 1 / above 65535 and admits(1) / admits(65535) answer false.
+// THE BOUNDARY AND THE INTERIOR. The fold round-trips the 16-bit service range, 0 excluded. The
+// successor of the maximum (65536) is the discriminating boundary: a fold that forgot its upper bound
+// would admit it, whereas 70000 only catches a bound dropped to >= 70000.
+// RED: drop the upper bound and refuses(65536) / refuses(70000) answer false; accept 0 and refuses(0)
+// answers false; tighten below 1 / above 65535 and admits(1) / admits(65535) answer false.
 test fn checked_port_admits_the_rfc793_service_range() -> Bool {
   admits(n: 443)
     && admits(n: 1)
     && admits(n: 65535)
+    && refuses(n: 65536)
     && refuses(n: 70000)
     && refuses(n: 0)
     && refuses(n: -1)
