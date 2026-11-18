@@ -80,3 +80,60 @@ test fn an_unterminated_marker_is_reported_holds() -> Bool {
 test fn an_empty_root_is_not_a_check_of_zero_holds() -> Bool {
   !reference_check_over(directory: "fixtures/annotation_reference_absent_root/dag").held
 }
+
+// ---- run-step target decl_name (gunbc.ci.ci_run_step_target) ---------------------------------------
+//
+// The same production fold, over fixture roots that build run-step targets through the one constructor. The
+// holding root contains a well-formed target, an inert comment occurrence, and a same-named LOCAL fn whose call
+// must NOT be treated as a site (identity, not spelling). The refusing root misspells an entry, passes a
+// non-literal entry, and names a module that was never declared.
+
+fn run_step_target_holds_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/run_step_target_holds/dag")
+}
+
+fn run_step_target_refused_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/run_step_target_refused/dag")
+}
+
+fn run_step_target_refused_fragment(fragment: String) -> Bool {
+  let r = run_step_target_refused_report()
+  !r.held && string_contains(s: r.text, pattern: fragment)
+}
+
+// POSITIVE CONTROL: the well-formed target resolves, and the run-step targets are counted and resolved.
+test fn a_wellformed_run_step_target_resolves_holds() -> Bool {
+  let r = run_step_target_holds_report()
+  r.held
+    && string_contains(s: r.text, pattern: reference_check_holds_head)
+    && string_contains(s: r.text, pattern: "run-step target(s)")
+    && string_contains(s: r.text, pattern: "resolved")
+}
+
+// IDENTITY CONTROL (closed_grounded_substrate): the same-named LOCAL fn module is NOT a site, so its deliberately
+// bogus entry (gunbc.no_such_module_at_all) does not refuse -- the holding root stays held. If the check keyed on
+// the call's SPELLING rather than the callee's resolved identity, this decoy would refuse and the root would not
+// hold. The inert comment occurrence is likewise not counted as a refusal.
+test fn a_same_named_local_fn_is_not_a_run_step_target_site_holds() -> Bool {
+  let r = run_step_target_holds_report()
+  r.held && !string_contains(s: r.text, pattern: "gunbc.no_such_module_at_all")
+}
+
+// THE RED: a misspelled entry refuses, located at the constructing row and naming the absent function.
+test fn a_misspelled_run_step_target_entry_refuses_located_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_misspell_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetDeclarationAbsent")
+    && run_step_target_refused_fragment("run_step_target_fixture_entry_TYPO")
+}
+
+// CONDITION 2: a non-literal entry argument refuses typed (never skipped).
+test fn a_nonliteral_run_step_target_entry_refuses_typed_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_nonliteral_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetArgumentNotLiteral")
+}
+
+// A target whose module half is never declared refuses as well.
+test fn a_run_step_target_naming_an_absent_module_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_absent_module_step.dag")
+    && run_step_target_refused_fragment("gunbc.run_step_target_never_declared")
+}
