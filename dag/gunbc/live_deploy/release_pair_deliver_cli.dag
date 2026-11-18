@@ -235,6 +235,7 @@ fn release_pair_pack_fetch(
 // ArgvCommand (a program plus a fixed argv): the medium must be a shell. The restart was the case where systemctl
 // already modelled the effect as an argv and running it via sh was wrong; THIS is the reviewer's declared-scaffold
 // case — kept as a declared row (below), not a bare comment, so the debt is on the ledger with a dissolution trigger.
+// Admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
 data release_pair_verify_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -449,7 +450,8 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // builder. That conversion is its OWN authority transition (privileged builder + registry + census), not this PR's, and
 // adding a second ArgvCommand restart beside it would create an unregistered sudo restart. So both shell-as-medium
 // legs on this path (this restart and the consumer key-check verify) take the reviewer's declared-scaffold option,
-// each a declared row with a dissolution trigger, no new mint and no census change here (manager decision).
+// each a declared row with a dissolution trigger, no new mint and no census change here — both shell-as-medium
+// STEPS here are admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
 data release_pair_restart_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
