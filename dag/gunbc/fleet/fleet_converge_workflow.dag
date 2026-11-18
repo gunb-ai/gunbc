@@ -487,6 +487,11 @@ type FleetConvergeModeFacts {
   is_spark_target: Bool,
 }
 
+// Plain Step producers lifted into the carrier the run-step emit family now returns (gunbc.design_argument::fail_closed).
+fn lift_steps(xs: List<Step>) -> List<Outcome<Step>> {
+  list_map(xs, fn(s) { outcome_accepted(value: s) })
+}
+
 fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeModeFacts {
   match mode {
     FullHostPlan => FleetConvergeModeFacts { wire: "plan", scope: Present { value: FullHost }, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -1324,27 +1329,29 @@ data fleet_converge_deploy_slot_runner_expression: String = join([
 // same act as adding its budget. The step list is bound once here and consumed by both the job and
 // this sum, so the two cannot disagree; a step with no declared budget contributes nothing and is
 // visible as such rather than silently costing the prelude allowance.
-fn fleet_converge_build_job_steps() -> List<Step> {
-  concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_build_checkout_step(), exact_head_preflight: []),
-    fleet_converge_build_job_own_steps(),
+fn fleet_converge_build_job_steps() -> List<Outcome<Step>> {
+concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_build_checkout_step(), exact_head_preflight: [])),
+    lift_steps(fleet_converge_build_job_own_steps()),
   )
 }
 
-fn fleet_converge_build_job_own_steps() -> List<Step> {
-  [
-    ci_release_bins_key_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-    ci_release_bins_lookup_step(),
-    ci_release_bins_cache_step(),
-    ci_release_bins_outcome_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-    ci_cache_cargo_step(),
-    ci_release_build_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
+
+fn fleet_converge_build_job_own_steps() -> List<Outcome<Step>> {
+[
+    outcome_accepted(value: ci_release_bins_key_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
+    outcome_accepted(value: ci_release_bins_lookup_step()),
+    outcome_accepted(value: ci_release_bins_cache_step()),
+    outcome_accepted(value: ci_release_bins_outcome_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
+    outcome_accepted(value: ci_cache_cargo_step()),
+    outcome_accepted(value: ci_release_build_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
     fleet_converge_reset_observer_dispatch_admission_step(),
     fleet_converge_hostname_converge_dispatch_admission_step(),
-    ci_release_bins_pack_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-    ci_release_bins_upload_step(),
+    outcome_accepted(value: ci_release_bins_pack_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
+    outcome_accepted(value: ci_release_bins_upload_step()),
   ]
 }
+
 
 fn step_declared_timeout_minutes(st: Step) -> Int {
   match st {
@@ -1596,17 +1603,18 @@ fn fleet_converge_checkout_verify_step(if_condition: String?) -> Outcome<Step> {
   )
 }
 
-fn fleet_converge_plan_revision_steps() -> List<Step> {
-  concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
+fn fleet_converge_plan_revision_steps() -> List<Outcome<Step>> {
+concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
     [
-      fleet_converge_plan_revision_pair_build_step(),
-      fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
-      fleet_converge_plan_revision_download_step(),
-      fleet_converge_plan_revision_resolve_step(),
-    ]
+    outcome_accepted(value: fleet_converge_plan_revision_pair_build_step()),
+    fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
+    outcome_accepted(value: fleet_converge_plan_revision_download_step()),
+    fleet_converge_plan_revision_resolve_step(),
+  ],
   )
 }
+
 
 fn fleet_converge_plan_revision_job() -> Job {
   let steps = fleet_converge_plan_revision_steps()
@@ -5433,13 +5441,14 @@ fn fleet_converge_srv1_root_mutation_job_if(mode: FleetConvergeWorkflowMode) -> 
   })
 }
 
-fn fleet_converge_srv1_root_mutation_approval_steps(selects: List<String>) -> List<Step> {
-  [
-    ci_fleet_wif_auth_step(),
+fn fleet_converge_srv1_root_mutation_approval_steps(selects: List<String>) -> List<Outcome<Step>> {
+[
+    outcome_accepted(value: ci_fleet_wif_auth_step()),
     fleet_converge_srv1_root_mutation_approval_step(selects: selects),
-    fleet_converge_srv1_root_mutation_approval_receipt_upload_step(),
+    outcome_accepted(value: fleet_converge_srv1_root_mutation_approval_receipt_upload_step()),
   ]
 }
+
 
 // THE MODE, HANDED TO EVERY STEP OF A ROOT-MUTATION JOB AT JOB LEVEL (not step level): the gate step
 // AND every inheriting step rebuild the same request from the run's own variables, and the request
@@ -6442,25 +6451,35 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
-  concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), concat(concat([
-    fleet_converge_mtcollins1_boot_pair_build_step(),
+fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Outcome<Step>, boot_step: Outcome<Step>) -> List<Outcome<Step>> {
+concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    concat(
+    concat(
+    [
+    outcome_accepted(value: fleet_converge_mtcollins1_boot_pair_build_step()),
     fleet_converge_mtcollins1_boot_admit_step(),
-  ], fleet_converge_site_pxe_edge_receipt_steps(reading: mtcollins1_boot_site_pxe_edge_run_reading)), [
-    fleet_converge_mtcollins1_boot_wif_auth_step(),
+  ],
+    lift_steps(fleet_converge_site_pxe_edge_receipt_steps(reading: mtcollins1_boot_site_pxe_edge_run_reading)),
+  ),
+    [
+    outcome_accepted(value: fleet_converge_mtcollins1_boot_wif_auth_step()),
     fleet_key_step,
     fleet_converge_fan_policy_phase_step(),
     boot_step,
     fleet_converge_mtcollins1_pxe_mac_discovery_step(),
     fleet_converge_mtcollins1_bmc_cold_reset_step(),
-    fleet_converge_fan_policy_phase_receipt_upload_step(),
-    fleet_converge_mtcollins1_boot_receipt_upload_step(),
-    ci_fleet_key_agent_cleanup_step(),
-  ]))
+    outcome_accepted(value: fleet_converge_fan_policy_phase_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_mtcollins1_boot_receipt_upload_step()),
+    outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
+  ],
+  ),
+  )
 }
 
-fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
-  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: ci_fleet_key_agent_step(), boot_step: fleet_converge_mtcollins1_boot_step())
+
+fn fleet_converge_mtcollins1_boot_steps() -> List<Outcome<Step>> {
+  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: outcome_accepted(value: ci_fleet_key_agent_step()), boot_step: fleet_converge_mtcollins1_boot_step())
 }
 
 fn fleet_converge_mtcollins1_boot_job() -> Job {
@@ -6499,16 +6518,17 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
 // then the WIF token and the fleet key. It is its own producer because the ORDER is a fact a witness
 // reads -- admission before any credential is minted -- and reading it here costs these five steps
 // rather than the whole job's.
-fn fleet_converge_credential_prelude_steps() -> List<Step> {
-  concat(
+fn fleet_converge_credential_prelude_steps() -> List<Outcome<Step>> {
+concat(
     [
-      ci_release_bins_download_step(),
-      ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition()),
-    ],
-    fleet_converge_post_mint_credential_steps(),
+    outcome_accepted(value: ci_release_bins_download_step()),
+    outcome_accepted(value: ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires())),
+    outcome_accepted(value: fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_fleet_identity_auth_condition())),
+  ],
+    lift_steps(fleet_converge_post_mint_credential_steps()),
   )
 }
+
 
 // The credential steps after the mint: the granted-account sign-ins, then the fleet key, which reads
 // the fleet identity to fetch the key.
@@ -6520,9 +6540,13 @@ fn fleet_converge_post_mint_credential_steps() -> List<Step> {
 }
 
 // Every step of the job that runs after the mint and may read it.
-fn fleet_converge_fleet_identity_reader_candidates() -> List<Step> {
-  concat(fleet_converge_post_mint_credential_steps(), fleet_converge_job_work_steps())
+fn fleet_converge_fleet_identity_reader_candidates() -> List<Outcome<Step>> {
+concat(
+    lift_steps(fleet_converge_post_mint_credential_steps()),
+    lift_steps(fleet_converge_job_work_steps()),
+  )
 }
+
 
 fn fleet_converge_fleet_identity_unreadable_text() -> String? {
   fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates())
@@ -6561,164 +6585,165 @@ fn fleet_converge_job() -> Job {
 
 // THE JOB'S WORK, after the credential prelude: its own producer so the mint can read its readers
 // from it without reading itself.
-fn fleet_converge_job_work_steps() -> List<Step> {
-      [
-        fleet_converge_plan_step(),
-        fleet_converge_launch_environment_plan_step(),
-        fleet_converge_allocation_store_plan_step(),
-        fleet_converge_workspace_commissioning_plan_step(),
-        fleet_converge_workspace_operation_step(mode: WorkspaceAllocationPlan, run: gunbc_ci_workspace_allocation_plan_invoke()),
-        fleet_converge_workspace_operation_step(mode: WorkspaceImageBuild, run: gunbc_ci_workspace_image_build_invoke()),
-        fleet_converge_workspace_image_upload_step(),
-        fleet_converge_workspace_operation_step(mode: RevisionJobImageBuild, run: gunbc_ci_revision_job_image_build_invoke()),
-        fleet_converge_revision_job_image_upload_step(),
-        fleet_converge_serve_entry_verdict_step(),
-        fleet_converge_plan_upload_step(),
-        fleet_converge_plan_download_step(),
-        fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
-        fleet_converge_apply_step(),
-        fleet_converge_apply_receipt_upload_step(),
-        fleet_converge_org_actions_step(),
-        fleet_converge_org_actions_receipt_upload_step(),
-        fleet_converge_org_runner_roster_step(),
-        fleet_converge_org_runner_roster_receipt_upload_step(),
-        fleet_converge_app_control_plane_step(),
-        fleet_converge_app_control_plane_receipt_upload_step(),
-        fleet_converge_app_key_version_verify_mint_step(),
-        fleet_converge_app_key_version_verify_verdict_step(),
-        fleet_converge_app_key_version_verify_receipt_upload_step(),
-        fleet_converge_mtcollins1_fan_observe_step(),
-        fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
-        fleet_converge_mtcollins1_ui_status_asset_observe_step(),
-        fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step(),
-        fleet_converge_mtcollins1_kvm_observer_observe_step(),
-        fleet_converge_mtcollins1_kvm_observer_release_step(),
-        fleet_converge_mtcollins1_kvm_observer_observe_upload_step(),
-        fleet_converge_fabric_writer_identity_observe_step(),
-        fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
-        fleet_converge_mtcollins1_census_image_publish_step(),
-        fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
-        fleet_converge_mtcollins1_runner_image_publish_step(),
-        fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step(),
-        fleet_converge_mtcollins1_census_member_readback_step(),
-        fleet_converge_mtcollins1_census_member_readback_receipt_upload_step(),
-        fleet_converge_mtcollins1_census_qemu_host_observe_step(),
-        fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step(),
-        fleet_converge_mtcollins1_census_qemu_toolchain_converge_step(),
-        fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step(),
-        fleet_converge_r2_mint_preflight_step(),
-        fleet_converge_r2_mint_preflight_receipt_upload_step(),
-        fleet_converge_r2_bucket_admin_mint_step(),
-        fleet_converge_r2_bucket_admin_mint_receipt_upload_step(),
-        fleet_converge_r2_bucket_ensure_step(),
-        fleet_converge_r2_bucket_ensure_receipt_upload_step(),
-        fleet_converge_r2_object_write_mint_step(),
-        fleet_converge_r2_object_write_mint_receipt_upload_step(),
-        fleet_converge_r2_workspace_object_read_mint_step(),
-        fleet_converge_r2_workspace_object_read_mint_receipt_upload_step(),
-        fleet_converge_r2_workspace_object_write_mint_step(),
-        fleet_converge_r2_workspace_object_write_mint_receipt_upload_step(),
-        fleet_converge_hetzner_cloud_server_read_step(),
-        fleet_converge_hetzner_cloud_server_read_receipt_upload_step(),
-        fleet_converge_export_host_reader_converge_step(),
-        fleet_converge_export_host_reader_converge_receipt_upload_step(),
-        fleet_converge_boot_medium_reader_probe_step(),
-        fleet_converge_boot_medium_reader_probe_receipt_upload_step(),
-        fleet_converge_flex_pass_step(),
-        fleet_converge_flex_pass_receipt_upload_step(),
-        fleet_converge_flex_template_ensure_step(),
-        fleet_converge_flex_template_ensure_receipt_upload_step(),
-        fleet_converge_r2_cache_object_read_mint_step(),
-        fleet_converge_r2_cache_object_read_mint_receipt_upload_step(),
-        fleet_converge_r2_cache_object_write_mint_step(),
-        fleet_converge_r2_cache_object_write_mint_receipt_upload_step(),
-        fleet_converge_r2_conditional_put_race_probe_step(),
-        fleet_converge_r2_conditional_put_race_probe_receipt_upload_step(),
-        fleet_converge_workspace_source_pack_step(),
-        fleet_converge_workspace_source_pack_receipt_upload_step(),
-        fleet_converge_workspace_checkpoint_measure_step(),
-        fleet_converge_workspace_checkpoint_measure_receipt_upload_step(),
-        fleet_converge_workspace_checkpoint_restore_step(),
-        fleet_converge_workspace_checkpoint_restore_receipt_upload_step(),
-        fleet_converge_workspace_transcript_rate_observe_step(),
-        fleet_converge_workspace_transcript_rate_observe_receipt_upload_step(),
-        fleet_converge_approval_keyring_converge_step(),
-        fleet_converge_microvm_runner_group_ensure_step(),
-        fleet_converge_microvm_runner_group_ensure_receipt_upload_step(),
-        fleet_converge_service_runner_lost_boot_sweep_step(),
-        fleet_converge_qualification_attempt_step(),
-        fleet_converge_qualification_attempt_receipt_upload_step(),
-        fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step(),
-        fleet_converge_service_runner_lost_boot_sweep_dry_run_step(),
-        fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step(),
-        fleet_converge_jit_dead_sweep_step(),
-        fleet_converge_jit_dead_sweep_receipt_upload_step(),
-        fleet_converge_jit_dead_sweep_dry_run_step(),
-        fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step(),
-        fleet_converge_service_slot_start_step(),
-        fleet_converge_service_slot_start_receipt_upload_step(),
-        fleet_converge_guest_image_observe_step(),
-        fleet_converge_guest_image_converge_step(),
-        fleet_converge_guest_image_receipt_upload_step(),
-        fleet_converge_microvm_host_converge_step(),
-        fleet_converge_microvm_host_standing_upload_step(),
-        fleet_converge_microvm_network_observe_step(),
-        fleet_converge_microvm_network_observe_receipt_upload_step(),
-        fleet_converge_microvm_network_apply_step(),
-        fleet_converge_microvm_network_apply_receipt_upload_step(),
-        fleet_converge_microvm_boot_probe_step(),
-        fleet_converge_microvm_boot_probe_receipt_upload_step(),
-        fleet_converge_microvm_slot_reserve_step(),
-        fleet_converge_microvm_slot_reserve_receipt_upload_step(),
-        fleet_converge_microvm_slot_start_step(),
-        fleet_converge_microvm_slot_start_receipt_upload_step(),
-        fleet_converge_spark_grants_step(),
-        fleet_converge_spark_bootstrap_step(),
-        fleet_converge_spark_serving_apply_step(),
-        fleet_converge_spark_native_serving_apply_step(),
-        fleet_converge_spark_runtime_image_probe_step(),
-        fleet_converge_spark_wireless_link_converge_step(),
-        fleet_converge_spark_grants_observe_step(),
-        fleet_converge_runner_host_file_observe_step(),
-        fleet_converge_remote_build_serving_observe_step(),
-        fleet_converge_remote_build_serving_converge_step(),
-        fleet_converge_remote_build_serving_observe_receipt_upload_step(),
-        fleet_converge_host_memory_observe_step(),
-        fleet_converge_executor_subject_split_gate_step(),
-        fleet_converge_runner_host_file_converge_step(),
-        fleet_converge_runner_host_cap_release_step(),
-        fleet_converge_runner_host_cap_release_receipt_upload_step(),
-        fleet_converge_host_primary_network_observe_step(),
-        fleet_converge_host_primary_network_converge_step(),
-        fleet_converge_host_primary_network_receipt_upload_step(),
-        fleet_converge_board_function_converge_step(),
-        fleet_converge_board_function_converge_receipt_upload_step(),
-        fleet_converge_runner_host_withdraw_step(),
-        fleet_converge_runner_host_withdraw_receipt_upload_step(),
-        fleet_converge_runner_host_restore_step(),
-        fleet_converge_runner_host_restore_receipt_upload_step(),
-        fleet_converge_runner_password_session_tool_converge_step(),
-        fleet_converge_runner_password_session_tool_receipt_upload_step(),
-        fleet_converge_runner_browser_toolchain_converge_step(),
-        fleet_converge_runner_browser_toolchain_receipt_upload_step(),
-        fleet_converge_runner_user_session_converge_step(),
-        fleet_converge_runner_user_session_receipt_upload_step(),
-        fleet_converge_runner_gpu_container_toolchain_converge_step(),
-        fleet_converge_runner_gpu_container_toolchain_receipt_upload_step(),
-        fleet_converge_host_credential_custody_converge_step(),
-        fleet_converge_host_credential_custody_receipt_upload_step(),
-        fleet_converge_tailscale_join_step(),
-        fleet_converge_tailscale_join_receipt_upload_step(),
-        fleet_converge_runner_host_file_receipt_upload_step(),
-        fleet_converge_site_pxe_edge_observe_step(),
-        fleet_converge_site_pxe_edge_converge_step(),
-        fleet_converge_site_pxe_edge_receipt_upload_step(),
-        fleet_converge_site_pxe_edge_live_receipt_upload_step(),
-        fleet_converge_managed_host_network_install_step(),
-        fleet_converge_managed_host_network_install_receipt_upload_step(),
-        ci_fleet_key_agent_cleanup_step(),
-      ]
+fn fleet_converge_job_work_steps() -> List<Outcome<Step>> {
+[
+    fleet_converge_plan_step(),
+    fleet_converge_launch_environment_plan_step(),
+    fleet_converge_allocation_store_plan_step(),
+    fleet_converge_workspace_commissioning_plan_step(),
+    outcome_accepted(value: fleet_converge_workspace_operation_step(mode: WorkspaceAllocationPlan, run: gunbc_ci_workspace_allocation_plan_invoke())),
+    outcome_accepted(value: fleet_converge_workspace_operation_step(mode: WorkspaceImageBuild, run: gunbc_ci_workspace_image_build_invoke())),
+    outcome_accepted(value: fleet_converge_workspace_image_upload_step()),
+    outcome_accepted(value: fleet_converge_workspace_operation_step(mode: RevisionJobImageBuild, run: gunbc_ci_revision_job_image_build_invoke())),
+    outcome_accepted(value: fleet_converge_revision_job_image_upload_step()),
+    fleet_converge_serve_entry_verdict_step(),
+    outcome_accepted(value: fleet_converge_plan_upload_step()),
+    outcome_accepted(value: fleet_converge_plan_download_step()),
+    fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
+    fleet_converge_apply_step(),
+    outcome_accepted(value: fleet_converge_apply_receipt_upload_step()),
+    fleet_converge_org_actions_step(),
+    outcome_accepted(value: fleet_converge_org_actions_receipt_upload_step()),
+    fleet_converge_org_runner_roster_step(),
+    outcome_accepted(value: fleet_converge_org_runner_roster_receipt_upload_step()),
+    fleet_converge_app_control_plane_step(),
+    outcome_accepted(value: fleet_converge_app_control_plane_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_app_key_version_verify_mint_step()),
+    fleet_converge_app_key_version_verify_verdict_step(),
+    outcome_accepted(value: fleet_converge_app_key_version_verify_receipt_upload_step()),
+    fleet_converge_mtcollins1_fan_observe_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_fan_observe_receipt_upload_step()),
+    fleet_converge_mtcollins1_ui_status_asset_observe_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_ui_status_asset_observe_receipt_upload_step()),
+    fleet_converge_mtcollins1_kvm_observer_observe_step(),
+    fleet_converge_mtcollins1_kvm_observer_release_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_kvm_observer_observe_upload_step()),
+    fleet_converge_fabric_writer_identity_observe_step(),
+    outcome_accepted(value: fleet_converge_fabric_writer_identity_observe_receipt_upload_step()),
+    fleet_converge_mtcollins1_census_image_publish_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_census_image_publish_receipt_upload_step()),
+    fleet_converge_mtcollins1_runner_image_publish_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step()),
+    fleet_converge_mtcollins1_census_member_readback_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_census_member_readback_receipt_upload_step()),
+    fleet_converge_mtcollins1_census_qemu_host_observe_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step()),
+    fleet_converge_mtcollins1_census_qemu_toolchain_converge_step(),
+    outcome_accepted(value: fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step()),
+    fleet_converge_r2_mint_preflight_step(),
+    outcome_accepted(value: fleet_converge_r2_mint_preflight_receipt_upload_step()),
+    fleet_converge_r2_bucket_admin_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_bucket_admin_mint_receipt_upload_step()),
+    fleet_converge_r2_bucket_ensure_step(),
+    outcome_accepted(value: fleet_converge_r2_bucket_ensure_receipt_upload_step()),
+    fleet_converge_r2_object_write_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_object_write_mint_receipt_upload_step()),
+    fleet_converge_r2_workspace_object_read_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_workspace_object_read_mint_receipt_upload_step()),
+    fleet_converge_r2_workspace_object_write_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_workspace_object_write_mint_receipt_upload_step()),
+    fleet_converge_hetzner_cloud_server_read_step(),
+    outcome_accepted(value: fleet_converge_hetzner_cloud_server_read_receipt_upload_step()),
+    fleet_converge_export_host_reader_converge_step(),
+    outcome_accepted(value: fleet_converge_export_host_reader_converge_receipt_upload_step()),
+    fleet_converge_boot_medium_reader_probe_step(),
+    outcome_accepted(value: fleet_converge_boot_medium_reader_probe_receipt_upload_step()),
+    fleet_converge_flex_pass_step(),
+    outcome_accepted(value: fleet_converge_flex_pass_receipt_upload_step()),
+    fleet_converge_flex_template_ensure_step(),
+    outcome_accepted(value: fleet_converge_flex_template_ensure_receipt_upload_step()),
+    fleet_converge_r2_cache_object_read_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_cache_object_read_mint_receipt_upload_step()),
+    fleet_converge_r2_cache_object_write_mint_step(),
+    outcome_accepted(value: fleet_converge_r2_cache_object_write_mint_receipt_upload_step()),
+    fleet_converge_r2_conditional_put_race_probe_step(),
+    outcome_accepted(value: fleet_converge_r2_conditional_put_race_probe_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_workspace_source_pack_step()),
+    outcome_accepted(value: fleet_converge_workspace_source_pack_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_workspace_checkpoint_measure_step()),
+    outcome_accepted(value: fleet_converge_workspace_checkpoint_measure_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_workspace_checkpoint_restore_step()),
+    outcome_accepted(value: fleet_converge_workspace_checkpoint_restore_receipt_upload_step()),
+    fleet_converge_workspace_transcript_rate_observe_step(),
+    outcome_accepted(value: fleet_converge_workspace_transcript_rate_observe_receipt_upload_step()),
+    fleet_converge_approval_keyring_converge_step(),
+    fleet_converge_microvm_runner_group_ensure_step(),
+    outcome_accepted(value: fleet_converge_microvm_runner_group_ensure_receipt_upload_step()),
+    fleet_converge_service_runner_lost_boot_sweep_step(),
+    fleet_converge_qualification_attempt_step(),
+    outcome_accepted(value: fleet_converge_qualification_attempt_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_dry_run_step()),
+    outcome_accepted(value: fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step()),
+    fleet_converge_jit_dead_sweep_step(),
+    outcome_accepted(value: fleet_converge_jit_dead_sweep_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_jit_dead_sweep_dry_run_step()),
+    outcome_accepted(value: fleet_converge_jit_dead_sweep_dry_run_receipt_upload_step()),
+    fleet_converge_service_slot_start_step(),
+    outcome_accepted(value: fleet_converge_service_slot_start_receipt_upload_step()),
+    fleet_converge_guest_image_observe_step(),
+    fleet_converge_guest_image_converge_step(),
+    outcome_accepted(value: fleet_converge_guest_image_receipt_upload_step()),
+    fleet_converge_microvm_host_converge_step(),
+    outcome_accepted(value: fleet_converge_microvm_host_standing_upload_step()),
+    fleet_converge_microvm_network_observe_step(),
+    outcome_accepted(value: fleet_converge_microvm_network_observe_receipt_upload_step()),
+    fleet_converge_microvm_network_apply_step(),
+    outcome_accepted(value: fleet_converge_microvm_network_apply_receipt_upload_step()),
+    fleet_converge_microvm_boot_probe_step(),
+    outcome_accepted(value: fleet_converge_microvm_boot_probe_receipt_upload_step()),
+    fleet_converge_microvm_slot_reserve_step(),
+    outcome_accepted(value: fleet_converge_microvm_slot_reserve_receipt_upload_step()),
+    fleet_converge_microvm_slot_start_step(),
+    outcome_accepted(value: fleet_converge_microvm_slot_start_receipt_upload_step()),
+    fleet_converge_spark_grants_step(),
+    fleet_converge_spark_bootstrap_step(),
+    fleet_converge_spark_serving_apply_step(),
+    fleet_converge_spark_native_serving_apply_step(),
+    fleet_converge_spark_runtime_image_probe_step(),
+    fleet_converge_spark_wireless_link_converge_step(),
+    fleet_converge_spark_grants_observe_step(),
+    fleet_converge_runner_host_file_observe_step(),
+    fleet_converge_remote_build_serving_observe_step(),
+    fleet_converge_remote_build_serving_converge_step(),
+    outcome_accepted(value: fleet_converge_remote_build_serving_observe_receipt_upload_step()),
+    fleet_converge_host_memory_observe_step(),
+    outcome_accepted(value: fleet_converge_executor_subject_split_gate_step()),
+    fleet_converge_runner_host_file_converge_step(),
+    fleet_converge_runner_host_cap_release_step(),
+    outcome_accepted(value: fleet_converge_runner_host_cap_release_receipt_upload_step()),
+    fleet_converge_host_primary_network_observe_step(),
+    fleet_converge_host_primary_network_converge_step(),
+    outcome_accepted(value: fleet_converge_host_primary_network_receipt_upload_step()),
+    fleet_converge_board_function_converge_step(),
+    outcome_accepted(value: fleet_converge_board_function_converge_receipt_upload_step()),
+    fleet_converge_runner_host_withdraw_step(),
+    outcome_accepted(value: fleet_converge_runner_host_withdraw_receipt_upload_step()),
+    fleet_converge_runner_host_restore_step(),
+    outcome_accepted(value: fleet_converge_runner_host_restore_receipt_upload_step()),
+    fleet_converge_runner_password_session_tool_converge_step(),
+    outcome_accepted(value: fleet_converge_runner_password_session_tool_receipt_upload_step()),
+    fleet_converge_runner_browser_toolchain_converge_step(),
+    outcome_accepted(value: fleet_converge_runner_browser_toolchain_receipt_upload_step()),
+    fleet_converge_runner_user_session_converge_step(),
+    outcome_accepted(value: fleet_converge_runner_user_session_receipt_upload_step()),
+    fleet_converge_runner_gpu_container_toolchain_converge_step(),
+    outcome_accepted(value: fleet_converge_runner_gpu_container_toolchain_receipt_upload_step()),
+    fleet_converge_host_credential_custody_converge_step(),
+    outcome_accepted(value: fleet_converge_host_credential_custody_receipt_upload_step()),
+    fleet_converge_tailscale_join_step(),
+    outcome_accepted(value: fleet_converge_tailscale_join_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_runner_host_file_receipt_upload_step()),
+    fleet_converge_site_pxe_edge_observe_step(),
+    fleet_converge_site_pxe_edge_converge_step(),
+    outcome_accepted(value: fleet_converge_site_pxe_edge_receipt_upload_step()),
+    outcome_accepted(value: fleet_converge_site_pxe_edge_live_receipt_upload_step()),
+    fleet_converge_managed_host_network_install_step(),
+    outcome_accepted(value: fleet_converge_managed_host_network_install_receipt_upload_step()),
+    outcome_accepted(value: ci_fleet_key_agent_cleanup_step()),
+  ]
 }
+
 
 // The shared job envelope owns selection and credentials independently of its step producers.
 // THE JOB TIMEOUT COVERS THE BRACKET AND ITS RELEASE, OR THE RELEASE IS NOT AFTER A STEP TIMEOUT. A job-level
@@ -7122,12 +7147,16 @@ fn fleet_converge_branch_run_grant_wait_if() -> String {
   serialize_expression(expression: fleet_converge_grant_required_expression())
 }
 
-fn fleet_converge_branch_run_grant_await_steps() -> List<Step> {
-  concat(
-    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
-    [fleet_converge_branch_run_grant_await_build_step(), fleet_converge_branch_run_grant_await_step()],
+fn fleet_converge_branch_run_grant_await_steps() -> List<Outcome<Step>> {
+concat(
+    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    [
+    outcome_accepted(value: fleet_converge_branch_run_grant_await_build_step()),
+    fleet_converge_branch_run_grant_await_step(),
+  ],
   )
 }
+
 
 fn fleet_converge_branch_run_grant_await_job() -> Job {
   let steps = fleet_converge_branch_run_grant_await_steps()
