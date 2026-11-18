@@ -23,6 +23,7 @@ import gunbc.live_deploy.release_pair_delivery {
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_decode_run, release_pair_pack_fetch, release_pair_pack_verify,
   release_pair_deliver_serving,
+  release_pair_serving_poison_refused,
   ReleasePairRunLookup, RunLookupFound, RunLookupNoneForHead, RunLookupDiscoveryRefused,
   release_pair_run_discovery_refused_reason, release_pair_run_list_malformed_reason,
 }
@@ -168,6 +169,23 @@ test fn witness_serving_mixed_is_poison() -> Bool {
         RevisionBoundAtEmission { revision: _ } => false
       }
   }
+}
+
+// Review 96303 (red control): a MIXED serving observation (tree vs process disagree, or the surface cannot be resolved)
+// is a poison state that must NEVER lead to a fresh placement -- the entry guard (release_pair_serving_poison_refused)
+// refuses it RED. This witness asserts the guard says "refuse" for a Mixed binding.
+test fn witness_serving_mixed_poison_refused() -> Bool {
+  match git_object_id_from_untagged_hex(hex: head_hex as String) {
+    Absent => false
+    Present { value: r } => release_pair_serving_poison_refused(binding: ReleaseMixed { tree_revision: r, process_revision: "deadbeef" as CommitSha })
+  }
+}
+
+// Review 96303 (red control): an UNOBSERVED serving observation (no observation yet) is a poison state that must NEVER
+// lead to a fresh placement -- the entry guard refuses it RED. This witness asserts the guard says "refuse" for an
+// Unobserved binding.
+test fn witness_serving_unobserved_poison_refused() -> Bool {
+  release_pair_serving_poison_refused(binding: ReleaseBindingUnobserved { cause: "no deployed tree" })
 }
 
 // The benign-vs-refusal split is NOT witnessed here: it moved to the typed DeliveryPlan arms

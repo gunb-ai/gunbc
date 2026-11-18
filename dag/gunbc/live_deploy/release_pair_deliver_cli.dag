@@ -375,6 +375,22 @@ fn release_pair_deliver_serving(binding: DeployedReleaseBinding) -> ReleaseRevis
   }
 }
 
+// THE POISON GUARD (review 96303). The serve gate is supposed to refuse the mixed / surface-mixed / unobserved deployed
+// states before the actuator runs, so release_pair_deliver_serving's poison arms are unreachable defensive mapping — but
+// mapping them to RevisionNotInstalled would make the fold PROCEED TO A FRESH FETCH (RevisionNotInstalled never
+// short-circuits), which contradicts serving's own comment that these states "must never yield a usable binding." A poison
+// observed state is a REFUSAL (red), never a benign fetch. This pure predicate is what the operator entry checks BEFORE
+// actuating (see release_pair_deliver_observe_and_deliver); its two red controls are witnessed directly (a Mixed and an
+// Unobserved observation both refuse). fail_closed: never deliver a pair from a state you cannot trust.
+export fn release_pair_serving_poison_refused(binding: DeployedReleaseBinding) -> Bool {
+  match binding {
+    ReleaseBoundToTree { revision: _, surface: _ } => false
+    ReleaseMixed { tree_revision: _, process_revision: _ } => true
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => true
+    ReleaseBindingUnobserved { cause: _ } => true
+  }
+}
+
 // ── the unit's own operator entry (zero-arg `function:` target) ──────────────────────────────────────────────
 // Config that is the UNIT'S OWN static identity (where the release locus lives, which serve unit to restart, the repo
 // root that locates the dashboard instance) may come from the environment. What keep-last-good PROTECTS — the served
@@ -429,11 +445,17 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
         PairServeRefused { binding: _, reason: why } =>
           exit_failure(reason: join(["pair-deliver: the serve gate refused (", why, ") — keep serving, deliver nothing (fail-closed)"], ""))
         PairBoundToServe { binding: binding } =>
-          release_pair_deliver_actuate(
-            base_root: base_root,
-            serving: release_pair_deliver_serving(binding: binding),
-            serve_unit: serve_unit as NonEmptyStr,
-          )
+          if release_pair_serving_poison_refused(binding: binding) {
+            // Poison observed deployed state (mixed / surface-mixed / unobserved): REFUSE RED, never fall through to
+            // release_pair_deliver_serving's RevisionNotInstalled (which the fold would read as "proceed to a fresh fetch").
+            exit_failure(reason: "pair-deliver: the deployed pair is in a poison (mixed / surface-mixed / unobserved) state — never deliver a pair from it (fail-closed, review 96303)")
+          } else {
+            release_pair_deliver_actuate(
+              base_root: base_root,
+              serving: release_pair_deliver_serving(binding: binding),
+              serve_unit: serve_unit as NonEmptyStr,
+            )
+          }
       }
   }
 }
