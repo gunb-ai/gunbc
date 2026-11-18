@@ -8,7 +8,7 @@ import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.exec.command { argv_words }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_rows, ssh_target_wire }
+import gunbc.fleet.fleet_known_hosts_anchor { ssh_target_wire, known_hosts_file_rows, }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path, boot_medium_reader_ssh_key, boot_medium_reader_ssh_key_fingerprint }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host.boot_medium { BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, boot_medium_readback, bmc_boot_image_export }
@@ -281,7 +281,7 @@ fn boot_medium_served_readback_over_reader(medium: BootMedium, check: BootMedium
       match boot_medium_reader_ssh_key_fingerprint {
         Absent => boot_medium_served_reader_after_check(medium: medium, check: check, host: host, measure: fn() { RemoteAnswer { exit_code: 255, stdout: "", stderr: "the boot medium reader key has no recorded fingerprint (gunbc.host.boot_medium_reader_key)" } })
         Present { value: fp } =>
-          match prepare_ssh_agent_context(attempt_raw: attempt, key: key, fingerprint: fp, rows: fleet_known_hosts_rows()) {
+          match prepare_ssh_agent_context(attempt_raw: attempt, key: key, fingerprint: fp, rows: known_hosts_file_rows()) {
             FleetSshContextRefused { cause: c } => boot_medium_served_reader_after_check(medium: medium, check: check, host: host, measure: fn() { RemoteAnswer { exit_code: 255, stdout: "", stderr: c } })
             FleetSshContextReady { context: context, receipt: _ } =>
               boot_medium_served_reader_after_check(medium: medium, check: check, host: host,
