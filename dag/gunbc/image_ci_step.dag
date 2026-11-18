@@ -12,16 +12,22 @@ import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
 }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_command_for_target,
   gunbc_invoke_root_stamp_script,
 }
 
-fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-  claim_run: false), "\n"], "")
-}
+fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+  claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", zesty_c, "\n"], "")
+
+      })
+  )
+
 
 data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.workspace_image_delivery",

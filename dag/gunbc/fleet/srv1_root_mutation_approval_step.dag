@@ -24,7 +24,7 @@ import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_format }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunbc_ci_sm_decode_payload_program, gunbc_ci_sm_max_time }
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
@@ -72,10 +72,16 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
   ]
 }
 
-fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
+fn gunbc_ci_srv1_root_mutation_approval_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
+    claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
-    claim_run: false), "\n",
+    zesty_c, "\n",
   ], "")
-}
+
+      })
+  )
+

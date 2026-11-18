@@ -60,7 +60,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice_facts {
 }
 import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 // The mtcollins1 boot step: its targets, the bash_build boot runner with the SOL notice watcher, and
 // the boot admission. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the
@@ -120,14 +120,20 @@ fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> Outcome<String> {
 }
 
 // The cite step writes its receipt under artifacts/ before the boot step's prelude has created it, so it creates the directory first.
-fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> String {
+fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     gunbc_ci_bash_rendered(stmts: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
     ], set_e: true), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false), "\n",
+    zesty_c, "\n",
   ], "")
-}
+
+      })
+  )
+
 
 // THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
 // except for the ONE line the grammar cannot express: starting the SOL notice watcher in the background
@@ -367,16 +373,22 @@ fn gunbc_ci_mtcollins1_boot_admit_invoke() -> Outcome<String> {
   )
 }
 
-fn gunbc_ci_mtcollins1_boot_invoke() -> String {
+fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
+    claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
     gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
-    claim_run: false), "\n",
+    zesty_c, "\n",
   ], "")
-}
+
+      })
+  )
+
 
 // The discovery step's credential prelude: ROOT (each GHA run step is a fresh shell and gunbc_run_command reads $ROOT), the shared fetch, with the three credential files removed on exit.
 fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
@@ -418,15 +430,21 @@ fn receipted_run_tail_statements(run: ReceiptedRun) -> List<Node> {
   ]
 }
 
-fn receipted_run_invoke(run: ReceiptedRun) -> String {
+fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false), "\n",
     "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false), " || ", run.rc_name, "=$?\n",
+    zesty_c, " || ", run.rc_name, "=$?\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
   ], "")
-}
+
+      })
+  )
+
 
 data mtcollins1_pxe_mac_discovery_receipted_run: ReceiptedRun = ReceiptedRun {
   target: gunbc_ci_mtcollins1_pxe_mac_discovery_target,

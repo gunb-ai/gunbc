@@ -47,7 +47,7 @@ import gunbc.ci.ci_run_step_target {
 }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.machine_intake.mtcollins1_fan_observe {
   mtcollins1_fan_boot_phase_outcome_observed,
   mtcollins1_fan_boot_phase_outcome_output,
@@ -156,18 +156,24 @@ data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold
 
 data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite.")
 
-fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude_for_target(
+fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_mtcollins1_fan_observe_target,
       claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
-    )
+    ),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
+    zesty_c
   )
-}
+
+      })
+  )
+
 
 // THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
 // credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
@@ -340,10 +346,16 @@ fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
 // THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
 // unit hold only if this run holds it (gunbc.machine_intake.mtcollins1_kvm_observer_observe
 // mtcollins1_kvm_observer_release_wet).
-fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
+fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
+    claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
-    claim_run: false), "\n",
+    zesty_c, "\n",
   ], "")
-}
+
+      })
+  )
+

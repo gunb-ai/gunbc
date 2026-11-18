@@ -19,7 +19,7 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.auth.github_app_credential_step {
   gunbc_ci_org_roster_read_app_token_prelude
 }
@@ -80,7 +80,7 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> Outcome<String> {
   )
 }
 
-fn gunbc_ci_live_deploy_transaction_invoke() -> String {
+fn gunbc_ci_live_deploy_transaction_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_transaction_target,
@@ -103,7 +103,7 @@ fn gunbc_ci_microvm_controller_install_invoke() -> Outcome<String> {
 // down-scoped at the mint to organization_self_hosted_runners read: the job reads the groups and can
 // change none of them. The mint reads the app key with the job's workload-identity token, which the
 // step's environment carries. The step holds no fleet key: it runs before the step that loads one.
-fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
+fn gunbc_ci_microvm_controller_install_admission_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,

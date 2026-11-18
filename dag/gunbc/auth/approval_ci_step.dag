@@ -36,7 +36,7 @@ import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunb
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
@@ -196,23 +196,35 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
-fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+    claim_run: false),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-    claim_run: false), "\n",
+    zesty_c, "\n",
   ], "")
-}
 
-fn gunbc_ci_approval_keyring_converge_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude_for_target(
+      })
+  )
+
+
+fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {  bind_outcome(
+    o: gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_approval_keyring_converge_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_approval_keyring_converge_target,
       claim_run: false,
       receipt_rel: none
-    )
+    ),
+    f: fn(zesty_c) {
+      outcome_accepted(value:
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
+    zesty_c
   )
-}
+
+      })
+  )
+

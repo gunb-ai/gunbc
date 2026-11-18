@@ -21,7 +21,7 @@ import gunbc.ci.ci_run_step_target {
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_cli",
@@ -189,7 +189,7 @@ fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> Outcome<String> {
   )
 }
 
-fn gunbc_ci_fleet_converge_apply_invoke() -> String {
+fn gunbc_ci_fleet_converge_apply_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
     source_roots: witness_layer_roots,

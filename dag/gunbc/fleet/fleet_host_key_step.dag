@@ -16,7 +16,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
-import v2.std.diagnostic { Outcome, bind_outcome }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
 // (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
@@ -28,7 +28,7 @@ fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> Gunbc
   gunbc_run_step_target(module: subject.mint_module, function: subject.mint_function)
 }
 
-fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
+fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> Outcome<String> {
   let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
