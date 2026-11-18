@@ -1,0 +1,154 @@
+module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
+
+// THE DECLARATION of the leaf-expansion unit (roadmap-schedule-leaf-expansion), read against its carrier
+// gunbc.roadmap.roadmap_decomposition. A decomposition reads as a FLAT LIST of leaf OCCURRENCES -- one per
+// leaf member, keyed by the single carrier LeafPath (item, stage, piece, member) -- each occurrence tagged
+// with where its member count came from. A Leaf's member and a family with a DECLARED population sit at a
+// DECLARED count; a FindingsOf family declares no count, so its members sit at an ASSUMED count that is a
+// SIMULATION INPUT handed to the expansion, never a value the carrier holds. The expansion WRITES NOTHING:
+// it reads rows already in the carrier and emits occurrences and their edges.
+//
+// THE RED CONTROL, named the way the unit names its own: a planted waits_on naming a stage the parent does
+// not have REFUSES with the TYPED cause DependencyClaimRefused -- and it refuses by CONSUMING THE CARRIER'S OWN
+// CLAIM (decomposition_dependencies_well_formed), which the expansion CALLS rather than re-checks. The witness
+// matches the returned Expansion directly and inspects the typed refusal cause; occurrence membership is
+// matched on the count_source field directly -- a two-case type needs no redundant is_* wrapper.
+// The same row aimed at a stage the parent HAS is admitted.
+
+import std.types { Bool }
+import std.integer { nat_to_int }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_decomposition {
+  expand_node, expand_decomposition, occurrence_is_offered_claimable,
+  Declared, Assumed,
+  decomposition_has_leaf_path, decomposition_dependencies_well_formed,
+  decomposition, waits, leaf, reading_family,
+  Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
+}
+
+// THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
+// FindingsOf family at stage 1, an acceptance join at stage 2, and no parent waits_on. At a declared count of
+// three it expands to ONE declared occurrence (the probe leaf) and THREE assumed occurrences (the FindingsOf
+// family, one per assumed member); the join carries nothing. Each of the three findings occurrences waits on
+// the probe leaf (the stage-1-on-stage-0 barrier), so three occurrence edges result. Every DECLARED occurrence
+// resolves under the carrier's own decomposition_has_leaf_path; no ASSUMED occurrence is ever offered claimable.
+// The expansion is matched directly: an Expanded carries the occurrences and edges; any ExpansionRejected fails the slice.
+test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_with_their_edges() -> Bool {
+  match expand_node(item: nid(s: "literal-elaboration"), findings_count: 3) {
+    Expanded { occurrences, edges } =>
+      count(occurrences) == 4
+        && count(filter(occurrences, o => o.count_source == Declared)) == 1
+        && count(filter(occurrences, o => o.count_source == Assumed)) == 3
+        && all(filter(occurrences, o => o.count_source == Declared), o => decomposition_has_leaf_path(path: o.path))
+        && count(filter(filter(occurrences, o => o.count_source == Assumed), o => occurrence_is_offered_claimable(o))) == 0
+        && count(edges) == 3
+    ExpansionRejected { cause } => false
+  }
+}
+
+// THE ASSUMED COUNT IS A SIMULATION INPUT, NEVER A CLAIM. At a different declared count (five) the FindingsOf
+// family grows to five assumed members, all still drawn from the input -- and NONE of them is ever offered as
+// claimable, because the carrier declares no count for a FindingsOf family and decomposition_has_leaf_path
+// itself refuses one. Only DECLARED occurrences are offerable.
+test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
+  match expand_node(item: nid(s: "literal-elaboration"), findings_count: 5) {
+    Expanded { occurrences, edges } =>
+      count(filter(occurrences, o => o.count_source == Assumed)) == 5
+        && count(filter(filter(occurrences, o => o.count_source == Assumed), o => occurrence_is_offered_claimable(o))) == 0
+    ExpansionRejected { cause } => false
+  }
+}
+
+// THE RED CONTROL. A planted waits_on naming a stage its parent does not have REFUSES with the TYPED, located
+// cause DependencyClaimRefused { item: child } -- by CONSUMING the carrier's existing claim: the expansion CALLS
+// decomposition_dependencies_well_formed and refuses on its verdict rather than re-checking any row. The
+// dependency here is the one the calendar-binding unit declares on list-scheduling; aimed at a stage
+// list-scheduling does not have (from_stage 99), the carrier rejects it and so does the expansion; aimed at a
+// stage it does have (from_stage 0), the carrier admits it and the expansion admits it and emits the aimed edge
+// into the child's own stage. The assertion is DISCRIMINATING: the admitted expansion's edge set is non-empty
+// and EVERY edge runs from a list-scheduling stage-0 occurrence TO the planted child's LeafPath(child, 0, 0, 0),
+// so a mis-aimed `from` or `to`, or no edge at all, goes red.
+test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_carriers_own_claim() -> Bool {
+  let parent = "roadmap-schedule-list-scheduling"
+  let child = "roadmap-schedule-calendar-binding"
+  let beyond = decomposition(node: child, waits_on: [
+    waits(item: parent, from_stage: 99, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted leaf", days: 1),
+    ],
+  ])
+  let admitted = decomposition(node: child, waits_on: [
+    waits(item: parent, from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted leaf", days: 1),
+    ],
+  ])
+  let beyond_ok = match expand_decomposition(d: beyond, findings_count: 3) {
+    Expanded { occurrences, edges } => false
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => item == nid(s: child)
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
+  }
+  let adm_ok = match expand_decomposition(d: admitted, findings_count: 3) {
+    Expanded { occurrences, edges } =>
+      count(edges) >= 1
+        && all(edges, ed => ed.from.item == nid(s: parent) && nat_to_int(n: ed.from.stage) == 0
+          && ed.to.item == nid(s: child) && nat_to_int(n: ed.to.stage) == 0 && nat_to_int(n: ed.to.piece) == 0 && nat_to_int(n: ed.to.member) == 0)
+    ExpansionRejected { cause } => false
+  }
+  beyond_ok
+    && adm_ok
+    && !decomposition_dependencies_well_formed(d: beyond)
+    && decomposition_dependencies_well_formed(d: admitted)
+}
+
+// THE DECLARED-COUNT GUARD IS REACHABLE, NOT A DECORATION (fail_closed; guarantee_ladder). A family's member
+// count reaches the expansion from TWO sources: the ASSUMED FindingsOf count, which is a Nat (its negative is
+// unwritable -- no guard needed, §fail_closed "make the bad state unwritable"), and the carrier's DECLARED
+// population_members, a bare Int the carrier exposes and this unit must NOT edit (single_authority). A non-positive
+// DECLARED count is therefore writable at the source, so the expansion REFUSES it rather than minting zero
+// occurrences -- the exact silent drop the enumeration comment disclaims. This witness PLANTS a declared family at
+// zero members and at a negative count: both REFUSE with the typed, located NonPositiveDeclaredCount. The SAME
+// family at a positive count EXPANDS to that many DECLARED occurrences, and a FindingsOf family at count zero
+// (a legitimate "no findings yet") still EXPANDS to zero assumed members -- so the guard fires exactly on the bad
+// declared input and nowhere else.
+test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands() -> Bool {
+  let zero_pop = decomposition(node: "declared-pop-zero-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: 0, on: "mod/x", basis: "b", owner: "o") ],
+  ])
+  let neg_pop = decomposition(node: "declared-pop-negative-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: -3, on: "mod/x", basis: "b", owner: "o") ],
+  ])
+  let pos_pop = decomposition(node: "declared-pop-positive-fixture", waits_on: [], stages: [
+    [ reading_family(label: "readings", days: 1, members: 2, on: "mod/x", basis: "b", owner: "o") ],
+  ])
+  let zero_ok = match expand_decomposition(d: zero_pop, findings_count: 0) {
+    Expanded { occurrences, edges } => false
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-zero-fixture")
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
+  }
+  let neg_ok = match expand_decomposition(d: neg_pop, findings_count: 0) {
+    Expanded { occurrences, edges } => false
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-negative-fixture")
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
+  }
+  let pos_ok = match expand_decomposition(d: pos_pop, findings_count: 0) {
+    Expanded { occurrences, edges } =>
+      count(filter(occurrences, o => o.count_source == Declared)) == 2
+        && count(filter(occurrences, o => o.count_source == Assumed)) == 0
+    ExpansionRejected { cause } => false
+  }
+  // A zero ASSUMED (FindingsOf) count is a legitimate simulation input and must still EXPAND, minting zero
+  // assumed members -- proving the new refusal targets only the DECLARED Int, never the Nat simulation input.
+  let zero_findings_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: 0) {
+    Expanded { occurrences, edges } =>
+      count(filter(occurrences, o => o.count_source == Assumed)) == 0
+        && count(filter(occurrences, o => o.count_source == Declared)) == 1
+    ExpansionRejected { cause } => false
+  }
+  zero_ok && neg_ok && pos_ok && zero_findings_ok
+}
