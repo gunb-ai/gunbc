@@ -1,0 +1,11 @@
+module gunbc.ci.ci_run_step_target
+
+import std.types { Int, String }
+
+// THE ONE CONSTRUCTOR, named exactly as production names it (gunbc.ci.ci_run_step_target gunbc_run_step_target)
+// so a caller's IMPORT of it resolves, in the check's own ResolutionContext, to THIS declaring home -- which is
+// the home the check keys its run-step-target site rule on. The check reads the call's two literal arguments and
+// resolves them; it does not run this body, so the body is a constant.
+fn gunbc_run_step_target(module: String, function: String) -> Int {
+  0
+}

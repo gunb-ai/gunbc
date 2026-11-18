@@ -1,0 +1,14 @@
+module gunbc.run_step_target_wrapper_step
+
+import std.types { Int, String }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE RED (through a wrapper): the OUTER call names a wrapper, which is not the constructor and not a site. The
+// wrapper's body calls the REAL constructor with its own parameters -- a route whose arguments are not literals.
+// The AST fold recurses into the function body, finds that call, and fails it CLOSED as a non-literal argument
+// (never skipped): a wrapper cannot launder an unchecked (module, function) pair past the required check.
+fn run_step_target_forward(module: String, function: String) -> Int {
+  gunbc_run_step_target(module: module, function: function)
+}
+
+data run_step_target_forward_use: Int = run_step_target_forward(module: "gunbc.run_step_target_fixture_home", function: "run_step_target_fixture_entry")
