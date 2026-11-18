@@ -397,7 +397,7 @@ fn realized_input_step(first: List<FirstClaim>, accepted_on: Iso8601CivilDate, a
   match first.first() {
     Absent => acc
     Present { value: hd } =>
-      if days_between(from: accepted_on, to: hd.claimed_on) < 0 {
+      if days_between(from: hd.claimed_on, to: accepted_on) < 0 {
         // Claimed AFTER the acceptance: not a claimed-to-accepted span, so no realized entry for it -- which leaves
         // the schedule on the prior AND makes duration_row name the refusal, instead of printing a negative span.
         realized_input_step(first: first.skip(n: 1), accepted_on: accepted_on, acc: acc)
@@ -434,7 +434,7 @@ fn duration_row(d: WorkDecomposition, first: List<FirstClaim>, stamp: Iso8601Civ
       Absent => prior_row(leaf_of: leaf_of, prior: prior,
         cause: Present { value: WorkInFlight { claimed_on: hd.claimed_on } })
       Present { value: accepted_on } =>
-        if days_between(from: accepted_on, to: hd.claimed_on) < 0 {
+        if days_between(from: hd.claimed_on, to: accepted_on) < 0 {
           prior_row(leaf_of: leaf_of, prior: prior, cause: Present { value: ClaimedAfterAcceptance {
             claimed_on: hd.claimed_on, accepted_on: accepted_on } })
         } else {
