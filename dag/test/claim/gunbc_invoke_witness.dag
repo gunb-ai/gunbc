@@ -206,22 +206,34 @@ test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
 // live deploy run before/after the fold.
 
 test fn gunbc_ci_desired_instance_receipt_identity_invoke_has_no_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_desired_instance_receipt_identity_invoke()
-  string_contains(s: script, pattern: "live_deploy_ci_instance_receipt_identity_from_ci")
-    && !string_contains(s: script, pattern: "cat ")
-    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_desired_instance_receipt_identity_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_ci_instance_receipt_identity_from_ci")
+        && !string_contains(s: script, pattern: "cat ")
+        && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }
 
 test fn gunbc_ci_desired_instance_deploy_invoke_has_no_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_desired_instance_deploy_invoke()
-  string_contains(s: script, pattern: "live_deploy_apply_desired_wet_from_ci")
-    && !string_contains(s: script, pattern: "cat ")
-    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_desired_instance_deploy_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_apply_desired_wet_from_ci")
+        && !string_contains(s: script, pattern: "cat ")
+        && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }
 
 test fn gunbc_ci_live_deploy_transaction_invoke_keeps_its_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_live_deploy_transaction_invoke()
-  string_contains(s: script, pattern: "live_deploy_apply_prod_role_transaction_wet")
-    && string_contains(s: script, pattern: "cat ")
-    && string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_live_deploy_transaction_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_apply_prod_role_transaction_wet")
+        && string_contains(s: script, pattern: "cat ")
+        && string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }
