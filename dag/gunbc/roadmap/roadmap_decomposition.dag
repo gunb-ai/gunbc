@@ -5,7 +5,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains, FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -159,55 +159,148 @@ fn decomposition(node: String, waits_on: List<StageDependency>, stages: List<Lis
   WorkDecomposition { node: nid(s: node), waits_on: waits_on, stages: stages_of(stages: stages) }
 }
 
-// ---- folds over a piece: counted members (a FindingsOf family counts as one leaf, its population being unknown)
-fn population_members(p: Population) -> Int {
+// ---- folds over a piece. The member count of a family is KNOWN only for a Produced or Reading population. A
+// FindingsOf family carries no count until its probe runs, so the population's cardinality is TYPED (Known | Unprobed)
+// and the pricing and counting folds are typed too: they answer the days/members total ONLY when every family in
+// them has a known population, and otherwise name every unprobed family and its probe. This is the fail-closed move
+// the estimates ruling (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)) demands --
+// "unsized is listed, never priced" -- so no unmeasured population is ever multiplied into a total as one member.
+// There is exactly ONE pricing function (stages_leaf_days) and ONE count function (stages_leaf_count); neither here
+// nor anywhere downstream invents a member count for a population that has not been measured.
+
+// An unprobed FindingsOf family, named: its label and the probe whose typed findings will populate it. Carried in
+// every Unpriced/Uncounted total so a reader (and the estimate's Unsized cause) can name WHICH population is missing.
+type UnprobedFamily {
+  family: String
+  probe: String
+}
+
+// WHY LeafPricing and LeafCount stay SEPARATE types (answers gunbc.design_argument::root_generalization, which
+// rejects a repeated pattern "until the author answers why it should not be generalized"). They are the same SHAPE
+// (a known Int, or a nonempty sequence of unprobed families) and merge_count parallels merge_pricing on purpose --
+// but a portfolio day total and a member count are DIFFERENT quantities, and collapsing them into one Int-carrying
+// carrier is exactly the defect this change removes: it would let an unpriced population's member count be summed as
+// a day total and reach the portfolio unmarked. The two carriers are the type-level guard that a count can never be
+// read as a price. The one genuinely-shared operation -- merging two nonempty unprobed-family sequences -- is NOT
+// duplicated: both folds call the single fs_append. PopulationCardinality is a third shape only superficially: it is
+// per-population grain, its Unprobed carries the probe STRING (a single population was not measured), it has no fold,
+// and it is the INPUT that the aggregates are built from -- not a second implementation of the aggregate rule.
+// The days total over a piece/stage: Priced only when no FindingsOf family in it is unprobed; otherwise Unpriced,
+// naming every unprobed family and its probe. THE pricing authority the estimates read. `families` is a
+// FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup), ruling
+// gunbc.design_ruling::nonemptiness_is_constructed_or_proved): an Unpriced total that names NO family is unwritable,
+// so no caller can fall back to a made-up cause for an "unpriced but nameless" state.
+type LeafPricing
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+  = Priced { days: Int }
+  | Unpriced { families: FreeSemigroup<UnprobedFamily> }
+
+// The member-count total over a piece/stage: Counted only when no FindingsOf family in it is unprobed; otherwise
+// Uncounted, naming every unprobed family and its probe. THE count authority; it never reports a member count for a
+// population that has not been measured. Nonempty by construction for the same reason as LeafPricing::Unpriced.
+type LeafCount
+  = Counted { members: Int }
+  | Uncounted { families: FreeSemigroup<UnprobedFamily> }
+
+// The single authority on a population's cardinality. A FindingsOf population is Unprobed -- not zero, not one.
+// Unprobed carries the probe so a caller can name WHICH population is missing without re-matching the population
+// (single_authority: the produced/reading/findings decision lives HERE alone).
+type PopulationCardinality
+  = Known { members: Int }
+  | Unprobed { probe: String }
+
+fn population_cardinality(p: Population) -> PopulationCardinality {
   match p {
-    Produced { producer, members, on } => members
-    Reading { members, on, basis } => members
-    FindingsOf { probe } => 1
+    Produced { producer, members, on } => Known { members: members }
+    Reading { members, on, basis } => Known { members: members }
+    FindingsOf { probe } => Unprobed { probe: probe }
   }
 }
 
-fn population_is_findings(p: Population) -> Bool {
-  match p {
-    Produced { producer, members, on } => false
-    Reading { members, on, basis } => false
-    FindingsOf { probe } => true
+// the one finding a FindingsOf family contributes to an Unpriced / Uncounted total: its label and its probe, in a
+// nonempty carrier (a single family makes the whole total unpriced, and it always names itself).
+fn findings_unprobed(label: String, probe: String) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: UnprobedFamily { family: label, probe: probe }, tail: Empty }
+}
+
+// concatenate two nonempty unprobed-family sequences, a's families first then b's, preserving the nonempty head.
+fn fs_append(a: FreeSemigroup<UnprobedFamily>, b: FreeSemigroup<UnprobedFamily>) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: a.head, tail: concat(a.tail, Cons { head: b.head, tail: b.tail }) }
+}
+
+// the ONE fold that totals pricing over a population: priced days accumulate; the first unprobed family makes the
+// whole total unpriced (an unmeasured population is never partially priced) and every unprobed family is collected,
+// in order, so no caller can price it and no caller can forget to check.
+fn merge_pricing(a: LeafPricing, b: LeafPricing) -> LeafPricing {
+  match a {
+    Priced { days: da } => match b {
+      Priced { days: db } => Priced { days: da + db }
+      Unpriced { families: fb } => Unpriced { families: fb }
+    }
+    Unpriced { families: fa } => match b {
+      Priced { days: db } => Unpriced { families: fa }
+      Unpriced { families: fb } => Unpriced { families: fs_append(a: fa, b: fb) }
+    }
   }
 }
 
-fn piece_leaf_count(p: WorkPiece) -> Int {
+// the ONE fold that totals the member count over a population; parallels merge_pricing (separate carriers by
+// design -- see the root_generalization answer above LeafPricing) so an unmeasured population makes the whole count
+// uncounted rather than reporting a fabricated member count. The shared step -- merging unprobed families -- is fs_append.
+fn merge_count(a: LeafCount, b: LeafCount) -> LeafCount {
+  match a {
+    Counted { members: ma } => match b {
+      Counted { members: mb } => Counted { members: ma + mb }
+      Uncounted { families: fb } => Uncounted { families: fb }
+    }
+    Uncounted { families: fa } => match b {
+      Counted { members: mb } => Uncounted { families: fa }
+      Uncounted { families: fb } => Uncounted { families: fs_append(a: fa, b: fb) }
+    }
+  }
+}
+
+fn piece_leaf_count(p: WorkPiece) -> LeafCount {
   match p {
-    Leaf { label, days, evidence } => 1
-    Family { label, days, population, owner } => population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => 1
+    Leaf { label, days, evidence } => Counted { members: 1 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Counted { members: members }
+      Unprobed { probe } => Uncounted { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Counted { members: 0 }
+    Decision { label, alternatives } => Counted { members: 1 }
     Composite { label, stages } => stages_leaf_count(stages: stages)
   }
 }
 
-fn stages_leaf_count(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_count(p: p) }) })
+fn stages_leaf_count(stages: List<WorkStage>) -> LeafCount {
+  fold(stages, init: Counted { members: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_count(a: a, b: piece_leaf_count(p: p)) }) })
 }
 
-fn piece_leaf_days(p: WorkPiece) -> Int {
+fn piece_leaf_days(p: WorkPiece) -> LeafPricing {
   match p {
-    Leaf { label, days, evidence } => days
-    Family { label, days, population, owner } => days * population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => decision_days
+    Leaf { label, days, evidence } => Priced { days: days }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Priced { days: days * members }
+      Unprobed { probe } => Unpriced { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Priced { days: 0 }
+    Decision { label, alternatives } => Priced { days: decision_days }
     Composite { label, stages } => stages_leaf_days(stages: stages)
   }
 }
 
-fn stages_leaf_days(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_days(p: p) }) })
+fn stages_leaf_days(stages: List<WorkStage>) -> LeafPricing {
+  fold(stages, init: Priced { days: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_pricing(a: a, b: piece_leaf_days(p: p)) }) })
 }
 
 fn piece_findings_families(p: WorkPiece) -> Int {
   match p {
     Leaf { label, days, evidence } => 0
-    Family { label, days, population, owner } => if population_is_findings(p: population) { 1 } else { 0 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => 0
+      Unprobed { probe: _ } => 1
+    }
     Join { label } => 0
     Decision { label, alternatives } => 0
     Composite { label, stages } => stages_findings_families(stages: stages)
@@ -237,7 +330,10 @@ fn stages_leaf_days_within(stages: List<WorkStage>) -> Bool {
 fn piece_stages_nonempty(p: WorkPiece) -> Bool {
   match p {
     Leaf { label, days, evidence } => true
-    Family { label, days, population, owner } => population_members(p: population) >= 1
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => members >= 1
+      Unprobed { probe: _ } => true
+    }
     Join { label } => true
     Decision { label, alternatives } => true
     Composite { label, stages } => count(stages) >= 1 && stages_nonempty(stages: stages)
@@ -359,12 +455,10 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
           Absent => false
           Present { value: pc } => match pc {
             Leaf { label, days, evidence } => member_index == 0
-            Family { label, days, population, owner } =>
-              if population_is_findings(p: population) {
-                false
-              } else {
-                member_index < population_members(p: population)
-              }
+            Family { label, days, population, owner } => match population_cardinality(p: population) {
+              Known { members } => member_index < members
+              Unprobed { probe: _ } => false
+            }
             Join { label } => false
             Decision { label, alternatives } => false
             Composite { label, stages } => false
@@ -478,9 +572,9 @@ fn decompositions_leaf_days_bounded() -> Bool { all(roadmap_decompositions, d =>
 
 fn decompositions_stages_nonempty() -> Bool { all(roadmap_decompositions, d => count(d.stages) >= 1 && stages_nonempty(stages: d.stages)) }
 
-fn decomposition_leaf_count() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) }) }
+fn decomposition_leaf_count() -> LeafCount { fold(roadmap_decompositions, init: Counted { members: 0 }, f: fn(acc, d) { merge_count(a: acc, b: stages_leaf_count(stages: d.stages)) }) }
 
-fn decomposition_leaf_days() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) }) }
+fn decomposition_leaf_days() -> LeafPricing { fold(roadmap_decompositions, init: Priced { days: 0 }, f: fn(acc, d) { merge_pricing(a: acc, b: stages_leaf_days(stages: d.stages)) }) }
 
 fn decomposition_findings_families() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_findings_families(stages: d.stages) }) }
 
@@ -1597,8 +1691,8 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // piece lists, while the member index counts UP as the Nat the occurrence is keyed by -- how-many-left and
 // which-one are distinct concepts, not one position twice. That Nat bound comes from the findings_count
 // simulation input (already a Nat, so a negative assumed count is UNWRITABLE -- fail_closed prefers making the
-// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's bare Int `population_members`
-// (imported, never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
+// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's typed `population_cardinality`
+// (its Known { members } arm; the Unprobed arm is the findings path, never a fabricated count), imported never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
 // via the checked crossing `checked_int_to_nat`, whose Absent (a non-positive count) REFUSES as `OccsRejected` --
 // the refusal is in the builder's own type, not a bool gate a caller could skip and not a fabricated zero. The
 // expansion and the parent resolution both consume that typed `OccurrenceBuild`. So no UNCHECKED Int ever reaches
@@ -1645,13 +1739,14 @@ type ExpansionRefusal =
 // omission is said, not hidden): it reports each top-level Composite keyed by the TOP-LEVEL piece's own LeafPath
 // (no new path format) with its nested day total read from the ONE count helper piece_leaf_days. This is a REPORT,
 // never a claim -- occurrence_is_offered_claimable admits only paths drawn from `occurrences`, never these.
-// The nested day total is the SAME working-day prior as WorkPiece.days (read from the ONE count helper
-// piece_leaf_days, which returns the same bare Int), held as a bare Int until the measure carrier grows.
+// The nested day total is the SAME working-day prior as WorkPiece.days, read from the ONE pricing helper
+// piece_leaf_days -- which now returns a typed LeafPricing, so an omitted composite whose nested population includes
+// an unprobed FindingsOf family reports Unpriced naming those families rather than a fabricated nested day total.
 // feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family.
 // Owning lane: std.measure.
 type UnexpandedComposite {
   path: LeafPath
-  nested_days: Int
+  nested_days: LeafPricing
 }
 
 // A waits_on endpoint that is WELL-FORMED -- the carrier's OWN well-formedness claim already admitted the row
@@ -1746,15 +1841,13 @@ fn declared_member_nat(n: Int) -> Optional<Nat> {
 fn piece_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece, findings_count: Nat) -> OccurrenceBuild {
   match p {
     Leaf { label, days, evidence } => OccsBuilt { occurrences: [ member_occurrence(item: item, stage: stage, piece: piece, member: Zero, source: Declared) ] }
-    Family { label, days, population, owner } =>
-      if population_is_findings(p: population) {
-        OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
-      } else {
-        match declared_member_nat(n: population_members(p: population)) {
-          Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
-          Absent => OccsRejected { item: item }
-        }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Unprobed { probe: _ } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
+      Known { members } => match declared_member_nat(n: members) {
+        Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
+        Absent => OccsRejected { item: item }
       }
+    }
     Join { label } => OccsBuilt { occurrences: [] }
     Decision { label, alternatives } => OccsBuilt { occurrences: [] }
     Composite { label, stages } => OccsBuilt { occurrences: [] }
@@ -2147,7 +2240,8 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // emits those very members as occurrences with count_source Assumed -- a declared simulation input
 // (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
 // carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
-// NOT bounded by population_members (which answers 1 for a FindingsOf carrier, a count the probe does not hold);
+// NOT bounded by a member count (a FindingsOf population is Unprobed under population_cardinality -- there is no
+// count the probe holds yet);
 // it is bounded by the member set the expansion itself emitted, which the scheduler checks against its own
 // occurrence set (MemberIndexBeyondExpansion) instead of here. A Produced or Reading family IS bounded by its
 // declared count in both.
@@ -2162,14 +2256,10 @@ fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Optional<Int> {
       Absent => Absent
       Present { value: pc } => match pc {
         Leaf { label, days, evidence } => if member_index == 0 { Present { value: days } } else { Absent }
-        Family { label, days, population, owner } =>
-          if population_is_findings(p: population) {
-            Present { value: days }
-          } else if member_index < population_members(p: population) {
-            Present { value: days }
-          } else {
-            Absent
-          }
+        Family { label, days, population, owner } => match population_cardinality(p: population) {
+          Unprobed { probe: _ } => Present { value: days }
+          Known { members } => if member_index < members { Present { value: days } } else { Absent }
+        }
         Join { label } => Absent
         Decision { label, alternatives } => Absent
         Composite { label, stages } => Absent
