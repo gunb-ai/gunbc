@@ -25,6 +25,7 @@ import gunbc.roadmap.roadmap_item_gantt {
   gantt_refusal, gantt_unpriced_count,
   GanttAnswered, GanttContradictionsPresent, GanttNoWorkers, RowBlocked, RowLeafGrainRefused, RowNoFindingsCount, RowPlaced, RowRollup, RowUnplaced, RowUnsized,
   GanttRefused, BlockedCause, NotEstimated, RollupBelow, PiecesRefused, PiecesFindingsCount, PiecesZeroDays, BlockedBelow,
+  GanttEstimatesRefused, GanttNoFindingsCount, GanttPrerequisitesCyclic, GanttUnpricedWithoutCause, GanttRowsUnplaced, GanttRowWaitsOnItsOwnContainer,
 }
 
 // ============================== THE FIXTURE ==============================
@@ -313,30 +314,51 @@ test fn an_empty_milestone_blocks_its_dependent_naming_the_no_priced_descendants
   }
 }
 
-// A CONTAINER WHOSE CHILDREN ARE NOT ALL PRICED names WHICH CHILD is the reason, because that is the slug a reader has
-// to go and price. leaf-a is priced and waits on the project above; the project cannot be totalled because its
-// milestone is unsized, and the cause carries the milestone as the contained child -- three levels apart, still named.
-test fn an_unpriced_container_names_the_child_that_stops_it_being_totalled() -> Bool {
+// AN EDGE AGAINST ITS OWN CONTAINMENT IS REFUSED, NOT PLACED. leaf-a sits INSIDE payoff and an edge also says it
+// waits on payoff: a container's bar is drawn over the rows it contains, so a row cannot wait on what contains it.
+// Expanded through containment that edge is leaf-a waiting on leaf-a, which the placement core could only report as
+// an anonymous cycle -- so it is refused here, naming the row and the container (the operator's rule for a
+// contradiction: neither side is left for the reader to work out).
+test fn a_row_ordered_behind_its_own_container_is_refused_naming_both_sides() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [edge(child: "fixture-leaf-a", parent: "fixture-payoff")], entries: [
     planted(slug: "fixture-leaf-a", days: 10),
   ])
-  match row_of(a: a, slug: "fixture-leaf-a") {
+  match gantt_refusal(a: a) {
+    Absent => false
+    Present { value: refusal } => match refusal {
+      GanttRowWaitsOnItsOwnContainer { edges: found } => count(found) == 1
+        && match first(found) {
+          Absent => false
+          Present { value: c } => c.waiting == nid(s: "fixture-leaf-a") && c.container == nid(s: "fixture-payoff")
+        }
+      GanttContradictionsPresent { contradictions: _ } => false
+      GanttEstimatesRefused { refusals: _ } => false
+      GanttNoWorkers { cap: _ } => false
+      GanttNoFindingsCount { count: _ } => false
+      GanttPrerequisitesCyclic { nodes: _ } => false
+      GanttUnpricedWithoutCause { nodes: _ } => false
+      GanttRowsUnplaced { nodes: _ } => false
+    }
+  }
+}
+
+// AN UNPRICED CONTAINER IS NOT TOTALLED FROM THE CHILDREN IT HAPPENS TO HAVE. payoff contains milestone, milestone
+// has a child with no price, so neither container is priced -- and the one that stopped short NAMES the child that
+// stopped it, instead of drawing a bar over work it never counted.
+test fn an_unpriced_container_names_the_child_that_stops_it_being_totalled() -> Bool {
+  let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
+  ])
+  match row_of(a: a, slug: "fixture-payoff") {
     Absent => false
     Present { value: row } => match row.state {
-      RowBlocked { behind: b } => count(filter(b, c => match c {
-        NotEstimated { node: n, why: why } => n == nid(s: "fixture-payoff") && match why {
-          NothingEstimated => false
-          ContainedChildUnsized { child: c2 } => c2 == nid(s: "fixture-milestone")
-        }
-        RollupBelow { node: _, work_days: _ } => false
-        PiecesRefused { node: _, cause: _ } => false
-        PiecesFindingsCount { node: _, count: _ } => false
-        PiecesZeroDays { node: _ } => false
-        BlockedBelow { node: _ } => false
-      })) == 1
+      RowUnsized { why: why } => match why {
+        ContainedChildUnsized { child: c } => c == nid(s: "fixture-milestone")
+        NothingEstimated => false
+      }
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
-      RowUnsized { why: _ } => false
+      RowBlocked { behind: _ } => false
       RowLeafGrainRefused { cause: _ } => false
       RowUnplaced => false
       RowNoFindingsCount { count: _ } => false
