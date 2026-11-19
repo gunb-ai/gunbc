@@ -490,6 +490,10 @@ fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> 
     SlotActuationRefused { unit: u, step: _, reason: _ } => u
     SlotActuationNoop { unit: u, state: _ } => u
     SlotActivated { unit: u } => u
+    // AN ACTIVATION HELD BY THE WITHDRAWN RECORD IS NOT A COMPLETED ACTIVATION EITHER. The unit stays out of
+    // admission -- which is what the record asked for -- and the readback has not settled it, so it belongs
+    // among the units the host is left without.
+    SlotActivationHeldByWithdrawal { unit: u, cause: _ } => u
     SlotNotInstalled { unit: u } => u
     SlotDrainedAndMasked { unit: u } => u
     SlotDrainPending { unit: u, cause: _ } => u

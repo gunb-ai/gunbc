@@ -1,0 +1,681 @@
+module test.claim.roadmap.roadmap_schedule_from_now_witness
+
+// THE DECLARATION of roadmap-schedule-from-now, read against its parents: the in-flight set from
+// gunbc.roadmap.roadmap_event_log (#16703), the claim-day reading and the span rule from
+// gunbc.roadmap.roadmap_leaf_realized_duration (#16709), the week rule from
+// gunbc.roadmap.roadmap_schedule_calendar (#16697), and the ONE scheduler gunbc.roadmap.roadmap_schedule
+// (#16695), which this link widened with `PinnedLeaf`/`schedule_pinned` rather than being copied by it.
+//
+// THE RED CONTROL, in the ticket's own words: a leaf claimed three working days before the read with a five-day
+// prior finishes at DAY TWO of the read -- and a leaf whose remaining days cannot be worked out is REFUSED BY NAME,
+// never pinned at zero. Both fire here, and the refusal is shown three ways it actually happens: a prior the elapsed
+// days have already exhausted (overdue), a claim stamp that is not the instant its producers write, and a claim
+// recorded after the read.
+//
+// WHAT ELSE THE CLAIMS HOLD: the in-flight leaves are pinned at their claim day with their REMAINING days and only
+// the unclaimed leaves are scheduled, under the same policy and worker count (the first slice: two in flight and
+// four unclaimed on one item); a pinned leaf gates the unclaimed leaf that waits on it, which starts when the pin
+// finishes; k pins over the cap all hold lanes, the answer names the excess, and no unclaimed leaf starts while the
+// pins alone fill the belt; a refused pin's transitive dependents are listed as blocked, named with the pin behind
+// them, while an independent peer schedules normally; the elapsed count is the calendar's WORKING days across a
+// weekend, not its ten calendar days; a released hold closes and a re-claim anchors the pin at the newest hold;
+// a Pathless claim pins nothing and is COUNTED; a log that will not order itself refuses the whole read; the read is
+// COMPUTED ON READ -- identical for the same lines, different for one more; and the scheduling policy is not new:
+// with nothing in flight this read answers exactly what #16695's own `schedule` answers, leaf for leaf, lane for
+// lane. Out_of_scope is binding and so unclaimed here: this unit answers no bottleneck and no next-leaf offer.
+//
+// LOCAL RECIPE (claims are executed, not parsed; --functions as an explicit CSV because a whole-module run is slow):
+//   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/roadmap_schedule_from_now_witness.dag \
+//     --functions two_in_flight_and_four_unclaimed_are_pinned_and_scheduled_around_each_other,a_leaf_claimed_three_working_days_ago_with_a_five_day_prior_finishes_at_day_two_of_the_read,an_unclaimed_leaf_waiting_on_a_pin_starts_when_the_pin_finishes,a_pin_whose_prior_the_elapsed_days_already_exhausted_refuses_by_name_and_is_never_pinned_at_zero,a_claim_stamp_that_is_not_the_instant_its_producers_write_refuses_that_pin_by_name,a_claim_recorded_after_the_read_day_refuses_that_pin_by_name,everything_behind_a_refused_pin_is_listed_as_blocked_and_independent_leaves_still_schedule,a_pin_naming_a_leaf_this_expansion_never_emitted_refuses_by_name,three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_nothing_starts_while_the_belt_is_full,pins_past_the_cap_never_let_the_belt_launch_a_leaf_on_top_of_them,the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten,a_released_hold_closes_and_a_reclaim_anchors_the_pin_at_the_newest_hold,a_pathless_claim_pins_nothing_and_is_counted_visibly,a_log_that_will_not_order_itself_refuses_the_whole_read,a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_the_answer,with_nothing_in_flight_the_read_answers_exactly_what_the_one_scheduler_answers,the_handback_names_the_pinned_rows_the_day_two_control_and_the_diff
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_model { AtPath, LeafPath, Pathless, RoadmapNodeId }
+import gunbc.roadmap.roadmap_decomposition {
+  Expansion, WorkDecomposition, decomposition, expand_decomposition, leaf,
+}
+import gunbc.roadmap.roadmap_event_log {
+  Claimed, EventPrincipal, EventPrincipalAuthenticated, InFlightHistoryUnordered, Released, RoadmapEvent,
+  RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
+}
+import gunbc.roadmap.roadmap_schedule {
+  Schedule, ScheduleAnswer, ScheduledLeaf, critical_path_keys, path_key, scheduled_at, scheduled_leaf_count,
+  schedule,
+}
+import gunbc.roadmap.roadmap_schedule_calendar { date_text, days_between }
+import gunbc.roadmap.roadmap_schedule_from_now {
+  BlockedOccurrence, FromNowAnswer, FromNowRead, FromNowRefused, FromNowScheduled, InFlightReadRefused, ItemLog,
+  PinRefusal, PinRow, ScheduleRefused, blocked_text, counted_line, from_now_cause_text, from_now_diff, from_now_head,
+  from_now_output, over_capacity_pins, pin_row_output, refused_leaf, schedule_from_now,
+}
+
+// ─── THE FIXTURES ─────────────────────────────────────────────────────────────────────────────────
+// Every carrier below is expanded by the decomposition's OWN expander, never a hand-built occurrence list; every
+// log line is planted through the log's own pure encoder. Dates are the working week the calendar authority reads:
+// 2026-11-13 Fri, 16 Mon, 17 Tue, 18 Wed, 19 Thu, 20 Fri, 23 Mon.
+
+fn d(year: Int, month: Int, day: Int) -> Iso8601CivilDate { Iso8601CivilDate { year: year, month: month, day: day } }
+
+fn lanes(count: Int) -> BeltCapacity { BeltCapacity { max_concurrent: count } }
+
+fn author() -> EventPrincipal {
+  EventPrincipalAuthenticated {
+    ref: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: "briansrls" as NonEmptyStr,
+    }
+  }
+}
+
+// A CLAIM LINE on `node`, naming `path` as its grain, recorded at `stamp`, chained to `parent`.
+fn claim_env(node: RoadmapNodeId, path: LeafPath?, stamp: String, parent: RoadmapEventId?) -> RoadmapEventEnvelope {
+  let grain = match path { Absent => Pathless  Present { value: p } => AtPath { path: p } }
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: node, author: author(), parent: parent,
+    kind: Claimed { assignee: author(), return_to: author(), grain: grain },
+    recorded_at: stamp,
+  })
+}
+
+fn release_env(node: RoadmapNodeId, parent: RoadmapEventId?) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: node, author: author(), parent: parent, kind: Released, recorded_at: "2026-11-18T09:00:00Z",
+  })
+}
+
+fn wire(envs: List<RoadmapEventEnvelope>) -> List<String> { map(envs, e => roadmap_event_wire_text(env: e)) }
+
+// THE FIRST-SLICE ITEM: two leaves in flight (stages 0 and 1) and four unclaimed (stages 2 and 3). The stage
+// barrier #16695's own expander emits is what puts the unclaimed leaves behind the pinned ones.
+fn slice_item() -> RoadmapNodeId { "gantt.slice" as RoadmapNodeId }
+
+fn slice_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.slice", waits_on: [], stages: [
+    [leaf(label: "first claimed", days: 5)],
+    [leaf(label: "second claimed", days: 4)],
+    [leaf(label: "third", days: 2), leaf(label: "fourth", days: 3)],
+    [leaf(label: "fifth", days: 1), leaf(label: "sixth", days: 2)],
+  ])
+}
+
+fn slice_expansion() -> Expansion { expand_decomposition(d: slice_carrier(), findings_count: 1) }
+
+fn slice_leaf(stage: Int, piece: Int) -> LeafPath {
+  LeafPath { item: slice_item(), stage: stage, piece: piece, member: 0 }
+}
+
+// The slice's log: the stage-0 leaf claimed Tue 2026-11-17 (three working days before the read), the stage-1 leaf
+// claimed Thu 2026-11-19 (one working day before it). The read date is Fri 2026-11-20.
+fn slice_log() -> List<String> {
+  let first = claim_env(node: slice_item(), path: Present { value: slice_leaf(stage: 0, piece: 0) },
+    stamp: "2026-11-17T09:00:00Z", parent: none)
+  let second = claim_env(node: slice_item(), path: Present { value: slice_leaf(stage: 1, piece: 0) },
+    stamp: "2026-11-19T09:00:00Z", parent: Present { value: first.id })
+  wire([first, second])
+}
+
+fn slice_read() -> FromNowRead {
+  schedule_from_now(d: slice_carrier(), e: slice_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: slice_item(), lines: slice_log() }])
+}
+
+// THE RED-CONTROL ITEM: one claimed five-day leaf ahead of one unclaimed three-day leaf.
+fn pin_item() -> RoadmapNodeId { "gantt.pin" as RoadmapNodeId }
+
+fn pin_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.pin", waits_on: [], stages: [
+    [leaf(label: "in flight", days: 5)],
+    [leaf(label: "waiting", days: 3)],
+  ])
+}
+
+fn pin_expansion() -> Expansion { expand_decomposition(d: pin_carrier(), findings_count: 1) }
+
+fn pin_leaf(stage: Int) -> LeafPath { LeafPath { item: pin_item(), stage: stage, piece: 0, member: 0 } }
+
+fn pin_log(stamp: String) -> List<String> {
+  wire([claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: stamp, parent: none)])
+}
+
+fn pin_read(lines: List<String>) -> FromNowRead {
+  schedule_from_now(d: pin_carrier(), e: pin_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: pin_item(), lines: lines }])
+}
+
+// THE REFUSAL ITEM: the in-flight leaf sits beside an INDEPENDENT peer and ahead of two later stages, so refusing
+// it can name both dependents while the peer still schedules.
+fn late_item() -> RoadmapNodeId { "gantt.late" as RoadmapNodeId }
+
+fn late_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.late", waits_on: [], stages: [
+    [leaf(label: "overdue in flight", days: 5), leaf(label: "independent", days: 1)],
+    [leaf(label: "behind it", days: 3)],
+    [leaf(label: "behind that", days: 2)],
+  ])
+}
+
+fn late_expansion() -> Expansion { expand_decomposition(d: late_carrier(), findings_count: 1) }
+
+fn late_leaf(stage: Int, piece: Int) -> LeafPath {
+  LeafPath { item: late_item(), stage: stage, piece: piece, member: 0 }
+}
+
+// A refusal-item log whose stage-0 claim was recorded at `stamp`. Fri 2026-11-13 is five working days before the
+// Fri 2026-11-20 read, which exhausts the leaf's five-day prior.
+fn late_log(stamp: String) -> List<String> {
+  wire([claim_env(node: late_item(), path: Present { value: late_leaf(stage: 0, piece: 0) }, stamp: stamp, parent: none)])
+}
+
+fn late_read(stamp: String) -> FromNowRead {
+  schedule_from_now(d: late_carrier(), e: late_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: late_item(), lines: late_log(stamp: stamp) }])
+}
+
+// THE OVER-CAPACITY ITEM: three claimed leaves and one unclaimed one in the SAME stage, so the unclaimed leaf
+// waits on nothing -- only on the belt the pins are filling.
+fn cap_item() -> RoadmapNodeId { "gantt.cap" as RoadmapNodeId }
+
+fn cap_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.cap", waits_on: [], stages: [
+    [leaf(label: "held one", days: 4), leaf(label: "held two", days: 4), leaf(label: "held three", days: 4),
+      leaf(label: "unclaimed", days: 1)],
+    [leaf(label: "later", days: 1)],
+  ])
+}
+
+fn cap_expansion() -> Expansion { expand_decomposition(d: cap_carrier(), findings_count: 1) }
+
+fn cap_leaf(stage: Int, piece: Int) -> LeafPath {
+  LeafPath { item: cap_item(), stage: stage, piece: piece, member: 0 }
+}
+
+// Three holds taken up at different distances from the read, so their pins free their lanes on three different
+// days: remaining 2 (claimed Wed), remaining 3 (claimed Thu), remaining 4 (claimed on the read day itself).
+fn cap_log() -> List<String> {
+  let a = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 0) }, stamp: "2026-11-18T09:00:00Z",
+    parent: none)
+  let b = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 1) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: a.id })
+  let c = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 2) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: b.id })
+  wire([a, b, c])
+}
+
+fn cap_read() -> FromNowRead {
+  schedule_from_now(d: cap_carrier(), e: cap_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: cap_item(), lines: cap_log() }])
+}
+
+// THE OVER-CAP BELT, WITH MORE THAN ONE LEAF TO LAUNCH. Three leaves in flight under a cap of two, pinned at 2, 4
+// and 6 days of remaining work, and TWO unclaimed peers in the same stage waiting to be placed. This is the shape a
+// single global floor cannot hold: the first day fewer than two pins run is day 4, and a leaf launched there, plus a
+// second launched on the same day, crowd the pin still running on the lane the lane scan never reads.
+fn belt_item() -> RoadmapNodeId { "gantt.belt" as RoadmapNodeId }
+
+fn belt_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.belt", waits_on: [], stages: [
+    [leaf(label: "held one", days: 5), leaf(label: "held two", days: 4), leaf(label: "held three", days: 6),
+      leaf(label: "free one", days: 2), leaf(label: "free two", days: 2)],
+  ])
+}
+
+fn belt_expansion() -> Expansion { expand_decomposition(d: belt_carrier(), findings_count: 1) }
+
+fn belt_leaf(piece: Int) -> LeafPath { LeafPath { item: belt_item(), stage: 0, piece: piece, member: 0 } }
+
+// Pinned remaining days 2, 4 and 6: the first claimed Tue 2026-11-17 (three working days of its five already gone),
+// the other two claimed on the read day itself with four and six days declared.
+fn belt_log() -> List<String> {
+  let a = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: none)
+  let b = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 1) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: a.id })
+  let c = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 2) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: b.id })
+  wire([a, b, c])
+}
+
+fn belt_read() -> FromNowRead {
+  schedule_from_now(d: belt_carrier(), e: belt_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: belt_item(), lines: belt_log() }])
+}
+
+// THE WEEKEND ITEM: claimed Fri 2026-11-13, read Mon 2026-11-23 -- ten calendar days, six of them working.
+fn week_item() -> RoadmapNodeId { "gantt.week" as RoadmapNodeId }
+
+fn week_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.week", waits_on: [], stages: [
+    [leaf(label: "held across the weekend", days: 8)],
+    [leaf(label: "waiting", days: 2)],
+  ])
+}
+
+fn week_expansion() -> Expansion { expand_decomposition(d: week_carrier(), findings_count: 1) }
+
+fn week_leaf(stage: Int) -> LeafPath { LeafPath { item: week_item(), stage: stage, piece: 0, member: 0 } }
+
+// ─── THE CLAIMS ───────────────────────────────────────────────────────────────────────────────────
+
+// THE FIRST SLICE: two in-flight leaves and four unclaimed ones on one item. The pinned rows are NAMED -- leaf,
+// claim date, prior, elapsed, remaining, lane -- and the unclaimed leaves are scheduled around the pins: both
+// stage-2 leaves start on day 3, the day the stage-1 pin frees its lane, and the stage-3 pair on day 6, the day
+// stage 2 finishes. Nothing is placed on a lane a pin is standing in.
+test fn two_in_flight_and_four_unclaimed_are_pinned_and_scheduled_around_each_other() -> Bool {
+  match slice_read() {
+    FromNowScheduled { answer: a } => {
+      let first_pin = first_pin_for(a: a, path: slice_leaf(stage: 0, piece: 0))
+      let second_pin = first_pin_for(a: a, path: slice_leaf(stage: 1, piece: 0))
+      count(a.pins) == 2
+        && date_text(date: first_pin.claimed_on) == "2026-11-17" && first_pin.prior == 5 && first_pin.elapsed == 3
+        && first_pin.remaining == 2 && first_pin.lane == 0
+        && date_text(date: second_pin.claimed_on) == "2026-11-19" && second_pin.prior == 4
+        && second_pin.elapsed == 1 && second_pin.remaining == 3 && second_pin.lane == 1
+        && a.pins_over_capacity == 0
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: slice_leaf(stage: 2, piece: 0)), start: 3)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: slice_leaf(stage: 2, piece: 1)), start: 3)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: slice_leaf(stage: 2, piece: 1)), finish: 6)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: slice_leaf(stage: 3, piece: 0)), start: 6)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: slice_leaf(stage: 3, piece: 1)), start: 6)
+        && count(a.refused_pins) == 0 && count(a.blocked) == 0
+        && scheduled_leaf_count(a.schedule) == 6 && a.schedule.horizon == 8
+    }
+    _ => false
+  }
+}
+
+// THE RED CONTROL, first half: claimed three working days before the read with a five-day prior, the leaf finishes
+// at DAY TWO of the read -- pinned from day 0 at its REMAINING two days, not at its five-day prior and not restarted
+// from the claim day.
+test fn a_leaf_claimed_three_working_days_ago_with_a_five_day_prior_finishes_at_day_two_of_the_read() -> Bool {
+  match pin_read(lines: pin_log(stamp: "2026-11-17T09:00:00Z")) {
+    FromNowScheduled { answer: a } =>
+      let pin = first_pin_for(a: a, path: pin_leaf(stage: 0))
+      count(a.pins) == 1 && pin.prior == 5 && pin.elapsed == 3 && pin.remaining == 2
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), start: 0)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), finish: 2)
+        && count(a.refused_pins) == 0
+    _ => false
+  }
+}
+
+// THE PINNED-TO-UNCLAIMED EDGE GATES A START: the unclaimed leaf behind the pin starts the day the pin FINISHES,
+// through the scheduler's own dependency gate over the seeded pin rows. Under a read that ignored the pin this
+// leaf would start at day 0, which is the day somebody else is still standing in.
+test fn an_unclaimed_leaf_waiting_on_a_pin_starts_when_the_pin_finishes() -> Bool {
+  match pin_read(lines: pin_log(stamp: "2026-11-17T09:00:00Z")) {
+    FromNowScheduled { answer: a } =>
+      row_starts_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 1)), start: 2)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), start: 0)
+    _ => false
+  }
+}
+
+// THE RED CONTROL, second half: a leaf whose remaining days cannot be worked out REFUSES BY NAME. Here the prior is
+// already exhausted -- claimed five working days ago with a five-day prior, never released and never accepted -- so
+// the leaf is overdue. It is not pinned at zero, not shown as finished, and not scheduled as if it were unclaimed.
+test fn a_pin_whose_prior_the_elapsed_days_already_exhausted_refuses_by_name_and_is_never_pinned_at_zero() -> Bool {
+  match late_read(stamp: "2026-11-13T09:00:00Z") {
+    FromNowScheduled { answer: a } =>
+      let refusal = refusal_for(refusals: a.refused_pins, path: late_leaf(stage: 0, piece: 0))
+      count(a.pins) == 0
+        && match refusal {
+             Present { value: OverduePriorExhausted { leaf: leaf, claimed_on: claimed_on, prior: prior,
+               elapsed: elapsed } } =>
+               path_key(p: leaf) == path_key(p: late_leaf(stage: 0, piece: 0))
+                 && date_text(date: claimed_on) == "2026-11-13" && prior == 5 && elapsed == 5
+             _ => false
+           }
+        && !is_placed(a: a.schedule, path: late_leaf(stage: 0, piece: 0))
+        && scheduled_leaf_count(a.schedule) == 1
+    _ => false
+  }
+}
+
+// AN UNREADABLE CLAIM STAMP refuses that pin by name, naming the claim event and the stamp that is not the instant
+// its producers write. The leaf is never pinned at zero days.
+test fn a_claim_stamp_that_is_not_the_instant_its_producers_write_refuses_that_pin_by_name() -> Bool {
+  match late_read(stamp: "t3") {
+    FromNowScheduled { answer: a } =>
+      let refusal = refusal_for(refusals: a.refused_pins, path: late_leaf(stage: 0, piece: 0))
+      count(a.pins) == 0
+        && match refusal {
+             Present { value: ClaimStampUnreadable { leaf: leaf, claim: claim, recorded_at: recorded_at } } =>
+               path_key(p: leaf) == path_key(p: late_leaf(stage: 0, piece: 0))
+                 && count(claim) > 0 && recorded_at == "t3"
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// A CLAIM RECORDED AFTER THE READ DAY: the span would run backwards, which the span authority answers, and this
+// read turns that into a typed refusal naming the leaf and both dates. Nothing is pinned at a negative day.
+test fn a_claim_recorded_after_the_read_day_refuses_that_pin_by_name() -> Bool {
+  match late_read(stamp: "2026-11-23T09:00:00Z") {
+    FromNowScheduled { answer: a } =>
+      let refusal = refusal_for(refusals: a.refused_pins, path: late_leaf(stage: 0, piece: 0))
+      count(a.pins) == 0
+        && match refusal {
+             Present { value: ClaimDayAfterRead { leaf: leaf, claimed_on: claimed_on, read_on: read_on } } =>
+               path_key(p: leaf) == path_key(p: late_leaf(stage: 0, piece: 0))
+                 && date_text(date: claimed_on) == "2026-11-23" && date_text(date: read_on) == "2026-11-20"
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// EVERYTHING BEHIND A REFUSED PIN IS BLOCKED, NAMED WITH THE PIN BEHIND IT -- transitively, so the stage-2 leaf
+// that waits only on the stage-1 leaf is listed too -- while the refused leaf's INDEPENDENT peer schedules
+// normally. Placing the dependents as if nothing stood in front of them would be the silent drop this rules out.
+test fn everything_behind_a_refused_pin_is_listed_as_blocked_and_independent_leaves_still_schedule() -> Bool {
+  match late_read(stamp: "2026-11-13T09:00:00Z") {
+    FromNowScheduled { answer: a } =>
+      count(a.blocked) == 2
+        && is_blocked_behind(blocked: a.blocked, leaf: late_leaf(stage: 1, piece: 0),
+             behind: late_leaf(stage: 0, piece: 0))
+        && is_blocked_behind(blocked: a.blocked, leaf: late_leaf(stage: 2, piece: 0),
+             behind: late_leaf(stage: 0, piece: 0))
+        && !is_placed(a: a.schedule, path: late_leaf(stage: 1, piece: 0))
+        && !is_placed(a: a.schedule, path: late_leaf(stage: 2, piece: 0))
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: late_leaf(stage: 0, piece: 1)), start: 0)
+        && scheduled_leaf_count(a.schedule) == 1
+        && match first_where(xs: a.blocked, keep: b =>
+             path_key(p: b.leaf) == path_key(p: late_leaf(stage: 2, piece: 0))) {
+             Present { value: b } => blocked_text(blocked: b) == join([
+               "not scheduled, behind a refused pin ", path_key(p: late_leaf(stage: 2, piece: 0)),
+               " waits on ", path_key(p: late_leaf(stage: 0, piece: 0))], "")
+             Absent => false
+           }
+    _ => false
+  }
+}
+
+// A CLAIM THAT NAMES A LEAF THIS EXPANSION NEVER EMITTED cannot pin a lane: the pin is refused by name and the
+// expansion is not quietly widened to fit the log.
+test fn a_pin_naming_a_leaf_this_expansion_never_emitted_refuses_by_name() -> Bool {
+  let ghost = LeafPath { item: slice_item(), stage: 9, piece: 0, member: 0 }
+  let log = wire([claim_env(node: slice_item(), path: Present { value: ghost }, stamp: "2026-11-17T09:00:00Z", parent: none)])
+  match schedule_from_now(d: slice_carrier(), e: slice_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: slice_item(), lines: log }]) {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 0 && count(a.refused_pins) == 1
+        && match refusal_for(refusals: a.refused_pins, path: ghost) {
+             Present { value: ClaimedLeafNotInExpansion { leaf: leaf } } =>
+               path_key(p: leaf) == path_key(p: ghost)
+             _ => false
+           }
+        && scheduled_leaf_count(a.schedule) == 6
+    _ => false
+  }
+}
+
+// THREE PINS UNDER TWO WORKERS. Pins are facts, so all three hold lanes -- 0, 1 and 2 -- and the answer says how
+// many do not fit; and no unclaimed leaf may START while the pins alone fill the cap: its lane frees on day 2 and
+// it starts on day 3, the first day the belt has room for one more.
+test fn three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_nothing_starts_while_the_belt_is_full() -> Bool {
+  match cap_read() {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 3 && a.pins_over_capacity == 1
+        && over_capacity_pins(pins: a.pins, workers: lanes(2)) == 1
+        && pin_lane(a: a, piece: 0) == 0 && pin_lane(a: a, piece: 1) == 1 && pin_lane(a: a, piece: 2) == 2
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: cap_leaf(stage: 0, piece: 3)), start: 3)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: cap_leaf(stage: 0, piece: 3)), finish: 4)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: cap_leaf(stage: 1, piece: 0)), start: 4)
+    _ => false
+  }
+}
+
+// PINS PAST THE CAP NEVER LET THE BELT LAUNCH A LEAF ON TOP OF THEM. The pins are facts, so all three hold lanes and
+// the answer names the one that does not fit -- that part is allowed. What is NOT allowed is a plan that quietly
+// runs three leaves on days 4 to 6 under a cap of two because the cap was checked once, as a floor, and never again
+// per placement. One pin holds a lane the lane scan cannot see, so the capacity it consumes closes a lane the
+// placement CAN see, and the second free leaf waits for the belt rather than being launched onto it. The per-day
+// series is the assertion: days 0-1 run three because the PINS alone do (reported, not hidden), and from day 2 on
+// nothing ever exceeds the cap -- a read that launched both free leaves on day 4 would show 3 there.
+test fn pins_past_the_cap_never_let_the_belt_launch_a_leaf_on_top_of_them() -> Bool {
+  match belt_read() {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 3 && a.pins_over_capacity == 1
+        && pin_remaining(a: a, piece: 0) == 2 && pin_remaining(a: a, piece: 1) == 4 && pin_remaining(a: a, piece: 2) == 6
+        && a.schedule.in_flight_per_day == [3, 3, 2, 2, 2, 2, 1, 1]
+        && count(filter(a.schedule.in_flight_per_day, c => c > 2)) == 2
+        && a.schedule.horizon == 8
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 3)), start: 4)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 3)), finish: 6)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 4)), start: 6)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 4)), finish: 8)
+    _ => false
+  }
+}
+
+// THE ELAPSED COUNT IS THE CALENDAR'S WORKING DAYS: Friday to Monday is TEN calendar days and SIX working ones, so
+// an eight-day prior leaves two and the pin ends on day 2. The calendar's own counter is named beside it, because
+// the difference between 10 and 6 is the whole claim and it belongs to #16697, not to this unit.
+test fn the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten() -> Bool {
+  let log = wire([claim_env(node: week_item(), path: Present { value: week_leaf(stage: 0) }, stamp: "2026-11-13T09:00:00Z",
+    parent: none)])
+  match schedule_from_now(d: week_carrier(), e: week_expansion(), workers: lanes(2), read_on: d(2026, 11, 23),
+    logs: [ItemLog { node: week_item(), lines: log }]) {
+    FromNowScheduled { answer: a } =>
+      let pin = first_pin_for(a: a, path: week_leaf(stage: 0))
+      count(a.pins) == 1 && pin.prior == 8 && pin.elapsed == 6 && pin.remaining == 2
+        && days_between(from: d(2026, 11, 13), to: d(2026, 11, 23)) == 10
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: week_leaf(stage: 0)), finish: 2)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: week_leaf(stage: 1)), start: 2)
+    _ => false
+  }
+}
+
+// A RELEASED HOLD CLOSES, AND A RE-CLAIM ANCHORS THE PIN AT THE NEWEST HOLD: the log shows the leaf claimed on the
+// 17th, released on the 18th and taken up again on the 19th. The pin stands on the 19th -- the released days are not
+// counted as elapsed, because the log records no work done in them -- and the closed hold is counted.
+test fn a_released_hold_closes_and_a_reclaim_anchors_the_pin_at_the_newest_hold() -> Bool {
+  let first = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: none)
+  let released = release_env(node: pin_item(), parent: Present { value: first.id })
+  let again = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: released.id })
+  match pin_read(lines: wire([first, released, again])) {
+    FromNowScheduled { answer: a } =>
+      let pin = first_pin_for(a: a, path: pin_leaf(stage: 0))
+      count(a.pins) == 1 && date_text(date: pin.claimed_on) == "2026-11-19"
+        && pin.elapsed == 1 && pin.remaining == 4 && a.closed_holds == 1
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), finish: 4)
+    _ => false
+  }
+}
+
+// A PATHLESS CLAIM NAMES NO LEAF: it pins nothing, changes no pin, and is COUNTED in the answer -- never reported
+// as zero claims and never folded into the pinned set.
+test fn a_pathless_claim_pins_nothing_and_is_counted_visibly() -> Bool {
+  let log = wire([claim_env(node: pin_item(), path: none, stamp: "2026-11-17T09:00:00Z", parent: none)])
+  match pin_read(lines: log) {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 0 && a.pathless_claims == 1 && count(a.refused_pins) == 0
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), start: 0)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: pin_leaf(stage: 0)), finish: 5)
+    _ => false
+  }
+}
+
+// A LOG THAT WILL NOT ORDER ITSELF REFUSES THE WHOLE READ. Two claims hanging off the same parent are a fork, and
+// #16703's causal-chain reader answers that with no chain at all; a from-now read that folded it anyway would be
+// choosing which hold survives, and a held leaf it dropped would leave another leaf scheduled onto a lane somebody
+// is standing in. So the refusal passes through with the in-flight read's own cause named, and nothing is answered.
+test fn a_log_that_will_not_order_itself_refuses_the_whole_read() -> Bool {
+  let root = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-16T09:00:00Z",
+    parent: none)
+  let left = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: Present { value: root.id })
+  let right = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-18T09:00:00Z",
+    parent: Present { value: root.id })
+  let read = pin_read(lines: wire([root, left, right]))
+  match read {
+    FromNowScheduled { answer: _ } => false
+    FromNowRefused { cause: cause } => match cause {
+      InFlightReadRefused { item: item, cause: inner } =>
+        item == (pin_item() as String)
+          && match inner { InFlightHistoryUnordered {} => true  _ => false }
+          && from_now_output(read: read)
+               == join(["from-now read refused: ", from_now_cause_text(cause: cause)], "")
+          && contains_text(text: from_now_output(read: read), needle: "the log is not a single causal chain")
+      ScheduleRefused { refusal: refusal } => false
+    }
+  }
+}
+
+// COMPUTED ON READ: the same carriers, the same read date and the same lines answer identically -- in the printed
+// form -- and ONE MORE LINE changes the answer. That is what keeps a cached copy a copy and never an authority
+// between reads.
+test fn a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_the_answer() -> Bool {
+  let first = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: none)
+  let second = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: first.id })
+  let one = pin_read(lines: wire([first]))
+  let again = pin_read(lines: wire([first]))
+  let deeper = pin_read(lines: wire([first, second]))
+  from_now_output(read: one) == from_now_output(read: again)
+    && from_now_output(read: one) != from_now_output(read: deeper)
+    && match one { FromNowScheduled { answer: a } => count(a.pins) == 1  _ => false }
+    // Both pins stand at their own claim day with their own remaining days -- a pinned leaf is a fact, not a
+    // placement the barrier gets to move -- so the deeper read answers two bars of two working days each.
+    && match deeper { FromNowScheduled { answer: a } => count(a.pins) == 2 && a.schedule.horizon == 2
+         && all(a.pins, p => p.remaining == 2)  _ => false }
+}
+
+// NO NEW POLICY, IN THE SENSE THE TICKET BINDS: with nothing in flight the from-now read answers EXACTLY what
+// #16695's own `schedule` answers for the same carriers and cap -- the same leaves, the same day for each, the same
+// lane for each, the same horizon and the same critical path. The pins are an input to that scheduler, not a second
+// one beside it, and this unit answers no bottleneck and no next-leaf offer.
+test fn with_nothing_in_flight_the_read_answers_exactly_what_the_one_scheduler_answers() -> Bool {
+  match schedule_from_now(d: slice_carrier(), e: slice_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: []) {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 0 && answers_like(a: a, plain: schedule(d: slice_carrier(), e: slice_expansion(),
+        workers: lanes(2)))
+    _ => false
+  }
+}
+
+// THE HANDBACK, in the ticket's own three parts: the from-now output with the PINNED ROWS NAMED, the DAY-TWO
+// control, and the DIFF against the read this link replaces -- where the pinned leaf's bar shortens from its
+// five-day prior to its remaining two days, and a blocked leaf says it is not scheduled rather than disappearing.
+test fn the_handback_names_the_pinned_rows_the_day_two_control_and_the_diff() -> Bool {
+  let read = pin_read(lines: pin_log(stamp: "2026-11-17T09:00:00Z"))
+  let late = late_read(stamp: "2026-11-13T09:00:00Z")
+  is_scheduled(read: read) && is_scheduled(read: late)
+    && match read {
+         FromNowScheduled { answer: a } =>
+           let pin = first_pin_for(a: a, path: pin_leaf(stage: 0))
+           pin_row_output(pin: pin) == join([
+             "pinned ", path_key(p: pin_leaf(stage: 0)), " claimed 2026-11-17: prior 5, elapsed 3, remaining 2",
+             " working days, holding lane 0"], "")
+             && from_now_output(read: read) == join([
+               from_now_head(a: a),
+               pin_row_output(pin: pin),
+               leaf_rows_of(a: a),
+               join(["critical path ", to_string(a.schedule.critical_length), " working days; horizon ",
+                 to_string(a.schedule.horizon), " working days"], ""),
+               "", "",
+               counted_line(a: a)],
+               "\n")
+               && contains_text(text: from_now_diff(d: pin_carrier(), e: pin_expansion(), workers: lanes(2),
+                   read: read),
+                 needle: join([path_key(p: pin_leaf(stage: 0)), " 5 -> 2 working days (pinned: claimed 2026-11-17,",
+                   " elapsed 3, remaining 2)"], ""))
+         _ => false
+       }
+    && contains_text(text: from_now_diff(d: late_carrier(), e: late_expansion(), workers: lanes(2), read: late),
+        needle: join([path_key(p: late_leaf(stage: 1, piece: 0)), " 3 -> not scheduled: a refused pin stands in",
+          " front of it"], ""))
+}
+
+// ─── READERS OVER THE ANSWER ──────────────────────────────────────────────────────────────────────
+// Every one of these locates a leaf through roadmap_schedule's own `path_key` -- never a second spelling of the
+// key the schedule is keyed by.
+
+fn is_scheduled(read: FromNowRead) -> Bool {
+  match read { FromNowScheduled { answer: _ } => true  _ => false }
+}
+
+fn pin_for(pins: List<PinRow>, path: LeafPath) -> PinRow? {
+  first_where(xs: pins, keep: p => path_key(p: p.leaf) == path_key(p: path))
+}
+
+// A pin that is not there answers with a row no fixture can match, rather than a re-derivation of the answer.
+fn first_pin_for(a: FromNowAnswer, path: LeafPath) -> PinRow {
+  match pin_for(pins: a.pins, path: path) {
+    Present { value: p } => p
+    Absent => PinRow { leaf: path, claimed_on: d(1970, 1, 1), prior: -1, elapsed: -1, remaining: -1, lane: -1 }
+  }
+}
+
+fn refusal_for(refusals: List<PinRefusal>, path: LeafPath) -> PinRefusal? {
+  first_where(xs: refusals, keep: r => path_key(p: refused_leaf(refusal: r)) == path_key(p: path))
+}
+
+fn pin_lane(a: FromNowAnswer, piece: Int) -> Int {
+  match pin_for(pins: a.pins, path: cap_leaf(stage: 0, piece: piece)) {
+    Present { value: p } => p.lane
+    Absent => -1
+  }
+}
+
+fn pin_remaining(a: FromNowAnswer, piece: Int) -> Int {
+  match pin_for(pins: a.pins, path: belt_leaf(piece: piece)) {
+    Present { value: p } => p.remaining
+    Absent => -1
+  }
+}
+
+fn row_starts_at(placed: ScheduledLeaf?, start: Int) -> Bool {
+  match placed { Present { value: l } => l.start_day == start  Absent => false }
+}
+
+fn row_finishes_at(placed: ScheduledLeaf?, finish: Int) -> Bool {
+  match placed { Present { value: l } => l.finish_day == finish  Absent => false }
+}
+
+fn is_placed(a: ScheduleAnswer, path: LeafPath) -> Bool {
+  match scheduled_at(a: a, path: path) { Present { value: _ } => true  Absent => false }
+}
+
+fn is_blocked_behind(blocked: List<BlockedOccurrence>, leaf: LeafPath, behind: LeafPath) -> Bool {
+  any(blocked, b => path_key(p: b.leaf) == path_key(p: leaf) && path_key(p: b.behind) == path_key(p: behind))
+}
+
+// The scheduler's own answer, compared leaf for leaf against the from-now read's. A NotScheduled plain schedule
+// fails the comparison, which is what it means for the two reads to disagree.
+fn answers_like(a: FromNowAnswer, plain: Schedule) -> Bool {
+  match plain {
+    Scheduled { answer: before } =>
+      scheduled_leaf_count(a.schedule) == scheduled_leaf_count(before)
+        && a.schedule.horizon == before.horizon
+        && a.schedule.critical_length == before.critical_length
+        && critical_path_keys(a: a.schedule) == critical_path_keys(a: before)
+        && all(before.leaves, b => match scheduled_at(a: a.schedule, path: b.path) {
+             Present { value: now } => now.start_day == b.start_day && now.finish_day == b.finish_day
+               && now.lane == b.lane
+             Absent => false
+           })
+    _ => false
+  }
+}
+
+// This unit's own printed leaf rows, reused so the handback claim compares against ONE spelling of the format.
+fn leaf_rows_of(a: FromNowAnswer) -> String {
+  join(map(a.schedule.leaves, l => join([path_key(p: l.path), " days ", to_string(l.start_day), " -> ",
+    to_string(l.finish_day), " on lane ", to_string(l.lane)], "")), "\n")
+}
+
+// A substring test built from `split`: the needle is present when splitting on it yields more than one piece.
+// Used only on this unit's own output text, never on a number re-derived from a carrier.
+fn contains_text(text: String, needle: String) -> Bool { count(split(s: text, delimiter: needle)) > 1 }

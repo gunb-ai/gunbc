@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_withdrawal_undone_by_the_next_converge
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_withdrawal_undone_by_the_next_converge: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_withdrawal_undone_by_the_next_converge" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a convergence path in which unmasking and starting a host's runner units is an act only runner_host_restore may perform, with the withdraw-to-restore span enforced by the grant itself -- the sudoers line that grants systemctl unmask, enable and start issued to the restore's operation and to nothing else -- so that a converge leg which wanted to re-admit a withdrawn host could not express it, SUFFICIENT FOR the runner witnesses to red the merge path if the withdrawal standing stops being consulted by any leg that can open a slot",
+    },
+  },
+
+  receipts: [
+    "**a control that is written down as a state is re-derived from the very objects that state just changed, so the next pass over those objects undoes it.** INVALID STATE: a host recorded withdrawn, with its slots masked and proven stopped, running CI jobs again while the same model still reports the withdrawal as standing. HARM: the operator and the model disagree about who is allowed to take work, and the disagreement is invisible -- the withdrawal receipt reads as true and the host serves jobs. Every decision made against the withdrawal (capacity, interruption authority, who owes a replacement) is then made about a host that is not in the state the decision assumed.",
+    "SPECIMEN, 2026-11-19, srv4: run 44436062310 certified 'runner_host_withdraw host=srv4 state=withdrawn units=actions-runner@srv4-01..srv4-15 record=written' at 01:32:34Z, every unit masked only after a reading proved it stopped. Eighteen minutes later run 44438184186 printed 'actuation actions-runner@srv4-01.service activated-and-read-back' through srv4-15 with 'pre-actuation-reload=reloaded': the converge's activation leg had unmasked, enabled and started the whole kept population, because what it read was the units, and the units were stopped and masked exactly as the withdrawal had left them. Four of them minted JIT registrations at 01:50:17Z, 01:50:20Z, 01:51:02Z and 01:51:04Z and served CI from 02:06:28Z to 02:59:37Z. The same converge's receipt carried the contradiction two lines apart: the cap phase listing those units as 'stopped, and the unit's loaded caps are not the desired ones', and the host line reading 'state=inconsistent withdrawn=unproven cause=the withdrawn record holds while a slot reads unmasked, active, or unreadable'.",
+    "DISTINGUISHING FACTS: the withdrawal was stored as a record and the record was read only to REPORT the host, never to decide; the leg that opens a slot (gunbc.runner.runner_slot_actuation::runner_slot_activation_steps -- unmask, enable, start) decided from unit state alone, and on a withdrawn host unit state is the withdrawal's own output, so the leg was reading the effect of the thing that should have barred it and concluding the opposite. Nothing in the run rolled the activation back when the cap phase withheld, and the run still ended reporting a population it had just re-opened.",
+    "REPAIR: gunbc.runner.runner_host_withdraw_record::runner_host_withdrawal_standing is read ONCE per convergence and handed to every leg that could open a slot; gunbc.runner.runner_host_withdraw_record::activation_held_by_withdrawal is the single decision, holding on a standing record, on an unreadable one and on another identity's record, and admitting only an absent one. gunbc.runner.runner_host_file_converge::runner_host_slot_actuations answers with gunbc.runner.runner_slot_actuation::SlotActivationHeldByWithdrawal, which is reported by name and never settles the host, and gunbc.runner.runner_host_file_converge::runner_host_cap_plan_under_withdrawal replaces the cap bracket's drain-write-unmask-start arm with the in-place write, so a converge may land the fleet's cap rows on inert units without opening one. runner_host_restore remains the only route that re-admits.",
+    "RUNG NOW: mitigatable -- the decision sits in one place and the bracket witness reds the two ways it breaks (a held host that still plans an activation, and a bracket arm entered on a withdrawn host) with two positive controls (an open host still activates; an open host's bracket arm stands). CEILING: mechanically preventable while the unmask/enable/start grant is issued to converge and restore alike: any leg that can ask systemd for those three words can still re-open a withdrawn host, and the next sibling leg added to converge -- the fabric path, a first install, a future repair route -- is the next instance of this class. It stays on the ladder until the withdrawal-to-restore span is carried by the grant rather than by the reading.",
+  ],
+
+  evidence: [],
+}

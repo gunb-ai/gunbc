@@ -303,9 +303,23 @@ fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: Stri
 // work must not be forgeable by whatever code happens to want it, including a test that would
 // rather not be blocked.
 //
-// THE SCOPE IS THE EXACT UNITS, ENUMERATED. srv4's committed width becomes 12, so slots 13..21 are
-// the surplus population and they are named one by one rather than expressed as a range or a glob.
-// A range would silently acquire new members if the width moved again; an enumeration cannot.
+// THE SCOPE IS AUTHORED, AND IT MUST BE NARROWER THAN A DATE. This row was written on 2026-09-12, when
+// srv4's committed width was 12, with its scope typed out as 13..21 on that footing. The width the model
+// commits to now is 15 (gunbc.runner.runner_slot_allocation::gunbc_runner_committed_width), so 13, 14 and
+// 15 are CI members today -- and the list could not notice: it kept minting 'mask and stop' authority over
+// slots the model intends to keep, which is the run-time dangling grant of
+// gunbc.roadmap.fleet-mask-grants-cover-slots-the-model-keeps. So the list is narrowed to 16..21, the set
+// gunbc.runner.runner_width_transition::required_retirees_for_host declares for srv4 -- that is the set the
+// operator's decision was ever about, the surplus internal CI slots.
+//
+// IT IS NARROWED, NOT DERIVED, and the rule is the one on the fabric row below (review 68854): permission is
+// authored and checked OVER the derived obligation, never substituted for it, because a scope read from the
+// population authority acquires members the operator never named. What replaces the stale list is a control,
+// not a derivation: no_mask_grant_names_a_slot_the_width_commits in the runner_slot_retirement witness is red
+// whenever a mask grant names a slot inside the committed population, and its companion is red when the grant
+// no longer covers the declared obligation. A width move therefore surfaces as a failing witness -- the
+// refusal doing its job -- instead of either going stale behind a live bracket or minting permission on its
+// own.
 //
 // WHAT THE OPERATOR DECIDED, and the boundary of it: the surplus INTERNAL CI slots on srv4 carry
 // disposable dev/test jobs and may be interrupted for this transition. That is not permission to
@@ -314,9 +328,6 @@ fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: Stri
 // declared row with a scope rather than an environment test in the writer.
 data srv4_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: [
-    "actions-runner@srv4-13.service" as NonEmptyStr,
-    "actions-runner@srv4-14.service" as NonEmptyStr,
-    "actions-runner@srv4-15.service" as NonEmptyStr,
     "actions-runner@srv4-16.service" as NonEmptyStr,
     "actions-runner@srv4-17.service" as NonEmptyStr,
     "actions-runner@srv4-18.service" as NonEmptyStr,
@@ -324,7 +335,7 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
     "actions-runner@srv4-20.service" as NonEmptyStr,
     "actions-runner@srv4-21.service" as NonEmptyStr,
   ],
-  operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host. Narrowed to 16-21 on 2026-11-19: srv4's committed width is 15, so 13-15 are kept CI members and this row must not name them" as NonEmptyStr,
 }
 
 // srv1'S SURPLUS IS THE 50-SLOT REMAINDER, NOT THE NINE-SLOT 21-TO-12 DELTA ALONE.
@@ -365,7 +376,9 @@ data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthoriza
 // the runner converge withheld the host (run 44227331401). The operator chose to apply the converge on
 // srv3 and srv4 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided as msg_c20ceb2b), with the
 // retirement of the surplus CI runners stated in the question. Enumerated, like srv4's, so a later width
-// change cannot widen it.
+// change cannot widen it (the rule and its history are on the fabric row below, review 68854); what the list
+// must name is the set gunbc.runner.runner_width_transition::required_retirees_for_host declares for srv3, and
+// the witness claim no_mask_grant_names_a_slot_the_width_commits is red if that ever stops being true.
 data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: [
     "actions-runner@srv3-14.service" as NonEmptyStr,
@@ -382,7 +395,7 @@ data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthoriza
 
 // THE HOST DRAIN IS ITS OWN PERMISSION, AND IT IS NOT THE WIDTH DECISION. The cap bracket takes a whole
 // host out of admission: it stops every slot it owns, INCLUDING the ones the width decision keeps and
-// re-admits minutes later. The width rows deliberately do not reach those units -- srv4's names 13-21,
+// re-admits minutes later. The width rows deliberately do not reach those units -- srv4's names 16-21,
 // srv3's names 14-21 -- and the drain must not inherit a permission it was not given. Without a row here
 // the drain cannot take an uncorroborated listener out of service at all, which is what run 44232633417
 // timed out on: srv4's slots are JIT, their current registrations are absent from the org roster, so no
@@ -464,7 +477,7 @@ type HostInterruptionAuthorizationStanding
 
 // THE FABRIC REASSIGNMENT IS ITS OWN OPERATOR DECISION AND ITS OWN SCOPE, carried beside the width
 // decisions rather than folded into them. Neither width decision reaches these units: srv4's names
-// 13-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
+// 16-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
 // all inside the committed width, so without this row every one of them is a required retiree that
 // no authorization permits -- which is a refusal, correctly, and not a state this change may leave
 // standing while declaring the cells.
@@ -483,7 +496,7 @@ type HostInterruptionAuthorizationStanding
 // The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
 // same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
 //
-// SO THE CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// SO THE CELLS ARE ENUMERATED, for the same reason srv4's surplus row enumerates rather than
 // ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
 // required retiree that this authorization does not name, so the transition REFUSES until an
 // operator adds it -- which is the refusal doing its job rather than a gap.
