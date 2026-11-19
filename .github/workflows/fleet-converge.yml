@@ -3002,6 +3002,7 @@ jobs:
           cat "$ROOT/target/managed-host-network-install-receipt.txt"
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
         if: github.event.inputs.mode == 'managed_host_network_install'
         timeout-minutes: 45
       - name: Upload managed host network install receipt
@@ -3360,7 +3361,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_bmc_cold_reset' && github.ref == 'refs/heads/main'
-        timeout-minutes: 67
+        timeout-minutes: 35
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
