@@ -12,7 +12,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.algebra { FreeSemigroup, fold_list, length, string_contains }
 import std.decl_ref { DeclarationRef }
 import extdeps.network.mac { Eui48Address, render_mac_address }
-import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
+import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq, render_ipv4_address }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
 import product.host_identity { host_identity_eq }
@@ -375,13 +375,17 @@ test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address(
   }
 }
 
-// THE GPU FIGURE OWES THE BUS-TO-SLOT PAIRING, not just a device count: the cooling lane cites slots,
-// and a count without a slot pairing cannot be used by it.
+// THE GPU FIGURE HAS HAD ITS PCI IDS READ AND STILL OWES THE BUS-TO-SLOT PAIRING: the cooling lane cites
+// slots, and a function list without a slot pairing cannot be used by it. The vendor:device pair is read off
+// the unit (domain-prefixed sysfs), so this claim pins BOTH halves: the ids present, the pairing still unread.
+// If someone deletes the read half this reds, and if someone claims the pairing without building the route it
+// reds.
 test fn witness_the_gpu_figure_reads_ids_by_sysfs_and_leaves_the_pairing_unread() -> Bool {
   match supermicro_h11ssl_unit3_gpu_report.standing {
     TranscribedUncited { read_obligation: owed } =>
-      string_contains(s: text(owed), pattern: "/sys/bus/pci/devices")
-        && string_contains(s: text(owed), pattern: "UNREAD")
+      string_contains(s: text(owed), pattern: "vendor=0x10de")
+        && string_contains(s: text(owed), pattern: "device=0x1e37")
+        && string_contains(s: text(owed), pattern: "stays UNREAD")
     CitedToAuthority { authority: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
@@ -610,7 +614,7 @@ test fn the_address_standing_names_the_row_that_holds_the_address() -> Bool {
 test fn the_held_address_is_an_observation_while_the_standing_and_the_effect_gate_stay_shut() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: held_by, read_obligation: owed } =>
-      ipv4_address_eq(a: seen, b: ken_host_lan_endpoint.address as Ipv4Address)
+      render_ipv4_address(addr: seen) == ken_host_lan_endpoint.address
         && decl_ref_names(ref: held_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
         && (text(owed) != "")
         && this_unit_is_enrolled()

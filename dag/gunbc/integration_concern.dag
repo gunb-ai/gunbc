@@ -4492,8 +4492,12 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
-  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials; the same session's sysfs vendor/device read FAILED (paths without the PCI domain prefix) and the failures are in the file",
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
+}
+data h11ssl_unit3_gpu_pci_ids_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read2.txt, section '### sysfs nvidia devices' -- the sysfs vendor/device read retried with PCI-domain-prefixed paths: 0000:01:00.0, 0000:81:00.0 and 0000:c1:00.0 each read vendor=0x10de device=0x1e37 class=0x030200. That closes the vendor:device half of the question below; the failures in the earlier unprefixed attempt are carried in gpu_identity_query.txt.",
+  sha256: Sha256Digest { hex: "de7ec943c9482ce189f9ffcd9ee23bb3e2381fe33b6fb0597b18fc76d70f1d7c" as Sha256DigestHex },
 }
 data h11ssl_unit3_gpu_power_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read3.txt -- t10-power-cap.sh (the driver power-limit loop with EXPECT=3) followed by nvidia-smi -q -d POWER: min 100.00 W, max 150.00 W, default 150.00 W, current 100.00 W on each of the three functions",
@@ -4522,19 +4526,20 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
       decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "installed_gpu_board_containments"),
     ],
   },
-  question: "Two authorities name the accelerators in this unit and answer DIFFERENTLY: the operator reported two Tesla T10 (2026-11-15 and 2026-11-17, and the same operator's own session named a third card -- 'third card: serial 1323019027149, in SLOT2 (c1:00.0)'), while the unit itself enumerates three driver-visible NVIDIA functions with three UUIDs and three serials. Which is the unit? The read rows carry THREE boards because a unit's enumeration outranks a report about it, and the report row still says TWO because a report row describes its report -- so the disagreement is visible on both sides instead of being resolved by deleting one. Closing it needs the vendor:device read that FAILED in that session (domain-prefixed sysfs paths), plus the operator's word on whether a fourth card exists that the driver does not show. Until then no consumer may treat this unit's GPU count as settled.",
+  question: "Two authorities name the accelerators in this unit and answer DIFFERENTLY: the operator reported two Tesla T10 (2026-11-15 and 2026-11-17, and the same operator's own session named a third card -- 'third card: serial 1323019027149, in SLOT2 (c1:00.0)'), while the unit itself enumerates three driver-visible NVIDIA functions with three UUIDs and three serials. Which is the unit? The read rows carry THREE boards because a unit's enumeration outranks a report about it, and the report row still says TWO because a report row describes its report -- so the disagreement is visible on both sides instead of being resolved by deleting one. Closing it does NOT need the vendor:device read -- that was taken in the same session once the sysfs paths carried the PCI domain (every function read vendor 0x10de device 0x1e37, unit_read2.txt), and only the earlier unprefixed-path attempt failed. What it needs is the operator's word on the count: whether one of the two-report statements miscounted, or a fourth card exists that the driver does not show; and the ownership read of which machine answers on 192.168.1.236, which no read in this repo can yet repeat. Until then no consumer may treat this unit's GPU count as settled.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_gpu_rows_revision,
       evidence: FreeSemigroup {
         head: h11ssl_unit3_gpu_identity_receipt,
         tail: [
+          h11ssl_unit3_gpu_pci_ids_receipt,
           CitesDeclaration {
             declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
           },
         ],
       },
-      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The session's attempt at the confirming PCI ids failed on un-prefixed sysfs paths; the failures are in the receipt.",
+      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids.",
     },
     tail: [],
   },
@@ -4563,7 +4568,7 @@ data h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express: Integratio
       decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
     ],
   },
-  question: "Does the converge take ownership of a boot-time GPU power cap on this unit -- retiring the hand unit and rendering an equivalent through the driver's power-limit control, or leaving it installed and recording it as prior life? It cannot answer by deleting: ken-strata.service Requires=t10-power-cap.service, so the cap unit is load-bearing for a service that is running today. Whichever way, the model needs things it does not have: the unit file's digest and that unit's journal claim lines (both unread, both one read away), a `requires` edge on PowerCapBootUnit, an arm for a cap rule stated as 'each card's own minimum' rather than a frozen watt number, a way to express a command delegated to a script that addresses GPUs by enumeration index and fails unless the count matches, and a modeled NVIDIA power-limit instrument the converge can address."
+  question: "Does the converge take ownership of a boot-time GPU power cap on this unit -- retiring the hand unit and rendering an equivalent through the driver's power-limit control, or leaving it installed and recording it as prior life? It cannot answer by deleting: ken-strata.service Requires=t10-power-cap.service, so the cap unit is load-bearing for a service that is running today. Whichever way, the model needs things it does not have: the unit file's digest and that unit's journal claim lines (both unread, both one read away), a `requires` edge on PowerCapBootUnit, an arm for a cap rule stated as 'each card's own minimum' rather than a frozen watt number, a way to express a command delegated to a script that addresses GPUs by enumeration index and fails unless the count matches, and a modeled NVIDIA power-limit instrument the converge can address.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_gpu_rows_revision,

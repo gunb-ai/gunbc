@@ -196,7 +196,8 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 // the operator's ruling of 2026-10-10 ("Group B (srv9-srv12) is sold too: every one of the eight procured
 // units is now sold, and none may remain a reachable fleet host"), and
 // @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries spark-0c75 at former slot srv9 as a
-// sold asset. The scoped cut @ref(gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts) already removed
+// sold asset. The scoped cut @ref(gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts::serving_fixtures_name_sold_group_b_hosts)
+// already removed
 // srv9-srv12 from this topology's endpoint roster, which is why no mode could dispatch to them; what stayed
 // behind was this declaration, existing only to be cited by the intake module. Deleting it removes the last
 // model-level claim that .236 belongs to a sold host. Procurement and inventory containment of the sold unit
