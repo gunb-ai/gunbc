@@ -5,9 +5,9 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { PhysicalContainment, HostContainsComponent, PhysicalAsset }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
 import gunbc.hostname_allocation { operator_hosts }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, gpu_board_11, gpu_board_12, gpu_board_13 }
 import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments, butch_a2s_removed_pending_sale }
 import gunbc.fleet.gpu_device_observation {
   current_gpu_device_observations, retired_gpu_device_observations, gpu_device_observation_board,
@@ -64,12 +64,16 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s()
       HostContainsComponent { host: _, component: k } => (k as String) == (a.identity as String)
       _ => false
     }).length() <= 1)
-    // No board OUTSIDE the ten named identities is in inventory (fail-closed change detector): a new card
-    // added to gpu_board_assets without naming it here reds, rather than a magic count silently changing.
+    // No board OUTSIDE the thirteen named identities is in inventory (fail-closed change detector): a new card
+    // added to gpu_board_assets without naming it here reds, rather than a magic count silently changing. It
+    // reded when ken's three went in, which is the detector working; the three are named here, and they are in
+    // ken and only in ken -- the conjuncts above cover that, and so does
+    // witness_ken_three_read_gpu_boards_reside_in_ken_alone below.
     && gpu_board_assets.all(a => a.identity == gpu_board_01 || a.identity == gpu_board_02
       || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
       || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
-      || a.identity == gpu_board_09 || a.identity == gpu_board_10)
+      || a.identity == gpu_board_09 || a.identity == gpu_board_10
+      || a.identity == gpu_board_11 || a.identity == gpu_board_12 || a.identity == gpu_board_13)
 }
 
 // THE FOUR SOLD A2s ARE STILL ASSETS. They left butch on 2026-11-17 and are pending sale, so their residence
@@ -147,11 +151,62 @@ test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
       || a.catalog.decl_name == "nvidia_rtx_pro_6000_max_q_board_catalog"
       || a.catalog.decl_name == "nvidia_rtx_2000_ada_board_catalog"
       || a.catalog.decl_name == "nvidia_a2_board_catalog"
-      || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog")
+      || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog"
+      // ken's three cards, read 2026-11-18 onto the T10 catalog that already carries this board: each asset
+      // binds WholeDeclaration, so the card and the catalog row are the same board model rather than a name
+      // written beside it. The PCI ids the read returned (0x10de:0x1e37) are that catalog's pci_device_id;
+      // what the read does NOT settle is the model's NAME -- no board label was read -- nor the count, which
+      // disagrees with the operator's two-card report and is carried by
+      // gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards.
+      || a.catalog.decl_name == "nvidia_tesla_t10_board_catalog")
 }
 
 // THE H11 HOST IS A ROSTER MEMBER UNDER ITS OPAQUE IDENTITY.
 test fn witness_h11_host_is_on_the_roster_opaquely() -> Bool {
   operator_hosts.any(h => (h as String) == (operator_host_6ce85c as String))
     && (operator_host_6ce85c as String) == "host-6ce85c"
+}
+
+// KEN'S THREE READ CARDS RESIDE IN KEN AND IN KEN ONLY. Residence in this repository is
+// gunbc.fleet.fleet_physical_inventory::installed_gpu_board_containments -- the fold reads that population, not
+// the device readings -- so this claim is about the containment rows, with the current device population made to
+// agree with them. It goes red four ways: a ken board loses its containment row or gains a second one; a DIFFERENT
+// host is given one of these boards, which is the failure that would let a cap or a thermal budget reach the wrong
+// machine; a ken board appears in the current device population without a containment row; or the count drifts from
+// the three functions the 2026-11-18 read returned (three, not the two the operator reported -- the disagreement is
+// carried by gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards, and this claim
+// is what pins which side a consumer sees).
+fn ken_containment_rows_for(component: String) -> Int {
+  filter(installed_gpu_board_containments, c => match c {
+    HostContainsComponent { host: _, component: k } => (k as String) == component
+    _ => false
+  }).length()
+}
+
+fn ken_contained_in(host: HostIdentity, component: String) -> Bool {
+  hosted_in(cs: installed_gpu_board_containments, host: host, component: component)
+}
+
+test fn witness_ken_three_read_gpu_boards_reside_in_ken_alone() -> Bool {
+  ken_containment_rows_for(component: (gpu_board_11 as String)) == 1
+    && ken_containment_rows_for(component: (gpu_board_12 as String)) == 1
+    && ken_containment_rows_for(component: (gpu_board_13 as String)) == 1
+    && ken_contained_in(host: operator_host_e2d4b7, component: (gpu_board_11 as String))
+    && ken_contained_in(host: operator_host_e2d4b7, component: (gpu_board_12 as String))
+    && ken_contained_in(host: operator_host_e2d4b7, component: (gpu_board_13 as String))
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: (gpu_board_11 as String))
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: (gpu_board_12 as String))
+    && !hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: (gpu_board_13 as String))
+    // the device population says the same thing: exactly one current reading per board
+    && current_row_for(board: (gpu_board_11 as String)) == 1
+    && current_row_for(board: (gpu_board_12 as String)) == 1
+    && current_row_for(board: (gpu_board_13 as String)) == 1
+    && current_gpu_device_observations.all(o =>
+      (gpu_device_observation_board(o: o) as String) != (gpu_board_11 as String)
+        || (gpu_device_observation_host(o: o) as String) == (operator_host_e2d4b7 as String))
+    // and the assets carry the serials the read returned, not the model's guesses
+    && gpu_board_assets.any(a => a.identity == gpu_board_11
+      && match a.physical_serial { Present { value: v } => (v as String) == "1322720003956"  Absent => false })
+    && gpu_board_assets.any(a => a.identity == gpu_board_13
+      && match a.physical_serial { Present { value: v } => (v as String) == "1323019027149"  Absent => false })
 }

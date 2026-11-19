@@ -303,6 +303,13 @@ data ci_job_budgets_closed_to_growth: DesignRuling = DesignRuling {
   provenance: "Operator, directly in session nimble-hawk-457 on 2026-11-07, about 01:45-01:55Z, in reply to v2-bootstrap being cancelled at its 90-minute budget in the parse-population walk and #16006 proposing 90 -> 150 minutes (escalation msg_ebf6e9b0, approved by default with no human reply). The operator's words, complete: 'i do not want that timeout increased', 'please do not increase it', then 'we also have to ban any increases without explicit signoff/approval from me'. RULED, in those words: no increase without the operator's explicit sign-off or approval. SECOND OPERATOR ANSWER, 2026-11-07, verbatim operator words, on whether the ban covers memory budgets: 'we are supposed to be lower CI memory budgets, not raising them'. RULED from that answer: CI memory budgets (the memory envelope of a job, step or runner slot) are covered by the same ban, closed to growth without the operator's explicit sign-off or approval, and the operator's stated direction for them is to LOWER them, not raise them. INTERPRETATION, not the operator's words: keen-otter-392's operational interpretation (msg_42c3c192) of the time-budget scope, held as the conservative interim scope until the operator confirms or narrows it (memory budgets are settled by the operator's second answer above, not by this interpretation): (1) it covers any raise of a time budget above its previously approved value: a CI or fleet workflow job or step timeout, the authority row it derives from (for example gunbc.ci.repository_ci_profile roster.timeout), or an individual workload booking such as the srv1 launcher RUNTIME_S; (2) a capability, such as a 7200-second maximum, is not an authorization, and a proposal never granted is not an approved ceiling; (3) relabelling, splitting a budget into phases, aggregating jobs or adding retries to exceed the approved total is an increase; (4) existing exact grants are unchanged. AUTHOR'S INFERENCES, also not the operator's words: a default-decided escalation is not sign-off; lowering a budget is not an increase, but it is no blanket permission for edits, pushes or runs, the lowered value becomes the approved baseline, and raising it back needs explicit sign-off; this ruling itself grants no push, publication or landing. Runtime reduction is the selected remediation direction for an overrun; that does not establish that every overrun is a code defect. REQUIREMENT: a raise lands only with a ruling row recording the operator's explicit approval of that raise. ENFORCEMENT: by review only; budgets are literals in gunbc.ci.repository_ci_profile and no gate reads them. NEXT RUNG: a budget field that carries the ruling admitting its value, so that a raise with no ruling row citing the operator's sign-off does not construct. DesignRuling has no typed field for a requirement or a next rung, so both are stated here; adding fields would reshape every ruling row. The requirement is therefore prose, not typed. The #16006 raise was withdrawn and held on these words.",
 }
 
+data srv15_versions_read_backstop_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_versions_read_backstop_admitted"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator chat to smart-crane-730, 2026-11-19T02:35Z (typed directly in the Claude Code chat of smart-crane-730; no dashboard message id). QUESTION as the manager put it: '#16640: raise the gcp-iam-bootstrap-request job's time limit from 284 to 299 minutes?' Context given: the request step stays at its derived 259, and the +15 covers exactly the three 5-minute srv15 versions-read steps moving into that job. OPERATOR'S WORDS, verbatim: '1. OK'. RULED, in those words: this raise -- the gcp-iam-bootstrap-request job backstop 284 -> 299 in fleet-converge, with the request step kept at its derived 259 (approval_poll_step_timeout_minutes over the converge file window; no undocumented subtraction) and the +15 being the three 5-minute modeled steps (mint, read, upload of the srv15 BMC secret-versions receipt, each at gunbc_ci_aux_step_timeout_minutes) moved into that job ahead of the approval gate, the fix for the deadlock of run 44134741714 -- is admitted. The admission covers exactly this job, this delta and this reason; it is not a general budget release.",
+}
+
 data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job"),
   decided: "2026-10-09",
@@ -1116,6 +1123,13 @@ data schedule_answers_are_computed_cached_and_re_read: DesignRuling = DesignRuli
   provenance: "Operator, 2026-11-18, answering whether a schedule answer computed at the read -- start and finish per leaf, the lanes, the critical path and the next-leaf offer -- is inside gunbc.design_ruling::planning_scheduling_is_cut, which cut scheduling on 2026-11-11. Operator words, verbatim: \"yeah we cut the schedulinga nd are redoing it now - but yes, you should compute it/cache it/re-read it - the planning we did now is relevant\". RULED, in those words: the schedule is COMPUTED from the carriers and the item event log; it MAY be cached; a cache is derived and NEVER authoritative, so no cached answer is a schedule type, a time-period record, forecast state or a synchronized today list; and the answer is RECOMPUTED ON READ. This narrows gunbc.design_ruling::planning_scheduling_is_cut, whose target was the stored schedule and the operator's own consumption of it, not an answer derived at the read; and it stands beside gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc, which made a dated estimate with a basis the clock. INTERPRETATION (not operator words): \"the planning we did now is relevant\" affirms the brief this lane was given, whose done-when is that the next-leaf offer is accepted by the belt as its spawn input -- so the offer is the belt's selection basis among leaves the readiness predicate already admits, bounded by BeltCapacity, and the readiness predicate stays the gate on what may start at all. Correctable by the operator."
 }
 
+data roadmap_scheduling_units_belong_to_factory: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "roadmap_scheduling_units_belong_to_factory"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "The operator chose \"Existing factory project\" for the containment of the 14 scheduling and dispatch units declared by gunb-ai/gunbc#16650 (decision msg_0b5d7e3d-f565-4acb-adca-e80d4d375669 on msg_47ac36f4-44c1-4a80-ac9f-daf987042dd1). The factory project owns the daily workspace and workers. The units serve gunbc.plans.planning_consolidation."
+}
+
 data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_ctrl_dashboard_renders_the_planning_page"),
   decided: "2026-11-18",
@@ -1130,9 +1144,40 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
   provenance: "Operator ruling on the pinned Codex check, escalation msg_87d2aff1-c358-4b5f-b17c-11b7504962e2, decided 2026-11-17, relayed verbatim by manager session neat-badger-614 (msg_81ee26ff) and directed to session quiet-wolf-155. Asked whether re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word from refusing the adversarial CODEX_HOME to asserting it survives as one argv value with no shell control word is authorized, the operator answered, verbatim: \"yes the codex pinned check is fine to ignore\". Read by the manager as approval to change the pin: the old CodexTripArgvRefused expectation no longer binds. WHAT IT DECIDES: that arm is re-pointed from pinning a refusal to pinning that the value crosses as one argv element and renders no separate shell word, per node dp-m2-codex-direct-argv-policy. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change.",
 }
 
+// The operator's 2026-11-18 tailnet ruling, carried as a TYPED row (not `//` prose) so its authority
+// cannot be deleted without the reference check failing. Cited by
+// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation with @ref.
+data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.tailscale_fleet_auth_key", decl_name: "tailscale_desired_tags_for_participation"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18, on whether ken and dan (h11-a16, operator_host_6ce85c) should carry tag:serving only, or tag:ci + tag:serving. Asked which, the operator answered, verbatim: \"C both tags is fine\". Both tags, so the fleet converge reaches them over the tailnet AND the serving grants still apply: a both_participation host's desired self-tag set is tag:ci plus tag:serving, DERIVED from the host's role by gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation, never a hand-kept per-host table (#16685's history deleted such a table twice).",
+}
+
+// The operator's two 2026-11-18 admin-console ACL additions, carried as a TYPED row so the authority for
+// the new grant and tag-owner row cannot be deleted without the reference check failing. Cited from
+// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners with @ref.
+data tailnet_serving_acl_admin_console_additions_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailnet_serving_acl_admin_console_additions_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "extdeps.tailscale.acl", decl_name: "operator_tailscale_acl_grants"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18, reporting the two changes added BY HAND in the tailnet admin console, which the model must now emit: a tagOwners row tag:serving -> [autogroup:admin] (extdeps.tailscale.acl::operator_tailscale_acl_tag_owners), and a grant src [tag:dashboard] -> dst [tag:serving] on ip tcp:18081-18083 (extdeps.tailscale.acl::tag_dashboard_to_serving_grant, whose ports are the single extdeps.tailscale.acl::tailscale_serving_port_grants declaration -- which also fixes the previously dangling tailscale_serving_port_grants citation). The witness test.claim.tailscale_acl_reported_reconcile_witness proves the emitted policy is equal to a fixture of the operator's 2026-11-18 report (dag/test/fixture/tailscale_acl_reference.json, transcribed by hand from that report) through the read-only diff-print route gunbc.tailscale_acl_phase2_credential::acl_diff_from_authority. There is NO live policy read: this is model-equals-the-reported-report, not model-equals-live.",
+}
+
+data tailscale_fleet_key_untagged_join_causality_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_fleet_key_untagged_join_causality_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.tailscale_fleet_auth_key", decl_name: "tailscale_fleet_key_metadata_standing"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18. OBSERVATION: ken (100.96.80.109) and dan/h11-a16 (100.109.228.127) joined BY HAND with the fleet key at Secret Manager version 'latest', not the pinned '1', and joined UNTAGGED, though gunbc.tailscale_fleet_auth_key records the key as tag:ci. RULING (causality, operator): a tagged auth key stamps its tags at JOIN whoever runs 'tailscale up'; going around gunbc.tailscale_join_converge does NOT drop the tags, and tailscale_auth_key_policy_admit only gates whether the CONVERGE will USE a key -- so an untagged hand join is NOT explained by bypassing the converge; it means the key used is NOT the tagged key this module describes. The two competing explanations are the typed closed set gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_untagged_join_hypotheses. Confirming which is a READ, not an inference: gunbc.tailscale_fleet_auth_key::tailscale_fleet_key_metadata_standing carries the open read obligation. Nothing here rotated; no live value was read or asserted.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+<<<<<<< HEAD
     estimates_are_one_representation_derived_upward,
+=======
+    roadmap_scheduling_units_belong_to_factory,
+>>>>>>> origin/main
     schedule_answers_are_computed_cached_and_re_read,
     claims_name_their_leaf_from_the_first_landing,
     a_split_handback_is_accepted_by_the_manager,
@@ -1267,6 +1312,9 @@ fn design_rulings() -> List<DesignRuling> {
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
     pair_delivery_shell_as_medium_steps_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,
+    ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18,
+    tailnet_serving_acl_admin_console_additions_2026_11_18,
+    tailscale_fleet_key_untagged_join_causality_2026_11_18,
   ]
 }
 

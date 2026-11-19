@@ -36,10 +36,12 @@ module test.claim.tailscale_join_fleet_membership_witness
 
 
 import std.logic { Bool }
-import std.algebra { string_contains }
+import std.algebra { length, string_contains }
+import std.roster_frontier { frontier_rows_well_formed }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { FilePath, String }
 import extdeps.filesystem.filesystem_io
+import extdeps.tailscale.acl { tag_serving }
 import extdeps.package_managers.dpkg { DpkgPackageInstalled }
 import extdeps.tailscale.join {
   TailscaleJoinState,
@@ -49,10 +51,15 @@ import extdeps.tailscale.join {
   JoinStateUnreadable,
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
+  tailscale_self_tags_include,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_enrollment {
+  ci_runner_enrollment_participation,
+  both_participation_enrollment_participation,
+}
 import gunbc.output_policy { ExpectSuccess }
-import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag }
+import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
   JoinPlanNotFleetMember,
@@ -79,6 +86,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data fleet_member_fixture_path: FilePath = "dag/test/fixture/tailscale_status_fleet_member.json"
 data hand_joined_fixture_path: FilePath = "dag/test/fixture/tailscale_status_hand_joined_no_tags.json"
 data foreign_tag_fixture_path: FilePath = "dag/test/fixture/tailscale_status_foreign_tag_only.json"
+// The operator's ruling of 2026-11-18 ("C both tags is fine"; operator, in chat to smart-crane-730): the
+// fleet's both_participation hosts (ken, dan/h11-a16) carry tag:ci AND tag:serving, so the converge reaches
+// them over the tailnet AND the serving grants still apply. These two fixtures witness that a node carrying
+// both tags is a fleet member (ci present), while one carrying ONLY serving is not yet (the fleet tag gates
+// membership, not the mere presence of any tag).
+data ci_and_serving_fixture_path: FilePath = "dag/test/fixture/tailscale_status_fleet_member_ci_and_serving.json"
+data serving_only_fixture_path: FilePath = "dag/test/fixture/tailscale_status_serving_tag_only.json"
 data not_joined_fixture_path: FilePath = "dag/test/fixture/tailscale_status_not_joined.json"
 data running_without_self_fixture_path: FilePath = "dag/test/fixture/tailscale_status_running_without_self.json"
 
@@ -128,6 +142,54 @@ test fn w_fleet_member_fixture_reads_as_a_fleet_member() -> Bool {
     JoinStateNotJoined { state: _ } => false
     JoinStateUnreadable { cause: _ } => false
   }
+}
+
+// JOINED WITH BOTH TAGS IS STILL A FLEET MEMBER -- the operator's ruling of 2026-11-18 ("C both tags is fine";
+// operator, in chat to smart-crane-730). ken and dan (h11-a16) carry tag:ci AND tag:serving, and the converge
+// (#16685's JoinStateJoinedWithRequiredTag, decided by tailscale_self_tags_include on the REQUIRED tag) must
+// read them as fleet members, not as some other identity. Witnessed from the document, not assumed.
+test fn w_a_node_carrying_both_ci_and_serving_is_read_as_a_fleet_member() -> Bool {
+  match state_of(fixture: ci_and_serving_fixture_path) {
+    JoinStateJoinedWithRequiredTag { self_tags: tags } =>
+      tags.count() == 2
+        && tailscale_self_tags_include(tags: tags, tag: tailscale_fleet_node_tag)
+        && tailscale_self_tags_include(tags: tags, tag: ("tag:serving" as NonEmptyStr))
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// SERVING ALONE IS NOT MEMBERSHIP. The fleet tag, not the mere presence of ANY tag, gates the converge. This is
+// the committed RED CONTROL for the arm above: if JoinStateJoinedWithRequiredTag's check were loosened to "any
+// tag present", the serving-only node would land in the WithRequiredTag arm -- which returns false here -- and
+// this witness goes red. Only tag:ci reaches the fleet.
+test fn w_a_node_carrying_only_serving_is_not_yet_a_fleet_member() -> Bool {
+  match state_of(fixture: serving_only_fixture_path) {
+    JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
+      tailscale_self_tags_include(tags: tags, tag: ("tag:serving" as NonEmptyStr))
+        && !tailscale_self_tags_include(tags: tags, tag: tailscale_fleet_node_tag)
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// THE DESIRED TAG SET IS THE FLEET KEY'S ci PLUS A ROLE-DERIVED serving. A both_participation host (#16602's
+// ken, and dan) is desired to carry BOTH tags -- ci so the converge reaches it, serving because its role is
+// inference serving. The set is DERIVED from the participation column of the enrollment row, not a hand-kept
+// per-host table (#16685 deleted such a table twice).
+test fn w_a_both_participation_host_is_desired_to_carry_ci_and_serving() -> Bool {
+  tailscale_desired_tags_for_participation(participation: both_participation_enrollment_participation)
+    == [tailscale_fleet_node_tag, tag_serving]
+}
+
+// SERVING IS ROLE-GATED, NOT STAMPED ON EVERYONE. The committed RED CONTROL for the derivation above: a
+// ci-only role (a ci-runner server or a hetzner guest) is desired to carry ONLY the fleet key's ci tag. Were
+// serving stamped on every fleet host, this list would grow a second element and the equality would fail.
+test fn w_a_ci_only_host_is_desired_to_carry_ci_and_not_serving() -> Bool {
+  tailscale_desired_tags_for_participation(participation: ci_runner_enrollment_participation)
+    == [tailscale_fleet_node_tag]
 }
 
 // JOINED, BUT NOT A FLEET MEMBER -- the ken specimen. Running, resolvable, and `Self.Tags` ABSENT, which is how
@@ -325,4 +387,13 @@ test fn w_the_join_and_key_refusal_arms_are_unchanged() -> Bool {
     JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
     JoinPlanRefused { host: _, cause: _ } => false
   }
+}
+
+// The honest-consumption classification (design_argument::consumption) for the role-derived desired-tag
+// functions: a well-formed frontier naming the later device-tags route as their consumer -- classified, not
+// dangling. This consumes gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_later_consumer_frontier_rows
+// so the classification is itself reached, exactly as gunbc.arm_ci_seller_census's frontier is consumed.
+test fn w_a_the_desired_tag_derivation_is_classified_as_a_named_later_consumer_not_dangling() -> Bool {
+  let rows = tailscale_fleet_auth_key_later_consumer_frontier_rows
+  frontier_rows_well_formed(rows: rows) && (length(rows) == 2)
 }

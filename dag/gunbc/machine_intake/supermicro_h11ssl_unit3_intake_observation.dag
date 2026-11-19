@@ -104,17 +104,21 @@ data supermicro_h11ssl_unit3_install_nic_port_label: H11sslReportedFigure = H11s
   },
 }
 
-// WHAT THE NEIGHBOUR TABLE PAIRED THE INSTALL NIC WITH, and why that pairing is NOT this unit's
+// WHAT THE NEIGHBOUR TABLE PAIRED THE INSTALL NIC WITH, and why that pairing is not yet this unit's
 // address. srv1's neighbour table paired ac:1f:6b:e6:75:eb with 192.168.1.236, in state STALE (not
-// confirmed reachable). 192.168.1.236 is already claimed in the model: gunbc.fleet.fleet_intent_network
-// .srv9_host_lan_endpoint gives it to srv9's host LAN interface. A stale entry whose MAC is a different
-// board's NIC sitting on an address another host owns is one of two things and the model cannot tell
-// which from this read alone: the router re-leased an address srv9 had vacated (address reuse, which is
-// what smart-crane-730's ssh attempt found when it met a different host key at that IP), or two hosts
-// hold one address. Either way this unit's install-NIC address is UNCONFIRMED and no NetworkEndpoint
-// row is written for it, because writing one would put this board in front of srv9's endpoint.
-// Whom the address is already modelled as belonging to is carried as a DECLARATION REF, not as a name
-// inside a sentence: the collision is a fact about a row that exists, and a rename of that row must move
+// confirmed reachable). AT THE TIME OF THE READ that address was already claimed in the model by
+// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint, so the pairing was a collision between two
+// hosts, not a free lease: either the router had re-leased an address srv9 vacated (address reuse -- which
+// is what smart-crane-730's ssh attempt met when it found a different host key at that IP), or two hosts
+// held one address. The model could not tell which from this read, and still cannot.
+// WHAT CHANGED IN THE MODEL ON 2026-11-18 (not in this read): srv9 (spark-0c75) is sold --
+// gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 -- and its endpoint row is retired, so
+// there is no longer a competing claim; 192.168.1.236 is held by gunbc.fleet.fleet_intent_network
+// ::ken_host_lan_endpoint, a dated observation of this unit that reserves nothing. The read's own standing
+// is unchanged: this unit's install-NIC address stays UNCONFIRMED until the lease, in-band and console
+// reads below agree. Whom the address is modelled as belonging to is carried as a DECLARATION REF, not as a
+// name inside a sentence: the claim is a fact about a row that exists, and a rename of that row must move
+// this citation with it instead of leaving a stale string in a paragraph.
 // this citation with it instead of leaving a stale string in a paragraph.
 type H11sslUnit3InstallNicAddressStanding
   = AddressSeenOnlyInStaleNeighbourEntry {
@@ -127,16 +131,20 @@ type H11sslUnit3InstallNicAddressStanding
 data supermicro_h11ssl_unit3_install_nic_address_standing: H11sslUnit3InstallNicAddressStanding =
   AddressSeenOnlyInStaleNeighbourEntry {
     address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
-    // gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models 192.168.1.236 as srv9's host LAN
-    // address -- which is why this pairing is a collision and not a free lease.
-    claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint"),
+    // 192.168.1.236 is carried in the model by ONE row now: gunbc.fleet.fleet_intent_network
+    // ::ken_host_lan_endpoint, added 2026-11-18 as a DATED LEASE OBSERVATION of this unit's address. It used
+    // to be srv9's endpoint row for the same address, which made this pairing a collision between two hosts;
+    // srv9 (spark-0c75) is sold and that row is retired in the same change that added the observation, so the
+    // collision is gone and what remains is the weaker fact: the only row holding this address is a sighting
+    // that reserves nothing and confirms nothing.
+    claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint"),
     // The operator's report of 2026-11-16 puts THIS unit's ssh answer at this exact address, which is
     // reported there and carried in the register as
     // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat. An ssh
     // answer says a host answers at an address, not which host, and no host key for this unit is
     // confirmed, so the report does not resolve the collision below -- it makes two live claims on one
     // address, and this read is what separates them.
-    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS, plus a host key for this unit confirmed from its own console -- until those agree, the address belongs to no row. The 2026-11-16 report raises the urgency of this read rather than lowering it: this unit is now reported to answer ssh at the very address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's." as NonEmptyStr,
+    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS, plus a host key for this unit confirmed from its own console -- until those agree, the address belongs to no row. The 2026-11-18 observation row gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint pins the sighting; it does not discharge this obligation, and the 2026-11-16 report of an ssh answer at this address raises the urgency of the read rather than lowering it." as NonEmptyStr,
   }
 
 // THE NAME THE LAN CALLS THIS BOX, and what it resolves to from here. The operator refers to the unit
@@ -160,7 +168,7 @@ data supermicro_h11ssl_unit3_lan_name_sighting: H11sslUnit3LanNameSighting = H11
   name: "h11-new.mynetworksettings.com" as NonEmptyStr,
   answered_with: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236),
   answered_at: "2026-11-16T00:53:00Z",
-  account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which makes the collision with srv9_host_lan_endpoint a live one, not just a stale table entry" as NonEmptyStr,
+  account: "resolver query from this session's container; the name answers with the address the stale neighbour entry paired with the install NIC, and ssh answers there -- which is why that address is held in the model only as the dated observation gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, and why the lease, in-band and console reads below stay owed" as NonEmptyStr,
 }
 
 // THE INSTALL NIC, SEEN AT THE EDGE IT WAS INSTALLED FROM: a second, INDEPENDENT LAN-side sighting.
@@ -254,7 +262,7 @@ data supermicro_h11ssl_unit3_baseboard_row_standing: H11sslUnit3BaseboardRowStan
 data supermicro_h11ssl_unit3_gpu_report: H11sslReportedFigure = H11sslReportedFigure {
   value: "two Tesla T10 accelerators" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "the in-band sysfs read named above: list /sys/bus/pci/devices and read each function's vendor and device attributes, which confirms the two cards and their bus addresses and needs no new dependency. The physical slot each bus sits in stays UNREAD: no modeled route pairs a bus id to a slot on this platform, and the cooling lane's pairing claim waits on that route being built, not on a guess." as NonEmptyStr,
+    read_obligation: "CLOSED IN PART on 2026-11-18, and the part that closed contradicts the count this row reports: an admitted read-only session on the unit enumerated THREE driver-visible NVIDIA GPU functions -- 0000:01:00.0, 0000:81:00.0, 0000:c1:00.0 -- each with its own GPU UUID and card serial (artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt, pinned by SHA256SUMS there; typed in gunbc.fleet.gpu_device_observation). The unit's enumeration is carried by gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards; this row still reports two, because a report row describes its report. THE VENDOR:DEVICE PAIR IS READ, in the same session: with the domain-prefixed sysfs paths the three functions are vendor=0x10de device=0x1e37 class=0x030200 (artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read2.txt). An earlier attempt in that session used paths without the domain prefix and failed; both attempts are in the receipts. So the asset rows' binding to extdeps.gpu.nvidia_t10 stands on that read -- 1e37 is that catalog's pci_device_id -- and not on this report alone. STILL OWED for the count: the operator's word on whether a fourth card exists that the driver does not show. The physical slot each bus sits in stays UNREAD: no modeled route pairs a bus id to a slot on this platform, and the cooling lane's pairing claim waits on that route being built, not on a guess." as NonEmptyStr,
   },
 }
 
@@ -264,7 +272,7 @@ data supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported: H11ssl
   H11sslReportedFigure {
     value: "the two reported accelerators idle at 43-44 C, with a 100 W power cap applied at boot (operator report, 2026-11-17)" as NonEmptyStr,
     standing: TranscribedUncited {
-      read_obligation: "NOT YET INSTRUMENTED, and that is stated rather than papered over: the only modeled sysfs power and temperature attributes in this corpus are AMD's (extdeps.linux.amdgpu_hwmon), and no NVIDIA power-limit program (the driver's own query tool) is modeled here at all -- the driver tool appears only as the source a cited figure came from (extdeps/gpu/types.dag). So the figure stays a report, the confirming read is owed to that missing instrument, and nothing in this row may be used as a thermal or power budget." as NonEmptyStr,
+      read_obligation: "THE POWER HALF READ 2026-11-18; THE THERMAL HALF STILL A REPORT. An admitted read-only session ran the driver's own query on the unit: each of the three functions reports min 100.00 W, max 150.00 W, default 150.00 W and current 100.00 W (artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read3.txt; typed in gunbc.fleet.gpu_device_observation; the operator's 100 W is carried as a cap intent at gunbc.serving.gpu_power_state_policy::ken_t10_cap_decision). So the 100 W cap is no longer a reported-only figure; 43-44 C still is -- no thermal sensor was read, and that half closes on an in-band sensor read in the arrival lane, which has not run here. What ALSO remains: the instrument gap this row named is real and unfixed -- the corpus has no modeled NVIDIA power-limit program row, only the control standing NvidiaSmiPowerLimit in gunbc.serving.gpu_power_state_policy and gunbc.fleet.gpu_device_observation -- so the read could be taken by a session but cannot yet be taken or applied BY THE CONVERGE. That gap is register row gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express. Nothing in this row may be used as a thermal or power budget." as NonEmptyStr,
     },
   }
 
@@ -281,10 +289,19 @@ type H11sslUnit3PriorLifeSetting {
 
 data supermicro_h11ssl_unit3_power_cap_setter_prior_life: H11sslUnit3PriorLifeSetting =
   H11sslUnit3PriorLifeSetting {
-    setting: "something installed on this unit applies a 100 W cap to the reported accelerators at boot: a unit, a script, or a driver setting -- which, unread" as NonEmptyStr,
+    setting: "READ 2026-11-18: the at-boot setter is a hand-written systemd unit and script on the installed OS. /etc/systemd/system/t10-power-cap.service -- Description 'Cap every Tesla T10 (three on ken) at its minimum power limit', Type=oneshot, RemainAfterExit=yes, After=systemd-modules-load.service, WantedBy=multi-user.target, ExecStartPre=/sbin/modprobe nvidia, ExecStart=/usr/local/sbin/t10-power-cap.sh -- enabled, and `systemctl status` showed it active (exited) since 2026-11-17 22:43:09 with both processes exit 0. The script does NOT cap at a literal number: it reads each GPU's own minimum limit and sets that, reads it back, fails if the readback differs, and fails unless the enumeration count matches a hand-written EXPECT=3. Its header carries the operator's words that put it there -- 'operator 2026-11-15: lower their power as low as possible' -- and a second line asserts the unit's own GPU population: 'ken carries three Tesla T10s since 2026-11-17 (SLOT4 01:00.0, SLOT6 81:00.0, SLOT2 c1:00.0)'. Receipt: artifacts/host-observations/ken-gpu-read-2026-11-18/ (unit_read1.txt the unit listing and directory contents, unit_read2.txt the unit file, ken-strata.service's unit file and the sysfs reads, unit_read3.txt the script and the limits it leaves behind, SHA256SUMS pinning all of it)" as NonEmptyStr,
     standing: "prior-life state FOUND, not state to keep. What survives the hand install is a decision for the routes that own a converged host, taken after a read; this row exists so the decision is made against a named unknown instead of against silence." as NonEmptyStr,
     bears_on_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported"),
-    read_obligation: "an in-band read of the installed OS: enumerate the units and their directives with extdeps.systemd.systemctl (systemctl_binary_name, systemctl_absolute_program -- `systemctl list-unit-files`) and extdeps.systemd.unit_file (SystemdUnitFile, SystemdUnitDirective), then search the unit directories for a power-limit setter. The enumeration is a query; changing or removing whatever it finds is a privileged effect and comes behind that grant, not with this read." as NonEmptyStr,
+    read_obligation: "THE ENUMERATION OWED HERE LANDED 2026-11-18 by exactly the route named (systemctl list-unit-files, the unit directory's contents, the unit file and the script -- receipts pinned by SHA256SUMS), and so did the dependency question: ken-strata.service declares Requires=t10-power-cap.service and After=network-online.target t10-power-cap.service, so a service on this machine HARD-DEPENDS on the cap unit having run (its ExecStart is an inference server bound to 0.0.0.0:18081; see supermicro_h11ssl_unit3_strata_service_prior_life). Removing the cap unit therefore does not just un-cap the cards -- it fails a dependent unit at boot. STILL OWED: the unit file's sha256 (the read cat'd it, never digested it), the cap unit's own journal claim lines (no journalctl of that unit was taken, and systemctl status warned that some journal files could not be opened), and whether the cap survives reinstallation. The standing is unchanged by all of this: prior life found, and no route has decided what runs on a converged host. Changing or removing what was found remains a privileged effect behind its own grant." as NonEmptyStr,
+  }
+
+// A SECOND HAND WRITTEN UNIT, FOUND BY THE SAME READ, AND THE ONE THAT MAKES THE CAP LOAD-BEARING.
+data supermicro_h11ssl_unit3_strata_service_prior_life: H11sslUnit3PriorLifeSetting =
+  H11sslUnit3PriorLifeSetting {
+    setting: "READ 2026-11-18: /etc/systemd/system/ken-strata.service, enabled, active (running) since 2026-11-17 22:43:11, User=ubuntu, MemoryMax=112G with MemorySwapMax=2G, Restart=on-failure, TimeoutStartSec=420, ExecStart a python server that starts one strata engine over all three T10s bound to --host 0.0.0.0 --port 18081. Its [Unit] section carries Requires=t10-power-cap.service and After=network-online.target t10-power-cap.service -- the cap unit is not adjacent to this service, it is a hard requirement of it. Its journal tail shows it answering at 192.168.1.236:18081 -- the LAN address this repository does NOT yet attribute to this unit (supermicro_h11ssl_unit3_install_nic_address_standing), which is modeled as retired srv9's until the lease read lands. Receipt: unit_read2.txt (the unit file) and unit_read3.txt (the running status and journal lines) under artifacts/host-observations/ken-gpu-read-2026-11-18/." as NonEmptyStr,
+    standing: "prior-life state FOUND, not state to keep, and not state to remove either: it is load-bearing for the cap question above, and it is a service bound to every interface on a machine whose address standing is unresolved. Whether it survives the hand install is a decision for the routes that own a converged host, made against this row.",
+    bears_on_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_power_cap_setter_prior_life"),
+    read_obligation: "closed by the 2026-11-18 read for WHAT IS INSTALLED (unit file, dependency edges, enabled/active state, the port and bind address it reports for itself). Still owed: who authorized this service and with what grant, whether 0.0.0.0:18081 is intended on this network, and what its memory limit has to do with the host's -- none of that is established by the file or the status output, and none of it may be inferred from them.",
   }
 
 // The SSH host key smart-crane-730 met at that address, recorded as an UNCONFIRMED fingerprint and
@@ -357,17 +374,17 @@ data supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported: H11sslRepor
 // gunbc.fleet.fleet_enrollment::HostReachPolicy mints HostKeyLoginAdmitted only from a read that returns
 // host-authored output. What the intake layer owns is the DATA the report carries: the host key the
 // transport itself showed (supermicro_h11ssl_unit3_seen_host_key_fingerprint), the address the answers are
-// reported at and the authority that address collides with
+// reported at and the row that address is held by
 // (supermicro_h11ssl_unit3_install_nic_address_standing, whose conflict ref names
-// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint), and the reads that would settle it. The
+// gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint), and the reads that would settle it. The
 // STATUS -- reported, with no read the fleet can repeat -- is an open row in the register:
 // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat.
 //
 // WHY THE srv1 REFUSALS ARE NOT CONTRARY EVIDENCE. The probes from srv1 (2026-11-15 and 2026-11-16) fail
 // because srv1 holds none of those three principals' private keys: they describe srv1's credentials and say
 // nothing about whether this unit answers. And ssh answering at 192.168.1.236 says a host answers there,
-// not WHICH host answers -- no host key for this unit is confirmed -- so the report makes the srv9
-// collision more live, not less.
+// not WHICH host answers -- no host key for this unit is confirmed -- so the report keeps the address question live, not less.
+// It was a collision with srv9 while that row existed; srv9 is sold and the row is retired, and what is left owed is the read that says which machine answers.
 
 // ── BOOT SELECTION, AND THE BOARD QUIRK THAT OUTRUNS IT ──────────────────────────────────────────
 //
