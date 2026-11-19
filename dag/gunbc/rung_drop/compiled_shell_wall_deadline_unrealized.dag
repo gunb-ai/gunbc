@@ -2,7 +2,7 @@ module gunbc.rung_drop.compiled_shell_wall_deadline_unrealized
 
 import std.types { List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-11-19 by the fleet-leg wall-clock-deadline PR (#16737, review 96735).

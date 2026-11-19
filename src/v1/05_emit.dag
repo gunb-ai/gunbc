@@ -1428,7 +1428,7 @@ fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget)
   if shell_channel_is_capture_accounting(c: c) {
     target_is_rust(target: target)
   } else if c == ShellChanOverran || c == ShellChanWallDeadlineSeconds {
-    // @ref(gunbc.rung_drop.compiled_shell_wall_deadline_unrealized)
+    // @ref(gunbc.rung_drop.compiled_shell_wall_deadline_unrealized::compiled_shell_wall_deadline_unrealized)
     false
   } else {
     target_renders_shell_transport(target: target)

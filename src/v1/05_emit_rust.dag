@@ -19744,6 +19744,14 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanStderrTruncated => "stderr_truncated"
     ShellChanStderrTotalBytes => "stderr_total_bytes"
     ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+    // THE TWO DEADLINE CHANNELS ARE NOT REALIZED ON THIS TARGET. They are NOT given a placeholder
+    // value and not swept into a wildcard: they route through the SAME typed refusal the emit gate
+    // uses, so a compiled body that ever reached here would carry the error expression naming the
+    // channel and the target rather than an answer. The drop -- what is dropped, why, and what
+    // closes it -- is a row, not a comment:
+    // @ref(gunbc.rung_drop.compiled_shell_wall_deadline_unrealized::compiled_shell_wall_deadline_unrealized)
+    ShellChanOverran => emit_unrealizable_shell_channel(channel: ShellChanOverran)
+    ShellChanWallDeadlineSeconds => emit_unrealizable_shell_channel(channel: ShellChanWallDeadlineSeconds)
   }
   // An optional stdout or stderr field is present only when the command succeeded, as the
   // interpreter's map_shell_outputs reads it: a declared answer arm for a non-zero status (above) has
