@@ -35,7 +35,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionCont
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
@@ -262,6 +262,7 @@ fn run_admin_leg(
 {
   match transport {
     FleetSsh { target, context , kind: kind} => match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: argv_words(command: command)) {
+      TypedArgvExecOverran { deadline: d } => ApplyLegRefused { reason: typed_argv_exec_overran_reason(leg_hint: "microvm network apply", deadline: d) }
       TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
       TypedArgvExecConverged { result: r } => ApplyLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
     }

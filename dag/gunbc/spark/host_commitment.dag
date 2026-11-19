@@ -32,7 +32,7 @@ import gunbc.spark.host_effect_quiescence {
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
@@ -1014,6 +1014,7 @@ fn fleet_argv_run(context: FleetSshExecutionContext, host: HostIdentity, argv: L
     SshTargetRefused { endpoint: e, refusal: why } => ArgvLegDidNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
     SshTargetResolved { target: target } =>
       match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: argv) {
+        TypedArgvExecOverran { deadline: d } => ArgvLegDidNotRun { cause: typed_argv_exec_overran_reason(leg_hint: "spark host commitment", deadline: d) }
         TypedArgvExecRefused { reason: why } => ArgvLegDidNotRun { cause: why }
         TypedArgvExecConverged { result: r } => ArgvRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
       }

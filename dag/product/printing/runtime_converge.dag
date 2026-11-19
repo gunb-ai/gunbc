@@ -5,7 +5,7 @@ import product.printing.runtime_dependencies {runtime_packages,ubuntu2404}
 import gunbc.host.host_effect {SshShell}
 import gunbc.host.host_effect_realize {srv3_ensure_apt,AptPackageInstalled,Srv3PredicateHolds,Srv3PredicateFails,Srv3PredicateUnobserved}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
-import gunbc.typed_argv_exec {typed_argv_exec_over_ssh,TypedArgvExecConverged,TypedArgvExecRefused}
+import gunbc.typed_argv_exec { typed_argv_exec_over_ssh,TypedArgvExecConverged,TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import extdeps.tools.gnu_coreutils {cat_command}
 import extdeps.filesystem.filesystem_io {Filesystem}
 
@@ -26,6 +26,7 @@ fn converge(receipt:String) -> ProcessExit {
  let host=printer_lan_host_identity() as NonEmptyStr
  let read=cat_command(path:"/etc/os-release")
  match typed_argv_exec_over_ssh(host:host,argv:concat([read.program.invocation as String],read.arguments)) {
+  TypedArgvExecOverran { deadline: d }=>return exit_failure(reason:typed_argv_exec_overran_reason(leg_hint: "printing runtime", deadline: d))
   TypedArgvExecRefused {reason:r}=>return exit_failure(reason:r)
   TypedArgvExecConverged {result:r}=>if r.exit_code!=0 || !ubuntu2404(text:r.stdout) {return exit_failure(reason:"Print runtime convergence requires an observed Ubuntu 24.04 target")}
  }

@@ -130,11 +130,10 @@ import gunbc.hostname_read {
   hostname_short_value_from_stdout,
 }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_fleet_ssh,
-}
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -577,6 +576,8 @@ fn tailscale_machine_name_device_names_leg(
     context: context,
     argv: argv_words(command: tailscale_status_json_command())
   ) {
+    TypedArgvExecOverran { deadline: d } =>
+      NamesUnreadable { cause: StatusLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
     TypedArgvExecRefused { reason: reason } =>
       NamesUnreadable { cause: StatusLegRefused { detail: reason } }
     TypedArgvExecConverged { result: status_result } =>
@@ -590,6 +591,8 @@ fn tailscale_machine_name_device_names_leg(
           context: context,
           argv: argv_words(command: hostname_short_read_command())
         ) {
+          TypedArgvExecOverran { deadline: d } =>
+            NamesUnreadable { cause: OsNameLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
           TypedArgvExecRefused { reason: reason } =>
             NamesUnreadable { cause: OsNameLegRefused { detail: reason } }
           TypedArgvExecConverged { result: os_result } =>
@@ -630,6 +633,7 @@ fn tailscale_machine_name_set_leg(
     context: context,
     argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name)))
   ) {
+    TypedArgvExecOverran { deadline: d } => SetLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) }
     TypedArgvExecRefused { reason: reason } => SetLegRefused { detail: reason }
     TypedArgvExecConverged { result: result } =>
       if !result.success {

@@ -38,7 +38,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantProbeRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
 import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref_for,
@@ -143,6 +143,7 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
         argv: spark_sudoers_dropin_listing_argv(),
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
+        TypedArgvExecOverran { deadline: d } => InspectDropinShapeUnobserved { cause: typed_argv_exec_overran_reason(leg_hint: "spark managed grant install", deadline: d) as NonEmptyStr }
         TypedArgvExecRefused { reason: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
         TypedArgvExecConverged { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }

@@ -60,7 +60,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmissionRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
@@ -1251,6 +1251,7 @@ fn spark_grant_probe_outcome(
         argv: ["sudo", "-n", "-l"],
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
+        TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
         TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {
