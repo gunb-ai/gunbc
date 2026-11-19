@@ -162,7 +162,7 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // every key on this tailnet enrolls without approval. This is deliberately NOT recorded as "pre-approved":
 // that would assert a property the key never had (the console could not show it). A host must still never
 // land in NeedsMachineAuth, and on a tailnet with device approval off it cannot; tailscale_join_host fails
-// closed on NeedsMachineAuth regardless (@ref(gunbc.tailscale_join_converge)), so the join is no less
+// closed on NeedsMachineAuth regardless (@ref(gunbc.tailscale_join_converge::tailscale_join_host)), so the join is no less
 // guarded for not claiming a pre-approval the key does not carry.
 //
 // TAGGED tag:ci, which is the setting that bounds what a leaked key can do. Upstream: a node created by a
@@ -240,8 +240,11 @@ data tailscale_fleet_auth_key_later_consumer_frontier_rows: List<FrontierRow> = 
 // extdeps.tailscale.join::tailscale_auth_key_policy_admit refuses a key whose expiry is outside upstream's
 // 1-90 day window or that carries no tag, before any leg runs -- an untagged key would enroll a node as the
 // generating user rather than a role, which is not a state a converge should discover by reading back a peer
-// list. The kind and approval are RECORDED on the policy (the live key is checked against this record by the
-// metadata read-back in gunbc.tailscale_join_converge), not re-gated here.
+// list. The kind and approval are RECORDED on the policy and gate the plan through the usable check
+// (tailscale_fleet_auth_key_usable_on); they are NOT re-gated here, and nothing re-reads a live key's kind or
+// approval -- the join's independent guard on the host side is its fail-closed refusal of a backend
+// NeedsMachineAuth state (gunbc.tailscale_join_converge::tailscale_join_host), plus the required-tag membership
+// check; there is no separate key-metadata read-back.
 fn tailscale_fleet_auth_key_admitted() -> TailscaleAuthKeyPolicyVerdict {
   tailscale_auth_key_policy_admit(policy: tailscale_fleet_auth_key_policy)
 }
