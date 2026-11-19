@@ -3996,7 +3996,7 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
-  normalize_drops_fn_with_out_of_scope_capability]
+  normalize_drops_fn_with_out_of_scope_capabili, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -4486,6 +4486,105 @@ data group_membership_append_spelled_by_two_tools: IntegrationConcern = Integrat
 // neither claims a route -- this row is where the crossing exerts pressure.
 
 data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d2c89de45d6c766b044d65"
+
+// The revision at which this unit's GPU rows entered the model, and the two receipts the two rows below are
+// made against. The digests are the committed files under
+// artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
+data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
+data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials; the same session's sysfs vendor/device read FAILED (paths without the PCI domain prefix) and the failures are in the file",
+  sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
+}
+data h11ssl_unit3_gpu_power_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read3.txt -- t10-power-cap.sh (the driver power-limit loop with EXPECT=3) followed by nvidia-smi -q -d POWER: min 100.00 W, max 150.00 W, default 150.00 W, current 100.00 W on each of the three functions",
+  sha256: Sha256Digest { hex: "44c06f80bec69397b88d85ae578beab388b2a1d92dd66d691120044db271c92b" as Sha256DigestHex },
+}
+
+// THE UNIT'S GPU COUNT: THE OPERATOR'S REPORT AND THE READ DO NOT AGREE, and neither is thrown away.
+data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_three_gpu_functions_against_two_reported_cards",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+      second: decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+      rest: [
+        decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_11_asset"),
+        decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_12_asset"),
+        decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_13_asset"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+      decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_assets"),
+      decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "installed_gpu_board_containments"),
+    ],
+  },
+  question: "Two authorities name the accelerators in this unit and answer DIFFERENTLY: the operator reported two Tesla T10 (2026-11-15 and 2026-11-17, and the same operator's own session named a third card -- 'third card: serial 1323019027149, in SLOT2 (c1:00.0)'), while the unit itself enumerates three driver-visible NVIDIA functions with three UUIDs and three serials. Which is the unit? The read rows carry THREE boards because a unit's enumeration outranks a report about it, and the report row still says TWO because a report row describes its report -- so the disagreement is visible on both sides instead of being resolved by deleting one. Closing it needs the vendor:device read that FAILED in that session (domain-prefixed sysfs paths), plus the operator's word on whether a fourth card exists that the driver does not show. Until then no consumer may treat this unit's GPU count as settled.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_gpu_rows_revision,
+      evidence: FreeSemigroup {
+        head: h11ssl_unit3_gpu_identity_receipt,
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+          },
+        ],
+      },
+      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The session's attempt at the confirming PCI ids failed on un-prefixed sysfs paths; the failures are in the receipt.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// THE CAP THE MODEL HOLDS AND THE CAP THE MACHINE RUNS are two different things, and the model has a shape for
+// one of them. This row says which half is missing -- it does NOT license booting the hand unit into the model.
+data h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "PowerCapBootUnit"),
+    requirement: "THE SHAPE EXISTS AND DOES NOT FIT, which is the gap. gunbc.fleet.gpu_power_cap_boot_state models a cap mechanism AS INSTALLED -- PowerCapBootUnit carries unit_path, content_sha256, wants/after/wanted_by, pre_commands, persistence_requested, cap_commands, enabled, active_state, since, read_on, and srv1's units stand in the corpus as precedent, with BootMechanismPresence (GunbcCapUnitAbsent) separating what gunbc installed from what was found. ken's mechanism was READ on 2026-11-18 and cannot be put in that shape without inventing three fields: (1) content_sha256 -- the read captured the unit by `cat` and its state by `systemctl status`, but never ran sha256sum on the file, so the file's digest is unread; (2) cap_commands -- BootCapCommand addresses one GPU by UUID with one watt target, while this unit's cap lines live in a separate script (/usr/local/bin/t10-power-cap.sh) that loops the driver control over whatever `nvidia-smi` lists, by INDEX, and reports failure unless that count matches a hand-written EXPECT=3. A row built from that would claim per-UUID cap commands the unit does not contain; (3) CapApplicationClaim needs the mechanism's own journal line (from_watts, to_watts, said_by) and the read did not touch the journal, so the application claim half cannot be written at all. WHY NO ROW WAS FORCED: minting a PowerCapBootUnit for this host would render a cap mechanism the converge believes it can reason about, when the corpus has no modeled NVIDIA power-limit instrument to address it (the control stands NvidiaSmiPowerLimit on a device row, and the AMD hwmon route is the only modeled one) and this host's effects are refused (its enrollment entry carries reach_policy: HostKeyLoginRefused { reason: gunbc.fleet.fleet_enrollment::host_key_login_unavailable_reason }). A boot claim nobody can verify is the failure mode this repository calls fabrication.",
+    standing: RequirementUnestablished {
+      decided_by: "the operator, on whether the converge is to OWN a boot-time GPU power cap on this unit at all: the unit is prior-life state found on a hand-installed machine (gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_power_cap_setter_prior_life, standing unchanged), and nothing in the corpus decides that a found hand unit becomes a modeled input. If the answer is yes, two reads come first -- the unit file's digest and the journal's own claim lines -- and the instrument question (a modeled NVIDIA power-limit control) is the rung behind them.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_power_cap_setter_prior_life"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "cap_boot_unit_for"),
+      decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "cap_application_claims_on"),
+      decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "BootMechanismPresence"),
+      decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "ken_t10_cap_decision"),
+      decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "installed_gpu_cap_intents"),
+      decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+    ],
+  },
+  question: "Does the converge take ownership of a boot-time GPU power cap on this unit -- retiring the hand unit and rendering an equivalent through the driver's power-limit control, or leaving it installed and recording it as prior life? Whichever way, the model needs three things it does not have: the unit file's digest and the journal's claim lines (both unread, both one read away), a way to express a cap command delegated to a script that addresses GPUs by enumeration index and conditions its own success on how many it found, and a modeled NVIDIA power-limit instrument the converge can address.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_gpu_rows_revision,
+      evidence: FreeSemigroup {
+        head: h11ssl_unit3_gpu_power_receipt,
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_power_cap_setter_prior_life"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "PowerCapBootUnit"),
+          },
+        ],
+      },
+      account: "Read on the unit 2026-11-18: the unit file, its status (enabled, active, exit 0) and the script itself -- artifacts/host-observations/ken-gpu-read-2026-11-18/ (unit_read1.txt the unit listing, unit_read2.txt the unit file and its status, unit_read3.txt the script and the limits it leaves behind). No sha256sum of the unit file and no journal lines were taken in that session; the limits the script leaves behind were read from the driver: 100.00 W current against 150.00 W default on all three functions.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
 
 data machine_width_uint8_int_crossing_has_no_declared_route: IntegrationConcern = IntegrationConcern {
   identity: "machine_width_uint8_int_crossing_has_no_declared_route",

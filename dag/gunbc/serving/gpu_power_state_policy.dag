@@ -5,8 +5,8 @@ import std.optional { Absent, Present }
 import std.measure { Watt, watt, watt_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_11, gpu_board_12, gpu_board_13 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap,
@@ -174,6 +174,25 @@ data h11_r9700_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   said: "operator: i'd want 210 but we also need to be particular that it's not a peak cap, its a sustained cap - i actually want to lower it more but 210 is fine for now" as NonEmptyStr,
 }
 
+// ken (host-e2d4b7): the 100 W number is the OPERATOR'S, relayed to this project on 2026-11-17 ("ken has two
+// GPUs, idle at 43-44 C, with a 100 W power cap applied at boot"). The machine corroborates the number: each
+// of the three functions read on the cards 2026-11-18 sits at Current Power Limit 100.00 W against a 150.00 W
+// default and a 100.00-150.00 W settable range (artifacts/host-observations/ken-gpu-read-2026-11-18/,
+// unit_read3.txt and gpu_identity_query.txt, pinned by SHA256SUMS). What was never said is the TIMESCALE --
+// whether 100 W bounds sustained draw or only what the boot script pushes -- and the question was put to the
+// operator on 2026-11-17 and unanswered at the head of this change. So the bounds arm is
+// CappedQuantityUnstated, the arm this sum provides for a number said without a timescale (see the note above
+// CappedPowerQuantity), and it is NOT rewritten to SustainedPowerDraw after the fact. The machine enforces
+// the number today with a hand-written unit and script that the converge does not own; that gap is register
+// row gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, not a
+// reason to leave the operator's cap out of the model.
+data ken_t10_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 100),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-11-17" as NonEmptyStr,
+  said: "operator report relayed by smart-crane-730, 2026-11-17: ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot" as NonEmptyStr,
+}
+
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
@@ -193,6 +212,12 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   // lost at the next reboot. gpu_board_03 does not enumerate, so its cap is pending on the device itself.
   InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_02, selection: h11_r9700_cap_decision },
   InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_03, selection: h11_r9700_cap_decision },
+  // ken: the operator's cap over all three read functions. Each admits through the driver's own power-limit
+  // control (NvidiaSmiPowerLimit, addressed by the GPU UUID the read returned), the same route srv1's Max-Q
+  // boards use; the cap sits at the device's own floor, so it is in range on every one of them.
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_11, selection: ken_t10_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_12, selection: ken_t10_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_13, selection: ken_t10_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {
