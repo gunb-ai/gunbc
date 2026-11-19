@@ -196,11 +196,13 @@ data tailscale_fleet_node_tag: NonEmptyStr = tag_ci
 // on 2026-11-19: device approval is OFF on this tailnet (tailecbe08), so no join ever waits on a human
 // approval and no fleet key needs a pre-approved attribute. Per
 // gunbc.design_argument::external_upstreams this is a RECEIPT in the observing layer, never a fact of the
-// upstream extdeps.tailscale module -- so the tailscale join route and this model's approval-absence both
-// read THIS typed value, not a comment. Flipping it is an operator console action; the moment it reads true,
-// the fleet key must be re-observed for its upstream requires_approval and tailscale_fleet_auth_key_policy's
-// approval field filled in (the fail-closed witness tailscale_fleet_auth_key_witness refuses if the fact and
-// the absent field ever disagree).
+// upstream extdeps.tailscale module. What READS it is tailscale_fleet_auth_key_witness's
+// w_key_is_reusable_approval_absent_single_tag_30_days, which binds this flag to the policy's absent approval
+// field so the two cannot drift. The tailscale join route does NOT branch on it: tailscale_join_host's
+// NeedsMachineAuth arm is an UNCONDITIONAL fail-closed refusal, so the join is guarded independently of this
+// flag -- the flag's only job is to justify recording the key's approval as absent. Flipping it is an operator
+// console action; the moment it reads true, the fleet key must be re-observed for its upstream requires_approval
+// and tailscale_fleet_auth_key_policy's approval field filled in, or that witness refuses.
 data tailscale_fleet_device_approval_enabled: Bool = false
 
 data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_key_policy_of(
