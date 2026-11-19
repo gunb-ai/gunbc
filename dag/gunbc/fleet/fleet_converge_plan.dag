@@ -218,11 +218,11 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_provenance_wire,
   RunnerSlotMember,
   RunnerSlotMemberAt,
-  SlotTeardownRow,
   runner_slot_member_key,
   runner_slot_provision_plan,
   RunnerSlotProvisionPlan,
   runner_slot_provision_membership_withheld_count,
+  runner_slot_provision_membership_withheld_units,
   runner_slot_provision_withheld_line_count,
   runner_slot_provision_withheld_beyond_plan_rows_count,
   fleet_runner_slot_artifact,
@@ -1207,16 +1207,20 @@ fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
   }
 }
 
-// AN OWED CAP ROW IS ONE THE PLAN LISTS AND CONVERGE WILL NEVER EXECUTE -- an add, a change, or a
-// removal the model wants. A REFUSAL is not owed work: the axis already counted it, and its line says so.
-fn cap_action_is_owed(action: MemberAction<CapMember, CapMemberAt>) -> Bool {
-  match action {
-    MemberAdded { at: _, to: _ } => true
-    MemberChanged { at: _, from: _, to: _ } => true
-    MemberRemoved { at: _, from: _ } => true
-    MemberRemovalRefused { from: _, cause: _ } => false
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+// THE CAP ROWS THE PLAN LISTS AND CONVERGE WILL NEVER EXECUTE -- an add, a change, or a removal the model
+// wants, as the members themselves. A REFUSAL is not owed work: the axis already counted it and its line
+// says so. A list rather than a 'which variant is this' predicate, because the count on the receipt and a
+// control that names the paths must read the SAME projection and cannot be allowed to drift apart.
+fn cap_plan_only_members(plan: MembershipPlan<CapMember, CapMemberAt>) -> List<CapMember> {
+  flat_map(plan.actions, a =>
+  match a {
+    MemberAdded { at: _, to: m } => [m]
+    MemberChanged { at: _, from: f, to: _ } => [f]
+    MemberRemoved { at: _, from: m } => [m]
+    MemberRemovalRefused { from: _, cause: _ } => []
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
   }
+  )
 }
 
 fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
@@ -2185,12 +2189,19 @@ fn fleet_converge_cap_refusal_count(host: NonEmptyStr, observed_caps: List<CapMe
 // THE PLAN-ONLY COUNT: cap rows the plan lists that converge will never execute. Counted from the same
 // reconciled plan the PLAN-ONLY lines are rendered from, so the receipt's number and plan.txt's rows
 // cannot disagree about how many there are.
-fn fleet_converge_cap_plan_only_row_count(host: NonEmptyStr, observed_caps: List<CapMember>) -> Int {
+fn fleet_converge_cap_plan_only_members(
+  host: NonEmptyStr,
+  observed_caps: List<CapMember>,
+) -> List<CapMember> {
   match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
-    CapAxisHostRefused { host: _, cause: _ } => 0
-    CapAxisZeroWidth { host: _ } => 0
-    CapAxisPlanned { plan: p } => count(filter(p.actions, a => cap_action_is_owed(action: a)))
+    CapAxisHostRefused { host: _, cause: _ } => []
+    CapAxisZeroWidth { host: _ } => []
+    CapAxisPlanned { plan: p } => cap_plan_only_members(plan: p)
   }
+}
+
+fn fleet_converge_cap_plan_only_row_count(host: NonEmptyStr, observed_caps: List<CapMember>) -> Int {
+  count(fleet_converge_cap_plan_only_members(host: host, observed_caps: observed_caps))
 }
 
 fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -> List<String> {

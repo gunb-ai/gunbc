@@ -26,6 +26,7 @@ import std.algebra { string_contains }
 import gunbc.fleet.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSlotFamily,
+  fleet_converge_cap_plan_only_members,
   fleet_converge_cap_plan_only_row_count,
   fleet_converge_plan_artifact,
   fleet_converge_slot_family,
@@ -394,9 +395,20 @@ test fn the_plan_only_count_and_the_plan_lines_agree_by_construction() -> Bool {
   let observed = [srv1_width_dropin_observed()]
   match artifact_with(observed_caps: observed, observed_slots: []) {
     Absent => false
-    Present { value: artifact } =>
-      fleet_converge_cap_plan_only_row_count(host: owed_witness_host, observed_caps: observed)
-        == plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "PLAN-ONLY cap ")
+    Present { value: artifact } => {
+      let owed_members = fleet_converge_cap_plan_only_members(
+        host: owed_witness_host,
+        observed_caps: observed,
+      )
+      count(owed_members) > 0
+        && count(owed_members)
+          == plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "PLAN-ONLY cap ")
+        // Not just the same SIZE: every drop-in the axis owes a write for is named on a line of its own,
+        // so the number on the receipt is a count of lines an operator can point at.
+        && all(owed_members, m =>
+        string_contains(s: artifact.plan_body, pattern: concat("PLAN-ONLY cap ", m.dropin_path as String)),
+      )
+    }
   }
 }
 

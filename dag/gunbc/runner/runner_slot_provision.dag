@@ -274,13 +274,6 @@ fn slot_teardown_row_script(row: SlotTeardownRow) -> String {
   }
 }
 
-fn slot_teardown_row_is_withheld(row: SlotTeardownRow) -> Bool {
-  match row {
-    TeardownAdmitted { unit: _, script: _ } => false
-    TeardownWithheld { unit: _, cause: _, script: _ } => true
-  }
-}
-
 // THE ROW IS WHERE THE REALIZATION DECISION LANDS. Same four dispositions as the old inline match, but
 // the authorized arm and the three withheld arms produce a typed row instead of a bare script string.
 fn slot_removal_teardown_row(
@@ -314,16 +307,10 @@ fn slot_removal_teardown_row(
   }
 }
 
-// THE PLAN ROWS THE SCRIPT WILL NOT PERFORM, as rows. These are the runner-slot REMOVEs the plan lists;
-// a withheld row here is the failure the converge terminal exists to refuse to call applied.
-fn runner_slot_provision_membership_withheld_rows(
-  plan: RunnerSlotProvisionPlan,
-) -> List<SlotTeardownRow> {
-  filter(plan.teardown_rows, r => slot_teardown_row_is_withheld(row: r))
-}
-
+// THE PLAN ROWS THE SCRIPT WILL NOT PERFORM, COUNTED FROM THE LIST THAT NAMES THEM -- one reading of one
+// list, so the number on the receipt cannot disagree with the units a control puts next to the script.
 fn runner_slot_provision_membership_withheld_count(plan: RunnerSlotProvisionPlan) -> Int {
-  count(runner_slot_provision_membership_withheld_rows(plan: plan))
+  count(runner_slot_provision_membership_withheld_units(plan: plan))
 }
 
 // WHICH UNITS, NOT MERELY HOW MANY. The receipt's count says four; this says which four, so a control can
