@@ -42,7 +42,10 @@ import gunbc.fleet.fleet_converge_terminal {
   fleet_converge_apply_terminal_wire,
   fleet_converge_owed_work_is_clear,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv3,
+}
 import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.host.host_axis_caps { CapMember }
 import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
@@ -60,6 +63,9 @@ import gunbc.runner.runner_slot_provision {
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  srv1_width_interruption_authorization,
+  transition_retirement_admission_over,
 }
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 
@@ -122,18 +128,64 @@ fn srv1_width_dropin_observed() -> CapMember {
   }
 }
 
-// THE ONE FACT THE FIXTURE CHANGES: no retirement observation is bound, exactly as on the srv1 run. The
-// tree-removal gate cannot be satisfied without it, so every removal the plan lists is withheld -- which
-// is what the receipt has to say out loud.
-fn owed_witness_evidence() -> SlotRetirementEvidence {
-  SlotRetirementEvidenceAbsent {
-    cause: "this fixture binds no retirement observation, exactly as the srv1 run did",
+// THE ONE FACT THE FIXTURE CHANGES: no retirement observation is admitted, exactly as on the srv1 run. The
+// tree-removal gate cannot be satisfied without it, so every removal the plan lists is withheld -- which is
+// what the receipt has to say out loud.
+//
+// THE EVIDENCE IS MINTED BY THE MODEL, NOT TYPED OUT. The permission is the model's own srv1 authorization
+// (`srv1_width_interruption_authorization`, the 2026-09-17 decision over slots 13-50 plus the 2026-10-16
+// cut's 03-06), the required retirees are the three units the 44428803079 finding names as still running on
+// the host, and the observation is deliberately empty -- nothing was retired on this pass. The model's own
+// admission function (runner_slot_retirement.dag's `transition_retirement_admission_over`) then refuses the
+// transition and writes its own cause: that the transition "requires retiring units the operator has not
+// authorized interrupting ... retiring only the covered subset would release ceilings against a population
+// still running". That is the srv1 condition in the model's words, and no cause prose here is the fixture's
+// invention. `none` means the admission came back PERMITTED, which would make this fixture a different
+// fixture: the claims that need withheld teardowns then FAIL rather than pass over work they did not ask for.
+fn owed_witness_evidence() -> SlotRetirementEvidence? {
+  match transition_retirement_admission_over(
+    host: operator_host_srv1,
+    auth: srv1_width_interruption_authorization,
+    required: owed_witness_required_retirees(),
+    standings: [],
+  ) {
+    SlotRetirementEvidenceAbsent { cause: c } =>
+      // THE PASS-THROUGH IS THE POINT: the cause is the model's sentence, written by the admission function
+      // above, and nothing here re-types it.
+      SlotRetirementEvidenceAbsent { cause: c }
+    SlotRetirementEvidencePresent { authorization: _, standings: _ } => none
   }
+}
+
+// THE UNITS THAT WERE STILL RUNNING WHEN 44428803079 RAN, from the finding that opened this work. They are
+// outside every srv1 authorization's scope -- the 09-17 decision says so outright ("does not name
+// srv1-01..12") -- which is why the admission above cannot come back permitted.
+fn owed_witness_required_retirees() -> List<NonEmptyStr> {
+  [
+    "actions-runner@srv1-07.service" as NonEmptyStr,
+    "actions-runner@srv1-08.service" as NonEmptyStr,
+    "actions-runner@srv1-09.service" as NonEmptyStr,
+  ]
 }
 
 fn artifact_with(
   observed_caps: List<CapMember>,
   observed_slots: List<RunnerSlotMember>,
+) -> FleetConvergePlanArtifact? {
+  match owed_witness_evidence() {
+    Absent => none
+    Present { value: evidence } => artifact_with_evidence(
+      observed_caps: observed_caps,
+      observed_slots: observed_slots,
+      evidence: evidence,
+    )
+  }
+}
+
+fn artifact_with_evidence(
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+  evidence: SlotRetirementEvidence,
 ) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact(
     host: owed_witness_host,
@@ -144,7 +196,7 @@ fn artifact_with(
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
-    observed_retirement: owed_witness_evidence(),
+    observed_retirement: evidence,
     observed_host_grants: witness_grants_rendered(host: owed_witness_host),
   )
 }
@@ -419,15 +471,18 @@ test fn the_plan_only_count_and_the_plan_lines_agree_by_construction() -> Bool {
 test fn every_withheld_plan_row_names_a_unit_the_script_echoes_as_withheld() -> Bool {
   match artifact_with_withheld_teardowns() {
     Absent => false
-    Present { value: artifact } => {
+    Present { value: artifact } => match owed_witness_evidence() {
+      Absent => false
+      Present { value: evidence } => {
       let family = fleet_converge_slot_family(
         host: owed_witness_host,
         observed_slots: owed_witness_slots(),
-        retirement_evidence: owed_witness_evidence(),
+        retirement_evidence: evidence,
       )
       let units = slot_family_withheld_units(family: family)
       count(units) > 0
         && all(units, u => string_contains(s: artifact.apply_shell, pattern: u))
+      }
     }
   }
 }
