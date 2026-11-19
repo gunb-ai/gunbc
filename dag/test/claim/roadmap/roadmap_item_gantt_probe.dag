@@ -1,0 +1,45 @@
+// SCRATCH DIAGNOSTIC -- NOT FOR THE PR. Five narrow boolean probes that bisect the conjuncts of the red witness
+// `an_unpriced_roadmap_lists_every_node_and_prices_none`, so one srv1 round says WHICH conjunct is false instead of
+// only that the conjunction is. Each probe calls the same read the witness calls, with the same lanes and read date,
+// so a probe disagreement means the conjunct itself differs from what the witness assumes -- not the fixture.
+// This file is deleted before the branch is offered for landing.
+module test.claim.roadmap.roadmap_item_gantt_probe
+
+import std.types { Bool, Int, List }
+import std.optional { Present, Absent }
+import gunbc.roadmap.roadmap_model { RoadmapEdge }
+import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry }
+import gunbc.roadmap.roadmap_item_gantt { GanttAnswer, GanttAnswered, GanttRefused, gantt_rows, gantt_unpriced_count }
+import gunbc.roadmap.roadmap_item_gantt_witness { read, fixture_nodes }
+
+// 1. Does the all-unsized roadmap ANSWER at all, rather than refuse?
+test fn probe_unpriced_answers() -> Bool {
+  match read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>) {
+    GanttAnswered { rows: _, horizon: _, in_flight: _, critical: _ } => true
+    GanttRefused { refusal: _ } => false
+  }
+}
+
+// 2. Are all five declared nodes present as rows?
+test fn probe_unpriced_lists_five() -> Bool {
+  count(gantt_rows(a: read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>))) == 5
+}
+
+// 3. Is the horizon zero when nothing was placed?
+test fn probe_unpriced_horizon_zero() -> Bool {
+  match read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>) {
+    GanttAnswered { rows: _, horizon: h, in_flight: _, critical: _ } => h == 0
+    GanttRefused { refusal: _ } => false
+  }
+}
+
+// 4. Is every row unpriced -- nothing defaulted to a number?
+test fn probe_unpriced_prices_none() -> Bool {
+  count(filter(gantt_rows(a: read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>)),
+    r => match r.work_days { Present { value: _ } => true, Absent => false })) == 0
+}
+
+// 5. Does the unpriced counter name all five, the way the witness expects?
+test fn probe_unpriced_count_is_five() -> Bool {
+  gantt_unpriced_count(a: read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>)) == 5
+}

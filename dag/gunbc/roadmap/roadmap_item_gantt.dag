@@ -102,6 +102,7 @@ type GanttRefusal
 type GanttAnswer
   = GanttAnswered {
       rows: List<GanttRow>,
+      // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
       horizon: Int,
       in_flight: List<Int>,
       critical: List<RoadmapNodeId>,

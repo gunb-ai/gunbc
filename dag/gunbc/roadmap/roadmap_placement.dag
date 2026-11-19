@@ -74,6 +74,7 @@ type PlacementInput {
   edges: List<PlacementEdge>
   workers: Int
   preplaced: List<Placement>
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   earliest_start: Int
   held_out: List<String>
 }
@@ -88,6 +89,7 @@ type PlacementRefusal
 // per-day in-flight series over ALL placed rows including the pre-placed ones, and the critical path as keys.
 type PlacementAnswer {
   rows: List<Placement>
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   horizon: Int
   in_flight: List<Int>
   critical: List<String>
