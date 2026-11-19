@@ -27,10 +27,7 @@ fn priced_days(v: LeafPricing, want: Int) -> Bool {
 }
 fn uncounted_naming(v: LeafCount, family: String, probe: String) -> Bool {
   match v {
-    Uncounted { families: fams } => match fams {
-      Cons { head: f, tail: _ } => f.family == family && f.probe == probe
-      Empty => false
-    }
+    Uncounted { families: fams } => fams.head.family == family && fams.head.probe == probe
     Counted { members: _ } => false
   }
 }

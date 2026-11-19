@@ -54,7 +54,7 @@ module gunbc.roadmap.roadmap_estimate_derivation
 
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import std.algebra { list_push, zip_map }
+import std.algebra { list_push, zip_map, FreeSemigroup }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, NodeParent, RoadmapEdge,
   MemberOf, AdmittedRoot, Closes,
@@ -682,13 +682,11 @@ type UnsizedWhy
   | FindingsUnprobed { family: String, probe: String }
 
 // The cause an unpriced decomposition gives: name the FIRST unprobed family and its probe, deterministically. The
-// Unpriced total is never empty by construction (a single findings family makes it), so the Empty clause is the
-// total-match fallback only -- a priced total reaching here would be a bug, and NothingEstimated fails it closed.
-fn findings_unprobed_cause(families: List<UnprobedFamily>) -> UnsizedWhy {
-  match families {
-    Cons { head: f, tail: _ } => FindingsUnprobed { family: f.family, probe: f.probe }
-    Empty => NothingEstimated
-  }
+// Unpriced total's `families` is a FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup)), so
+// there is no empty state to fall back to -- an "unpriced but nameless" total is unwritable and no made-up cause is
+// ever returned. This reads the head; it does not re-decide cardinality.
+fn findings_unprobed_cause(families: FreeSemigroup<UnprobedFamily>) -> UnsizedWhy {
+  FindingsUnprobed { family: families.head.family, probe: families.head.probe }
 }
 
 type NodeEstimate {
