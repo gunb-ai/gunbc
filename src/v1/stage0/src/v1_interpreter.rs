@@ -18317,7 +18317,7 @@ fn wait_child_honoring_wall_deadline(
     // Neither bound armed: plain bounded capture, never an overrun.
     if leg_deadline.is_none() && ctx.witness_wall_deadline.get().is_none() {
         return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
-            .map(|output| (output, false))
+            .map(|output| (Some(output), false))
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv0, e),
             });
@@ -18603,7 +18603,7 @@ fn dispatch_shell(
         }
     };
 
-    let (capture, overran) = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    let (capture_opt, overran) = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -18694,12 +18694,20 @@ fn dispatch_shell(
             // sees overran=true with the deadline, and stdout/stderr empty by construction.
             ShellResult {
                 exit_code: -1,
-                stdout: String::new(),
-                stderr: String::new(),
-                stdout_lines: Vec::new(),
-                stderr_truncated: false,
-                stderr_total_bytes: 0,
-                stderr_retained_bytes: 0,
+                stdout: bounded_shell_host_drain::CapturedStreamEvidence {
+                    total_bytes: 0,
+                    retained_bytes: 0,
+                    truncated: false,
+                    digest_hex: None,
+                    retained_text: String::new(),
+                },
+                stderr: bounded_shell_host_drain::CapturedStreamEvidence {
+                    total_bytes: 0,
+                    retained_bytes: 0,
+                    truncated: false,
+                    digest_hex: None,
+                    retained_text: String::new(),
+                },
                 leg_exec: ShellLegExec::Completed, // overwritten below
             }
         }
