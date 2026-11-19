@@ -62,7 +62,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, Roadmap
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 import gunbc.roadmap.roadmap_schedule_calendar { working_days_between }
 import gunbc.roadmap.roadmap_decomposition {
-  decomposition_for, decompositions_in, roadmap_decompositions, WorkDecomposition, WorkStage, stages_leaf_days, stages_leaf_count,
+  decomposition_for, decompositions_in, roadmap_decompositions, WorkDecomposition, WorkStage, stages_owners, stages_leaf_days, stages_leaf_count,
   merge_pricing, merge_count, LeafPricing, LeafCount, UnprobedFamily, Priced, Unpriced, Counted, Uncounted,
 }
 import gunbc.roadmap.roadmap_effort_estimate {
@@ -915,7 +915,7 @@ fn cleared_prerequisite_pairs(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>
   flat_map(priced, a => flat_map(priced, b =>
     if a.node == b.node {
       [] as List<ClearedPrerequisitePair>
-    } else if prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: []) && !contained_under(nodes: nodes, node: b.node, ancestor: a.node) {
+    } else if prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: []) && !contained_under(nodes: nodes, decompositions: [] as List<WorkDecomposition>, node: b.node, ancestor: a.node, count_pieces: false) {
       [ClearedPrerequisitePair { senior: a.node, senior_days: a.days, junior: b.node, junior_days: b.days }]
     } else {
       [] as List<ClearedPrerequisitePair>
@@ -951,29 +951,99 @@ fn prerequisite_reachable(edges: List<RoadmapEdge>, from: RoadmapNodeId, target:
   }
 }
 
-// IS `node` CONTAINED under `ancestor`, at any depth? The same containment walk the derivation follows, and the only
-// way a pair becomes a contradiction.
-fn contained_under(nodes: List<RoadmapNode>, node: RoadmapNodeId, ancestor: RoadmapNodeId) -> Bool {
-  any(parent_chain(nodes: nodes, from: node), p => p == ancestor)
+// IS `node` CONTAINED under `ancestor`, at any depth? The ONE containment walk the whole authority follows. When
+// `count_pieces` is set it also climbs through DECOMPOSITION-PIECE membership: a node whose work is held as a Family
+// piece inside a container's WorkDecomposition sits under that container just as a MemberOf child does, so a single
+// function answers 'is X under Y' for both the price tree and the authoring law and the two can never disagree (the
+// keep_all precedent is under_queue's flag). `count_pieces` stays false for pricing, which restates each
+// decomposition into its OWN node (restated_piece_days) rather than through the owner's lane.
+fn contained_under(nodes: List<RoadmapNode>, decompositions: List<WorkDecomposition>, node: RoadmapNodeId, ancestor: RoadmapNodeId, count_pieces: Bool) -> Bool {
+  any(parent_chain(nodes: nodes, decompositions: decompositions, from: node, count_pieces: count_pieces), p => p == ancestor)
 }
 
-fn parent_chain(nodes: List<RoadmapNode>, from: RoadmapNodeId) -> List<RoadmapNodeId> {
-  chain_above(nodes: nodes, current: from, visited: [from as String])
+fn parent_chain(nodes: List<RoadmapNode>, decompositions: List<WorkDecomposition>, from: RoadmapNodeId, count_pieces: Bool) -> List<RoadmapNodeId> {
+  chain_above(nodes: nodes, decompositions: decompositions, current: from, visited: [from as String], count_pieces: count_pieces)
 }
 
-// The chain of containment parents above `current`, guarded by a visited set so a malformed cycle stops here
-// (reported by `containment_cycles`) instead of looping.
-fn chain_above(nodes: List<RoadmapNode>, current: RoadmapNodeId, visited: List<String>) -> List<RoadmapNodeId> {
-  match node_by_node(nodes: nodes, target: current) {
+// The containment ancestors above `current`, guarded by a visited set so a malformed cycle stops here (reported by
+// `containment_cycles`) instead of looping. Its immediate containment-parents are the MemberOf/Closes parent plus,
+// when `count_pieces` is set, every container that holds `current` as a decomposition piece.
+fn chain_above(nodes: List<RoadmapNode>, decompositions: List<WorkDecomposition>, current: RoadmapNodeId, visited: List<String>, count_pieces: Bool) -> List<RoadmapNodeId> {
+  let member = match node_by_node(nodes: nodes, target: current) {
     Absent => [] as List<RoadmapNodeId>
     Present { value: n } => match containment_parent(nodes: nodes, n: n) {
       Absent => [] as List<RoadmapNodeId>
-      Present { value: parent } =>
-        if any(visited, v => v == (parent as String)) {
-          [] as List<RoadmapNodeId>
-        } else {
-          concat([parent] as List<RoadmapNodeId>, chain_above(nodes: nodes, current: parent, visited: list_push(xs: visited, item: parent as String)))
-        }
+      Present { value: parent } => [parent] as List<RoadmapNodeId>
     }
   }
+  let pieces = if count_pieces { decomposition_holders(decompositions: decompositions, node: current) } else { [] as List<RoadmapNodeId> }
+  flat_map(concat(member, pieces), p =>
+    if any(visited, v => v == (p as String)) {
+      [] as List<RoadmapNodeId>
+    } else {
+      concat([p] as List<RoadmapNodeId>, chain_above(nodes: nodes, decompositions: decompositions, current: p, visited: list_push(xs: visited, item: p as String), count_pieces: count_pieces))
+    })
+}
+
+// The containers that hold `node` as a work piece: every WorkDecomposition listing `node` among its stage owners is a
+// container whose work IS (partly) this node, so `node` is contained under it. The upward twin of the rollup's
+// decomposition arm.
+fn decomposition_holders(decompositions: List<WorkDecomposition>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
+  map(filter(decompositions, d => any(stages_owners(stages: d.stages), o => o == node)), d => d.node)
+}
+
+// ===== THE GRAPH VALIDATOR'S CONTAINMENT LAW: NO ROW WAITS ON ITS OWN CONTAINER =====
+// A container's span covers everything it contains, so a contained row can never be gated by a thing that already
+// contains it -- waiting on your own project/milestone/decomposition container is a contradiction, not a schedule.
+// The item Gantt read surfaces the same fact as BlockedCause WaitsOnItsOwnContainer (tidy-crane-257, #16729); this
+// lifts it onto the authority's own edge graph as a validator property: these edges are refused BY NAME (the edge
+// `child -> parent` and the `container` it waits on), checked over the declared graph on the claim/validator route.
+// FOLLOW-UP (not this change): the required-path `roadmap_authority_projection` should raise
+// RoadmapAuthorityProjectionRefused on the live graph too. That is blocked here because the single containment walk
+// this law reuses lives in this module, which nothing imports (a leaf); importing it from roadmap_authority.dag would
+// create the repo's first cyclic module import. Lifting that walk into a shared base module -- coordinated with the
+// concurrent roadmap_estimate_derivation.dag pricing change -- is the change that puts this refusal on the required
+// path; the law is written so that gate is a one-line call once the walk is liftable.
+
+// A prerequisite edge (child -> parent) whose target is a container holding the child: refused. The edge's TARGET
+// (parent) IS the container it waits on -- a containment ancestor of `child` by membership or by holding it as a
+// piece -- so naming the edge (child -> parent) already names the container; no separate container field is stored.
+type EdgeIntoOwnContainer {
+  child: RoadmapNodeId
+  parent: RoadmapNodeId
+}
+
+fn prerequisite_edges_into_own_containers(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, decompositions: List<WorkDecomposition>) -> List<EdgeIntoOwnContainer> {
+  flat_map(edges, e =>
+    if contained_under(nodes: nodes, decompositions: decompositions, node: e.child, ancestor: e.parent, count_pieces: true) {
+      [EdgeIntoOwnContainer { child: e.child, parent: e.parent }]
+    } else {
+      [] as List<EdgeIntoOwnContainer>
+    })
+}
+
+// The live carrier read for the validator claim.
+fn live_prerequisite_edges_into_own_containers() -> List<EdgeIntoOwnContainer> {
+  prerequisite_edges_into_own_containers(nodes: declared_roadmap_nodes(), edges: declared_roadmap_edges(), decompositions: roadmap_decompositions)
+}
+
+// A CONTAINER waiting on something it contains is REDUNDANT, not contradictory: the contained row already gates the
+// container, so the edge states nothing new but is not impossible and never blocks the graph. FLAGGED for the
+// planner, never refused.
+type EdgeOntoOwnContained {
+  container: RoadmapNodeId
+  waited_on: RoadmapNodeId
+}
+
+fn prerequisite_edges_onto_own_contained(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, decompositions: List<WorkDecomposition>) -> List<EdgeOntoOwnContained> {
+  flat_map(edges, e =>
+    if e.child != e.parent && contained_under(nodes: nodes, decompositions: decompositions, node: e.parent, ancestor: e.child, count_pieces: true) {
+      [EdgeOntoOwnContained { container: e.child, waited_on: e.parent }]
+    } else {
+      [] as List<EdgeOntoOwnContained>
+    })
+}
+
+fn live_prerequisite_edges_onto_own_contained() -> List<EdgeOntoOwnContained> {
+  prerequisite_edges_onto_own_contained(nodes: declared_roadmap_nodes(), edges: declared_roadmap_edges(), decompositions: roadmap_decompositions)
 }

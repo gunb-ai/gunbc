@@ -991,6 +991,13 @@ data serve_entry_verdict_step_raised_to_45_minutes: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-14, relayed verbatim by session neat-badger-614 (msg_a27efa77) to session bright-ibex-807. Question as put to the operator: raise the fleet-converge plan run's serve-entry compile verdict step bound from 30 to 45 minutes (gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, ci_job_budgets_closed_to_growth). Operator words, verbatim: \"yes thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, 30 -> 45 minutes. Evidence: plan run 43593733352 was killed at 30m in this step; on srv1 the child compile measured 1607 s and the step 1798 s wall, 13.6 GB peak. The fleet job backstop (gunbc_ci_fleet_job_backstop_timeout_minutes) does not add this term, so no job timeout changes. INTERPRETATION, not the operator's words: the selected remediation direction stays runtime reduction (a faster serve-entry compile), after which this bound comes back down; lowering it needs no sign-off.",
 }
 
+data mtcollins1_bmc_cold_reset_step_raised_to_67_minutes: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_bmc_cold_reset_step_raised_to_67_minutes"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-18T21:13Z, operator chat to smart-crane-730 (no message id), relayed verbatim by smart-crane-730 (msg_cab7dd83) through merry-fox-82 (msg_a124a26d) to session quiet-gull-101. Question as put to the operator: \"#16668: raise mtcollins1's BMC reset step from 35 to 67 minutes.\" Operator words, verbatim: \"2. yeah thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, the fleet-converge MtCollins1BmcColdReset step bound (gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_step_timeout_minutes), 35 -> 67 minutes, carried by gunb-ai/gunbc#16668; its typed grant is gunbc.ci.ci_budget_raise mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant. Why: gunbc#16659 -- run 44210890542 accepted a cold reset on one answer after the controller came back, and about 45 min later (run 44217632446) the controller was silent again; acceptance now requires the controller to stay available through a sustained window W on the monotonic clock. Arithmetic, every term a declared row: W = mtcollins1_boot_prelude_allowance (120 s) + mtcollins1_boot_issue_allowance (120 s) + megarac_convergence_allowance (469 s) = 709 s; the window's budget is structural, mtcollins1_bmc_cold_reset_sustain_polls_at_most (ceil(709/15) + 1 = 49) x (poll interval 15 s + read ceiling 25 s) = 1960 s, because the window's own clock cannot bound its wall time (side chat on gunbc#16668, F2); step allowance = prelude 120 + 4 single reads x 25 + 46 loss and recovery polls x 40 + 1960 = 4020 s = 67 min (was 2060 s = 35 min). The mtcollins1-boot job timeout (205 min) is not exceeded. The generated .github/workflows/fleet-converge.yml moves from 35 to 67 through its emitter's regen, in the same PR.",
+}
+
 // The srv15-arrival environment's REQUIRED REVIEWER, selected by the operator. The model row that
 // consumes it (gunbc.auth.github_deployment_environment.srv15_arrival_reviewer_decision) carries
 // this row by reference; the decision lives here, not in a comment or a chat id string.
@@ -1178,6 +1185,13 @@ data tailscale_fleet_key_untagged_join_causality_2026_11_18: DesignRuling = Desi
   provenance: "Operator, in chat to smart-crane-730, 2026-11-18. OBSERVATION: ken (100.96.80.109) and dan/h11-a16 (100.109.228.127) joined BY HAND with the fleet key at Secret Manager version 'latest', not the pinned '1', and joined UNTAGGED, though gunbc.tailscale_fleet_auth_key records the key as tag:ci. RULING (causality, operator): a tagged auth key stamps its tags at JOIN whoever runs 'tailscale up'; going around gunbc.tailscale_join_converge does NOT drop the tags, and tailscale_auth_key_policy_admit only gates whether the CONVERGE will USE a key -- so an untagged hand join is NOT explained by bypassing the converge; it means the key used is NOT the tagged key this module describes. The two competing explanations are the typed closed set gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_untagged_join_hypotheses. Confirming which is a READ, not an inference: gunbc.tailscale_fleet_auth_key::tailscale_fleet_key_metadata_standing carries the open read obligation. Nothing here rotated; no live value was read or asserted.",
 }
 
+data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_scm_fabric_first_gate_lifted_2026_11_19"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator decision 2026-11-19, escalation msg_dd4f5177 decided in msg_5d6b035d, option chosen verbatim: \"Lift it (I record a design_ruling row quoting you; rows 894/911 drop the gate)\". Supersedes the default-approved msg_91e05714, which was approved by default, not by the operator. WHAT THIS LIFTS: the 2026-10-03 fabric-bring-up-first gate on native SCM. Four deliverable rows (2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence) were held behind the fabric bring-up by a prerequisite edge onto the fabric-bringup project node; two sibling rows (2-scm-compatibility-shape, 2-scm-p0-landing-spine) carried the same 'revisited after the fabric bring-up (operator ruling 2026-10-03)' only in their contribution text. HISTORY: no 2026-10-03 design_ruling row ever existed -- that gate was asserted only in roadmap row text, never recorded in this ledger; this row is both its first record and its lifting record. The prerequisite edges onto the fabric-bringup project are deleted, the rows stay factory members, and the fabric-bringup red_control dispatch-gate sentence is removed.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     estimates_are_one_representation_derived_upward,
@@ -1312,6 +1326,7 @@ fn design_rulings() -> List<DesignRuling> {
     namespace_xl_migration_program_is_bankrupt,
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
+    mtcollins1_bmc_cold_reset_step_raised_to_67_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
     // The srv15 versions-read backstop row (#16640) was missing from the roster, so
@@ -1324,6 +1339,7 @@ fn design_rulings() -> List<DesignRuling> {
     ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18,
     tailnet_serving_acl_admin_console_additions_2026_11_18,
     tailscale_fleet_key_untagged_join_causality_2026_11_18,
+    native_scm_fabric_first_gate_lifted_2026_11_19,
   ]
 }
 

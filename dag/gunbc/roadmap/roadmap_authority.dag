@@ -823,7 +823,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Git really stores things."),
     ),
     roadmap_node(
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
@@ -840,7 +840,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Mercurial really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
@@ -857,7 +857,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Pijul really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
@@ -874,7 +874,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Say once what counts as evidence for a claim."),
     ),
     roadmap_node(
       identity: "rnfx_DQV1HD42VR40BA8WBP1Y",
@@ -891,7 +891,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
     roadmap_node(
       identity: "rn_026DCFC306A7B44B061483AA71",
@@ -908,7 +908,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
 
     roadmap_node(
@@ -2091,7 +2091,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Fabric bring-up: our own fleet, its storage and the VM service on it, each observed rather than assumed",
           boundary: "Container for the fabric (operator ruling 2026-10-03: the VM service and fabric storage are both members of the fabric bring-up). Allocation, placement and serving follow the fabric/compute conformance domain (gunbc.design_argument::conformance); storage follows the materialization/realization domain. Host bring-up itself stays operator-driven.",
           approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's checkpointed workspace, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
-          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work gated on the fabric (the SCM rows, by edge) does not dispatch until this node is accepted.",
+          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row.",
           displaced_cost: "With the VM service as a top-level project and storage parentless, the largest fabric risk had no place on the public roadmap and the service read as independent of the fabric it runs on.",
           handback: "Per member project: its acceptance receipts, named by their instruments."
         )),
@@ -5630,6 +5630,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
     ),
+    roadmap_node(
+      identity: "rn_01M7T844EWSVQJ6A7XMXC6VZ85",
+      id: "roadmap-authoring-refuses-prerequisite-into-own-container",
+      owner: "planning",
+      carriers: concat(carrier(path: "dag/gunbc/roadmap/roadmap_authority.dag"), carrier(path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag")),
+      line: ticket(t: fields(
+        headline: "Roadmap authority: authoring refuses a prerequisite edge into the source's own container",
+        boundary: "One property of the EXISTING authority graph (dag/gunbc/roadmap/roadmap_authority.dag's edge() / declared_roadmap_edges), not a second walker: it reuses the containment the authority already derives -- MemberOf/UnderParent membership AND the decomposition pieces a container holds (the same pieces the rollup restates in roadmap_estimate_derivation.dag) -- and refuses a prerequisite edge whose TARGET is a containment ancestor of its SOURCE, naming BOTH the edge and the container. The item Gantt read already surfaces this as BlockedCause WaitsOnItsOwnContainer (tidy-crane-257, #16729); this lifts it onto the authority's own edge graph as a validator property refused by name. ENFORCEMENT ROUTE: the check is a property of the authority graph validator, executed on the claim/validator route today (witnesses over the declared graph); the required-path `roadmap_authority_projection` gate that refuses the live graph is a named follow-up, blocked only until the single containment walk this law reuses is lifted into a module the projection can import without a cycle (the walk now lives in roadmap_estimate_derivation.dag, which nothing imports) -- a one-line call once liftable.",
+        displaced_cost: "Today a row waiting on its own milestone/project/decomposition container is admitted by the authority, so the contradiction is caught only at the Gantt read: an author sees a graph that validates and then a blocked cell that cannot be scheduled, and no name is put on the edge until the view runs. A parent waiting on its own child is the REDUNDANT case, not the contradictory one -- the child already gates the container, so the edge is harmless; it is FLAGged for the planner and NOT refused. The refuse-vs-flag line and the single containment walk (extended with decomposition pieces, keep_all style) live with the edge graph; the Gantt read stays the display.",
+        first_slice: "A model-side claim over the declared edge graph + the derived containment: a planted prerequisite edge whose target is its source's MemberOf parent is REFUSED naming the edge and the container; a planted edge into a container that holds the source only as a decomposition piece is REFUSED identically (same claim, no second walk); a legal cross-item edge still passes; a planted parent-waits-on-own-child edge is reported as redundant and NOT refused. RED-FIRST against live data: run the claim on current main and list every existing violating edge; if any exist, STOP and send the list -- fixing data is a planning decision.",
+        red_control: "A fixture where a leaf declares a prerequisite on its own project/milestone ancestor refuses and names both sides; a fixture where the leaf's only link to the container is decomposition-piece membership refuses identically (the walk counts pieces, proving MemberOf-only is NOT the whole containment); a legal cross-item edge passes; a planted container->contained-child edge is flagged redundant, not refused; and the live authority passes once data is clean.",
+        out_of_scope: "Fixing any live violating edge (a planning data decision, not this row); refusing a container that waits on its own contained child (redundant, not contradictory -- flag only); rewriting the item Gantt read or its BlockedCause enum; a second containment walker beside the authority's own.",
+        handback: "The named-refusal report: each violating edge as (source -> target) plus the container named, and the single containment function reused (the authority's own, now covering decomposition pieces); plus the RED-FIRST live-data verdict listing every existing violating edge."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -5706,16 +5723,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
     edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
     edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
-    edge(child: "2-scm-git-upstream-model", parent: "fabric-bringup"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-0-identity-estimate-split"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-1-placement-backend-selection"),
     edge(child: "work-exec-3-automatic-sizing", parent: "work-exec-2-durable-route-first-consumer"),
     edge(child: "work-exec-4-local-work-cutover", parent: "work-exec-3-automatic-sizing"),
     edge(child: "work-exec-5-ci-verdict-from-receipt", parent: "work-exec-4-local-work-cutover"),
     edge(child: "work-exec-6-one-ledger-per-host", parent: "work-exec-5-ci-verdict-from-receipt"),
-    edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
     edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
     edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
     edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
