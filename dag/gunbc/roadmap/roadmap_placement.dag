@@ -4,6 +4,16 @@
 // why the repo has one scheduler and not two. The core knows rows as a String key and a working-day Int; it knows
 // nothing about LeafPaths or RoadmapNodeIds, and neither caller is allowed a second copy of the policy.
 //
+// THE UNIT, stated once because every caller inherits it. A working day here is an ORDINAL POSITION in the plan's
+// own calendar -- the n-th day the roadmap is worked on -- not a physical duration, so it deliberately does NOT join
+// `std.measure` as a Time scale: a Time scale would claim a relation to hours and calendar seconds that this number
+// does not have, and the scheduler's own rule (`gunbc.roadmap.roadmap_schedule_calendar`) is what turns day N into a
+// date. Its prior carrier is the existing working-day family on `WorkPiece.days`
+// (gunbc.roadmap.roadmap_decomposition), which is why every day-typed field in this file and its two callers carries
+// `feature:working-day-prior-carrier` / `dissolve-on:` naming that family: the counts are tracked flat scalars that
+// dissolve into a real carrier when that family grows one, and they are never hours. `days: 0` means a row that
+// occupies no working day; it is never a missing value -- a node with no estimate is Unsized and listed, not zeroed.
+//
 // WHAT THE CORE DOES, in this exact order, so no structural fact is ever computed over rows the read refused to
 // place:
 //   1. filter `held_out` keys out of the rows -- a held-out row appears NOWHERE after this: no lane, no gate, no
@@ -34,6 +44,7 @@ import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_p
 // leaf-occurrence path key, or a roadmap node id) -- the core never interprets it, so one policy serves both grains.
 type PlacementRow {
   key: String
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   days: Int
 }
 
@@ -47,7 +58,9 @@ type PlacementEdge {
 // WHERE A ROW SITS in the answer: half-open [start_day, finish_day) on lane `lane`, days counted from the read.
 type Placement {
   key: String
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   start_day: Int
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   finish_day: Int
   lane: Int
 }

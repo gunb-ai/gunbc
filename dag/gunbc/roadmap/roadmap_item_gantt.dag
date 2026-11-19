@@ -63,6 +63,7 @@ import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry }
 type GanttRow {
   node: RoadmapNodeId
   source: EstimateSource
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   work_days: Optional<Int>
   state: GanttRowState
 }
@@ -79,7 +80,9 @@ type GanttRow {
 //                            refusal is carried, unaltered, because it is the authority on why.
 //   RowUnplaced / RowNoFindingsCount -- named rather than defaulted; see each site.
 type GanttRowState
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   = RowPlaced { start_day: Int, finish_day: Int, lane: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   | RowRollup { start_day: Int, finish_day: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
   | RowUnsized { why: UnsizedWhy }
   | RowBlocked { behind: List<RoadmapNodeId> }
@@ -138,6 +141,7 @@ type PricedNode {
 
 type NodeDays {
   node: RoadmapNodeId
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   days: Optional<Int>
 }
 
@@ -268,6 +272,7 @@ fn owns_work(p: PricedNode) -> Bool {
 // the item's elapsed. When the leaf read refuses, its typed refusal is carried away unaltered -- this module never
 // re-explains another module's refusal, and never invents a duration to cover for it.
 type LeafGrainRead
+  // feature:working-day-prior-carrier  dissolve-on: roadmap_decomposition's WorkPiece.days family grows a real working-day carrier -- a working day is an ORDINAL POSITION in the plan's own calendar, not a physical duration, so it deliberately does NOT join std.measure as a Time scale. Working days, never hours.
   = LeafMakespan { days: Int }
   | LeafReadRefused { cause: ScheduleRefusal }
   | LeafNoFindingsCount { count: Int }
