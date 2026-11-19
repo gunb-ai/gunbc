@@ -39,7 +39,7 @@ import gunbc.auth.approval_keyring_pins {
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
-import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetLegKind,SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -182,10 +182,11 @@ fn keyring_elevated_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
   command: List<String>,
+  kind: FleetLegKind,
   step: String,
 ) -> ProcessExit
 {
-  match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: keyring_elevated_argv(command: command)) {
+  match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: keyring_elevated_argv(command: command)) {
     TypedArgvExecRefused { reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", why))))
     TypedArgvExecConverged { result: r } =>
@@ -202,11 +203,11 @@ fn keyring_ensure_dirs(
   context: FleetSshExecutionContext,
 ) -> ProcessExit
 {
-  match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
+  match keyring_elevated_exec(target: target, context: context, kind: ActuationLeg, command: keyring_mkdir_argv(), step: "mkdir") {
     ExitSuccess =>
-      match keyring_elevated_exec(target: target, context: context, command: store_root_mkdir_argv(), step: "store-root-mkdir") {
+      match keyring_elevated_exec(target: target, context: context, kind: ActuationLeg, command: store_root_mkdir_argv(), step: "store-root-mkdir") {
         ExitSuccess =>
-          keyring_elevated_exec(target: target, context: context, command: claim_store_root_mkdir_argv(), step: "claim-store-root-mkdir")
+          keyring_elevated_exec(target: target, context: context, kind: ActuationLeg, command: claim_store_root_mkdir_argv(), step: "claim-store-root-mkdir")
         other => other
       }
     other => other
@@ -232,7 +233,7 @@ fn keyring_install_file(
     TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" ", concat(st, concat(": ", why))))))
     TypedRemoteFileConverged { converged: _ } =>
-      keyring_elevated_exec(target: target, context: context, command: keyring_chown_argv(path: dest), step: concat(step, "-chown"))
+      keyring_elevated_exec(target: target, context: context, kind: ActuationLeg, command: keyring_chown_argv(path: dest), step: concat(step, "-chown"))
   }
 }
 
@@ -277,7 +278,7 @@ fn approval_keyring_converge_on_host(host: String) -> ProcessExit
                                 SshTargetRefused { endpoint: e, refusal: why } =>
                                   exit_failure(reason: concat("approval keyring: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
                                 SshTargetResolved { target: target } =>
-                                match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
+                                match keyring_elevated_exec(target: target, context: context, kind: ProbeLeg, command: ["true"], step: "administrator-privilege") {
                                   ExitSuccess =>
                                     match keyring_ensure_dirs(target: target, context: context) {
                                       ExitSuccess =>
@@ -287,7 +288,7 @@ fn approval_keyring_converge_on_host(host: String) -> ProcessExit
                                               ExitSuccess =>
                                                 match keyring_install_file(target: target, context: context, dest: approval_store_receipt_mac_key_path, content: rcpt_content, step: "store-receipt-key") {
                                                   ExitSuccess =>
-                                                    match keyring_elevated_exec(target: target, context: context, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
+                                                    match keyring_elevated_exec(target: target, context: context, kind: ActuationLeg, command: roadmap_unit_restart_argv(), step: "roadmap-unit-restart") {
                                                       ExitSuccess => ExitSuccess
                                                       other => other
                                                     }
