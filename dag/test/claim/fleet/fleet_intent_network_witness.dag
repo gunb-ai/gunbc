@@ -83,6 +83,7 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv2_host_lan_endpoint,
   srv3_host_lan_endpoint,
   srv4_host_lan_endpoint,
+  srv14_host_lan_endpoint,
   ken_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,

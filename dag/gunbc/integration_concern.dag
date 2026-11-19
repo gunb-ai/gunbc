@@ -4538,6 +4538,7 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
       },
       account: "Read on main at the revision named above: three data rows of type gunbc.product.network_topology::NetworkEndpoint declare 192.168.1.237 (srv10), 192.168.1.238 (srv11) and one further address (srv12), and none of the three names appears in the endpoints roster of the same module. Counted on the roster itself: 16 rows carried, all addresses distinct; the three Spark rows sit outside that count.",
     },
+    tail: [],
   },
   disposition: Open,
 }
@@ -4582,6 +4583,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       },
       account: "Read on main at the revision named above: srv11_host_lan_endpoint stands with address 192.168.1.238, role gunbc.product.network_topology::HostOperatingSystem and subject EndpointHost { host: operator_host_srv11 }. The operator's sale report (2026-11-17) is relayed in the tailnet-anchor PR's own body rather than carried as a datum of this repo, so this sighting cites the two model declarations that answer against it, not the report itself -- that is the weaker form and is stated here rather than hidden.",
     },
+    tail: [],
   },
   disposition: Open,
 }
