@@ -5376,6 +5376,45 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
     ),
+    // The barrier fix for the roadmap-Gantt chain (gunb-ai/gunbc#16650). Declared 2026-11-19 after
+    // merry-moth-343's planning review found, on main at 82aff98d, that leaf expansion's stage barrier dies across a
+    // stage that emits no occurrence. DISPATCHED: this is the work this PR carries.
+    roadmap_node(
+      identity: "rn_97HADSFM1HMFG14365YY78ZE0G",
+      id: "roadmap-schedule-barrier-through-empty-stages",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A stage barrier carries through a stage that emits no occurrence",
+        boundary: "expand_decomposition's stage barrier links each stage to the NEAREST EARLIER stage that actually emits an occurrence, skipping a stage whose only pieces are Decision / Join / Composite (which by design emit none). A waits_on row that names an empty stage on either endpoint resolves to that stage's nearest non-empty predecessor, and is refused BY NAME through the existing typed DependencyClaimRefused -- never dropped silently -- when no such predecessor exists. The fix lives inside the ONE expander: expand_decomposition, stage_barrier_edges and waits_on_edges; it adds no second expander (@ref(gunbc.design_argument::single_authority)). The expansion also gains a visible report of every top-level Composite it did NOT expand (the top-level piece's LeafPath and its nested day total read from the ONE count helper piece_leaf_days), so a schedule over an item with Composites SAYS it omits that work instead of undercounting quietly (@ref(gunbc.design_argument::fail_closed)).",
+        displaced_cost: "A stage that emits no occurrence today ERASES the barrier across it: factory-attempt-execution-on-fabric-lease has 8 audit leaves at stage 0, a Decision alone at stage 1 and 8 cut leaves at stage 2, and emits ZERO audit-to-cut edges, so the scheduler lets cut start before audit. A waits_on aimed at an empty endpoint is silently dropped today; 16 rows already name an empty endpoint.",
+        first_slice: "Expand the REAL factory-attempt-execution-on-fabric-lease and show every stage-2 cut occurrence now waits on the stage-0 audit occurrences it must, where before the fix it emitted none.",
+        red_control: "On the REAL fixture, factory-attempt-execution-on-fabric-lease emits an edge from every stage-0 audit occurrence to every stage-2 cut occurrence (8x8 = 64); reverting the barrier change makes that edge count ZERO. An added all-stages-empty item expands to zero occurrences and zero edges WITHOUT refusing, and an added waits_on naming an empty endpoint resolves to that endpoint's nearest non-empty predecessor -- and refuses by name when there is none.",
+        out_of_scope: "No scheduler policy change; no cross-item ordering (list-scheduling stays per-item by design). A Composite's NESTED worker pieces are NOT expanded here: the expansion now REPORTS them (their top-level path and nested day total) so the omission is visible, but that work is still not scheduled -- addressing it is the LeafPath model change on roadmap-schedule-composite-nested-addressing, which this row defers. No new occurrence kind or path format.",
+        handback: "The edge-count for the real fixture before and after the revert, the all-empty and empty-endpoint waits_on outputs, the refusal output, and the diff.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The whole schedule chain reads the expansion's edges; a barrier that silently vanishes across an empty stage makes the critical path, the bottleneck and the offer all wrong for any item with a Decision-only or Composite-only stage."),
+    ),
+    // DECLARED, NOT DISPATCHED: the LeafPath model change that would let expansion reach a Composite's nested
+    // stages. It must land as a model change to LeafPath BEFORE any nested expansion, so it is held (dispatch
+    // defaults to NotDispatchable) until the path change is itself scheduled.
+    roadmap_node(
+      identity: "rn_8BQKTF2C0H9M4RVDJZ5N7AE3Y1",
+      id: "roadmap-schedule-composite-nested-addressing",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_model.dag"),
+      line: ticket(t: fields(
+        headline: "A LeafPath that reaches into a Composite's nested stages",
+        boundary: "A MODEL CHANGE to LeafPath, not an expansion change. Today LeafPath { item, stage, piece, member } reaches exactly one top-level piece, and the carrier says a Composite is a container addressed deeper than the path reaches -- decomposition_has_leaf_path REFUSES a path into a Composite -- so a Composite's nested worker pieces carry days but are never occurrences. This row widens the path to address nested Composite stages and pieces, keyed with no invented side-format, so the ONE expander can then emit those nested occurrences; whatever path a claim names must be the SAME path the expansion mints (@ref(gunbc.design_argument::single_authority)). It waits on roadmap-schedule-barrier-through-empty-stages, which makes the omission visible first.",
+        displaced_cost: "15 items contain Composites that hide 47 nested worker occurrences and 5 findings families; a schedule over them undercounts the work and the offer never names it. Until the path reaches them, no expansion change can schedule that work honestly -- which is exactly why the barrier row only REPORTS them today.",
+        first_slice: "Extend LeafPath with the nested coordinates and prove decomposition_has_leaf_path and piece_member_days answer CONSISTENTLY for one nested leaf, with every existing top-level path unchanged.",
+        red_control: "A nested leaf a Composite declares is addressed by exactly ONE path that BOTH the claim guard and the expansion agree on; an out-of-range nested index refuses by name; every existing top-level LeafPath and every existing witness is unchanged; and every Claimed already recorded in an event log decodes to the SAME LeafPath (or Pathless) as before -- recorded history is bytes, and widening the path must not reinterpret it.",
+        out_of_scope: "No scheduler policy change; no change to barrier semantics (that is roadmap-schedule-barrier-through-empty-stages); NO Composite nested expansion until this path exists.",
+        handback: "The widened LeafPath, the claim/expansion agreement receipts, the refusal output, and the diff.",
+      )),
+      parent: in_project(project: "factory", contribution: "Nested composite work is invisible to the schedule until the path can name it; this row carries the model change that makes that work schedulable without inventing a second path format."),
+    ),
     roadmap_node(
       identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
       id: "roadmap-spawn-frontier-leaf-grain",
@@ -5518,6 +5557,14 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),
+    // The barrier fix sits BETWEEN leaf-expansion (what it extends) and bottlenecks-and-offer (which reads the
+    // edges the barrier produces): the barrier waits on leaf-expansion, and bottlenecks-and-offer -- already
+    // waiting on from-now -- additionally waits on the barrier, so a wrong barrier cannot reach the offer. The
+    // deferred LeafPath model change waits on the barrier, which is what makes the omitted composite work visible
+    // first (gunb-ai/gunbc#16650).
+    edge(child: "roadmap-schedule-barrier-through-empty-stages", parent: "roadmap-schedule-leaf-expansion"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    edge(child: "roadmap-schedule-composite-nested-addressing", parent: "roadmap-schedule-barrier-through-empty-stages"),
     edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),
