@@ -551,6 +551,13 @@ data h11ssl_unit3_srv9_endpoint_retirement_revision: CommitSha = "7dc10cb275c804
 // made against. The digests are the committed files under
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
+// The revision the two Spark-endpoint rows below were read against: main, after gunbc.fleet.fleet_intent_network's
+// srv9 retirement (#16712) landed and before the srv14/srv11 address move in PR #16655.
+data spark_endpoint_rows_sighting_revision: CommitSha = "7c7526f116276f67b9a183d33b1a3f4f09901364"
+// The revision at which the three stale declarations were deleted and this row was integrated. It is a branch
+// revision, not a main revision: main's merge revision supersedes it when the change lands, and the account says so
+// rather than quoting a main sha that does not exist yet.
+data spark_endpoint_rows_integrated_revision: CommitSha = "09217e45fa2ad941d1a19bda8bfd40bc6c91b690"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
@@ -802,6 +809,13 @@ data session_expiry_refused_as_free_text_beside_typed_stale_evidence_authorities
 }
 
 // srv13_and_srv15_name_one_board: the two authorities the SuspectedFork row cites.
+data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_group_b_sale_2026_10_10"),
+  second: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+  rest: [
+    decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv14_host_lan_endpoint"),
+  ],
+}
 data srv13_and_srv15_name_one_board_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13"),
   second: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
@@ -819,4 +833,12 @@ data srv14_slot_admission_answered_by_envelope_and_verdict_authorities: Distinct
   first: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
   second: decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
   rest: [decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge")],
+}
+data three_spark_lan_endpoint_rows_answer_their_addresses_twice_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_group_b_sale_2026_10_10"),
+  second: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "host_lan_address"),
+  rest: [
+    decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "endpoints"),
+    decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
+  ],
 }

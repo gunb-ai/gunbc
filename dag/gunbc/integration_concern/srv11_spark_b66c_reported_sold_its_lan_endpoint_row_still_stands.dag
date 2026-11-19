@@ -1,0 +1,83 @@
+module gunbc.integration_concern.srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, CitesHistorical, ConcernSighting, HistoricalDeclaration, Integrated, IntegrationConcern, IntegrationEvidence, RetainedExecutionResult, SuspectedFork, spark_endpoint_rows_integrated_revision, spark_endpoint_rows_sighting_revision, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands_authorities }
+import std.types { CommitSha }
+
+// A SOLD UNIT STILL HOLDS AN ADDRESS. The operator reported on 2026-11-17 that srv11 (spark-b66c) is sold, and the
+// tailnet-anchor work in PR #16655 moves 192.168.1.238 to srv14/butch as a dated lease observation retired from
+// that same cage. The model still answers the other way: srv11_host_lan_endpoint stands as a live host endpoint at
+// that address, and gunbc.fleet.fleet_host_identity::operator_host_srv11 keeps the unit in the fleet. Two hosts at
+// one address is the shape that routes an effect to the wrong machine, and the retirement belongs to a run, not to
+// a hand edit -- this row does not perform either.
+data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: IntegrationConcern = IntegrationConcern {
+  identity: "srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands",
+  kind: SuspectedFork {
+    authorities: srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv14_host_lan_endpoint"),
+    ],
+  },
+  question: "CLOSED for the model half: srv11_host_lan_endpoint is deleted, on the operator's Group B sale ruling of 2026-10-10 (gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10), so the ledger no longer answers that a sold cage holds 192.168.1.238. What stays with another change, and is NOT claimed closed here: 192.168.1.238 becomes srv14/butch's dated lease observation in the tailnet-anchor work (PR #16655), and srv11's HostIdentity row stays in gunbc.fleet.fleet_host_identity on purpose -- a sold unit may remain in the register as history, which is the difference between an identity and an endpoint. The retirement was done by deleting the declaration, not by leaving it outside the roster: three of those rows sitting unrostered is exactly how two holders on one address stayed invisible to every executed check (see three_spark_lan_endpoint_rows_answer_their_addresses_twice).",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: spark_endpoint_rows_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesHistorical {
+          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+          },
+        ],
+      },
+      account: "Read on main at the revision named above: srv11_host_lan_endpoint stood with address 192.168.1.238, role gunbc.product.network_topology::HostOperatingSystem and subject EndpointHost { host: operator_host_srv11 }. The sale itself is carried in the model as an OperatorAllocation dated 2026-10-10 and a DgxSparkDisposedUnit row, not as a dated report of this change, so this sighting cites the model declarations that answered against it rather than a receipt it does not hold.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: spark_endpoint_rows_integrated_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units"),
+          },
+          tail: [],
+        },
+        account: "spark-b66c is carried at former slot srv11 with disposition DgxSparkAssetSold { decision: dgx_spark_group_b_sale_2026_10_10 }. The endpoint declaration is deleted in the revision named above; the executed guard that keeps it from returning as a roster row is fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row.",
+      },
+    ],
+  },
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "09217e45fa2ad941d1a19bda8bfd40bc6c91b690" as CommitSha,
+      superseded: [
+        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+      ],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
+        tail: [
+          decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_group_b_sale_2026_10_10"),
+        ],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
+          run: "same claim_batch invocation, binary and clean head as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (11 witness(es), 11 pass, 0 fail; RED 9/11 under the planted srv12 row described there), and this guard is named in that run's PASS list",
+          conclusion: "No rostered endpoint names srv11 (or srv9, srv10, srv12) as its subject; srv11's host-identity row still resolves, so the sold unit remains in the register while being unreachable in the modeled topology.",
+        },
+        tail: [],
+      },
+    },
+  },
+}
