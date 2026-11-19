@@ -1,10 +1,13 @@
 module test.claim.github_app_registry
 
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+import std.algebra { fold_list }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.auth.github_credential {
   unsatisfied_capabilities,
   GitHubCredentialAuthority, ActionsJobCredential,
   InstallationResolved, InstallationUnresolved,
+  credential_authorizes, resolved_target_credential,
 }
 import gunbc.auth.github_apps {
   GitHubAppControlPlaneState, app_control_plane_state,
@@ -13,20 +16,29 @@ import gunbc.auth.github_apps {
   InstallationReadbackUnavailable, InstallationReadbackNotAttempted,
   AcceptInstallationPermissions, InstallationHoldsPermissions,
   AppHasRegisteredSigningKey, GenerateAppSigningKey, ObservationProducerBound,
+  app_key_settings_locator, app_settings_permissions_locator,
+  control_plane_next_action, key_fingerprint_matches, next_action_owner,
+  operator_packet_or_producer_binding, signer_seals_app,
 }
 import extdeps.github.actions { WorkflowPermissions, PermWrite }
 import extdeps.github.actions_token {
   EffectiveActionsJobGrant, PullRequestEvent, SameRepositoryOrigin,
   ActionsRepositoryPolicyUnobserved,
+  actions_token_may_declare_permission, actions_token_may_write_workflow_files,
 }
 import extdeps.github.effect {
   contents_write, workflows_write,
   GenerateOrganizationJitConfig, RegisterOrganizationRunner,
+  github_effect_required_permissions, is_workflow_projection_path,
 }
 import extdeps.github.app {
   ContentsAxis, ActionsAxis, PullRequestsAxis, SecurityEventsAxis, ModelsAxis, MetadataAxis, RepositoryProjectsAxis,
   AdministrationAxis, OrganizationSelfHostedRunnersAxis, WorkflowsAxis,
   AppAccessWrite, AppAccessRead, SelectedPermissions, PermissionNarrowingOmitted,
+  as_observed_permission, permission_axis_from_wire, permission_axis_wire_name,
+  permission_access_at_least, permission_access_in,
+  permission_narrowing_is_within, permission_narrowing_verdict,
+  sha256_base64_key_fingerprint,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.repository { gunbc_repository }
