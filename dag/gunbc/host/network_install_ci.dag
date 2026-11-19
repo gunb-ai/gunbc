@@ -36,13 +36,18 @@
 // standing through derive_bmc_secure for the ADMITTED path; production reads the committed one, and today
 // there is none.
 //
-// THE BMC CREDENTIAL NEVER APPEARS ON ARGV AND NEVER APPEARS IN THE LOG. The entry reads only a PATH from the
-// environment, requires it to be a readable 0600 file (gunbc.auth.private_secret_file), and hands the path to
-// the run, which opens it itself. The receipt names the path and never its bytes.
+// THE BMC CREDENTIAL NEVER APPEARS ON ARGV AND NEVER APPEARS IN THE LOG. Production: the entry fetches
+// the unit's managed accessor credential exactly once, through THE one authority — the unit's arrival
+// federation pair row, the one pin gate, the one token-source selector (the job's own workload identity),
+// the one Secret Manager read, and the one 0600 bracket — the same composition the arrival run performs
+// (gunbc.machine_intake.arrival_run). The GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE environment is only an
+// operator/test override naming an existing readable 0600 path (gunbc.auth.private_secret_file); the entry
+// never opens the file, never logs its bytes, and the receipt names the path at most. There is no second
+// fetch path, and every stage of the first one refuses typed and located rather than answer yes.
 module gunbc.host.network_install_ci
 
 import std.logic { Bool }
-import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, PathSegment, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, trim }
 import std.list { first_where }
@@ -72,6 +77,10 @@ import gunbc.machine_intake.bmc_write_controller {
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.machine_intake.arrival_converge { intake_attempt_of_run }
+import gunbc.auth.arrival_federation_pair { arrival_accessor_ref, arrival_federation_pair_for_host }
+import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
+import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialReady }
+import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileCompleted }
 import gunbc.host.host_capability_row { HostCapabilityRowNoCurrentRelease, HostCapabilityRowResolved, HostCapabilityRowUnobserved, host_capability_row }
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityAmbiguous, MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityLookup,
@@ -309,22 +318,118 @@ fn network_install_ci_conflation_refusal(host: HostIdentity, install_unit: HostI
 fn network_install_ci_dispatch(host: HostIdentity, install_unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
   match network_install_ci_identity_route(host: host, install_unit: install_unit) {
     NetworkInstallCiConflated { refusal: refusal } => exit_failure(reason: refusal)
-    NetworkInstallCiRouted { lookup: lookup, executor: executor } => {
-      let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
-      match network_install_ci_resolve(
-        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
-        password_file: network_install_ci_password_file(),
-        edge_context: edge_effects.context, edge_view: edge_effects.view,
-      ) {
-        NetworkInstallCiIncomplete { missing: missing } =>
-          network_install_ci_write(
-            body: network_install_ci_incomplete_receipt(host: lookup, executor: executor, dispatch_id: dispatch_id, missing: missing),
-            host: lookup,
-            succeeded: false
-          )
-        NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+    NetworkInstallCiRouted { lookup: lookup, executor: executor } =>
+      network_install_ci_credential_then_body(
+        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at
+      )
+  }
+}
+
+// THE BMC CREDENTIAL, produced ONCE per run, by ONE authority, before any lookup or disk write
+// the credential could disagree with. The GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE environment is
+// the operator/test override: when it names a path, that path is carried verbatim (its readability
+// is still verified where the plan resolves). When it is absent, the credential is fetched exactly
+// the way the arrival run fetches it (gunbc.machine_intake.arrival_run): the unit's arrival
+// federation pair row, THE one pin gate (arrival_accessor_ref — an absent or uncited pin refuses,
+// a version is never invented), the one token-source selector (the job's own workload identity; an
+// operator-pasted token is not the install job's identity and select_access_token_source is the
+// only chooser), the one Secret Manager read (fetch_secret_ref_credential), and the one 0600
+// bracket (with_private_secret_file — the credential never touches argv, and a bracket that cannot
+// verify its own removal refuses). Every stage refuses typed and located: no stage answers yes
+// when it cannot establish its effect, this module's ONE fetch call site is the one below, and the
+// five stage refusals are witness-pinned (test.claim.host.network_install_ci_witness).
+fn network_install_ci_credential_then_body(host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  match network_install_ci_password_file() {
+    Present { value: path } =>
+      network_install_ci_dispatch_body(
+        host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+        password_file: Present { value: path },
+      )
+    Absent =>
+      match arrival_federation_pair_for_host(host: host) {
+        Absent => exit_failure(reason: network_install_ci_credential_pair_refusal(unit: host))
+        Present { value: pair } =>
+          match arrival_accessor_ref(pair: pair) {
+            Absent => exit_failure(reason: network_install_ci_credential_pin_refusal(unit: host))
+            Present { value: accessor } =>
+              match select_access_token_source() {
+                AccessTokenSourceUnavailable { cause: cause } =>
+                  exit_failure(reason: network_install_ci_credential_token_refusal(unit: host, cause: cause))
+                AccessTokenSourceSelected { source: source } =>
+                  match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
+                    SecretCredentialReady { credential: credential, resolved_version: _ } =>
+                      match with_private_secret_file(
+                        file_name: "network-install-bmc-password" as PathSegment,
+                        content: credential,
+                        use: fn(password_file) {
+                          network_install_ci_dispatch_body(
+                            host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+                            password_file: Present { value: password_file as String },
+                          )
+                        },
+                      ) {
+                        PrivateSecretFileCompleted { value: outcome } => outcome
+                        _ => exit_failure(reason: network_install_ci_credential_bracket_refusal(unit: host))
+                      }
+                    _ => exit_failure(reason: network_install_ci_credential_fetch_refusal(unit: host))
+                  }
+              }
+          }
       }
-    }
+  }
+}
+
+fn network_install_ci_credential_pair_refusal(unit: HostIdentity) -> String {
+  concat(
+    "network-install: no arrival federation pair row exists for the install unit ",
+    concat(unit_text(unit: unit), "; the managed BMC credential has no named accessor locus (gunbc.auth.arrival_federation_pair), so nothing is fetched, no password file is written, and no install is dispatched."),
+  )
+}
+
+fn network_install_ci_credential_pin_refusal(unit: HostIdentity) -> String {
+  concat(
+    "network-install: the BMC accessor pin for ",
+    concat(unit_text(unit: unit), " is absent or not cited to authority (gunbc.auth.arrival_federation_pair.arrival_accessor_ref); the pinned accessor version is never invented, the credential is not fetched, and no install is dispatched."),
+  )
+}
+
+fn network_install_ci_credential_token_refusal(unit: HostIdentity, cause: NonEmptyStr) -> String {
+  concat(
+    "network-install: no access token source is available for ",
+    concat(
+      unit_text(unit: unit),
+      concat("'s managed BMC credential read (", concat(cause as String, "; the fetch refuses, the credential is not written, and no install is dispatched."))),
+  )
+}
+
+fn network_install_ci_credential_fetch_refusal(unit: HostIdentity) -> String {
+  concat(
+    "network-install: the managed BMC credential read for ",
+    concat(unit_text(unit: unit), " was refused or needs a secret access upsert (gunbc.auth.secret_ref_credential); the credential is not written and no install is dispatched."),
+  )
+}
+
+fn network_install_ci_credential_bracket_refusal(unit: HostIdentity) -> String {
+  concat(
+    "network-install: the BMC credential file bracket for ",
+    concat(unit_text(unit: unit), " did not open, or left residue after teardown (gunbc.auth.private_secret_file); the run refuses rather than trust a file it cannot verify it removed."),
+  )
+}
+
+fn network_install_ci_dispatch_body(host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>) -> ProcessExit {
+  let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
+  match network_install_ci_resolve(
+    host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+    password_file: password_file,
+    edge_context: edge_effects.context, edge_view: edge_effects.view,
+  ) {
+    NetworkInstallCiIncomplete { missing: missing } =>
+      network_install_ci_write(
+        body: network_install_ci_incomplete_receipt(host: host, executor: executor, dispatch_id: dispatch_id, missing: missing),
+        host: host,
+        succeeded: false
+      )
+    NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
   }
 }
 
@@ -487,7 +592,7 @@ fn network_install_ci_capability_missing(host: HostIdentity) -> List<NetworkInst
   network_install_ci_dropped(
     input: "firmware release capability row",
     source: "gunbc.host.host_capability_row host_capability_row, over the committed MegaRac operation evidence",
-    remedy: "the controller's current release must be catalogued and its access observation committed; an unobserved access cannot name a current release",
+    remedy: "the controller's current release must be catalogued and its access observation committed; an unobserved access cannot name a current release. What is missing here is the CURRENT-BUILD READING: the committed MegaRac operation evidence carries no build reading for this endpoint, and the observation that establishes one is the read-only 'hpm check' — its artifact committed by path and digest the way gunbc.machine_intake.megarac_operation_evidence mtcollins1_current_build_hpm_check_evidence commits Mt. Collins' (a boot's read-only pre-power phase took that one). The arrival run does NOT take an hpm check; a live read of this controller is its own dispatch, and no release may be typed in without it.",
     standing: network_install_ci_capability_row(host: host)
   )
 }
@@ -1142,13 +1247,20 @@ fn network_install_ci_trust_row() -> Optional<ControlledNetworkTrustObservation>
 // ONE name for the one variable: the accounting pass that refuses and the pass that reads must name the same
 // environment variable, or a refusal points the operator at a variable that is not the one the run consults.
 fn network_install_ci_password_file() -> Optional<String> {
-  match shell.Env.Get(name: network_install_password_file_env_name).value {
+  network_install_ci_password_override(raw: shell.Env.Get(name: network_install_password_file_env_name).value)
+}
+
+// The override core, PURE so a witness can drive it: a whitespace-only path is ABSENT (a blank
+// environment must not name a file and short-circuit the fetched credential), and a real path is
+// carried trimmed and verbatim.
+fn network_install_ci_password_override(raw: Optional<String>) -> Optional<String> {
+  match raw {
     Absent => Absent
-    Present { value: raw } =>
-      if trim(s: raw) == "" {
+    Present { value: value } =>
+      if trim(s: value) == "" {
         Absent
       } else {
-        Present { value: trim(s: raw) }
+        Present { value: trim(s: value) }
       }
   }
 }
