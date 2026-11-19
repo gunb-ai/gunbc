@@ -28,7 +28,7 @@ import gunbc.fleet.fleet_ssh_locus {
 }
 import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
-  verify_fleet_ssh_credential, fleet_ssh_credential_verification_refusal_reason,
+  verify_fleet_ssh_credential_admitted_any, fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.compute.work_provider_local { ComputeExec, ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.test_run {
@@ -40,7 +40,7 @@ import gunbc.compute.test_selection {
 import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteBuildRequest, RemoteBuildSourceRef,
   remote_build_source_ref, remote_build_source_ref_name, remote_build_request_words, remote_build_entry_admitted,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
@@ -102,7 +102,7 @@ fn remote_build_client_context(attempt_raw: String) -> FleetSshContextPreparatio
       match remote_build_client_identity_file() {
         Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
         Present { value: identity_file } =>
-          match verify_fleet_ssh_credential(identity_file: identity_file, expected_key: remote_build_ssh_key) {
+          match verify_fleet_ssh_credential_admitted_any(identity_file: identity_file, admitted_keys: remote_build_admitted_public_keys) {
             FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
               FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
             FleetSshCredentialDerivationRefused { cause } =>
