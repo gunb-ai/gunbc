@@ -1,0 +1,176 @@
+module test.claim.live_deploy.deployed_tree_leg_deadline_witness
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { string_contains }
+import std.measure { Second, second, second_count }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetLegKind,
+  ProbeLeg,
+  ActuationLeg,
+  RepositoryConvergenceLeg,
+  ProvisioningLeg,
+  fleet_leg_wall_deadline,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_revision_argv,
+  deployed_tree_leg_overran_cause,
+  deployed_tree_unobservable_text,
+  DeployedTreeUnobservableCause,
+  TreeLegDeadlineExceeded,
+  TreeCommandFailed,
+  TreeLegNotAttempted,
+}
+import gunbc.live_deploy.deployed_tree_report {
+  deployed_tree_standing_line,
+  deployed_tree_standing_is_publication_converged,
+  DeployedTreeStandingUnobserved,
+  DeployedTreeConverged,
+}
+
+// ============================================================================================
+// THE INCIDENT CLAIM (roadmap rn_883KZ50W4VJVKZYKKP7WAEWVPZ, review 96705 item 3).
+//
+// The incident: the deployed-tree instrument's OWN first leg -- `git rev-parse HEAD` inside the
+// deployed repository, which is a ProbeLeg -- is the leg that hung. This claim is about that leg
+// overrunning, and it asserts the two things the fix is required to guarantee: the overrun becomes
+// the typed cause TreeLegDeadlineExceeded (not a refusal, not a command failure, not an
+// interpreter error), AND the receipt is still written on that arm carrying the host, the exact
+// argv and the deadline it tripped on.
+//
+// Like gunbc.test.claim.spark.spark_remote_leg_deadline_witness, this is a classifier over
+// SUPPLIED outcomes: the claim is about the reading of an outcome, not about the transport, so it
+// needs no live ssh and cannot go red because a host is down. The live host-side half is the wet
+// CI claim `deployed_tree_report_ci_wet`, which runs the same legs for real.
+// ============================================================================================
+
+// THE CEILINGS, at the one authority, as VALUES. A ProbeLeg -- the kind the incident leg is -- gets
+// 15s. The four ceilings are distinct and none is zero: a zero would be the "0 means no deadline"
+// sentinel this design refuses.
+test fn the_four_ceiling_are_distinct_and_none_is_zero() -> Bool {
+  let probe = second_count(s: fleet_leg_wall_deadline(kind: ProbeLeg))
+  let actuation = second_count(s: fleet_leg_wall_deadline(kind: ActuationLeg))
+  let repository = second_count(s: fleet_leg_wall_deadline(kind: RepositoryConvergenceLeg))
+  let provisioning = second_count(s: fleet_leg_wall_deadline(kind: ProvisioningLeg))
+  (probe == 15 && actuation == 60 && repository == 300 && provisioning == 900)
+    && (probe != actuation && probe != repository && probe != provisioning
+        && actuation != repository && actuation != provisioning && repository != provisioning)
+    && probe != 0 && actuation != 0 && repository != 0 && provisioning != 0
+}
+
+// THE INCIDENT LEG'S OWN ARGV, named rather than paraphrased: `git -C <repo> rev-parse HEAD`.
+test fn the_incident_leg_is_git_rev_parse_head() -> Bool {
+  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  string_contains(s: join(argv, " "), pattern: "rev-parse")
+    && string_contains(s: join(argv, " "), pattern: "HEAD")
+    && string_contains(s: join(argv, " "), pattern: "git")
+}
+
+// THE OVERRUN IS ITS OWN ARM AND CARRIES THREE THINGS. Built by the ONE constructor, so the shape
+// (leg, host, argv, deadline) has one spelling.
+test fn an_overrun_carries_the_leg_the_host_the_argv_and_the_deadline() -> Bool {
+  let host = "srv1" as String
+  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  let deadline = fleet_leg_wall_deadline(kind: ProbeLeg)
+  let cause = deployed_tree_leg_overran_cause(
+    leg: "revision",
+    host: host,
+    argv: argv,
+    deadline: deadline,
+  )
+  match cause {
+    TreeLegDeadlineExceeded { leg: l, host: h, argv: a, deadline: d } =>
+      l == "revision" && h == host && join(a, " ") == join(argv, " ")
+        && second_count(s: d) == 15
+    _ => false
+  }
+}
+
+// THE RECEIPT TEXT NAMES ALL THREE ON THAT ARM. This is the half that makes the incident
+// debuggable from the artifact alone: a reader of the receipt sees WHICH host, WHICH argv and WHICH
+// ceiling, without re-running anything.
+test fn the_receipt_line_names_host_argv_and_deadline() -> Bool {
+  let host = "srv1" as String
+  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  let cause = deployed_tree_leg_overran_cause(
+    leg: "revision",
+    host: host,
+    argv: argv,
+    deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+  )
+  let text = deployed_tree_unobservable_text(cause: cause)
+  string_contains(s: text, pattern: host)
+    && string_contains(s: text, pattern: "rev-parse")
+    && string_contains(s: text, pattern: "15")
+}
+
+// THE RECEIPT LINE IS STILL WRITTEN, and still exits nonzero. "Could not look" is not "nothing is
+// wrong": a run whose leg was killed still produces its line, and that line is not a green.
+test fn the_deadline_arm_still_writes_its_receipt_line_and_is_not_converged() -> Bool {
+  let cause = deployed_tree_leg_overran_cause(
+    leg: "revision",
+    host: "srv1" as String,
+    argv: deployed_tree_revision_argv(repo: "repo" as NonEmptyStr),
+    deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+  )
+  let line = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: cause })
+  string_contains(s: line, pattern: "UNOBSERVED")
+    && string_contains(s: line, pattern: "rev-parse")
+    && string_contains(s: line, pattern: "15")
+    && !deployed_tree_standing_is_publication_converged(
+      standing: DeployedTreeStandingUnobserved { cause: cause }
+    )
+}
+
+// RED CONTROL 1 -- the overrun is NOT the command-failure arm. If the deadline arm were collapsed
+// into TreeCommandFailed (the mistake the exit-124 sentinel made), the receipt would report an exit
+// code the host never returned and would name no deadline. Discriminating on the rendered text: the
+// failure arm says "ran and failed (exit", the overrun arm says "overran its".
+test fn an_overrun_is_not_renders_as_a_command_failure() -> Bool {
+  let overrun = deployed_tree_unobservable_text(
+    cause: deployed_tree_leg_overran_cause(
+      leg: "revision",
+      host: "srv1" as String,
+      argv: ["git", "rev-parse", "HEAD"],
+      deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+    )
+  )
+  let failure = deployed_tree_unobservable_text(
+    cause: TreeCommandFailed { leg: "revision", exit_code: 124, stderr: "gone" }
+  )
+  string_contains(s: overrun, pattern: "overran its")
+    && !string_contains(s: overrun, pattern: "ran and failed")
+    && string_contains(s: failure, pattern: "ran and failed")
+    && !string_contains(s: failure, pattern: "overran its")
+}
+
+// RED CONTROL 2 -- the overrun is NOT a "never attempted" refusal either. Both are non-success, so
+// mapping an overrun onto the refusal arm would still exit nonzero and look like a pass; the text is
+// what distinguishes them, and an attempted-then-killed leg must not read as an unasked question.
+test fn an_overrun_is_not_a_never_attempted_refusal() -> Bool {
+  let overrun = deployed_tree_unobservable_text(
+    cause: deployed_tree_leg_overran_cause(
+      leg: "revision",
+      host: "srv1" as String,
+      argv: ["git", "rev-parse", "HEAD"],
+      deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+    )
+  )
+  let refused = deployed_tree_unobservable_text(
+    cause: TreeLegNotAttempted { leg: "revision", reason: "no context" }
+  )
+  !string_contains(s: overrun, pattern: "never attempted")
+    && string_contains(s: refused, pattern: "never attempted")
+    && !string_contains(s: refused, pattern: "overran its")
+}
+
+// RED CONTROL 3 -- the deadline is a VALUE, never the 0-means-none sentinel. A cause built with a
+// zero deadline renders "0s", which is exactly the lie this design refuses: a leg that had no
+// ceiling cannot be reported as one that tripped at zero. The constructor does not stop that, so
+// what stops a live caller doing it is that the ONLY deadline a leg can carry comes from
+// fleet_leg_wall_deadline, whose four arms are all nonzero -- which is the previous claim.
+test fn a_ceiling_is_never_zero_for_any_declared_kind() -> Bool {
+  second_count(s: fleet_leg_wall_deadline(kind: ProbeLeg)) != 0
+    && second_count(s: fleet_leg_wall_deadline(kind: ActuationLeg)) != 0
+    && second_count(s: fleet_leg_wall_deadline(kind: RepositoryConvergenceLeg)) != 0
+    && second_count(s: fleet_leg_wall_deadline(kind: ProvisioningLeg)) != 0
+}
