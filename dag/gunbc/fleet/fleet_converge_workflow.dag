@@ -1380,22 +1380,21 @@ fn step_declared_timeout_minutes(st: Step) -> Int {
   }
 }
 
-fn declared_timeout_of_outcome(st: Outcome<Step>) -> Outcome<Int> {
-  match st {
-    Accepted { value: s } => Accepted { value: step_declared_timeout_minutes(st: s) }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
+// The build job's backstop is the prelude allowance plus each step's declared timeout. The fold body is
+// kept verbatim from the String-era backstop inside a -> Int function so its minutes coercion is unchanged
+// (the committed build job's timeout renders byte-identical); the Outcome wrapper only adds fail-closed
+// propagation: a refused step short-circuits the whole backstop to a typed refusal rather than letting a
+// plausible timeout be derived from a refusal (gunbc.design_argument::fail_closed). Its committed steps
+// all accept, so the committed timeout is unchanged.
+fn fleet_converge_build_job_backstop_value(steps: List<Step>) -> Int {
+  fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st))
 }
 
-// A refused step contributes its typed refusal, never a fabricated timeout: the backstop total is
-// summed only over accepted steps, so it can never be a plausible number derived from a refusal, and
-// a refusal makes the whole backstop a refusal (gunbc.design_argument::fail_closed). The committed
-// build job's steps all accept, so its committed timeout is unchanged.
 fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Outcome<Int> {
   bind_outcome(
-    o: sequence_outcome(xs: map(fleet_converge_build_job_steps(), s => declared_timeout_of_outcome(st: s)), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
-    f: fn(timeouts) {
-      outcome_accepted(value: fold(timeouts, init: gunbc_ci_prelude_allowance_minutes, f: (acc, m) => acc + m))
+    o: sequence_outcome(xs: fleet_converge_build_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: fleet_converge_build_job_backstop_value(steps: steps))
     },
   )
 }
@@ -9447,11 +9446,20 @@ fn fleet_converge_printer_job_steps() -> List<Outcome<Step>> {
   ]
 }
 
-fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
-  fold(
-    fleet_converge_printer_job_steps(),
-    init: gunbc_ci_prelude_allowance_minutes,
-    f: (acc, st) => acc + declared_timeout_of_outcome(st: st),
+// The printer job's backstop mirrors the build job's: main's fold kept verbatim in a -> Duration function
+// (committed timeout renders byte-identical), wrapped in a fail-closed Outcome so a refused step
+// short-circuits the whole backstop to a typed refusal instead of a fabricated timeout
+// (gunbc.design_argument::fail_closed). Its committed steps all accept, so the committed timeout is unchanged.
+fn fleet_converge_printer_job_backstop_value(steps: List<Step>) -> Duration {
+  fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st))
+}
+
+fn fleet_converge_printer_job_backstop_timeout_minutes() -> Outcome<Duration> {
+  bind_outcome(
+    o: sequence_outcome(xs: fleet_converge_printer_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: fleet_converge_printer_job_backstop_value(steps: steps))
+    },
   )
 }
 
@@ -9464,7 +9472,10 @@ fn fleet_converge_printer_job() -> Outcome<Job> {
   bind_outcome(
       o: sequence_outcome(xs: fleet_converge_printer_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
       f: fn(zesty_steps) {
-        outcome_accepted(value: Job {
+        bind_outcome(
+          o: fleet_converge_printer_job_backstop_timeout_minutes(),
+          f: fn(backstop) {
+            outcome_accepted(value: Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
     environment: Present { value: printer_environment as String },
@@ -9472,7 +9483,7 @@ fn fleet_converge_printer_job() -> Outcome<Job> {
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: backstop },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
     permissions: Present { value: WorkflowPermissions {
@@ -9480,8 +9491,10 @@ fn fleet_converge_printer_job() -> Outcome<Job> {
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
     } },
   }
-      )
-    }
+            )
+          }
+        )
+      }
   )
 }
 
