@@ -823,7 +823,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "fabric-bringup", contribution: "Write down how Git really stores things."),
     ),
     roadmap_node(
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
@@ -840,7 +840,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "fabric-bringup", contribution: "Write down how Mercurial really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
@@ -857,7 +857,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "fabric-bringup", contribution: "Write down how Pijul really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
@@ -874,7 +874,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "fabric-bringup", contribution: "Say once what counts as evidence for a claim."),
     ),
     roadmap_node(
       identity: "rnfx_DQV1HD42VR40BA8WBP1Y",
@@ -5643,16 +5643,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
     edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
     edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
-    edge(child: "2-scm-git-upstream-model", parent: "fabric-bringup"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-0-identity-estimate-split"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-1-placement-backend-selection"),
     edge(child: "work-exec-3-automatic-sizing", parent: "work-exec-2-durable-route-first-consumer"),
     edge(child: "work-exec-4-local-work-cutover", parent: "work-exec-3-automatic-sizing"),
     edge(child: "work-exec-5-ci-verdict-from-receipt", parent: "work-exec-4-local-work-cutover"),
     edge(child: "work-exec-6-one-ledger-per-host", parent: "work-exec-5-ci-verdict-from-receipt"),
-    edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
     edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
     edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
     edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
