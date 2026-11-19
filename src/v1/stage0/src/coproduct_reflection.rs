@@ -31,9 +31,10 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::Cardinality;
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_cardinality, field_node_default_value,
-    field_node_type_expr, inferred_to_node, param_node_name_at, param_node_type_expr,
-    source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
+    authored_name_at, expr_literal_string_optional, expr_var_name_at, field_access_spine,
+    field_init_node_name_at, field_node_cardinality, field_node_default_value, field_node_type_expr, inferred_to_node,
+    param_node_name_at, param_node_type_expr, record_lit_expr_optional, source_text_at, Connective,
+    DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -970,6 +971,298 @@ pub fn eval_data_decl_type_facts(
     );
     Ok(crate::v1_interpreter::list_value(rows))
 }
+
+/// WHY one ExternalModelScope subject row is not a literal declaration read, as a CLOSED vocabulary
+/// (the v2 carrier `gunbc` mirrors this as `type SubjectNotLiteralWhy = ... | ...`; this is the host
+/// side of the same ten arms). Per-row refusal, never a whole-census error: a non-literal row is
+/// typed, located (by the row's declaring module_path/decl_name/rel_path) and countable, and NEVER
+/// guessed positionally. The whole census only errors when a source is unparseable
+/// (`decls_parse_only_fail_closed`).
+#[derive(Debug, Clone)]
+enum SubjectNotLiteralWhy {
+    SubjectMissing,
+    SubjectNamedReference,
+    SubjectNotRecordLiteral,
+    DeclarationMissing,
+    DeclarationNamedReference,
+    DeclarationNotRecordLiteral,
+    ModulePathNamedReference,
+    ModulePathNotStringLiteral,
+    DeclNameNamedReference,
+    DeclNameNotStringLiteral,
+}
+
+impl SubjectNotLiteralWhy {
+    /// The v2 `SubjectNotLiteralWhy` variant name this classifies to. Kept beside the enum so a new
+    /// arm cannot compile without naming its variant (a typo cannot silently marshal as a string).
+    fn variant_name(self) -> &'static str {
+        match self {
+            SubjectNotLiteralWhy::SubjectMissing => "SubjectMissing",
+            SubjectNotLiteralWhy::SubjectNamedReference => "SubjectNamedReference",
+            SubjectNotLiteralWhy::SubjectNotRecordLiteral => "SubjectNotRecordLiteral",
+            SubjectNotLiteralWhy::DeclarationMissing => "DeclarationMissing",
+            SubjectNotLiteralWhy::DeclarationNamedReference => "DeclarationNamedReference",
+            SubjectNotLiteralWhy::DeclarationNotRecordLiteral => "DeclarationNotRecordLiteral",
+            SubjectNotLiteralWhy::ModulePathNamedReference => "ModulePathNamedReference",
+            SubjectNotLiteralWhy::ModulePathNotStringLiteral => "ModulePathNotStringLiteral",
+            SubjectNotLiteralWhy::DeclNameNamedReference => "DeclNameNamedReference",
+            SubjectNotLiteralWhy::DeclNameNotStringLiteral => "DeclNameNotStringLiteral",
+        }
+    }
+}
+
+/// The read of one ExternalModelScope data declaration's `subject.declaration`.
+#[derive(Debug, Clone)]
+enum ExtdepsSubjectRead {
+    /// `subject.declaration.{module_path, decl_name}` read as literal strings from the authored
+    /// parse tree -- the typed read DP-M3b joins against.
+    Literal {
+        subject_module_path: String,
+        subject_decl_name: String,
+    },
+    /// The row refuses, naming which node on the `subject -> declaration -> {module_path, decl_name}`
+    /// path is missing / a named reference / the wrong connective.
+    NotLiteral(SubjectNotLiteralWhy),
+}
+
+/// One census row, keyed at the declaring data declaration's identity.
+#[derive(Debug, Clone)]
+struct ExtdepsSubjectRefRow {
+    module_path: String,
+    decl_name: String,
+    rel_path: String,
+    read: ExtdepsSubjectRead,
+}
+
+fn extdeps_is_external_model_scope(decl: &ParsedTypeDecl) -> bool {
+    let authored = data_decl_type_name(decl);
+    let head = authored.rsplit('.').next().unwrap_or("");
+    head == "ExternalModelScope"
+}
+
+/// THE ONE NAMED-FIELD READ ON THE PARSE TREE THAT CANNOT PANIC: `None` (a refusal, never a panic)
+/// when the node is not a record literal or carries no such field. This deliberately does NOT go
+/// through the typechecking marshal -- `marshal_data_initializer_projection` falls to
+/// `constructor_resolution_refused_projection` for extdeps scopes that are never loaded into the
+/// interpreter (`ctx.lookup_fn_node` is `None`), which is exactly why this hand-written read exists.
+fn extdeps_record_field(node: &Rc<Node>, field: &str, si: &SourceIndices) -> Option<Rc<Node>> {
+    if record_lit_expr_optional(node.clone()).is_none() {
+        return None;
+    }
+    node.children
+        .iter()
+        .find(|child| field_init_node_name_at((*child).clone(), si.clone()) == field)
+        .and_then(|child| child.children.first().cloned())
+}
+
+fn extdeps_shape_is_named_reference(node: &Rc<Node>, si: &SourceIndices) -> bool {
+    field_access_spine(node.clone(), si.clone()).is_some()
+}
+
+/// Read ONE ExternalModelScope data declaration's subject, per row, fail-closed-by-typing: the first
+/// node on the path that is missing, a named reference, or the wrong connective decides the
+/// `SubjectNotLiteralWhy` and the row stops there. It never reads fields by position and never skips
+/// a row silently.
+fn extdeps_subject_ref_row(decl: &ParsedTypeDecl) -> ExtdepsSubjectRefRow {
+    let si = decl.source_indices.clone();
+    let mk = |read| ExtdepsSubjectRefRow {
+        module_path: decl.module_path.clone(),
+        decl_name: decl.name.clone(),
+        rel_path: decl.rel_path.clone(),
+        read,
+    };
+    let body = match decl.item.body.as_ref() {
+        Some(b) => b.clone(),
+        None => return mk(ExtdepsSubjectRead::NotLiteral(SubjectNotLiteralWhy::SubjectMissing)),
+    };
+    if record_lit_expr_optional(body.clone()).is_none() {
+        return mk(ExtdepsSubjectRead::NotLiteral(
+            SubjectNotLiteralWhy::SubjectNotRecordLiteral,
+        ));
+    }
+    let subject = match extdeps_record_field(&body, "subject", &si) {
+        Some(s) => s,
+        None => return mk(ExtdepsSubjectRead::NotLiteral(SubjectNotLiteralWhy::SubjectMissing)),
+    };
+    if record_lit_expr_optional(subject.clone()).is_none() {
+        let why = if extdeps_shape_is_named_reference(&subject, &si) {
+            SubjectNotLiteralWhy::SubjectNamedReference
+        } else {
+            SubjectNotLiteralWhy::SubjectNotRecordLiteral
+        };
+        return mk(ExtdepsSubjectRead::NotLiteral(why));
+    }
+    let declaration = match extdeps_record_field(&subject, "declaration", &si) {
+        Some(d) => d,
+        None => {
+            return mk(ExtdepsSubjectRead::NotLiteral(
+                SubjectNotLiteralWhy::DeclarationMissing,
+            ))
+        }
+    };
+    if record_lit_expr_optional(declaration.clone()).is_none() {
+        let why = if extdeps_shape_is_named_reference(&declaration, &si) {
+            SubjectNotLiteralWhy::DeclarationNamedReference
+        } else {
+            SubjectNotLiteralWhy::DeclarationNotRecordLiteral
+        };
+        return mk(ExtdepsSubjectRead::NotLiteral(why));
+    }
+    let subject_module_path = match extdeps_record_field(&declaration, "module_path", &si) {
+        Some(n) => match expr_literal_string_optional(n.clone()) {
+            Some(s) => s,
+            None => {
+                let why = if extdeps_shape_is_named_reference(&n, &si) {
+                    SubjectNotLiteralWhy::ModulePathNamedReference
+                } else {
+                    SubjectNotLiteralWhy::ModulePathNotStringLiteral
+                };
+                return mk(ExtdepsSubjectRead::NotLiteral(why));
+            }
+        },
+        None => {
+            return mk(ExtdepsSubjectRead::NotLiteral(
+                SubjectNotLiteralWhy::ModulePathNotStringLiteral,
+            ))
+        }
+    };
+    let subject_decl_name = match extdeps_record_field(&declaration, "decl_name", &si) {
+        Some(n) => match expr_literal_string_optional(n.clone()) {
+            Some(s) => s,
+            None => {
+                let why = if extdeps_shape_is_named_reference(&n, &si) {
+                    SubjectNotLiteralWhy::DeclNameNamedReference
+                } else {
+                    SubjectNotLiteralWhy::DeclNameNotStringLiteral
+                };
+                return mk(ExtdepsSubjectRead::NotLiteral(why));
+            }
+        },
+        None => {
+            return mk(ExtdepsSubjectRead::NotLiteral(
+                SubjectNotLiteralWhy::DeclNameNotStringLiteral,
+            ))
+        }
+    };
+    mk(ExtdepsSubjectRead::Literal {
+        subject_module_path,
+        subject_decl_name,
+    })
+}
+
+/// The census population: the typed rows plus the module inventory this walk read, so a caller can
+/// join it against the files on disk and refuse, naming the source, for anything unaccounted (the
+/// same fail-closed contract `DataDeclTypePopulation` carries).
+#[derive(Debug, Clone)]
+struct ExtdepsSubjectRefPopulation {
+    rows: Vec<ExtdepsSubjectRefRow>,
+    accounted_modules: Vec<(String, String)>,
+}
+
+fn extdeps_subject_ref_rows(pool_roots: &[String]) -> Result<ExtdepsSubjectRefPopulation, String> {
+    let defects = pool_root_defects(pool_roots);
+    if !defects.is_empty() {
+        return Err(pool_root_refusal_message(
+            &defects,
+            pool_roots.len(),
+            "extdeps_subject_ref_facts",
+        ));
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, _module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::DataItem],
+        "extdeps_subject_ref_facts",
+    )?;
+    let mut accounted: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    for (module_path, rel_path) in crate::cli_run::build_module_path_index(&abs_pool_roots) {
+        accounted.insert((module_path, rel_path.replace('\\', "/")));
+    }
+    let mut rows: Vec<ExtdepsSubjectRefRow> = data_decls
+        .iter()
+        .filter(|decl| extdeps_is_external_model_scope(decl))
+        .map(extdeps_subject_ref_row)
+        .collect();
+    // Total order (module_path, decl_name), keyed at the declaring declaration's identity.
+    rows.sort_by(|a, b| {
+        (&a.module_path, &a.decl_name).cmp(&(&b.module_path, &b.decl_name))
+    });
+    Ok(ExtdepsSubjectRefPopulation {
+        rows,
+        accounted_modules: accounted.into_iter().collect(),
+    })
+}
+
+pub(crate) fn eval_extdeps_subject_ref_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let pool_root_defects_found = pool_root_defects(pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "extdeps_subject_ref_facts",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let population =
+        extdeps_subject_ref_rows(pool_roots).map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(population.rows.len());
+    for row in population.rows {
+        let fact = match row.read {
+            ExtdepsSubjectRead::Literal {
+                subject_module_path,
+                subject_decl_name,
+            } => Value::Variant {
+                type_name: ctx.sym("ExtdepsSubjectRefFact"),
+                variant_name: ctx.sym("SubjectLiteral"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("module_path"), str_value(&row.module_path)),
+                    (ctx.sym("decl_name"), str_value(&row.decl_name)),
+                    (ctx.sym("rel_path"), str_value(&row.rel_path)),
+                    (
+                        ctx.sym("subject_module_path"),
+                        str_value(&subject_module_path),
+                    ),
+                    (ctx.sym("subject_decl_name"), str_value(&subject_decl_name)),
+                ])),
+            },
+            ExtdepsSubjectRead::NotLiteral(why) => Value::Variant {
+                type_name: ctx.sym("ExtdepsSubjectRefFact"),
+                variant_name: ctx.sym("SubjectNotLiteral"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("module_path"), str_value(&row.module_path)),
+                    (ctx.sym("decl_name"), str_value(&row.decl_name)),
+                    (ctx.sym("rel_path"), str_value(&row.rel_path)),
+                    (
+                        ctx.sym("why"),
+                        Value::Variant {
+                            type_name: ctx.sym("SubjectNotLiteralWhy"),
+                            variant_name: ctx.sym(why.variant_name()),
+                            fields: Rc::new(Vec::new()),
+                        },
+                    ),
+                ])),
+            },
+        };
+        rows.push(fact);
+    }
+    eprintln!(
+        "extdeps_subject_ref_facts: {} ExternalModelScope subject rows from {} modules",
+        rows.len(),
+        population.accounted_modules.len()
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 
 /// Shared live-corpus item walk for reflection builtins (`*_decl_facts_live`).
 /// Resolves authored names through each module's `item_registry` and filters by kind.

@@ -25335,6 +25335,15 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.extdeps_subject_ref_facts" { "extdeps_subject_ref_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "extdeps_subject_ref_facts")?;
+                Ok(Some(crate::coproduct_reflection::eval_extdeps_subject_ref_facts(
+                    $ctx,
+                    &pool_roots,
+                )?))
+            },
+
             arm "free_call.export_signature_facts" { "export_signature_facts" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "export_signature_facts")?;
