@@ -9,6 +9,7 @@ module test.claim.roadmap.roadmap_item_gantt_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
+import std.algebra { list_push }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge, Pointer, NodeParent, MemberOf, AdmittedRoot, NotDispatchable }
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
@@ -18,12 +19,12 @@ import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_fo
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
-import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug }
+import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug, UnsizedWhy, NothingEstimated, ContainedChildUnsized }
 import gunbc.roadmap.roadmap_item_gantt {
   GanttInput, GanttAnswer, GanttRow, GanttRowState, GanttRefusal, gantt_answer, gantt_answer_live, gantt_rows,
   gantt_refusal, gantt_unpriced_count,
   GanttAnswered, GanttContradictionsPresent, GanttNoWorkers, RowBlocked, RowLeafGrainRefused, RowNoFindingsCount, RowPlaced, RowRollup, RowUnplaced, RowUnsized,
-  GanttRefused,
+  GanttRefused, BlockedCause, NotEstimated, RollupBelow, PiecesRefused, PiecesFindingsCount, PiecesZeroDays, BlockedBelow,
 }
 
 // ============================== THE FIXTURE ==============================
@@ -253,7 +254,122 @@ test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
   match row_of(a: a, slug: "fixture-leaf-a") {
     Absent => false
     Present { value: row } => match row.state {
-      RowBlocked { behind: b } => count(filter(b, x => x == nid(s: "fixture-leaf-c"))) == 1
+      // TYPED, per key: the cause is the derivation's own `UnsizedWhy`, so the page can turn this key into a sizing
+      // task naming the slug instead of parsing a sentence. fixture-leaf-c has nothing beneath it, so the reason is
+      // NothingEstimated -- not a prose "it looks unpriced".
+      RowBlocked { behind: b } => count(filter(b, c => match c {
+        NotEstimated { node: n, why: why } => n == nid(s: "fixture-leaf-c") && match why {
+          NothingEstimated => true
+          ContainedChildUnsized { child: _ } => false
+        }
+        NotEstimated { node: _, why: ContainedChildUnsized { child: _ } } => false
+        RollupBelow { node: _, work_days: _ } => false
+        PiecesRefused { node: _, cause: _ } => false
+        PiecesFindingsCount { node: _, count: _ } => false
+        PiecesZeroDays { node: _ } => false
+        BlockedBelow { node: _ } => false
+      })) == 1
+      RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+      RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+      RowUnsized { why: _ } => false
+      RowLeafGrainRefused { cause: _ } => false
+      RowUnplaced => false
+      RowNoFindingsCount { count: _ } => false
+    }
+  }
+}
+
+// A DEPENDENT OF AN EMPTY MILESTONE IS BLOCKED, AND THE CAUSE IS THE NO-PRICED-DESCENDANTS ONE. The milestone under
+// test has nothing beneath it at all, so its own source is Unsized { why: NothingEstimated } -- the exact variant the
+// planning page turns into "go price this", with the slug in it. Not NoPricedDescendants-as-prose, and not a silent
+// RowUnplaced that hides which key is missing.
+test fn an_empty_milestone_blocks_its_dependent_naming_the_no_priced_descendants_cause() -> Bool {
+  let nodes = list_push(xs: fixture_nodes(), item: fixture_node(slug: "fixture-empty-milestone", parent: fixture_under(project: "fixture-payoff")))
+  let a = read(nodes: nodes, edges: [edge(child: "fixture-leaf-a", parent: "fixture-empty-milestone")], entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
+  ])
+  match row_of(a: a, slug: "fixture-leaf-a") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowBlocked { behind: b } => count(filter(b, c => match c {
+        NotEstimated { node: n, why: why } => n == nid(s: "fixture-empty-milestone") && match why {
+          NothingEstimated => true
+          ContainedChildUnsized { child: _ } => false
+        }
+        NotEstimated { node: _, why: ContainedChildUnsized { child: _ } } => false
+        RollupBelow { node: _, work_days: _ } => false
+        PiecesRefused { node: _, cause: _ } => false
+        PiecesFindingsCount { node: _, count: _ } => false
+        PiecesZeroDays { node: _ } => false
+        BlockedBelow { node: _ } => false
+      })) == 1
+      RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+      RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+      RowUnsized { why: _ } => false
+      RowLeafGrainRefused { cause: _ } => false
+      RowUnplaced => false
+      RowNoFindingsCount { count: _ } => false
+    }
+  }
+}
+
+// A CONTAINER WHOSE CHILDREN ARE NOT ALL PRICED names WHICH CHILD is the reason, because that is the slug a reader has
+// to go and price. leaf-a is priced and waits on the project above; the project cannot be totalled because its
+// milestone is unsized, and the cause carries the milestone as the contained child -- three levels apart, still named.
+test fn an_unpriced_container_names_the_child_that_stops_it_being_totalled() -> Bool {
+  let a = read(nodes: fixture_nodes(), edges: [edge(child: "fixture-leaf-a", parent: "fixture-payoff")], entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
+  ])
+  match row_of(a: a, slug: "fixture-leaf-a") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowBlocked { behind: b } => count(filter(b, c => match c {
+        NotEstimated { node: n, why: why } => n == nid(s: "fixture-payoff") && match why {
+          NothingEstimated => false
+          ContainedChildUnsized { child: c2 } => c2 == nid(s: "fixture-milestone")
+        }
+        RollupBelow { node: _, work_days: _ } => false
+        PiecesRefused { node: _, cause: _ } => false
+        PiecesFindingsCount { node: _, count: _ } => false
+        PiecesZeroDays { node: _ } => false
+        BlockedBelow { node: _ } => false
+      })) == 1
+      RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+      RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+      RowUnsized { why: _ } => false
+      RowLeafGrainRefused { cause: _ } => false
+      RowUnplaced => false
+      RowNoFindingsCount { count: _ } => false
+    }
+  }
+}
+
+// THE GATE IS TRANSITIVE, AND THE SECOND ROW KNOWS IT. leaf-a waits on leaf-b, leaf-b waits on the unsized leaf-c.
+// leaf-b is PRICED -- it simply cannot be placed -- so leaf-a's cause is not "leaf-b is unpriced" (it isn't) but
+// BlockedBelow, naming the key whose own placement this read could not earn. A chain is followed, not flattened into a
+// gap.
+test fn a_dependent_of_a_blocked_row_is_blocked_naming_it_as_blocked_below() -> Bool {
+  let a = read(nodes: fixture_nodes(), edges: [
+    edge(child: "fixture-leaf-a", parent: "fixture-leaf-b"),
+    edge(child: "fixture-leaf-b", parent: "fixture-leaf-c"),
+  ], entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 12),
+  ])
+  match row_of(a: a, slug: "fixture-leaf-a") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowBlocked { behind: b } => count(filter(b, c => match c {
+        BlockedBelow { node: n } => n == nid(s: "fixture-leaf-b")
+        NotEstimated { node: _, why: why } => match why {
+          NothingEstimated => false
+          ContainedChildUnsized { child: _ } => false
+        }
+        RollupBelow { node: _, work_days: _ } => false
+        PiecesRefused { node: _, cause: _ } => false
+        PiecesFindingsCount { node: _, count: _ } => false
+        PiecesZeroDays { node: _ } => false
+      })) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
       RowUnsized { why: _ } => false
