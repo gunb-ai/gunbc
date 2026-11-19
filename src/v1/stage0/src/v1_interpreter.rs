@@ -29123,15 +29123,86 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let output = wait_child_honoring_wall_deadline(
+        let (output, overran) = wait_child_honoring_wall_deadline(
             child,
             &ctx,
             "true",
             super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
             super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+            None,
         )
         .expect("no-deadline wait must succeed");
         assert!(output.exit_status.success());
+        assert!(!overran, "a leg with no deadline can never report overran");
+    }
+
+    /// The incident leg, red control: a 30s `sleep` under a 2s PER-LEG deadline must come back
+    /// as an OVERRUN — a value (`overran = true`), promptly (on the 2s bound, not after 30s),
+    /// and NOT as a green exit. The group is killed (SIGKILL) so the exit status is not a
+    /// success. This is the per-leg bound, NOT the outer whole-receipt witness budget: it returns
+    /// `Ok`, never `Err`, and never a 124 sentinel.
+    #[test]
+    fn per_leg_deadline_trip_is_overran_within_bound() {
+        let ctx = wet_ctx();
+        let mut cmd = Command::new("sleep");
+        cmd.arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        let child = cmd.spawn().expect("spawn sleep 30");
+        let started = Instant::now();
+        let (output, overran) = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sleep",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+            Some(std::time::Duration::from_secs(2)),
+        )
+        .expect("a per-leg overrun returns Ok (a value), never an error");
+        let elapsed = started.elapsed();
+        assert!(
+            overran,
+            "a 30s leg under a 2s per-leg deadline must report overran"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(15),
+            "the overrun must return on the 2s bound, not after the full 30s: {elapsed:?}"
+        );
+        assert!(
+            !output.exit_status.success(),
+            "a killed group is not a green exit; an overrun is not a completion"
+        );
+    }
+
+    /// Green control: a fast `echo` under a GENEROUS per-leg deadline is a normal completion —
+    /// exit 0 and NOT an overrun. Without this the red test above would also pass against a sink
+    /// that always reports overran, proving nothing.
+    #[test]
+    fn green_leg_under_per_leg_deadline_exits_zero_not_overran() {
+        let ctx = wet_ctx();
+        let mut cmd = Command::new("echo");
+        cmd.arg("green")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        let child = cmd.spawn().expect("spawn echo");
+        let (output, overran) = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "echo",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+            Some(std::time::Duration::from_secs(30)),
+        )
+        .expect("a green leg under a generous deadline must succeed");
+        assert!(!overran, "a fast green leg must not report overran");
+        assert!(
+            output.exit_status.success(),
+            "the green leg must exit 0"
+        );
     }
 }
 
