@@ -249,6 +249,18 @@ test fn a_plan_that_withholds_every_teardown_it_lists_is_not_fully_applied() -> 
               owed.withheld_row_count == listed
                 && owed.withheld_row_count > 0
                 && fleet_converge_apply_terminal_wire(terminal: artifact.apply_terminal) != "fully_applied"
+                // AND THE SAME RENDER'S REPORT WITH THE REFUSALS TAKEN AWAY. The 44428803079 receipt failed
+                // because owed work counted on no axis at all, so the claim cannot lean on this fixture's
+                // refusals to keep the terminal honest: it must hold with zero refusals too, which is the
+                // one shape the mint's owed-work guard decides. Reverting that guard turns THIS red.
+                && (match fleet_converge_full_host_terminal(
+                  refused_axis_count: 0,
+                  owed: owed,
+                  detail: "slot=0 cap=0 timer=0 fabric-cell=0 activation=0",
+                ) {
+                  FullyApplied => false
+                  _ => true
+                })
           }
         })
     }
@@ -435,13 +447,28 @@ test fn zero_refusals_with_owed_work_is_not_fully_applied() -> Bool {
     withheld_line_total_count: 43,
     withheld_beyond_plan_rows_count: 39,
   }
-  let terminal = PartiallyApplied {
+  // MINTED, NOT CONSTRUCTED. Asking the type for a `PartiallyApplied` would prove only that the type has
+  // that constructor; the state this claim is about is produced by `fleet_converge_full_host_terminal`, and
+  // the red control (that branch's one-line guard revert) has to be able to turn THIS claim red.
+  let terminal = fleet_converge_full_host_terminal(
     refused_axis_count: 0,
-    owed: Present { value: owed },
+    owed: owed,
     detail: "slot=0 cap=0 timer=0 fabric-cell=0 activation=0",
-  }
+  )
   let wire = fleet_converge_apply_terminal_wire(terminal: terminal)
-  wire != "fully_applied"
+  (match terminal {
+    FullyApplied => false
+    AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
+    PartiallyApplied { refused_axis_count: refused, owed: o, detail: _ } =>
+      refused == 0
+        && (match o {
+            Absent => false
+            Present { value: report } =>
+              report.withheld_row_count == 4 && report.withheld_beyond_plan_rows_count == 39
+          })
+  })
+    && wire != "fully_applied"
     && string_contains(s: wire, pattern: "withheld=4")
     && string_contains(s: wire, pattern: "plan-only=2")
     && string_contains(s: wire, pattern: "withheld-lines=43")
