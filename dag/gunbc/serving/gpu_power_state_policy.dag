@@ -190,7 +190,7 @@ data ken_t10_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   cap: watt(count: 100),
   bounds: CappedQuantityUnstated,
   decided_on: "2026-11-17" as NonEmptyStr,
-  said: "operator report relayed by smart-crane-730, 2026-11-17: ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot" as NonEmptyStr,
+  said: "two statements agreeing on the number, one relayed and one found on the machine: the operator report relayed by smart-crane-730 on 2026-11-17 ('ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot'), and the header of /usr/local/sbin/t10-power-cap.sh on the unit, which credits the instruction to the operator on 2026-11-15 ('lower their power as low as possible') and implements it as each card's OWN minimum limit -- 100.00 W on all three read functions. The script's authorship is unread: the file does not say who wrote it." as NonEmptyStr,
 }
 
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [

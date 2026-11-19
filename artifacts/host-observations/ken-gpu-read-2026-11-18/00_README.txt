@@ -12,8 +12,11 @@ HOW IT WAS TAKEN
   unprivileged ubuntu user, with the session's host key checked against the pinned entry already in
   this repository's known_hosts handling. No sudo was used for any of the reads below. The commands
   were: `systemctl list-unit-files` filtered to the GPU/power units, `ls /etc/systemd/system`,
-  `cat` of the t10-power-cap unit and script, `nvidia-smi -q -d POWER`, `nvidia-smi --query-gpu
-  =pci.bus_id,uuid,serial`, `systemctl status` of the cap unit, and `lspci` for the GPU functions.
+  `cat` of the t10-power-cap unit, the ken-strata unit and the cap script, `systemctl status` of the
+  cap unit and of ken-strata, `cat` of each GPU function's sysfs vendor/device/class attributes
+  (domain-prefixed paths), the same cat attempted with un-prefixed paths (it failed; the failure is
+  in unit_read1.txt and was NOT cleaned out of the receipt), `nvidia-smi -L`, `nvidia-smi -q -d POWER`,
+  and `nvidia-smi --query-gpu=pci.bus_id,uuid,serial`.
 
   ONE THING IS DISCLOSED, NOT HIDDEN: the admission for that session included the command
   `sudo -n true`, whose output ("yes") was printed and which the admission did NOT authorize. Nothing
@@ -25,11 +28,21 @@ FILES
                           /etc/systemd/system, whether nvidia-smi is present, and the `lspci` GPU
                           functions. Establishes that t10-power-cap.service and ken-strata.service are
                           enabled, and which PCI functions carry GPUs (01:00.0, 81:00.0, c1:00.0).
-  unit_read2.txt          the t10-power-cap.service unit file itself, plus the cap unit's `systemctl
-                          status` output. Establishes Type=oneshot, WantedBy=multi-user.target, the
-                          ExecStart path, and the unit's last-run state.
-  unit_read3.txt          the t10-power-cap.sh script, then `nvidia-smi -q -d POWER`, then the cap
-                          unit's status. THE POWER NUMBERS ARE HERE: for each of the three GPUs
+  unit_read2.txt          the t10-power-cap.service unit file, the ken-strata.service unit file, the
+                          gpu-manager path check, `nvidia-smi -L`, and the sysfs vendor/device/class
+                          read for each function: 0000:01:00.0, 0000:81:00.0 and 0000:c1:00.0 all read
+                          vendor=0x10de device=0x1e37 class=0x030200. THIS IS THE PCI-ID EVIDENCE: 1e37
+                          is extdeps.gpu.nvidia_t10's pci_device_id, so the catalog binding on the asset
+                          rows stands on a read and not on the operator's report alone. It also carries
+                          ken-strata.service's [Unit] section, whose Requires=t10-power-cap.service and
+                          After=... t10-power-cap.service edges make the cap unit load-bearing for a
+                          running service -- the fact the cap register row turns on.
+  unit_read3.txt          the t10-power-cap.sh script (its header quotes the operator's 2026-11-15
+                          instruction and asserts the unit's three-card population with slot-to-bus
+                          pairing), then `nvidia-smi -q -d POWER`, then ken-strata's status and journal
+                          tail (which is where the 192.168.1.236:18081 listening address appears). No
+                          journal lines for the CAP unit were taken, and `systemctl status` warned that
+                          some journal files were not opened for lack of permission. THE POWER NUMBERS ARE HERE: for each of the three GPUs
                           (00000000:01:00.0, 00000000:81:00.0, 00000000:C1:00.0) the read is
                           Min Power Limit 100.00 W, Max Power Limit 150.00 W, Default Power Limit
                           150.00 W, Current Power Limit 100.00 W. The `N/A` lines that follow each
@@ -53,6 +66,11 @@ WHAT THIS DIRECTORY DOES NOT ESTABLISH
     without the fleet holding a key it has not confirmed at a console.
   - Whether the operator's 100 W bound is a SUSTAINED-draw bound or a peak bound is UNSTATED; the cap
     intents record it as CappedQuantityUnstated, and an operator answer is what changes that.
+  - Who wrote t10-power-cap.sh, or when, is not established: the file's header quotes an operator
+    instruction, which is not authorship. Likewise the script's slot-to-bus pairing (SLOT4 01:00.0,
+    SLOT6 81:00.0, SLOT2 c1:00.0) is a statement ON THE MACHINE, corroborated by the operator's own
+    2026-11-17 session naming the third card in SLOT2 (c1:00.0), but it is not a read through any
+    modeled route and no modeled route pairs a bus id to a chassis slot.
   - No board power envelope for the Tesla T10 is claimed: extdeps.gpu.nvidia_t10 carries
     board_power = none because no authority was found. The 100-150 W range above is the DEVICE range
     read from these three cards, which is what the cap is admitted against.

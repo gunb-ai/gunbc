@@ -499,12 +499,14 @@ data gpu_board_10_asset: PhysicalAsset = PhysicalAsset {
 // observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt: bus id, GPU UUID and serial per function;
 // SHA256SUMS in that directory). WHAT THE READ DOES NOT ESTABLISH, stated rather than glossed: the read
 // covers identity -- serial, UUID, bus function -- while the MODEL of each card is still the operator's
-// report. The operator reported TWO Tesla T10 in this box (gunbc.machine_intake.
-// supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_gpu_report), and the unit enumerates
-// THREE driver-visible NVIDIA functions whose power ranges are identical to one another; the sysfs
-// vendor/device read that would name each card's PCI ids was attempted and FAILED in that session (the
-// receipt records the three failed cats, which used sysfs paths without the domain prefix), so the catalog
-// binding below is carried on the operator's reported model until that read lands. The register row
+// report -- and on a read that now corroborates it: with domain-prefixed sysfs paths each of the three
+// functions reads vendor=0x10de device=0x1e37 class=0x030200 (unit_read2.txt in the receipt directory), and
+// 1e37 is the pci_device_id of the catalog row these assets bind to. An earlier attempt in the same session
+// used un-prefixed paths and failed; both attempts are in the receipts. What is still the report's alone is
+// the MODEL NAME: no read of a board label or product name was taken. The operator reported TWO Tesla T10 in
+// this box (gunbc.machine_intake.
+// supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_gpu_report), while the unit enumerates
+// THREE driver-visible NVIDIA functions whose power ranges are identical to one another. The register row
 // gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards carries the
 // count discrepancy. Procurement unrecorded.
 data gpu_board_11_asset: PhysicalAsset = PhysicalAsset {

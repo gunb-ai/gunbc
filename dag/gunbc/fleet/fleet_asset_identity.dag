@@ -55,8 +55,12 @@ data gpu_board_10: PhysicalAssetIdentity = "gpu-board-10" as PhysicalAssetIdenti
 // uuid GPU-c4177907-3dc8-12be-4146-431ea120f818 serial 1322720003956; gpu-board-12 = 0000:81:00.0 uuid
 // GPU-8327ce9a-6011-f8cf-0012-4af9596c3124 serial 1323619011509; gpu-board-13 = 0000:c1:00.0 uuid
 // GPU-a56f81eb-df65-ec75-e5ee-06c01ce8509e serial 1323019027149. The numbering continues gpu_board_01..10;
-// it is an identity, not a slot -- no read has placed any of the three in a named physical slot on this
-// board, and the corpus has no route that pairs a bus id to a slot (the row that owed this half says so).
+// it is an identity, not a slot. TWO STATEMENTS ON THE MACHINE pair bus to slot and agree with each other --
+// the cap script's header says "SLOT4 01:00.0, SLOT6 81:00.0, SLOT2 c1:00.0", and the operator's own 2026-11-17
+// session named the "third card: serial 1323019027149, in SLOT2 (c1:00.0)" -- but neither is a read through a
+// modeled route, and the corpus has no route that pairs a bus id to a chassis slot at all (the register row that
+// owed this half says so). The slot pairing therefore stays unmodeled here; the two statements are cited on the
+// intake rows that carry them.
 // The driver prints an 8-digit domain (00000000:01:00.0); sysfs lists these functions without one. Device
 // bindings are the typed rows in gunbc.fleet.gpu_device_observation, not restated here.
 data gpu_board_11: PhysicalAssetIdentity = "gpu-board-11" as PhysicalAssetIdentity
