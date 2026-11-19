@@ -1,0 +1,34 @@
+module gunbc.rung_drop.compiled_shell_wall_deadline_unrealized
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-11-19 by the fleet-leg wall-clock-deadline PR (#16737, review 96735).
+// The ssh.Session and ssh.PasswordFileSsh service operations declare overran and
+// wall_deadline_seconds in their output. The interpreted sink enforces the per-leg
+// wall deadline (wait_child_honoring_wall_deadline). The COMPILED path does not:
+// shell_channel_realized_by_target returns false for these two channels, which
+// produces a ShellChannelNotRealizedByTarget diagnostic and refuses the operation
+// from compiling to Rust. No live caller runs fleet ssh legs through the compiled
+// realization today; every fleet-leg caller runs in the v1 interpreter.
+
+data compiled_shell_wall_deadline_unrealized_population: FreeSemigroup<String> = FreeSemigroup { head: "ssh.Session.ExecPortableWordsWithStdin: overran, wall_deadline_seconds", tail: ["ssh.PasswordFileSsh.ExecPortableWordsWithStdin: overran, wall_deadline_seconds"] }
+
+data compiled_shell_wall_deadline_unrealized: RungDrop = RungDrop {
+  identity: "compiled_shell_wall_deadline_unrealized" as NonEmptyStr,
+  subject: "the compiled (emitted Rust) shell transport does not enforce the per-leg wall-clock deadline; the overran and wall_deadline_seconds channels are unrealized on the compiled target",
+  declared: "2026-11-19",
+  standing: Active {
+    declaration: TypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: ReplacementStaged {
+        replacement: "a wall-deadline kill realized in emit_shell_call for compiled shell transport: arm a timer from the wall_deadline input, kill the process group on expiry, set overran=true and wall_deadline_seconds in the emitted output"
+      },
+      population: Enumerated { members: compiled_shell_wall_deadline_unrealized_population },
+      restoration_trigger: "THE CAPABILITY: emit_shell_call in 05_emit_rust.dag arms a per-leg wall-clock timer on the spawned Command, kills the process group on expiry, and emits overran/wall_deadline_seconds fields; shell_channel_realized_by_target flips ShellChanOverran and ShellChanWallDeadlineSeconds to true for the Rust target. The first live compiled caller of the fleet ssh legs (a .dag module compiled via v2-bootstrap that calls typed_argv_exec_over_fleet_ssh) is the urgency trigger; the capability is the closure."
+    }
+  }
+}
