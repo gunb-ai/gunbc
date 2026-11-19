@@ -3,7 +3,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings, filesystem_operation, file_step, fs_read, fs_list, fs_write, fs_delete, fs_resolved }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units, runner_host_cap_plan_under_withdrawal }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
@@ -34,7 +34,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_actuation_reading_of, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, slot_activity_of_listing, slot_registration_file_command, read_slot_registration_over, RegistrationIdentityRead, SlotRegistrationUnreadable }
+import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_actuation_reading_of, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, slot_activity_of_listing, slot_registration_file_command, read_slot_registration_over, RegistrationIdentityRead, SlotRegistrationUnreadable, SlotActivationHeldByWithdrawal, slot_actuation_outcome_wire }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
@@ -120,6 +120,8 @@ import gunbc.runner.runner_host_cap_bracket {
   bracket_holder_unit_of_leaf,
   bracket_units_to_bracket,
 }
+import gunbc.runner.runner_host_withdraw_record { HostWithdrawalHeld, HostNotWithdrawn, HostWithdrawalUnreadable, activation_held_by_withdrawal }
+import gunbc.runner.runner_slot_cap_converge { HostCapsDrainWriteRestart, HostCapsWriteInPlace, HostCapsWithheld, CapFilesDiffer, CapFilesSettled }
 
 // THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
 // discriminate at). The wet driver's route is the remote run against a fleet host.
@@ -1778,6 +1780,81 @@ test fn a_refused_stop_adds_to_an_admission_not_closed_cause_list() -> Bool {
 test fn a_settled_verdict_takes_no_refused_stop() -> Bool {
   match carry_stop_causes(step: BracketDrained { certified: [] }, causes: ["stop failed on actions-runner@srv3-03.service: sudo has no word"]) {
     BracketDrained { certified: _ } => true
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// A WITHDRAWN HOST IS NOT RE-OPENED BY THE NEXT CONVERGE.
+// srv4, 2026-11-19: the withdraw certified state=withdrawn at 01:32:34Z over all 15 kept units, and the very
+// next converge (run 44438184186) printed 'activated-and-read-back' for every one of them 18 minutes later,
+// because its activation leg reads the UNITS -- which a withdrawal has just stopped and masked -- and decided
+// from that. Four slots re-registered as JIT runners at 01:50:17Z-01:51:04Z and served CI from 02:06Z to
+// 02:59Z, on a host the model was simultaneously reporting as withdrawn (state=inconsistent, withdrawn=
+// unproven). The legs that could open a slot now read the withdrawn RECORD, and the receipt says the
+// activation was withheld rather than reporting an inconsistency after the fact.
+// (gunbc.recurring_failure_mode.a_withdrawal_undone_by_the_next_converge.)
+// ---------------------------------------------------------------------------------------
+
+test fn a_withdrawn_host_holds_every_activation_of_the_converge_leg() -> Bool {
+  match activation_held_by_withdrawal(standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }) {
+    Present { value: why } => string_contains(s: why as String, pattern: "withdrawn record") && string_contains(s: why as String, pattern: "2026-11-19T01:32:34Z")
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL: the same leg on a host with no record standing admits activation, exactly as before.
+test fn an_open_host_admits_the_same_activation_leg() -> Bool {
+  match activation_held_by_withdrawal(standing: HostNotWithdrawn) {
+    Absent => true
+    Present { value: why } => false
+  }
+}
+
+// An UNREADABLE record is not an absent one: the holder cannot prove the host is back in admission, so the
+// leg holds and names why, rather than starting 15 units on the strength of a failed read.
+test fn an_unread_withdrawn_record_holds_the_activation_leg_too() -> Bool {
+  match activation_held_by_withdrawal(standing: HostWithdrawalUnreadable { cause: "the state document could not be read" }) {
+    Present { value: why } => string_contains(s: why as String, pattern: "could not be read")
+    Absent => false
+  }
+}
+
+// The held activation is REPORTED and is NOT SETTLED: a converge that withheld the activation of a withdrawn
+// host is not claiming that host is at its live desired population.
+test fn the_held_activation_is_reported_and_is_not_settled() -> Bool {
+  let held = SlotActivationHeldByWithdrawal { unit: u(n: "03"), cause: "the withdrawn record stands, written at 2026-11-19T01:32:34Z" as NonEmptyStr }
+  !slot_actuation_settled(o: held) && string_contains(s: slot_actuation_outcome_wire(o: held), pattern: "ACTIVATION-HELD-BY-WITHDRAWAL") && string_contains(s: slot_actuation_outcome_wire(o: held), pattern: "srv3-03")
+}
+
+// THE CAP BRACKET DOES NOT OPEN A WITHDRAWN HOST. The cap plan may name the bracket -- drain, write, unmask,
+// start, read back -- because it decides from the cap standings, which on a withdrawn host are the
+// withdrawal's own doing. The gate replaces that arm with the in-place write: the fleet's cap rows land on
+// the inert units and the manager reloads, and no unit is unmasked or started by a converge.
+test fn a_withdrawn_host_does_not_enter_the_cap_bracket_arm() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }, files: CapFilesDiffer { paths: ["/etc/systemd/system/gunbc-runner.slice.d/20-fleet-width.conf" as NonEmptyStr] })
+  match gated {
+    HostCapsWriteInPlace { paths: ps } => length(ps) == 1
+    _ => false
+  }
+}
+
+// Where the cap rows are already on disk, the withheld cause names what remains and who moves it, so the
+// refusal is not the blind 'a live cap value differs' that cost the srv4 diagnosis its time.
+test fn a_withdrawn_host_with_its_cap_rows_on_disk_is_told_what_moves_them() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }, files: CapFilesSettled)
+  match gated {
+    HostCapsWithheld { cause: c } => string_contains(s: c, pattern: "restore") && string_contains(s: c, pattern: "withdrawn record")
+    _ => false
+  }
+}
+
+// THE OTHER POSITIVE CONTROL: on a host with no record the bracket arm stands exactly as host_cap_plan chose
+// it; the gate adds no refusal of its own.
+test fn the_cap_bracket_arm_stands_on_a_host_that_is_not_withdrawn() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostNotWithdrawn, files: CapFilesSettled)
+  match gated {
+    HostCapsDrainWriteRestart => true
     _ => false
   }
 }

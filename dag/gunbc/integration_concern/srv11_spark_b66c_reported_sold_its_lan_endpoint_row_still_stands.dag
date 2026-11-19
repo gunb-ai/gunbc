@@ -4,7 +4,7 @@ module gunbc.integration_concern.srv11_spark_b66c_reported_sold_its_lan_endpoint
 // Its authorities are the sealed region srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands_authorities in module gunbc.integration_concern
 // (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
 // there is no list to append to. Ported from main's block in gunbc.integration_concern
-// at this merge.
+// at --row-only.
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
@@ -35,7 +35,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       revision: spark_endpoint_rows_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesHistorical {
-          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+          declaration: HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
         },
         tail: [
           CitesDeclaration {
@@ -60,9 +60,9 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "09217e45fa2ad941d1a19bda8bfd40bc6c91b690" as CommitSha,
+      integrated_at: "b156ebb3c225" as CommitSha,
       superseded: [
-        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+        HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
       ],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
@@ -73,7 +73,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
-          run: "same claim_batch invocation, binary and clean head as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (11 witness(es), 11 pass, 0 fail; RED 9/11 under the planted srv12 row described there), and this guard is named in that run's PASS list",
+          run: "same claim_batch invocation, binary and clean main revision as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (b156ebb3c225: 11 witness(es), 11 pass, 0 fail; 9/11 with the two named REDs under the planted srv12 row described there), and this guard is named in the clean run's PASS list. The register side was measured at the same main revision: dag/test/claim/integration_concern_witness.dag, 14 witness(es), 14 pass, 0 fail"
           conclusion: "No rostered endpoint names srv11 (or srv9, srv10, srv12) as its subject; srv11's host-identity row still resolves, so the sold unit remains in the register while being unreachable in the modeled topology.",
         },
         tail: [],

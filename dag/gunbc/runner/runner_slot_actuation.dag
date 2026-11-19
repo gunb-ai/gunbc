@@ -142,6 +142,12 @@ fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
 type SlotActuationOutcome
   = SlotActuationNoop { unit: NonEmptyStr, state: String }
   | SlotActivated { unit: NonEmptyStr }
+  // THE ACTIVATION IS HELD BY THE WITHDRAWN RECORD. This host is out of admission until runner_host_restore
+  // clears the record, so a converge over it writes its files and its caps onto the stopped units and plans
+  // NO unmask, enable or start. Nothing on the unit was touched, and the arm is NOT settled: while the
+  // record stands the host is not at its live desired population, and a run that claimed otherwise would BE
+  // the withdrawal undone by the next converge (gunbc.recurring_failure_mode, the class this closes).
+  | SlotActivationHeldByWithdrawal { unit: NonEmptyStr, cause: NonEmptyStr }
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
@@ -175,6 +181,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
     SlotActuationNoop { unit: _, state: _ } => true
     SlotActivated { unit: _ } => true
+    SlotActivationHeldByWithdrawal { unit: _, cause: _ } => false
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
@@ -190,6 +197,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
   match o {
     SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
     SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
+    SlotActivationHeldByWithdrawal { unit: u, cause: c } => join(["actuation ", u as String, " ACTIVATION-HELD-BY-WITHDRAWAL ", c as String], "")
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")

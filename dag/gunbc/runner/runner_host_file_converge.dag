@@ -47,7 +47,7 @@ import gunbc.runner.runner_host_cap_bracket {
   CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
 import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
-import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
+import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for, runner_host_withdrawal_standing, activation_held_by_withdrawal, RunnerHostWithdrawalStanding }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -2889,6 +2889,10 @@ fn converge_runner_slot_tree(
         SlotDrainPending { unit: _, cause: c } => RunnerSlotTreePending { unit: unit, cause: join(["not drained: ", slot_drain_pending_cause_wire(c: c), "; the rebuild waits for a later run"], "") as NonEmptyStr }
         SlotActuationRefused { unit: _, step: st, reason: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
+        // An activation held by the withdrawal cannot come out of this drain call either -- the held arm is
+        // produced by the activation leg, not by a drain -- and it is written out because the fold is total
+        // over the sum: a unit this host is not allowed to start may not have its tree rebuilt and activated.
+        SlotActivationHeldByWithdrawal { unit: _, cause: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the activation leg is held by the withdrawn record" as NonEmptyStr }
         SlotNotInstalled { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
         // drain_and_mask_runner_slot_over answers Noop only for DrainAlreadyMasked: an earlier run masked
         // the slot while a job ran, and it has since stopped. That is the pending drain settling, so the
@@ -3748,6 +3752,7 @@ fn runner_host_slot_actuations(
   trees: List<RunnerSlotTreeStanding>,
   population: RunnerSlotPopulation,
   retirement: RunnerRetirementReadback,
+  withdrawal: RunnerHostWithdrawalStanding,
 ) -> List<SlotActuationOutcome>
 {
   // THE HAND NOTICES ARE NOT AN ACTUATION, so they are not gated on the mode or on privilege: they are the
@@ -3762,7 +3767,15 @@ fn runner_host_slot_actuations(
           map(concat(subject.desired_units, runner_host_drain_units(subject: subject)), u => SlotActuationRefused { unit: u, step: "privilege", reason: why })
         AdministratorPrivilegeAvailable =>
           concat(
-            map(subject.desired_units, u =>
+            match activation_held_by_withdrawal(standing: withdrawal) {
+              // THE WITHDRAWN RECORD HOLDS THE ACTIVATION LEG. The units below are read as stopped or
+              // unmasked exactly because a withdraw has just closed them; unmask+enable+start on that reading
+              // is the withdrawal undone by the next converge, which is what this host did on 2026-11-19
+              // (run 44438184186 activated all 15 kept slots of a host withdrawn 18 minutes earlier, and CI
+              // landed on them within the hour). Nothing is touched here: the arm names the record and the
+              // run says, in the same receipt that carries its file writes, that the host is still out.
+              Present { value: why } => map(subject.desired_units, u => SlotActivationHeldByWithdrawal { unit: u, cause: why })
+              Absent => map(subject.desired_units, u =>
               match first(filter(trees, t => (runner_slot_tree_unit(standing: t) as String) == (u as String))) {
                 // THE ONE PLACE THE FRESH SLOT'S ORDER LIVES. The dependencies: the unit template and the
                 // cap drop-ins are WRITTEN by the write phase above; the manager RELOADS after those writes
@@ -3792,7 +3805,8 @@ fn runner_host_slot_actuations(
                     }
                   }
                 Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
-              }),
+              })
+            },
             map(
               runner_host_drain_leg_decided(subject: subject, population: population, readback: retirement),
               step =>
@@ -4359,6 +4373,31 @@ fn observe_runner_host_cap_phase(
   }
 }
 
+// A WITHDRAWN HOST DOES NOT ENTER THE CAP BRACKET'S ARM. host_cap_plan decides from the cap standings, and
+// on a withdrawn host those standings ARE the withdrawal's doing: every unit stopped, the old envelope
+// loaded, the fleet row not yet loaded. The plan may name the bracket -- drain, write, unmask, start, read
+// back -- and it is the record, not the plan, that decides whether a slot of this host is opened. So the
+// bracket arm is replaced by the in-place write: the managed cap files land on the inert units and the
+// manager reloads, which is the whole of what a converge may do to a withdrawn host's envelope. Where the
+// files are already on disk and only the loaded values are stale, a converge owes nothing further --
+// starting the unit is what loads them, and that is runner_host_restore's act -- and the withheld cause
+// says so, rather than leaving a refusal whose reason lives somewhere else.
+fn runner_host_cap_plan_under_withdrawal(plan: HostCapPlan, standing: RunnerHostWithdrawalStanding, files: CapFilesState) -> HostCapPlan {
+  match activation_held_by_withdrawal(standing: standing) {
+    Absent => plan
+    Present { value: why } =>
+      match plan {
+        HostCapsDrainWriteRestart =>
+          match files {
+            CapFilesDiffer { paths: ps } => HostCapsWriteInPlace { paths: ps }
+            CapFilesSettled => HostCapsWithheld { cause: join(["the cap bracket would unmask and start a slot of a withdrawn host and ", why as String, ": the managed cap files are already on disk, so the stale loaded envelope of these inert units moves when the restore starts them"], "") }
+            CapFilesUnreadable { cause: c } => HostCapsWithheld { cause: join(["the withdrawal bars the cap bracket (", why as String, ") and the managed cap files cannot be written in place because they could not be read: ", c], "") }
+          }
+        _ => plan
+      }
+  }
+}
+
 fn run_runner_host_cap_phase(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -4366,6 +4405,7 @@ fn run_runner_host_cap_phase(
   privilege: FleetHostPrivilegeStanding,
   population: RunnerSlotPopulation,
   trees: List<RunnerSlotTreeStanding>,
+  withdrawal: RunnerHostWithdrawalStanding,
 ) -> RunnerHostCapPhase
 {
   match mode {
@@ -4380,9 +4420,10 @@ fn run_runner_host_cap_phase(
           let extras = runner_host_cap_extras(desired_units: subject.desired_units, retired_units: subject.retired_units, population: population)
           let affected = concat(subject.desired_units, extras)
           let standings = read_host_cap_standings_over(target: subject.target, context: context, host: subject.host, units: affected, desired: desired)
-          match host_cap_plan(
+          let cap_files = runner_host_cap_files_state(subject: subject, context: context, privilege: privilege)
+          match runner_host_cap_plan_under_withdrawal(plan: host_cap_plan(
             standings: standings,
-            files: runner_host_cap_files_state(subject: subject, context: context, privilege: privilege),
+            files: cap_files,
             extras: extras,
             // The pending question is asked over THE bracket set (cap_bracket_units, the one authority):
             // a slot queued for its first install is never unmasked-and-started by the bracket, so its
@@ -4390,7 +4431,7 @@ fn run_runner_host_cap_phase(
             // holder can only shrink the set, and the holder deferral answers for its own unit.
             pending_reloads: runner_host_cap_pending_reloads(population: population, bracket_units: cap_bracket_units(units: subject.desired_units, holder: HolderNotOnSubject { why: "the live holder, if any, can only shrink this set; its own deferral answers for it" }, trees: trees)),
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
-          ) {
+          ), standing: withdrawal, files: cap_files) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
             // Nothing was drained and no join was needed, so there is no identity to name: an empty list
             // here is a real answer, not a gap. A non-empty list with no drain would be a fabrication.
@@ -4952,7 +4993,10 @@ fn run_runner_host_files_admitted(
   let early_population = observe_runner_slot_population(subject: subject, context: context, expect: early_expect)
   let cap_phase = match mode {
     FleetHostFilesObserveOnly => observe_runner_host_cap_phase(subject: subject, context: context, population: early_population)
-    FleetHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: early_population, trees: trees)
+    // THE WITHDRAWN RECORD, read ONCE for every leg that could open a slot of this host. The legs below read
+    // the units, and on a withdrawn host the units read exactly as the withdrawal left them: stopped, masked,
+    // the old envelope loaded. Deciding from that reading alone is what re-opens a host the model has closed.
+    FleetHostFilesApply => run_runner_host_cap_phase(subject: subject, context: context, mode: mode, privilege: privilege, population: early_population, trees: trees, withdrawal: runner_host_withdrawal_standing(host: subject.host))
   }
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
@@ -4985,7 +5029,7 @@ fn run_runner_host_files_admitted(
     }
   }
   let actuations = match admission {
-    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: early_population, retirement: retirement)
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: early_population, retirement: retirement, withdrawal: runner_host_withdrawal_standing(host: subject.host))
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)

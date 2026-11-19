@@ -5,7 +5,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -75,6 +75,14 @@ type WorkPiece
   | Composite { label: String, stages: List<WorkStage> }
 
 type WorkStage { pieces: List<WorkPiece> }
+
+// The KIND of a top-level WorkPiece, as a TYPED closed set -- the one projection of the WorkPiece coproduct used
+// wherever only the kind matters (an unresolved-wait report says WHICH kinds filled an occurrence-less span). It is
+// NOT a String: the labels are the coproduct's own constructors, so renaming or adding a WorkPiece variant breaks the
+// TOTAL piece_kind match below at compile time rather than leaving stale text behind (single_authority, minimize_redundancy:
+// a closed set gets one spelling). piece_kind is the ONLY producer; equality is the language's structural `==`
+// (exposed once as piece_kind_eq solely to satisfy std.algebra.contains's eq: parameter).
+type PieceKind = LeafKind | FamilyKind | JoinKind | DecisionKind | CompositeKind
 
 type StageDependency {
   item: RoadmapNodeId
@@ -628,8 +636,12 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "corpus-names-homed-and-collisions-discharged", waits_on: [
-    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 0),
-    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 0),
+    // Stage 0 is a lone Composite (the generator oracle) -- declared, but it mints no schedulable occurrence, so a
+    // wait aimed INTO it would attach to nothing (see the barrier/empty-stage rule: the first EMITTING stage is what
+    // waits). Aim both waits at stage 1 (the reading families), the item's first occurrence-bearing stage -- the same
+    // shape as its structural twin v1-interpreter-quarantine, whose waits aim at its stage-1 leaves. (operator ruling 2026-11-19)
+    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 1),
+    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 1),
   ], stages: [
     [
       piece(label: "the generator oracle: bindings by occurrence identity before and after", stages: [
@@ -972,8 +984,12 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "v1-interpreter-quarantine", waits_on: [
-    waits(item: "v1-interpreter-primitive-dispatch-authority", from_stage: 1, into_stage: 0),
-    waits(item: "native-production-admission", from_stage: 3, into_stage: 0),
+    // Stage 0 is a lone Composite (build with the old runner left out) -- no schedulable occurrence, so a wait aimed
+    // INTO it attaches to nothing. Aim both waits at stage 1, the item's first occurrence-bearing stage -- the twin
+    // v1-emitter-quarantine is waited-on at its first emitting stage the same way (and, lacking one, its wait is
+    // reported unresolved). (operator ruling 2026-11-19)
+    waits(item: "v1-interpreter-primitive-dispatch-authority", from_stage: 1, into_stage: 1),
+    waits(item: "native-production-admission", from_stage: 3, into_stage: 1),
   ], stages: [
     [
       piece(label: "build with the old runner left out", stages: [
@@ -1583,10 +1599,37 @@ type UnexpandedComposite {
   nested_days: Int
 }
 
-// The expansion is fail-closed: it either holds the occurrences, their edges, and the top-level Composites it did
-// NOT expand (so a schedule over an item with Composites says what it omits), or a typed, located refusal.
+// A waits_on endpoint that is WELL-FORMED -- the carrier's OWN well-formedness claim already admitted the row
+// (the stage index EXISTS on that endpoint's decomposition and the parent edge is DECLARED), so it is NOT a malformed
+// row -- yet whose occurrence span AT OR BELOW the named stage mints NO occurrence, because every piece in that span
+// is a Join, Decision or Composite: the three piece kinds that, by design, emit no occurrence. Such a wait is not a
+// defect to refuse, it is CROSS-ITEM ORDERING onto a milestone or a project Join, which no lane schedules yet
+// (out_of_scope of roadmap-schedule-barrier-through-empty-stages: "no cross-item ordering"). Refusing the whole item
+// for it would blank the item's real work; dropping it silently would hide the gap. So it is REPORTED -- named and
+// counted in the expansion's unresolved_waits, beside omitted_composites (fail_closed: an omission is SAID, not
+// hidden) -- and the item still expands. A genuinely MALFORMED row (a stage index that does not exist, or a parent
+// the item does not declare) is NOT this: the carrier's well-formedness claim refuses it as DependencyClaimRefused
+// BEFORE any of this runs, which is the pre-#16716 sense and the #16678 red control, kept intact.
+type WaitSide = From | Into
+
+// The piece kinds the empty span held, so a reader sees WHY no occurrence emitted (a Join, a Decision, a Composite)
+// rather than an unexplained silence. Only these three kinds ever appear here -- a span that minted an occurrence is
+// never unresolved -- but the producer states what it saw instead of asserting it, so nothing is fabricated.
+type UnresolvedWaitReason = EndpointEmitsNoOccurrence { kinds: List<PieceKind> }
+
+type UnresolvedWait {
+  row: StageDependency
+  side: WaitSide
+  stage: Int
+  reason: UnresolvedWaitReason
+}
+
+// The expansion is fail-closed: it either holds the occurrences, their edges, the top-level Composites it did
+// NOT expand, and the waits_on rows it could NOT attach (so a schedule over an item with Composites or with a wait on
+// an occurrence-less milestone says what it omits or could not order), or a typed, located refusal for a malformed
+// row / bad count / non-unique node.
 type Expansion
-  = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge>, omitted_composites: List<UnexpandedComposite> }
+  = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge>, omitted_composites: List<UnexpandedComposite>, unresolved_waits: List<UnresolvedWait> }
   | ExpansionRejected { cause: ExpansionRefusal }
 
 // Members: emit `remaining` occurrences with the given count source. `remaining` is a Nat walked DOWN by
@@ -1753,6 +1796,7 @@ fn unique_decomposition(item: RoadmapNodeId) -> UniqueDecomposition {
 // REFUSED, located at the parent, never silently dropped to "no edges".
 type ParentResolution
   = Resolved { occurrences: List<Occurrence> }
+  | EmitsNoOccurrence { kinds: List<PieceKind> }
   | Rejected { cause: ExpansionRefusal }
 
 // A stage emits an occurrence EXACTLY when `groups` holds a key for it -- occurrences_by_stage inserts a key only
@@ -1771,8 +1815,8 @@ fn nearest_nonempty_stage(groups: Map<Int, List<Occurrence>>, k: Nat) -> Int? {
 }
 
 // The same walk entered from a bare Int stage index: cross it into Nat through the ONE checked crossing; a
-// negative (or a stage with no non-empty stage at or below it) is Absent, which the callers refuse by name
-// (fail_closed -- an unresolvable wait is said, never dropped silently).
+// negative (or a stage with no non-empty stage at or below it) is Absent, which the callers now RECORD as an
+// unresolved wait (not a refusal), so an unresolvable wait is still said, never dropped silently (fail_closed).
 fn nearest_nonempty_at_or_below(groups: Map<Int, List<Occurrence>>, named: Int) -> Int? {
   match checked_int_to_nat(n: named) {
     Absent => Absent
@@ -1780,32 +1824,86 @@ fn nearest_nonempty_at_or_below(groups: Map<Int, List<Occurrence>>, named: Int) 
   }
 }
 
+// The ONE projection of a top-level WorkPiece to its PieceKind. The match is TOTAL over the coproduct -- if a variant
+// is ever added to, or renamed in, WorkPiece this fails to compile, which is the point: the report can never carry a
+// kind the coproduct does not have. Only Join / Decision / Composite can ever reach an unresolved-wait report (a span
+// that minted an occurrence is never unresolved), but the match names all five so the report states what it actually
+// saw rather than special-casing.
+fn piece_kind(p: WorkPiece) -> PieceKind {
+  match p {
+    Leaf { label: _, days: _, evidence: _ } => LeafKind
+    Family { label: _, days: _, population: _, owner: _ } => FamilyKind
+    Join { label: _ } => JoinKind
+    Decision { label: _, alternatives: _ } => DecisionKind
+    Composite { label: _, stages: _ } => CompositeKind
+  }
+}
+
+// The ONE equality for PieceKind: it delegates to the language's structural `==` (data types derive it; see the
+// RolePending/RoleHandedOff comparisons in roadmap_belt_actuate for the fieldless-coproduct precedent). It exists only
+// to feed std.algebra.contains's `eq:` parameter -- the same role std's own string_eq plays -- so there is exactly one
+// equality authority (`==`) and no hand-written predicate over the coproduct.
+fn piece_kind_eq(a: PieceKind, b: PieceKind) -> Bool {
+  a == b
+}
+
+fn stage_kinds(st: WorkStage) -> List<PieceKind> {
+  map(st.pieces, piece_kind)
+}
+
+// The distinct piece kinds across the TOP-LEVEL pieces of stages 0..named. Entered only for an endpoint already
+// known to emit no occurrence (named >= 0 is guaranteed by the carrier's well-formedness gate), so it walks DOWN the
+// list by structural recursion (Empty stops it) with an Int budget counting DOWN -- bounded, no unguarded loop. The
+// kinds are de-duplicated by first appearance so the report reads as a small set, not a repetition.
+fn span_kinds(stages: List<WorkStage>, named: Int) -> List<PieceKind> {
+  distinct_kinds(span_kinds_at(stages: stages, remaining: named))
+}
+
+fn span_kinds_at(stages: List<WorkStage>, remaining: Int) -> List<PieceKind> {
+  if remaining < 0 {
+    []
+  } else {
+    match stages {
+      Empty => []
+      Cons { head: st, tail: rest } => concat(stage_kinds(st), span_kinds_at(stages: rest, remaining: remaining - 1))
+    }
+  }
+}
+
+fn distinct_kinds(ks: List<PieceKind>) -> List<PieceKind> {
+  fold(ks, init: [], f: fn(acc, k) {
+    if !contains(xs: acc, item: k, eq: piece_kind_eq) { concat(acc, [k]) } else { acc }
+  })
+}
+
 // A row's PARENT endpoint is resolved to a stage that actually emits the parent's occurrences: the named from_stage
 // if the parent emits there, else its nearest non-empty PREDECESSOR (a barrier that carries across an empty stage).
-// When NO stage at or below from_stage emits an occurrence the row is refused BY NAME at the parent -- never silently
-// dropped, never resolved to an empty default (fail_closed). The prior version filtered to the named stage and
-// returned Resolved even when that filter was EMPTY, so a wait on an empty parent stage silently produced no edges.
+// When NO stage at or below from_stage emits an occurrence the row is NOT refused -- the parent (a milestone Join or a
+// lone Composite) is a declared, in-range endpoint, so it is a WAIT ON SOMETHING THAT EMITS NOTHING (EmitsNoOccurrence),
+// which the caller records as an unresolved wait rather than blanking the item. A genuine Rejected here means a real
+// defect: the parent is not uniquely decomposed, or a DECLARED family on it carries a non-positive count (fail_closed).
 fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_count: Nat) -> ParentResolution {
   match unique_decomposition(item: item) {
     UniqueRejected { cause } => Rejected { cause: cause }
     UniqueFound { d: pd } =>
       match all_occurrences(d: pd, findings_count: findings_count) {
         OccsRejected { item: bad } => Rejected { cause: NonPositiveDeclaredCount { item: bad } }
-        OccsBuilt { occurrences: occs } => resolve_from_parent_occurrences(item: item, occs: occs, from_stage: from_stage)
+        OccsBuilt { occurrences: occs } => resolve_from_parent_occurrences(item: item, occs: occs, from_stage: from_stage, stages: pd.stages)
       }
   }
 }
 
 // The parent's built occurrence list, grouped ONCE at the top (no let inside a match arm), resolves one row's
 // from_stage endpoint to the nearest non-empty stage at or below it (a barrier carried across an empty stage) or,
-// when none exists, refuses the row BY NAME at the parent (fail_closed -- never a silent empty default).
-fn resolve_from_parent_occurrences(item: RoadmapNodeId, occs: List<Occurrence>, from_stage: Int) -> ParentResolution {
+// when none exists, reports the endpoint as emitting no occurrence (the kinds it held), which the caller records as an
+// unresolved From wait -- never a silent drop and never a whole-item refusal (fail_closed: the gap is SAID).
+fn resolve_from_parent_occurrences(item: RoadmapNodeId, occs: List<Occurrence>, from_stage: Int, stages: List<WorkStage>) -> ParentResolution {
   let pgroups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   match nearest_nonempty_at_or_below(groups: pgroups, named: from_stage) {
-    Absent => Rejected { cause: DependencyClaimRefused { item: item } }
+    Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
     Present { value: j } =>
       match map_lookup(m: pgroups, key: j) {
-        Absent => Rejected { cause: DependencyClaimRefused { item: item } }
+        Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
         Present { value: ps } => Resolved { occurrences: ps }
       }
   }
@@ -1842,30 +1940,35 @@ fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
 
 // One declared stage-dependency row, folded into either its (resolved) edge set or a located refusal.
 type WaitsEdges
-  = WaitsBuilt { edges: List<OccurrenceEdge> }
+  = WaitsBuilt { edges: List<OccurrenceEdge>, unresolved: List<UnresolvedWait> }
   | WaitsRejected { cause: ExpansionRefusal }
 
 // Stage-level dependency: every occurrence of the parent's resolved FROM stage waits on every occurrence of this
 // decomposition's resolved INTO stage -- the rows are declared once per (parent, stage) pair, not per leaf pair. BOTH
-// endpoints now carry through an empty stage to its nearest non-empty predecessor; an endpoint whose whole span
-// at-or-below the named stage is empty refuses BY NAME (the child item, for the into_stage end; the parent item, for
-// the from_stage end -- resolve_parent_occurrences), NEVER a silent drop (fail_closed). The prior version dropped a
-// row whose child into_stage was empty (`Absent => WaitsBuilt { edges }`, mirroring the old filter-to-empty); a
-// schedule reader could not tell a dropped wait from a genuinely edgeless row. The child groups are built ONCE,
-// outside the fold, so a row does not rebuild them (no quadratic fold, no copied accumulator); rows are PREPENDED.
+// endpoints carry through an empty stage to their nearest non-empty predecessor. An endpoint whose whole span
+// at-or-below the named stage is WELL-FORMED (in range, edge declared -- the carrier's claim admitted it) yet mints NO
+// occurrence (only Join/Decision/Composite) is NOT a refusal: a wait onto such a milestone/Join is cross-item ordering
+// no lane schedules yet, so it is RECORDed as an UnresolvedWait on the failing side and contributes no edge, and the
+// item still expands -- named and counted, never a silent drop (fail_closed). A row whose endpoints both resolve
+// contributes its cross-product edges; a genuine Rejected from the parent (not-unique / non-positive declared count)
+// still refuses the whole expansion. The child groups are built ONCE, outside the fold; rows are PREPENDED.
 fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: Nat) -> WaitsEdges {
   let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
-  fold(d.waits_on, init: WaitsBuilt { edges: [] }, f: fn(acc, w) {
+  fold(d.waits_on, init: WaitsBuilt { edges: [], unresolved: [] }, f: fn(acc, w) {
     match acc {
       WaitsRejected { cause } => acc
-      WaitsBuilt { edges } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
+      WaitsBuilt { edges, unresolved } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
         Rejected { cause } => WaitsRejected { cause: cause }
+        EmitsNoOccurrence { kinds } =>
+          WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: From, stage: w.from_stage, reason: EndpointEmitsNoOccurrence { kinds: kinds } } ], unresolved) }
         Resolved { occurrences: ps } => match nearest_nonempty_at_or_below(groups: groups, named: w.into_stage) {
-          Absent => WaitsRejected { cause: DependencyClaimRefused { item: d.node } }
+          Absent =>
+            WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
           Present { value: j } => match map_lookup(m: groups, key: j) {
-            Absent => WaitsRejected { cause: DependencyClaimRefused { item: d.node } }
+            Absent =>
+              WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
             Present { value: cs } =>
-              WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+              WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges), unresolved: unresolved }
           }
         }
       }
@@ -1937,11 +2040,12 @@ fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion 
       OccsBuilt { occurrences: occs } =>
         match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
           WaitsRejected { cause } => ExpansionRejected { cause: cause }
-          WaitsBuilt { edges } =>
+          WaitsBuilt { edges, unresolved } =>
             Expanded {
               occurrences: occs,
               edges: concat(stage_barrier_edges(occs: occs), edges),
               omitted_composites: composite_reports(item: d.node, stages: d.stages, stage: Zero),
+              unresolved_waits: unresolved,
             }
         }
     }

@@ -558,6 +558,10 @@ data spark_endpoint_rows_sighting_revision: CommitSha = "7c7526f116276f67b9a183d
 // revision, not a main revision: main's merge revision supersedes it when the change lands, and the account says so
 // rather than quoting a main sha that does not exist yet.
 data spark_endpoint_rows_integrated_revision: CommitSha = "09217e45fa2ad941d1a19bda8bfd40bc6c91b690"
+// The main revision these answers were filed against and every measurement in these rows ran on -- a sighting
+// revision, which is what a sighting is allowed to name. The branch commit that carries the new rows is deliberately
+// NOT quoted: PRs land by squash, so a branch sha in the register resolves on nobody's checkout but its author's.
+data h11ssl_unit3_operator_answers_revision: CommitSha = "b156ebb3c225"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },

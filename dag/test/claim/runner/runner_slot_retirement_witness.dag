@@ -58,7 +58,9 @@ import gunbc.host.host_operation_exec {
 import gunbc.host.host_effect { LocalShell }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
 import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_slot_retirement {
+  host_maskable_units,
   CgroupObservedEmpty,
   CgroupObservedPopulated,
   CgroupAbsent,
@@ -265,7 +267,7 @@ fn drained_unit(unit: String) -> RunnerRetirementObservation {
 test fn selecting_the_unimplemented_graceful_method_refuses() -> Bool {
   match attempt_retirement(
     method: GracefulRetirement,
-    observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+    observation: drained_unit(unit: "actions-runner@srv4-16.service"),
     work_interrupted: false,
   ) {
     RetirementMethodRefused { unit: _, method_label: l, cause: _ } => l == "GracefulRetirement"
@@ -280,7 +282,7 @@ test fn a_refused_method_cannot_borrow_the_observations_answer() -> Bool {
   !attempt_completes_retirement(
     a: attempt_retirement(
       method: GracefulRetirement,
-      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      observation: drained_unit(unit: "actions-runner@srv4-16.service"),
       work_interrupted: false,
     )
   )
@@ -291,13 +293,18 @@ test fn the_authorized_disruptive_method_completes_on_a_drained_slot() -> Bool {
   attempt_completes_retirement(
     a: attempt_retirement(
       method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
-      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      observation: drained_unit(unit: "actions-runner@srv4-16.service"),
       work_interrupted: true,
     )
   )
 }
 
-// SCOPE IS PER UNIT, NOT PER HOST OR PER ENVIRONMENT. Permission to interrupt srv4-13 and srv4-14 is
+// THE COVERAGE FIXTURES NAME srv4-16 AND srv4-17, NOT 13 AND 14. srv4's interruption authorization used to
+// type out 13..21, from the width as of 2026-09-12; the scope is now derived from the width the model commits
+// to (gunbc.runner.runner_slot_retirement::host_surplus_unit_scope), and at width 15 the surplus is 16..21 --
+// 13, 14 and 15 are CI members the model keeps (gunbc.roadmap.fleet-mask-grants-cover-slots-the-model-keeps).
+// A fixture that asked about 13 would now be a fixture about a kept slot, which is not what these claims test.
+// SCOPE IS PER UNIT, NOT PER HOST OR PER ENVIRONMENT. Permission to interrupt srv4-16 and srv4-17 is
 // not permission to interrupt srv4-15, and no "this is a dev box" reading may supply it.
 test fn interruption_outside_the_authorized_scope_refuses() -> Bool {
   match attempt_retirement(
@@ -316,7 +323,7 @@ test fn interruption_outside_the_authorized_scope_refuses() -> Bool {
 test fn an_interrupted_retirement_is_labelled_as_interrupted() -> Bool {
   match attempt_retirement(
     method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
-    observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+    observation: drained_unit(unit: "actions-runner@srv4-17.service"),
     work_interrupted: true,
   ) {
     RetirementAttempted { outcome: out } =>
@@ -335,7 +342,7 @@ test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
     a: attempt_retirement(
       method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
       observation: RunnerRetirementObservation {
-        unit: "actions-runner@srv4-13.service",
+        unit: "actions-runner@srv4-16.service",
         replacement_inhibited: true,
         service_running: false,
         occupancy: CgroupObservedPopulated,
@@ -350,19 +357,19 @@ test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
 test fn two_authorized_retirements_cover_the_required_set() -> Bool {
   match cap_raise_standing(
     required_retiring: [
-      "actions-runner@srv4-13.service" as NonEmptyStr,
-      "actions-runner@srv4-14.service" as NonEmptyStr,
+      "actions-runner@srv4-16.service" as NonEmptyStr,
+      "actions-runner@srv4-17.service" as NonEmptyStr,
     ],
     observation: surplus_observation_after_attempts(
       attempts: [
         attempt_retirement(
           method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
-          observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+          observation: drained_unit(unit: "actions-runner@srv4-16.service"),
           work_interrupted: true,
         ),
         attempt_retirement(
           method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
-          observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+          observation: drained_unit(unit: "actions-runner@srv4-17.service"),
           work_interrupted: true,
         ),
       ]
@@ -406,13 +413,13 @@ test fn a_surplus_unit_the_standings_never_mention_still_blocks() -> Bool {
 // took `still_present` from the census alone would admit the raise while the work is live.
 test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool {
   match cap_raise_standing(
-    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    required_retiring: ["actions-runner@srv4-16.service" as NonEmptyStr],
     observation: surplus_observation_from_census_and_retirement(
       census: SurplusSlotsObserved { retired: [], still_present: [] },
       standings: [
         runner_retirement_standing(
           o: RunnerRetirementObservation {
-            unit: "actions-runner@srv4-13.service",
+            unit: "actions-runner@srv4-16.service",
             replacement_inhibited: true,
             service_running: false,
             occupancy: CgroupObservedPopulated,
@@ -433,11 +440,11 @@ test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool
 // listed; admitting here would be the empty-observation narrow.
 test fn an_unobserved_census_is_not_rescued_by_complete_standings() -> Bool {
   match cap_raise_standing(
-    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    required_retiring: ["actions-runner@srv4-16.service" as NonEmptyStr],
     observation: surplus_observation_from_census_and_retirement(
       census: SurplusSlotsUnobserved { cause: "host unreachable" },
       standings: [
-        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-16.service")),
       ],
     ),
   ) {
@@ -452,11 +459,11 @@ test fn an_unobserved_census_is_not_rescued_by_complete_standings() -> Bool {
 // satisfied by a join that blocks unconditionally.
 test fn a_clean_census_and_a_complete_standing_admit_together() -> Bool {
   match cap_raise_standing(
-    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    required_retiring: ["actions-runner@srv4-16.service" as NonEmptyStr],
     observation: surplus_observation_from_census_and_retirement(
       census: SurplusSlotsObserved { retired: [], still_present: [] },
       standings: [
-        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-16.service")),
       ],
     ),
   ) {
@@ -472,7 +479,7 @@ test fn a_clean_census_and_a_complete_standing_admit_together() -> Bool {
 test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
   match runner_retirement_standing(
     o: retirement_observation_unreadable(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: "actions-runner@srv4-16.service" as NonEmptyStr,
       cause: "systemctl show refused",
     ),
   ) {
@@ -494,7 +501,7 @@ test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
 test fn the_state_mask_now_actually_leaves_behind_completes_the_retirement() -> Bool {
   match runner_retirement_standing(
     o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: "actions-runner@srv4-16.service" as NonEmptyStr,
       unit_file_state: "masked",
       active_state: "inactive",
       occupancy: CgroupAbsent,
@@ -511,7 +518,7 @@ test fn the_state_mask_now_actually_leaves_behind_completes_the_retirement() -> 
 // retired slot rather than a transitional reading on the way to not-found.
 test fn a_masked_unit_is_inhibited_rather_than_missing() -> Bool {
   let o = retirement_observation_from_readings(
-    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit: "actions-runner@srv4-16.service" as NonEmptyStr,
     unit_file_state: "masked",
     active_state: "inactive",
     occupancy: CgroupObservedEmpty,
@@ -584,7 +591,7 @@ test fn empty_systemctl_show_stdout_is_a_blank_property_reading() -> Bool {
 // reading only `active` would let that window register as a stopped service.
 test fn a_deactivating_unit_still_counts_as_running() -> Bool {
   let o = retirement_observation_from_readings(
-    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit: "actions-runner@srv4-16.service" as NonEmptyStr,
     unit_file_state: "masked",
     active_state: "deactivating",
     occupancy: CgroupObservedEmpty,
@@ -602,7 +609,7 @@ test fn a_deactivating_unit_still_counts_as_running() -> Bool {
 test fn a_stopped_but_unmasked_slot_does_not_complete() -> Bool {
   match runner_retirement_standing(
     o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: "actions-runner@srv4-16.service" as NonEmptyStr,
       unit_file_state: "enabled",
       active_state: "inactive",
       occupancy: CgroupAbsent,
@@ -619,13 +626,13 @@ test fn a_stopped_but_unmasked_slot_does_not_complete() -> Bool {
 // into the blocking set could never let a successful retirement finish. This is that subtraction.
 test fn a_completed_masked_unit_is_subtracted_from_census_presence() -> Bool {
   match cap_raise_standing(
-    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    required_retiring: ["actions-runner@srv4-16.service" as NonEmptyStr],
     observation: surplus_observation_from_census_and_retirement(
       census: SurplusSlotsObserved {
         retired: [],
-        still_present: ["actions-runner@srv4-13.service" as NonEmptyStr],
+        still_present: ["actions-runner@srv4-16.service" as NonEmptyStr],
       },
-      standings: [runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service"))],
+      standings: [runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-16.service"))],
     ),
   ) {
     CapRaiseAdmitted => true
@@ -653,12 +660,12 @@ test fn the_actuator_refuses_a_unit_the_authorization_does_not_name() -> Bool {
 test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool {
   match authorized_retirement_actuation(
     auth: srv4_transition_interruption_authorization,
-    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit: "actions-runner@srv4-16.service" as NonEmptyStr,
   ) {
     RetirementActuationAuthorized { unit: u, operation: op } =>
-      (u as String) == "actions-runner@srv4-13.service"
+      (u as String) == "actions-runner@srv4-16.service"
         && match op {
-          SystemctlMaskNow { unit: mu } => (mu as String) == "actions-runner@srv4-13.service"
+          SystemctlMaskNow { unit: mu } => (mu as String) == "actions-runner@srv4-16.service"
           _ => false
         }
     RetirementActuationRefused { unit: _, cause: _ } => false
@@ -705,7 +712,7 @@ fn read_refused() -> HostOperationOutcome {
 fn masked_inactive_standing(occupancy_read: HostOperationOutcome) -> RunnerRetirementStanding {
   runner_retirement_standing(
     o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit: "actions-runner@srv4-16.service" as NonEmptyStr,
       unit_file_state: "masked",
       active_state: "inactive",
       occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: occupancy_read),
@@ -893,7 +900,7 @@ test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
 // the CgroupReadEvents arm back at a cgroup.procs read makes the materialized argv disagree with the
 // extdeps composition and this goes red.
 test fn the_live_observer_reaches_the_events_decoder() -> Bool {
-  match observe_slot_cgroup_occupancy(transport: LocalShell, unit: "actions-runner@srv4-13.service" as NonEmptyStr) {
+  match observe_slot_cgroup_occupancy(transport: LocalShell, unit: "actions-runner@srv4-16.service" as NonEmptyStr) {
     CgroupObservedEmpty => true
     CgroupObservedPopulated => false
     CgroupAbsent => false
@@ -902,7 +909,7 @@ test fn the_live_observer_reaches_the_events_decoder() -> Bool {
 }
 
 test fn the_events_read_operation_targets_cgroup_events() -> Bool {
-  let cgroup = "/sys/fs/cgroup/system.slice/actions-runner@srv4-13.service" as NonEmptyStr
+  let cgroup = "/sys/fs/cgroup/system.slice/actions-runner@srv4-16.service" as NonEmptyStr
   match host_operation_materialize_argv(operation: CgroupReadEvents { cgroup_path: cgroup }) {
     ArgvMaterialized { argv: argv } =>
       join(argv, " ") == join(["cat", cgroup_v2_events_path(cgroup_path: cgroup) as String], " ")
@@ -1307,7 +1314,7 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // AND THE AGREEING CASE, so the row above is not satisfied by a check that always disagrees.
 //
 // THE UNIT IS TAKEN FROM THE OBLIGATION RATHER THAN WRITTEN DOWN, because the written one had gone
-// stale. This row supplied `actions-runner@srv4-13.service`, which was inside the manifest when
+// stale. This row supplied `actions-runner@srv4-16.service`, which was inside the manifest when
 // srv4's obligation ran 13..21; at the 26/25 GiB width srv4 commits 17 and the requirement is
 // 18..21, so slot 13 is now OUTSIDE it and the row asserted agreement against a decision that
 // correctly disagrees. Reading the first member of the live obligation keeps the specimen inside
@@ -1457,4 +1464,53 @@ test fn srv3_permission_is_its_width_cut_row_and_nothing_more() -> Bool {
         && !interruption_authorization_covers(auth: a, unit: "actions-runner@srv3-01.service")
         && string_contains(s: a.operator_reason as String, pattern: "msg_69d4410c")
   }
+}
+
+// NO MASK GRANT NAMES A SLOT THE WIDTH COMMITS. The sudoers mask lines are rendered from a host's
+// interruption authorization (gunbc.runner.runner_slot_retirement::host_maskable_units), and nothing checked
+// that the authorization's scope and the population the model commits to overlap legitimately. The typed-out
+// scope 13..21 agreed with the width when the width was 12; at width 15 the same text reaches srv4-13, srv4-14
+// and srv4-15, which are CI members -- authority with no consumer, and a false statement to anyone who reads a
+// grant list as a statement of who is retired (gunbc.design_argument::consumption;
+// gunbc.roadmap.fleet-mask-grants-cover-slots-the-model-keeps, for which this is the red control).
+fn mask_grant_avoids_committed_members(host: HostIdentity) -> Bool {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthDerived { slots: w } => all(
+      host_maskable_units(host: host),
+      u => !any(
+        host_committed_identities_at(host: host, committed: w),
+        k => (runner_slot_unit_name(slot: k) as String) == (u as String)
+      )
+    )
+    RunnerWidthUnresolved { cause: _ } => false
+  }
+}
+
+test fn no_mask_grant_names_a_slot_the_width_commits() -> Bool {
+  length(xs: host_maskable_units(host: operator_host_srv4)) > 0
+    && mask_grant_avoids_committed_members(host: operator_host_srv4)
+    && mask_grant_avoids_committed_members(host: operator_host_srv3)
+}
+
+// THE GRANT MUST ALSO STILL COVER WHAT THE TRANSITION DECLARES. The claim above refuses a mask grant that
+// reaches a kept member; this one refuses a grant that has stopped covering a unit the width transition
+// DECLARES as a required retiree -- the other way a hand-authored scope goes stale, by losing a permission the
+// operator already granted. Both directions are checked because the scope is authored ON PURPOSE
+// (gunbc.runner.runner_slot_retirement, the fabric-row rule from review 68854: permission is authored and
+// checked OVER the derived obligation, never substituted for it, because a scope read from the population
+// authority acquires members no operator named). Authoring is only safe while a witness says when the list has
+// stopped matching what it was written to name.
+fn grant_covers_declared_retirees(host: HostIdentity) -> Bool {
+  match required_retirees_for_host(host: host) {
+    RetireesKnown { units: owed } => all(
+      owed,
+      r => any(host_maskable_units(host: host), g => (g as String) == (r as String))
+    )
+    RetireesUnresolved { host: _, cause: _ } => false
+  }
+}
+
+test fn the_mask_grant_covers_every_declared_retiree() -> Bool {
+  grant_covers_declared_retirees(host: operator_host_srv4)
+    && grant_covers_declared_retirees(host: operator_host_srv3)
 }
