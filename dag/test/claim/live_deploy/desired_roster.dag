@@ -97,6 +97,7 @@ fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
       names: live.names,
       selected_identity: lab.selected_identity,
       admitted_branch: lab.admitted_branch,
+      pair_delivery: lab.pair_delivery,
     },
   ]
 }
@@ -249,6 +250,7 @@ test fn a_row_that_carries_another_row_selected_identity_is_a_mismatch() -> Bool
     names: live.names,
     selected_identity: srv1_lab_selected_identity(),
     admitted_branch: live.admitted_branch,
+    pair_delivery: live.pair_delivery,
   }
   match bind_desired_selected_identity(desired: forged) {
     DesiredSelectedIdentityMismatch { carried, rostered } =>

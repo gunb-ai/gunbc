@@ -39,7 +39,10 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed,
   JsonDocumentTrailingContentAt,
   JsonDocumentUnreadable,
+  JsonValue,
+  json_field,
   json_field_string,
+  json_field_string_list,
   parse_json_document,
 }
 import extdeps.tailscale.serve { tailscale_program }
@@ -50,6 +53,7 @@ import extdeps.units.iso8601_calendar {
   iso8601_days_from_civil,
   iso8601_utc_instant_parts_are_valid,
 }
+import std.list { list_member }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
 
@@ -466,11 +470,14 @@ fn tailscale_tag_list_wire(tags: List<NonEmptyStr>) -> String {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
-// WHETHER A HOST IS JOINED -- THE OBSERVATION, AND THE ONLY STATE THAT COUNTS AS JOINED.
+// WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY. THE OBSERVATION, AND THE STATES A JOIN HAS.
 //
-// `tailscale status --json` carries `BackendState`, whose values the upstream implementation enumerates
-// (ipn/ipnstate/ipnstate.go, Status.BackendState): "One of NoState, NeedsLogin, NeedsMachineAuth,
-// Stopped, Starting, Running." Only RUNNING is a member the router can reach:
+// `tailscale status --json` marshals `ipnstate.Status` (cmd/tailscale/cli/status.go, the `--json` branch:
+// `json.MarshalIndent(st, "", "  ")`), and TWO of its members decide what the caller is a member OF:
+//
+// `BackendState`, whose values the upstream implementation enumerates (ipn/ipnstate/ipnstate.go,
+// Status.BackendState): "One of NoState, NeedsLogin, NeedsMachineAuth, Stopped, Starting, Running."
+// Only RUNNING is a member the router can reach:
 //   NEEDSLOGIN        the node has no netmap identity -- it has never joined, or its key was removed. THE
 //                     JOIN HAS NOT HAPPENED.
 //   NEEDSMACHINEAUTH  enrolled and waiting on the tailnet's approval -- what a key that is not
@@ -478,21 +485,91 @@ fn tailscale_tag_list_wire(tags: List<NonEmptyStr>) -> String {
 //                     because from srv1 the node is unreachable: an unapproved node answers nothing.
 //   STOPPED / STARTING / NOSTATE  not a member that answers. STARTING is transient, and a read-back that
 //                     accepted it would report convergence on a state that may not survive.
-// Everything else -- unparseable JSON, a missing member, a value from a future upstream -- is Unreadable,
-// and the converge refuses on it (@ref(gunbc.design_argument::fail_closed): a failure arm refuses, it does
-// not widen to whatever the desired answer is). THE COMMAND ROW IS NOT FORKED: the same
-// `tailscale status --json` extdeps.tailscale.machine_name carries is what the converge runs; this module
-// reads a different member of the same document.
+//
+// `Self`, the daemon's own node (ipn/ipnstate/ipnstate.go, Status.Self), whose `Tags` member upstream
+// documents as "the list of ACL tags applied to this node" (PeerStatus.Tags, a `*views.Slice[string]`
+// marked `json:",omitempty"` -- SO AN UNTAGGED NODE CARRIES NO `Tags` MEMBER AT ALL: in this document
+// ABSENCE IS THE TAGLESS READING, not a read failure, and upstream's own predicate is exactly that
+// reading (`PeerStatus.IsTagged`: "Tags != nil && ps.Tags.Len() > 0").
+//
+// THE TAGS ARE NOT DECORATION; THEY NAME WHICH IDENTITY THE NODE HOLDS, AND THE POLICY IS KEYED ON IT:
+//   A node enrolled with a TAGGED key: "after a device logs in as the user who generated the auth key,
+//   the device assumes the identity of the auth key's tags", and "Access control policies restricting the
+//   device's permissions based on the tag apply after provisioning the device"
+//   (tailscale.com/kb/1085/auth-keys, the `Tagged` key kind). Such a node is a member AS ITS TAG.
+//   A node joined BY HAND carries a person instead -- the same page contrasts devices "that carry an
+//   individual user's identity rather than a tag's". In the policy language a tag "reference[s] groups of
+//   non-user devices" and a grant's `source`/`accept` lists address users, tags and groups separately
+//   (tailscale.com/kb/1337/acl-syntax, the `tag` and `grants` sections). So a grant written against a tag
+//   never reaches a hand-joined device, whatever its BackendState says.
+//
+// SO `BackendState == "Running"` ALONE IS NOT MEMBERSHIP IN A TAG-KEYED TAILNET. A node enrolled BY HAND
+// under a person's account is Running, resolvable under the tailnet's MagicDNS suffix, and answering -- while
+// presenting NO tags, so it sits outside every grant that policy is keyed on. Reporting such a host as
+// converged is a silent success over the wrong state (@ref(gunbc.design_argument::fail_closed)); which
+// machines were observed in that state is a fleet fact, recorded where the fleet's hosts are recorded, not
+// here.
+//
+// The state is THREE-VALUED HERE, at the boundary where the document is first read
+// (@ref(gunbc.design_argument::earliest_unjustified_boundary)): a reading that stopped at "Running, plus
+// whatever tags it happens to carry" would leave every consumer to re-derive membership on its own, and
+// the consumer that forgets is exactly the bug this block is.
+//   JoinStateJoinedWithRequiredTag     Running AND carrying the tag the caller names. THE ONLY state a
+//                                      converge may treat as already converged.
+//   JoinStateJoinedWithoutRequiredTag  Running, and a member under some OTHER identity -- hand-joined, or
+//                                      owned by a user account. NOT a member as that tag. No converge arm
+//                                      may call it converged, and the remedy -- re-authenticating under the
+//                                      key that carries the tag (gunbc.tailscale_fleet_auth_key) -- is a
+//                                      separate, operator-approved act, never something this code does on
+//                                      its own.
+//   JoinStateNotJoined                 no netmap identity a router can reach.
+// UNREADABLE stays a FOURTH, separate reading: a document that does not let membership be decided (no
+// `BackendState`, no `Self`, a `Tags` member that is not a list) is neither member nor non-member, and the
+// converge refuses on it.
+// WHICH tag makes a node the member a caller means is a fleet fact, not an upstream one, so the tag enters
+// as a PARAMETER and nothing here names one (the module header's rule). THE COMMAND ROW IS NOT FORKED: the
+// same `tailscale status --json` extdeps.tailscale.machine_name carries is what the converge runs; this
+// module reads more members of the same document.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 data tailscale_backend_state_running: String = "Running"
 
 type TailscaleJoinState
-  = JoinStateJoined
+  = JoinStateJoinedWithRequiredTag { self_tags: List<String> }
+  | JoinStateJoinedWithoutRequiredTag { self_tags: List<String> }
   | JoinStateNotJoined { state: String }
   | JoinStateUnreadable { cause: String }
 
-fn tailscale_up_join_state_of(status_json: String) -> TailscaleJoinState {
+// What the node says it carries, read apart from the state, because the two failures are different facts:
+// no `Self` member -- or a `Tags` member that is not a list -- is a document membership CANNOT be decided
+// from, while NO `Tags` MEMBER is upstream's `omitempty` saying the node is untagged. The second is the
+// tagless reading; the first refuses. Only `tailscale_up_join_state_of` needs to tell them apart, which is
+// why this is the one consumer and the reading is not folded into a String.
+type TailscaleSelfTagReading
+  = SelfTagsCarried { tags: List<String> }
+  | SelfTagsUnreadable { cause: String }
+
+fn tailscale_status_self_tags_of(document: JsonValue) -> TailscaleSelfTagReading {
+  match json_field(obj: document, key: "Self") {
+    FieldAbsent =>
+      SelfTagsUnreadable { cause: "status JSON carries no Self member: the node's own identity is not in the document" }
+    FieldMalformed { cause: cause } => SelfTagsUnreadable { cause: cause }
+    FieldRead { value: subject } =>
+      match json_field_string_list(obj: subject, key: "Tags") {
+        FieldAbsent => SelfTagsCarried { tags: [] }
+        FieldMalformed { cause: cause } => SelfTagsUnreadable { cause: cause }
+        FieldRead { value: tags } => SelfTagsCarried { tags: tags }
+      }
+  }
+}
+
+// Does the node present the tag the caller names? Membership, not "any tag": a node carrying a DIFFERENT
+// tag is another role's member, not this one's.
+fn tailscale_self_tags_include(tags: List<String>, tag: NonEmptyStr) -> Bool {
+  list_member(xs: tags, x: tag as String, eq: (a, b) => a == b)
+}
+
+fn tailscale_up_join_state_of(status_json: String, required_tag: NonEmptyStr) -> TailscaleJoinState {
   match parse_json_document(s: status_json) {
     JsonDocumentUnreadable { gap: JsonDocumentMalformedAt { at: at } } =>
       JoinStateUnreadable { cause: concat("status JSON malformed at offset ", to_string(at)) }
@@ -502,7 +579,15 @@ fn tailscale_up_join_state_of(status_json: String) -> TailscaleJoinState {
       match json_field_string(obj: document, key: "BackendState") {
         FieldRead { value: value } =>
           if value == tailscale_backend_state_running {
-            JoinStateJoined
+            match tailscale_status_self_tags_of(document: document) {
+              SelfTagsUnreadable { cause: cause } => JoinStateUnreadable { cause: cause }
+              SelfTagsCarried { tags: tags } =>
+                if tailscale_self_tags_include(tags: tags, tag: required_tag) {
+                  JoinStateJoinedWithRequiredTag { self_tags: tags }
+                } else {
+                  JoinStateJoinedWithoutRequiredTag { self_tags: tags }
+                }
+            }
           } else {
             JoinStateNotJoined { state: value }
           }
@@ -512,12 +597,15 @@ fn tailscale_up_join_state_of(status_json: String) -> TailscaleJoinState {
   }
 }
 
-// Whether a host is already a member, which is the question the converge asks BEFORE it places a key file
-// on a device: an already-joined host is a Noop and must not be handed a fresh copy of the fleet's
-// credential. Deliberately the strict arm: true only of Running, so Unreadable never reads as joined.
+// Whether the daemon reports a member that answers AT ALL -- the question the converge asks BEFORE it runs
+// a package query on the host, since a joined backend means the package is already there. NOT the question
+// "is it the member we mean": both joined arms read true here, and the difference between them is decided
+// by the arms themselves, so no caller can ask this function and get membership. Deliberately the strict
+// arm: true only of a Running backend, so Unreadable never reads as joined.
 fn tailscale_up_join_state_is_joined(state: TailscaleJoinState) -> Bool {
   match state {
-    JoinStateJoined => true
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => true
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => true
     JoinStateNotJoined { state: _ } => false
     JoinStateUnreadable { cause: _ } => false
   }

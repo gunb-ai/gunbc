@@ -760,6 +760,10 @@ fn step_env_text(step: Step) -> String {
         Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
         Absent => ""
       }
+    // step_env_text renders only run-step env. The sole-consumer check is a whole-file occurrence
+    // count over the generated YAML (see the_srv15_read_consumes_only_its_own_mint), so nothing here
+    // depends on uses-step rendering; rendering UsesStep through yaml_scalar_text cost 100M+ eval
+    // steps and 23GB of RSS for zero discrimination, so this arm stays "".
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
   }
 }
@@ -949,4 +953,13 @@ test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
     _ => false
   }
     && string_contains(s: yml, pattern: "steps.wif_auth_srv15_read.outputs.access_token")
+    // review 96099 / review 96142: "sole consumer" must be checked, not just named. The generated
+    // YAML text is what GHA actually interprets, and counting occurrences covers every binding form
+    // at once -- run-step env, uses-step `with:`, and every job -- so no step kind can hide a second
+    // binder (a per-step model scan could not do this: each rendering of the job model exceeded the
+    // 24GB batch ceiling). The mint produces the token and never references it; no other step may
+    // reference it. One occurrence is the honest expected count, and re-adding any second binder --
+    // a `||` fallback (the class the no-'||' ruling msg_dacad7be rejected) or a binding in another
+    // step -- lifts it to 2 and flips this claim.
+    && (fold(split(s: yml, delimiter: "steps.wif_auth_srv15_read.outputs.access_token"), init: 0, f: fn(acc, _part) { acc + 1 }) - 1) == 1
 }

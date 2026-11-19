@@ -30,10 +30,45 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  construction. What is shared with it is the SEQUENCE, which is a fact about the route, not an interface.
 //
 //  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the witnesses that use it,
-//  because a fixture a gated witness may not import is not a fixture. Every path it touches hangs off the
-//  throwaway instance root its caller was given (a mktemp under /tmp): it takes no /var/lib/gunbc, no production
-//  partition, no srv1/srv2/srv3 realization, no service instance, and it writes only into the instance it was
-//  handed. It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
+//  because a fixture a gated witness may not import is not a fixture. The carrier paths hang off the throwaway
+//  instance root its caller was given (a mktemp under /tmp). The two controls further down in this file additionally
+//  mktemp their own parents under /tmp, outside that instance root, because a control has to be able to damage a
+//  tree without damaging anybody else's. What holds is narrower than "every path": every template the checked-in
+//  callers pass is a `/tmp` template — the witness mints `/tmp/gunbc_carrier_foreign.XXXXXX`, the two controls mint
+//  their own parents. The instance roots the wet routes use are throwaway /tmp directories too — the witness mints
+//  them with `shell.Mktemp.Dir` — though that is a convention rather than a property the fixture may rely on, since
+//  at least one claim hands a root that does not exist at all in order to watch a refusal happen. The template parameter IS restricted, and the
+//  order is the enforced one. `roadmap_event_carrier_mint_scratch` admits the template — its location and its shape,
+//  through `roadmap_carrier_template_is_admissible`, a predicate over text that needs nothing on disk — BEFORE
+//  `shell.Mktemp.DirWithTemplate` is called, and a template outside `/tmp/` is refused there with nothing created.
+//  Nothing reached through the exported mint creates a directory before that decision, so a template naming
+//  `/var/lib/gunbc`, a production partition, a srv1/srv2/srv3 realization or a service instance is refused before
+//  anything exists. What the gate IS is LEXICAL TEMPLATE ADMISSION, and the distinction is not pedantry: the
+//  predicate reads the template's TEXT. It never resolves it. A `/tmp/alias` symlink to anywhere else passes
+//  admission on its face and `shell.Mktemp.DirWithTemplate` then creates THROUGH it, so this is not canonical
+//  confinement and no caller can treat it as such — it stops a template that NAMES an out-of-scratch location, not
+//  one that REACHES one. Canonicalising the path before the check is the change that would close that gap; it is
+//  deliberately not in this PR, and a caller that needs confinement rather than admission must not read this
+//  paragraph as providing it. What remains ATTEMPTED rather than guaranteed is the AFTER half: a template that passes the
+//  admission can still be refused for what it turned out to be (not readable, not owned by this uid, seal not
+//  plantable), and each of those refusals reclaims what it made and reports a failed reclamation by name, so a
+//  refusal can never imply a tidy-up that did not occur.
+//
+//  HISTORICAL SPECIMEN, NOT CURRENT BEHAVIOUR. Until this change the order was the opposite: the mint handed whatever
+//  template it was given to `shell.Mktemp.DirWithTemplate` first, applied the `/tmp` shape check to the path that came
+//  back, and returned `RoadmapEventCarrierMintRefused` without removing the directory mktemp had just created — so a
+//  caller who passed `/var/tmp/...` left a directory on disk, while the seal-planting arm did remove its own. One
+//  function, two refusal postures, opposite residue. That ordering is a tracked failure class, not a note to self:
+//  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
+//  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and the control
+//  that pins it is `a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind` at the foot of this
+//  file. The distinction the row insists on is the reason the admission is its own earlier decision rather than a
+//  clause of the post-create check: pre-create rejection enforces the PRODUCTION BOUNDARY, because nothing
+//  unauthorized ever comes into existence, while reclaiming after a refusal closes only the LEAK. The post-create
+//  gate could not have carried both, because `roadmap_carrier_root_is_minted_scratch` ends with
+//  `roadmap_carrier_path_is_present` and can therefore speak only about a path that already exists.
+//
+//  It fails CLOSED — a step that does not succeed is reported by name with the tool's own words, never
 //  swallowed — so a caller can never mistake "the carrier was never stood up" for "the carrier refused the
 //  event", the confusion that once let a wrong answer through the gate.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,7 +89,7 @@ import extdeps.shell.exec
 // under LC_ALL=C, whose command words extdeps.tools.ls owns — decoded through the folds
 // extdeps.filesystem.filesystem_io provides for it. See roadmap_carrier_observe_entry for why a `test` probe
 // may not answer them.
-import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_numeric_entries_command }
+import extdeps.tools.ls { LsEntryQueryMissing, LsEntryQueryPresent, LsEntryQueryRefused, LsEntryQueryUnreadable, LsLongEntry, LsLongEntryRead, LsLongEntryRefused, ls_entry_query_reading_of_output, ls_long_entry_of_line, ls_long_numeric_entries_command, ls_long_numeric_listing_command }
 import extdeps.filesystem.filesystem_io { FilesystemEntryAbsentByLookup, FilesystemEntryPresentByLookup, FilesystemEntryUnobservable, filesystem_entry_lookup_reading_of_exit }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -154,18 +189,29 @@ fn roadmap_event_carrier_mutation_targets(instance: HostDashboardInstance) -> Li
 // that asked it about a path it had just swept failed for proving the thing it meant to prove (measured
 // 2026-11-17 at this fixture's first wet run, and filed as node://adhoc-513fffd2-68f). Presence is answered
 // below, by the same testimony that answers absence.
+//
+// THE SHAPE DECISION, ONCE, ON A STRING. Three conjuncts and no filesystem: an admitted scratch sits under `/tmp/`,
+// is longer than the prefix alone, and carries no `.` or `..` segment. The mint asks this BEFORE anything exists,
+// which is the whole point of separating it -- and the gate underneath asks it too, by calling this function rather
+// than restating it, so the answer a path gets before it is created and the answer it gets afterwards cannot drift
+// apart (`gunbc.design_argument::single_authority`: "a second place that independently decides it is a fork").
+fn roadmap_carrier_template_is_admissible(template: String) -> Bool {
+  starts_with(s: template, prefix: "/tmp/")
+    && string_length(s: template) > 5
+    && all(absolute_path_segments(path: template), segment => segment != ".." && segment != ".")
+}
+
+// THE SAME SHAPE DECISION PLUS THE ONE CONJUNCT THAT NEEDS A PATH ON DISK. Presence is the only part of the question
+// that cannot be answered before the create, which is why admission is two decisions and not one.
 fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
-  starts_with(s: root, prefix: "/tmp/")
-    && string_length(s: root) > 5
-    && all(absolute_path_segments(path: root), segment => segment != ".." && segment != ".")
-    && roadmap_carrier_path_is_present(path: root)
+  roadmap_carrier_template_is_admissible(template: root) && roadmap_carrier_path_is_present(path: root)
 }
 
 // A SCRATCH IS A CAPABILITY, NOT A STRING — and the capability is the filesystem re-check, not the type. A normal
 // scoped caller obtains a `RoadmapEventCarrierScratch` only as the value `roadmap_event_carrier_mint_scratch`
 // returns when `shell.Mktemp.DirWithTemplate` reports success on a template this file owns, and it is the only type
 // `roadmap_event_carrier_sweep` accepts and the only one provisioning admits. It is NOT unconstructible: this
-// language has no private constructor, and both controls below build one by hand: each mktemp's its own parent,
+// language has no private constructor, and the two sweep controls below build one by hand: each mktemp's its own parent,
 // scaffolds the scenario inside it with this file's own primitives, and then wraps the path in the type, because the
 // control has to be able to name the directory it is about to torture. Holding the type therefore establishes nothing
 // on its own. What keeps a hand-built token from being a skeleton key is that admission and sweep each re-prove the
@@ -176,9 +222,23 @@ fn roadmap_carrier_root_is_minted_scratch(root: String) -> Bool {
 // re-checks trusted the value instead of looking.
 type RoadmapEventCarrierScratch { path: String, template: String }
 
+//  WHICH ARM REFUSED IS A CLOSED SET, SO IT TRAVELS AS ONE. Four arms refuse, and they differ in the only way a
+//  caller can act on: whether anything was created, and therefore whether anything has to be reclaimed. Carrying
+//  that distinction as prose means the use site must hold a copy of the mint's wording to recover it -- two sources
+//  for one fact (gunbc.design_argument::single_authority: "a second place that independently decides it is a fork"),
+//  an untyped closed tag (gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located error"), and
+//  a rewording that drifts silently until a control happens to go red at runtime. So the arm is a variant of a type,
+//  and `detail` is what it has always been: a sentence for whoever reads the failure. The words are still pinned,
+//  but by an assertion at the use site, never as the thing that decides.
+type RoadmapCarrierMintRefusalArm
+  = MintArm_before_create
+  | MintArm_by_mktemp
+  | MintArm_after_shape
+  | MintArm_after_seal
+
 type RoadmapEventCarrierMint
   = RoadmapEventCarrierMinted { scratch: RoadmapEventCarrierScratch }
-  | RoadmapEventCarrierMintRefused { detail: String }
+  | RoadmapEventCarrierMintRefused { detail: String, arm: RoadmapCarrierMintRefusalArm }
 
 fn roadmap_carrier_mint_cleanup_words(cleaned: Bool) -> String {
   if cleaned {
@@ -197,10 +257,22 @@ type RoadmapCarrierScopedRun
 // THE ONLY COMPOSITION, and the reason no caller has to remember to clean up. Mint, run and sweep are one operation
 // here rather than three calls a caller must sequence: a witness that forgets the sweep, or one that returns from
 // its body before reaching it, leaves a scenario on disk that the NEXT run reads as its own history — the failure
-// mode this fixture exists to prevent, in this fixture. `body` receives the scratch (the only way a caller ever
-// gets one) and the sweep runs whatever the body decided, including a body that refused. Consumers get the report,
-// not the parts: they cannot skip the sweep, hand the sweep someone else's directory, or provision against a
-// scratch they typed, because the token they were handed is the only one their run ever had.
+// mode this fixture exists to prevent, in this fixture. `body` receives the scratch and the sweep runs whatever the
+// body decided, including a body that refused.
+//
+// It is the only COMPOSITION, not the only route, and the distinction is not cosmetic: the parts are individually
+// importable and are imported. The two controls in this file mktemp their own parent and call the sweep themselves
+// — neither touches the composition, because a control whose whole
+// job is to damage a tree and then reclaim it cannot hand that tree to a wrapper that cleans up on its behalf;
+// roadmap_operator_close_retire_witness.dag mints a foreign scratch itself, because a witness proving that a foreign
+// tree is refused has to be able to build one. So a caller CAN skip this composition. What protects the filesystem
+// is not exclusivity — it is that no part trusts the caller either: the sweep re-proves ownership and provenance
+// from the filesystem before it deletes. That is an accidental-misuse guard, exactly as this file's own text on the
+// seal says, and no more: `roadmap_carrier_seal_name` is a public constant, `RoadmapEventCarrierScratch` is a
+// public record this language cannot keep unexported, and the seal prose states plainly that a determined caller can
+// plant the name. So the re-checks stop a witness author from pointing the fixture's authority at the wrong
+// directory, and they reject a foreign tree that does not carry the seal. They are not a capability no caller can
+// forge, and nothing here should be read as capability-based access control.
 fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
   let judged = body(scratch)
   let sweep = roadmap_event_carrier_sweep(scratch: scratch)
@@ -209,27 +281,46 @@ fn roadmap_carrier_run_in_scratch(scratch: RoadmapEventCarrierScratch, body: fn(
 
 fn roadmap_event_carrier_run_scoped(template: NonEmptyStr, body: fn(RoadmapEventCarrierScratch) -> Bool) -> RoadmapCarrierScopedRun {
   match roadmap_event_carrier_mint_scratch(template: template) {
-    RoadmapEventCarrierMintRefused { detail: detail } => RoadmapCarrierScopedMintRefused { detail: detail }
+    RoadmapEventCarrierMintRefused { detail: detail, arm: _arm } => RoadmapCarrierScopedMintRefused { detail: detail }
     RoadmapEventCarrierMinted { scratch: scratch } => roadmap_carrier_run_in_scratch(scratch: scratch, body: body)
   }
 }
 
 fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarrierMint {
-  let made = shell.Mktemp.DirWithTemplate(template: template as FilePath)
-  let path: String = made.path as String
-  if !made.success {
-    RoadmapEventCarrierMintRefused { detail: concat("mktemp could not mint a scratch from template ", template as String) }
-  } else if !roadmap_carrier_root_is_minted_scratch(root: path) {
-    RoadmapEventCarrierMintRefused { detail: concat("the directory minted at ", path) }
-  } else if !roadmap_carrier_seal_create(root: path) {
-    // The seal could not be planted, so this directory is one the fixture cannot later prove it owns. Nothing is
-    // provisioned into it and it is removed here, by the only party with a right to: the process that just mkdtemplated
-    // it. If that removal ALSO fails the detail says so, because a leak the witness cannot see is the leak the next
-    // run reads.
-    let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
-    RoadmapEventCarrierMintRefused { detail: concat(concat("the fixture could not plant its ownership seal inside ", path), roadmap_carrier_mint_cleanup_words(cleaned: cleaned)) }
+  //  THE ADMISSION RUNS BEFORE THE CREATE. The shape question is decidable from the template's text, so nothing has to
+  //  exist to ask it, and asking it afterwards meant every refusal downstream of the create implied a tidy-up nobody
+  //  performed -- the class that records this is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect),
+  //  and the
+  //  control that pins it is a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind in this file.
+  //  The gate asks the SAME predicate the post-create check asks, by calling it rather than restating it, so the answer
+  //  a path gets before it exists and the answer it gets afterwards cannot drift apart
+  //  (gunbc.design_argument::single_authority). The post-create half below is not decoration and is not folded away:
+  //  readable-and-owned-by-this-uid is a fact about the directory that was actually made, and no text about a template
+  //  can establish it.
+  if !roadmap_carrier_template_is_admissible(template: template as String) {
+    RoadmapEventCarrierMintRefused { detail: concat("the template ", template as String, " is outside the admitted scratch shape; nothing was created"), arm: MintArm_before_create }
   } else {
-    RoadmapEventCarrierMinted { scratch: RoadmapEventCarrierScratch { path: path, template: template as String } }
+    let made = shell.Mktemp.DirWithTemplate(template: template as FilePath)
+    let path: String = made.path as String
+    if !made.success {
+      RoadmapEventCarrierMintRefused { detail: concat("mktemp could not mint a scratch from template ", template as String), arm: MintArm_by_mktemp }
+    } else if !roadmap_carrier_root_is_minted_scratch(root: path) {
+      //  The create already happened, so this refusal is not complete until the thing it made is reclaimed; the
+      //  reclamation's OWN failure is said out loud, because a refusal that implies a tidy-up which did not occur is
+      //  precisely the harm the class row records.
+      let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
+      let words = concat("the directory minted at ", path, " is not a readable scratch directory owned by this caller; reclamation")
+      RoadmapEventCarrierMintRefused { detail: concat(words, roadmap_carrier_mint_cleanup_words(cleaned: cleaned)), arm: MintArm_after_shape }
+    } else if !roadmap_carrier_seal_create(root: path) {
+      //  The seal could not be planted, so this directory is one the fixture cannot later prove it owns. Nothing is
+      //  provisioned into it and it is removed here, by the only party with a right to: the process that just
+      //  mkdtemplated it. If that removal ALSO fails the detail says so, because a leak the witness cannot see is the
+      //  leak the next run reads.
+      let cleaned = shell.Remove.RecursiveForce(path: path as FilePath).success
+      RoadmapEventCarrierMintRefused { detail: concat(concat("the fixture could not plant its ownership seal inside ", path), roadmap_carrier_mint_cleanup_words(cleaned: cleaned)), arm: MintArm_after_seal }
+    } else {
+      RoadmapEventCarrierMinted { scratch: RoadmapEventCarrierScratch { path: path, template: template as String } }
+    }
   }
 }
 
@@ -241,10 +332,15 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 // assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
 // exactly", and the wrapper idiom is already executed in
 // @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
-// Both predicates below consume the SAME channel value through two pure decoders, so the presence reading and the
-// absence reading cannot disagree about what the host answered — the property
+// Each predicate makes ONE observation of the path and reads that one value through the fold or folds it needs:
+// the absence predicate consults the lookup fold alone, the presence predicate consults the lookup fold and then the
+// entry fold over the SAME listing, which is the property
 // @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
-// Filesystem.List per listing, and both folds are pure decoders over that one channel value").
+// Filesystem.List per listing, and both folds are pure decoders over that one channel value"). What the two
+// predicates do NOT share is one sampling. Each runs its own `ls` when it is called, and they are called at
+// different moments by design — presence is asked before a delete and absence after it, so a single shared listing
+// would describe neither moment. Nothing in the fix depends on the two agreeing about an instant: what makes the
+// teardown refuse rather than report clean is that neither predicate may answer from a listing it could not read.
 type RoadmapCarrierEntryObservation { exit_code: Int, stdout: String, stderr: String }
 
 fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation {
@@ -316,9 +412,16 @@ fn roadmap_carrier_path_is_proven_inside(root: String, path: String) -> Bool {
     && all(absolute_path_segments(path: path), segment => segment != ".." && segment != ".")
 }
 
-// EVERY PATH THE MUTATION WILL TOUCH, proven in order, stopping at the first that is not inside — reported under
-// the step name `ownership`, so a caller can always tell "this fixture was never allowed to stand anything up"
-// from "the carrier refused", which is the confusion this whole file exists to prevent.
+// EVERY PATH THE MUTATION WILL TOUCH, taken in order, with three properties worth stating exactly because the first
+// draft of this comment got all three wrong. (1) The refusal reported is the FIRST path that is not inside: once the
+// accumulator holds a Refused, that arm passes it straight through, so no later path can replace it. (2) The later
+// elements are still traversed but they are NOT checked — the Refused arm never calls the predicate again, so this
+// is short-circuit in effort and first-wins in reporting at the same time. (3) The fold performs no filesystem
+// listing at all: `roadmap_carrier_path_is_proven_inside` is pure path arithmetic — `absolute_path_segments`,
+// `position_under`, and a rejection of `.` and `..` — so no `ls` is run anywhere in here and nothing in this
+// function can fail because a directory could not be read. Reported under the step name `ownership`, so a caller
+// can always tell "this fixture was never allowed to stand anything up" from "the carrier refused", which is the
+// confusion this whole file exists to prevent.
 fn roadmap_event_carrier_admit_ownership(root: String, paths: List<FilePath>) -> RoadmapCarrierStep {
   fold(
     paths,
@@ -657,5 +760,224 @@ test fn the_wet_carrier_reclaims_its_own_root_when_the_sweep_refuses() -> Bool {
           && claim("the teardown helper reported a refused sweep as a completed teardown, which is a leak with better manners", false)
       }
     }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE PURE HALF OF THE ADMISSION, CLAIMED ON ITS OWN. `roadmap_carrier_template_is_admissible` is decidable from
+//  the template's text alone, so it needs no host, no filesystem and no wet lane: these four claims can run in any
+//  lane that executes claims at all. They exist because the shape decision is now asked BEFORE the create, and a
+//  gate that runs before an effect can only be tested on text — there is nothing on disk to observe yet.
+
+test fn the_shape_admission_accepts_an_admitted_scratch_template() -> Bool {
+  claim("a template under /tmp/ with a real suffix is admitted", roadmap_carrier_template_is_admissible(template: "/tmp/x.XXXXXX"))
+}
+
+test fn the_shape_admission_refuses_a_foreign_root_a_parent_escape_the_bare_prefix_and_a_relative_path() -> Bool {
+  let refused_foreign = !(roadmap_carrier_template_is_admissible(template: "/var/tmp/x.XXXXXX"))
+  let refused_escape = !(roadmap_carrier_template_is_admissible(template: "/tmp/../etc/x.XXXXXX"))
+  let refused_bare = !(roadmap_carrier_template_is_admissible(template: "/tmp/"))
+  let refused_relative = !(roadmap_carrier_template_is_admissible(template: "tmp/x.XXXXXX"))
+  claim(
+    "a foreign root, a parent escape, the bare prefix alone and a relative path are all refused",
+    refused_foreign && refused_escape && refused_bare && refused_relative,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE THIRD CONTROL: WHAT A REFUSAL LEAVES BEHIND. A template the admission does not accept must be refused, and no
+//  directory may exist under the control's own parent when the call returns. Not "refused loudly" -- the refusal arms
+//  were always loud, and loudness is what hid this defect: a reader auditing error handling sees three correct
+//  refusals and walks past the one thing wrong with them, which is that the create happened first. The row this
+//  control came from is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect).
+//
+//  WHY A PRIVATE PARENT INSTEAD OF SCANNING /var/tmp. The first version of this control listed the shared /var/tmp
+//  and filtered by stem. It went red -- but for the wrong reason: an entry belonging to another session made the
+//  listing unclassifiable, and an unclassifiable listing is its own red arm, so a leak that was there was reported by
+//  a code path that had not seen it. A control whose failure can be caused by a neighbour is not a control. It now
+//  creates its OWN empty parent under /var/tmp, which is writable, unshared, and small enough that "no entries" is a
+//  claim about this mint rather than about the state of the machine.
+//
+//  THE SCAN IS CALIBRATED BEFORE IT IS TRUSTED, IN THE SAME RUN. A listing helper that always reported "nothing
+//  there" would pass every absence assertion ever written against it -- and absence assertions are all this control
+//  has. So before the mint is called, the control CREATES a directory it knows the name of, requires the scan to
+//  report exactly that one entry, removes it, and requires the scan to report none. Both directions of the same
+//  observation are witnessed before either is relied on. Without that step the claim would be one silent bug in a
+//  listing parser away from certifying a leak as cleanliness.
+//
+//  WHAT GREEN MEANS, STATED BEFORE THE CODE THAT COMPUTES IT. Four things, each observed: the control's parent was
+//  created; the scan saw the calibration entry and then its absence; the mint refused via the PRE-CREATE ADMISSION
+//  arm -- recognised by that arm's own leading words, never by "not one of the others"; and the scan sees nothing
+//  under the parent afterwards. Every other outcome is red, including the tidy ones: a post-create refusal that
+//  reclaimed perfectly is the class row's OTHER rung (leak closed, production boundary not enforced) and this claim
+//  does not certify that rung; mktemp failing means the premise did not hold; a mint means the boundary did not hold;
+//  a diagnostic matching none of the arms is unknown, which is red. Cleanup never manufactures a green -- the
+//  settlement runs after the verdict is computed and its result is not combined with it.
+
+data leak_control_parent_template: String = "/var/tmp/gunbc_carrier_leak_parent.XXXXXX"
+
+data leak_control_stem: String = "gunbc_carrier_leak_control."
+
+data leak_control_calibration_name: String = "gunbc_carrier_leak_calibration"
+
+//  Only the pre-create arm's prefix is still named here, and only because the class row cites those leading words as
+//  what a reader of a refusal should see; the control asserts them, it does not classify with them. The other three
+//  rows existed so a classifier could re-derive from prose which arm had fired -- once the arm is carried as a type,
+//  keeping their literals would be the fork the review named.
+data precreate_arm_words: String = "the template "
+
+// Which of the mint's outcomes occurred, as this control has to reason about them. The result TYPE decides, and decides
+// alone: minted, or refused and by which arm, read off RoadmapCarrierMintRefusalArm. Nothing here separates arms by
+// prose any more -- an earlier revision did, and its two failures are the reason: a seal-failure diagnostic matched
+// none of the three prefixes then tested and fell into the else as the pre-create admission, and a later cut of a path
+// out of a refusal's detail yielded the real path plus a sentence of diagnostics, which went to a recursive delete.
+// The detail's wording is the mint's business; a control that parsed it would break silently, in the direction of
+// green, the moment the mint improved its prose. This sum is NOT a restatement of the arm type: it adds the two cases
+// a refusal cannot carry -- the mint SUCCEEDED where the whole point was that this template must not mint, and an arm
+// whose own pinned words contradict it -- and collapsing those into a boolean is the untyped answer this file exists
+// to refuse.
+type LeakControlOutcome
+  = Refused_before_create { detail: String }
+  | Refused_after_create { detail: String }
+  | Refused_by_mktemp { detail: String }
+  | Refused_by_seal { detail: String }
+  | Refused_unrecognized { detail: String }
+  | Minted_outside_the_shape { path: String }
+
+type RoadmapCarrierEntryScan
+  = EntryScanRead { entries: List<String> }
+  | EntryScanUnreadable { diagnostic: String }
+
+fn stem_entry_is_unclassifiable(entry: LsLongEntry) -> Bool {
+  match entry {
+    LsLongEntryRead { name: _, directory: _, ownership: _, mode: _ } => false
+    LsLongEntryRefused { name: _, reason: _ } => true
+  }
+}
+
+fn stem_entry_name(entry: LsLongEntry) -> String {
+  match entry {
+    LsLongEntryRead { name: n, directory: _, ownership: _, mode: _ } => n
+    LsLongEntryRefused { name: n, reason: _ } => n
+  }
+}
+
+// Every entry in a directory this control owns, as ONE listing: `ls -l -n -a --`, the same numeric-long reading the
+// sweep uses, so the control cannot disagree with the fixture about what absent means. A name absent from a listing
+// that SUCCEEDED is absent from the directory. The block-total line carries no mode and is skipped; "." and ".." are
+// not entries of interest; any other line that will not parse makes the whole reading UNREADABLE rather than empty --
+// reading a failed listing as an empty one is the exit-1 fail-open this fixture documents above.
+fn roadmap_carrier_entries_of(directory: String) -> RoadmapCarrierEntryScan {
+  let command = ls_long_numeric_listing_command(directory: directory)
+  let run = shell.Exec.RunArgv(program: "env" as NonEmptyStr, arguments: concat(["LC_ALL=C", command.program.invocation as String], command.arguments))
+  if run.exit_code != 0 {
+    EntryScanUnreadable { diagnostic: join(["ls of ", directory, " exited ", "\{run.exit_code}", ": ", run.stderr], "") }
+  } else {
+    let lines = filter(split(s: run.stdout, delimiter: "\n"), l => trim(s: l) != "" && !starts_with(s: trim(s: l), prefix: "total "))
+    let entries = map(lines, l => ls_long_entry_of_line(line: trim(s: l)))
+    if count(filter(entries, e => stem_entry_is_unclassifiable(entry: e))) > 0 {
+      EntryScanUnreadable { diagnostic: join(["the listing of ", directory, " printed a line that is neither a block total nor a parsable entry"], "") }
+    } else {
+      EntryScanRead {
+        entries: filter(
+          map(entries, e => stem_entry_name(entry: e)),
+          n => n != "." && n != "..",
+        ),
+      }
+    }
+  }
+}
+
+fn leak_control_entry_words(entries: List<String>) -> String {
+  join(entries, ", ")
+}
+
+test fn a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind() -> Bool {
+  //  THE PARENT IS LIVE PREMISE IN BOTH RUNS: the control creates it whether or not the mint is reached, so the
+  //  /var/tmp measurement below (mode 1777 drwxrwxrwt root:root on the box that runs this witness, witness at uid
+  //  1000, measured 2026-11-17) is load-bearing for red and green alike. Never /var/lib/gunbc -- the row this control
+  //  serves must not prove its point by committing the harm it records, and that path's parent does not exist.
+  let parent = shell.Mktemp.DirWithTemplate(template: leak_control_parent_template as FilePath)
+  let root: String = parent.path as String
+  let calibration_path = join([root, "/", leak_control_calibration_name], "")
+  let leak_template = join([root, "/", leak_control_stem, "XXXXXX"], "")
+  //  THE PARENT'S SUCCESS IS BRACHED ON, NOT MERELY CLAIMED. If mktemp fails, root is the empty string and every
+  //  child path below becomes an absolute path at the filesystem root ("/gunbc_carrier_leak_calibration"), so a
+  //  control that only CLAIMED parent.success would go on to attempt a directory creation it never intended, in a
+  //  place it never named. So the whole observation -- calibration, mint, both scans, settlement -- lives inside the
+  //  success arm, and the failure arm mutates no child path at all.
+  if !parent.success {
+    claim(join(["the control could not create its own private parent under /var/tmp, so it can observe nothing at all; it created no child path either: mktemp -d ", leak_control_parent_template], ""), false)
+  } else {
+  //  CALIBRATION BOTH WAYS, before the mint is called and before any absence is asserted.
+  let made_calibration = claim(join(["the calibration directory could not be created at ", calibration_path, "; the scan is therefore untested"], ""), shell.Mkdir.NewOwnerOnly(path: calibration_path as FilePath).success)
+  let saw_present = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the calibration listing was unreadable, so absence could not be certified later either: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the scan did not see the calibration directory it was handed -- it reported [", leak_control_entry_words(entries: seen), "] instead of exactly [", leak_control_calibration_name, "]"], ""), count(seen) == 1 && leak_control_entry_words(entries: seen) == leak_control_calibration_name)
+  }
+  let _calibration_removed = shell.Remove.RecursiveForce(path: calibration_path as FilePath)
+  let saw_absent = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the post-calibration listing was unreadable: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the scan still reports [", leak_control_entry_words(entries: seen), "] after the calibration directory was removed; it cannot be trusted to report absence"], ""), count(seen) == 0)
+  }
+  //  THE CALL UNDER TEST. Classification is by result type and then by the refusal's ARM -- the closed set
+  //  RoadmapCarrierMintRefusalArm -- never by prose, and an unrecognised result can only be red. The one surviving
+  //  word-check sits INSIDE the pre-create arm and asserts the prefix the class row cites as what a reader of a
+  //  refusal should see: it can turn this control red, it cannot move an outcome between arms. The bug this replaces
+  //  was a fallback keyed on "not one of three prefixes": a seal-failure diagnostic matched none of them, fell into
+  //  the else, and was classified as the pre-create admission.
+  let mint = roadmap_event_carrier_mint_scratch(template: leak_template as NonEmptyStr)
+  let outcome = match mint {
+    RoadmapEventCarrierMinted { scratch: s } => Minted_outside_the_shape { path: s.path }
+    //  THE ARM COMES OFF THE TYPE. The leading words are then ASSERTED against the arm that says they belong to it,
+    //  so a rewording turns this red on the spot -- which is the honest outcome -- instead of quietly moving an
+    //  outcome between arms. The one case that must stay red whatever the words say is an arm that is not the
+    //  pre-create admission, and that no longer depends on any string matching to be true.
+    RoadmapEventCarrierMintRefused { detail: d, arm: a } => match a {
+      MintArm_before_create =>
+        if starts_with(s: d, prefix: precreate_arm_words) {
+          Refused_before_create { detail: d }
+        } else {
+          Refused_unrecognized { detail: concat("the arm claims pre-create admission but its words do not begin with the pinned prefix: ", d) }
+        }
+      MintArm_by_mktemp => Refused_by_mktemp { detail: d }
+      MintArm_after_shape => Refused_after_create { detail: d }
+      MintArm_after_seal => Refused_by_seal { detail: d }
+    }
+  }
+  let arm = match outcome {
+    Refused_before_create { detail: d } => join(["the pre-create admission: ", d], "")
+    Refused_after_create { detail: d } => join(["the post-create shape refusal, which claims to have reclaimed: ", d], "")
+    Refused_by_mktemp { detail: d } => join(["mktemp itself, so the admission was never reached: ", d], "")
+    Refused_by_seal { detail: d } => join(["the ownership seal could not be planted, so the create was reached: ", d], "")
+    Refused_unrecognized { detail: d } => join(["a diagnostic matching none of the mint's arms, which cannot be certified: ", d], "")
+    Minted_outside_the_shape { path: s } => join(["NOT REFUSED -- the template was minted at ", s], "")
+  }
+  let refused_by_the_admission = match outcome {
+    Refused_before_create { detail: _ } => true
+    Refused_after_create { detail: _ } => false
+    Refused_by_mktemp { detail: _ } => false
+    Refused_by_seal { detail: _ } => false
+    Refused_unrecognized { detail: _ } => false
+    Minted_outside_the_shape { path: _ } => false
+  }
+  let leftover_verdict = match roadmap_carrier_entries_of(directory: root) {
+    EntryScanUnreadable { diagnostic: d } => claim(join(["the control could not read its own parent after the mint, so it cannot certify that nothing was left: ", d], ""), false)
+    EntryScanRead { entries: seen } => claim(join(["the mint refused via [", arm, "] and the scan sees [", leak_control_entry_words(entries: seen), "] under the control's own parent"], ""), refused_by_the_admission && count(seen) == 0)
+  }
+  //  THE SETTLEMENT IS REQUIRED, NOT DISCARDED. The property verdict is computed in full BEFORE the control touches
+  //  the filesystem to clean up, so no cleanup can turn a red green; and the cleanup's own outcome is then required
+  //  separately, so no PASS can leave the private parent behind. Discarding it -- as this control's first revision
+  //  did, in `let _settlement` -- is gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_
+  //  irreversible_effect reproducing itself inside the very control that was written to prove it fixed: a green that
+  //  asserted nothing was left while the code had not checked whether anything was reclaimed.
+  let property = made_calibration && saw_present && saw_absent && leftover_verdict
+  let settlement = shell.Remove.RecursiveForce(path: root as FilePath)
+  if !property {
+    claim(join(["the control's own property claims, labelled above, are what failed; the settlement ran afterwards and cannot have moved them; its own outcome was: ", roadmap_carrier_mint_cleanup_words(cleaned: settlement.success)], "" +
+      " -- and a red control whose cleanup ALSO failed has left its private parent on disk, which must be visible and not implied",), false)
+  } else {
+    claim(join(["the control refused to reclaim its own private parent at ", root, " -- a control that certifies nothing-was-left must leave nothing of its own either"], ""), settlement.success)
+  }
   }
 }

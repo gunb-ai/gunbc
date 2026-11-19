@@ -450,7 +450,7 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
 
 // The CANDIDATE host set PR 5 owns. It is deliberately NOT gunbc.compute.remote_build_hosts
 // ::remote_build_serving_hosts — that is the LIVE dispatch gate (-> remote_build_host_rows ->
-// the fabric roster) and PR 4 keeps it at srv1 only, because admitting a host before its
+// the fabric roster), which admits a host only after its serving setup converges: admitting a host before its
 // /opt/gunbc/compute/capacity home, store and account exist is fail-open (review 95791). The
 // OBSERVE arm must still read a host that is not yet rostered, so it takes its candidate set
 // from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
@@ -707,9 +707,8 @@ type ServingObserved {
   // Whether rustup itself (the account's cargo-bin program) is executable. Observe gates this — and
   // the toolchain leg — on the account being present: account confirmed absent CONFIRMS both absent
   // (a home whose account does not exist has no rustup and no channels). When the toolchain leg is
-  // established absent, this leg decides the classification: present = EnsureToolchain is runnable;
-  // absent = unhandled ('rustup not installed for <account>; no bootstrap modelled') — converge does
-  // not bootstrap toolchains, and planning a write that execs a missing program is planning a failure.
+  // established absent, this leg decides the classification: present = EnsureToolchain alone;
+  // absent = the verified rustup-init bootstrap (EnsureRustup) first, then EnsureToolchain.
   rustup: ObservationAttempt<Bool, ServingLegFailure>
   // PR 5(a) single-comparator legs: the executor's plan-time pin (ServingPlanInput) is what
   // the apply would act on, so the observe reads these host facts and compares them to

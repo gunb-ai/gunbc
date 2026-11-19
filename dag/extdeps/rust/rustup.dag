@@ -190,3 +190,58 @@ fn rustup_toolchain_list_command(rustup_bin: String) -> ArgvCommand {
 fn rustup_toolchain_install_command(rustup_bin: String, channel: String) -> ArgvCommand {
   argv_command(program: rustup_program(rustup_bin: rustup_bin), arguments: ["toolchain", "install", channel, "--profile", "minimal", "--no-self-update"])
 }
+
+// ---- THE rustup-init INSTALLER: one published binary per release and target triple ----
+//
+// rustup book, Installation, "Other installation methods": rustup-init is published for each host
+// triple at static.rust-lang.org/rustup/archive/<version>/<triple>/rustup-init, beside a .sha256 file
+// that holds the digest of that exact binary. A release row records the version, the triple and the
+// published digest as read from that .sha256, so a consumer can verify the download against a digest
+// it already holds, and never trusts a digest fetched alongside the binary.
+data rustup_init_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/installation/other.html"
+  }
+}
+
+type RustupInitRelease {
+  version: NonEmptyStr
+  triple: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
+// The published digests of rustup 1.29.3, read from each triple's rustup-init.sha256 on
+// static.rust-lang.org on 2026-11-17 and checked against a sha256sum of the downloaded binary.
+data rustup_init_releases: List<RustupInitRelease> = [
+  RustupInitRelease { version: "1.29.3", triple: "x86_64-unknown-linux-gnu", sha256: "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55" },
+  RustupInitRelease { version: "1.29.3", triple: "aarch64-unknown-linux-gnu", sha256: "9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282" },
+]
+
+fn rustup_init_release(version: String, triple: String) -> RustupInitRelease? {
+  first_where(rustup_init_releases, keep: r => (r.version as String) == version && (r.triple as String) == triple)
+}
+
+fn rustup_init_url(r: RustupInitRelease) -> NonEmptyStr {
+  join(["https://static.rust-lang.org/rustup/archive/", r.version as String, "/", r.triple as String, "/rustup-init"], "") as NonEmptyStr
+}
+
+// The GNU/Linux host triple rustup publishes for a `uname -m` machine name. Only the two machines this
+// fleet runs are rows; any other machine names no triple and the consumer refuses.
+fn rustup_linux_gnu_triple(machine: String) -> NonEmptyStr? {
+  match machine {
+    "x86_64" => Present { value: "x86_64-unknown-linux-gnu" as NonEmptyStr }
+    "aarch64" => Present { value: "aarch64-unknown-linux-gnu" as NonEmptyStr }
+    _ => Absent
+  }
+}
+
+// rustup-init -y --no-modify-path --default-toolchain none --profile minimal: install rustup itself
+// without a prompt, without editing the account's shell profile, and without any toolchain; the
+// toolchain is installed separately by rustup_toolchain_install_command. RUSTUP_HOME and CARGO_HOME
+// are the caller's environment bindings, as for the other rustup commands. rustup-init IS the rustup
+// program (one binary that installs itself when invoked under the name rustup-init), so it is minted
+// through rustup_program at the caller's path.
+fn rustup_init_install_command(rustup_init_path: String) -> ArgvCommand {
+  argv_command(program: rustup_program(rustup_bin: rustup_init_path), arguments: ["-y", "--no-modify-path", "--default-toolchain", "none", "--profile", "minimal"])
+}

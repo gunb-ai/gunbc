@@ -13,7 +13,7 @@ module test.claim.compute.remote_build_serving_setup_witness
 
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
-import std.algebra { non_empty_to_list }
+import std.algebra { count_where, non_empty_to_list }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -555,11 +555,10 @@ test fn a_host_outside_the_candidate_row_refuses_the_assessment() -> Bool {
 }
 
 // ── PR 5 owns the candidate set so the OBSERVE arm covers hosts the roster has not ─
-// PR 4 keeps remote_build_serving_hosts at srv1 only (admitting early is fail-open,
-// review 95791), and srv3/srv4 are admitted by PR 5(b) LAST, once their home/store/account
-// exist. They must still render a per-host forced-command line off the PR 5-owned candidate
-// row, and the lines must differ (a per-host render, not a constant) — proving the observe is
-// decoupled from the roster it does not yet gate.
+// A host is admitted to remote_build_serving_hosts only after its serving setup is converged
+// (admitting early is fail-open, review 95791), so the observe must render a per-host forced-command
+// line off the PR 5-owned candidate row whether or not the host is listed, and the lines must differ
+// (a per-host render, not a constant) — proving the observe is decoupled from the roster.
 test fn a_not_yet_rostered_candidate_still_renders_a_forced_command() -> Bool {
   match serving_forced_command_line(host: operator_host_srv3) {
     Present { value: l3 } => match serving_forced_command_line(host: operator_host_srv4) {
@@ -625,7 +624,11 @@ fn is_root_target(t: OwnedDirectoryTarget) -> Bool { !is_area_target(t: t) }
 // a guard, not a red control: some desired ledger row really declares this canonical octal, so a
 // fixture that silently lost the sticky areas or the 0755 root cannot let a mode control pass.
 fn any_row_declares(d: RemoteBuildServingDesired, mode: String) -> Bool {
-  count(d.ledger_dirs, t => serving_ledger_declared_mode_octal(t: t) == mode) > 0
+  // count_where is the authority for "how many satisfy P"; the builtin `count` is 1-argument and a
+  // surplus predicate actual is now refused at type check (it was silently dropped, so this was vacuously
+  // `non-empty(ledger_dirs)`). The guard's intent -- some desired row really declares this octal -- is what
+  // count_where actually judges.
+  count_where(d.ledger_dirs, t => serving_ledger_declared_mode_octal(t: t) == mode) > 0
 }
 
 // a row built with explicit established field values.
@@ -1324,7 +1327,7 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
 
 // ── A2 (side-chat review of 2026-11-16): the serving desired ledger IS the post-admission
 //    posture, derived from host_capacity's shared-posture authority. The discriminating witness
-//    runs on srv3 — NOT on the remote-build roster — and the red control is the pre-admission
+//    runs on srv2 — NOT on the remote-build roster — and the red control is the pre-admission
 //    (roster-gated) spelling, which must NOT be what the serving desired state carries. ────────
 
 fn ledger_row_signature(t: OwnedDirectoryTarget) -> String {
@@ -1347,28 +1350,28 @@ fn ledger_rows_equal(a: List<OwnedDirectoryTarget>, b: List<OwnedDirectoryTarget
   count(sa) == count(sb) && all(sa, s => any(sb, o => o == s)) && all(sb, s => any(sa, o => o == s))
 }
 
-// For the NON-ROSTERED candidate srv3, the serving desired ledger rows EQUAL what host_capacity
+// For the NON-ROSTERED candidate srv2, the serving desired ledger rows EQUAL what host_capacity
 // yields for that host once admitted — and the host is proven not-yet-rostered, so the witness
 // actually discriminates (a vacuous srv1 pass would prove nothing).
 test fn candidate_host_serving_ledger_rows_equal_the_admitted_host_capacity_rows() -> Bool {
-  match remote_build_serving_desired(host: operator_host_srv3) {
+  match remote_build_serving_desired(host: operator_host_srv2) {
     Absent => false
     Present { value: d } =>
-      !remote_build_host_is_serving(host: operator_host_srv3)
-        && ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories_admitted(host: operator_host_srv3))
+      !remote_build_host_is_serving(host: operator_host_srv2)
+        && ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories_admitted(host: operator_host_srv2))
         // and the posture is the SHARED one: an area row carries the ledger group.
         && any(d.ledger_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
   }
 }
 
-// RED CONTROL: the roster-gated host_capacity_home_directories(srv3) — what the PR asked for
+// RED CONTROL: the roster-gated host_capacity_home_directories(srv2) — what the PR asked for
 // before this fix — is the SERVICE-ONLY posture and must DIFFER from the serving desired state.
 // If admission ever stops changing anything here, this cell goes red, not the settled receipt.
 test fn pre_admission_ledger_posture_is_not_the_serving_posture() -> Bool {
-  match remote_build_serving_desired(host: operator_host_srv3) {
+  match remote_build_serving_desired(host: operator_host_srv2) {
     Absent => false
     Present { value: d } =>
-      !remote_build_host_is_serving(host: operator_host_srv3)
-        && !ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories(host: operator_host_srv3))
+      !remote_build_host_is_serving(host: operator_host_srv2)
+        && !ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories(host: operator_host_srv2))
   }
 }
