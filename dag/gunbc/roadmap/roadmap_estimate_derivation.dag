@@ -620,9 +620,11 @@ fn restated_piece_days(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -
 // WHERE A NODE'S NUMBER COMES FROM: exactly the four states the ruling names. Unsized is a state rather than a
 // number -- listed, never priced at zero, never defaulted to a band's floor.
 type EstimateSource
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   = AuthoredSize { size: EstimateSize, scheduled_days: Int, made: Iso8601CivilDate, basis: String }
   // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   | AuthoredDuration { working_days: Int, made: Iso8601CivilDate, basis: String }
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   | Derived { work_days: Int, contributed: List<RoadmapNodeId>, from_pieces: Bool }
   | Unsized { why: UnsizedWhy }
 
@@ -812,8 +814,10 @@ fn dated_contradictions(nodes: List<RoadmapNode>) -> List<EstimateContradiction>
 // cleared list in the witnesses. Prerequisites order siblings; they do not contain them.
 type ClearedPrerequisitePair {
   senior: RoadmapNodeId
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   senior_days: Int
   junior: RoadmapNodeId
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   junior_days: Int
 }
 
