@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_effort_estimate {
   EstimateSize, EstimateForm, EstimateEntry, RoadmapEstimateRow, estimate_row, estimate_recorded, estimate_revoked,
   sized_estimate, days_estimate, estimate_table, estimate_table_partitions_the_line, size_round_trips,
   days_round_trip_inside_band, estimate_ceiling, band_scheduled_days, estimate_band, size_label, d,
+  roadmap_estimate_entries,
   SizeXs, SizeS, SizeM, SizeL, SizeXl, SizeXxl, SizedEstimate, DaysEstimate,
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
