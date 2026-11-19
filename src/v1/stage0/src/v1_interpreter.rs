@@ -11223,6 +11223,8 @@ fn shell_result_of_observation(
                 exit_code,
                 stdout: stream(text("stdout")?),
                 stderr: stream(text("stderr")?),
+                overran: false,
+                wall_deadline_seconds: None,
             }))
         }
         "ShellProcessSpawnRefused" => Ok(Err(InterpError::ShellSpawnRefused {
@@ -16069,6 +16071,14 @@ pub(crate) struct ShellResult {
     pub(crate) exit_code: i32,
     pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
     pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
+    // Set ONLY by the sink's own per-leg wall kill (see wait_child_honoring_wall_deadline).
+    // A per-leg overrun is a VALUE, never an exit-124 sentinel, never an InterpError, and
+    // never a 0-means-none: `wall_deadline_seconds` carries the caller's own `Second` (echoed
+    // verbatim) so the located leg names the exact ceiling that tripped. The outer whole-receipt
+    // budget (ctx.witness_wall_deadline) is a SEPARATE bound that still refuses with an error;
+    // it never sets these.
+    pub(crate) overran: bool,
+    pub(crate) wall_deadline_seconds: Option<Value>,
 }
 
 /// Expand a `ProcessArgvExpansion` into argv words, one word per `CliArgument`.
@@ -18237,11 +18247,13 @@ fn configure_shell_process_group_for_wall_kill(
     cmd: &mut std::process::Command,
     ctx: &InterpContext,
 ) {
-    if ctx.witness_wall_deadline.get().is_none() {
-        return;
-    }
+    // ALWAYS put the child in its own process group, whether or not an outer witness budget
+    // is armed: the per-leg wall deadline must be able to kill ssh AND its descendants (the
+    // group), so the group has to exist before any deadline is known. The outer whole-receipt
+    // kill (kill_shell_process_group) benefits from the same guarantee.
     #[cfg(unix)]
     {
+        let _ = ctx;
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
@@ -18271,15 +18283,30 @@ fn kill_shell_process_group(pid: u32) {
 /// Wait for a shell child, killing the process group when the whole-receipt wall
 /// deadline elapses. Streams are drained concurrently with bounded capture policies
 /// while the child runs — never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09).
+/// Wait for a shell child. Two INDEPENDENT bounds, never conflated:
+///
+///   * the OUTER whole-receipt budget (`ctx.witness_wall_deadline`) — a separate bound that
+///     still KILLS the group and REFUSES with an error (it is not a per-leg overrun);
+///   * the caller-passed PER-LEG `leg_deadline` — the fleet leg's own wall ceiling. Its trip is
+///     a VALUE: kill the group (so ssh + its descendants die), drain the streams, and return
+///     `overran = true`; the caller turns that into `overran` + `wall_deadline_seconds`. It is
+///     never an exit-124 sentinel, never an InterpError, and never a 0-means-none.
+///
+/// Streams are drained concurrently with bounded capture policies while the child runs —
+/// never `wait_with_output` (srv1 jq stderr wedge, 2026-08-09). The child is always in its own
+/// process group (configure_shell_process_group_for_wall_kill), so the group kill is total.
 fn wait_child_honoring_wall_deadline(
     child: std::process::Child,
     ctx: &InterpContext,
     argv0: &str,
     stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
     stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
-) -> InterpResult<bounded_shell_host_drain::ShellCaptureResult> {
-    if ctx.witness_wall_deadline.get().is_none() {
+    leg_deadline: Option<std::time::Duration>,
+) -> InterpResult<(bounded_shell_host_drain::ShellCaptureResult, bool)> {
+    // Neither bound armed: plain bounded capture, never an overrun.
+    if leg_deadline.is_none() && ctx.witness_wall_deadline.get().is_none() {
         return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
+            .map(|output| (output, false))
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv0, e),
             });
@@ -18293,19 +18320,49 @@ fn wait_child_honoring_wall_deadline(
         let _ = tx.send(result);
     });
 
+    // The per-leg clock starts when the child is ours, independent of the outer budget.
+    let leg_start = std::time::Instant::now();
+
     loop {
+        // OUTER bound: still a refusal, never a per-leg overrun.
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
             let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
             let _ = worker.join();
             return Err(err);
         }
-        let remaining_ms = ctx.wall_deadline_remaining_ms().unwrap_or(0);
-        let poll = std::time::Duration::from_millis(remaining_ms.min(250).max(1));
+        // PER-LEG bound: its trip is a value. Kill the group, drain, report overran.
+        if let Some(leg) = leg_deadline {
+            if leg_start.elapsed() >= leg {
+                kill_shell_process_group(pid);
+                // The drain worker returns once the killed child's pipes close.
+                let captured = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    Ok(Ok(output)) => Some(output),
+                    _ => None,
+                };
+                let _ = worker.join();
+                let output = captured.ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "shell wait worker for '{}' did not return after the per-leg wall kill",
+                        argv0
+                    ),
+                })?;
+                return Ok((output, true));
+            }
+        }
+        // Poll at min(outer remaining, leg remaining, 250ms) so neither bound is overslept.
+        let outer_ms = ctx.wall_deadline_remaining_ms().unwrap_or(u64::MAX);
+        let leg_ms = leg_deadline.map_or(u64::MAX, |d| {
+            let total = d.as_millis() as u64;
+            let elapsed = leg_start.elapsed().as_millis() as u64;
+            total.saturating_sub(elapsed)
+        });
+        let budget = outer_ms.min(leg_ms);
+        let poll = std::time::Duration::from_millis(budget.min(250).max(1));
         match rx.recv_timeout(poll) {
             Ok(Ok(output)) => {
                 let _ = worker.join();
-                return Ok(output);
+                return Ok((output, false));
             }
             Ok(Err(e)) => {
                 let _ = worker.join();
@@ -18503,7 +18560,40 @@ fn dispatch_shell(
         },
     };
 
-    let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+    // The caller-passed PER-LEG wall ceiling (extdeps.ssh session transport-shell
+    // `wall_deadline: Option<Second> = Absent`). Honor EXACTLY this and nothing else: Absent
+    // keeps today's behavior under the outer whole-receipt budget; Present(N) arms a per-leg
+    // ceiling. A non-positive count is refused, never folded to "none" (0-means-none is
+    // forbidden by the design).
+    let mut leg_deadline_value: Option<Value> = None;
+    let leg_deadline: Option<std::time::Duration> = match param_env.lookup(ctx.sym("wall_deadline")) {
+        None => None,
+        Some(Value::Variant { variant_name, .. }) if ctx.resolve(*variant_name) == "Absent" => None,
+        Some(Value::Variant { variant_name, fields, .. }) if ctx.resolve(*variant_name) == "Present" => {
+            let second = ctx.field(fields, "value").ok_or_else(|| InterpError::TypeError {
+                msg: format!("{intent}: shell transport wall_deadline Present carries no value"),
+            })?;
+            leg_deadline_value = Some(second.clone());
+            let secs = record_field(ctx, second, "count")
+                .and_then(|v| match v { Value::Int(n) => Some(n), _ => None })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!("{intent}: shell transport wall_deadline Second must carry an integer count"),
+                })?;
+            if secs <= 0 {
+                return Err(InterpError::TypeError {
+                    msg: format!("{intent}: shell transport wall_deadline must be a positive number of seconds (a per-leg deadline is never 0-means-none)"),
+                });
+            }
+            Some(std::time::Duration::from_secs(secs as u64))
+        }
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"),
+            })
+        }
+    };
+
+    let (capture, overran) = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
 
@@ -18524,8 +18614,8 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let capture =
-            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
+        let (capture, overran) =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
 
         if let Some(writer) = stdin_writer {
             // A stdin-write error (e.g. broken pipe) is not the failure to report: the child
@@ -18545,7 +18635,7 @@ fn dispatch_shell(
             &argv,
             intent,
         );
-        capture
+        (capture, overran)
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -18556,8 +18646,8 @@ fn dispatch_shell(
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
         let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
-        let capture =
-            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
+        let (capture, overran) =
+            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
         render_shell_completion_trace(
             expected,
             capture.exit_status.code().unwrap_or(-1),
@@ -18567,7 +18657,7 @@ fn dispatch_shell(
             &argv,
             intent,
         );
-        capture
+        (capture, overran)
     };
 
     if let Some(limit_bytes) = stderr_complete_limit {
@@ -18580,7 +18670,13 @@ fn dispatch_shell(
             });
         }
     }
-    shell_result_from_capture(&capture, &argv[0])
+    let mut result = shell_result_from_capture(&capture, &argv[0])?;
+    // Set ONLY by the sink's own per-leg kill. The deadline value is echoed so the located leg
+    // names the ceiling that tripped. Never set by the outer whole-receipt budget.
+    result.overran = overran;
+    // Echo the caller's own `Second` verbatim, and ONLY when the sink's own per-leg kill fired.
+    result.wall_deadline_seconds = if overran { leg_deadline_value } else { None };
+    Ok(result)
 }
 
 /// The one place a spawn failure becomes a value: both spawn sites above (with and without stdin)
@@ -18968,6 +19064,10 @@ pub(crate) fn shell_result_from_capture(
         exit_code: capture.exit_status.code().unwrap_or(-1),
         stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
         stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
+        // The clean (not-overrun) default. dispatch_shell sets these ONLY on its own per-leg
+        // wall kill; a capture that ran to completion carries no overrun.
+        overran: false,
+        wall_deadline_seconds: None,
     })
 }
 
@@ -18989,6 +19089,12 @@ fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
             Some(digest) => str_value(digest.clone()),
             None => Value::Null,
         }),
+        // Set ONLY by the sink's own per-leg wall kill. `overran` is the Bool that drives the
+        // typed refusal (FleetPrincipalLegOverran / TreeLegDeadlineExceeded); `wall_deadline_seconds`
+        // is the caller's own Second echoed back so the receipt names the ceiling. Both are the
+        // absence (false / Absent) unless the sink itself killed the leg.
+        "overran" => Some(Value::Bool(result.overran)),
+        "wall_deadline_seconds" => result.wall_deadline_seconds.clone(),
         _ => None,
     }
 }
@@ -28605,6 +28711,8 @@ mod map_shell_outputs_optional_stream_tests {
     fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
         ShellResult {
             exit_code,
+            overran: false,
+            wall_deadline_seconds: None,
             stdout: CapturedStreamEvidence {
                 total_bytes: stdout_text.len() as u64,
                 retained_bytes: stdout_text.len() as u64,
