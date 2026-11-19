@@ -34,6 +34,7 @@ import v2.std.compilers.lexing {
 
 import v2.extdeps.languages.dag {
     dag_lex_rules,
+    dag_infix_operators
 }
 
 import v2.std.node { Symbol }
@@ -409,6 +410,45 @@ fn dag_string_textmate_rules() -> List<JsonValue> {
     )
 }
 
+fn dag_operator_textmate_rules() -> List<JsonValue> {
+    let infix = dag_infix_operators()
+    fold_list(
+        xs: dag_lex_rules().rules,
+        empty: [],
+        cons: fn(acc, rule) {
+            match rule {
+                TokenRule {
+                    token_class,
+                    pattern: LiteralPattern { text }
+                } =>
+                    let is_operator =
+                        any(infix, row => row.token_class == token_class)
+                        || token_class == ^dag_token_bang
+                        || token_class == ^dag_token_arrow
+                        || token_class == ^dag_token_fat_arrow
+                        || token_class == ^dag_token_eq
+                        || token_class == ^dag_token_colon
+                        || token_class == ^dag_token_pipe
+                        || token_class == ^dag_token_caret
+                        || token_class == ^dag_token_question
+
+                    if is_operator {
+                        list_snoc_item(
+                            xs: acc,
+                            item: textmate_match_rule(
+                                scope: "keyword.operator.dag",
+                                pattern: LiteralPattern { text: text }
+                            )
+                        )
+                    } else {
+                        acc
+                    }
+                _ => acc
+            }
+        }
+    )
+}
+
 fn expected_vscode_dag_tm_language_json() -> String {
     concat(
         serialize_json(v: json_object(members: [
@@ -432,6 +472,9 @@ fn expected_vscode_dag_tm_language_json() -> String {
                 ]),
                 json_object(members: [
                     json_kv(key: "include", value: json_string(s: "#numbers"))
+                ])
+                json_object(members: [
+                    json_kv(key: "include", value: json_string(s: "#operators"))
                 ])
             ])),
             json_kv(key: "repository", value: json_object(members: [
@@ -468,6 +511,14 @@ fn expected_vscode_dag_tm_language_json() -> String {
                         key: "patterns",
                         value: json_array(
                             elements: dag_identifier_textmate_rules()
+                        )
+                    )
+                ])),
+                json_kv(key: "operators", value: json_object(members: [
+                    json_kv(
+                        key: "patterns",
+                        value: json_array(
+                            elements: dag_operator_textmate_rules()
                         )
                     )
                 ])),
