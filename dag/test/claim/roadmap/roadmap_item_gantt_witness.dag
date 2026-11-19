@@ -269,6 +269,7 @@ test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
         PiecesFindingsCount { node: _, count: _ } => false
         PiecesZeroDays { node: _ } => false
         BlockedBelow { node: _ } => false
+        WaitsOnItsOwnContainer { node: _, container: _ } => false
       })) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
@@ -303,6 +304,7 @@ test fn an_empty_milestone_blocks_its_dependent_naming_the_no_priced_descendants
         PiecesFindingsCount { node: _, count: _ } => false
         PiecesZeroDays { node: _ } => false
         BlockedBelow { node: _ } => false
+        WaitsOnItsOwnContainer { node: _, container: _ } => false
       })) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
@@ -413,6 +415,7 @@ test fn a_dependent_of_a_blocked_row_is_blocked_naming_it_as_blocked_below() -> 
         PiecesRefused { node: _, cause: _ } => false
         PiecesFindingsCount { node: _, count: _ } => false
         PiecesZeroDays { node: _ } => false
+        WaitsOnItsOwnContainer { node: _, container: _ } => false
       })) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
