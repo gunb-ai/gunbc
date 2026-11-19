@@ -29,7 +29,6 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.tailscale.acl { tag_ci, tag_serving }
 import extdeps.tailscale.join {
-  TailscaleAuthKeyApproval,
   AuthKeyExpiryUnverifiable,
   AuthKeyExpiredOn,
   AuthKeyReusable,
@@ -211,7 +210,7 @@ data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_ke
   // false): the key carries no approval attribute, and per external_upstreams that absence is modeled here in
   // the observing layer rather than as a value of extdeps' TailscaleAuthKeyApproval. NOT "pre-approved" -- the
   // key was never pre-approved by anything; there was nothing to approve against.
-  approval: Absent<TailscaleAuthKeyApproval>(),
+  approval: Absent,
   key_tags: [tailscale_fleet_node_tag],
   expires_after: second(count: 30 * seconds_per_day()),
 )

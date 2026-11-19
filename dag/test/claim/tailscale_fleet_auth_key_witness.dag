@@ -27,7 +27,6 @@ import extdeps.units.iso8601_calendar {
 }
 import extdeps.tailscale.join {
   AuthKeyReusable,
-  TailscaleAuthKeyApproval,
   AuthKeyPreApproved,
   AuthKeyApprovalRequired,
   AuthKeyPolicyAccepted,
