@@ -43,10 +43,71 @@ type FleetConvergeOwedWork {
   withheld_beyond_plan_rows_count: Int
 }
 
+// THE FULL-HOST DECISION, IN ONE PLACE, WITH THE COUNTS SUPPLIED. Factored out of the planner's
+// FullHostConverge arm so a witness can put a BROKEN owed report in front of it -- which is the only way
+// the reconciliation below is ever executed rather than merely described.
+//
+// A DISAGREEING OWED REPORT IS NOT A RECEIPT. If the four numbers do not reconcile, this pass cannot attest
+// to anything: the counts it would publish contradict each other, and the wire it would write is one this
+// module's own decoder refuses (`owed_work_shape`). Minting it anyway would put a receipt on disk that no
+// reader could decode -- the under-report again, this time unreadable. So the disagreement goes to
+// `AwaitingCapability`, the state this model already uses when a pass cannot certify its own apply (the
+// live-deploy arm reaches it for the same reason: the plan says work stands and nothing did it). The
+// capability names the four numbers, so the disagreement is legible to whoever has to fix the renderer.
+fn fleet_converge_full_host_terminal(
+  refused_axis_count: Int,
+  owed: FleetConvergeOwedWork,
+  detail: String,
+) -> FleetConvergeApplyTerminal {
+  if !fleet_converge_owed_work_reconciles(owed: owed) {
+    AwaitingCapability {
+      capability: join(
+        [
+          "converge owed-work report does not reconcile: withheld=",
+          to_string(owed.withheld_row_count),
+          " plan-only=",
+          to_string(owed.plan_only_row_count),
+          " lines=",
+          to_string(owed.withheld_line_total_count),
+          " beyond-plan-rows=",
+          to_string(owed.withheld_beyond_plan_rows_count),
+          "; withheld lines must equal withheld rows plus beyond-plan rows",
+        ],
+        "",
+      ),
+    }
+  } else if refused_axis_count == 0 && fleet_converge_owed_work_is_clear(owed: owed) {
+    FullyApplied
+  } else {
+    PartiallyApplied {
+      refused_axis_count: refused_axis_count,
+      owed: Present { value: owed },
+      detail: detail,
+    }
+  }
+}
+
 type FleetConvergeApplyTerminal
+  = FullyAppliedtype FleetConvergeApplyTerminal
   = FullyApplied
   | PartiallyApplied { refused_axis_count: Int, owed: FleetConvergeOwedWork?, detail: String }
   | AwaitingCapability { capability: String }
+
+// THE RECONCILIATION THE FOUR NUMBERS CLAIM, SPOKEN ONCE AND USED TWICE -- at the mint, through
+// `fleet_converge_full_host_terminal`, and on the wire, through `owed_work_shape`.
+//
+// Lines equal rows plus beyond only if every withheld row echoed exactly one withheld line, and every
+// withheld line either echoes a row or is counted as beyond-plan. The renderer satisfies that today; it is
+// not a relation between any two of the fields. A gate that grew a withheld line with no row behind it, or
+// a row whose script stopped being echoed, would break it -- which is why the equality is checked rather
+// than assumed, and why a disagreement is refused instead of read as a clean report.
+fn fleet_converge_owed_work_reconciles(owed: FleetConvergeOwedWork) -> Bool {
+  owed.withheld_row_count >= 0
+    && owed.plan_only_row_count >= 0
+    && owed.withheld_line_total_count >= 0
+    && owed.withheld_beyond_plan_rows_count >= 0
+    && owed.withheld_line_total_count == owed.withheld_row_count + owed.withheld_beyond_plan_rows_count
+}
 
 // NOTHING IS APPLIED WHILE ANYTHING IS OWED. These are one predicate, not a preference: a withheld plan
 // row, a plan-only row, a withheld line the plan never listed, and a refused row each keep a convergence

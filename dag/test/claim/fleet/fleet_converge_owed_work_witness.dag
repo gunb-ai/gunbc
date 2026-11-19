@@ -40,6 +40,7 @@ import gunbc.fleet.fleet_converge_terminal {
   PartiallyApplied,
   fleet_converge_apply_terminal_of_wire,
   fleet_converge_apply_terminal_wire,
+  fleet_converge_full_host_terminal,
   fleet_converge_owed_work_is_clear,
 }
 import gunbc.fleet.fleet_host_identity {
@@ -535,5 +536,79 @@ test fn the_rendered_plan_and_script_reconcile_and_name_a_real_gap() -> Bool {
           && owed.withheld_beyond_plan_rows_count > 0
           && owed.withheld_line_total_count > owed.withheld_row_count
     }
+  }
+}
+
+// (15) A DISAGREEING OWED REPORT IS NEVER MINTED AS A RECEIPT NO READER CAN DECODE. Claim (12) shows the
+// decoder refusing such a wire; this is the other half, and the half the module's own comment promised:
+// the MINT must not produce one. The four numbers are put in front of the minted decision directly -- the
+// only way the reconciliation is ever executed rather than described -- and three things have to hold: the
+// terminal is not FullyApplied, it is not a `PartiallyApplied` carrying those numbers (which would be a
+// receipt the decoder refuses, so the operator's tooling would read a disk receipt as unreadable), and its
+// wire still decodes.
+test fn a_disagreeing_owed_report_is_refused_at_the_mint_rather_than_written() -> Bool {
+  let disagreeing = FleetConvergeOwedWork {
+    withheld_row_count: 4,
+    plan_only_row_count: 2,
+    withheld_line_total_count: 43,
+    withheld_beyond_plan_rows_count: 40,
+  }
+  let terminal = fleet_converge_full_host_terminal(
+    refused_axis_count: 7,
+    owed: disagreeing,
+    detail: "slot=5 cap=0 timer=0 fabric-cell=0 activation=2",
+  )
+  match terminal {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, owed: _, detail: _ } => false
+    AwaitingCapability { capability: c } =>
+      string_contains(s: c, pattern: "withheld=4")
+        && string_contains(s: c, pattern: "beyond-plan-rows=40")
+        && string_contains(s: c, pattern: "does not reconcile")
+        && match fleet_converge_apply_terminal_of_wire(text: fleet_converge_apply_terminal_wire(terminal: terminal)) {
+            Absent => false
+            Present { value: _ } => true
+          }
+  }
+}
+
+// (16) AND THE SAME MINT STILL GETS IT RIGHT WHEN THE NUMBERS DO RECONCILE. Without this, (15) would pass
+// on a mint that refused everything.
+test fn a_reconciling_owed_report_is_minted_as_a_receipt_and_round_trips() -> Bool {
+  let reconciling = FleetConvergeOwedWork {
+    withheld_row_count: 4,
+    plan_only_row_count: 2,
+    withheld_line_total_count: 43,
+    withheld_beyond_plan_rows_count: 39,
+  }
+  let terminal = fleet_converge_full_host_terminal(
+    refused_axis_count: 7,
+    owed: reconciling,
+    detail: "slot=5 cap=0 timer=0 fabric-cell=0 activation=2",
+  )
+  match terminal {
+    FullyApplied => false
+    AwaitingCapability { capability: _ } => false
+    PartiallyApplied { refused_axis_count: refused, owed: owed, detail: detail } =>
+      refused == 7
+        && detail == "slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
+        && match owed {
+            Absent => false
+            Present { value: o } =>
+              o.withheld_row_count == 4
+                && o.plan_only_row_count == 2
+                && o.withheld_line_total_count == 43
+                && o.withheld_beyond_plan_rows_count == 39
+          }
+        && match fleet_converge_apply_terminal_of_wire(text: fleet_converge_apply_terminal_wire(terminal: terminal)) {
+            Absent => false
+            Present { value: read } => match read {
+              PartiallyApplied { refused_axis_count: _, owed: back, detail: _ } => match back {
+                Absent => false
+                Present { value: o } => o.withheld_beyond_plan_rows_count == 39
+              }
+              _ => false
+            }
+          }
   }
 }

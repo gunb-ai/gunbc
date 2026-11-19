@@ -31,9 +31,7 @@ import gunbc.fleet.fleet_converge_terminal {
   FleetConvergeOwedWork,
   FullyApplied,
   PartiallyApplied,
-  fleet_converge_apply_terminal_of_wire,
-  fleet_converge_apply_terminal_wire,
-  fleet_converge_owed_work_is_clear,
+  fleet_converge_full_host_terminal,
 }
 
 import gunbc.fleet.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
@@ -1840,12 +1838,9 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       }
       match host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants)) {
         Present { value: capability } => AwaitingCapability { capability: capability }
-        Absent => if total == 0 && fleet_converge_owed_work_is_clear(owed: owed) {
-        FullyApplied
-      } else {
-        PartiallyApplied {
+        Absent => fleet_converge_full_host_terminal(
           refused_axis_count: total,
-          owed: Present { value: owed },
+          owed: owed,
           detail: join(
             [
               "slot=", to_string(slot_refused),
@@ -1856,8 +1851,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
             ],
             "",
           ),
-        }
-      }
+        )
       }
     }
     LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
