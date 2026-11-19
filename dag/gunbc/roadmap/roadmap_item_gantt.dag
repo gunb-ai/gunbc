@@ -226,7 +226,13 @@ fn look_string(m: Map<String, List<String>>, key: String, dflt: List<String>) ->
 // THE PRICED READ. Nothing here re-prices: durations come from `row_days` (which reads the derivation for an authored
 // row and the leaf scheduler for an item that owns pieces), and placement comes from the core.
 fn answer_priced(facts: GanttFacts) -> GanttAnswer {
-  let unplaceable = map(filter(facts.priced, p => owns_work(p: p) && !has_days(facts: facts, node: p.node.node)), p => p.node.node)
+  // WHAT THIS READ CANNOT DRAW, which is what everything waiting on it is blocked BY: any node it has no duration for
+  // -- an unsized node, a milestone with nothing priced beneath it, an item whose leaf grain refused. NOT filtered to
+  // nodes that own work: an unpriced prerequisite is still a prerequisite, and a task placed behind one would be given
+  // a start the read has not earned (gunbc.design_argument::fail_closed -- a fabricated output, not a missing cause).
+  // Nothing here costs the core a candidate: `rows_to_place` already admits only rows that HAVE a duration, so holding
+  // these keys out only stops them being waited through.
+  let unplaceable = map(filter(facts.priced, p => !has_days(facts: facts, node: p.node.node)), p => p.node.node)
   let stuck = blocked_behind(unplaceable: unplaceable, successor: facts.successor)
   let held = concat(unplaceable, stuck)
   match place(input: PlacementInput {
