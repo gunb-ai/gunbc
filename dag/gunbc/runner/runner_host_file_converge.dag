@@ -40,7 +40,11 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
+import gunbc.runner.runner_host_cap_bracket {
+  read_slot_drain_pass_over, SlotAdmissionState, SlotRunState, AdmissionOpen, AdmissionClosedByMask,
+  RunStopped, RunStopping, RunWorkerLive, RunListenerIdle, RosterNotBusy, RosterBusy, RosterUnread,
+  RosterDisagrees,
+  CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
 import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
@@ -4584,10 +4588,10 @@ fn run_cap_bracket_excluding(
   match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: to_bracket) {
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
-      match drain_until_quiescent_over(target: subject.target, context: context, observed: to_bracket, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+      match drain_until_quiescent_over(target: subject.target, context: context, host: subject.host as String, observed: to_bracket, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
         BracketDrained { certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified, holder: holder, trees: trees)
         BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
-        BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
+        BracketBoundExceeded { busy: bz, unproven: up, stop_causes: sc } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound, stop_causes: sc }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
       }
   }
@@ -5255,6 +5259,7 @@ fn runner_host_file_ci_wet_hosted(
                     context_receipt,
                     runner_job_user_uid_reading_line(reading: uid_reading),
                     runner_host_current_registration_line(mode: mode, target: subject.target, context: context, units: subject.desired_units),
+                    runner_host_drain_reading_line(mode: mode, target: subject.target, context: context, units: subject.desired_units),
                     runner_host_withdraw_observe_line_for(host: raw_host, target: subject.target, context: context, units: subject.desired_units),
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
@@ -5335,6 +5340,56 @@ fn runner_host_current_registration_line(mode: FleetHostFileConvergeMode, target
   match mode {
     FleetHostFilesObserveOnly => runner_host_current_registration_text(target: target, context: context, units: units)
     FleetHostFilesApply => ""
+  }
+}
+
+// WHAT THE CAP BRACKET'S DRAIN WOULD FIND, UNIT BY UNIT, in observe mode only: the same reading the drain
+// pass takes (gunbc.runner.runner_host_cap_bracket read_slot_drain_pass_over -- shape, worker, and the org
+// roster it joins on). WHY: the drain refuses by NAMING UNITS and
+// nothing else -- run 44232633417 said "13 slots unproven" and never said why -- and the two causes it can
+// mean are opposite fixes. A slot at run=listener-idle means the drain has a stop to issue and needs only
+// the operator's drain permission (runner_slot_retirement host_drain_interruption_authorization); a slot at
+// run=unobserved means the process reading did not attribute the unit at all, and no stop leg can be honest
+// about it until the reading itself is fixed. Guessing which one srv4 was would cost a 90-minute bound.
+// The evidence for this line is the live observe receipt, as it is for the registration line above it: a
+// witness cannot show what a host answers, and the line is read-only, so it is cheaper than guessing.
+fn runner_host_drain_reading_line(mode: FleetHostFileConvergeMode, target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  match mode {
+    FleetHostFilesObserveOnly => runner_host_drain_reading_text(target: target, context: context, units: units)
+    // apply mode does not pay for it: the drain's own pass reads the same shape again when it acts, and a
+    // read here would sit between the run's writes and its read-backs.
+    FleetHostFilesApply => ""
+  }
+}
+
+fn runner_host_drain_reading_text(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  join(map(read_slot_drain_pass_over(target: target, context: context, units: units), d => join([
+    "drain-reading unit=", d.unit as String,
+    " admission=", drain_admission_word(admission: d.admission),
+    " run=", drain_run_word(run: d.run),
+    "\n",
+  ], "")), "")
+}
+
+fn drain_admission_word(admission: SlotAdmissionState) -> String {
+  match admission {
+    AdmissionClosedByMask => "masked"
+    AdmissionOpen => "open"
+  }
+}
+
+// THE CAUSE IS PRINTED WITH THE STATE, because the state is not the finding: `unobserved` without its
+// cause cannot tell the operator whether the unit's show read failed or its processes went unattributed.
+fn drain_run_word(run: SlotRunState) -> String {
+  match run {
+    RunStopped => "stopped"
+    RunStopping => "stopping"
+    RunWorkerLive => "worker-live"
+    RunListenerIdle { roster: RosterNotBusy { joined: j } } => join(["listener-idle roster=not-busy joined=", j as String], "")
+    RunListenerIdle { roster: RosterBusy { joined: j } } => join(["listener-idle roster=busy joined=", j as String], "")
+    RunListenerIdle { roster: RosterUnread { cause: c } } => join(["listener-idle roster=unread cause=", c], "")
+    RunListenerIdle { roster: RosterDisagrees { cause: c } } => join(["listener-idle roster=disagrees cause=", c], "")
+    RunUnobserved { cause: c } => join(["unobserved cause=", c], "")
   }
 }
 

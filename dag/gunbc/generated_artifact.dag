@@ -59,6 +59,19 @@ type GeneratedArtifact
   | ApproveIosOperationErrorsSwiftArtifact
   | ApproveIosEnrolmentMachineTestsSwiftArtifact
   | ApproveIosOperationErrorsTestsSwiftArtifact
+  | RoadmapAuthorityAcceptedScenarioAcceptanceArtifact
+  | RoadmapAuthoritySupersededScenarioAcceptanceArtifact
+  | RoadmapAuthoritySupersededScenarioRevocationArtifact
+  | RoadmapAuthoritySupersededScenarioRetiredArtifact
+  | RoadmapAuthorityAbsentNodeAcceptanceArtifact
+
+// THE ROADMAP-AUTHORITY EVENT LOG (five committed JSON files). Each row is ONE file that the hermetic
+// witnesses walk with the real Filesystem.List through the floor's checkout carve-out; the bytes are the log's
+// own emitter applied to the scenario table in gunbc.roadmap.roadmap_authority_fixture, and the producer row
+// names the declaration that produces them. CrossLanguageClientTest is the honest consumer: the stage0
+// interpreter -- a different implementation, in Rust, from the .dag model that defines these bytes -- reads
+// the file as its oracle for those bytes, and the byte witness reddens drift. That is what this disposition
+// is for; a stale commit fails the drift gate here rather than silently passing in the run that reads it.
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -169,6 +182,11 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ApproveIosOperationErrorsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "OperationErrors.swift" }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "EnrolmentMachineTests.swift" }
     ApproveIosOperationErrorsTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "OperationErrorsTests.swift" }
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => ArtifactLocation { directory: "fixtures/roadmap_authority/events/roadmap-authority-scenario-accepted", name: "01-acceptance.json" }
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => ArtifactLocation { directory: "fixtures/roadmap_authority/events/roadmap-authority-scenario-superseded", name: "01-acceptance.json" }
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => ArtifactLocation { directory: "fixtures/roadmap_authority/events/roadmap-authority-scenario-superseded", name: "02-revocation.json" }
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => ArtifactLocation { directory: "fixtures/roadmap_authority/events/roadmap-authority-scenario-superseded", name: "03-retired.json" }
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => ArtifactLocation { directory: "fixtures/roadmap_authority/events/roadmap-authority-scenario-absent-node", name: "01-acceptance.json" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -252,6 +270,11 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     ApproveIosOperationErrorsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosOperationErrorsTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => CommitRequired { consumer: CrossLanguageClientTest }
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => CommitRequired { consumer: CrossLanguageClientTest }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -330,6 +353,12 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     ApproveIosOperationErrorsSwiftArtifact => false
     ApproveIosEnrolmentMachineTestsSwiftArtifact => false
     ApproveIosOperationErrorsTestsSwiftArtifact => false
+
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => false
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => false
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => false
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => false
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => false
   }
 }
 
@@ -388,6 +417,11 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ApproveIosOperationErrorsSwiftArtifact => match b { ApproveIosOperationErrorsSwiftArtifact => true  _ => false }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => match b { ApproveIosEnrolmentMachineTestsSwiftArtifact => true  _ => false }
     ApproveIosOperationErrorsTestsSwiftArtifact => match b { ApproveIosOperationErrorsTestsSwiftArtifact => true  _ => false }
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => match b { RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => true  _ => false }
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => match b { RoadmapAuthoritySupersededScenarioAcceptanceArtifact => true  _ => false }
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => match b { RoadmapAuthoritySupersededScenarioRevocationArtifact => true  _ => false }
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => match b { RoadmapAuthoritySupersededScenarioRetiredArtifact => true  _ => false }
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => match b { RoadmapAuthorityAbsentNodeAcceptanceArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -471,6 +505,11 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosOperationErrorsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_swift")
     ApproveIosEnrolmentMachineTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "expected_approve_ios_enrolment_machine_tests_swift")
     ApproveIosOperationErrorsTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_tests_swift")
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority_fixture", decl_name: "expected_roadmap_authority_accepted_scenario_acceptance_json")
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority_fixture", decl_name: "expected_roadmap_authority_superseded_scenario_acceptance_json")
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority_fixture", decl_name: "expected_roadmap_authority_superseded_scenario_revocation_json")
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority_fixture", decl_name: "expected_roadmap_authority_superseded_scenario_retired_json")
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority_fixture", decl_name: "expected_roadmap_authority_absent_node_acceptance_json")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")

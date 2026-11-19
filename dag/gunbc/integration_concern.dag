@@ -543,6 +543,26 @@ data h11ssl_unit3_census_standing_sighting_revision: CommitSha = "6be8eaef58a481
 // closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
 // writes this down.
 data h11ssl_unit3_build_pool_carve_derived_revision: CommitSha = "5215eaaf821ef0bfb9e22e9b88932dd294deaa4b"
+// The reading at which the sold srv9 endpoint declaration still stood at 192.168.1.236 while the 2026-10-10
+// Group B sale already recorded that unit as sold. This branch retires the declaration; the sighting names the
+// commit the retirement was authored against, so the before-state stays checkable.
+data h11ssl_unit3_srv9_endpoint_retirement_revision: CommitSha = "7dc10cb275c80455e2c1a9c2b834f5881d7fef60"
+// The revision at which this unit's GPU rows entered the model, and the two receipts the two rows below are
+// made against. The digests are the committed files under
+// artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
+data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
+data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
+  sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
+}
+data h11ssl_unit3_gpu_pci_ids_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read2.txt, section '### sysfs nvidia devices' -- the sysfs vendor/device read retried with PCI-domain-prefixed paths: 0000:01:00.0, 0000:81:00.0 and 0000:c1:00.0 each read vendor=0x10de device=0x1e37 class=0x030200. That closes the vendor:device half of the question below; the failures in the earlier unprefixed attempt are carried in gpu_identity_query.txt.",
+  sha256: Sha256Digest { hex: "de7ec943c9482ce189f9ffcd9ee23bb3e2381fe33b6fb0597b18fc76d70f1d7c" as Sha256DigestHex },
+}
+data h11ssl_unit3_gpu_power_receipt: SightingEvidence = CitesArtifact {
+  label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read3.txt -- t10-power-cap.sh (the driver power-limit loop with EXPECT=3) followed by nvidia-smi -q -d POWER: min 100.00 W, max 150.00 W, default 150.00 W, current 100.00 W on each of the three functions",
+  sha256: Sha256Digest { hex: "44c06f80bec69397b88d85ae578beab388b2a1d92dd66d691120044db271c92b" as Sha256DigestHex },
+}
 
 
 
@@ -692,6 +712,15 @@ data group_membership_append_spelled_by_two_tools_authorities: DistinctAuthoriti
   first: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv"),
   second: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
   rest: [],
+}
+data h11ssl_unit3_three_gpu_functions_against_two_reported_cards_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+  second: decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+  rest: [
+    decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_11_asset"),
+    decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_12_asset"),
+    decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_13_asset"),
+  ],
 }
 data inband_smbios_board_parse_fleet_and_arrival_lanes_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.fleet.fleet_host_smbios_observation", decl_name: "transcript_line_value"),

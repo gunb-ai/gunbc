@@ -3019,6 +3019,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
     ),
     roadmap_node(
+      identity: "rn_7KQF3TB9WD4XMH2C8SVA6UYGPN",
+      id: "fleet-mask-grants-cover-slots-the-model-keeps",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_slot_retirement.dag"),
+      line: ticket(t: fields(
+        headline: "srv4's mask authority reaches three slots the model keeps",
+        boundary: "Found 2026-11-18 while landing the cap bracket's drain stop leg. The sudoers mask lines are rendered from host_maskable_units (gunbc.runner.runner_host_grants), which is the operator interruption authorization's ENUMERATION for the host, not the retire delta derived from the width authorities (gunbc.runner.runner_width_transition). srv4_transition_interruption_authorization was authored 2026-09-12 when that transition's target was width 12, and it enumerates srv4-13..21. The model today keeps srv4-01..15 -- that is exactly the population the activation grants render -- so provisioning/srv4/gunbc-ghrunner.sudoers carries 'systemctl mask --now' over srv4-13, srv4-14 and srv4-15, units no retire route names. Authority with no consumer, the run-time dangling shape under gunbc.design_argument::consumption: nothing masks those three today (the retire actuator masks only what the obligation tells it to, and the drain stop leg's host_drain_interruption_authorization names 13..15 as slots to stop and RE-ADMIT), but the grant advertises a retire intent the model does not hold, and a later route could consume it. srv3 has no such gap: srv3_width_cut_interruption_authorization (#16665) enumerates srv3-14..21, which equals its derived delta.",
+        displaced_cost: "A reader, or any future actuator that trusts the grant list instead of the obligation, treats a kept slot as retired; and every review of srv4's sudoers has to re-derive why three lines are dead.",
+        first_slice: "Narrow srv4_transition_interruption_authorization to the derived retire set (srv4-16..21) and re-render provisioning/srv4/gunbc-ghrunner.sudoers. Do not move that grant set under a live bracket: land it only after srv4's cap bracket has restored its slots.",
+        red_control: "A claim that every mask line in a runner host's committed sudoers names a unit that host's required retirees names: RED on main, failing on srv4-13, srv4-14 and srv4-15, GREEN once the authorization equals the derived delta.",
+        out_of_scope: "The cap bracket's drain stop leg, which lands without touching this authorization, and srv3, whose enumeration already agrees.",
+        handback: "The narrowed authorization, the re-rendered srv4 sudoers, and the grant-versus-obligation control with its red run on main."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
       identity: "rn_EP54CSQWDFDY1JRAD5Q0HJV8F8",
       id: "per-function-claim-run-loads-string-dispatched-names",
       owner: "self-host",
@@ -5493,6 +5510,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-leaf-in-flight-set", parent: "roadmap-claim-names-leaf"),
     edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-claim-names-leaf"),
     edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-list-scheduling"),
+    // A realized duration is a count of WORKING days, and the Monday..Friday week is
+    // roadmap-schedule-calendar-binding's rule, not this row's: the fold imports
+    // gunbc.roadmap.roadmap_schedule_calendar::working_days_between rather than restating a second week rule
+    // (operator ruling 2026-11-18: make the calendar binding a parent and import its rule, holidays unmodelled).
+    edge(child: "roadmap-leaf-realized-duration", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),

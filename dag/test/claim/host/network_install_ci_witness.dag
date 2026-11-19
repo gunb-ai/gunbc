@@ -28,7 +28,8 @@ import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
 import extdeps.toolchain.types { Architecture }
-import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv15, operator_host_srv4 }
+import gunbc.actions_run_binding { fleet_converge_arrival_subject_env_name }
 import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.fleet.machine_target_disk_observations { target_disk_reading_for }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_binding_mac, site_pxe_edge_chain_pins, SitePxeEdgeChainPinned, SitePxeEdgeChainUnpinned }
@@ -39,8 +40,10 @@ import gunbc.host.network_install_ci {
   CiEdgeReady, CiEdgeRefused, NetworkInstallCiEdgeEffects, NetworkInstallCiIncomplete, NetworkInstallCiMissing,
   network_install_ci_edge_view,
   network_install_ci_binding, network_install_ci_chain, network_install_ci_missing, network_install_ci_os_observation,
-  network_install_ci_resolve, network_install_ci_route, network_install_ci_unit_row,
-  network_install_ci_reported_serial,
+  network_install_ci_identity_route, network_install_ci_resolve, network_install_ci_route,
+  network_install_ci_unit_row,
+  NetworkInstallCiConflated, NetworkInstallCiRouted,
+  network_install_ci_reported_serial, network_install_ci_unit_refusal, network_install_ci_conflation_refusal,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
 import gunbc.machine_intake.arrival_subject { arrival_converge_population, arrival_population_row_in }
@@ -163,7 +166,7 @@ fn pin_pinned_for(architecture: Architecture, pin: SitePxeEdgeChainPin) -> Bool 
 // commit srv15's standing, arrival row and unit key, this claim goes red first.
 test fn w_srv15_is_not_dispatched_today_and_the_refusal_names_everything_missing() -> Bool {
   match network_install_ci_resolve(
-    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    host: ci_host, executor: operator_host_srv4, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
     password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
     // No sealed context here, and none is needed: the account refuses srv15 today, so the plan -- the only
     // consumer of the context -- is never reached. A claim that needed a real context would have to be admitted
@@ -412,4 +415,131 @@ test fn w_the_registered_run_step_target_names_the_entry_that_exists() -> Bool {
             && !declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_wet"))
       )
     ) == 0
+}
+
+// THE UNIT IS THE KEY, NEVER THE EXECUTOR (review 96534 scope note). This claim measures the two accounts
+// DIRECTLY: the unit account names what srv15 genuinely lacks (the firmware release capability row) and stays
+// silent on what srv15 holds (arrival population row, write-controller row, dated target-disk reading); the
+// executor account names all of them, because srv4 owns none of these ledgers. That is evidence about the
+// account function itself. The EXECUTED evidence that the dispatch routes lookups by the unit and carries the
+// executor separately is the following claim, which executes network_install_ci_identity_route - the
+// single routing function the entry's dispatch consumes - and resolves through its output.
+test fn w_the_account_is_keyed_by_the_unit_and_the_executor_resolves_no_unit_rows() -> Bool {
+  // The unit account must report what srv15 genuinely lacks (the firmware release capability
+  // row) and stay silent on what it holds (population row, controller row, dated disk); the
+  // executor account must report ALL of them, because srv4 owns none of these ledgers. Keying
+  // an account lookup by the executor makes the unit report the executor's absences (the
+  // controller entry appears under the unit) -- red. Keying by the unit constant makes the
+  // executor silent about its own absences -- red.
+  let unit_missing = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  let executor_missing = network_install_ci_missing(
+    host: operator_host_srv4, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  any(
+    xs: unit_missing,
+    where: item => string_contains(s: item.input as String, pattern: "firmware release capability row")
+  )
+    && !any(
+      xs: unit_missing,
+      where: item =>
+        string_contains(s: item.input as String, pattern: "write-controller row")
+          || string_contains(s: item.input as String, pattern: "dated target-disk reading")
+          || string_contains(s: item.input as String, pattern: "arrival population row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "write-controller row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "firmware release capability row")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "dated target-disk reading")
+    )
+    && any(
+      xs: executor_missing,
+      where: item => string_contains(s: item.input as String, pattern: "arrival population row")
+    )
+}
+
+// AN ABSENT UNIT REFUSES, NAMING THE INPUT IT WANTED. The refusal names FLEET_CONVERGE_ARRIVAL_SUBJECT -- the
+// dispatch's own input -- and says outright that the unit is never taken from the executor host. A witness that
+// only checked "some refusal" would pass on any other text; this one pins the input name and the clause.
+// review 96534 (rung honesty), second pass. The entry's routing decision lives in ONE executable function,
+// network_install_ci_identity_route: it decides which identity the committed lookups are keyed by and which
+// is only carried, and it refuses a conflated pair - before any lookup runs. network_install_ci_dispatch
+// consumes its result for every step below the identity pair (resolve, receipt, plan). This claim executes
+// the routing function with the dispatch's own argument shapes (executor srv4, unit srv15), asserts the
+// routed pair (lookup is the unit, executor is the runner), and then feeds that routed pair into resolve and
+// asserts the unit-side account: it names the firmware release capability row the unit lacks and stays
+// silent on the population row and the write-controller row, which srv15 owns and only an executor-keyed
+// lookup could report missing. Swap lookup and executor inside the routing function and this arm flips red -
+// that is the discriminating RED. The executor is asserted to stay a separate carrier: a routed field, never
+// a key.
+test fn w_the_entry_route_keys_lookups_by_the_unit_and_carries_the_executor_apart() -> Bool {
+  match network_install_ci_identity_route(host: operator_host_srv4, install_unit: ci_host) {
+    NetworkInstallCiRouted { lookup: lookup, executor: executor } =>
+      (lookup as String) == (ci_host as String)
+        && (executor as String) == (operator_host_srv4 as String)
+        && match network_install_ci_resolve(
+          host: lookup,
+          executor: executor,
+          dispatch_id: ci_dispatch_id,
+          decided_at: ci_decided_at,
+          password_file: Present { value: ci_password_path },
+          edge_context: Absent,
+          edge_view: Present { value: CiEdgeReady },
+        ) {
+          NetworkInstallCiIncomplete { missing: missing } =>
+            any(xs: missing, where: item =>
+              string_contains(s: item.input as String, pattern: "firmware release capability row"))
+              && !any(xs: missing, where: item =>
+                string_contains(s: item.input as String, pattern: "write-controller row"))
+              && !any(xs: missing, where: item =>
+                string_contains(s: item.input as String, pattern: "arrival population row"))
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// The conflation refusal is asserted on the routing function itself: an equal executor/unit pair comes back
+// refused, naming the conflation - and NOT routed. dispatch delegates this decision here.
+test fn w_the_route_itself_refuses_a_conflated_pair() -> Bool {
+  match network_install_ci_identity_route(host: ci_host, install_unit: ci_host) {
+    NetworkInstallCiConflated { refusal: refusal } =>
+      string_contains(s: refusal, pattern: "conflates executor and unit")
+    _ => false
+  }
+}
+
+test fn w_an_absent_unit_refusal_names_the_arrival_subject_input_and_denies_the_host() -> Bool {
+  let text = network_install_ci_unit_refusal(
+    variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
+    detail: "workflow_dispatch carried no arrival_subject value" as NonEmptyStr
+  )
+  string_contains(s: text, pattern: "FLEET_CONVERGE_ARRIVAL_SUBJECT")
+    && string_contains(s: text, pattern: "arrival_subject")
+    && string_contains(s: text, pattern: "never from the executor host")
+}
+
+// A CONFLATED DISPATCH REFUSES BY BOTH NAMES. Putting the same identity in the executor slot and the unit slot
+// is refused, and the refusal names the shared identity and both roles, so the operator can see WHICH input was
+// mis-set. It is distinct text from the absent-unit refusal: two different mistakes report two different causes.
+test fn w_a_conflated_dispatch_is_refused_naming_the_identity_and_both_roles() -> Bool {
+  let text = network_install_ci_conflation_refusal(host: ci_host, install_unit: ci_host)
+  string_contains(s: text, pattern: "srv15")
+    && string_contains(s: text, pattern: "executor")
+    && string_contains(s: text, pattern: "unit")
+    && text
+      != network_install_ci_unit_refusal(
+        variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
+        detail: "x" as NonEmptyStr
+      )
 }

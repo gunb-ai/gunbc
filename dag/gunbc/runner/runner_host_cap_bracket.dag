@@ -37,12 +37,20 @@ import gunbc.runner.runner_slot_actuation {
   UnitRegistrationUnreadable,
 }
 import gunbc.runner.runner_slot_actuation { slot_is_masked }
+import gunbc.runner.runner_slot_retirement {
+  HostDrainAuthorization, HostDrainNamed, HostDrainUnnamed, host_drain_interruption_authorization,
+  interruption_authorization_covers,
+}
+import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_int, json_array }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
-import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_stop_argv }
+import extdeps.systemd.systemctl {
+  systemctl_mask_argv,
+  systemctl_stop_argv,
+}
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import extdeps.github.actions_runner { actions_runner_base_dir }
@@ -73,7 +81,8 @@ import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh
 // inside a DECLARED bound, idleness is judged UNDER the closure, the write is made, and admission is
 // re-opened on every exit path.
 //
-// ORDER: close admission (mask) -> wait, bounded, for every slot to be drained -> (the caller writes,
+// ORDER: mask what the mask leg can take -> wait, bounded, for every slot to be drained, stopping the
+// idle listeners the host's drain row authorizes once the readings certify them (the stop leg) -> (the
 // reloads, activates, reads back from the cgroup files) -> re-admit (activate + read back).
 //
 // COULD-NOT-TELL IS NOT IDLE (gunbc.design_argument::fail_closed). An unreadable process listing or unit reading, and a slot that is
@@ -147,6 +156,34 @@ type ListenerReregistrationFrontier {
 }
 
 data listener_reregistration_frontier: ListenerReregistrationFrontier = ListenerReregistrationFrontier { triggers: [UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute] }
+
+// WHAT WOULD HAVE TO EXIST, AND WHY THE OBVIOUS CANDIDATE IS NOT IT (measured 2026-11-18 against the
+// upstream document this module's extdeps.github.actions_self_hosted_runners row already cites). The
+// registration API's delete is the primitive one would reach for -- remove the idle listener's
+// registration and it can take no job -- but upstream spells that operation "Forces the removal of a
+// self-hosted runner from an organization" and lists its status codes as 204, 401, 403, 404 and 422: there
+// is no busy refusal, so the delete over a busy runner is the harm, not the guard. The two endpoints that
+// DO carry a 409 are the JIT config creation (a runner of that name is already registered) and the
+// repository/installation disable (the runner is still ONLINE) -- neither refuses on being busy, so neither
+// closes this window either. UpstreamAtomicBusyRefusingAdmissionClose therefore stays open as a trigger,
+// and the window is CARRIED rather than closed: the operator's ruling of 2026-11-18 is that draining these
+// hosts is authorized, a job caught in the window included.
+//
+// WHY THE STOP LEG NEEDS NO RESTART INHIBITION, AND WHY WRITING ONE WOULD HAVE BEEN WRONG. Measured
+// 2026-11-18 against upstream source rather than man pages: systemd's D-Bus setter
+// (src/core/dbus-service.c, bus_service_set_property) applies cgroup and resource-control properties to any
+// unit -- which is why this fleet's per-slice MemoryMax lines work over the same socket -- but every other
+// property, Restart= among them, is written only inside `if (u->transient && u->load_state == UNIT_STUB)`.
+// So `systemctl set-property actions-runner@<slot>.service Restart=no` is refused on a persistent unit, and
+// the route roadmap_authority node fleet-no-route-masks-a-running-unit first suggested -- a runtime
+// Restart=no override -- does not exist per unit at runtime. The other form of the same idea, a Restart=
+// drop-in plus daemon-reload, is what
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload refuses: a
+// reload is host-wide and this bracket masks units inside the same run. What the bracket relies on instead
+// is stated by systemd.service(5) for Restart=simple: "When the death of the process is a result of systemd
+// operation (e.g. service stop or restart), the service will not be restarted." A stop issued through
+// systemctl is therefore not fought by the unit that started it, no override is written, and the unit's own
+// Restart policy stays authoritative on the host -- which is also what the release path wants to read back.
 
 fn reregistration_trigger_wire(t: ReregistrationTrigger) -> String {
   match t {
@@ -379,7 +416,11 @@ type BracketWaitStep
   = BracketDrained { certified: List<CertifiedListener> }
   | BracketWaiting { ticks_left: Int }
   | BracketAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
-  | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
+  // stop_causes carries what the STOP LEG last reported on this host, newest pass winning. A bound that
+  // expires with a refused stop inside it is a different finding from one that expires on idle listeners
+  // alone, and unit names alone cannot tell them apart: srv4 run 44232633417 arrived as 13 unproven units
+  // with no cause attached (gunbc.design_argument::fail_closed: every degradation typed, located, countable).
+  | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, stop_causes: List<String> }
 
 type ClassedReading {
   unit: NonEmptyStr
@@ -406,6 +447,9 @@ fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>
     BracketBoundExceeded {
       busy: map(filter(classed, c => drain_class_is_busy(c: c.class)), c => c.unit),
       unproven: map(filter(classed, c => drain_class_is_unproven(c: c.class)), c => c.unit),
+      // The judge reads unit readings only, so it cannot know that a stop was issued and refused; the wait
+      // loop that issued it attaches those causes to whatever terminal verdict its last pass returns.
+      stop_causes: [],
     }
   } else {
     BracketWaiting { ticks_left: ticks_left - 1 }
@@ -419,7 +463,7 @@ type HostLeftState
 
 type HostCapBracketRefusal
   = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
-  | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
+  | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second, stop_causes: List<String> }
   | BracketRefusedBudgetCannotCover { needed: Second, given: Second }
   | BracketRefusedClockUnreadable { detail: String }
   | BracketRefusedObligationNotRecorded { cause: String }
@@ -427,7 +471,7 @@ type HostCapBracketRefusal
 fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
   match r {
     BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs } => join(["admission is not closed: a running idle listener is admitted only when its mask, the roster's busy=false and an empty Runner.Worker listing agree, so no cap was written and nothing was restarted; listeners=", join(map(ls, u => u as String), " "), " causes=[", join(cs, "; "), "]; ", listener_restart_residual_wire()], "")
-    BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
+    BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w, stop_causes: sc } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " "), if length(sc) > 0 { concat("; the stop leg reported: ", join(sc, "; ")) } else { "" }], "")
     BracketRefusedBudgetCannotCover { needed: n, given: g } => join(["the step budget of ", to_string(second_count(s: g)), "s cannot cover the bracket's ", to_string(second_count(s: n)), "s (drain + operations + release), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedObligationNotRecorded { cause: c } => join(["the release obligation could not be recorded (", c, "), so nothing was masked and no cap was written; the host is untouched"], "")
     BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
@@ -642,18 +686,17 @@ fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, un
 // ::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload -- systemctl mask's implicit daemon-reload
 // drops a live unit's drop-ins (its cap override, its Slice=), and this bracket's mask-then-wait would hold
 // that invalid state for the whole wait (srv4-01/02/08/12/15). Unlike DrainSteps in the shared drain actuator,
-// this route has NO stop leg ("NEVER STOP"): it cannot stop-then-mask a unit whose job finished mid-wait, so
-// the only mask it may issue is on a unit PROVEN stopped (Inactive or Failed) -- exactly runner_slot_actuation's
-// NeverMaskARunningUnit. A unit that is active, activating, reloading or deactivating is left UNMASKED. This
-// route has NO stop leg, so nothing here ever stops that unit: its own restart policy brings it back as a
-// running idle listener, so the next reading still shows it open, bracket_wait_step withholds the cap write
-// (fail-closed), and the bracket ends in BracketAdmissionNotClosed, or BracketBoundExceeded once the wait bound
-// is spent. NO LATER PASS DRAINS A BUSY SLOT: the unit is never stopped or hidden, so on a host with a busy
-// runner the cap write simply never lands; it lands only when every owned slot reads idle or stopped. That lost
-// busy-host drain is a declared LIVENESS COST of this change, not a temporary pending state, and draining a busy
-// slot without masking a running unit is owned by roadmap node fleet-no-route-masks-a-running-unit (its candidate
-// mechanism belongs on that node's first_slice, not here). A failed mask is not reported here: the next reading shows the
-// slot unmasked, and an unmasked slot is never drained.
+// this route masks ONLY a unit PROVEN stopped (Inactive or Failed) -- exactly runner_slot_actuation's
+// NeverMaskARunningUnit. A unit that is active, activating, reloading or deactivating is left UNMASKED by
+// THIS leg: masking such a unit is the invalid state above. What brings such a unit down is the STOP leg
+// below (drain_action_of, then stop_listener_over), which stops a listener the readings say is idle and
+// never a unit whose cgroup shows a Runner.Worker. That is the mechanism roadmap node
+// fleet-no-route-masks-a-running-unit exists for, and it lands here: a busy slot is waited on, an idle
+// listener is stopped, and either is masked only once the next reading shows it stopped -- a stop, unlike a
+// process exit, is not undone by the unit's own Restart= path. A slot that leg cannot certify -- a live
+// worker, or a roster the operator's drain row does not reach -- stays open and the cap write is withheld:
+// fail-closed, ending in BracketAdmissionNotClosed, or BracketBoundExceeded once the wait bound is spent. A failed mask is not reported here: the next reading
+// shows the slot unmasked, and an unmasked slot is never drained.
 fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
 {
   match read_slot_over(target: target, context: context, unit: unit) {
@@ -675,17 +718,36 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
 // so a mask someone else holds is neither taken over nor lifted.
 // CLOSE ADMISSION, THEN WAIT. The first pass only READS: under a mask-only closure a running idle
 // listener refuses the host before anything is changed, because stopping it races a job assignment.
-// Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
-// job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
-fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+// Later passes mask what is proven stopped, and STOP what that host's drain row authorizes stopping (the
+// stop leg below), so a slot leaves service when its own job ends or when the bracket is permitted to end
+// it. Each pass is judged by bracket_wait_step, and whatever the host refused to stop rides into the verdict
+// rather than dissolving into a unit name.
+fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, host: String, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
 {
   let closure = runner_host_cap_admission_closure
   let before = read_slot_drain_pass_over(target: target, context: context, units: observed)
   match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
     BracketAdmissionNotClosed { listeners: ls, causes: cs } => BracketAdmissionNotClosed { listeners: ls, causes: cs }
     BracketDrained { certified: cs } => BracketDrained { certified: cs }
-    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
-    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
+    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started, stop_causes: [])
+    BracketBoundExceeded { busy: b, unproven: u, stop_causes: _ } => drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started, stop_causes: [])
+  }
+}
+
+// WHAT A REFUSED STOP DOES TO THE VERDICT. Kept as its own function so the rule is checkable without a
+// host: the reading-derived causes in BracketAdmissionNotClosed say what the readings SHOW, the stop causes
+// say what the host refused to DO about it, and a verdict that settled (drained) is not decorated with a
+// refusal it did not have. The unit names alone are what made run 44232633417 unreadable, so this is the
+// leg that keeps a refused stop countable and located (gunbc.design_argument::fail_closed).
+fn carry_stop_causes(step: BracketWaitStep, causes: List<String>) -> BracketWaitStep {
+  if length(causes) == 0 {
+    step
+  } else {
+    match step {
+      BracketBoundExceeded { busy: b, unproven: u, stop_causes: _ } => BracketBoundExceeded { busy: b, unproven: u, stop_causes: causes }
+      BracketAdmissionNotClosed { listeners: ls, causes: cs } => BracketAdmissionNotClosed { listeners: ls, causes: concat(cs, causes) }
+      settled => settled
+    }
   }
 }
 
@@ -700,16 +762,25 @@ fn drain_time_up_over(policy: HostCapDrainPolicy, started: EpochMs) -> Bool
   }
 }
 
-fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, host: String, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs, stop_causes: List<String>) -> BracketWaitStep
 {
-  let _masked = map(owned, u => mask_slot_only_over(target: target, context: context, unit: u))
+  // ACT ON WHAT THIS PASS READ, THEN MASK, THEN JUDGE. The order matters: a listener the stop leg is
+  // permitted to stop reads stopped to mask_slot_only in the same pass, so a slot reaches certified in the
+  // fewest passes the readings allow, and no step runs out of order. A stop the host REFUSED is not left to
+  // surface only as an unproven name at the end: its cause is carried pass to pass and onto the verdict.
   let readings = read_slot_drain_pass_over(target: target, context: context, units: observed)
-  match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
+  let causes = drain_actions_apply_over(target: target, context: context, host: host, readings: readings, owned: owned)
+  // The NEWEST report for a unit is the one worth reading, so a pass that produced causes replaces what the
+  // earlier passes said rather than stacking repeats of the same refusal.
+  let carried = if length(causes) > 0 { causes } else { stop_causes }
+  let _masked = map(owned, u => mask_slot_only_over(target: target, context: context, unit: u))
+  let after = read_slot_drain_pass_over(target: target, context: context, units: observed)
+  match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: after, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
     BracketWaiting { ticks_left: n } => {
       let _paced = sleep_delay_seconds_second_carrier_projection(duration: policy.poll_interval)
-      drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started)
+      drain_pass_over(target: target, context: context, host: host, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started, stop_causes: carried)
     }
-    step => step
+    step => carry_stop_causes(step: step, causes: carried)
   }
 }
 
@@ -729,6 +800,128 @@ fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
       }
   }
 }
+
+// ── The stop leg ───────────────────────────────────────────────────────────────────────────────
+// THE DRAIN HAD NO STOP LEG, AND ON A LIVE HOST THAT IS THE WHOLE DEADLOCK. mask_slot_only masks only a
+// unit PROVEN stopped, and a runner's listener never stops by itself: it exits when its own job ends, and
+// the unit brings it back (runner_unit_file authors Restart=always with runner_unit_restart_delay). So the
+// bound always expired -- srv4 run 44232633417 named 13 open slots after 5415s, 0 of them busy, and the
+// masks it tried were refused because the units under them were running.
+//
+// A STOP ENDS THE CYCLE, AND IT NEEDS NO CHANGE TO THE UNIT. systemd.service(5), on Restart=: "When the
+// death of the process is a result of systemd operation (e.g. service stop or restart), the service will
+// not be restarted." The restart path answers the process's OWN exit; a stop is a requested
+// deactivation and systemd schedules no restart for one. The mask still does the rest -- it is what keeps
+// any later start from running the unit and what survives a reboot -- but no Restart= override is needed
+// to make a stop hold.
+//
+// AN OVERRIDE WAS TRIED HERE FIRST AND IT DOES NOT EXIST, SO IT IS RECORDED RATHER THAN KEPT.
+// `systemctl set-property <unit> Restart=no` is refused for any unit that is not transient: systemd's
+// bus_service_set_property routes every non-cgroup property, Restart among them, through
+// bus_service_set_transient_property, inside `if (u->transient && u->load_state == UNIT_STUB)`. The
+// writable properties on a persistent unit are the cgroup ones -- which is exactly what
+// gunbc.runner.runner_host_grants sets on the fabric-cell slices. A drop-in WOULD work, and would cost a
+// host-wide daemon-reload; that reload is the trigger of
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload, so it is not
+// free. Leaving the restart path as authored is what the cap and the mask are for.
+type DrainAction
+  = ActionAwaitLiveJob { unit: NonEmptyStr }
+  | ActionStopListener { unit: NonEmptyStr }
+  | ActionHold { unit: NonEmptyStr }
+
+// A stop of a listener whose idleness NO READING corroborates interrupts a job that may be running, and
+// only an operator row naming that unit says that is permitted on this host. Corroboration here means the
+// org roster join said THIS registration is not busy; absent, unread, partial and disagreeing readings are
+// all uncorroborated, and on a JIT host like srv4 every slot is uncorroborated, because a JIT registration
+// never appears in the org roster.
+fn drain_authorization_names(drain: HostDrainAuthorization, unit: NonEmptyStr) -> Bool {
+  match drain {
+    HostDrainNamed { authorization: a } => interruption_authorization_covers(auth: a, unit: unit as String)
+    HostDrainUnnamed => false
+  }
+}
+
+fn drain_action_of(r: SlotDrainReading, drain: HostDrainAuthorization) -> DrainAction
+{
+  let unit = r.unit
+  match r.run {
+    // A live Runner.Worker is somebody's build. The drain never stops it and never masks the unit under
+    // it: the mask that lands on a running unit is the invalid state this module's own row names.
+    RunWorkerLive => ActionAwaitLiveJob { unit: unit }
+    // The roster says a job is on this registration even though no worker shows in its cgroup. Same: the
+    // reading that says a job is running outranks the reading that says none is.
+    RunListenerIdle { roster: RosterBusy { joined: _ } } => ActionAwaitLiveJob { unit: unit }
+    // An idle listener the roster AGREES is not busy is taken out of service by a stop, and the mask lands
+    // on it once the next reading proves it stopped.
+    RunListenerIdle { roster: RosterNotBusy { joined: _ } } => ActionStopListener { unit: unit }
+    // RosterUnread and RosterDisagrees: the unit is up, something in its cgroup is not a Runner.Worker, and
+    // no reading says whether a job is on it. Stopped only where an enumerated operator decision permits
+    // the interruption; otherwise it is held, the bound refuses, and nothing is masked.
+    RunListenerIdle { roster: _ } =>
+      if drain_authorization_names(drain: drain, unit: unit) {
+        ActionStopListener { unit: unit }
+      } else {
+        ActionHold { unit: unit }
+      }
+    // A stopped unit is masked by mask_slot_only in the same pass, which still only masks a unit PROVEN
+    // stopped; a stopping unit's cgroup may still hold the listener, and an unobserved run is never idle.
+    RunStopped => ActionHold { unit: unit }
+    RunStopping => ActionHold { unit: unit }
+    RunUnobserved { cause: _ } => ActionHold { unit: unit }
+  }
+}
+
+// THE STOP RE-TAKES ITS OWN READING. The reading this pass acted on was taken before the pass ran, and
+// between it and this command a job can land on the slot -- that window is the declared residual of
+// listener_reregistration_frontier, and re-reading here is what keeps it a window rather than a habit. A
+// job that has landed by the time the stop is issued is not stopped: the fresh reading decides, through
+// the same decision point, and the refusal is carried into the next pass's readings.
+fn stop_listener_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, drain: HostDrainAuthorization) -> String?
+{
+  let fresh = read_slot_drain_over(target: target, context: context, unit: unit)
+  match drain_action_of(r: fresh, drain: drain) {
+    // run_slot_steps_over answers the FIRST failing step, or absent when every step succeeded -- so an
+    // absent here is a stop the host accepted, not a stop that went unanswered.
+    ActionStopListener { unit: _ } =>
+      match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+        Present { value: first } => Present { value: join(["stop failed on ", unit as String, ": ", first], "") }
+        Absent => none
+      }
+    ActionAwaitLiveJob { unit: _ } => Present { value: join(["a job is on ", unit as String, " at the stop leg's own reading; not stopped"], "") }
+    ActionHold { unit: _ } => Present { value: join(["the stop leg's own reading no longer shows a stoppable listener on ", unit as String], "") }
+  }
+}
+
+fn stop_listener_wire(cause: String?) -> List<String> {
+  match cause {
+    Absent => []
+    Present { value: c } => [c]
+  }
+}
+
+fn reading_for_unit(readings: List<SlotDrainReading>, unit: NonEmptyStr) -> SlotDrainReading? {
+  fold(readings, init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => if r.unit == unit { Present { value: r } } else { acc }
+  })
+}
+
+fn drain_actions_apply_over(target: SshTarget, context: FleetSshExecutionContext, host: String, readings: List<SlotDrainReading>, owned: List<NonEmptyStr>) -> List<String>
+{
+  // THE HOST'S DRAIN PERMISSION IS READ ONCE PER PASS, from the row minted for that host -- not from the
+  // width decision, and not from anything the host itself reports.
+  let drain = host_drain_interruption_authorization(host: host as HostIdentity)
+  list_flat_map(owned, unit => match reading_for_unit(readings: readings, unit: unit) {
+    Absent => []
+    Present { value: r } =>
+      match drain_action_of(r: r, drain: drain) {
+        ActionStopListener { unit: un } => stop_listener_wire(stop_listener_over(target: target, context: context, unit: un, drain: drain))
+        ActionAwaitLiveJob { unit: _ } => []
+        ActionHold { unit: _ } => []
+      }
+  })
+}
+
 
 // ── The listener restart ───────────────────────────────────────────────────────────────────────
 
@@ -955,7 +1148,7 @@ fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
 fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
-    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided and no argv was issued: ", why) }
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided: ", why) }
     SlotRead { reading: r } =>
       if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
       else if slot_activation_read_back_holds(r: r) {

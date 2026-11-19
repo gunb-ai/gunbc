@@ -1,0 +1,53 @@
+module gunbc.integration_concern.h11ssl_unit3_three_gpu_functions_against_two_reported_cards
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region h11ssl_unit3_three_gpu_functions_against_two_reported_cards_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, h11ssl_unit3_gpu_identity_receipt, h11ssl_unit3_gpu_pci_ids_receipt, h11ssl_unit3_gpu_rows_revision, h11ssl_unit3_three_gpu_functions_against_two_reported_cards_authorities }
+
+// THE MACHINE-WIDTH UInt8 <-> Int CROSSING. Origin: review 95669 on PR #16520. DESIGN.md states the
+// limit in the model itself (`UInt8` is `Compose<UInt, MachineWidth<8>>`, phantom and transparent to
+// `Int` across a formal; the worked example is a floor receipt observing `256` cross a `UInt8`
+// parameter in `test.claim.machine_word_witness`), and the ruling decides the intended model, but
+// neither claims a route -- this row is where the crossing exerts pressure.
+// The revision at which this unit's GPU rows entered the model, and the two receipts the two rows below are
+// made against. The digests are the committed files under
+// artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
+// THE UNIT'S GPU COUNT: THE OPERATOR'S REPORT AND THE READ DO NOT AGREE, and neither is thrown away.
+data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_three_gpu_functions_against_two_reported_cards",
+  kind: SuspectedFork {
+    authorities: h11ssl_unit3_three_gpu_functions_against_two_reported_cards_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+      decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "gpu_board_assets"),
+      decl_ref(module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "installed_gpu_board_containments"),
+    ],
+  },
+  question: "Two authorities name the accelerators in this unit and answer DIFFERENTLY: the operator reported two Tesla T10 (2026-11-15 and 2026-11-17, and the same operator's own session named a third card -- 'third card: serial 1323019027149, in SLOT2 (c1:00.0)'), while the unit itself enumerates three driver-visible NVIDIA functions with three UUIDs and three serials. Which is the unit? The read rows carry THREE boards because a unit's enumeration outranks a report about it, and the report row still says TWO because a report row describes its report -- so the disagreement is visible on both sides instead of being resolved by deleting one. Closing it does NOT need the vendor:device read -- that was taken in the same session once the sysfs paths carried the PCI domain (every function read vendor 0x10de device 0x1e37, unit_read2.txt), and only the earlier unprefixed-path attempt failed. What it needs is the operator's word on the count: whether one of the two-report statements miscounted, or a fourth card exists that the driver does not show; and the ownership read of which machine answers on 192.168.1.236, which no read in this repo can yet repeat. Until then no consumer may treat this unit's GPU count as settled.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_gpu_rows_revision,
+      evidence: FreeSemigroup {
+        head: h11ssl_unit3_gpu_identity_receipt,
+        tail: [
+          h11ssl_unit3_gpu_pci_ids_receipt,
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_report"),
+          },
+        ],
+      },
+      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

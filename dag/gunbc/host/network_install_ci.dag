@@ -60,7 +60,7 @@ import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, render_mac
 import extdeps.storage.device_identification { device_identification_token_text }
 import gunbc.actions_run_binding {
   ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read, actions_run_attempt_label_of_run,
-  fleet_converge_expected_host_env_name,
+  fleet_converge_arrival_subject_env_name, fleet_converge_expected_host_env_name,
 }
 import gunbc.clock_read { ObserverClockObserved, ObserverClockUnreadable, observer_clock_read, observer_instant_millis }
 import gunbc.machine_intake.arrival_subject { ArrivalConvergePopulationRow, arrival_converge_population, arrival_population_row_in }
@@ -136,6 +136,9 @@ data network_install_ci_attempt_prefix: String = "network-install"
 // know what a live dispatch still lacks.
 type NetworkInstallCiPlan {
   host: HostIdentity
+  // THE EXECUTOR that ran this dispatch (the site-PXE-edge runner). The receipt names it beside the unit so a
+  // reader can tie the run to the runner that held the agent, without the executor ever keying a lookup.
+  executor: HostIdentity
   dispatch_id: NonEmptyStr
   dispatch_owner: NonEmptyStr
   password_file_raw: String
@@ -189,6 +192,23 @@ type NetworkInstallCiResolution
   = NetworkInstallCiReady { plan: NetworkInstallCiPlan }
   | NetworkInstallCiIncomplete { missing: List<NetworkInstallCiMissing> }
 
+// THE ROUTING DECISION, alone and executable. Which identity the committed lookups are keyed by, and which
+// identity is only carried, is decided exactly once — here — and the entry's dispatch consumes its result.
+// A conflated dispatch is refused by this function, before any lookup runs.
+type NetworkInstallCiRouting
+  = NetworkInstallCiRouted { lookup: HostIdentity, executor: HostIdentity }
+  | NetworkInstallCiConflated { refusal: String }
+
+fn network_install_ci_identity_route(host: HostIdentity, install_unit: HostIdentity) -> NetworkInstallCiRouting {
+  if (host as String) == (install_unit as String) {
+    NetworkInstallCiConflated {
+      refusal: network_install_ci_conflation_refusal(host: host, install_unit: install_unit),
+    }
+  } else {
+    NetworkInstallCiRouted { lookup: install_unit, executor: host }
+  }
+}
+
 // THE ENTRY. The clock first and once; then the subject; then the resolution; then the run.
 fn network_install_ci_run() -> ProcessExit {
   match observer_clock_read() {
@@ -200,23 +220,29 @@ fn network_install_ci_run() -> ProcessExit {
         ActionsVariableAbsent { variable: variable, detail: detail } =>
           exit_failure(reason: network_install_ci_subject_refusal(variable: variable, detail: detail))
         ActionsVariablePresent { value: raw_host } =>
-          match actions_run_attempt_label_of_run(prefix: network_install_ci_attempt_prefix) {
-            Absent =>
-              exit_failure(
-                reason: concat(
-                  "network-install: the dispatch id is unreadable from the workflow environment; ",
+          match actions_variable_read(name: fleet_converge_arrival_subject_env_name) {
+            ActionsVariableAbsent { variable: variable, detail: detail } =>
+              exit_failure(reason: network_install_ci_unit_refusal(variable: variable, detail: detail))
+            ActionsVariablePresent { value: raw_install_unit } =>
+              match actions_run_attempt_label_of_run(prefix: network_install_ci_attempt_prefix) {
+                Absent =>
+                  exit_failure(
+                    reason: concat(
+                      "network-install: the dispatch id is unreadable from the workflow environment; ",
                   concat(
-                    "no run may be attributed an attempt label, and a durable hold with no owner is a hold nobody can release (",
-                    concat(network_install_ci_attempt_prefix, "-prefix).")
+                      "no run may be attributed an attempt label, and a durable hold with no owner is a hold nobody can release (",
+                      concat(network_install_ci_attempt_prefix, "-prefix).")
+                    )
                   )
                 )
-              )
-            Present { value: dispatch_id } =>
-              network_install_ci_dispatch(
-                host: raw_host as HostIdentity,
-                dispatch_id: dispatch_id,
-                decided_at: decided_at
-              )
+                Present { value: dispatch_id } =>
+                  network_install_ci_dispatch(
+                    host: raw_host as HostIdentity,
+                    install_unit: raw_install_unit as HostIdentity,
+                    dispatch_id: dispatch_id,
+                    decided_at: decided_at
+                  )
+              }
           }
       }
     }
@@ -237,24 +263,68 @@ fn network_install_ci_subject_refusal(variable: NonEmptyStr, detail: NonEmptyStr
   )
 }
 
+// THE UNIT REFUSAL. The unit — the machine being installed — arrives ONLY through the dispatch's arrival_subject
+// input. Reading it from the executor host would be the conflation the fleet rulings refuse: the executor is the
+// runner that hosts the site PXE edge (one edge, on srv4), while the lookups below are keyed by the machine being
+// installed, whose committed rows live under its own name. An executor-keyed lookup silently misses every unit
+// row, so an absent unit is a refusal naming the input, never a value inferred from the host.
+fn network_install_ci_unit_refusal(variable: NonEmptyStr, detail: NonEmptyStr) -> String {
+  concat(
+    "network-install: the install unit is unreadable (",
+    concat(
+      variable as String,
+      concat(
+        ": ",
+        concat(
+          detail as String,
+          "); the unit is read only from the dispatch's arrival_subject input, never from the executor host — a lookup keyed by the executor would miss every row committed under the unit's name."
+        )
+      )
+    )
+  )
+}
+
+// THE CONFLATION REFUSAL. Executor and unit name different machines; a dispatch that puts the same identity in
+// both slots is either a mis-set input or a silent widening, and neither earns a disk write.
+fn network_install_ci_conflation_refusal(host: HostIdentity, install_unit: HostIdentity) -> String {
+  concat(
+    "network-install: the dispatch conflates executor and unit (host: ",
+    concat(
+      host as String,
+      concat(
+        ", unit: ",
+        concat(
+          install_unit as String,
+          "); the executor is the runner hosting the site PXE edge and the unit is the machine being installed — one dispatch names each exactly once, and equal identities claim one machine is two."
+        )
+      )
+    )
+  )
+}
+
 // Resolve every committed input, then either run or write the refusal. Both paths write the receipt: a wet CI
 // entry that exits without a receipt leaves the operator with an exit code and no account of what was missing.
 // The credential fetch happens HERE, in the wet path, and its result is passed down: nothing below this line
 // performs an effect, so the whole account and plan are assertable without a live environment.
-fn network_install_ci_dispatch(host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
-  let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
-  match network_install_ci_resolve(
-    host: host, dispatch_id: dispatch_id, decided_at: decided_at,
-    password_file: network_install_ci_password_file(),
-    edge_context: edge_effects.context, edge_view: edge_effects.view,
-  ) {
-    NetworkInstallCiIncomplete { missing: missing } =>
-      network_install_ci_write(
-        body: network_install_ci_incomplete_receipt(host: host, dispatch_id: dispatch_id, missing: missing),
-        host: host,
-        succeeded: false
-      )
-    NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+fn network_install_ci_dispatch(host: HostIdentity, install_unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  match network_install_ci_identity_route(host: host, install_unit: install_unit) {
+    NetworkInstallCiConflated { refusal: refusal } => exit_failure(reason: refusal)
+    NetworkInstallCiRouted { lookup: lookup, executor: executor } => {
+      let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
+      match network_install_ci_resolve(
+        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+        password_file: network_install_ci_password_file(),
+        edge_context: edge_effects.context, edge_view: edge_effects.view,
+      ) {
+        NetworkInstallCiIncomplete { missing: missing } =>
+          network_install_ci_write(
+            body: network_install_ci_incomplete_receipt(host: lookup, executor: executor, dispatch_id: dispatch_id, missing: missing),
+            host: lookup,
+            succeeded: false
+          )
+        NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
+      }
+    }
   }
 }
 
@@ -509,7 +579,7 @@ fn network_install_ci_dropped<T>(input: String, source: String, remedy: String, 
 // must be observable without a live environment. Two fetches -- one for the account, one for the plan -- could
 // also disagree, and a receipt that contradicts its own refusal list is worse than either answer alone.
 fn network_install_ci_resolve(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
   edge_context: Optional<FleetSshExecutionContext>, edge_view: Optional<NetworkInstallCiEdgeView>,
 ) -> NetworkInstallCiResolution {
   let missing = network_install_ci_missing(
@@ -520,7 +590,7 @@ fn network_install_ci_resolve(
     NetworkInstallCiIncomplete { missing: missing }
   } else {
     network_install_ci_build(
-      host: host, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
+      host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at, password_file: password_file,
       edge_context: edge_context,
     )
   }
@@ -529,7 +599,7 @@ fn network_install_ci_resolve(
 // Every arm below has already been proven present by the accounting pass; an Absent here means the row changed
 // between the two reads, which is reported as what it is rather than papered over.
 fn network_install_ci_build(
-  host: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
+  host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>,
   edge_context: Optional<FleetSshExecutionContext>,
 ) -> NetworkInstallCiResolution {
   match network_install_ci_managed_row(host: host) {
@@ -580,6 +650,7 @@ fn network_install_ci_build(
                                                                   NetworkInstallCiReady {
                                                                     plan: NetworkInstallCiPlan {
                                                                       host: host,
+                                                                      executor: executor,
                                                                       dispatch_id: dispatch_id,
                                                                       dispatch_owner: network_install_ci_owner(host: host, dispatch_id: dispatch_id),
                                                                       password_file_raw: password_file_raw,
@@ -846,16 +917,22 @@ fn network_install_ci_write(body: String, host: HostIdentity, succeeded: Bool) -
 // the unit's arrival row and its unit-key binding. Nothing here relaxes that, mints a standing, or reads the
 // witness's supplied fixture: the fixture exists to prove the ADMITTED path works, not to stand in for a row
 // production has never had.
-fn network_install_ci_incomplete_receipt(host: HostIdentity, dispatch_id: NonEmptyStr, missing: List<NetworkInstallCiMissing>) -> String {
+fn network_install_ci_incomplete_receipt(host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, missing: List<NetworkInstallCiMissing>) -> String {
   let head = concat(
     "network-install CI: NOT DISPATCHED\nhost: ",
     concat(
       host as String,
       concat(
-        "\ndispatch: ",
+        "\nexecutor: ",
         concat(
-          dispatch_id as String,
-          "\nholds taken: none (nothing was acquired)\nwhy: the committed inputs below did not resolve; each is listed with the ledger it should have come from and what mints it.\n"
+          executor as String,
+          concat(
+            "\ndispatch: ",
+            concat(
+              dispatch_id as String,
+              "\nholds taken: none (nothing was acquired)\nwhy: the committed inputs below did not resolve; each is listed with the ledger it should have come from and what mints it.\n"
+            )
+          )
         )
       )
     )
@@ -896,14 +973,20 @@ fn network_install_ci_run_receipt(plan: NetworkInstallCiPlan, verdict: String, o
     concat(
       plan.host as String,
       concat(
-        "\ndispatch: ",
+        "\nexecutor: ",
         concat(
-          plan.dispatch_id as String,
+          plan.executor as String,
           concat(
-            "\nowner: ",
+            "\ndispatch: ",
             concat(
-              plan.dispatch_owner as String,
-              concat("\nrelease: ", concat(verdict, concat("\npassword file: ", concat(plan.password_file_raw, "\n\n"))))
+              plan.dispatch_id as String,
+              concat(
+                "\nowner: ",
+                concat(
+                  plan.dispatch_owner as String,
+                  concat("\nrelease: ", concat(verdict, concat("\npassword file: ", concat(plan.password_file_raw, "\n\n"))))
+                )
+              )
             )
           )
         )
