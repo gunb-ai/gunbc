@@ -193,7 +193,7 @@ fn gunbc_run_step_target_unstored_diagnostic(target: GunbcRunStepTarget) -> Diag
 // carrier. A caller that renders a run-step invocation into script text binds this outcome and lets the
 // refusal reach gunbc.generated_artifact_emit, which turns it into a typed ArtifactGenerationRefused; a
 // caller that must branch on Absent itself takes gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path.
-fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> Outcome<String> {
+fn gunbc_run_step_target_entry_or_refusal(target: GunbcRunStepTarget) -> Outcome<String> {
   match gunbc_run_step_target_entry_path(target: target) {
     Present { value: path } => outcome_accepted(path)
     Absent => outcome_rejected(d: gunbc_run_step_target_unstored_diagnostic(target: target))
@@ -295,7 +295,7 @@ fn gunbc_run_command(
 
 // THE ONE ENTRY POINT FOR INVOKING A RUN-STEP TARGET (gunbc.design_argument::root_generalization). A
 // caller hands over the target; it never restates an entry path and a function name -- the entry path
-// is DERIVED from the target's declaration by gunbc_run_step_target_entry_or_poison in this module,
+// is DERIVED from the target's declaration by gunbc_run_step_target_entry_or_refusal in this module,
 // which reads gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path (the single target-to-path
 // derivation) and returns this family's located refusal in the carrier (never a fabricated path) when
 // the module belongs to no registered storage root; the refusal rides the carrier to
@@ -308,7 +308,7 @@ fn gunbc_run_command_for_target(
   claim_run: Bool
 ) -> Outcome<String> {
   bind_outcome(
-    o: gunbc_run_step_target_entry_or_poison(target: target),
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
     f: fn(path) {
       gunbc_run_command(
         source_roots: source_roots,
@@ -400,7 +400,7 @@ fn gunbc_run_step_script_for_target(
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
-    o: gunbc_run_step_target_entry_or_poison(target: target),
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
     f: fn(path) {
       gunbc_run_step_script(
         source_roots: source_roots,
@@ -423,7 +423,7 @@ fn gunbc_run_step_script_with_prelude_for_target(
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
-    o: gunbc_run_step_target_entry_or_poison(target: target),
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
     f: fn(path) {
       gunbc_run_step_script_with_prelude(
         prelude: prelude,

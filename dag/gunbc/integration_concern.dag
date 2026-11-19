@@ -3012,7 +3012,7 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
       tail: [
         decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_command"),
         decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
-        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_entry_or_poison"),
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_entry_or_refusal"),
         decl_ref(module_path: "gunbc.generated_artifact_emit", decl_name: "artifact_generate"),
       ],
     },

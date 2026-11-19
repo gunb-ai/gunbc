@@ -1380,18 +1380,23 @@ fn step_declared_timeout_minutes(st: Step) -> Int {
   }
 }
 
-fn declared_timeout_of_outcome(st: Outcome<Step>) -> Int {
+fn declared_timeout_of_outcome(st: Outcome<Step>) -> Outcome<Int> {
   match st {
-    Accepted { value: s } => step_declared_timeout_minutes(st: s)
-    Rejected { diagnostics: _ } => 0
+    Accepted { value: s } => Accepted { value: step_declared_timeout_minutes(st: s) }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
-fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
-  fold(
-    fleet_converge_build_job_steps(),
-    init: gunbc_ci_prelude_allowance_minutes,
-    f: (acc, st) => acc + declared_timeout_of_outcome(st: st),
+// A refused step contributes its typed refusal, never a fabricated timeout: the backstop total is
+// summed only over accepted steps, so it can never be a plausible number derived from a refusal, and
+// a refusal makes the whole backstop a refusal (gunbc.design_argument::fail_closed). The committed
+// build job's steps all accept, so its committed timeout is unchanged.
+fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Outcome<Int> {
+  bind_outcome(
+    o: sequence_outcome(xs: map(fleet_converge_build_job_steps(), s => declared_timeout_of_outcome(st: s)), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(timeouts) {
+      outcome_accepted(value: fold(timeouts, init: gunbc_ci_prelude_allowance_minutes, f: (acc, m) => acc + m))
+    },
   )
 }
 
@@ -1513,7 +1518,10 @@ fn fleet_converge_build_job() -> Outcome<Job> {
   bind_outcome(
       o: sequence_outcome(xs: fleet_converge_build_job_steps(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
       f: fn(zesty_steps) {
-        outcome_accepted(value: Job {
+        bind_outcome(
+          o: gunbc_fleet_converge_build_job_backstop_timeout_minutes(),
+          f: fn(backstop) {
+            outcome_accepted(value: Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
@@ -1528,7 +1536,7 @@ fn fleet_converge_build_job() -> Outcome<Job> {
       ]
     },
     if_condition: Present { value: fleet_converge_build_job_if },
-    timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: backstop },
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
@@ -1541,7 +1549,9 @@ fn fleet_converge_build_job() -> Outcome<Job> {
       }
     },
   }
-      )
+            )
+          }
+        )
     }
   )
 }

@@ -7,7 +7,7 @@ import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_file_converge_target }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
 import v2.std.diagnostic { outcome_accepted_value }
 
 // A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
@@ -32,7 +32,7 @@ fn step_runs(steps: List<Step>) -> List<String> {
 }
 
 fn runs_naming(t: GunbcRunStepTarget, runs: List<String>) -> List<String> {
-  match outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: t)) {
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: t)) {
     Absent => []
     Present { value: entry } => filter(runs, r => string_contains(s: r, pattern: entry) && string_contains(s: r, pattern: t.declaration.decl_name as String))
   }
@@ -55,7 +55,7 @@ test fn the_supplied_roster_reading_mode_carries_the_token() -> Bool {
 
 // RED CONTROL ON THE SCOPE: the token is minted but unnarrowed (no request body), or narrowed to write: both refuse.
 test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
-  match outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_runner_host_file_converge_target)) {
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
     Absent => false
     Present { value: zesty_entry } => let head = concat("gunbc run ", concat(zesty_entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))
     let unnarrowed = concat(token_marker, head)
@@ -67,7 +67,7 @@ test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
 
 // RED CONTROL ON THE PREDICATE: the same check over a script with no prelude refuses.
 test fn a_converge_run_without_the_prelude_is_refused() -> Bool {
-  match outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_runner_host_file_converge_target)) {
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
     Absent => false
     Present { value: zesty_entry } => !target_carries_token(
       t: gunbc_ci_runner_host_file_converge_target,

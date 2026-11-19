@@ -58,7 +58,7 @@ import extdeps.languages.yaml.types {
 import extdeps.languages.yaml.types { yaml_string }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource, gcp_iam_converge_environment }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {
@@ -579,7 +579,7 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
               Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
               Absent => false
             })
-        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_poison(target: gunbc_ci_host_reset_dispatch_admission_target))
+        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_host_reset_dispatch_admission_target))
         && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
         && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
         && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")

@@ -34,7 +34,7 @@ import gunbc.host.mtcollins1_ssh_host_key_mint {
   mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
   mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_target }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -502,7 +502,7 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
     && !any(fleet_converge_dispatch_inputs, i => i.name == "keypair_subject")
     // Every row is walked: its mint step and its receipt upload are in the job, under the row-derived ids.
     && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s)) {
-         Present { value: st } => match outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: s))) {
+         Present { value: st } => match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_fleet_keypair_mint_target(subject: s))) {
            Absent => false
            Present { value: own_entry } => match fleet_keypair_mint_other_entry(subject: s) {
              Absent => false
@@ -533,7 +533,7 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
 // above cannot silently stop checking anything when a third key is added.
 fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> Optional<String> {
   match filter(fleet_keypair_mint_subject_rows(), s => (s.mint_target.declaration.module_path as String) != (subject.mint_target.declaration.module_path as String)).first() {
-    Present { value: other } => outcome_accepted_value(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: other)))
+    Present { value: other } => outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_fleet_keypair_mint_target(subject: other)))
     Absent => Absent
   }
 }
