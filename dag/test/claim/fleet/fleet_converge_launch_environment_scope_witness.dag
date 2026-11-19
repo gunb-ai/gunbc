@@ -106,7 +106,7 @@ fn witness_launch_environment_request() -> FleetConvergeRequest {
 fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
   match t {
     FullyApplied => true
-    PartiallyApplied { refused_axis_count: _, detail: _ } => false
+    PartiallyApplied { refused_axis_count: _, owed: _, detail: _ } => false
     AwaitingCapability { capability: _ } => false
   }
 }
@@ -143,7 +143,7 @@ test fn the_launch_environment_terminal_wire_is_the_token_the_rlm_join_requires(
 test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() -> Bool {
   match fleet_converge_apply_terminal(request: witness_full_host_request()) {
     FullyApplied => false
-    PartiallyApplied { refused_axis_count: _, detail: d } =>
+    PartiallyApplied { refused_axis_count: _, owed: _, detail: d } =>
       string_contains(s: d, pattern: "slot=1") && string_contains(s: d, pattern: "activation=")
     AwaitingCapability { capability: _ } => false
   }
@@ -558,7 +558,7 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
   let fabric = srv1_fabric_refusals()
   match fleet_converge_apply_terminal(request: srv1_full_host_request()) {
     FullyApplied => false
-    PartiallyApplied { refused_axis_count: n, detail: d } =>
+    PartiallyApplied { refused_axis_count: n, owed: _, detail: d } =>
       n == 33 + fabric
         && string_contains(s: d, pattern: "slot=31")
         && string_contains(s: d, pattern: "activation=2")

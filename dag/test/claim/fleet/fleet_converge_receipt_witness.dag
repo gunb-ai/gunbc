@@ -258,13 +258,13 @@ test fn witness_apply_receipt_partially_applied_round_trips() -> Bool {
     plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
     prior_generation: base.prior_generation, planned_generation: base.planned_generation,
     expected_revision_admitted: base.expected_revision_admitted,
-    terminal: PartiallyApplied { refused_axis_count: 2, detail: "slot=1 cap=0 timer=1 fabric-cell=0 activation=0" },
+    terminal: PartiallyApplied { refused_axis_count: 2, owed: Absent, detail: "slot=1 cap=0 timer=1 fabric-cell=0 activation=0" },
     locked_apply_exit_code: 0,
   }
   match fleet_converge_apply_receipt_decode(raw: serialize_json(v: fleet_converge_apply_receipt_json(r: r))) {
     FleetConvergeApplyReceiptDecoded { receipt: back } =>
       match back.terminal {
-        PartiallyApplied { refused_axis_count: n, detail: d } => n == 2 && string_contains(s: d, pattern: "timer=1")
+        PartiallyApplied { refused_axis_count: n, owed: _, detail: d } => n == 2 && string_contains(s: d, pattern: "timer=1")
         FullyApplied => false
         AwaitingCapability { capability: _ } => false
       }

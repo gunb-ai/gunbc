@@ -687,7 +687,7 @@ fn apply_outcome_blockers(s: RoadmapLaunchDeploymentSubject, f: ApplyReceiptFact
       concat(
         match a.terminal {
           FullyApplied => []
-          PartiallyApplied { refused_axis_count: n, detail: d } =>
+          PartiallyApplied { refused_axis_count: n, owed: _, detail: d } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is PartiallyApplied (", to_string(n), " refused axes): ", d], ""))
           AwaitingCapability { capability: c } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is AwaitingCapability: ", c], ""))
