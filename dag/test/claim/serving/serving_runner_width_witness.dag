@@ -30,7 +30,7 @@ import gunbc.runner.runner_slot_allocation {
   RunnerMemoryEnvelopeDerived, RunnerMemoryEnvelopeUnestablished,
   host_runner_memory_envelope_resolution, host_runner_memory_envelope_resolution_with_serving,
   runner_memory_envelope_of_optional, host_width_facts,
-  cpu_width_of_threads_withheld, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted,
+  cpu_width_of_threads_withheld, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthCensusAbsent, CpuWidthOverCommitted,
 }
 import gunbc.serving.serving_reservation { host_memory_reserved, host_cores_withheld_from_runner }
 
@@ -99,17 +99,20 @@ test fn witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin
   let whole = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: hardware_thread_count(count: 0)) {
     CpuWidthDerived { slots: n } => n == 128
     CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthCensusAbsent { host: _ } => false
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
   }
   let minus_forty = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: hardware_thread_count(count: 40)) {
     CpuWidthDerived { slots: n } => n == 88
     CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthCensusAbsent { host: _ } => false
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
   }
   let srv3_withholds_none = hardware_thread_count_value(t: host_cores_withheld_from_runner(operator_host_srv3)) == 0
   let srv3_whole = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 128), withheld: host_cores_withheld_from_runner(operator_host_srv3)) {
     CpuWidthDerived { slots: n } => n == 128
     CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthCensusAbsent { host: _ } => false
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
   }
   // THE DISCRIMINATING RED (review 93506): exclusive cores EXCEED the machine's threads. Before the fix this
@@ -118,11 +121,13 @@ test fn witness_an_affinity_pin_leaves_the_cpu_axis_whole_where_an_exclusive_pin
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => true
     CpuWidthDerived { slots: _ } => false
     CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthCensusAbsent { host: _ } => false
   }
   // A GENUINE zero -- withheld EQUALS threads, offered pool 0 -- is a derived width, the arm DISTINCT from the refusal.
   let genuine_zero_still_derives = match cpu_width_of_threads_withheld(host: operator_host_srv3, threads: hardware_thread_count(count: 4), withheld: hardware_thread_count(count: 4)) {
     CpuWidthDerived { slots: n } => n == 0
     CpuWidthOfferAbsent { host: _ } => false
+    CpuWidthCensusAbsent { host: _ } => false
     CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
   }
   whole && minus_forty && srv3_withholds_none && srv3_whole && over_committed_is_a_refusal && genuine_zero_still_derives
