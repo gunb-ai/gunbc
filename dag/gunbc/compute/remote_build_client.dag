@@ -27,7 +27,7 @@ import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, ssh_context_from_verified_binding_under,
 }
 import gunbc.fleet.fleet_ssh_credential_verify {
-  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
+  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused, FleetSshCredentialAdmissionEmpty,
   verify_fleet_ssh_credential_admitted_any, fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.compute.work_provider_local { ComputeExec, ComputeExecOk, ComputeExecFailed }
@@ -120,6 +120,8 @@ fn verify_and_prepare_context(attempt: FleetSshAttemptIdentity, identity_path: S
       FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
     FleetSshCredentialDerivationRefused { cause } =>
       FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
+    FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialAdmissionEmpty { observed_line: o }) }
     FleetSshCredentialVerified { binding } =>
       ssh_context_from_verified_binding_under(
         attempt: attempt,
