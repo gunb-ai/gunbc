@@ -1,0 +1,51 @@
+module gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Filed by the follow-up to gunbc#16734 (smart-crane-730 asked for this class on 2026-11-19, after review 96674
+// caught it in that PR). This row is about citations no landing contains, so it cites only revisions main
+// contains and pull requests by number: 218429cecebd204441ac8323b304687d4ae537e7 (the squash landing of #16734),
+// b156ebb3c2252f1f9ceac45155efb191d10534b6 (#16728's squash) and b5daba9e2d3df3a9fb51abcab02e4e00439b7656 (its
+// parent). Every one of those was checked with git merge-base --is-ancestor against origin/main before commit.
+data a_revision_citation_that_no_landing_contains: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_revision_citation_that_no_landing_contains" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a claim over every CommitSha the design ledgers carry that refuses any value main does not contain (the check is git merge-base --is-ancestor <sha> main), and refuses an integrated_at whose revision does not itself contain the row's replacement declarations",
+    },
+  },
+
+  receipts: [
+    "THE INVALID STATE, two spellings of one defect. A register or intake row names a revision -- a CommitSha in an integrated_at, a CitesHistorical at:, a HistoricalDeclaration, or a prose receipt -- and that revision is not something a reader can stand on. Either (a) the sha is not an ancestor of main: the branch was SQUASHED on landing, so the pre-squash head resolves on nobody's checkout but its author's; or (b) the sha IS on main but predates the very declarations the row says it integrates, so a consumer that resolves the row's replacement at the revision the row itself names finds nothing.",
+
+    "THE HARM. The citation is not decoration: gunbc.integration_concern::IntegrationEvidence is how a closed concern says WHERE the closure lives, and Continuous generalization requires the superseded declarations to be cited at the revision where they existed. A revision no landing contains makes every one of those claims unverifiable, and an integrated_at that predates its own replacement makes the carrier actively false -- the field says the replacement exists at that revision and it does not. The reader who trusts the typed field and goes to that revision finds a tree without the declarations, and concludes the ledger is wrong.",
+
+    "THE WORST PART OF IT IS THE SHAPE OF THE MISTAKE: (b) is committed by an author trying to be honest. A row cannot cite its own future squash sha, because that sha does not exist until the change lands. The two honest-looking wrong answers are a branch sha (which the squash strands) and the newest nearby main revision (which does not contain the integration). Both put a plausible revision in a typed field. The only truthful move at that moment is to leave the row OPEN, record the answer and the executed control in the sighting text, and integrate in the NEXT change, which can name its own landing revision.",
+
+    "FOUND AT, 2026-11-19, review 96674 on gunbc#16734, a REQUEST_CHANGES that the author had introduced an hour earlier and re-caught in the same PR. The change then under review closed h11ssl_unit3_three_gpu_functions_against_two_reported_cards as Integrated with integrated_at: b156ebb3c225 -- the newest main revision at the time -- while its replacement, supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19, was added by that same change and exists on no landing at all. The row's own run string admitted this in prose, and that is the tell for the class: a typed field and the sentence beside it disagree, and the sentence is the truth. The change later returned the row to Open and deleted the borrowed revision. No branch head is quoted here, because this row is about citations no landing contains.",
+
+    "SAME CLASS, FIRST SPELLING, IN THE SAME CHANGE, caught before merge: the re-anchoring that fixed it found five citations pointing at branch heads of gunbc#16728 -- a datum naming the revision where three Spark LAN endpoint rows were declared, the superseded at: of two closed concerns, and two integrated_at values. That PR was landed by SQUASH, so every pre-squash head on its branch is unreachable from main: the rows were true in meaning and unresolvable in fact. They now cite main revisions -- b156ebb3c2252f1f9ceac45155efb191d10534b6, the squash that carries the deletions, and b5daba9e2d3df3a9fb51abcab02e4e00439b7656, its parent, which still declares srv10_host_lan_endpoint, srv11_host_lan_endpoint and srv12_host_lan_endpoint at fleet_intent_network.dag lines 231, 239 and 247. Verified with git merge-base --is-ancestor against main, which is also the recognition rule below.",
+
+    "RECOGNITION RULE. Any time you write a revision into a ledger, ask which checkout can resolve it. Run git merge-base --is-ancestor <sha> main before you commit the string; if it fails, the citation is this class. For an integrated_at, ask a second question: does that revision contain the declarations named in replacement? If not, the closure belongs to a later change, and the honest state right now is Open.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. Today the class is mitigated only by author discipline and by a reviewer who happens to notice. The ceiling is MechanicallyPreventable: one claim over the CommitSha values the design ledgers carry, refusing any sha absent from main history and any integrated_at that does not contain its own replacement. That check is deliberately NOT built here -- the capability is named, not implemented, and the blocker is ClimbableButUnbuilt. Note the limit it will still have: a sha can resolve on main and still be the WRONG revision, so the ancestor check refuses the first spelling outright and narrows the second to a field-versus-content join it can only make when the replacement declarations are named by module path and declaration name.",
+
+    "SAME CLASS IS PRESENT IN THE LEDGER TODAY, AND THE FIGURE IS MEASURED. On 2026-11-19 at main 218429cecebd204441ac8323b304687d4ae537e7 every datum line of the form data <name>: CommitSha = <hex> in dag/gunbc/integration_concern.dag was extracted (32 distinct values) and each was tested with git merge-base --is-ancestor against origin/main. Eight of the 32 are NOT ancestors of main. Those eight sit in rows this author did not write and were deliberately NOT touched by the change that files this row: re-anchoring a citation means re-measuring the receipts beside it, which is a change with its own evidence, and the manager was told rather than the ledger being quietly edited. The instrument is narrow in one way worth stating: it reads only datum lines of that exact shape, not revisions quoted inside prose or held in other field types, so 32 is a floor on the citations in that file rather than a census of them.",
+
+    "HOW A ROW LIKE THIS ONE IS READ, AND WHAT MEASURABLY DOES NOT READ IT. The population of this ledger is derived from the row FILES. gunbc.source_layout declares a LayoutDerivedRoster over the row_namespace gunbc.recurring_failure_mode; gunbc.rostered_row_join enrolls RecurringFailureModeRows against the derived roster module gunbc.recurring_failure_mode.roster; gunbc.design_ledgers then renders the exact identity population and every row's authored text by mapping over that roster, which is what makes a row here consumed rather than dangling. There is no roster FILE to maintain: dag/gunbc/recurring_failure_mode/roster.dag was retired, and test.claim.repository_convergence_witness::superseded_file_retirement_population_is_the_two_legacy_roster_files keeps that retirement honest. What does NOT check a new row, established by planting rather than by assuming: on 2026-11-19 a planted mismatch between this row's identity field and its file name left test.claim.recurring_failure_mode_citation_sightings_witness GREEN at 15 claims, 15 pass, 0 fail. Membership comes from the file existing, not from the identity string agreeing with it, so nobody should expect that witness to catch a row whose identity and file name disagree.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.integration_concern", decl_name: "IntegrationEvidence", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.integration_concern", decl_name: "h11ssl_unit3_gpu_count_integrated_revision", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field: WholeDeclaration },
+  ],
+}

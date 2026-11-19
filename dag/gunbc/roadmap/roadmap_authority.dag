@@ -823,7 +823,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Git really stores things."),
     ),
     roadmap_node(
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
@@ -840,7 +840,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Mercurial really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
@@ -857,7 +857,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Write down how Pijul really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
@@ -874,7 +874,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "Say once what counts as evidence for a claim."),
     ),
     roadmap_node(
       identity: "rnfx_DQV1HD42VR40BA8WBP1Y",
@@ -891,7 +891,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
     roadmap_node(
       identity: "rn_026DCFC306A7B44B061483AA71",
@@ -908,7 +908,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
 
     roadmap_node(
@@ -1059,16 +1059,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
       line: ticket(t: fields(
           headline: "Layer 1: every name the native-seven closure uses has one declared home, and every declaration reference in the closure is spelled by its path",
-          boundary: "Serves gunbc.plans.names_without_imports, layer 1 (section 3), and native-seven directly (gunbc.design_ruling::n7_requires_only_its_own_closure). The 54 non-roster names with no production declaration in the 161-module closure (2026-11-16 reading: starts_with 28 sites, first 28, split 27, replace 18, to_string 13, code_point 10, map_keys, sorted_map_keys, key_eq, sort_by, set_contains, empty_set, set_insert, map_get, flat_map and a tail of one to three sites) each get one declaration at a ruled home (std.host_text for host-text operations, std.algebra for lists, maps and sets, per the H1 to H4 rulings), one row each in roster_head_rows where the home's signature differs from the builtin's. Then the generator rewrites every declaration reference in the closure to its fully qualified path, with the current import semantics as its oracle, and the import lines leave those modules in the same landing (gunbc.design_ruling::declaration_references_are_fully_qualified). No import is added anywhere.",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 1 (section 3), and native-seven directly (gunbc.design_ruling::n7_requires_only_its_own_closure). Every non-roster call in the native-seven closure must reach its declared contract. The historical 54-spelling, 161-module reading is an inspection population, not 54 missing declarations: first already maps to std.algebra::list_head, map_get to map_lookup and flat_map to list_flat_map through roster_head_rows. Reuse those contracts and mappings. Only uncovered contracts require semantic-owner work (std.host_text for host-text operations and std.algebra for lists, maps and sets under the existing rulings); only uncovered signature transformations require new policy rows. Classify overloaded spellings by the actual caller contract. Then the generator rewrites every declaration reference in the closure to its fully qualified path, with the current import semantics as its oracle, and the import lines leave those modules in the same landing (gunbc.design_ruling::declaration_references_are_fully_qualified). No import is added anywhere.",
           displaced_cost: "Native-seven stops at the first unbound name per module, and 1,229 bare sites of names with no declaration sit in its closure; the waves so far homed layer 3 names (substring, char_at corpus-wide) while the closure still stops on split and starts_with. The program review of 2026-11-17 found that homing with an import at each site creates work layer 3 deletes; under the qualified rule no such bridge exists.",
-          first_slice: "The six names with ten or more sites (starts_with, first, split, replace, to_string, code_point): home declared, policy row where needed, their sites rewritten to the path in the closure, native-seven rerun and its first stop recorded before and after.",
-          red_control: "A name homed without its calling modules' claims green under both compilers is not homed; a home whose signature differs from the builtin's without a policy row is refused in review; a module in the closure that still carries an import line or a bare declaration reference at handback keeps this open; the bare-name reading over the closure after each landing shows the name moved from no-declaration to one home.",
+          first_slice: "The six leading names (starts_with, first, split, replace, to_string, code_point): identify reused contracts and mappings, missing contracts and signature exceptions from their actual callers; implement the shared qualified-reference generator route, then rewrite the compatible batch and record native-seven before and after. No new declaration merely to reproduce a builtin spelling.",
+          red_control: "A name homed without its calling modules' claims green under both compilers is not homed; a home whose signature differs from the builtin's without a policy row is refused in review; a module in the closure that still carries an import line or a bare declaration reference at handback keeps this open; the resolved-reference comparison identifies each target declaration and every explained semantic difference; same-spelling grep alone cannot establish homing.",
           out_of_scope: "Names and modules outside the native-seven closure (compiler-closure-names-homed-and-types-merged, corpus-names-homed-and-collisions-discharged); the resolver and loader rule itself (names-bind-to-the-unique-declaration), which lands first.",
-          handback: "Zero names with no declaration in the native-seven closure by the reading, every module in the closure import-free with every declaration reference qualified, and native-seven's recorded first stop no longer a name."
+          handback: "Every declaration reference in the native-seven closure resolves to its intended declared contract, every module is import-free, and native-seven's recorded first stop is no longer a name; include binding comparisons and calling-module claim receipts."
         )),
       dispatch: dispatchable(),
-      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 1 of gunbc.plans.names_without_imports: the 54 names and one ambiguity between native-seven and its typed endpoint."),
-      centering: plan(text: "First six names only (starts_with, first, split, replace, to_string, code_point): declare each at its ruled home (std.host_text for host-text operations, std.algebra for lists) with a roster_head_rows policy row where the signature differs from the builtin's, rewrite their sites in the 161-module native-seven closure to the qualified path through roster_import_sweep, add no import anywhere, and rerun gunbc test //v2/test/claim/parse/expression_bodied_fn_decl_parse:all before and after. Hand back the first stop before and after, per name. A surprising stop is a valid handback, never a reason to touch a seventh name."),
+      parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 1 of gunbc.plans.names_without_imports: the unresolved call contracts and reference rewrites between native-seven and its typed endpoint."),
+      centering: plan(text: "First slice: inspect starts_with, first, split, replace, to_string and code_point in the native-seven closure against the declared contracts and roster_head_rows. Credit first's existing list_head declaration and xs rewrite; classify the text calls by actual carrier, labels and empty-input behavior. Hand back the compatible batch, the missing semantic contracts and the uncovered mappings, each with callers and evidence. Extend the existing generator to qualified references once for the batch (it currently inserts imports); no new import and no new declaration just to match a spelling. Rerun gunbc test //v2/test/claim/parse/expression_bodied_fn_decl_parse:all before and after and report changed bindings, affected claims and first stops. The residual closure work and its ordering live in roadmap_decomposition, not a uniform per-name allowance."),
     ),
     roadmap_node(
       identity: "rn_T8N6SCYHTV6MAJQDQW7KVNG5G3",
@@ -1077,12 +1077,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
       line: ticket(t: fields(
           headline: "Layer 2: the two compiler closures use only declared names, spelled by their paths; the dual std type declarations are merged on their own evidence",
-          boundary: "Serves gunbc.plans.names_without_imports, layer 2 (section 3), and SelfHostCorpusEmitsCleanly over the two retained closures (gunbc.compiler_frontend_program_interlock). The 278 modules of v2.compiler.source_root_eval and v2.cli.compile_cli: the names with no declaration beyond layer 1's (2026-11-16 reading: 80 names, 2,316 sites, adding to_string 46 and sort_by 16) are homed the same way, and the generator rewrites every declaration reference in both closures to its path and removes their import lines (gunbc.design_ruling::declaration_references_are_fully_qualified). SEPARATELY, and not gating this handback: the dag std types redeclared under src/v2/std (String against v2.std.text, Int, UInt8 and PositiveInt against v2.std.integer, FilePath, Unit, SourceSpan, TerminationProof) are merged so that a compiler-side projection constructs or reads the one declaration and never redeclares it (kernel-type layer rule, 2026-10-18); under the qualified rule each duplicate has its own path and is a design debt, not an ambiguity, so the merges are accepted one type at a time on their own claims (the program review of 2026-11-17 asked that operation homing and type-authority merges not be fused).",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 2 (section 3), and SelfHostCorpusEmitsCleanly over the two retained closures (gunbc.compiler_frontend_program_interlock). The 278 modules of v2.compiler.source_root_eval and v2.cli.compile_cli: only the unresolved contract delta after layer 1 is homed; the historical 80-name, 2,316-site population is not an additional 80 implementations, and sort_by's existing key-specific mappings are reused, and the generator rewrites every declaration reference in both closures to its path and removes their import lines (gunbc.design_ruling::declaration_references_are_fully_qualified). SEPARATELY, and not gating this handback: the dag std types redeclared under src/v2/std (String against v2.std.text, Int, UInt8 and PositiveInt against v2.std.integer, FilePath, Unit, SourceSpan, TerminationProof) are merged so that a compiler-side projection constructs or reads the one declaration and never redeclares it (kernel-type layer rule, 2026-10-18); under the qualified rule each duplicate has its own path and is a design debt, not an ambiguity, so the merges are accepted one type at a time on their own claims (the program review of 2026-11-17 asked that operation homing and type-authority merges not be fused).",
           displaced_cost: "The emitter chain (second-generation onward) emits what resolves natively; a closure that still binds through tables or carries import lines cannot be emitted as one program under the ruled grammar.",
-          first_slice: "The homing half: the names with ten or more sites in the two closures beyond layer 1's, homed and their sites rewritten; the self-host instrument rerun before and after.",
+          first_slice: "Inspect the two closures' residual contracts after layer 1 by declaration identity and argument type, separating already-mapped names such as sort_by from uncovered key contracts; rewrite the compatible delta in one batch and rerun the self-host instrument before and after.",
           red_control: "A name in either closure with no production declaration keeps this open; a module in either closure that still carries an import line or a bare declaration reference at handback keeps it open; a type merge that changes a declaration's signature without a policy row is refused in review; the ambiguous-import column of the reading is retired under the rule and is not an acceptance input.",
           out_of_scope: "The rest of the production corpus (corpus-names-homed-and-collisions-discharged); emission itself; the type merges' own acceptance, which is per type and not this node's handback.",
-          handback: "The two closures at zero no-declaration names by the reading, every module in them import-free with every declaration reference qualified, and the self-host instrument at its previous or better stop."
+          handback: "Both closures resolve every declaration reference to its intended contract, are import-free, and have binding-comparison and affected-claim receipts; the self-host instrument is at its previous or better stop."
         )),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 2 of gunbc.plans.names_without_imports: what the compiler closures need before they emit with one meaning."),
     ),
@@ -1093,12 +1093,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/workflow/roster_import_sweep.dag"),
       line: ticket(t: fields(
           headline: "Layer 3a: every production module uses only declared names, spelled by their paths, and the corpus is rewritten in one landing",
-          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified. Across the 5,910 production modules: the 432 names with no declaration (2026-11-16 reading: 46,923 sites, led by concat 18,514, fold 4,860, to_string 4,521, map 4,205, filter 3,406, count 3,364, any 1,441, split 1,270, flat_map 1,139) homed through the policy table extended per name; then the generator run once over the corpus, test and fixture modules included, rewriting every declaration reference to its path and removing every import line, with the current import semantics as the oracle: the rewritten tree resolves and typechecks to the same bindings, module by module, or the difference is listed with its reason. Collisions are not a population under the rule: two declarations with one spelling have two paths, and the 1,617 import members the 2026-11-16 reading called ambiguous need no discharge.",
+          boundary: "Serves gunbc.plans.names_without_imports, layer 3 (section 3), under gunbc.design_ruling::declaration_references_are_fully_qualified. Across production, tests and fixtures, only unresolved caller contracts after both closure layers require semantic work. The historical 432-spelling, 46,923-site and 5,910-production-module counts describe inspection and verification scope, not additional implementations: credit existing contracts and mappings, and exclude runtime exports with no caller. Extend the policy table only for uncovered transformations; then the generator run once over the corpus, test and fixture modules included, rewriting every declaration reference to its path and removing every import line, with the current import semantics as the oracle: the rewritten tree resolves and typechecks to the same bindings, module by module, or the difference is listed with its reason. Collisions are not a population under the rule: two declarations with one spelling have two paths, and the 1,617 import members the 2026-11-16 reading called ambiguous need no discharge.",
           displaced_cost: "A corpus rewritten in pieces leaves two grammars live for the whole interval and every landing in it paying for both; one generated landing with an oracle is the replacement-migration doctrine applied (gunbc.design_argument::replacement_migration).",
           first_slice: "The generator's oracle: for one production subtree, the rewritten modules' bindings equal the pre-rewrite bindings by declaration identity, with one planted divergence refused.",
           red_control: "A production module with a bare head that has no declaration keeps this open; a module whose post-rewrite bindings differ from its pre-rewrite bindings by identity is listed with its reason or the landing refuses; a merge that changes a declaration's signature without a policy row is refused in review; the claim corpus is green under both compilers at the landing head.",
           out_of_scope: "Deleting the import grammar (import-grammar-and-lines-deleted), which follows this landing so that a file with an import line can still be read while the oracle runs.",
-          handback: "The generator's corpus-wide run receipt, zero no-declaration names by the reading, zero import lines in the tree, and the claim corpus green under both compilers at the landing head."
+          handback: "The shared generator's corpus-wide run receipt, every declaration reference resolved to its intended contract, zero import lines, relocated policy facts with their governed subjects, and the claim corpus green under both compilers at the landing head."
         )),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 3a of gunbc.plans.names_without_imports: the corpus state that makes the import cut one landing."),
     ),
@@ -2091,7 +2091,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Fabric bring-up: our own fleet, its storage and the VM service on it, each observed rather than assumed",
           boundary: "Container for the fabric (operator ruling 2026-10-03: the VM service and fabric storage are both members of the fabric bring-up). Allocation, placement and serving follow the fabric/compute conformance domain (gunbc.design_argument::conformance); storage follows the materialization/realization domain. Host bring-up itself stays operator-driven.",
           approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's checkpointed workspace, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
-          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work gated on the fabric (the SCM rows, by edge) does not dispatch until this node is accepted.",
+          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row.",
           displaced_cost: "With the VM service as a top-level project and storage parentless, the largest fabric risk had no place on the public roadmap and the service read as independent of the fabric it runs on.",
           handback: "Per member project: its acceptance receipts, named by their instruments."
         )),
@@ -3902,12 +3902,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
           headline: "The native route is admitted as the production route",
-          boundary: "NativeProductionAdmission (gunbc.plans.demand_engine_program D10) over the required subject denominator: result-contract coverage, a refusal census, and divergence disposition (old versus new, neither wins by age). Includes the v2-lens-suite obligation: zero v1 lens-body executions.",
+          boundary: "NativeProductionAdmission (gunbc.plans.demand_engine_program D10) over the required subject denominator: result-contract coverage, a refusal census, and divergence disposition (old versus new, neither wins by age). Includes the v2-lens-suite obligation: zero v1 lens-body executions. The namespace receipt identifies the qualified resolver as the sole production declaration resolver and records import rejection by both parsers (@ref(gunbc.design_ruling::production_namespace_admission_precedes_seed_mirror_removal)).",
           displaced_cost: "The daily build still runs on the seed, so v2 proves a replacement nobody uses.",
           first_slice: "Author the verdict type and compute it once over the current route.",
-          red_control: "An undispositioned divergence or refusal refuses admission. A fallback to the interpreter refuses.",
+          red_control: "An undispositioned divergence or refusal refuses admission. A fallback to the interpreter refuses. On the production route a qualified reference must resolve to its declaration and a reference only the seed mirror could answer must refuse. An import accepted by either parser keeps admission open.",
           out_of_scope: "Generator promotion (D9).",
-          handback: "NativeProductionAdmitted, with the receipts."
+          handback: "NativeProductionAdmitted, with its subject receipts, the sole-resolver control and both parser refusals."
         ), on: "2026-09-30", note: "Not yet centered: typed verdict not on main; needs the required lane first.")),
       parent: in_project(project: "native-route-to-live", contribution: "D10: the native route becomes the production semantic route. It absorbs v1-ci-floor-cutover and v1-verification-ledger."),
     ),
@@ -5415,6 +5415,27 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "the estimates the planning page prices with: one representation per node, parents that cannot contradict their children, and one Gantt answer over the whole roadmap"),
     ),
     roadmap_node(
+      identity: "rn_O7KR37AVRN6K46KKYTTZQ5XPQQ",
+      id: "roadmap-unprobed-findings-are-unsized",
+      owner: "planning",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_decomposition.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag" },
+        Pointer { label: "witness", path: "dag/test/claim/roadmap/roadmap_estimate_derivation_witness.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "an unprobed FindingsOf family is unsized, never priced as one member",
+        boundary: "A FindingsOf family's member count is not known until its probe runs, so the pricing must not answer it with an Int. @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward) rules that unsized is listed, never priced; the current population_members answers FindingsOf with 1 and piece_leaf_days multiplies the family's days by it, so every unprobed findings family is silently priced as exactly one member and that fabricated count reaches the portfolio totals unmarked. The fix removes the fabricated Int at its source (the population cardinality becomes typed, so stages_leaf_days and stages_leaf_count never see a member count for a findings family), and the one derivation refuses to price an item whose pieces include an unprobed FindingsOf family: it returns Unsized with a typed UnsizedWhy::FindingsUnprobed { family, probe } naming both the family and its probe. The leaf-rule check treats a findings family as non-empty by construction rather than by inventing a count of one. There is still exactly ONE pricing function; the item Gantt already refuses these as PiecesFindingsCount, so after this the Gantt and the derivation answer alike.",
+        displaced_cost: "Unprobed findings families reach the portfolio totals priced as one member each: 18 of them at this HEAD, unmarked, so every number the planning page and the portfolio total quote carries 18 fabricated single-member prices, and the item Gantt and the estimate derivation give two different answers for the same item.",
+        first_slice: "Add the UnsizedWhy::FindingsUnprobed { family, probe } arm and a typed population cardinality; make the derivation return Unsized for any item whose decomposition carries an unprobed FindingsOf family; red first, an item with a findings family answers Unsized naming its probe, and Produced/Reading families still price members x days.",
+        red_control: "Red against today's code, which prices a findings family at 1 x days: an item whose pieces include a FindingsOf family answers Unsized { FindingsUnprobed { family, probe } } naming the probe, NOT Derived at 1 x days; a Produced or Reading family still prices members x days; the live roadmap still derives; stages_leaf_count and the leaf-rule check report no invented member count for a findings family. List which live items flip to unsized.",
+        out_of_scope: "no change to how Produced/Reading families price; no change to the scheduler's order; no new pricing function; the probe execution itself and the findings table it writes are unchanged; sizing the roughly 290 nodes is its own lane",
+        handback: "a PR against main with a green dag-check gate and a red-first witness; the UnsizedWhy::FindingsUnprobed arm with its witness naming the probe; the list of live items that flip to unsized (measured, not asserted); and confirmation the estimates witnesses and the item Gantt's estimate-derivation consumers answer the same, coordinated with tidy-crane-257's #16729",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "the estimates that cannot contradict must also never price what has not been measured: an unprobed findings family is listed as unsized, not defaulted to one member"),
+    ),
+    roadmap_node(
       identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
       id: "roadmap-schedule-from-now",
       owner: "planning",
@@ -5609,6 +5630,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
     ),
+    roadmap_node(
+      identity: "rn_01M7T844EWSVQJ6A7XMXC6VZ85",
+      id: "roadmap-authoring-refuses-prerequisite-into-own-container",
+      owner: "planning",
+      carriers: concat(carrier(path: "dag/gunbc/roadmap/roadmap_authority.dag"), carrier(path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag")),
+      line: ticket(t: fields(
+        headline: "Roadmap authority: authoring refuses a prerequisite edge into the source's own container",
+        boundary: "One property of the EXISTING authority graph (dag/gunbc/roadmap/roadmap_authority.dag's edge() / declared_roadmap_edges), not a second walker: it reuses the containment the authority already derives -- MemberOf/UnderParent membership AND the decomposition pieces a container holds (the same pieces the rollup restates in roadmap_estimate_derivation.dag) -- and refuses a prerequisite edge whose TARGET is a containment ancestor of its SOURCE, naming BOTH the edge and the container. The item Gantt read already surfaces this as BlockedCause WaitsOnItsOwnContainer (tidy-crane-257, #16729); this lifts it onto the authority's own edge graph as a validator property refused by name. ENFORCEMENT ROUTE: the check is a property of the authority graph validator, executed on the claim/validator route today (witnesses over the declared graph); the required-path `roadmap_authority_projection` gate that refuses the live graph is a named follow-up, blocked only until the single containment walk this law reuses is lifted into a module the projection can import without a cycle (the walk now lives in roadmap_estimate_derivation.dag, which nothing imports) -- a one-line call once liftable.",
+        displaced_cost: "Today a row waiting on its own milestone/project/decomposition container is admitted by the authority, so the contradiction is caught only at the Gantt read: an author sees a graph that validates and then a blocked cell that cannot be scheduled, and no name is put on the edge until the view runs. A parent waiting on its own child is the REDUNDANT case, not the contradictory one -- the child already gates the container, so the edge is harmless; it is FLAGged for the planner and NOT refused. The refuse-vs-flag line and the single containment walk (extended with decomposition pieces, keep_all style) live with the edge graph; the Gantt read stays the display.",
+        first_slice: "A model-side claim over the declared edge graph + the derived containment: a planted prerequisite edge whose target is its source's MemberOf parent is REFUSED naming the edge and the container; a planted edge into a container that holds the source only as a decomposition piece is REFUSED identically (same claim, no second walk); a legal cross-item edge still passes; a planted parent-waits-on-own-child edge is reported as redundant and NOT refused. RED-FIRST against live data: run the claim on current main and list every existing violating edge; if any exist, STOP and send the list -- fixing data is a planning decision.",
+        red_control: "A fixture where a leaf declares a prerequisite on its own project/milestone ancestor refuses and names both sides; a fixture where the leaf's only link to the container is decomposition-piece membership refuses identically (the walk counts pieces, proving MemberOf-only is NOT the whole containment); a legal cross-item edge passes; a planted container->contained-child edge is flagged redundant, not refused; and the live authority passes once data is clean.",
+        out_of_scope: "Fixing any live violating edge (a planning data decision, not this row); refusing a container that waits on its own contained child (redundant, not contradictory -- flag only); rewriting the item Gantt read or its BlockedCause enum; a second containment walker beside the authority's own.",
+        handback: "The named-refusal report: each violating edge as (source -> target) plus the container named, and the single containment function reused (the authority's own, now covering decomposition pieces); plus the RED-FIRST live-data verdict listing every existing violating edge."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -5685,16 +5723,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
     edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
     edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
-    edge(child: "2-scm-git-upstream-model", parent: "fabric-bringup"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-0-identity-estimate-split"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "work-exec-1-placement-backend-selection"),
     edge(child: "work-exec-3-automatic-sizing", parent: "work-exec-2-durable-route-first-consumer"),
     edge(child: "work-exec-4-local-work-cutover", parent: "work-exec-3-automatic-sizing"),
     edge(child: "work-exec-5-ci-verdict-from-receipt", parent: "work-exec-4-local-work-cutover"),
     edge(child: "work-exec-6-one-ledger-per-host", parent: "work-exec-5-ci-verdict-from-receipt"),
-    edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
     edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
     edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
     edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),

@@ -459,16 +459,17 @@ fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
-// Render the account's authorized_keys forced-command line for the host, none when the host
-// is not a PR 5 candidate or the render itself refuses (unresolvable instance / repo). The
-// candidate is constructed from the host's serving instance directly — NOT via the roster-gated
+// Render the account's authorized_keys content for the host: all admitted client keys rendered through
+// the restrict + forced-command entry, joined as a multi-line string. Returns none when the host is not
+// a PR 5 candidate or the render itself refuses (unresolvable instance / repo). The candidate is
+// constructed from the host's serving instance directly — NOT via the roster-gated
 // remote_build_candidates() — so a not-yet-rostered candidate still renders, and a host outside
 // the candidate row is refused (never silently Met).
 fn serving_forced_command_line(host: HostIdentity) -> String? {
   match any(remote_build_serving_candidate_hosts(), h => h == host) {
     false => Absent
     true => match remote_build_render_entry(candidate: RemoteBuildCandidate { host: host, instance: remote_build_serving_instance(host: host) }) {
-      RemoteBuildEntryRendered { entry } => Present { value: authorized_key_entry_line(e: entry) }
+      RemoteBuildEntryRendered { entries } => Present { value: join(map(entries, e => authorized_key_entry_line(e: e)), "\n") }
       _ => Absent
     }
   }

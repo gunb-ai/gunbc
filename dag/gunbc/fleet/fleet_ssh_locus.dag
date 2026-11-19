@@ -43,6 +43,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
+  FleetSshCredentialAdmissionEmpty,
   AgentSelectorMaterialized,
   AgentSelectorRefused,
   materialize_agent_public_selector,
@@ -169,6 +170,12 @@ fn prepare_ssh_agent_context(
                   FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: FleetSshCredentialDerivationRefused { cause: cause },
+                    ),
+                  }
+                FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+                  FleetSshContextRefused {
+                    cause: fleet_ssh_credential_verification_refusal_reason(
+                      verification: FleetSshCredentialAdmissionEmpty { observed_line: o },
                     ),
                   }
                 FleetSshCredentialVerified { binding: binding } =>
