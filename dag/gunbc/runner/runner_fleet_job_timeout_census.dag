@@ -82,7 +82,7 @@ import gunbc.drift_watch_workflow { drift_watch_workflow_of }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
 import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow_of }
-import v2.std.diagnostic { outcome_accepted_value }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.ci.repository_ci_profile {
   gunbc_heal_job, gunbc_drift_watch_job, gunbc_repository_ci_profile
@@ -181,11 +181,11 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
             Present { value: row } =>
               match row.cron {
                 Present { value: cron } =>
-                  match outcome_accepted_value(drift_watch_workflow_of(row: row, cron: cron)) {
-                    Present { value: wf } => [
+                  match drift_watch_workflow_of(row: row, cron: cron) {
+                    Accepted { value: wf } => [
                       FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: wf }
                     ]
-                    Absent => []
+                    Rejected { diagnostics: _ } => []
                   }
                 Absent => []
               }
@@ -194,9 +194,37 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
         )
       )
     ),
-    match outcome_accepted_value(branch_run_grant_broker_workflow_of()) {
-      Present { value: broker_wf } => [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: broker_wf }]
+    match branch_run_grant_broker_workflow_of() {
+      Accepted { value: broker_wf } => [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: broker_wf }]
+      Rejected { diagnostics: _ } => []
+    }
+  )
+}
+
+// THE CENSUS REFUSALS: the committed workflows whose run-step emission was refused. A refused workflow
+// does not render, so it contributes no row to fleet_workflow_census_rows and no jobs to the bound -- the
+// drop there is sound, because a workflow that fails to emit never ships and so has no jobs to bound. But
+// it is NOT silently lost: the refusal is recorded here, typed and located (which artifact, which refusal
+// reason), so an un-emittable committed workflow is countable. This ledger is deliberately SEPARATE from
+// fleet_workflow_census_omissions: those are structural, discharged omissions (a workflow legitimately
+// outside the bound population); a refusal is an UNMET obligation, not an exemption, so the artifact must
+// stay unexplained to fleet_census_domain_is_explained (which stays red), rather than be laundered into an
+// omission that would make the domain check pass over a gap.
+fn fleet_workflow_census_refusals() -> List<FleetWorkflowCensusOmission> {
+  concat(
+    match gunbc_drift_watch_job() {
+      Present { value: row } => match row.cron {
+        Present { value: cron } => match drift_watch_workflow_of(row: row, cron: cron) {
+          Accepted { value: _ } => []
+          Rejected { diagnostics: d } => [FleetWorkflowCensusOmission { artifact: DriftWatchWorkflowYamlArtifact, reason: concat("the committed drift-watch workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+        }
+        Absent => []
+      }
       Absent => []
+    },
+    match branch_run_grant_broker_workflow_of() {
+      Accepted { value: _ } => []
+      Rejected { diagnostics: d } => [FleetWorkflowCensusOmission { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, reason: concat("the committed branch-run-grant-broker workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
     }
   )
 }

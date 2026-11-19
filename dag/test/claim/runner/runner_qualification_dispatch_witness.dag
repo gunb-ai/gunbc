@@ -119,7 +119,12 @@ fn group_with_id(id: Int, workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn floor_job(runs_on: RunnerSpec) -> Job {
-  floor_job_with_steps(runs_on: runs_on, steps: [qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input), floor_work_step(if_condition: none)])
+  match outcome_accepted_value(qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)) {
+    // The guard step is total for this well-formed input, so Absent is unreachable; if it ever refuses, the
+    // fixture drops the guard and the admit controls (which require the guard first) go RED -- fail-closed.
+    Absent => floor_job_with_steps(runs_on: runs_on, steps: [floor_work_step(if_condition: none)])
+    Present { value: guard } => floor_job_with_steps(runs_on: runs_on, steps: [guard, floor_work_step(if_condition: none)])
+  }
 }
 
 fn floor_work_step(if_condition: String?) -> Step {

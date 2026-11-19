@@ -34,7 +34,7 @@ import v2.std.diagnostic { outcome_accepted_value }
 import std.measure { second, second_count, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
-import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
+import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_workflow_census_refusals, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
@@ -228,6 +228,14 @@ test fn the_census_domain_is_explained_and_reads_the_authorities() -> Bool {
         r => any(r.workflow.jobs, k => k.id == j.id && job_declared_timeout_minutes(j: k) == job_declared_timeout_minutes(j: j))
       )
     )
+}
+
+// A committed workflow whose run-step emission is refused must never silently vanish from the census.
+// fleet_workflow_census_refusals records every such refusal, typed and located; in the committed tree
+// none are refused, so this is empty. If a producer ever refuses, this claim goes RED and the refusal
+// record names the artifact and the diagnostic -- fail-closed (gunbc.design_argument::fail_closed).
+test fn no_committed_workflow_is_refused_from_the_census() -> Bool {
+  length(fleet_workflow_census_refusals()) == 0
 }
 
 // THE MUTATION SENTINEL, stated explicitly so the 2700 restoration's redness is never an accident of

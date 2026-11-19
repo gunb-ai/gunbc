@@ -177,6 +177,7 @@ type QualificationSubjectRefusal
   | SubjectFloorRunsOnNotTheAttemptInput { job_id: NonEmptyStr, runs_on: String }
   | SubjectFloorNameNotUnique { name: NonEmptyStr, jobs_with_name: Int }
   | SubjectFloorRevisionGuardNotFirst { job_id: NonEmptyStr }
+  | SubjectFloorRevisionGuardEmissionRefused { job_id: NonEmptyStr, reason: String }
   | SubjectFloorStepRunsPastTheGuard { job_id: NonEmptyStr }
   | SubjectRequiredInputUnsupplied { input: String }
   | SubjectWorkflowGenerationRefused { reason: String }
@@ -314,9 +315,9 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
             match first(job.steps) {
               Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
               Present { value: s0 } =>
-                match outcome_accepted_value(qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)) {
-                  Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
-                  Present { value: guard } =>
+                match qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input) {
+                  Rejected { diagnostics: d } => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardEmissionRefused { job_id: floor_job_id, reason: diagnostics_reason_lexemes(diagnostics: d) } }
+                  Accepted { value: guard } =>
                 if s0 != guard {
                   QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
                 } else if job.steps |> any(st => step_runs_after_a_failure(step: st)) {
