@@ -7498,6 +7498,23 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Per-class rungs rendered from the carrier make the floor readable on the page."),
     ),
+    roadmap_node(
+      identity: "rn_HEALFORKSEEDP7000000000000",
+      id: "heal-forced-recheck-seeds-from-the-fork-point",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: updated(t: fields(
+        headline: "heal's forced recheck seeds the base mirror from the merge-base, not main's tip (P7: heal's remaining whole-pool cost)",
+        boundary: "heal's emission-scope step force-rechecks the diff between the PR head and HEAL_BASE_MIRROR_COMMIT, which the generated workflow sets to the pull request's base.sha. base.sha is main's TIP at event time, so on a branch forked days earlier the recheck is the whole distance main travelled, not the PR's change (measured: 95 files for a 13-file PR, a 22.6 GB climb stalled 2,258 s at memory.high and refused, run 43781205899). The fix resolves the seed to git merge-base base.sha HEAD — the fork point — in ONE authority (required_regen_host::fork_point_of_base), consumed by resolve_base_mirror_authority (which reads the population and names the receipt's base_mirror_authority) and by scoped_round_base_admission (which now judges the protocol floor at the fork point it actually builds, never building a scope-blind seed). heal.yml is unchanged: a workflow expression cannot run git merge-base, and the generator already documents the fork point as the scoped path's base, so the fix lives in the seed host that already resolves commit -> population. workflow_dispatch is covered by the same code; the checkout is fetch-depth: 0 so the fork point is always computable.",
+        displaced_cost: "Without it heal's round-1 cost scales with branch staleness instead of the PR's size: a stale branch climbs past memory.high and the round that converges the seed's mirrors is refused, and the WholePopulation scope label hides the staleness in every round.",
+        first_slice: "resolve_base_mirror_authority seeds the population and the receipt at the fork point; the round logs seed_commit, seed_size and seeded_from_base_sha so staleness is visible. Landed in the implementation PR.",
+        red_control: "cli_run::required_regen_host::regen_affected_set_tests::the_forced_recheck_seeds_from_the_fork_point_when_the_head_is_behind_main (a head behind main yields the merge-base, and the seed diff equals the branch's own change) and ::the_protocol_floor_is_judged_at_the_fork_point_a_stale_fork_point_refuses (its first assert proves a base-judged gate would admit the scope-blind base). Hermetic, one function per process.",
+        out_of_scope: "No new job, no time or memory budget change, no move onto the merge ref (heal publishes onto the head, so it still builds the head's tree); no commit-keyed mirror cache.",
+        handback: "The change, its two hermetic controls with their PASS lines, the regenerated heal.yml matching its generator, and the heal round's seed-size/base line on the PR's own CI."
+      ), on: "2026-11-19", note: "Realized by the implementation PR (fix(heal): seed the forced recheck from the merge-base); operator approved the direction 2026-11-19.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "read_set_convergence", contribution: "heal's forced recheck is bounded by the PR's own diff, not the branch's distance from main's tip."),
+    ),
   ]
 }
 
