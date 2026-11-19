@@ -92,6 +92,16 @@ fn step_named(job: Job, name: String) -> Step? {
   }
 }
 
+// fleet_converge_hostname_converge_job() now yields Outcome<Job>; unwrap the accepted job at an arm value
+// (the position the checker resolves) and delegate to step_named. A refused job yields none, so the caller's
+// `Absent => false` arm makes the witness fail closed rather than pass over a missing committed job.
+fn step_named_in(job_o: Outcome<Job>, name: String) -> Step? {
+  match outcome_accepted_value(job_o) {
+    Present { value: job } => step_named(job: job, name: name)
+    Absent => none
+  }
+}
+
 fn step_name_text(step: Step) -> String {
   match step {
     RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
@@ -340,7 +350,7 @@ test fn the_act_row_carries_no_default_and_asks_for_nothing() -> Bool {
 // alone must not be enough to rename a machine -- and neither half may be dropped: a gate that lost the mode
 // half would run an apply on any dispatch that happened to send `converge` for some other mode's form.
 test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
-  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
+  match step_named_in(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
     Absent => false
     Present { value: apply } =>
       string_contains(
@@ -376,7 +386,7 @@ test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
 // THE RE-ADOPT HAS ITS OWN GATE, separate from actuation: moving the committed baseline is a different
 // authority from writing a hostname, and one dispatch must not reach both by meaning one of them.
 test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
-  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
+  match step_named_in(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
     Absent => false
     Present { value: readopt } =>
       string_contains(
