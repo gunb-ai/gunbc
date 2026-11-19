@@ -4504,19 +4504,20 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
 
-// The revision carrying the operator's 2026-11-19 answers into the register: the restated accelerator figure
-// and the naming of the machine at 192.168.1.236. It is a branch revision; main's merge revision supersedes it
-// when this lands, and the sightings below say so instead of quoting a main sha that does not exist yet.
-data h11ssl_unit3_operator_answers_revision: CommitSha = "8bbcb0eef46dc8d72ffb2d069660da5514a6c80c"
+// The main revision these answers were filed against and every measurement in these rows ran on. The branch commit
+// that carries the new rows is deliberately NOT quoted: PRs land by squash, so a branch sha in the register resolves
+// on nobody's checkout but its author's. The integration itself lands with this change, and the rows say that in
+// words rather than inventing the sha of a commit that does not exist yet.
+data h11ssl_unit3_operator_answers_revision: CommitSha = "b156ebb3c225"
 
 // The revision the two Spark-endpoint rows below were read against: main, after gunbc.fleet.fleet_intent_network's
 // srv9 retirement (#16712) landed and before the srv14/srv11 address move in PR #16655.
 data spark_endpoint_rows_sighting_revision: CommitSha = "7c7526f116276f67b9a183d33b1a3f4f09901364"
 
-// The revision at which the three stale declarations were deleted and this row was integrated. It is a branch
-// revision, not a main revision: main's merge revision supersedes it when the change lands, and the account says so
-// rather than quoting a main sha that does not exist yet.
-data spark_endpoint_rows_integrated_revision: CommitSha = "09217e45fa2ad941d1a19bda8bfd40bc6c91b690"
+// The main revision at which the three stale declarations are gone: the change landed as this squash commit. The
+// branch commit the work was written on is deliberately NOT quoted -- PRs land by squashing, so a branch sha put in
+// the register resolves on nobody's checkout but its author's.
+data spark_endpoint_rows_integrated_revision: CommitSha = "b156ebb3c225"
 
 // THREE ENDPOINT ROWS ANSWER, THE TOPOLOGY ROSTER DOES NOT. srv10_host_lan_endpoint, srv11_host_lan_endpoint and
 // srv12_host_lan_endpoint each name a LAN address for a Spark unit, and none of the three is carried in
@@ -4550,11 +4551,11 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
       revision: spark_endpoint_rows_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesHistorical {
-          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
+          declaration: HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
         },
         tail: [
           CitesHistorical {
-            declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
+            declaration: HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
           },
         ],
       },
@@ -4573,17 +4574,17 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
             },
           ],
         },
-        account: "The ruling this row had missed: gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10, the operator's allocation of 2026-10-10 -- Group B (srv9-srv12) is sold, every one of the eight procured units is sold, and none may remain a reachable fleet host. gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries spark-3336 at former slot srv10, spark-b66c at srv11 and spark-2196 at srv12, each typed DgxSparkAssetSold against that same decision. The stale declarations are deleted in the revision named above (a branch revision; main's merge revision supersedes it once landed), their host-identity rows are KEPT, and the executed guard against re-introduction is fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row.",
+        account: "The ruling this row had missed: gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10, the operator's allocation of 2026-10-10 -- Group B (srv9-srv12) is sold, every one of the eight procured units is sold, and none may remain a reachable fleet host. gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries spark-3336 at former slot srv10, spark-b66c at srv11 and spark-2196 at srv12, each typed DgxSparkAssetSold against that same decision. The stale declarations are deleted on main at b156ebb3c225, the squash commit that carries the change; they last existed at b5daba9e2d3d, which is the revision the HistoricalDeclaration citations name. Their host-identity rows are KEPT, and the executed guard against re-introduction is fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row.",
       },
     ],
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "09217e45fa2ad941d1a19bda8bfd40bc6c91b690" as CommitSha,
+      integrated_at: "b156ebb3c225" as CommitSha,
       superseded: [
-        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
-        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
-        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
+        HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
+        HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+        HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
       ],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
@@ -4594,7 +4595,7 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
-          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/fleet_intent_network_witness.dag, clean tree at head 9feaa1bd00b5cf31f89c1902ce31bfbd0fdc2225: 11 witness(es), 11 pass, 0 fail (PASS fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row, eval_steps=395). Discriminating input, same binary and head with one file edited and uncommitted: gunbc.fleet.fleet_intent_network::srv12_host_lan_endpoint restored from its pre-deletion text and rostered -> 11 witness(es), 9 pass, 2 fail, RED fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row and RED fleet_intent_network_topology_membership_is_an_identity_join. The planted row is reverted; it is not in the tree this row describes.",
+          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566 (nothing between a7edfc30 and b156ebb3c225 touches src/, so that binary is the interpreter this tree asks for), entry dag/test/claim/fleet/fleet_intent_network_witness.dag, clean tree at main b156ebb3c2252f1f9ceac45155efb191d10534b6 -- the revision that carries this deletion: 11 witness(es), 11 pass, 0 fail, this guard among them. Discriminating input, same binary and same main revision with one file edited and uncommitted: srv12_host_lan_endpoint restored from its text at b5daba9e2d3d and rostered -> 11 witness(es), 9 pass, 2 fail, RED fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row and RED fleet_intent_network_topology_membership_is_an_identity_join. The planted row was reverted; it is in no tree this row describes.",
           conclusion: "No endpoint row carried by the topology roster names srv9, srv10, srv11 or srv12 as its subject, and the four host-identity rows still resolve -- the sold set is unreachable in the modeled topology while staying in the register.",
         },
         tail: [],
@@ -4633,7 +4634,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       revision: spark_endpoint_rows_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesHistorical {
-          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+          declaration: HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
         },
         tail: [
           CitesDeclaration {
@@ -4658,9 +4659,9 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "09217e45fa2ad941d1a19bda8bfd40bc6c91b690" as CommitSha,
+      integrated_at: "b156ebb3c225" as CommitSha,
       superseded: [
-        HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+        HistoricalDeclaration { at: "b5daba9e2d3df3a9fb51abcab02e4e00439b7656" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
       ],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
@@ -4671,7 +4672,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
-          run: "same claim_batch invocation, binary and clean head as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (11 witness(es), 11 pass, 0 fail; RED 9/11 under the planted srv12 row described there), and this guard is named in that run's PASS list",
+          run: "same claim_batch invocation, binary and clean main revision as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (b156ebb3c225: 11 witness(es), 11 pass, 0 fail; 9/11 with the two named REDs under the planted srv12 row described there), and this guard is named in the clean run's PASS list. The register side was measured at the same main revision: dag/test/claim/integration_concern_witness.dag, 14 witness(es), 14 pass, 0 fail"
           conclusion: "No rostered endpoint names srv11 (or srv9, srv10, srv12) as its subject; srv11's host-identity row still resolves, so the sold unit remains in the register while being unreachable in the modeled topology.",
         },
         tail: [],
@@ -4741,13 +4742,13 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
             h11ssl_unit3_gpu_pci_ids_receipt,
           ],
         },
-        account: "The operator's own read of 2026-11-19 (relayed by chat; the fleet holds no artifact of that session) states three Tesla T10s at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, all serving as one ken-strata server on :18081. The 2026-11-18 receipts in this repo enumerate exactly three driver-visible functions and, through the domain-prefixed sysfs paths, read vendor=0x10de device=0x1e37 on each -- so the two sources that survive disagree about nothing except the earlier report's count, and the earlier report is what the row was opened against. WHAT THE RELAY DOES NOT CLOSE, and where those questions live: whether 100 W bounds sustained or peak draw (h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, still Open), and the bus-to-slot pairing, which gunbc.fleet.gpu_device_observation::current_gpu_device_observations keeps unread for each ken board rather than guessing a slot from a domain-prefixed bus id. The enumeration authority remains the receipts; the relay retires only the count question.",
+        account: "The operator's own read of 2026-11-19 (relayed by chat; the fleet holds no artifact of that session) states three Tesla T10s at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, all serving as one ken-strata server on :18081. The 2026-11-18 receipts in this repo enumerate exactly three driver-visible functions and, through the domain-prefixed sysfs paths, read vendor=0x10de device=0x1e37 on each -- so the two sources that survive disagree about nothing except the earlier report's count, and the earlier report is what the row was opened against. The revision named for this closure is the newest main revision the measurements ran on; the rows that carry the closure land with this change, whose landing revision supersedes it -- no sha is invented for a commit that does not exist yet. WHAT THE RELAY DOES NOT CLOSE, and where those questions live: whether 100 W bounds sustained or peak draw (h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, still Open), and the bus-to-slot pairing, which gunbc.fleet.gpu_device_observation::current_gpu_device_observations keeps unread for each ken board rather than guessing a slot from a domain-prefixed bus id. The enumeration authority remains the receipts; the relay retires only the count question.",
       },
     ],
   },
   disposition: Integrated {
     evidence: IntegrationEvidence {
-      integrated_at: "8bbcb0eef46dc8d72ffb2d069660da5514a6c80c" as CommitSha,
+      integrated_at: "b156ebb3c225" as CommitSha,
       superseded: [],
       replacement: FreeSemigroup {
         head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19"),
@@ -4758,7 +4759,7 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.gpu_board_residence_witness", decl_name: "witness_ken_three_read_gpu_boards_reside_in_ken_alone"),
-          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/gpu_board_residence_witness.dag, clean tree at head de6a3a25922a44c6610e00770e77bcf8506e40c8: 7 witness(es), 7 pass, 0 fail. Nothing in a7edfc30..HEAD touches src/, so the interpreter that produced this binary is the one the tree asks for.",
+          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/gpu_board_residence_witness.dag, clean tree at main b156ebb3c2252f1f9ceac45155efb191d10534b6: 7 witness(es), 7 pass, 0 fail; the same entry is green again at the head of the change that closes this row. Nothing between a7edfc30 and either revision touches src/, so that binary is the interpreter both trees ask for. The closure itself lands with this change: b156ebb3c225 is the newest main revision the measurements ran on, not a claim that this row was already integrated there."
           conclusion: "Three read T10 boards reside in ken and in no other host, each bound to nvidia_tesla_t10_board_catalog through WholeDeclaration, and the current device population agrees with the containment rows -- the count the operator states is the count the inventory carries, so nothing in this row still points at a fork.",
         },
         tail: [],
