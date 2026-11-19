@@ -261,7 +261,7 @@ test fn the_cap_row_names_the_directive_and_both_values_rather_than_drift() -> B
 // not a misreading of the receipt but the only thing that receipt could ever have said.
 test fn the_44428803079_wire_decodes_with_nothing_to_say_about_owed_work() -> Bool {
   let wire = "partially_applied|7|slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
-  match fleet_converge_apply_terminal_of_wire(raw: wire) {
+  match fleet_converge_apply_terminal_of_wire(text: wire) {
     Absent => false
     Present { value: terminal } => match terminal {
       PartiallyApplied { refused_axis_count: n, owed: o, detail: d } =>
@@ -295,7 +295,7 @@ test fn a_count_carrying_wire_round_trips_and_is_not_the_legacy_shape() -> Bool 
     detail: "slot=5 cap=0 timer=0 fabric-cell=0 activation=2",
   }
   let wire = fleet_converge_apply_terminal_wire(terminal: terminal)
-  match fleet_converge_apply_terminal_of_wire(raw: wire) {
+  match fleet_converge_apply_terminal_of_wire(text: wire) {
     Absent => false
     Present { value: back } => match back {
       PartiallyApplied { refused_axis_count: n, owed: o, detail: d } =>
