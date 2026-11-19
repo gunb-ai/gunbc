@@ -4,19 +4,30 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import gunbc.auth.github_credential {
   unsatisfied_capabilities,
   GitHubCredentialAuthority, ActionsJobCredential,
+  InstallationResolved, InstallationUnresolved,
 }
 import gunbc.auth.github_apps {
   GitHubAppControlPlaneState, app_control_plane_state,
   gunbai_bot_declared, gunbai_bot_signer_custody,
   AppRegistrationReadbackUnavailable,
   InstallationReadbackUnavailable, InstallationReadbackNotAttempted,
+  AcceptInstallationPermissions, InstallationHoldsPermissions,
+  AppHasRegisteredSigningKey, GenerateAppSigningKey, ObservationProducerBound,
 }
 import extdeps.github.actions { WorkflowPermissions, PermWrite }
 import extdeps.github.actions_token {
   EffectiveActionsJobGrant, PullRequestEvent, SameRepositoryOrigin,
   ActionsRepositoryPolicyUnobserved,
 }
-import extdeps.github.effect { contents_write, workflows_write }
+import extdeps.github.effect {
+  contents_write, workflows_write,
+  GenerateOrganizationJitConfig, RegisterOrganizationRunner,
+}
+import extdeps.github.app {
+  ContentsAxis, ActionsAxis, PullRequestsAxis, SecurityEventsAxis, ModelsAxis, MetadataAxis, RepositoryProjectsAxis,
+  AdministrationAxis, OrganizationSelfHostedRunnersAxis, WorkflowsAxis,
+  AppAccessWrite, AppAccessRead, SelectedPermissions, PermissionNarrowingOmitted,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
