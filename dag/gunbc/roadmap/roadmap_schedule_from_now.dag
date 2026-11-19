@@ -142,6 +142,12 @@ type ItemLog {
 type PinRow {
   leaf: LeafPath
   claimed_on: Iso8601CivilDate
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family. These three are
+  // WORKING-DAY counts, not calendar days: `prior` is read through roadmap_decomposition::piece_member_days, so it
+  // inherits the grain of the tracked row on WorkPiece.days, and `elapsed`/`remaining` come out of
+  // roadmap_leaf_realized_duration::realized_span, which counts through roadmap_schedule_calendar::
+  // working_days_between. `lane` below is a worker index, not a day count, and carries no marker. This unit mints no
+  // competing working-day type, because std.measure owns that type.
   prior: Int
   elapsed: Int
   remaining: Int
@@ -159,6 +165,9 @@ type PinRefusal
   | ClaimDayAfterRead { leaf: LeafPath, claimed_on: Iso8601CivilDate, read_on: Iso8601CivilDate }
   // THE PRIOR IS ALREADY EXHAUSTED by the days that have elapsed. The leaf is overdue: it is still held (nothing
   // released or accepted it), so showing it as a bar that ends at day 0 would claim it finished. Refused per leaf.
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- `prior` and
+  // `elapsed` here are the same WORKING-DAY counts as PinRow's (carrier prior; calendar-rule span), compared rather
+  // than printed as a schedule row.
   | OverduePriorExhausted { leaf: LeafPath, claimed_on: Iso8601CivilDate, prior: Int, elapsed: Int }
   // The carrier declares no working-day prior for the leaf the log claims, so there is nothing to subtract from.
   | NoDeclaredPrior { leaf: LeafPath, claimed_on: Iso8601CivilDate }

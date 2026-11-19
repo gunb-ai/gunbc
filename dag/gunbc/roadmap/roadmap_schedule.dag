@@ -492,6 +492,11 @@ fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: Lis
 type PinnedLeaf {
   path: LeafPath
   lane: Int
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family. These are
+  // WORKING-DAY day numbers on the SAME ruler as ScheduledLeaf.start_day and ScheduleAnswer.in_flight_per_day
+  // (markers there): a pin's `finish_day` is its remaining working days, which #16709 derives by subtracting
+  // roadmap_leaf_realized_duration::realized_span -- calendar-rule working days -- from the carrier prior
+  // (roadmap_decomposition::piece_member_days, the tracked row on WorkPiece.days). `lane` is a worker index.
   start_day: Int
   finish_day: Int
 }
