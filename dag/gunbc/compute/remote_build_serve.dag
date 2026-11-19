@@ -327,9 +327,8 @@ fn remote_build_authorized_entry(candidate: RemoteBuildCandidate, client_key: Re
 fn remote_build_admitted_entries(candidate: RemoteBuildCandidate) -> Optional<List<AuthorizedKeyEntry>> {
   match remote_build_forced_command(candidate: candidate) {
     Absent => none
-    Present { value: _ } => {
-      let rendered = filter_map(remote_build_admitted_client_keys, k => remote_build_authorized_entry(candidate: candidate, client_key: k))
-      if count(rendered) > 0 { Present { value: rendered } } else { none }
+    Present { value: c } => Present {
+      value: map(remote_build_admitted_client_keys, k => AuthorizedKeyEntry { options: [RestrictOption, ForcedCommandOption { command: c }], key: k.public_key })
     }
   }
 }
