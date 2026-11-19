@@ -891,7 +891,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
     roadmap_node(
       identity: "rn_026DCFC306A7B44B061483AA71",
@@ -908,7 +908,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today; it is revisited after the fabric bring-up (operator ruling 2026-10-03)."),
+      parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
 
     roadmap_node(
