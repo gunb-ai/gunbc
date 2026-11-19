@@ -90,7 +90,7 @@ import gunbc.roadmap.roadmap_leaf_realized_duration {
 import gunbc.roadmap.roadmap_schedule_calendar { date_text }
 import gunbc.roadmap.roadmap_schedule {
   NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
-  path_key, schedule, schedule_pinned,
+  look_or, path_key, schedule, schedule_pinned,
 }
 
 // THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
