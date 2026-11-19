@@ -401,12 +401,20 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
   )
 }
 
-// THE NOTEBOOK'S OWN CALENDAR. What an observation's time IS -- a band, a point, the refusal to build
-// either -- is the clock authority's carrier (extdeps.clock::CapturedInstant), not a second type minted
-// here. What belongs here is this run's calendar: the day its directory and README name, and the windows
-// its capture lines license. A band built through a hardcoded day would silently pin every observation to
-// a date it never checked, so the day is a parameter of the mint and this module passes its own notebook's
-// date to it (gunbc.design_argument::interface_realization_policy).
+// THE NOTEBOOK'S OWN CALENDAR, AND THE PRECISION ITS BYTES LICENSE. What an observation's time IS -- a
+// band, a point, or the refusal to build either -- is the clock authority's carrier
+// (extdeps.clock::CapturedInstant), not a second type minted here. What belongs here is this run's
+// evidence: the day its capture directory names, and the windows its capture lines actually show. Those
+// lines date nothing to the second:
+//   02_inband_channel.txt   the device node's own date field: `Oct 16 06:27 /dev/ipmi0`
+//   00_README.txt           `PRIVILEGED WRITE 1 ... executed in the original run ~06:40Z`
+//   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
+//   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
+// So the windows below span the whole tens-of-minutes the README states, instead of the 06:53:00.000 an
+// exact field would have had to invent. A band built through a hardcoded day would silently pin every
+// observation to a date it never checked, so the day is a parameter of the clock authority's mint and this
+// module passes its own notebook's date to it
+// (gunbc.design_argument::interface_realization_policy).
 
 // THE DAY THIS REPOSITORY'S BMC RECOVERY NOTEBOOK IS DATED. 2026-10-16, the directory's own name and
 // every line of its README. Named because it is policy: a second run on another day mints its own

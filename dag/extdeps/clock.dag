@@ -190,28 +190,12 @@ fn clock_timestamp_to_unix_secs(timestamp: Timestamp) -> ClockTimestampRead {
 // time" at all, only for a band or for the refusal. The type lives in the clock authority because every
 // observing layer mints against its own calendar; what a notebook contributes is its day and its windows,
 // never a second kind of time (gunbc.design_argument::single_authority).
-// ── CAPTURE TIME: A MINTED BAND, NOT A STOPWATCH READING ───────────────────────────────────────
-// THE OBSERVING LAYER OWNS THE CALENDAR OF ITS OWN NOTEBOOK. These bands are statements about WHEN
-// THIS REPOSITORY READ BYTES OFF A MACHINE, and the only authority for them is the capture directory
-// (00_README.txt, and date fields quoted inside the captures). The route module therefore receives a
-// CapturedInstant and never mints one: what the run's date is has no business inside a reusable route,
-// and a band built through a hardcoded day would silently pin every observation to a date it never
-// checked (gunbc.design_argument::interface_realization_policy: "Policy has leaked when an argv carries a literal it should receive as a
-// parameter"). One day stands here instead, because one run's README records one day -- and it is read
-// back through the calendar authority below, never asserted beside a bare literal.
-//
-// The artifact records its times to the precision the capture itself has, and none of them to the
-// second:
-//   02_inband_channel.txt   the device node's own date field: `Oct 16 06:27 /dev/ipmi0`
-//   00_README.txt           `PRIVILEGED WRITE 1 ... executed in the original run ~06:40Z`
-//   00_README.txt           `PRIVILEGED WRITE 2 (Redfish Manager.ResetToDefaults): executed ~06:45Z`
-//   00_README.txt           `Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the reset`
-// An EpochMs field holds ONE exact instant, so every value typed into one claims second precision the
-// bytes do not support (gunbc.design_argument::fail_closed: "no plausible output is fabricated"; section 4d: an
-// inference is a bet and travels typed as one). So what an observation carries is the INTERVAL the
-// capture licenses, minted through std.interval -- a reversed pair becomes CaptureTimeBandInverted
-// carrying std.interval's own words about the pair rather than being swapped into order, and there is
-// no arm for "a time" at all, only for a band or for the refusal.
+// Each observing layer mints its bands against the calendar IT measured, and keeps its own evidence: a
+// capture notebook's day, its windows and the precision its bytes license stay with that notebook's module,
+// which is why the mints below take the day and the bounds as parameters rather than naming any run
+// (gunbc.design_argument::interface_realization_policy: "Policy has leaked when an argv carries a literal it
+// should receive as a parameter"). A route receives a CapturedInstant and never mints one.
+
 type CapturedInstant
   = CaptureTimeBand { band: OrderedClosedInterval<EpochMs> }
   | CaptureTimeBandInverted { reason: String }
