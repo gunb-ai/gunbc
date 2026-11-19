@@ -1120,6 +1120,33 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
   provenance: "Operator ruling on the pinned Codex check, escalation msg_87d2aff1-c358-4b5f-b17c-11b7504962e2, decided 2026-11-17, relayed verbatim by manager session neat-badger-614 (msg_81ee26ff) and directed to session quiet-wolf-155. Asked whether re-pointing the pinned oracle arm test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word from refusing the adversarial CODEX_HOME to asserting it survives as one argv value with no shell control word is authorized, the operator answered, verbatim: \"yes the codex pinned check is fine to ignore\". Read by the manager as approval to change the pin: the old CodexTripArgvRefused expectation no longer binds. WHAT IT DECIDES: that arm is re-pointed from pinning a refusal to pinning that the value crosses as one argv element and renders no separate shell word, per node dp-m2-codex-direct-argv-policy. The authorization covers THIS re-point only; the general do-not-hand-edit-this-pinned-oracle rule still governs any other change.",
 }
 
+// The operator's 2026-11-18 tailnet ruling, carried as a TYPED row (not `//` prose) so its authority
+// cannot be deleted without the reference check failing. Cited by
+// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation with @ref.
+data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.tailscale_fleet_auth_key", decl_name: "tailscale_desired_tags_for_participation"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18, on whether ken and dan (h11-a16, operator_host_6ce85c) should carry tag:serving only, or tag:ci + tag:serving. Asked which, the operator answered, verbatim: \"C both tags is fine\". Both tags, so the fleet converge reaches them over the tailnet AND the serving grants still apply: a both_participation host's desired self-tag set is tag:ci plus tag:serving, DERIVED from the host's role by gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation, never a hand-kept per-host table (#16685's history deleted such a table twice).",
+}
+
+// The operator's two 2026-11-18 admin-console ACL additions, carried as a TYPED row so the authority for
+// the new grant and tag-owner row cannot be deleted without the reference check failing. Cited from
+// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners with @ref.
+data tailnet_serving_acl_admin_console_additions_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailnet_serving_acl_admin_console_additions_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "extdeps.tailscale.acl", decl_name: "operator_tailscale_acl_grants"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18, reporting the two changes added BY HAND in the tailnet admin console, which the model must now emit: a tagOwners row tag:serving -> [autogroup:admin] (extdeps.tailscale.acl::operator_tailscale_acl_tag_owners), and a grant src [tag:dashboard] -> dst [tag:serving] on ip tcp:18081-18083 (extdeps.tailscale.acl::tag_dashboard_to_serving_grant, whose ports are the single extdeps.tailscale.acl::tailscale_serving_port_grants declaration -- which also fixes the previously dangling tailscale_serving_port_grants citation). The witness test.claim.tailscale_acl_reported_reconcile_witness proves the emitted policy is equal to a fixture of the operator's 2026-11-18 report (dag/test/fixture/tailscale_acl_reference.json, transcribed by hand from that report) through the read-only diff-print route gunbc.tailscale_acl_phase2_credential::acl_diff_from_authority. There is NO live policy read: this is model-equals-the-reported-report, not model-equals-live.",
+}
+
+data tailscale_fleet_key_untagged_join_causality_2026_11_18: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_fleet_key_untagged_join_causality_2026_11_18"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.tailscale_fleet_auth_key", decl_name: "tailscale_fleet_key_metadata_standing"),
+  provenance: "Operator, in chat to smart-crane-730, 2026-11-18. OBSERVATION: ken (100.96.80.109) and dan/h11-a16 (100.109.228.127) joined BY HAND with the fleet key at Secret Manager version 'latest', not the pinned '1', and joined UNTAGGED, though gunbc.tailscale_fleet_auth_key records the key as tag:ci. RULING (causality, operator): a tagged auth key stamps its tags at JOIN whoever runs 'tailscale up'; going around gunbc.tailscale_join_converge does NOT drop the tags, and tailscale_auth_key_policy_admit only gates whether the CONVERGE will USE a key -- so an untagged hand join is NOT explained by bypassing the converge; it means the key used is NOT the tagged key this module describes. The two competing explanations are the typed closed set gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_untagged_join_hypotheses. Confirming which is a READ, not an inference: gunbc.tailscale_fleet_auth_key::tailscale_fleet_key_metadata_standing carries the open read obligation. Nothing here rotated; no live value was read or asserted.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     schedule_answers_are_computed_cached_and_re_read,
@@ -1256,6 +1283,9 @@ fn design_rulings() -> List<DesignRuling> {
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
     pair_delivery_shell_as_medium_steps_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,
+    ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18,
+    tailnet_serving_acl_admin_console_additions_2026_11_18,
+    tailscale_fleet_key_untagged_join_causality_2026_11_18,
   ]
 }
 
