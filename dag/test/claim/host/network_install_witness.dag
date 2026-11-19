@@ -29,6 +29,7 @@ import std.optional { Optional, Present, Absent }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.clock { captured_point }
 import extdeps.bmc.types {
   BootTargetPxe, BootTargetCd, BootOverrideModeUefi, BootOverrideModeLegacy,
   BootOverrideOnce, BootOverrideContinuous,
@@ -514,7 +515,7 @@ fn srv15_access_observation(endpoint: BmcControllerEndpoint) -> BmcAccessObserva
     successful_read_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
     successful_write_surfaces: [],
     raw_response: content_hash_of_value(value: "srv15-witness-access-observation"),
-    observed_at: srv15_rotation_applied_at,
+    observed_at: captured_point(at: srv15_rotation_applied_at),
   } }
 }
 
