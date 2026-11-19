@@ -27,6 +27,12 @@ module gunbc.machine_intake.bmc_firmware_hpm_read
 
 import std.types { Int, NonEmptyStr, String }
 import std.measure { Second }
+// QUALIFIED, not bare. Two candidates own the name `Filesystem` (extdeps.filesystem.filesystem_io and
+// std.resources); the bare use at the retention write resolved by proximity in some checkers and was
+// REFUSED by others (ambiguous reference 'Filesystem' at gunbc compile, main af160c362c5). The intended
+// one is the fleet's file authority -- the same import the boot bundle carries (megarac bundle:59) and
+// 350 other modules use. Qualifying by import is the fix; the name is not renamed.
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of, HpmCheckTable }
