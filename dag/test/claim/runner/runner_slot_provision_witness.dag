@@ -74,6 +74,7 @@ import gunbc.runner.runner_slot_allocation {
   host_fabric_slot_count,
   committed_slot_identities, CommittedPopulationDerived, CommittedPopulationWidthUnresolved, identity_in_list,
   host_memory_admitted_width,
+  host_transitional_ci_slot_count,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
@@ -418,11 +419,22 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // The relation that must hold in every case is the inequality: materialization may commit fewer
 // slots than memory would admit, never more. That is falsifiable -- a deploy row raised past its
 // memory admission fails here -- and it does not collapse into f(x) == f(x).
+//
+// The ceiling is the TOTAL wall a deploy row may sit under, not the memory axis alone.
+// host_memory_admitted_width is deliberately the base-only fleet-row PROJECTION
+// (integration_concern.dag:2623 records this repair), while materialization may commit a
+// host's single transitional CI slot on top of it -- the committed path (runner_slot_allocation
+// .dag derived_runner_slots_of_over) adds host_transitional_ci_slot_count. srv1 commits 8
+// (7 memory-admitted + 1 transitional srv1-01); comparing runner_count against the base-only
+// projection alone falsely failed it. Cited by integration_concern.dag:2623's recorded repair.
 test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
   all(
     fleet_runner_host_deploys,
-    d => d.runner_count <= host_memory_admitted_width(host: d.host_label as HostIdentity)
-      && d.runner_count > 0
+    d =>
+      d.runner_count
+        <= host_memory_admitted_width(host: d.host_label as HostIdentity)
+          + host_transitional_ci_slot_count(host: d.host_label as HostIdentity)
+        && d.runner_count > 0
   )
 }
 
