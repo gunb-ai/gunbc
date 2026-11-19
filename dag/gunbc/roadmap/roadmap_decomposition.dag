@@ -319,8 +319,16 @@ fn decompositions_owners_declared() -> Bool {
 
 // STAGE DEPENDENCIES: each row names a declared parent edge, a stage the parent has, and a stage this item has;
 // and every parent that has a decomposition of its own is waited on at least once.
+// THE SAME FILTER OVER A PIECES TABLE CARRIED AS A VALUE, so a read can be given its decomposition table instead of
+// inheriting the declared one as a hidden global: the live read passes `roadmap_decompositions` and answers exactly
+// what it always did, and a witness passes the empty table to get a roadmap with no pieces under it. One filter body
+// serves both grains (single_authority); `decomposition_for` below is the one place the DECLARED table is read.
+fn decompositions_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> List<WorkDecomposition> {
+  filter(pieces, d => d.node == node)
+}
+
 fn decomposition_for(node: RoadmapNodeId) -> List<WorkDecomposition> {
-  filter(roadmap_decompositions, d => d.node == node)
+  decompositions_in(pieces: roadmap_decompositions, node: node)
 }
 
 // THE ONE leaf-path check: does the item's decomposition hold a leaf at this path, at its declared
