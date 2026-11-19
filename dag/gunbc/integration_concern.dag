@@ -3524,6 +3524,18 @@ data h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat: Integra
         ],
         account: "READ AT THIS REVISION, before the retirement landed here: srv9_host_lan_endpoint was still declared for 192.168.1.236 even though gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 (operator, 2026-10-10) records every Group B unit as sold and the rung drop gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts had already taken srv9-srv12 out of this topology's endpoint roster -- the declaration had survived the cut as a citation target only. This branch deletes it and adds ken_host_lan_endpoint for the same address as a dated lease observation. WHAT THIS DOES NOT SETTLE: which machine answers at .236. The lease, in-band and console reads stay owed, and the enrollment arm stays HostKeyLoginRefused.",
       },
+      ConcernSighting {
+        revision: h11ssl_unit3_operator_answers_revision,
+        evidence: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_address_standing"),
+          },
+        ],
+        account: "The ownership half of what the second sighting left open is answered, by the source: the operator names the machine answering at 192.168.1.236 as THIS unit -- its installed-OS hostname is h11-new, and the same box is ken.tailecbe08.ts.net at 100.96.80.109 on the tailnet, online with tag:ci and tag:serving, read from srv1's tailscale status. The tailnet half is a live row the fleet can read for itself; the LAN half reaches the model by relay, with no artifact of that session in this repo, so it is carried as a report. WHAT THIS ROW STILL REFUSES, unchanged: an ssh answer at .236 is not a read of which key population answers there, and the enrollment row stays HostKeyLoginRefused until the dissolve named above happens -- one fleet-converge dispatch as the fleet-automation principal returning host-authored output, beside the lease/ARP read naming which MAC holds .236 and a host key confirmed from this unit's own console. Naming the machine removes the risk of aiming sudo-bearing effects at srv9; it does not authorize an effect on this one.",
+      },
     ],
   },
   disposition: Open,
@@ -4491,6 +4503,11 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 // made against. The digests are the committed files under
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
+
+// The revision carrying the operator's 2026-11-19 answers into the register: the restated accelerator figure
+// and the naming of the machine at 192.168.1.236. It is a branch revision; main's merge revision supersedes it
+// when this lands, and the sightings below say so instead of quoting a main sha that does not exist yet.
+data h11ssl_unit3_operator_answers_revision: CommitSha = "8bbcb0eef46dc8d72ffb2d069660da5514a6c80c"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
@@ -4585,7 +4602,20 @@ data h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express: Integratio
       },
       account: "Read on the unit 2026-11-18: the unit file, both hand-written units' [Unit] sections with their dependency edges, the status output and the script itself -- artifacts/host-observations/ken-gpu-read-2026-11-18/ (unit_read1.txt the unit listing and directory contents, unit_read2.txt both unit files plus the sysfs vendor/device reads, unit_read3.txt the script, the power limits and the running service's journal tail). No sha256sum of the cap unit file was taken and no `journalctl -u t10-power-cap` was run: the journal lines in the receipt belong to ken-strata.service, and the status output itself warned that some journal files were not opened for lack of permission. The limits the script leaves behind were read from the driver: 100.00 W current against 150.00 W default on all three functions.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_operator_answers_revision,
+        evidence: FreeSemigroup {
+          head: h11ssl_unit3_gpu_power_receipt,
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19"),
+            },
+          ],
+        },
+        account: "The operator's own read of 2026-11-19 states the same three cards (01:00.0, 81:00.0, c1:00.0) each capped at 100 W, and states the purpose the model was missing on one point: the three serve as ONE ken-strata server on :18081. It does not state the thing this row asks for. 100 W appears as a number both the 2026-11-18 driver read and this statement agree on; whether it bounds sustained draw or peak draw, and what rule sets it, is still unstated -- so the figure is NOT minted into gunbc.serving.gpu_power_state_policy::ken_t10_cap_decision as a timescale, which stays CappedQuantityUnstated, and the four values this row names as missing from the model (the unit file's digest, that unit's own journal claim lines, a `requires` edge on PowerCapBootUnit, and an arm for a cap rule stated as each card's own minimum) stay missing.",
+      },
+    ],
   },
   disposition: Open,
 }
