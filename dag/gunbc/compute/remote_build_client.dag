@@ -19,7 +19,7 @@ import product.host_identity { HostIdentity }
 import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
   portable_remote_words, shape_fleet_ssh_exec,
 }
@@ -95,27 +95,38 @@ fn remote_build_client_git(worktree: String, args: List<String>) -> ComputeExec 
 // The fleet's one preparation (gunbc.fleet.fleet_ssh_locus), with the remote-build key in place of the
 // fleet automation key: the file's public half is derived and compared before a binding exists, so a
 // rotated or wrong key refuses here and no host is contacted.
-fn remote_build_client_context(attempt_raw: String) -> FleetSshContextPreparation {
+//
+// identity_file_override: when present, the identity file path to use instead of the default
+// ($HOME/.ssh/gunbc-remote-build). The ctrl session-image wrapper passes the provisioned session key
+// path ($HOME/.config/ctrl/remote-build/id_ed25519) so the container authenticates with the session
+// key rather than the operator's bind-mounted key.
+fn remote_build_client_context(attempt_raw: String, identity_file_override: String?) -> FleetSshContextPreparation {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
     Present { value: attempt } =>
-      match remote_build_client_identity_file() {
-        Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
-        Present { value: identity_file } =>
-          match verify_fleet_ssh_credential_admitted_any(identity_file: identity_file, admitted_keys: remote_build_admitted_public_keys) {
-            FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
-            FleetSshCredentialDerivationRefused { cause } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
-            FleetSshCredentialVerified { binding } =>
-              ssh_context_from_verified_binding_under(
-                attempt: attempt,
-                binding: binding,
-                rows: fleet_known_hosts_rows(),
-                job_root: Present { value: remote_build_client_job_root_child },
-              )
-          }
+      match identity_file_override {
+        Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path)
+        Absent => match remote_build_client_identity_file() {
+          Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
+          Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path as String)
+        }
       }
+  }
+}
+
+fn verify_and_prepare_context(attempt: FleetSshAttemptIdentity, identity_path: String) -> FleetSshContextPreparation {
+  match verify_fleet_ssh_credential_admitted_any(identity_file: identity_path as NonEmptyStr, admitted_keys: remote_build_admitted_public_keys) {
+    FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
+    FleetSshCredentialDerivationRefused { cause } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
+    FleetSshCredentialVerified { binding } =>
+      ssh_context_from_verified_binding_under(
+        attempt: attempt,
+        binding: binding,
+        rows: fleet_known_hosts_rows(),
+        job_root: Present { value: remote_build_client_job_root_child },
+      )
   }
 }
 
@@ -230,14 +241,14 @@ type RemoteBuildRun
 
 // Every operation of one run is asked of the same snapshot through one ref, so a test pattern that
 // selects several modules publishes once and deletes once.
-fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>) -> RemoteBuildRun {
+fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, identity_file: String?) -> RemoteBuildRun {
   match git_object_id_from_untagged_hex(hex: commit_text) {
     Absent => RemoteBuildNotSent { step: "snapshot", detail: concat("the snapshot is not a commit id: ", commit_text) }
     Present { value: commit } =>
       match remote_build_client_source_ref(commit: commit, clock: clock_unix_millis_read()) {
         Absent => RemoteBuildNotSent { step: "source ref", detail: "no source ref id could be formed from the commit and the clock" }
         Present { value: source } =>
-          match remote_build_client_context(attempt_raw: concat("remote-build-", source.id as String)) {
+          match remote_build_client_context(attempt_raw: concat("remote-build-", source.id as String), identity_file_override: identity_file) {
             FleetSshContextRefused { cause } => RemoteBuildNotSent { step: "ssh context", detail: cause }
             FleetSshContextReady { context, receipt: _ } =>
               match remote_build_client_git(worktree: worktree, args: remote_build_client_push_argv(commit: commit, source: source)) {
@@ -380,14 +391,15 @@ fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, de
 //
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_compile_cli \
 //     --arg worktree=$PWD --arg entry=<dag/...dag> --arg receipt_path=$PWD/.gunbc-compile-receipt.json
-fn remote_compile_cli(worktree: String, entry: String, receipt_path: String) -> ProcessExit {
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String?) -> ProcessExit {
   if !remote_build_entry_admitted(entry: entry) {
     ExitFailure { code: 2, reason: concat("gunbc remote compile: entry must be a .dag file under dag/, relative to the worktree: ", entry) }
   } else {
     match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
       SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote compile: snapshot refused at ", step, ": ", detail], "") }
       SnapshotResolved { commit } =>
-        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }]), declined: [], failed: [])
+        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }], identity_file: identity_file), declined: [], failed: [])
     }
   }
 }
@@ -440,7 +452,8 @@ fn remote_not_sent_json(label: String, reason: String) -> JsonValue {
 
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli \
 //     --arg worktree=$PWD --arg pattern=//dag/test/claim/<package>/... --arg receipt_path=$PWD/.gunbc-test-receipt.json
-fn remote_test_cli(worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String?) -> ProcessExit {
   match parse_target_pattern(text: pattern) {
     TargetPatternRefused { cause } => ExitFailure { code: 2, reason: concat("gunbc remote test: ", target_pattern_refusal_text(r: cause)) }
     TargetPatternParsed { pattern: parsed } =>
@@ -457,7 +470,7 @@ fn remote_test_cli(worktree: String, pattern: String, receipt_path: String) -> P
               if count(operations) == 0 {
                 remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: RemoteBuildNotSent { step: "selection", detail: concat("the pattern selected no module with a planned claim: ", render_target_pattern(pattern: parsed)) }, declined: declined, failed: failed)
               } else {
-                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations), declined: declined, failed: failed)
+                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations, identity_file: identity_file), declined: declined, failed: failed)
               }
             }
           }

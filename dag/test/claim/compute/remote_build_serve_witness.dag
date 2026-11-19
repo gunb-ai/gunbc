@@ -22,7 +22,7 @@ import gunbc.compute.remote_build {
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
-  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_operator,
+  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
@@ -196,6 +196,13 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
   }
 }
 
+test fn the_session_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_session.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_session.fingerprint as String
+  }
+}
+
 // Every roster host has an entry, every entry is restricted and forced, and the forced command runs
 // the serving function from that host's serving checkout, naming that host. It starts by changing into
 // that checkout, because sshd starts it in the account's home and `gunbc run` discovers its workspace
@@ -203,11 +210,11 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
 // gunbc.remote_shell_command (review 95657).
 test fn every_roster_host_has_a_restricted_forced_entry() -> Bool {
   count(remote_build_candidates()) > 0
-    && remote_build_candidates() |> all(c => w_entry_is_restricted_and_forced(candidate: c))
+    && remote_build_candidates() |> all(c => all(remote_build_admitted_client_keys, k => w_entry_is_restricted_and_forced(candidate: c, client_key: k)))
 }
 
-fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
-  match remote_build_authorized_entry(candidate: candidate, client_key: remote_build_client_key_operator) {
+fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate, client_key: RemoteBuildClientKey) -> Bool {
+  match remote_build_authorized_entry(candidate: candidate, client_key: client_key) {
     Absent => false
     Present { value: e } => {
       let line = authorized_key_entry_line(e: e)
@@ -215,7 +222,7 @@ fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
         && line.contains("'--function' 'remote_build_serve_cli'")
         && line.contains(join(["'--entry' '", candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag'"], ""))
         && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
-        && line.contains(remote_build_ssh_key.material as String)
+        && line.contains(client_key.public_key.material as String)
     }
   }
 }

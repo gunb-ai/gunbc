@@ -511,11 +511,23 @@ data remote_build_client_key_operator: RemoteBuildClientKey = RemoteBuildClientK
   fingerprint: remote_build_ssh_key_fingerprint,
 }
 
-// THE CLOSED LIST. Today: operator only. The session key joins when ctrl mints it (gentle-crab-832
-// provides the public half); the hosted-CI key joins when clever-raven-401 confirms its public half.
-// Each joins as a REAL value — never a placeholder.
+// The session key — minted by ctrl (gentle-crab-832), private half in the dashboard secret store,
+// provisioned per-container by the ctrl session image at $HOME/.config/ctrl/remote-build/id_ed25519.
+data remote_build_client_key_session: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "session",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIPIuf7p1w+jsp+zluvCE/IOtG1rHrZW3iIsuhhqbwCzY",
+    comment: "gunbc-remote-build-session",
+  },
+  fingerprint: "SHA256:/ufkCsksYwFQOdqvHgaKCYA1LrLuLtxyvB1iGbjO1Fo",
+}
+
+// THE CLOSED LIST. Two members: operator and session. The hosted-CI key joins when clever-raven-401
+// confirms its public half. Each joins as a REAL value — never a placeholder.
 data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
   remote_build_client_key_operator,
+  remote_build_client_key_session,
 ]
 
 // The admitted public keys projected out of the closed list, for client-side verification. The client
