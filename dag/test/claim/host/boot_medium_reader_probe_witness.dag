@@ -610,6 +610,7 @@ test fn the_committed_shared_job_concurrency_is_the_models_and_serializes_the_pr
 // the committed file, so an equality that were vacuous (an empty emission, a match on a prefix) would fail here.
 test fn a_probe_block_with_one_line_changed_is_not_the_committed_file() -> Bool {
   let block = committed_probe_step_block_of(step_o: fleet_converge_boot_medium_reader_probe_step())
-  committed_contains_block(block: block)
+  count(block) > 5
+    && committed_contains_block(block: block)
     && !committed_contains_block(block: append(take_prefix(xs: block, n: count(block) - 1), items: ["        timeout-minutes: 6"]))
 }

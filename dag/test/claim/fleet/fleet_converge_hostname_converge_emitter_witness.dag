@@ -134,6 +134,16 @@ fn step_if_of(step_o: Outcome<Step>) -> String {
   }
 }
 
+// A _of helper yields "" on a refusal, so a POSITIVE assertion (contains/==) over it fails closed — but a
+// NEGATIVE one (!=, !contains, count == 0) would pass vacuously against the blank. Any such assertion must
+// first require the step actually emitted. This is that guard.
+fn is_accepted_step(step_o: Outcome<Step>) -> Bool {
+  match outcome_accepted_value(step_o) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn runs_on_text(job: Job) -> String {
   match job.runner {
     RunsOnExpression { expression: e } => e
@@ -742,7 +752,10 @@ test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
       match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
-          step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_apply_step())
+          is_accepted_step(step_o: fleet_converge_hostname_converge_apply_step())
+            && is_accepted_step(step_o: fleet_converge_hostname_converge_readopt_step())
+            && is_accepted_step(step_o: fleet_converge_hostname_converge_read_back_step())
+            && step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_apply_step())
             && step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_readopt_step())
             && step_if_text(step: plan) == step_if_of(step_o: fleet_converge_hostname_converge_read_back_step())
       }
