@@ -449,5 +449,8 @@ test fn the_desired_instance_job_never_uploads_the_srv1_live_receipt() -> Bool {
   let srv1_live_name = gunbc_live_deploy_receipt_artifact_name
   let names_it_nonempty = string_contains(s: srv1_live_name, pattern: "srv1-live")
   let any_names_it = any(steps, st => any(step_input_strings(st: st), s => string_contains(s: s, pattern: srv1_live_name)))
-  names_it_nonempty && !any_names_it
+  // Fail closed: a refused desired_instance_deploy_job yields deploy_job_steps() == [] (the retyped
+  // producer is Outcome<Job>), and !any([]) would pass vacuously -- claiming "never uploads" from a job
+  // we never actually saw emitted. Require the job to be non-empty so a refusal makes this RED, not green.
+  names_it_nonempty && count(steps) > 0 && !any_names_it
 }
