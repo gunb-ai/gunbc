@@ -99,7 +99,7 @@ type TopoState {
 // fact that the graph has a cycle. There is no third arm and no partial order handed back as if it were complete.
 type TopoOutcome
   = Ordered { order: List<PlacementRow> }
-  | PlacementCyclic { keys: List<String> }
+  | TopoCyclic { keys: List<String> }
 
 // THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
 // is free at day 0, the same default the lane scan reads, so the map is never pre-seeded by index and never
@@ -196,7 +196,7 @@ fn topo_step(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoSta
 fn topo_run(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoOutcome {
   match state.ready {
     Empty => if state.unemitted > 0 {
-      PlacementCyclic { keys: [] }
+      TopoCyclic { keys: [] }
     } else {
       Ordered { order: state.order }
     }
@@ -209,7 +209,7 @@ fn topo_run(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoOutc
 fn unemitted_keys(rows: List<PlacementRow>, outcome: TopoOutcome) -> List<String> {
   match outcome {
     Ordered { order: order } => map(filter(rows, n => !in_order(order: order, key: n.key)), n => n.key)
-    PlacementCyclic { keys: _ } => map(rows, n => n.key)
+    TopoCyclic { keys: _ } => map(rows, n => n.key)
   }
 }
 
@@ -460,9 +460,9 @@ fn place(input: PlacementInput) -> PlacementOutcome {
 // The critical path over the rows to place, as keys, from the row of largest rank. Empty when there is nothing to
 // place (a read that gave only pre-placed rows has no new critical path to name).
 fn critical_keys(order: List<PlacementRow>, rank: Map<String, Int>, succ: Map<String, List<PlacementRow>>) -> List<String> {
-  let no_rows: List<PlacementRow> = []
+  let no_keys: List<String> = []
   match argmax_row_rank(rows: order, rank: rank) {
-    Absent => no_rows
+    Absent => no_keys
     Present { value: n } => follow_critical(n: n, succ: succ, rank: rank, acc: [])
   }
 }
