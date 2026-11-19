@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_effort_estimate
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
 
 // THE CLOCK IS THE ESTIMATE, NOT THE MILESTONE (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc,
@@ -129,329 +129,1481 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
   }
 }
 
-// BEGIN leaf_sizing_research, 2026-11-19
-// Review at 82aff98d. Each numeric entry is one working-day research estimate.
-// Historical comparison rows do not request an active estimate. Empty prices carry their reason.
-// Durable identity	Node	Working days	Use	Observed standing	Basis
-// rn_9WD4YB1TQK6RXA0PJM7N5GHVC2	entry-graph-union-construction		Retired	retired	The CI floor scheduler and artifacts this row would optimize were deleted, leaving no current deliverable to price.
-// rn_Q8F2R5L9BN4X7WPK3HJD6MCZTG	shell-dag-floor-peak-calibration-rows		Retired	retired	The peak-row emitter and its consumers were deleted before the proposed shell migration.
-// rn_T3W8P5K2RF6N9XQL4JHB7MZCD	shell-dag-ci-fmt-gate-line		Retired	retired	The format prelude, its only witness and its expected-red entry were removed together.
-// rn_X9N4W7P3KQ6R2TF8JHL5MZCBD	shell-dag-ci-deploy-invoke-prelude		Retired	retired	The unused deploy prelude and its only witness were deleted, so the proposed conversion has no subject.
-// rn_P2K8X5W9RQ3N7TF4JHL6MZCDB	shell-dag-ci-heal-regen-invoke		Retired	retired	The heal regeneration prelude and its only witness were deleted before any executing consumer used them.
-// rn_44E8L35PWJQQR8833G5F8ARNXQ	cardinality-absence-conformance	10	Candidate leaf estimate	open	One three-valued conformance criterion must feed both the document and brief and distinguish the enrolled controls.
-// rn_X9MHZ7FXWXKKS32YBXJASTZJM5	cardinality-optional-declaration	10	Candidate leaf estimate	open	Two optional spellings must resolve to one declaration through the production route while homonyms and nested layers remain distinguishable.
-// rn_8RSG8MNVXVE4QKRZHKJ7AN8WJT	cardinality-native-closure-cutover	30	Candidate leaf estimate	open	A real native closure must migrate a named cohort across producer and consumer boundaries and execute both join and nested-optional controls.
-// rn_H4C2NSEPA3NKL7SY387ZP8VVQ2	cardinality-carrier-consolidation	30	Candidate leaf estimate	open	Each consolidated carrier requires a canonical replacement, consumer migration and an executing control across the registry cohort.
-// rn_CMUYU95KGPZWV6WDZ7XGZ7W5A9	cardinality-realization-conformance	30	Candidate leaf estimate	open	Nine specimens must run across the retained realizations, with separate evidence for each unsupported path.
-// rn_37DWVWGXSEPGF8WZ7HT6TNAXZB	cardinality-absence-retirement	60	Candidate for decomposition	open	Removing an allowance requires finding every surviving consumer, replacing its behavior and discharging each formerly permitted case.
-// rn_LOVW74OSEOKAJHINOV2BVHPNCE	cardinality-vertical-slice	10	Candidate leaf estimate	open	One producer-consumer seam must enforce an explicit nonempty interval and compile the discriminating positive control.
-// rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S	extended-admission-cardinality	10	Candidate leaf estimate	open	Enrolling one admission rule includes a planted violation and a whole-tree run after the rule is activated.
-// rn_RSPTW7T9VRES9F7FHCP08QFGX5	ci-required-run-cost	10	Candidate leaf estimate	open	Four phase measurements must be attributed to their input populations on the required route and reproduced from its receipt.
-// rn_KQ7EP7P290B24W2FHFW9Y4K1F4	floor-memory	30	Candidate leaf estimate	open	Measuring the largest memory term is only the first step, as the handback also requires changing it and measuring the resulting peak.
-// rn_K6EVN9SKS7WV617GECTH3N2TPQ	ci-cost-floor-preparation-cut	30	Candidate leaf estimate	open	The measured preparation bottleneck determines which construction to change, followed by a required run over the enrolled population.
-// rn_9HVXR4CBM0KT2WPND7FJ3QZY85	claim-entry-resolution-population	4	Candidate leaf estimate	open	The output is a bounded census of the two entry populations with named differences and dispositions.
-// rn_Z4Z5N3JJ9M8D6XBGHFV5HQHJMY	test-reference-discipline-remainder	10	Candidate leaf estimate	open	A required-run enrollment must execute the old reds and either demonstrate a v2 refusal or transfer its named obligation.
-// rn_ARHDM19A4Y5Z6EVGYFAWCJ434C	required-floor-passes-with-a-failed-phase	3	Candidate leaf estimate	open	One failed-phase count controls the final verdict, with a failing run and an otherwise identical clean run.
-// rn_02PRZ2Q7Q5Q8TJRANYM293HKJD	runner-throughput-witness-imports-absent-members	3	Candidate leaf estimate	open	One witness import must agree with a real exported member and pass on its existing phase run.
-// rn_J01EG5E1CAAVTYVJPKPXFXZCGM	action-use-yaml-reader-contract	30	Candidate leaf estimate	open	Replacing the YAML projection requires a modeled reader, decoded-shape controls across workflow inputs and a remeasured census.
-// rn_PDMRS0Y8J3EBDYNRPWZFH23C93	required-lane-exit-on-refused-phase	12	Candidate leaf estimate	open	One exit mapping is small, while the handback also audits other refusal arms and dates the silent skipping against real runs.
-// rn_BR2JFR598QVXCXM82STJS2RW4S	workflow-census-claim-budget-margin	10	Candidate leaf estimate	open	A named instrument must isolate the mapping-entry cost on the largest workflow and demonstrate margin as the input grows.
-// rn_XMKDEM3GM4NYQ4QXPEDVK4H6MB	action-runtime-epoch-observation	10	Candidate leaf estimate	open	One runner-side runtime observation must distinguish a matching epoch from two invalid configurations.
-// rn_ZXQH9CD43E8XH64CHYBT99WD9W	discarded-bool-result-wall	30	Candidate leaf estimate	open	The corpus census determines whether one refusal can land directly or needs a migration roster whose removal depends on its population.
-// rn_D3470QB6GPYD3PWSJMNGGMFV27	native-emit-match-binding-keeps-its-type	12	Candidate leaf estimate	open	A typed parameter must survive both the seed mint and native match binding, demonstrated on the healed seed and a real serve entry.
-// rn_EP54CSQWDFDY1JRAD5Q0HJV8F8	per-function-claim-run-loads-string-dispatched-names	10	Candidate leaf estimate	open	One per-function loader must include string-dispatched callees and prove the standalone execution resolves them.
-// rn_P9G8YTMA3YVQTW194Z3MBG3RM8	list-append-refuses-an-element-argument	10	Candidate leaf estimate	open	The generic argument relation must reject a scalar passed to list append with a located diagnostic and matching valid call.
-// rn_9VRS5PZJDA30H78V0QH694Q70W	effect-summary-env-carries-listed-imports	10	Candidate leaf estimate	open	The effect-summary environment must consume listed imports and retire its census fallback without changing the other effect joins.
-// rn_ZBFRF5QZPMSD6FY93DR7GRATHV	v2-complexity-analysis-parity	70	Candidate for decomposition	open	A real function needs a derived complexity summary, a bounded evaluation and an actual refusing consumer across still-unsettled compiler phases.
-// rn_RE7HEXR6WVEE6AWMSKC4E1NQNA	v1-checker-gaps	35	Candidate leaf estimate	open	The historical PR closed unmerged and each surviving checker gap needs purpose adjudication plus its own restored check or retirement condition.
-// rn_RAVINFXPMNUT5RP5TAN2PXHATI	ladder-measurement-schema	5	Historical comparison	accepted	One identity-and-receipt schema and a registry round-trip bounded the accepted work.
-// rn_T6JTXDKQBI6FDZ742FSGRZRQNA	ladder-probe-corpus	30	Candidate leaf estimate	open	Existing controls must be migrated into per-class, per-path probe pairs and coverage re-derived for the whole enrolled roster.
-// rn_SJMVG3RD7JEGUGEKJPOWH567UY	ladder-claims-carrier	10	Candidate leaf estimate	open	One family of requirement, ceiling and measured-disposition carriers must derive path dispositions from the existing schema.
-// rn_6NCVX2QTBZ0KWR9DPMHJLG5837	compiler-declaration-floor	30	Candidate leaf estimate	open	Five declaration defect classes require distinct located refusals plus correct declarations that still compile.
-// rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK	method-established-surface-wall	4	Recheck delivered work before staffing	open	The ticket cites landed receiver controls and delegates the remaining receiver families, leaving one bounded receipt to recheck.
-// rn_TMC5UFTYNMSBMS7FLXYIVQCSRE	method-receiver-normalization	35	Candidate leaf estimate	open	Receiver types must be recovered from record-field lambda signatures, then checked against the measured unresolved families.
-// rn_M25FZG43IT6MSBIWBQBONOUSZM	method-zero-resolution-general-wall	30	Candidate leaf estimate	open	Replacing the builtin fallback with a refusal requires adjudicating every reached site in the corpus.
-// rn_42Z3Z646SNDZBMVXYDU7RSL4JA	method-call-shape-seam	10	Candidate leaf estimate	open	Checking method-call argument labels at one seam requires a discriminating positive and negative pair under the seed scope rule.
-// rn_EDXPW53NQMZVLEPYNYH6X4VNKM	call-label-and-surplus-wall	4	Recheck delivered work before staffing	open	The ticket cites the landed label and surplus checks and names separate owners for missing arguments and signature coverage.
-// rn_EXUHLON5V24YU7Z4XLJFWEZO33	call-missing-and-duplicate-wall	12	Candidate leaf estimate	open	The duplicate-argument check has a cited delivery while the independently testable missing-argument half still needs a refusal and controls.
-// rn_GVLXWYYRQV47WTJLSSIFX7FLFM	call-signature-resolution-coverage	30	Candidate leaf estimate	open	A typed fallthrough census precedes repairing the number and kinds of signatures that lookup cannot yet resolve.
-// rn_4ELCVV2EIHCBGHMOG6T4IZEMT3	declared-conformance-ground-fragment	4	Recheck delivered work before staffing	open	The existing grounded-fragment probes are cited as delivered and the broader conformance work has separate owners.
-// rn_WGRZFAYJ5EDVPNEQ42UAK7TD6D	declared-conformance-grounding	30	Candidate leaf estimate	open	Peeling brand aliases feeds a second semantic relation and each grounded representation class needs residue and probe evidence.
-// rn_E6PQ6WQR2J7SLMGBR62P3ECKGY	declared-conformance-general-wall	30	Candidate leaf estimate	open	Broadening conformance across the corpus depends on grounding and adjudicating affected representation classes.
-// rn_EAOINVVBM732ZXS42ELVZAUPQV	argument-type-compatibility-grounding	4	Recheck delivered work before staffing	open	The ticket records the argument exemption as retired and directs verification to its surviving relation controls and disposition.
-// rn_VEY66GYMNYZ24LWJQJGZGCFLRI	floor-exhaustiveness-refusal	10	Candidate leaf estimate	open	Two exhaustiveness arms and an explicit unknown verdict need a typed lookup control to distinguish missing information from acceptance.
-// rn_P64CH3KXIZGL43SFS5DNJX52EQ	floor-generic-field-constraint-wall	30	Candidate leaf estimate	open	The real residual generic-field sites must be remeasured before either fixing them or documenting each remaining trigger.
-// rn_KPPUUSOXKTMKVJWBCW4G74ZP6A	floor-method-ambiguity-wall	10	Candidate leaf estimate	open	An exactly-one method derivation must distinguish ambiguous duplicates from legitimate alias-reconciled receivers.
-// rn_VNYPK344GM56QEWP34G7VCG4OA	floor-parse-formation-wall	10	Candidate leaf estimate	open	Two malformed parse shapes need located refusals and full-corpus validation that legitimate syntax stays accepted.
-// rn_ILWLG34LVL5SAS6QPN5GZDPMFY	floor-record-construction-wall	10	Candidate leaf estimate	open	Missing required record fields must refuse at the construction judgment with paired controls and a corpus check.
-// rn_6QXWDNSCBUAK6JWU7VSUWBXWMH	accepted-obligation-door-mechanism	30	Candidate leaf estimate	open	The required-path admission mechanism must consume the carrier rows and reject a planted path with no consumer across the audited population.
-// rn_5FUBPPKWUGPBAYADIIIR3LDZKQ	accepted-floor-obligation-closure	40	Candidate leaf estimate	open	Activating the floor depends on an exemption-free census, disposition of outstanding cases and a successful run after the change.
-// rn_W2KPJ5VLF3RMNDELVJXP6EKL5A	primitive-identity-join	75	Candidate for decomposition	open	The final handback joins several primitive-identity authorities across every surface and reconciles their populations beyond the initial schema.
-// rn_DETERMINISM_DENOMINATOR_CLOSURE	determinism-denominator-closure	10	Candidate leaf estimate	open	The identity-keyed determinism classification has landed according to the ticket, but closing it requires the denominator receipt and deletion of the interim registry.
-// rn_JPU4RUV5DNELDCZI4JUQGWHICM	compiler-source-exemption-removal	4	Recheck delivered work before staffing	open	The ticket identifies the exemption as retired, so the bounded closing check is its adjudication and recorded deletion evidence.
-// rn_JLPYDWJUCGBUPQ734NGPEQLMWI	unforgeable-construction-capability	30	Candidate leaf estimate	open	The forgery primitive has a cited deletion, while the full form-by-context matrix must still establish the remaining construction capabilities.
-// rn_ITD5F26B5RMK7FMDMO6Q7ZQDFA	ladder-census-emitters	10	Candidate leaf estimate	open	Two rendered views must come from one class-disposition projection, with the roadmap rendering destination settled first.
-// rn_QUMPMHS49PJ96ARB5LM6YLVUHF	lab-standings-track-main	10	Historical comparison	accepted	The accepted work paired source revision with the running release and verified mismatches on the actual refresh route.
-// rn_HU66GO90952PAFHSG2A5UNZQWW	lab-converges-release-pair	25	Deployment already in flight	open	One production-shaped service deployment must pair the release and source head, survive the cutover and return that pair through the served standings.
-// rn_XR5XF8MTD80RQ4YGTV7Q6ZNK08	deploy-converge-serve-quiesced	12	Candidate leaf estimate	open	Quiescing or excluding serve snapshot worktrees needs one explicit ownership decision and both deliberate failure and success controls.
-// rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T	deploy-intent-owns-artifact-closure	30	Candidate leaf estimate	open	Two installs and a per-unit read inventory must establish and repair the deployment intent’s complete artifact set.
-// rn_5Y4YAYGG7Y4EVCDN7T9XT1Z89P	fleet-converge-artifact-closure	10	Candidate leaf estimate	open	Three fleet units each need an authoritative enable decision, declared artifact reads and a missing-read control.
-// rn_20NKA9WYGMKXA5JPA4YM8KXD5X	deploy-release-roster-carries-every-owned-step	35	Standings refresh needed	unobserved	Two different member kinds need desired and observed identities, drift and keep controls, and a gate test on the real release roster.
-// rn_K6TBWN5T4J6FV5B2X0HN3VHCW4	cc-path-census	10	Candidate leaf estimate	open	The convergence roster must join identities across the actual production paths and turn a planted omission red.
-// rn_XW56ZS6QC1081AFR252PR2RBPS	cc-compiler-floor	10	Candidate leaf estimate	open	A native compiler invocation must reject a planted record-at-scalar mismatch and retain the original class control.
-// rn_59AP6NKF1MH8GB1VNDYRHEK9X0	cc-structural-carriers	10	Candidate leaf estimate	open	One shared reader must preserve all valid statement children and explicitly reject unsupported extra children.
-// rn_Q73CZQQFQHZKC9VP6ZEW6AAW8W	cc-qualified-operands	10	Candidate leaf estimate	open	The existing operand mint must supply both the package installation and its readback, with one deliberate mismatch refused.
-// rn_6EVP7PRFRA1V1WDS1WA1137XCX	cc-observation-distinctions	10	Candidate leaf estimate	open	A broken-but-active service needs its own observation arm and a downstream consumer that keeps it distinct from access failure.
-// rn_WWHPSKXKDTFH62WJ1D6VD3HJ04	cc-lifecycle-ownership	30	Candidate leaf estimate	open	Promoting a candidate needs a real activation identity and closure acceptance, followed by a roster of the remaining member kinds.
-// rn_QXKD8Q0EHNVEQKS6Q7N0FF946R	cc-selection-to-use	10	Candidate leaf estimate	open	One production effect must consume its selected revision and branch identity while preserving the development route.
-// rn_6XYMKSJ1TTTE4XQ1RTZMFG19GM	cc-evidence-to-consumers	10	Candidate leaf estimate	open	One qualified candidate must carry the observed instrument result to its next consumer and expose a missing pairing.
-// rn_QFTG2N0RXM7R70HPJ8BDDHH045	cc-guaranteed-cleanup	35	Candidate leaf estimate	open	Compute-seat cleanup crosses ensure, recovery and independent readback and must preserve ownership until the worker is proven gone.
-// rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2	review-sheet-identity-producer-and-admission	40	Candidate leaf estimate	open	Three identity producers, a complete join and admission on the real route must retire the existing consumer gaps.
-// rn_8QF2XJNLD6VKC3ZRW9HTYB4MSP	review-sheet-properties-write-and-legacy-retirement	25	Candidate leaf estimate	open	The properties write must support identity-bound readback and establish the scope of the legacy generation before retiring it.
-// rn_9JXQW2VTNB5KZCR7MHPD4GYL60	census-job-level-observation-and-reprojection	30	Candidate leaf estimate	open	Obtaining complete paged job attempts and deriving occupancy must reproduce or explain the historical census for a real repository.
-// rn_2HKDQZ8WVNX4TBM6RCPJLG0517	census-app-registration-installation-and-custody	10	Candidate leaf estimate	open	An owner-run registration must produce a real App, installation and key-custody receipt, with separate failure states for each.
-// rn_5TBHM9XKCWQ2VLF7NRJD8GYZ3E	census-installation-token-via-app-jws-route	10	Candidate leaf estimate	open	The existing signing components still need one composed token performer and a live control with the fallback removed.
-// rn_DCHDCNK5Z6GZP693VSZA6MC84T	parse-prepared-grammar-analysis-carried	40	Candidate leaf estimate	open	The prepared grammar must carry analysis and layout through all parse entry points until no caller reconstructs it.
-// rn_BS0YK7QAA67P73F6YYGZRTGXJ3	v1-parse-allocator-carried	35	Candidate leaf estimate	open	Allocator state must thread through every old recovery path while fixture identities stay equal before and after.
-// rn_HQF67ZYAVPCEVTYNYWMCC6N5KM	v2-grammar-preparation-first-summaries	10	Candidate leaf estimate	open	Grammar preparation can reuse child summaries once choice and sequence construction preserve and consume those summaries.
-// rn_D48CRKRR0HAT5PNPTVY491JD05	v2-predicate-recognition-without-materialization	35	Candidate leaf estimate	open	Predicate recognition must stop constructing discarded nodes on all predicate paths while preserving parse behavior.
-// rn_A8SREB643YJ2KHT9424TXFE388	v1-source-chars-converted-once	4	Candidate leaf estimate	open	Tokenization and newline indexing can consume one converted input through the same ingest route.
-// rn_FA2BX92WF9PGE7FWZBG60E0XP8	v2-parse-final-token-retained	3	Candidate leaf estimate	open	The EOF diagnostic can read the retained final token and remove one recovery walk.
-// rn_B766TJR5AXG2AHSG4EJ5AP5DBE	printed-chassis-python-kernel-retirement	30	Candidate leaf estimate	open	Four distinct preparation and readback kernels must move to typed folds with controls against their existing external tools.
-// rn_K0ATYK4Z6BWC74G46KWT45A2X3	dp-m3-extdeps-scope-halved	30	Historical comparison	accepted	The accepted result enrolled a live placement gate and halved the legacy manifest from 352 files to 176.
-// rn_E4T64NMJ992QHGRWCCV9AS0J7M	dp-m6-native-route-walls	30	Candidate leaf estimate	open	Several native compiler guarantees need restoring witnesses on the executing path, and the remaining population must be checked against contemporary drops.
-// rn_NNZV6UA6MA76X6P719W9QCO1Z3	dp-m2-codex-direct-argv-policy	5	Historical comparison	accepted	The accepted change bound one launch path to direct argument passing and exercised its adversarial input as one intact value.
-// rn_01M7NQG5SWMS74ZGXDH6X55TQ8	extdeps-subject-ref-facts-host-census	25	Standings refresh needed	unobserved	One host census primitive must cross registry, identity and generated artifacts and refuse nonliteral declaration subjects.
-// rn_H3NLOAANZ5KMIP89PZHKFN2N5A	dp-m3-subject-ref-resolved	12	Candidate leaf estimate	open	A bounded host-level census must resolve 844 declared subjects and distinguish four planted invalid references.
-// rn_0HLUS1PYYH39HTYZ7O5PDAEZOB	dp-m5-consumer-family-converted	5	Historical comparison	accepted	Four previously named sites in two production modules acquired individual unreadable-input controls on the same execution route.
-// rn_LBPUUNXDZTY1HATA9CE7H6YF19	debt-grandfathered-fold-enrolled	5	Historical comparison	accepted	The accepted change enrolled one existing fold against the live roster with a failing baseline and passing change.
-// rn_AG04P6UEWDXRCNG3OWIC6M5PQF	dp-m4-discovery-floor-semantic	5	Historical comparison	accepted	Two semantic properties replaced one count threshold, with planted cases and a live reading over 42 carriers.
-// rn_MGB7PA8AHA6B26CRK6R36G6HZS	demand-serve-program-image	75	Candidate for decomposition	open	A natively built service image must clear unenumerated compiler refusals, serve real requests and demonstrate restart and memory behavior.
-// rn_7TVTYN2VYB4NSQH9YHZ2Q654R3	demand-serve-entry-compile-time	30	Candidate leaf estimate	open	The 1,607-second compile first needs phase attribution, followed by an actual cost reduction and a repeatable same-revision measurement.
-// rn_6P0BSPKF58653MRH7GR0MD7PGH	demand-m1b		Priced in compiler-identity-invariant-under-corpus-commit for the shared identity work. Two-parse qualification is unestimated.	open	The charter absorbs compiler-identity-invariant-under-corpus-commit. That item prices the identity experiment. Define the distinct two-parse qualification or make it a child before adding a second price.
-// rn_YVM056Z9DF1W6ZXVY98E94Q4EA	demand-m1c	30	Candidate leaf estimate	open	Six generation-identity axes need real digests and a reproducible cold/warm persistent hit after the earlier attempt closed unmerged.
-// rn_867Z80DK1Y2D5ZTJFD2B0EMGNK	demand-m2	60	Candidate for decomposition	open	Replacing authored relations with inferred dependencies includes a dynamic demand protocol and a real consumer that refuses restated flow.
-// rn_3BHFWZVSHPK9KCDE56SJ6XZHZP	demand-m3b	30	Candidate leaf estimate	open	Two scheduling consumers and their graph representations must migrate before a census can justify removal of the older routes.
-// rn_HXDPS01BJR58FJZZSK1PVDG2YV	demand-m4	30	Candidate leaf estimate	open	Binding costs to actual identities, choosing serve versus recompute and refusing unmeasured exemptions requires an executing decision and measurement.
-// rn_4VF69YS9G2R3BP26MWW2HDAE2D	demand-m5	100	Conditional on scope or split	open	Five separately accepted demand-engine replacements cover process leases, persistent materialization, a parse sweep, jobserver tokens and residual width removal.
-// rn_1K3E7TVTM89JY0TK3Z388N659Y	demand-m6	120	Conditional on scope or split	open	Source, parse, resolution, inference, evaluation and native verdict each need identity-keyed materialization and byte-equivalent recomputation controls on the live route.
-// rn_FRVCKNSSJXX0Z3D1YKMHSYWB91	demand-m7	60	Conditional on scope or split	open	Append-stable decomposition needs law evidence, a discriminating counterexample and an economic choice on real sequential consumers.
-// rn_DFA6ZN2CC6KNQS8AHHWZC9G2SV	debt-expected-red-mock-totality-dead-rows	3	Candidate leaf estimate	claimed	Two expected-red chunks and their enrollment can be removed after showing the before and after identity counts agree.
-// rn_VCTKXSWAXYVW4XXVKZ4GM42MH1	debt-exclusion-frontier-excludes-nothing		Retired	retired	The exclusion-cleanup work is retired and the two obsolete patterns have no outstanding scheduling demand.
-// rn_Z63EBECXVGZPQ3DXD6E55DEQ1S	debt-rung-drop-measurement-bankruptcy-retire	4	Candidate leaf estimate	claimed	One measured rung-drop disposition and its generated ledger projection must agree with the partition witness.
-// rn_A2D2NFPBYQZXF81RY2FH99H7BG	debt-seed-growth-orphan-justifications	5	Historical comparison	accepted	The accepted handback resolved three known orphan justifications with a single completeness witness.
-// rn_H0MWRZQ38CFBQVWY7FY0XZWYBW	debt-grandfathered-removals-declared	10	Historical comparison	accepted	Distinguishing truly dead identities from host-generated ones required a measured population join before declaring removals.
-// rn_WAW3H5BBVS3G17249HKMR1BX73	shell-dag-emit-host-node-http-smoke	35	Candidate leaf estimate	open	The existing route lacks a background-process lifecycle model, which the typed smoke needs for startup, cleanup and its hermetic control.
-// rn_Q9M2BGTANKHYH7MH4Z79NBFPAZ	shell-dag-host-reach-identity-probe	10	Candidate leaf estimate	open	Identity and hostname probes need dedicated argument builders and a decision on short host names before the equality check is meaningful.
-// rn_B4SE27370CQF1VHMWHMRANB56K	debt-nfr-mint-era-lens-batch	10	Candidate leaf estimate	claimed	One bounded lens family needs its remaining matches made total, the co-located rows deleted and the live roster rechecked.
-// rn_GFFS76KGHVTPS8QDMP8KAGDPSP	debt-fs-absence-roster-restate		Retired	retired	The filesystem-absence restatement is retired and a new attempt would need a current, separately admitted subject.
-// rn_90MWFH4W3TY4WJCEYX1YEHBPKA	emission-building-block-realization	30	Candidate leaf estimate	open	Several ownership and state-threading specimens need positive and violating examples plus measured outcomes on both available emitters.
-// rn_N8V3A6H9W3XX87NPVJ81E78M5X	emission-ownership-facts-survive-lowering	75	Candidate for decomposition	open	The first ownership loss must be traced through lowering to an actual consumer, repaired and measured before the remaining contracts can be priced.
-// rn_PF21EXV44N0VP89DSHTG1E8ZNM	emission-composite-patterns	35	Candidate leaf estimate	open	Three different composite patterns need justified cost bounds and executing controls for their ownership behavior.
-// rn_4FHSKX20JR8S9SGE3E7GEG1S73	emission-real-consumer-profiles	30	Candidate leaf estimate	open	Fixed real workloads need before-and-after profiling across multiple consumers and attribution to contracts or algorithmic findings.
-// rn_W009PFM599AS8444GNDVTE2D3F	emission-cost-native-successor	70	Candidate for decomposition	open	The emitted compiler and its successor must both qualify the specimens, with a required-route cost reading and a restored guarantee.
-// rn_WWVQ07RC0HF55DPM2CXNKWY8RR	fleet-state-frontier	10	Candidate leaf estimate	open	One complete machine-changing workflow must be classified by its state authorities and refuse an unclassified action.
-// rn_Z3FS3HMD5WWH1Z7FGPK1KAWJBM	fleet-health-0-live-receipt	4	Candidate leaf estimate	open	The health check has fixtures and a stated route, so the immediate handback is a qualified live receipt and reconciliation of the historical PRs.
-// rn_TD7X82087026JR4X3XKSHAT7Z6	fleet-health-1-admitted-baselines	10	Candidate leaf estimate	open	Durable baseline selection must distinguish four observation windows and reject rebaselining from a divergent reading.
-// rn_YWBBMCMY5FHC2Q5VCX9AA8MA46	fleet-health-2-serving-admission	10	Candidate leaf estimate	open	A real admission decision must consume fresh host health while a previously serving divergent host becomes a drain candidate.
-// rn_FH7X3QWQJ14MVMN9ES41C4HNZ6	srv1-srv2-bmc-firmware-exposes-memory-errors	20	Candidate leaf estimate	open	Qualifying a firmware change on two physical hosts and observing a real memory signal has hardware-dependent validation and timing.
-// rn_W1PKZZXFM2CS3TKAXDG59PD29S	srv3-srv4-fan-threshold-flapping-floods-the-event-log	10	Candidate leaf estimate	open	The observed fan behavior needs a diagnosis, one supported hardware or policy correction and a measured event-log retention horizon.
-// rn_H1TH1ZJTFQNC5G2Q7YHJ7RMZZF	dimm-temperature-limits-need-a-citation	4	Candidate leaf estimate	open	Installed part identity can be matched to its published temperature limit and recorded once per applicable sensor.
-// rn_7CMXV1QBZ4KTPN9HDRJF08SW6	fleet-assessment-build-provenance-join	10	Candidate leaf estimate	open	A four-way build and delivery provenance join must actually block assessment on mismatch, dirty state or missing observation.
-// rn_3WZQ8WHXK5CVTB1NDRM7FJ204P	fleet-srv2-retirement-completion	40	Candidate leaf estimate	open	One host retirement spans three known blockers, an authorized transaction and independent readback confirming no remaining work.
-// rn_2GPKWK8FXAKETC8ATH3MJEXEXC	fleet-convergence-census-closure	30	Candidate leaf estimate	open	Closing the production convergence census requires classifying each effect family and verifying the disposition against live consumers.
-// rn_W964QANFVKCPEBGKP50F0036KH	fleet-convergence-legacy-deletion	60	Candidate for decomposition	open	Removing all superseded persistent-state routes requires coverage across the fleet, a working successor for each and a surviving refusal test.
-// rn_FABRIC0STORAGE0PROGRAM0A	fabric-storage		Needs a defined leaf	open	The charter calls this a standing storage program whose privately defined members have yet to enter the roadmap.
-// rn_FABRIC0DEMAND0OBJECTIVE0A	fabric-demand-objective	35	Candidate leaf estimate	open	A demand valuation and interruption stance must affect both selection and admission, with a three-case comparison on real policy inputs.
-// rn_FABRIC0CONSEQUENCE0STAND0A	fabric-consequence-standing	10	Candidate leaf estimate	open	Per-candidate consequence dispositions need one consuming move-or-wait decision and distinct missing, bounded and irrelevant cases.
-// rn_FABRIC0DIMENSION0EXTEND0A	fabric-dimension-extension-law	10	Candidate leaf estimate	open	A reconstruction-cost example must change one candidate decision while leaving an unrelated decision alone under the shared rule.
-// rn_FABRIC0SCENARIO0EVALUATE0A	fabric-scenario-evaluation	30	Candidate leaf estimate	open	A deterministic scenario runner must cover five candidate actions and distinguish two known historical errors on paired comparisons.
-// rn_FABRIC0CI0FAILOVER0SELECT0A	fabric-customer-ci-failover	75	Candidate for decomposition	open	Actual CI failover with fencing spans an owned runner, a cloud fallback and durable storage across eight cases.
-// rn_3J8ET2JKC02CWJT8WMH4Y6F953	fleet-cap-bracket-keeps-running-units	4	Candidate leaf estimate	open	One existing bracket must preserve an already-running unit, demonstrated against the known failing baseline.
-// rn_V2SSDWZR3G2KNSQ1BGRARSKTE2	fleet-no-route-masks-a-running-unit	10	Candidate leaf estimate	open	The supported mask policy must be settled across routes and checked against running and drained units on each affected path.
-// rn_7KQF3TB9WD4XMH2C8SVA6UYGPN	fleet-mask-grants-cover-slots-the-model-keeps	3	Standings refresh needed	unobserved	The retire-set grant already has a measured population and needs one narrowed authorization, regenerated rendering and mismatch control.
-// rn_X5XSR3QY6G0J91JHYJ0S317PFS	fabric-slot-roster-covers-srv3	3	Candidate leaf estimate	open	The recorded host-layout ruling identifies the stale control, leaving one roster-versus-control correction and its receipt.
-// rn_44VKSHNX2ZNTDRCPGGNSFJWCWN	2-scm-git-upstream-model	10	Historical comparison	accepted	The accepted Git model covered a real repository’s read and write-back, one refusal and representation limits grounded in Git documentation.
-// rn_5JX128MQ9XYR760B5CFC3VECTN	2-scm-mercurial-upstream-model	10	Historical comparison	accepted	The accepted Mercurial model required an actual round trip and an explicit account of capabilities and native differences.
-// rn_5MGS40RC9NE9HPFA4V5M2VVR19	2-scm-pijul-upstream-model	10	Historical comparison	accepted	The accepted Pijul model executed a small change set in two orders and preserved native behavior in the readback.
-// rn_629P2SF909R5C71V2HPCK4TJMD	2-claim-indexed-evidence	30	Historical comparison	accepted	One accepted evidence model had to represent four verdict combinations and agree across three consuming features.
-// rnfx_DQV1HD42VR40BA8WBP1Y	2-scm-compatibility-shape	30	Historical comparison	accepted	Three native SCM adapters and their capability matrix had to agree on one identity-bearing compatibility projection.
-// rn_026DCFC306A7B44B061483AA71	2-scm-p0-landing-spine	60	Historical comparison	accepted	The accepted landing model integrated seven semantic receipts and twenty-two executing journey witnesses across proposal, admission and projection.
-// rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L	floor-ceiling-roster-cut-completeness	8	Candidate leaf estimate	open	A bounded classification becomes possible once a complete routed run supplies the population needed to move a misclassified check.
-// rn_HPROMPT0CONTEXT0MODEL00A	harness-prompt-context-model	35	Candidate leaf estimate	open	Four related prompt-context types, a rendering receipt and migration of the existing guidance producer cross several interfaces.
-// rn_VE9DT9JA8RC2C17TYAA2ZG2HDZ	factory-principal-display-never-raw	10	Candidate leaf estimate	open	One typed display projection must handle an unnameable principal across the existing render sites and their controls.
-// rn_A0SYP0J1P3JE8W8OBX6M3BD777	roadmap-operator-attested-acceptance	25	Standings refresh needed	unobserved	A new attestation kind crosses write authorization, receipt representation and two standing displays, with an operator-only refusal.
-// rn_T9WMSXR8TINTG2USDRXH82NQKJ	roadmap-criteria-digest-validated-at-write	8	Standings refresh needed	unobserved	The write path must compare the actual criteria digest, reject disagreement and expose the same digest through a runnable command.
-// rn_EC2Q1GBHKNDXCYY16PRC6QYPRB	factory-f1-pool-on-the-live-line	30	Conditional on scope or split	open	Conditional on the draft charter, placing verification on the live compute pool crosses dispatch, execution and a real capacity-backed receipt.
-// rn_4W6FENEZRT43M5VN1DADW25C78	factory-f2-every-attempt-takes-a-seat	30	Conditional on scope or split	open	Conditional on the draft charter, every attempt must acquire a seat across multiple entry points before concurrency can be derived.
-// rn_E5NMXV1YRZ4Y0GECTMWHKTCMB4	factory-f3-host-budget-and-backstop	35	Conditional on scope or split	open	Conditional on the draft charter, deriving a host budget and observing an enforced kernel backstop needs model, host configuration and live validation.
-// rn_3KKTEV6PT526CXTHHYBFPJQ2Q9	factory-f4-builds-keyed-on-rust-inputs	10	Conditional on scope or split	open	Conditional on the draft charter, the compiler cache key must distinguish a source-only planning edit from an actual Rust-input change on a real build.
-// rn_HCHECKPOINT0PLANNER000A	harness-checkpoint-subject-planner		Retired	retired	The checkpoint planner is retired, so its proposed four-obligation derivation supplies no active estimate.
-// rn_HCONVO0LOG0FORK0POINTS0A	harness-conversation-log-forking		Retired	retired	The conversation-log fork design is retired, including its proposed crash-recovery and replay work.
-// rn_HALIGN0CHECKPOINT0RESUME0A	harness-alignment-checkpoint-resume	40	Candidate leaf estimate	open	A durable alignment event must survive checkpoint, rooted projection, adjudication and resume on the actual harness route.
-// rn_V4DA84ECDMCWTY3EN3ZWD2V78Y	factory-f6-scoped-worker-grants	40	Conditional on scope or split	open	Conditional on the draft charter, one real worker must operate under scoped grants and demonstrate revocation on its consuming route.
-// rn_CREDENTIAL0LIFECYCLE0REVOKE	credential-lifecycle-revocation	60	Candidate for decomposition	open	Issuance, rotation and revocation span multiple distinct credential classes, each requiring its own executed drill before the service can claim coverage.
-// rn_A9QSP5ZMHYH0WDJR571D78N439	contained-development-execution		Needs a defined leaf	open	Both relevant intentions call for the operator to bound this standing veto or retire it, and the row has no defined completion test.
-// rn_PXZXMFT33WRW139V3ZM0Z03M81	factory-f5-off-the-control-host	30	Conditional on scope or split	open	Conditional on the draft charter, placing a build away from the control host crosses fabric placement, host isolation and measured execution.
-// rn_5NTJP2XWCB7QVK0HDRM8FZ4136	boot-probe-must-not-read-a-bare-124-as-a-deadline	4	Candidate leaf estimate	open	The timeout producer must preserve a distinction between two events with exit 124 through one verdict, with a paired control.
-// rn_52ZXVWC7S94RYF4YJHZCN00GCS	namespace-occurrence-transport	30	Historical comparison	accepted	The accepted work transported declaration identity through the compiler and proved two same-named occurrences stay distinct.
-// rn_KFQ7I41NISIGTPGPWND9NDJEML	namespace-binding-kernel	10	Historical comparison	accepted	One canonical function checked a supplied candidate set and ran none, one, many, malformed and wrong-role examples.
-// rn_7QF3M2KDX8VNAT6JWZR0PC5HY	namespace-structural-observations	60	Historical comparison	accepted	The dated calibration records roughly ten weeks from the first PR to the accepted four-observation control on an ordinary compiled file.
-// rn_ERV25EYAMEVV1G6JQ8XAXWDHAS	v2-namespace-cutover		Priced in native-seven-names-homed, compiler-closure-names-homed-and-types-merged, corpus-names-homed-and-collisions-discharged and import-grammar-and-lines-deleted. Verify any distinct residual.	open	The old charter covers the repo-wide name migration already represented by priced name, binding and grammar items. Identify a distinct deliverable before assigning this row additional effort.
-// rn_K7P3X9Q2MN8R6WTH5JVD4MCZ1G	shell-dag-cron-entry-line-builder	4	Candidate leaf estimate	claimed	One typed cron-line builder replaces one concatenation and runs against an existing pinned witness.
-// rn_R6Q3X8K2WP9N5TF7JHL4MZCBD	shell-dag-compile-pool-slice-install	10	Candidate leaf estimate	claimed	Both staging and install realizations must leave shell assembly and pass the already-authored execution control.
-// rn_L5T9X3K8WQ2N6RF7JHP4MZCBD	shell-dag-slot-population-census-read	4	Candidate leaf estimate	claimed	One typed argument-vector census read replaces the old rejoin and can be checked by its pinned witness.
-// rn_N8X5T2K9WQ3R6PF7JHL4MZCBD	shell-dag-codex-app-server-trip-script	10	Candidate leaf estimate	claimed	Retiring the sentinel multiplexer and scaffold requires the typed command to preserve distinct outcomes through the real launch.
-// rn_F4X9T6K2WQ8N3RP7JHL5MZCBD	shell-dag-live-deploy-install-owned	10	Candidate leaf estimate	claimed	Typed writes and ownership must both substitute for the deployment installation text on the existing execution check.
-// rn_H7X2T9K5WQ8N3RF6JLP4MZCBD	shell-dag-live-deploy-restart-tailscale	10	Candidate leaf estimate	claimed	Restart and network-service invocations both need typed privileged argument vectors verified by the existing witness.
-// rn_4XK7P2WQ9BNF6RTH3VJD8MCZ5L	gate-refusal-reason-survives-wrapper	10	Candidate leaf estimate	open	The gate wrappers must preserve a typed refusal reason all the way to an executing consumer across the affected surface.
-// rn_SZKN5YRA7FH46J1Z6THGN080G1	v1-test-hygiene-producer-retirement	10	Historical comparison	accepted	The accepted retirement required a behavior-equivalence run on the retained cases before deleting the old producer.
-// rn_HZJEM68DT207HQH449FPR3VZPA	v1-seed-honesty-decision	5	Historical comparison	accepted	One check capable of failing and a recorded disposition bounded the accepted seed decision.
-// rn_7QVX2K4M9NBTR6HDJ0FZ8SWCPE	v1-interpreter-primitive-roster	30	Historical comparison	accepted	The accepted roster derived three different denominators from real dispatch arms and required completeness at row grain.
-// rn_ZD63T58V6YJR8Y3TJJ090QAZVF	parse-node-source-extent	75	Candidate for decomposition	open	Both parsers must emit all extents across production, infix, repeat and root paths before the remaining import rescan can be deleted.
-// rn_JXW6HYEDDAHGZ77HCGTYSF3FX3	parse-comment-gap-attachment	30	Candidate leaf estimate	open	Shared comment placement needs structural neighbor agreement across parse and reparse, plus deletion of three refusal arms on real corpus input.
-// rn_J2HQNCTQJGT2X0MTR31TB6HE8F	parse-comment-gap-attachment-v2	30	Candidate leaf estimate	open	The v2 authored parser must attach every captured comment through one roster and agree with v1 on neighbor identity.
-// rn_K7QW3M9TZP4XH2D6VB8NRC5JYE	parse-comment-gap-attachment-v2-consumed	10	Candidate leaf estimate	open	One production caller must consume the authored parser and actually run the cross-parser agreement check on the gated route.
-// rn_NBX7Z3E7CSV0JBT611DGGXG1AD	eval-memo-admission-rewire-program	70	Candidate for decomposition	open	Multiple producer rewires and removal must preserve behavior and cost under two evaluator realizations across the required floor.
-// rn_2CB9RP256VFYH7KM4NXQ8WDT3A	v1-interpreter-p256-verify-cost-shape	75	Candidate for decomposition	open	Identifying the cost boundary and restoring eight interpreted verification witnesses requires an instrumented compiler change under measured memory limits.
-// rn_RVJ5GW9Q2D7Y3PKAKTNRT0DCSB	egress-numeric-bit-sealed-carrier	4	Recheck delivered work before staffing	open	The carrier is cited as landed, leaving a bounded check of the admission roster and the deleted divergence entry before acceptance.
-// rn_06FZGM9B7W8J44J7R6QXA1MJWM	egress-numeric-bit-kernel-arms	30	Candidate leaf estimate	open	Two bit-operation authorities must be reconciled across both realizations and remeasured through the SHA-256 consumer.
-// rn_V42QB2G0GX8FK5APP66A0MPRNE	egress-numeric-bit-multi-limb	30	Candidate leaf estimate	open	The initial two-limb carry example must extend to the declared arithmetic roster and pass its representation controls.
-// rn_SYXHP92KEGX92XNFBZRXBQW2BV	egress-crypto-0-sha256-landing	30	Candidate leaf estimate	open	A former HMAC change must be requalified against current semantics and instrumented on the native and interpreted paths.
-// rn_YFQ6WQM8AAHBKJ5CASXXZPJ569	egress-crypto-0-curve-and-sign	90	Candidate for decomposition	open	Multiple hash and curve primitives each need independent vectors before the signing and verification routes can deliver the first pure-path attestation.
-// rn_KKAGM3C9SB50J0KSHGPYXDTM4J	egress-encoding-0-cbor-der-landing	30	Candidate leaf estimate	open	The encoding landing must repair five known defects and replace oversized integration witnesses before producing a fresh receipt.
-// rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX	egress-encoding-0-bytes-seam	30	Candidate leaf estimate	open	Each switched byte primitive needs a working replacement before its interpreter route and registry entry can be deleted.
-// rn_RTHC6H20EMH3K0C8TAMCJ6P527	egress-effects-1-filesystem-provider	30	Candidate leaf estimate	open	The native filesystem handler must reach the driver root and reject restated semantics while retiring the associated follow-up rows.
-// rn_5NMAXZFR0Q4ER63G6VYDH6NHA5	egress-content-hash-fnv-kernel	8	Candidate leaf estimate	open	A new FNV kernel arm has an existing fold as its differential oracle and one superseded route to delete.
-// rn_AEJBJV14KK79Y09AY00WVZ0056	egress-census-quiet-host-and-decomposition	30	Candidate leaf estimate	open	Three same-revision measurements need a quiet host and the mixed semantic findings must then be decomposed into distinct obligations.
-// rn_Q71AC17SGZB8PMP7PF756C3P13	egress-optional-at-required-tail	4	Candidate leaf estimate	open	The historic branch identifies one outstanding name collision, so the immediate task is to requalify its resolution and control on current sources.
-// rn_1KRJKPNSVCMTVHGHXH91HYFPZ4	egress-program-residue	30	Candidate leaf estimate	open	Forty consumed admissions are only the first population among several residual items that must each land or receive a supported disposition.
-// rn_6ZFZPYVBX39088FFTWTNF3SCXJ	self-host-service-family-on-literal-terminal	30	Candidate leaf estimate	open	A prepared grammar change must replace twelve keyword rules, preserve refusals and restore the measured population to baseline.
-// rn_4YXQ47680VA8B4GNGGVPV2DQZ8	whole-service-witness-costs-more-than-its-budget	10	Candidate leaf estimate	open	Establishing the unique witness obligation and comparing both gate measurements is bounded, with any admission requiring a live decision.
-// rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF	compiler-identity-invariant-under-corpus-commit	10	Candidate leaf estimate	open	One compiler identity derivation must serve two production keys and distinguish changes to compiler inputs from unrelated corpus commits.
-// rn_E414RDCS728VRFA9QZ0NX76SYN	pderive-typesafe-nullary-reflection	10	Historical comparison	accepted	One typed lookup and its transferred caller proved that a mismatched declaration cannot pass reflection.
-// rn_HVYDDT9844FY806ZKBDV5KVQDR	pderive-static-supplemental-contract	10	Historical comparison	accepted	A record with several type slots had to survive serialization and readback while invalid supplemental requirements refused.
-// rn_0CPDNZRQA7JMPR0SDG5XSG5987	pderive-source-slot-binding	10	Candidate leaf estimate	open	A nested generic declaration must carry the exact source-to-slot mapping and detect a deliberate swap.
-// rn_W3JP9BYW55W695XXAGS4KRVS8K	pderive-v2-emitter-consumer	35	Candidate leaf estimate	open	The real v2 emitter must produce nested bounds with provenance and compile the result once its slot and emitter-door prerequisites are available.
-// rn_KSJNTEDB15YG37HBQXP8P62XJ8	v2-emitter-producer-provenance	5	Historical comparison	accepted	The effort carrier cites this provenance relabel and false-producer refusal as the measured example of an easy item taking about one week.
-// rn_223FAUHF5IVK24UVR6PPYSXQCI	v2-target-realization-gate	30	Candidate leaf estimate	open	Splitting admission by target needs an executing gate, a distinct refusal and reconciliation with primitive identities for remaining targets.
-// rn_JNQNQAP6N7Y65GV8VJ1ZX1008P	xl2-body-lowering	10	Candidate leaf estimate	open	One uses-clause function must lower to the declared carrier and satisfy a discriminating module-level control.
-// rn_JH8P1X7KKYF54KVJ8Q28FQ4XF9	core-type-merges	45	Candidate leaf estimate	open	Five core-type merges need separate authority decisions and kernel roster receipts, beyond the first historical PR.
-// rn_3EKESCS249Q33VF90XKMDBB3DQ	occurrence-identity-allocation	10	Candidate leaf estimate	open	Production allocation must be checked against a real collision survey and the delivered allocator before the historical PR references settle the handback.
-// rn_3TYG9FAKZRNAC1ASPJCZKYMQPM	generic-records-from-context	10	Candidate leaf estimate	open	Generic record inference must use its expected type with positive and negative controls, and the cited merged PR needs a current receipt.
-// rn_YC2SYE05XWHP3Y9JP7GHMRSWDT	cross-module-declarations	30	Candidate leaf estimate	open	Declaration identity must survive resolution and typing across modules, with both delivery slices checked on their surviving controls.
-// rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ	v2-self-grounding-frontier	35	Candidate leaf estimate	open	The acceptance review returned this item because counting underived facts did not establish the required inference behavior.
-// rn_R34TEJZQSFSFZPHUPA3QLNDXYY	v2-translate-underived-refusal	30	Candidate leaf estimate	open	A returned acceptance requires actual refusal in translation and distinct dispositions across the paths that still admit an underived specimen.
-// rn_33MD6AG25ANERCNTXHLLCWSRAA	v2-inferred-tree-completeness	70	Candidate for decomposition	open	Three inference paths and their translation consumers must migrate to split carriers before the completeness judgment can advance.
-// rn_G2BR1NCSAD24KP0TA14TA89PMV	serving-liveness-route-withdrawal	35	Candidate leaf estimate	open	The first liveness cut landed, while progress observation, placement denial and release of seats must still agree for a stopped engine.
-// rn_XEE3RW84EBYKEBCPQD9HA6XYBB	direct-website-serving		Needs a defined leaf	open	The ticket supplies a title and a pending contracts document with no first workload, observable handback or stated serving boundary.
-// rn_FAILURE0BILLING0OUTCOMES0A	failure-billing-outcomes	30	Candidate leaf estimate	open	Five distinct non-success endings each need an unambiguous billing disposition and an exercising drill, independent of commercial prices.
-// END leaf_sizing_research
-// Research exclusions: containment parents. Parent totals derive from members.
-// cardinality-absence
-// ci-end-to-end-execution
-// compiler-guarantee
-// convergence-coverage
-// customer-workspace-service
-// debt-payoff
-// demand-engine
-// dp-m1-dissolvable-rows-retired
-// dp-m2-shell-residue-retired
-// dp-m4-closed-matches-total
-// dp-m5-absence-established
-// emission-minimum-cost
-// fabric-application-authority
-// fabric-bringup
-// factory
-// factory-on-fabric
-// gunbc-project-root
-// harness-recursive-alignment
-// managed-identity-access-dependencies
-// microvm-runtime-durable-state
-// namespace-unique-on-chain
-// native-route-to-live
-// shell-typed-invocation
-// v1-deletion-program
-// v2-compiler-live
-// v2-emitter-production
-// v2-frontend
-// v2-shared-type-check
-// vm-service
-// work-execution-redesign
-// Research exclusions: remaining items with a priced work decomposition.
-// ci-executed-coverage-receipt
-// compiler-closure-names-homed-and-types-merged
-// corpus-names-homed-and-collisions-discharged
-// declaration-identity-switchover
-// declaration-provider-outcomes
-// demand-d13-dependency-demand
-// dogfood-g1-shared-computation-record
-// dogfood-g5-isolated-execution-record
-// emitted-contracts-held
-// emitter-produces-main-rs
-// external-specimen-compiles
-// fabric-worker-event-log
-// factory-attempt-execution-on-fabric-lease
-// factory-dogfood-route
-// import-grammar-and-lines-deleted
-// literal-elaboration
-// names-bind-to-the-unique-declaration
-// namespace-ambiguity-discharge
-// namespace-legacy-choice-retirement
-// namespace-reference-derived-closure
-// namespace-reference-derived-producer-bounded
-// namespace-v2-import-completion
-// native-frontier-required-lane
-// native-production-admission
-// native-seven
-// native-seven-names-homed
-// native-test-verdict-realization
-// one-declaration-identity-carrier
-// one-standard-library
-// one-text-carrier
-// operations-are-declarations
-// roadmap-claim-names-leaf
-// roadmap-dispatch-carries-leaf
-// roadmap-leaf-in-flight-set
-// roadmap-leaf-realized-duration
-// roadmap-return-to-principal-records-acceptance
-// roadmap-schedule-bottlenecks-and-offer
-// roadmap-schedule-calendar-binding
-// roadmap-schedule-from-now
-// roadmap-schedule-leaf-expansion
-// roadmap-schedule-list-scheduling
-// roadmap-spawn-frontier-leaf-grain
-// roadmap-timeline-page
-// roadmap-typed-handback
-// roadmap-work-item-projection
-// sealed-phases-and-the-checked-carrier
-// second-generation
-// serve-held-open-response
-// service-evidence-capture
-// shared-check-lets-and-matches
-// typed-refusals-own-control-flow
-// universe-ingest-replaces-file-acquisition
-// v1-emitter-delete
-// v1-emitter-fixed-point
-// v1-emitter-quarantine
-// v1-hand-queue-drain
-// v1-honest-frontier
-// v1-interpreter-delete
-// v1-interpreter-primitive-dispatch-authority
-// v1-interpreter-quarantine
-// v1-products-v1-free
-// v1-rust-source-observation
-// v1-test-migration
-// v1-zero-hand-maintained-rust
-// v2-emitter-direct-rust-door
-// v2-emitter-first-behavioral-module
-// v2-emitter-native-bootstrap
-// v2-emitter-native-crate-partition
-// v2-emitter-production-compatible-corpus-module
-// work-exec-0-identity-estimate-split
-// work-exec-1-placement-backend-selection
-// work-exec-2-durable-route-first-consumer
-// work-exec-3-automatic-sizing
-// work-exec-4-local-work-cutover
-// work-exec-5-ci-verdict-from-receipt
-// work-exec-6-one-ledger-per-host
+// ======================= THE ONE REPRESENTATION (operator, 2026-11-19) =======================
+// gunbc.design_ruling::estimates_are_one_representation_derived_upward: an estimate names EITHER a T-shirt
+// size OR a duration in working days, at the author's choice, and the other form is derived from it through
+// ONE table. A row carries no start, no done and no pessimistic date: those are derived from the duration,
+// the dependency edges and the worker count, and are bound to dates at the read
+// (gunbc.roadmap.roadmap_schedule_calendar::bound_day_to_date) -- an authored date beside a duration is the
+// dual representation the ruling closes. `EffortEstimate` above keeps its 18 appended rows untouched as
+// history and takes no new one (`dated_rows_are_closed_to_the_ruling` below seals it).
+// THE SUBJECT IS THE DURABLE IDENTITY, NOT THE SLUG -- the same law the sizing adapter follows
+// (gunbc.roadmap.roadmap_model::roadmap_node_identity_law, and node_sizing_subject_id one line of it): a slug
+// can change under the evidence that was joined to it. A row is appended and never edited, so a revision is a
+// NEW row with a later `made`, exactly the discipline the dated carrier already kept.
+// HOURS APPEAR NOWHERE: the duration carrier is an Int of working days, the grain
+// gunbc.roadmap.roadmap_schedule schedules in, marked with its own feature/dissolve-on markers there. There is
+// no hour field to write, so there is no hour to refuse.
+
+type EstimateSize = SizeXs | SizeS | SizeM | SizeL | SizeXl | SizeXxl
+
+fn size_label(s: EstimateSize) -> String {
+  match s {
+    SizeXs => "XS",
+    SizeS => "S",
+    SizeM => "M",
+    SizeL => "L",
+    SizeXl => "XL",
+    SizeXxl => "XXL"
+  }
+}
+
+// THE ONE REPRESENTATION, and the only constructor pair: a row that named a size AND a duration would not
+// typecheck, because there is no carrier for both.
+type EstimateForm = SizedEstimate { size: EstimateSize } | DaysEstimate { working_days: Int }
+
+type RoadmapEstimateRow {
+  subject: RoadmapNodeIdentity
+  made: Iso8601CivilDate
+  value: EstimateForm
+  basis: String
+}
+
+fn estimate_row(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, value: EstimateForm, basis: String) -> RoadmapEstimateRow {
+  RoadmapEstimateRow { subject: subject, made: made, value: value, basis: basis }
+}
+
+// THE STREAM, and the only carrier of authored estimates: entries are appended and never edited, and an entry is
+// either a ROW (a price, in one of the two forms) or a REVOCATION (a price withdrawn, with its reason). The
+// revocation is what keeps the append-only discipline from becoming a trap -- merry-moth-343's lifecycle case is a
+// leaf priced, then split into priced children: without a release the former price would contradict its children
+// forever, and with one it stops pricing the node while staying readable in the stream. Same shape as the roadmap
+// event log: append the event, never rewrite the earlier one.
+//
+// EMPTY THE DAY THIS LANDS, on purpose and not by omission: sizing the roughly 290 nodes is its own lane and its own
+// session (the operator assigned it 2026-11-19), and this mechanism must be green with zero rows in it -- an unsized
+// node is a LISTED state in the Gantt answer, never a price, never a default
+// (gunbc.design_argument::fail_closed). Rows arrive from the sizing lane only, appended by whoever holds the basis
+// for them; the consumer is the ctrl dashboard planning timeline
+// (gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page), reading through
+// gunbc.roadmap.roadmap_estimate_derivation and gunbc.roadmap.roadmap_item_gantt, which is the only reader that turns
+// a duration into dates.
+type EstimateRevocation {
+  subject: RoadmapNodeIdentity
+  made: Iso8601CivilDate
+  withdraws_made: Iso8601CivilDate
+  reason: String
+}
+
+type EstimateEntry
+  = EstimateRecorded { row: RoadmapEstimateRow }
+  | EstimateRevoked { revocation: EstimateRevocation }
+
+fn estimate_revoked(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, withdraws_made: Iso8601CivilDate, reason: String) -> EstimateEntry {
+  EstimateRevoked { revocation: EstimateRevocation { subject: subject, made: made, withdraws_made: withdraws_made, reason: reason } }
+}
+
+fn estimate_recorded(row: RoadmapEstimateRow) -> EstimateEntry { EstimateRecorded { row: row } }
+
+// The 2026-11-19 readings cover undecomposed leaves at roadmap revision 82aff98d.
+// Each basis describes the work priced on that node. Project totals derive from containment.
+data roadmap_estimate_entries: List<EstimateEntry> = [
+  // cardinality-absence-conformance
+  estimate_recorded(row: estimate_row(
+    subject: "rn_44E8L35PWJQQR8833G5F8ARNXQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One three-valued conformance criterion must feed both the document and brief and distinguish the enrolled controls.",
+  )),
+  // cardinality-optional-declaration
+  estimate_recorded(row: estimate_row(
+    subject: "rn_X9MHZ7FXWXKKS32YBXJASTZJM5" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Two optional spellings must resolve to one declaration through the production route while homonyms and nested layers remain distinguishable.",
+  )),
+  // cardinality-native-closure-cutover
+  estimate_recorded(row: estimate_row(
+    subject: "rn_8RSG8MNVXVE4QKRZHKJ7AN8WJT" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A real native closure must migrate a named cohort across producer and consumer boundaries and execute both join and nested-optional controls.",
+  )),
+  // cardinality-carrier-consolidation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_H4C2NSEPA3NKL7SY387ZP8VVQ2" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Each consolidated carrier requires a canonical replacement, consumer migration and an executing control across the registry cohort.",
+  )),
+  // cardinality-realization-conformance
+  estimate_recorded(row: estimate_row(
+    subject: "rn_CMUYU95KGPZWV6WDZ7XGZ7W5A9" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Nine specimens must run across the retained realizations, with separate evidence for each unsupported path.",
+  )),
+  // cardinality-absence-retirement
+  estimate_recorded(row: estimate_row(
+    subject: "rn_37DWVWGXSEPGF8WZ7HT6TNAXZB" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 60),
+    basis: "Removing an allowance requires finding every surviving consumer, replacing its behavior and discharging each formerly permitted case.",
+  )),
+  // cardinality-vertical-slice
+  estimate_recorded(row: estimate_row(
+    subject: "rn_LOVW74OSEOKAJHINOV2BVHPNCE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One producer-consumer seam must enforce an explicit nonempty interval and compile the discriminating positive control.",
+  )),
+  // extended-admission-cardinality
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FAF4MACL7ZXJMZ3GX6DJIR4E5S" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Enrolling one admission rule includes a planted violation and a whole-tree run after the rule is activated.",
+  )),
+  // ci-required-run-cost
+  estimate_recorded(row: estimate_row(
+    subject: "rn_RSPTW7T9VRES9F7FHCP08QFGX5" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Four phase measurements must be attributed to their input populations on the required route and reproduced from its receipt.",
+  )),
+  // floor-memory
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Measuring the largest memory term is only the first step, as the handback also requires changing it and measuring the resulting peak.",
+  )),
+  // ci-cost-floor-preparation-cut
+  estimate_recorded(row: estimate_row(
+    subject: "rn_K6EVN9SKS7WV617GECTH3N2TPQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The measured preparation bottleneck determines which construction to change, followed by a required run over the enrolled population.",
+  )),
+  // claim-entry-resolution-population
+  estimate_recorded(row: estimate_row(
+    subject: "rn_9HVXR4CBM0KT2WPND7FJ3QZY85" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The output is a bounded census of the two entry populations with named differences and dispositions.",
+  )),
+  // test-reference-discipline-remainder
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Z4Z5N3JJ9M8D6XBGHFV5HQHJMY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A required-run enrollment must execute the old reds and either demonstrate a v2 refusal or transfer its named obligation.",
+  )),
+  // required-floor-passes-with-a-failed-phase
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ARHDM19A4Y5Z6EVGYFAWCJ434C" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "One failed-phase count controls the final verdict, with a failing run and an otherwise identical clean run.",
+  )),
+  // runner-throughput-witness-imports-absent-members
+  estimate_recorded(row: estimate_row(
+    subject: "rn_02PRZ2Q7Q5Q8TJRANYM293HKJD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "One witness import must agree with a real exported member and pass on its existing phase run.",
+  )),
+  // action-use-yaml-reader-contract
+  estimate_recorded(row: estimate_row(
+    subject: "rn_J01EG5E1CAAVTYVJPKPXFXZCGM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Replacing the YAML projection requires a modeled reader, decoded-shape controls across workflow inputs and a remeasured census.",
+  )),
+  // required-lane-exit-on-refused-phase
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PDMRS0Y8J3EBDYNRPWZFH23C93" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 12),
+    basis: "One exit mapping is small, while the handback also audits other refusal arms and dates the silent skipping against real runs.",
+  )),
+  // workflow-census-claim-budget-margin
+  estimate_recorded(row: estimate_row(
+    subject: "rn_BR2JFR598QVXCXM82STJS2RW4S" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A named instrument must isolate the mapping-entry cost on the largest workflow and demonstrate margin as the input grows.",
+  )),
+  // action-runtime-epoch-observation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_XMKDEM3GM4NYQ4QXPEDVK4H6MB" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One runner-side runtime observation must distinguish a matching epoch from two invalid configurations.",
+  )),
+  // discarded-bool-result-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ZXQH9CD43E8XH64CHYBT99WD9W" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The corpus census determines whether one refusal can land directly or needs a migration roster whose removal depends on its population.",
+  )),
+  // native-emit-match-binding-keeps-its-type
+  estimate_recorded(row: estimate_row(
+    subject: "rn_D3470QB6GPYD3PWSJMNGGMFV27" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 12),
+    basis: "A typed parameter must survive both the seed mint and native match binding, demonstrated on the healed seed and a real serve entry.",
+  )),
+  // per-function-claim-run-loads-string-dispatched-names
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EP54CSQWDFDY1JRAD5Q0HJV8F8" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One per-function loader must include string-dispatched callees and prove the standalone execution resolves them.",
+  )),
+  // list-append-refuses-an-element-argument
+  estimate_recorded(row: estimate_row(
+    subject: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The generic argument relation must reject a scalar passed to list append with a located diagnostic and matching valid call.",
+  )),
+  // effect-summary-env-carries-listed-imports
+  estimate_recorded(row: estimate_row(
+    subject: "rn_9VRS5PZJDA30H78V0QH694Q70W" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The effect-summary environment must consume listed imports and retire its census fallback without changing the other effect joins.",
+  )),
+  // v2-complexity-analysis-parity
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ZBFRF5QZPMSD6FY93DR7GRATHV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 70),
+    basis: "A real function needs a derived complexity summary, a bounded evaluation and an actual refusing consumer across still-unsettled compiler phases.",
+  )),
+  // v1-checker-gaps
+  estimate_recorded(row: estimate_row(
+    subject: "rn_RE7HEXR6WVEE6AWMSKC4E1NQNA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "The historical PR closed unmerged and each surviving checker gap needs purpose adjudication plus its own restored check or retirement condition.",
+  )),
+  // ladder-probe-corpus
+  estimate_recorded(row: estimate_row(
+    subject: "rn_T6JTXDKQBI6FDZ742FSGRZRQNA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Existing controls must be migrated into per-class, per-path probe pairs and coverage re-derived for the whole enrolled roster.",
+  )),
+  // ladder-claims-carrier
+  estimate_recorded(row: estimate_row(
+    subject: "rn_SJMVG3RD7JEGUGEKJPOWH567UY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One family of requirement, ceiling and measured-disposition carriers must derive path dispositions from the existing schema.",
+  )),
+  // compiler-declaration-floor
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6NCVX2QTBZ0KWR9DPMHJLG5837" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Five declaration defect classes require distinct located refusals plus correct declarations that still compile.",
+  )),
+  // method-established-surface-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The ticket cites landed receiver controls and delegates the remaining receiver families, leaving one bounded receipt to recheck.",
+  )),
+  // method-receiver-normalization
+  estimate_recorded(row: estimate_row(
+    subject: "rn_TMC5UFTYNMSBMS7FLXYIVQCSRE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Receiver types must be recovered from record-field lambda signatures, then checked against the measured unresolved families.",
+  )),
+  // method-zero-resolution-general-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_M25FZG43IT6MSBIWBQBONOUSZM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Replacing the builtin fallback with a refusal requires adjudicating every reached site in the corpus.",
+  )),
+  // method-call-shape-seam
+  estimate_recorded(row: estimate_row(
+    subject: "rn_42Z3Z646SNDZBMVXYDU7RSL4JA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Checking method-call argument labels at one seam requires a discriminating positive and negative pair under the seed scope rule.",
+  )),
+  // call-label-and-surplus-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The ticket cites the landed label and surplus checks and names separate owners for missing arguments and signature coverage.",
+  )),
+  // call-missing-and-duplicate-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EXUHLON5V24YU7Z4XLJFWEZO33" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 12),
+    basis: "The duplicate-argument check has a cited delivery while the independently testable missing-argument half still needs a refusal and controls.",
+  )),
+  // call-signature-resolution-coverage
+  estimate_recorded(row: estimate_row(
+    subject: "rn_GVLXWYYRQV47WTJLSSIFX7FLFM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A typed fallthrough census precedes repairing the number and kinds of signatures that lookup cannot yet resolve.",
+  )),
+  // declared-conformance-ground-fragment
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The existing grounded-fragment probes are cited as delivered and the broader conformance work has separate owners.",
+  )),
+  // declared-conformance-grounding
+  estimate_recorded(row: estimate_row(
+    subject: "rn_WGRZFAYJ5EDVPNEQ42UAK7TD6D" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Peeling brand aliases feeds a second semantic relation and each grounded representation class needs residue and probe evidence.",
+  )),
+  // declared-conformance-general-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_E6PQ6WQR2J7SLMGBR62P3ECKGY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Broadening conformance across the corpus depends on grounding and adjudicating affected representation classes.",
+  )),
+  // argument-type-compatibility-grounding
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EAOINVVBM732ZXS42ELVZAUPQV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The ticket records the argument exemption as retired and directs verification to its surviving relation controls and disposition.",
+  )),
+  // floor-exhaustiveness-refusal
+  estimate_recorded(row: estimate_row(
+    subject: "rn_VEY66GYMNYZ24LWJQJGZGCFLRI" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Two exhaustiveness arms and an explicit unknown verdict need a typed lookup control to distinguish missing information from acceptance.",
+  )),
+  // floor-generic-field-constraint-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_P64CH3KXIZGL43SFS5DNJX52EQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The real residual generic-field sites must be remeasured before either fixing them or documenting each remaining trigger.",
+  )),
+  // floor-method-ambiguity-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KPPUUSOXKTMKVJWBCW4G74ZP6A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "An exactly-one method derivation must distinguish ambiguous duplicates from legitimate alias-reconciled receivers.",
+  )),
+  // floor-parse-formation-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_VNYPK344GM56QEWP34G7VCG4OA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Two malformed parse shapes need located refusals and full-corpus validation that legitimate syntax stays accepted.",
+  )),
+  // floor-record-construction-wall
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ILWLG34LVL5SAS6QPN5GZDPMFY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Missing required record fields must refuse at the construction judgment with paired controls and a corpus check.",
+  )),
+  // accepted-obligation-door-mechanism
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The required-path admission mechanism must consume the carrier rows and reject a planted path with no consumer across the audited population.",
+  )),
+  // accepted-floor-obligation-closure
+  estimate_recorded(row: estimate_row(
+    subject: "rn_5FUBPPKWUGPBAYADIIIR3LDZKQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "Activating the floor depends on an exemption-free census, disposition of outstanding cases and a successful run after the change.",
+  )),
+  // primitive-identity-join
+  estimate_recorded(row: estimate_row(
+    subject: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "The final handback joins several primitive-identity authorities across every surface and reconciles their populations beyond the initial schema.",
+  )),
+  // determinism-denominator-closure
+  estimate_recorded(row: estimate_row(
+    subject: "rn_DETERMINISM_DENOMINATOR_CLOSURE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The identity-keyed determinism classification has landed according to the ticket, but closing it requires the denominator receipt and deletion of the interim registry.",
+  )),
+  // compiler-source-exemption-removal
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JPU4RUV5DNELDCZI4JUQGWHICM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The ticket identifies the exemption as retired, so the bounded closing check is its adjudication and recorded deletion evidence.",
+  )),
+  // unforgeable-construction-capability
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JLPYDWJUCGBUPQ734NGPEQLMWI" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The forgery primitive has a cited deletion, while the full form-by-context matrix must still establish the remaining construction capabilities.",
+  )),
+  // ladder-census-emitters
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ITD5F26B5RMK7FMDMO6Q7ZQDFA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Two rendered views must come from one class-disposition projection, with the roadmap rendering destination settled first.",
+  )),
+  // lab-converges-release-pair
+  estimate_recorded(row: estimate_row(
+    subject: "rn_HU66GO90952PAFHSG2A5UNZQWW" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 25),
+    basis: "One production-shaped service deployment must pair the release and source head, survive the cutover and return that pair through the served standings.",
+  )),
+  // deploy-converge-serve-quiesced
+  estimate_recorded(row: estimate_row(
+    subject: "rn_XR5XF8MTD80RQ4YGTV7Q6ZNK08" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 12),
+    basis: "Quiescing or excluding serve snapshot worktrees needs one explicit ownership decision and both deliberate failure and success controls.",
+  )),
+  // deploy-intent-owns-artifact-closure
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Two installs and a per-unit read inventory must establish and repair the deployment intent’s complete artifact set.",
+  )),
+  // fleet-converge-artifact-closure
+  estimate_recorded(row: estimate_row(
+    subject: "rn_5Y4YAYGG7Y4EVCDN7T9XT1Z89P" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Three fleet units each need an authoritative enable decision, declared artifact reads and a missing-read control.",
+  )),
+  // deploy-release-roster-carries-every-owned-step
+  estimate_recorded(row: estimate_row(
+    subject: "rn_20NKA9WYGMKXA5JPA4YM8KXD5X" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Two different member kinds need desired and observed identities, drift and keep controls, and a gate test on the real release roster.",
+  )),
+  // cc-path-census
+  estimate_recorded(row: estimate_row(
+    subject: "rn_K6TBWN5T4J6FV5B2X0HN3VHCW4" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The convergence roster must join identities across the actual production paths and turn a planted omission red.",
+  )),
+  // cc-compiler-floor
+  estimate_recorded(row: estimate_row(
+    subject: "rn_XW56ZS6QC1081AFR252PR2RBPS" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A native compiler invocation must reject a planted record-at-scalar mismatch and retain the original class control.",
+  )),
+  // cc-structural-carriers
+  estimate_recorded(row: estimate_row(
+    subject: "rn_59AP6NKF1MH8GB1VNDYRHEK9X0" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One shared reader must preserve all valid statement children and explicitly reject unsupported extra children.",
+  )),
+  // cc-qualified-operands
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Q73CZQQFQHZKC9VP6ZEW6AAW8W" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The existing operand mint must supply both the package installation and its readback, with one deliberate mismatch refused.",
+  )),
+  // cc-observation-distinctions
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6EVP7PRFRA1V1WDS1WA1137XCX" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A broken-but-active service needs its own observation arm and a downstream consumer that keeps it distinct from access failure.",
+  )),
+  // cc-lifecycle-ownership
+  estimate_recorded(row: estimate_row(
+    subject: "rn_WWHPSKXKDTFH62WJ1D6VD3HJ04" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Promoting a candidate needs a real activation identity and closure acceptance, followed by a roster of the remaining member kinds.",
+  )),
+  // cc-selection-to-use
+  estimate_recorded(row: estimate_row(
+    subject: "rn_QXKD8Q0EHNVEQKS6Q7N0FF946R" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One production effect must consume its selected revision and branch identity while preserving the development route.",
+  )),
+  // cc-evidence-to-consumers
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6XYMKSJ1TTTE4XQ1RTZMFG19GM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One qualified candidate must carry the observed instrument result to its next consumer and expose a missing pairing.",
+  )),
+  // cc-guaranteed-cleanup
+  estimate_recorded(row: estimate_row(
+    subject: "rn_QFTG2N0RXM7R70HPJ8BDDHH045" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Compute-seat cleanup crosses ensure, recovery and independent readback and must preserve ownership until the worker is proven gone.",
+  )),
+  // review-sheet-identity-producer-and-admission
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "Three identity producers, a complete join and admission on the real route must retire the existing consumer gaps.",
+  )),
+  // review-sheet-properties-write-and-legacy-retirement
+  estimate_recorded(row: estimate_row(
+    subject: "rn_8QF2XJNLD6VKC3ZRW9HTYB4MSP" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 25),
+    basis: "The properties write must support identity-bound readback and establish the scope of the legacy generation before retiring it.",
+  )),
+  // census-job-level-observation-and-reprojection
+  estimate_recorded(row: estimate_row(
+    subject: "rn_9JXQW2VTNB5KZCR7MHPD4GYL60" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Obtaining complete paged job attempts and deriving occupancy must reproduce or explain the historical census for a real repository.",
+  )),
+  // census-app-registration-installation-and-custody
+  estimate_recorded(row: estimate_row(
+    subject: "rn_2HKDQZ8WVNX4TBM6RCPJLG0517" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "An owner-run registration must produce a real App, installation and key-custody receipt, with separate failure states for each.",
+  )),
+  // census-installation-token-via-app-jws-route
+  estimate_recorded(row: estimate_row(
+    subject: "rn_5TBHM9XKCWQ2VLF7NRJD8GYZ3E" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The existing signing components still need one composed token performer and a live control with the fallback removed.",
+  )),
+  // parse-prepared-grammar-analysis-carried
+  estimate_recorded(row: estimate_row(
+    subject: "rn_DCHDCNK5Z6GZP693VSZA6MC84T" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "The prepared grammar must carry analysis and layout through all parse entry points until no caller reconstructs it.",
+  )),
+  // v1-parse-allocator-carried
+  estimate_recorded(row: estimate_row(
+    subject: "rn_BS0YK7QAA67P73F6YYGZRTGXJ3" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Allocator state must thread through every old recovery path while fixture identities stay equal before and after.",
+  )),
+  // v2-grammar-preparation-first-summaries
+  estimate_recorded(row: estimate_row(
+    subject: "rn_HQF67ZYAVPCEVTYNYWMCC6N5KM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Grammar preparation can reuse child summaries once choice and sequence construction preserve and consume those summaries.",
+  )),
+  // v2-predicate-recognition-without-materialization
+  estimate_recorded(row: estimate_row(
+    subject: "rn_D48CRKRR0HAT5PNPTVY491JD05" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Predicate recognition must stop constructing discarded nodes on all predicate paths while preserving parse behavior.",
+  )),
+  // v1-source-chars-converted-once
+  estimate_recorded(row: estimate_row(
+    subject: "rn_A8SREB643YJ2KHT9424TXFE388" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "Tokenization and newline indexing can consume one converted input through the same ingest route.",
+  )),
+  // v2-parse-final-token-retained
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FA2BX92WF9PGE7FWZBG60E0XP8" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "The EOF diagnostic can read the retained final token and remove one recovery walk.",
+  )),
+  // printed-chassis-python-kernel-retirement
+  estimate_recorded(row: estimate_row(
+    subject: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Four distinct preparation and readback kernels must move to typed folds with controls against their existing external tools.",
+  )),
+  // dp-m6-native-route-walls
+  estimate_recorded(row: estimate_row(
+    subject: "rn_E4T64NMJ992QHGRWCCV9AS0J7M" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Several native compiler guarantees need restoring witnesses on the executing path, and the remaining population must be checked against contemporary drops.",
+  )),
+  // extdeps-subject-ref-facts-host-census
+  estimate_recorded(row: estimate_row(
+    subject: "rn_01M7NQG5SWMS74ZGXDH6X55TQ8" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 25),
+    basis: "One host census primitive must cross registry, identity and generated artifacts and refuse nonliteral declaration subjects.",
+  )),
+  // dp-m3-subject-ref-resolved
+  estimate_recorded(row: estimate_row(
+    subject: "rn_H3NLOAANZ5KMIP89PZHKFN2N5A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 12),
+    basis: "A bounded host-level census must resolve 844 declared subjects and distinguish four planted invalid references.",
+  )),
+  // demand-serve-program-image
+  estimate_recorded(row: estimate_row(
+    subject: "rn_MGB7PA8AHA6B26CRK6R36G6HZS" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "A natively built service image must clear unenumerated compiler refusals, serve real requests and demonstrate restart and memory behavior.",
+  )),
+  // demand-serve-entry-compile-time
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7TVTYN2VYB4NSQH9YHZ2Q654R3" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The 1,607-second compile first needs phase attribution, followed by an actual cost reduction and a repeatable same-revision measurement.",
+  )),
+  // demand-m1c
+  estimate_recorded(row: estimate_row(
+    subject: "rn_YVM056Z9DF1W6ZXVY98E94Q4EA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Six generation-identity axes need real digests and a reproducible cold/warm persistent hit after the earlier attempt closed unmerged.",
+  )),
+  // demand-m2
+  estimate_recorded(row: estimate_row(
+    subject: "rn_867Z80DK1Y2D5ZTJFD2B0EMGNK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 60),
+    basis: "Replacing authored relations with inferred dependencies includes a dynamic demand protocol and a real consumer that refuses restated flow.",
+  )),
+  // demand-m3b
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3BHFWZVSHPK9KCDE56SJ6XZHZP" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Two scheduling consumers and their graph representations must migrate before a census can justify removal of the older routes.",
+  )),
+  // demand-m4
+  estimate_recorded(row: estimate_row(
+    subject: "rn_HXDPS01BJR58FJZZSK1PVDG2YV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Binding costs to actual identities, choosing serve versus recompute and refusing unmeasured exemptions requires an executing decision and measurement.",
+  )),
+  // demand-m5
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4VF69YS9G2R3BP26MWW2HDAE2D" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 100),
+    basis: "Five separately accepted demand-engine replacements cover process leases, persistent materialization, a parse sweep, jobserver tokens and residual width removal.",
+  )),
+  // demand-m6
+  estimate_recorded(row: estimate_row(
+    subject: "rn_1K3E7TVTM89JY0TK3Z388N659Y" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 120),
+    basis: "Source, parse, resolution, inference, evaluation and native verdict each need identity-keyed materialization and byte-equivalent recomputation controls on the live route.",
+  )),
+  // demand-m7
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FRVCKNSSJXX0Z3D1YKMHSYWB91" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 60),
+    basis: "Append-stable decomposition needs law evidence, a discriminating counterexample and an economic choice on real sequential consumers.",
+  )),
+  // debt-expected-red-mock-totality-dead-rows
+  estimate_recorded(row: estimate_row(
+    subject: "rn_DFA6ZN2CC6KNQS8AHHWZC9G2SV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "Two expected-red chunks and their enrollment can be removed after showing the before and after identity counts agree.",
+  )),
+  // debt-rung-drop-measurement-bankruptcy-retire
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Z63EBECXVGZPQ3DXD6E55DEQ1S" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "One measured rung-drop disposition and its generated ledger projection must agree with the partition witness.",
+  )),
+  // shell-dag-emit-host-node-http-smoke
+  estimate_recorded(row: estimate_row(
+    subject: "rn_WAW3H5BBVS3G17249HKMR1BX73" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "The existing route lacks a background-process lifecycle model, which the typed smoke needs for startup, cleanup and its hermetic control.",
+  )),
+  // shell-dag-host-reach-identity-probe
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Q9M2BGTANKHYH7MH4Z79NBFPAZ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Identity and hostname probes need dedicated argument builders and a decision on short host names before the equality check is meaningful.",
+  )),
+  // debt-nfr-mint-era-lens-batch
+  estimate_recorded(row: estimate_row(
+    subject: "rn_B4SE27370CQF1VHMWHMRANB56K" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One bounded lens family needs its remaining matches made total, the co-located rows deleted and the live roster rechecked.",
+  )),
+  // emission-building-block-realization
+  estimate_recorded(row: estimate_row(
+    subject: "rn_90MWFH4W3TY4WJCEYX1YEHBPKA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Several ownership and state-threading specimens need positive and violating examples plus measured outcomes on both available emitters.",
+  )),
+  // emission-ownership-facts-survive-lowering
+  estimate_recorded(row: estimate_row(
+    subject: "rn_N8V3A6H9W3XX87NPVJ81E78M5X" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "The first ownership loss must be traced through lowering to an actual consumer, repaired and measured before the remaining contracts can be priced.",
+  )),
+  // emission-composite-patterns
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PF21EXV44N0VP89DSHTG1E8ZNM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Three different composite patterns need justified cost bounds and executing controls for their ownership behavior.",
+  )),
+  // emission-real-consumer-profiles
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4FHSKX20JR8S9SGE3E7GEG1S73" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Fixed real workloads need before-and-after profiling across multiple consumers and attribution to contracts or algorithmic findings.",
+  )),
+  // emission-cost-native-successor
+  estimate_recorded(row: estimate_row(
+    subject: "rn_W009PFM599AS8444GNDVTE2D3F" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 70),
+    basis: "The emitted compiler and its successor must both qualify the specimens, with a required-route cost reading and a restored guarantee.",
+  )),
+  // fleet-state-frontier
+  estimate_recorded(row: estimate_row(
+    subject: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One complete machine-changing workflow must be classified by its state authorities and refuse an unclassified action.",
+  )),
+  // fleet-health-0-live-receipt
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Z3FS3HMD5WWH1Z7FGPK1KAWJBM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The health check has fixtures and a stated route, so the immediate handback is a qualified live receipt and reconciliation of the historical PRs.",
+  )),
+  // fleet-health-1-admitted-baselines
+  estimate_recorded(row: estimate_row(
+    subject: "rn_TD7X82087026JR4X3XKSHAT7Z6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Durable baseline selection must distinguish four observation windows and reject rebaselining from a divergent reading.",
+  )),
+  // fleet-health-2-serving-admission
+  estimate_recorded(row: estimate_row(
+    subject: "rn_YWBBMCMY5FHC2Q5VCX9AA8MA46" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A real admission decision must consume fresh host health while a previously serving divergent host becomes a drain candidate.",
+  )),
+  // srv1-srv2-bmc-firmware-exposes-memory-errors
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FH7X3QWQJ14MVMN9ES41C4HNZ6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 20),
+    basis: "Qualifying a firmware change on two physical hosts and observing a real memory signal has hardware-dependent validation and timing.",
+  )),
+  // srv3-srv4-fan-threshold-flapping-floods-the-event-log
+  estimate_recorded(row: estimate_row(
+    subject: "rn_W1PKZZXFM2CS3TKAXDG59PD29S" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The observed fan behavior needs a diagnosis, one supported hardware or policy correction and a measured event-log retention horizon.",
+  )),
+  // dimm-temperature-limits-need-a-citation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_H1TH1ZJTFQNC5G2Q7YHJ7RMZZF" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "Installed part identity can be matched to its published temperature limit and recorded once per applicable sensor.",
+  )),
+  // fleet-assessment-build-provenance-join
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7CMXV1QBZ4KTPN9HDRJF08SW6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A four-way build and delivery provenance join must actually block assessment on mismatch, dirty state or missing observation.",
+  )),
+  // fleet-srv2-retirement-completion
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3WZQ8WHXK5CVTB1NDRM7FJ204P" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "One host retirement spans three known blockers, an authorized transaction and independent readback confirming no remaining work.",
+  )),
+  // fleet-convergence-census-closure
+  estimate_recorded(row: estimate_row(
+    subject: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Closing the production convergence census requires classifying each effect family and verifying the disposition against live consumers.",
+  )),
+  // fleet-convergence-legacy-deletion
+  estimate_recorded(row: estimate_row(
+    subject: "rn_W964QANFVKCPEBGKP50F0036KH" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 60),
+    basis: "Removing all superseded persistent-state routes requires coverage across the fleet, a working successor for each and a surviving refusal test.",
+  )),
+  // fabric-demand-objective
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FABRIC0DEMAND0OBJECTIVE0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "A demand valuation and interruption stance must affect both selection and admission, with a three-case comparison on real policy inputs.",
+  )),
+  // fabric-consequence-standing
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FABRIC0CONSEQUENCE0STAND0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Per-candidate consequence dispositions need one consuming move-or-wait decision and distinct missing, bounded and irrelevant cases.",
+  )),
+  // fabric-dimension-extension-law
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FABRIC0DIMENSION0EXTEND0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A reconstruction-cost example must change one candidate decision while leaving an unrelated decision alone under the shared rule.",
+  )),
+  // fabric-scenario-evaluation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FABRIC0SCENARIO0EVALUATE0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A deterministic scenario runner must cover five candidate actions and distinguish two known historical errors on paired comparisons.",
+  )),
+  // fabric-customer-ci-failover
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FABRIC0CI0FAILOVER0SELECT0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "Actual CI failover with fencing spans an owned runner, a cloud fallback and durable storage across eight cases.",
+  )),
+  // fleet-cap-bracket-keeps-running-units
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3J8ET2JKC02CWJT8WMH4Y6F953" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "One existing bracket must preserve an already-running unit, demonstrated against the known failing baseline.",
+  )),
+  // fleet-no-route-masks-a-running-unit
+  estimate_recorded(row: estimate_row(
+    subject: "rn_V2SSDWZR3G2KNSQ1BGRARSKTE2" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The supported mask policy must be settled across routes and checked against running and drained units on each affected path.",
+  )),
+  // fleet-mask-grants-cover-slots-the-model-keeps
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7KQF3TB9WD4XMH2C8SVA6UYGPN" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "The retire-set grant already has a measured population and needs one narrowed authorization, regenerated rendering and mismatch control.",
+  )),
+  // fabric-slot-roster-covers-srv3
+  estimate_recorded(row: estimate_row(
+    subject: "rn_X5XSR3QY6G0J91JHYJ0S317PFS" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 3),
+    basis: "The recorded host-layout ruling identifies the stale control, leaving one roster-versus-control correction and its receipt.",
+  )),
+  // floor-ceiling-roster-cut-completeness
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 8),
+    basis: "A bounded classification becomes possible once a complete routed run supplies the population needed to move a misclassified check.",
+  )),
+  // harness-prompt-context-model
+  estimate_recorded(row: estimate_row(
+    subject: "rn_HPROMPT0CONTEXT0MODEL00A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Four related prompt-context types, a rendering receipt and migration of the existing guidance producer cross several interfaces.",
+  )),
+  // factory-principal-display-never-raw
+  estimate_recorded(row: estimate_row(
+    subject: "rn_VE9DT9JA8RC2C17TYAA2ZG2HDZ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One typed display projection must handle an unnameable principal across the existing render sites and their controls.",
+  )),
+  // roadmap-operator-attested-acceptance
+  estimate_recorded(row: estimate_row(
+    subject: "rn_A0SYP0J1P3JE8W8OBX6M3BD777" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 25),
+    basis: "A new attestation kind crosses write authorization, receipt representation and two standing displays, with an operator-only refusal.",
+  )),
+  // roadmap-criteria-digest-validated-at-write
+  estimate_recorded(row: estimate_row(
+    subject: "rn_T9WMSXR8TINTG2USDRXH82NQKJ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 8),
+    basis: "The write path must compare the actual criteria digest, reject disagreement and expose the same digest through a runnable command.",
+  )),
+  // factory-f1-pool-on-the-live-line
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EC2Q1GBHKNDXCYY16PRC6QYPRB" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Conditional on the draft charter, placing verification on the live compute pool crosses dispatch, execution and a real capacity-backed receipt.",
+  )),
+  // factory-f2-every-attempt-takes-a-seat
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4W6FENEZRT43M5VN1DADW25C78" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Conditional on the draft charter, every attempt must acquire a seat across multiple entry points before concurrency can be derived.",
+  )),
+  // factory-f3-host-budget-and-backstop
+  estimate_recorded(row: estimate_row(
+    subject: "rn_E5NMXV1YRZ4Y0GECTMWHKTCMB4" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "Conditional on the draft charter, deriving a host budget and observing an enforced kernel backstop needs model, host configuration and live validation.",
+  )),
+  // factory-f4-builds-keyed-on-rust-inputs
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3KKTEV6PT526CXTHHYBFPJQ2Q9" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Conditional on the draft charter, the compiler cache key must distinguish a source-only planning edit from an actual Rust-input change on a real build.",
+  )),
+  // harness-alignment-checkpoint-resume
+  estimate_recorded(row: estimate_row(
+    subject: "rn_HALIGN0CHECKPOINT0RESUME0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "A durable alignment event must survive checkpoint, rooted projection, adjudication and resume on the actual harness route.",
+  )),
+  // factory-f6-scoped-worker-grants
+  estimate_recorded(row: estimate_row(
+    subject: "rn_V4DA84ECDMCWTY3EN3ZWD2V78Y" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 40),
+    basis: "Conditional on the draft charter, one real worker must operate under scoped grants and demonstrate revocation on its consuming route.",
+  )),
+  // credential-lifecycle-revocation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_CREDENTIAL0LIFECYCLE0REVOKE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 60),
+    basis: "Issuance, rotation and revocation span multiple distinct credential classes, each requiring its own executed drill before the service can claim coverage.",
+  )),
+  // factory-f5-off-the-control-host
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PXZXMFT33WRW139V3ZM0Z03M81" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Conditional on the draft charter, placing a build away from the control host crosses fabric placement, host isolation and measured execution.",
+  )),
+  // boot-probe-must-not-read-a-bare-124-as-a-deadline
+  estimate_recorded(row: estimate_row(
+    subject: "rn_5NTJP2XWCB7QVK0HDRM8FZ4136" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The timeout producer must preserve a distinction between two events with exit 124 through one verdict, with a paired control.",
+  )),
+  // shell-dag-cron-entry-line-builder
+  estimate_recorded(row: estimate_row(
+    subject: "rn_K7P3X9Q2MN8R6WTH5JVD4MCZ1G" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "One typed cron-line builder replaces one concatenation and runs against an existing pinned witness.",
+  )),
+  // shell-dag-compile-pool-slice-install
+  estimate_recorded(row: estimate_row(
+    subject: "rn_R6Q3X8K2WP9N5TF7JHL4MZCBD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Both staging and install realizations must leave shell assembly and pass the already-authored execution control.",
+  )),
+  // shell-dag-slot-population-census-read
+  estimate_recorded(row: estimate_row(
+    subject: "rn_L5T9X3K8WQ2N6RF7JHP4MZCBD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "One typed argument-vector census read replaces the old rejoin and can be checked by its pinned witness.",
+  )),
+  // shell-dag-codex-app-server-trip-script
+  estimate_recorded(row: estimate_row(
+    subject: "rn_N8X5T2K9WQ3R6PF7JHL4MZCBD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Retiring the sentinel multiplexer and scaffold requires the typed command to preserve distinct outcomes through the real launch.",
+  )),
+  // shell-dag-live-deploy-install-owned
+  estimate_recorded(row: estimate_row(
+    subject: "rn_F4X9T6K2WQ8N3RP7JHL5MZCBD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Typed writes and ownership must both substitute for the deployment installation text on the existing execution check.",
+  )),
+  // shell-dag-live-deploy-restart-tailscale
+  estimate_recorded(row: estimate_row(
+    subject: "rn_H7X2T9K5WQ8N3RF6JLP4MZCBD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Restart and network-service invocations both need typed privileged argument vectors verified by the existing witness.",
+  )),
+  // gate-refusal-reason-survives-wrapper
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4XK7P2WQ9BNF6RTH3VJD8MCZ5L" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "The gate wrappers must preserve a typed refusal reason all the way to an executing consumer across the affected surface.",
+  )),
+  // parse-node-source-extent
+  estimate_recorded(row: estimate_row(
+    subject: "rn_ZD63T58V6YJR8Y3TJJ090QAZVF" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "Both parsers must emit all extents across production, infix, repeat and root paths before the remaining import rescan can be deleted.",
+  )),
+  // parse-comment-gap-attachment
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JXW6HYEDDAHGZ77HCGTYSF3FX3" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Shared comment placement needs structural neighbor agreement across parse and reparse, plus deletion of three refusal arms on real corpus input.",
+  )),
+  // parse-comment-gap-attachment-v2
+  estimate_recorded(row: estimate_row(
+    subject: "rn_J2HQNCTQJGT2X0MTR31TB6HE8F" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The v2 authored parser must attach every captured comment through one roster and agree with v1 on neighbor identity.",
+  )),
+  // parse-comment-gap-attachment-v2-consumed
+  estimate_recorded(row: estimate_row(
+    subject: "rn_K7QW3M9TZP4XH2D6VB8NRC5JYE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One production caller must consume the authored parser and actually run the cross-parser agreement check on the gated route.",
+  )),
+  // eval-memo-admission-rewire-program
+  estimate_recorded(row: estimate_row(
+    subject: "rn_NBX7Z3E7CSV0JBT611DGGXG1AD" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 70),
+    basis: "Multiple producer rewires and removal must preserve behavior and cost under two evaluator realizations across the required floor.",
+  )),
+  // v1-interpreter-p256-verify-cost-shape
+  estimate_recorded(row: estimate_row(
+    subject: "rn_2CB9RP256VFYH7KM4NXQ8WDT3A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 75),
+    basis: "Identifying the cost boundary and restoring eight interpreted verification witnesses requires an instrumented compiler change under measured memory limits.",
+  )),
+  // egress-numeric-bit-sealed-carrier
+  estimate_recorded(row: estimate_row(
+    subject: "rn_RVJ5GW9Q2D7Y3PKAKTNRT0DCSB" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The carrier is cited as landed, leaving a bounded check of the admission roster and the deleted divergence entry before acceptance.",
+  )),
+  // egress-numeric-bit-kernel-arms
+  estimate_recorded(row: estimate_row(
+    subject: "rn_06FZGM9B7W8J44J7R6QXA1MJWM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Two bit-operation authorities must be reconciled across both realizations and remeasured through the SHA-256 consumer.",
+  )),
+  // egress-numeric-bit-multi-limb
+  estimate_recorded(row: estimate_row(
+    subject: "rn_V42QB2G0GX8FK5APP66A0MPRNE" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The initial two-limb carry example must extend to the declared arithmetic roster and pass its representation controls.",
+  )),
+  // egress-crypto-0-sha256-landing
+  estimate_recorded(row: estimate_row(
+    subject: "rn_SYXHP92KEGX92XNFBZRXBQW2BV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A former HMAC change must be requalified against current semantics and instrumented on the native and interpreted paths.",
+  )),
+  // egress-crypto-0-curve-and-sign
+  estimate_recorded(row: estimate_row(
+    subject: "rn_YFQ6WQM8AAHBKJ5CASXXZPJ569" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 90),
+    basis: "Multiple hash and curve primitives each need independent vectors before the signing and verification routes can deliver the first pure-path attestation.",
+  )),
+  // egress-encoding-0-cbor-der-landing
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KKAGM3C9SB50J0KSHGPYXDTM4J" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The encoding landing must repair five known defects and replace oversized integration witnesses before producing a fresh receipt.",
+  )),
+  // egress-encoding-0-bytes-seam
+  estimate_recorded(row: estimate_row(
+    subject: "rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Each switched byte primitive needs a working replacement before its interpreter route and registry entry can be deleted.",
+  )),
+  // egress-effects-1-filesystem-provider
+  estimate_recorded(row: estimate_row(
+    subject: "rn_RTHC6H20EMH3K0C8TAMCJ6P527" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "The native filesystem handler must reach the driver root and reject restated semantics while retiring the associated follow-up rows.",
+  )),
+  // egress-content-hash-fnv-kernel
+  estimate_recorded(row: estimate_row(
+    subject: "rn_5NMAXZFR0Q4ER63G6VYDH6NHA5" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 8),
+    basis: "A new FNV kernel arm has an existing fold as its differential oracle and one superseded route to delete.",
+  )),
+  // egress-census-quiet-host-and-decomposition
+  estimate_recorded(row: estimate_row(
+    subject: "rn_AEJBJV14KK79Y09AY00WVZ0056" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Three same-revision measurements need a quiet host and the mixed semantic findings must then be decomposed into distinct obligations.",
+  )),
+  // egress-optional-at-required-tail
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Q71AC17SGZB8PMP7PF756C3P13" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 4),
+    basis: "The historic branch identifies one outstanding name collision, so the immediate task is to requalify its resolution and control on current sources.",
+  )),
+  // egress-program-residue
+  estimate_recorded(row: estimate_row(
+    subject: "rn_1KRJKPNSVCMTVHGHXH91HYFPZ4" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Forty consumed admissions are only the first population among several residual items that must each land or receive a supported disposition.",
+  )),
+  // self-host-service-family-on-literal-terminal
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A prepared grammar change must replace twelve keyword rules, preserve refusals and restore the measured population to baseline.",
+  )),
+  // whole-service-witness-costs-more-than-its-budget
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4YXQ47680VA8B4GNGGVPV2DQZ8" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Establishing the unique witness obligation and comparing both gate measurements is bounded, with any admission requiring a live decision.",
+  )),
+  // compiler-identity-invariant-under-corpus-commit
+  estimate_recorded(row: estimate_row(
+    subject: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One compiler identity derivation must serve two production keys and distinguish changes to compiler inputs from unrelated corpus commits.",
+  )),
+  // pderive-source-slot-binding
+  estimate_recorded(row: estimate_row(
+    subject: "rn_0CPDNZRQA7JMPR0SDG5XSG5987" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "A nested generic declaration must carry the exact source-to-slot mapping and detect a deliberate swap.",
+  )),
+  // pderive-v2-emitter-consumer
+  estimate_recorded(row: estimate_row(
+    subject: "rn_W3JP9BYW55W695XXAGS4KRVS8K" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "The real v2 emitter must produce nested bounds with provenance and compile the result once its slot and emitter-door prerequisites are available.",
+  )),
+  // v2-target-realization-gate
+  estimate_recorded(row: estimate_row(
+    subject: "rn_223FAUHF5IVK24UVR6PPYSXQCI" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Splitting admission by target needs an executing gate, a distinct refusal and reconciliation with primitive identities for remaining targets.",
+  )),
+  // xl2-body-lowering
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JNQNQAP6N7Y65GV8VJ1ZX1008P" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "One uses-clause function must lower to the declared carrier and satisfy a discriminating module-level control.",
+  )),
+  // core-type-merges
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JH8P1X7KKYF54KVJ8Q28FQ4XF9" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 45),
+    basis: "Five core-type merges need separate authority decisions and kernel roster receipts, beyond the first historical PR.",
+  )),
+  // occurrence-identity-allocation
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3EKESCS249Q33VF90XKMDBB3DQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Production allocation must be checked against a real collision survey and the delivered allocator before the historical PR references settle the handback.",
+  )),
+  // generic-records-from-context
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3TYG9FAKZRNAC1ASPJCZKYMQPM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 10),
+    basis: "Generic record inference must use its expected type with positive and negative controls, and the cited merged PR needs a current receipt.",
+  )),
+  // cross-module-declarations
+  estimate_recorded(row: estimate_row(
+    subject: "rn_YC2SYE05XWHP3Y9JP7GHMRSWDT" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Declaration identity must survive resolution and typing across modules, with both delivery slices checked on their surviving controls.",
+  )),
+  // v2-self-grounding-frontier
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "The acceptance review returned this item because counting underived facts did not establish the required inference behavior.",
+  )),
+  // v2-translate-underived-refusal
+  estimate_recorded(row: estimate_row(
+    subject: "rn_R34TEJZQSFSFZPHUPA3QLNDXYY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "A returned acceptance requires actual refusal in translation and distinct dispositions across the paths that still admit an underived specimen.",
+  )),
+  // v2-inferred-tree-completeness
+  estimate_recorded(row: estimate_row(
+    subject: "rn_33MD6AG25ANERCNTXHLLCWSRAA" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 70),
+    basis: "Three inference paths and their translation consumers must migrate to split carriers before the completeness judgment can advance.",
+  )),
+  // serving-liveness-route-withdrawal
+  estimate_recorded(row: estimate_row(
+    subject: "rn_G2BR1NCSAD24KP0TA14TA89PMV" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 35),
+    basis: "The first liveness cut landed, while progress observation, placement denial and release of seats must still agree for a stopped engine.",
+  )),
+  // failure-billing-outcomes
+  estimate_recorded(row: estimate_row(
+    subject: "rn_FAILURE0BILLING0OUTCOMES0A" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 19),
+    value: days_estimate(working_days: 30),
+    basis: "Five distinct non-success endings each need an unambiguous billing disposition and an exercising drill, independent of commercial prices.",
+  )),
+]
+
+// STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
+// and "after" has to mean strictly after rather than the antisymmetric collapse of <= onto itself.
+fn date_precedes(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  date_le(a: a, b: b) && !date_le(a: b, b: a)
+}
+
+// ======================= THE ONE CONVERSION TABLE (single authority) =======================
+// Each size names an INCLUSIVE working-day range; the ranges PARTITION the positive whole numbers, so every
+// duration lies in exactly one band (`estimate_table_partitions_the_line` checks it, and the witnesses check
+// the round-trip both ways). The scheduled duration of a size is its midpoint rounded up -- a single Int,
+// because the scheduler places Int days -- and it always lands inside its own band, which is what makes the
+// round-trip hold by construction rather than by test. The RANGE itself stays readable beside it
+// (`estimate_band`), so an answer can show "L, 16 to 49 days" without inventing a second number.
+// THE TOP BAND IS OPEN ABOVE; its `high` is the table's declared planning ceiling, carried there and nowhere
+// else, so the open top still has a midpoint. It is not a cap on what a node may cost: a duration above it
+// resolves to NO size and the caller refuses rather than clamping -- see `days_to_size`.
+// BASIS (measured, from this file's own header and its appended history): an easy node is about a week, and
+// the quick wins measured 3 to 5 working days, which is SizeS; a hard compiler node is 10 to 16 weeks, and
+// native-seven's first estimate carries exactly 50 working days to its realistic done and 80 to its
+// pessimistic done, which is SizeXl. Nothing measured sits under 3 days, so SizeXs is DECLARED for the work
+// under a week rather than inferred from data nobody has. The ceiling is twice the measured top of the hard
+// band (2 x 80), a declaration and not a measurement, because nothing measured as WORK reaches past it.
+// RE-CALIBRATION TRIGGER: realized durations -- gunbc.roadmap.roadmap_leaf_realized_duration. When a band's
+// realized working days fall outside its range, the bands move; a realized duration at or above the ceiling
+// moves the ceiling. Re-calibration is an edit to THIS table and nowhere else, because it is the single
+// authority (gunbc.design_argument::single_authority).
+type SizeBand {
+  size: EstimateSize
+  low: Int
+  high: Int
+}
+
+type EstimateTable {
+  bands: List<SizeBand>
+  basis: String
+  recalibration: String
+}
+
+data estimate_table: EstimateTable = EstimateTable {
+  bands: [
+    SizeBand { size: SizeXs, low: 1, high: 2 },
+    SizeBand { size: SizeS, low: 3, high: 5 },
+    SizeBand { size: SizeM, low: 6, high: 15 },
+    SizeBand { size: SizeL, low: 16, high: 49 },
+    SizeBand { size: SizeXl, low: 50, high: 80 },
+    SizeBand { size: SizeXxl, low: 81, high: 160 }
+  ],
+  basis: "measured from this carrier's own header and history: an easy node is about a week and the quick wins measured 3 to 5 working days (SizeS); a hard compiler node is 10 to 16 weeks and native-seven's first estimate carries 50 working days to done, 80 to pessimistic (SizeXl); SizeXs is declared, not measured, and the ceiling is twice the measured top of the hard band",
+  recalibration: "realized durations from gunbc.roadmap.roadmap_leaf_realized_duration: a band whose realized days fall outside its range moves the range, and a realized duration at or above the top band's high moves the ceiling"
+}
+
+fn estimate_band(t: EstimateTable, s: EstimateSize) -> Optional<SizeBand> {
+  match filter(t.bands, b => b.size == s) {
+    Empty => optional_absent()
+    Cons { head: b, tail: _ } => optional_present(value: b)
+  }
+}
+
+// THE MIDPOINT, ROUNDED UP. Integer division truncates, so (low + high + 1) / 2 is the ceiling of the
+// midpoint, and for a non-empty band it always lies within [low, high].
+fn band_scheduled_days(b: SizeBand) -> Int {
+  (b.low + b.high + 1) / 2
+}
+
+// DURATION TO SIZE: the bucket that contains it. A non-positive duration has no size and a duration above the
+// ceiling has NO SIZE -- the caller refuses both rather than clamping to the nearest band (a silent clamp
+// would price the biggest item in the roadmap at the table's own ceiling, which is the contradiction this
+// whole carrier exists to refuse).
+fn days_to_size(t: EstimateTable, days: Int) -> Optional<EstimateSize> {
+  match filter(t.bands, b => days >= b.low && days <= b.high) {
+    Empty => optional_absent()
+    Cons { head: b, tail: _ } => optional_present(value: b.size)
+  }
+}
+
+// THE ONE DERIVATION FROM THE ROW TO THE NUMBER THE SCHEDULER PLACES. A stated size gives its band's
+// midpoint; a stated duration gives itself, unchanged -- there is no second conversion and no rounding of a
+// literal. Non-positive and above-ceiling both answer Absent, and the caller names the side that failed.
+fn estimate_form_days(t: EstimateTable, v: EstimateForm) -> Optional<Int> {
+  match v {
+    DaysEstimate { working_days } => if working_days >= 1 { optional_present(value: working_days) } else { optional_absent() }
+    SizedEstimate { size } => match estimate_band(t: t, s: size) {
+      Empty => optional_absent()
+      Cons { head: b, tail: _ } => optional_present(value: band_scheduled_days(b: b))
+    }
+  }
+}
+
+// THE RANGE A SIZE NAMES, for the answer that reports a band rather than a single number.
+fn estimate_form_range(t: EstimateTable, v: EstimateForm) -> Optional<SizeBand> {
+  match v {
+    DaysEstimate { working_days } => match days_to_size(t: t, days: working_days) {
+      Present { value: s } => estimate_band(t: t, s: s)
+      Absent => optional_absent()
+    }
+    SizedEstimate { size } => estimate_band(t: t, s: size)
+  }
+}
+
+// THE PARTITION, checked rather than asserted: ascending bands starting at one working day, no gap and no
+// overlap, every band non-empty, and every scheduled midpoint inside its own band.
+fn estimate_table_partitions_the_line(t: EstimateTable) -> Bool {
+  all(t.bands, b => b.low >= 1 && b.high >= b.low && band_scheduled_days(b: b) >= b.low && band_scheduled_days(b: b) <= b.high)
+    && partition_is_contiguous(bands: t.bands)
+}
+
+// THE BANDS START AT ONE WORKING DAY AND CONTINUE WITHOUT A GAP OR AN OVERLAP. The list is authored in
+// ascending order (declaration order is the order); a gap or an overlap means some duration lands in no band
+// or in two, which is the table contradicting itself.
+fn partition_is_contiguous(bands: List<SizeBand>) -> Bool {
+  let walked = fold(bands, init: optional_present(value: 0), f: fn(acc, b) {
+    match acc {
+      Absent => optional_absent()
+      Present { value: prev_high } => if b.low == prev_high + 1 { optional_present(value: b.high) } else { optional_absent() }
+    }
+  })
+  let starts_at_one = match bands {
+    Empty => false
+    Cons { head: b, tail: _ } => b.low == 1
+  }
+  match walked {
+    Absent => false
+    Present { value: _ } => starts_at_one
+  }
+}
+
+// THE CEILING, read from the one table rather than restated anywhere: the top band's own high. It is not a cap on
+// what work may cost -- a duration above it resolves to NO size and the caller refuses (see `days_to_size`); it is
+// the declared top of the calibrated line, and the realized duration that reaches it is the trigger to raise it.
+fn estimate_ceiling() -> Int {
+  match estimate_band(t: estimate_table, s: SizeXxl) {
+    Present { value: b } => b.high
+    Absent => 0
+  }
+}
+
+// ROUND-TRIP, SIZE FIRST: the size the scheduler's number buckets back into is the size it came from.
+fn size_round_trips(t: EstimateTable, s: EstimateSize) -> Bool {
+  match estimate_form_days(t: t, v: sized_estimate(size: s)) {
+    Present { value: days } => match days_to_size(t: t, days: days) {
+      Present { value: back } => back == s
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// ROUND-TRIP, DURATION FIRST: a duration bucketed into a band still lies inside that band, so bucketing never
+// relocates work to a cheaper or dearer range than the one the number says it is in.
+fn days_round_trip_inside_band(t: EstimateTable, days: Int) -> Bool {
+  match days_to_size(t: t, days: days) {
+    Present { value: s } => match estimate_band(t: t, s: s) {
+      Present { value: b } => days >= b.low && days <= b.high
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn sized_estimate(size: EstimateSize) -> EstimateForm { SizedEstimate { size: size } }
+
+fn days_estimate(working_days: Int) -> EstimateForm { DaysEstimate { working_days: working_days } }
+
+// THE DATED CARRIER IS CLOSED. The 18 rows appended on 2026-11-17 and 2026-11-18 are history and stay as they
+// are -- the ruling forbids deleting or rewriting them, and the contradiction report reads them as they stand.
+// It takes no new row: a new row would author a start, a done and a pessimistic date, and under the ruling
+// those are DERIVED. This is the seal, so the closure is a check and not a comment.
+data dated_rows_closed_on: Iso8601CivilDate = d(y: 2026, m: 11, day: 19)
+
+fn dated_rows_are_closed_to_the_ruling() -> Bool {
+  all(roadmap_effort_estimates, e => date_le(a: e.made_on, b: dated_rows_closed_on))
+}

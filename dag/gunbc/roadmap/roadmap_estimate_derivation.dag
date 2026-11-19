@@ -1,0 +1,813 @@
+module gunbc.roadmap.roadmap_estimate_derivation
+
+// DERIVE UPWARD, AND REFUSE A CONTRADICTION BY NAME
+// (gunbc.design_ruling::estimates_are_one_representation_derived_upward, operator 2026-11-19: "the estimates can't
+// contradict each other - if a project node says 1w, but a single subnode says 2w, that is a contradiction - so we
+// should derive as much as possible (basically just the no dual representations applied to this planning)").
+//
+// CONTAINMENT IS THE ONLY ROLLUP. A node's estimate is derived from what is CONTAINED in it: a child by
+// NodeParent.MemberOf (the project whose work the child's contribution advances), or -- for a derived closing
+// contract task -- the same containment as the task it closes, plus the pieces a WorkDecomposition holds. It is
+// NEVER derived along RoadmapEdge. That carrier "is the complete dependency DAG" (gunbc.roadmap.roadmap_model, at
+// RoadmapEdge) and the same comment says its primary-parent index exists "for presentation placement only".
+// Prerequisites ORDER siblings; they do not contain them. Two consequences this module is built on, both learned
+// during this change and both now red controls:
+//   * rolling up along edges would refuse legitimate estimates on consecutive tasks -- A priced, B priced, B
+//     happens to wait on A -- which is a contradiction the operator did not describe and the rule must not invent;
+//   * an edge reached from two parents would add a shared prerequisite into two totals, double-counting work nobody
+//     agreed to pay for twice. Containment is a tree because each node carries one parent field (roadmap_model:
+//     "One field is one parent: two owners for one level has no constructor").
+// RoadmapEdge is read by exactly one unit in this lane -- gunbc.roadmap.roadmap_item_gantt, for precedence -- and no
+// number is derived from it here. merry-moth-343 found the first consequence by reading my fixtures; the cleared
+// list of prerequisite pairs in gunbc.roadmap.roadmap_effort_estimate's history is its witness.
+//
+// WORK IS SUMMED HERE; ELAPSED IS NOT. Total work is the sum over contained children, and that is this module's
+// whole arithmetic. Elapsed time -- the critical path over the edges between those children under a declared worker
+// count -- belongs to the one scheduler and is answered by gunbc.roadmap.roadmap_item_gantt through
+// gunbc.roadmap.roadmap_placement. A second placement here would be a second scheduler
+// (gunbc.design_argument::single_authority), so there is none, and no date is computed here either
+// (gunbc.design_ruling::planning_scheduling_is_cut: no date and no estimate is ever a dependency or a gate).
+//
+// FAIL CLOSED, IN EVERY DIRECTION. A duration above the table's ceiling resolves to NO size and is REFUSED, not
+// clamped; a non-positive duration is refused; a row whose subject names no live node is refused; two rows for one
+// subject made on one day is an ambiguity and is refused; an authored estimate on a node with an estimated
+// descendant is refused with BOTH sides named; an authored estimate on a node whose decomposition already prices its
+// pieces is refused with both numbers named. A node with nothing estimated under it is neither refused nor priced: it
+// is LISTED as unsized (gunbc.design_argument::fail_closed). The one thing that never happens here is a default.
+//
+// FIXTURES PLANT THEIR ROWS. Every function takes the rows it reasons about, so a witness constructs the case it is
+// testing instead of editing the roadmap. The `live_*` wrappers are the only readers of the carriers.
+//
+// THE SIZE VOCABULARY IS NOT std.types::FermiDepth, and that is deliberate rather than an oversight: FermiDepth
+// classifies how deep a transport's implementation goes (extdeps.transports, std.fidelity) and carries five
+// elements with no working-day meaning attached; a size here names a stated effort band over a partition of the
+// working-day line. Two different facts, so two types -- the reverse would be the dual representation.
+//
+// CONSUMPTION (gunbc.design_argument::consumption): the ctrl dashboard planning timeline
+// (gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page) reads estimate_answer through
+// gunbc.roadmap.roadmap_item_gantt, the only carrier of dates in this lane; estimate_contradictions is read by the
+// same lane's report and by this module's witness.
+//
+// PRIMITIVES ARE CHOSEN FROM THE REGISTERED SET ONLY: filter_map type-checks and does not run
+// (gunbc.roadmap.roadmap_belt_actuate records that failure, with the same trap one layer below fail_closed), so
+// every optional-to-list projection here is a flat_map, and there is no member/sort/dedupe call in this file.
+
+import std.types { String, Int, Bool, List }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, NodeParent, RoadmapEdge }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
+import gunbc.roadmap.roadmap_schedule_calendar { working_days_between }
+import gunbc.roadmap.roadmap_decomposition {
+  decomposition_for, WorkDecomposition, WorkStage, stages_leaf_days, stages_leaf_count,
+}
+import gunbc.roadmap.roadmap_effort_estimate {
+  EstimateSize, EstimateForm, RoadmapEstimateRow, EstimateEntry, EstimateRevocation, estimate_table,
+  estimate_form_days, days_to_size, estimate_ceiling, estimate_band, sized_estimate, days_estimate,
+  roadmap_estimate_entries, dated_rows_are_closed_to_the_ruling,
+  EffortEstimate, roadmap_effort_estimates, estimate_row, estimate_recorded,
+}
+
+// ============================== THE REFUSALS ==============================
+// One arm per way an estimate can be wrong, each naming the side that is wrong WITH ITS NUMBER, so no reader has to
+// go looking for the second fact that made the first one illegal. These are not strings: the caller matches on them
+// and the witness asserts their shape, so a future edit cannot turn a refusal into a default without going red.
+
+type EstimateRefusal
+  = EstimateSubjectNamesNoNode { subject: RoadmapNodeIdentity }
+  | EmptyEstimateBasis { subject: RoadmapNodeIdentity }
+  | NonPositiveEstimateDays { subject: RoadmapNodeIdentity, working_days: Int }
+  | EstimateAboveCeiling { subject: RoadmapNodeIdentity, working_days: Int, ceiling: Int }
+  | SizeHasNoBand { subject: RoadmapNodeIdentity, size: EstimateSize }
+  | RevocationNamesNoRow { subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate }
+  | RevocationPrecedesItsRow { subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate }
+  | EmptyRevocationReason { subject: RoadmapNodeIdentity }
+  | TwoEstimatesOneDay { subject: RoadmapNodeIdentity, made: Iso8601CivilDate }
+  | DatedCarrierReopened
+  | ContainmentCycle { nodes: List<RoadmapNodeId> }
+  | RestatedPieceDays { node: RoadmapNodeId, authored_days: Int, pieces_days: Int, pieces: Int }
+  | ContradictionFound { contradiction: EstimateContradiction }
+
+// THE CONTRADICTION, both sides named: the operator's case is a project at 1w standing beside one subnode at 2w, so
+// the record carries both nodes, both forms, both day counts and both bases.
+type EstimateContradiction {
+  ancestor: RoadmapNodeId
+  ancestor_identity: RoadmapNodeIdentity
+  ancestor_form: EstimateForm
+  ancestor_days: Int
+  ancestor_basis: String
+  descendant: RoadmapNodeId
+  descendant_identity: RoadmapNodeIdentity
+  descendant_days: Int
+  descendant_basis: String
+  descendant_from_pieces: Bool
+}
+
+// ============================== CONTAINMENT ==============================
+
+// How the carrier states this node's place: contained in the project it advances; sharing the containment of the
+// task it closes; or not contained at all (an admitted root, or no parent).
+type ContainmentName
+  = ContainedIn { project: String }
+  | SharesChainOf { target: String }
+  | NotContained
+
+fn containment_name(n: RoadmapNode) -> ContainmentName {
+  match n.parent {
+    Absent => NotContained
+    Present { value: p } => match p {
+      MemberOf { project, contribution } => ContainedIn { project: project }
+      AdmittedRoot => NotContained
+      Closes { target } => SharesChainOf { target: target }
+    }
+  }
+}
+
+fn node_by_slug(nodes: List<RoadmapNode>, slug: String) -> Optional<RoadmapNode> {
+  match filter(nodes, n => (n.node as String) == slug) {
+    Empty => optional_absent()
+    Cons { head: n, tail: _ } => optional_present(value: n)
+  }
+}
+
+fn node_by_node(nodes: List<RoadmapNode>, target: RoadmapNodeId) -> Optional<RoadmapNode> {
+  match filter(nodes, n => n.node == target) {
+    Empty => optional_absent()
+    Cons { head: n, tail: _ } => optional_present(value: n)
+  }
+}
+
+fn node_by_identity(nodes: List<RoadmapNode>, subject: RoadmapNodeIdentity) -> Optional<RoadmapNode> {
+  match filter(nodes, n => n.identity == subject) {
+    Empty => optional_absent()
+    Cons { head: n, tail: _ } => optional_present(value: n)
+  }
+}
+
+// THE ONE CONTAINMENT PARENT. A Closes task lands beside what it closes, not inside it: a task that finishes a
+// project is not work that project owes a second time. A MemberOf naming no declared node is DANGLING -- the roadmap
+// carries those on main today -- and reads as top level for rollup while `containment_dangling` lists it, because a
+// dangling project name is the row owner's to fix and refusing the whole roadmap's estimates for it would be this
+// lane deciding another lane's content. Silent is the one wrong answer, so it is listed.
+fn containment_parent(nodes: List<RoadmapNode>, n: RoadmapNode) -> Optional<RoadmapNodeId> {
+  match containment_name(n: n) {
+    NotContained => optional_absent()
+    ContainedIn { project } => match node_by_slug(nodes: nodes, slug: project) {
+      Present { value: container } => optional_present(value: container.node)
+      Absent => optional_absent()
+    }
+    SharesChainOf { target } => match node_by_slug(nodes: nodes, slug: target) {
+      Present { value: t } => containment_parent(nodes: nodes, n: t)
+      Absent => optional_absent()
+    }
+  }
+}
+
+// THE CHILDREN: everything contained in this node, in declaration order. Not the dependency edges -- see the header.
+fn contained_children(nodes: List<RoadmapNode>, parent: RoadmapNodeId) -> List<RoadmapNode> {
+  filter(nodes, n => match containment_parent(nodes: nodes, n: n) {
+    Present { value: p } => p == parent
+    Absent => false
+  })
+}
+
+fn contained_child_slugs(nodes: List<RoadmapNode>, parent: RoadmapNodeId) -> List<String> {
+  map(contained_children(nodes: nodes, parent: parent), n => n.node as String)
+}
+
+// Containment is a function (one parent field, one parent), so walking that function from a node and watching for a
+// repeat finds every cycle in it. Checked before anything recurses into children, so nothing below can loop.
+fn parent_chain_hits_repeat(nodes: List<RoadmapNode>, slug: String, visited: List<String>) -> Bool {
+  match node_by_slug(nodes: nodes, slug: slug) {
+    Absent => false
+    Present { value: n } => match containment_parent(nodes: nodes, n: n) {
+      Absent => false
+      Present { value: parent } =>
+        if any(visited, v => v == (parent as String)) {
+          true
+        } else {
+          parent_chain_hits_repeat(
+            nodes: nodes,
+            slug: parent as String,
+            visited: list_push(xs: visited, item: parent as String),
+          )
+        }
+    }
+  }
+}
+
+fn containment_cycles(nodes: List<RoadmapNode>) -> List<RoadmapNodeId> {
+  flat_map(nodes, n =>
+    if parent_chain_hits_repeat(nodes: nodes, slug: n.node as String, visited: [n.node as String]) {
+      [n.node]
+    } else {
+      [] as List<RoadmapNodeId>
+    }
+  )
+}
+
+// The dangling containments, listed rather than refused, so the count is visible in the answer instead of absorbed.
+fn containment_dangling(nodes: List<RoadmapNode>) -> List<RoadmapNodeId> {
+  flat_map(nodes, n => match containment_name(n: n) {
+    ContainedIn { project } => match node_by_slug(nodes: nodes, slug: project) {
+      Present { value: _ } => [] as List<RoadmapNodeId>
+      Absent => [n.node]
+    }
+    SharesChainOf { target } => [] as List<RoadmapNodeId>
+    NotContained => [] as List<RoadmapNodeId>
+  })
+}
+
+// ============================== WHAT COUNTS AS ESTIMATED ==============================
+
+// THE STREAM, read two ways: the rows it records, and the CURRENT estimate a subject holds -- which is its LAST
+// entry, and is nothing at all when that last entry is a revocation. A price a node no longer holds stays readable
+// in the stream forever; it simply stops pricing the node, which is the release that keeps a leaf priced before it
+// was split from being a contradiction forever after (merry-moth-343's lifecycle control).
+fn entries_for_subject(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> List<EstimateEntry> {
+  filter(entries, e => match e {
+    EstimateRecorded { row } => row.subject == subject
+    EstimateRevoked { revocation } => revocation.subject == subject
+  })
+}
+
+fn recorded_rows(entries: List<EstimateEntry>) -> List<RoadmapEstimateRow> {
+  flat_map(entries, e => match e {
+    EstimateRecorded { row } => [row]
+    EstimateRevoked { revocation } => [] as List<RoadmapEstimateRow>
+  })
+}
+
+fn revocations(entries: List<EstimateEntry>) -> List<EstimateRevocation> {
+  flat_map(entries, e => match e {
+    EstimateRecorded { row } => [] as List<EstimateRevocation>
+    EstimateRevoked { revocation } => [revocation]
+  })
+}
+
+// WHICH PRICE STANDS. The last row recorded for a subject is its current estimate, and a revocation clears it ONLY
+// when it names THAT row -- merry-moth-343's stale-target control: record A, revise to B, then withdraw A must not
+// clear B, because a withdrawal aimed at a superseded row is a statement about a fact that already stopped pricing
+// anything. A withdrawal aimed at nothing at all is refused (RevocationNamesNoRow); one aimed at a row that is no
+// longer effective is history rather than an error, and is LISTED (`redundant_revocations`) so it is never silent.
+fn current_estimate(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> Optional<RoadmapEstimateRow> {
+  match last_recorded_row(entries: entries, subject: subject) {
+    Absent => optional_absent()
+    Present { value: row } => if revocation_clears(entries: entries, subject: subject, row: row) {
+      optional_absent()
+    } else {
+      optional_present(value: row)
+    }
+  }
+}
+
+fn last_recorded_row(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> Optional<RoadmapEstimateRow> {
+  fold(filter(recorded_rows(entries: entries), r => r.subject == subject), init: optional_absent(), f: fn(acc, r) { optional_present(value: r) })
+}
+
+fn revocation_clears(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow) -> Bool {
+  any(filter(revocations(entries: entries), v => v.subject == subject), v => v.withdraws_made == row.made)
+}
+
+// A withdrawal that named a row which is no longer the effective one, listed so the answer shows it rather than
+// quietly swallowing an author's belief about the state of the record.
+fn redundant_revocations(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> List<EstimateRevocation> {
+  match last_recorded_row(entries: entries, subject: subject) {
+    Absent => [] as List<EstimateRevocation>
+    Present { value: row } => filter(filter(revocations(entries: entries), v => v.subject == subject), v => !(v.withdraws_made == row.made))
+  }
+}
+
+// THE LAST ENTRY in append order. Rows are appended and never edited, so the stream's order is the record's order;
+// `made` is the clock a reader sees, and two Made entries for one subject made on one day is an ambiguity that is
+// refused upstream -- which is what makes "last" total rather than a coin toss.
+fn last_entry(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> Optional<EstimateEntry> {
+  fold(entries_for_subject(entries: entries, subject: subject), init: optional_absent(), f: fn(acc, e) { optional_present(value: e) })
+}
+
+// THE PIECES, read through the one authority that prices them: stages_leaf_days multiplies a Family by its
+// population and costs a Decision at the declared decision_days, so this module restates no piece arithmetic.
+fn has_decomposition(node: RoadmapNodeId) -> Bool {
+  count(decomposition_for(node: node)) > 0
+}
+
+fn decomposition_work_days(node: RoadmapNodeId) -> Int {
+  fold(decomposition_for(node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) })
+}
+
+fn decomposition_leaf_count(node: RoadmapNodeId) -> Int {
+  fold(decomposition_for(node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) })
+}
+
+// IS THIS NODE PRICED AT ALL? A row of its own, or a decomposition that prices its pieces.
+fn is_estimated(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> Bool {
+  match current_estimate(entries: entries, subject: n.identity) {
+    Present { value: _ } => true
+    Absent => has_decomposition(node: n.node)
+  }
+}
+
+// ANYTHING PRICED BELOW HERE -- the predicate behind the operator's rule. An authored estimate on a node with an
+// estimated descendant is the contradiction, whichever level the descendant sits at.
+fn has_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> Bool {
+  any(contained_children(nodes: nodes, parent: node), c =>
+    is_estimated(nodes: nodes, entries: entries, n: c) || has_estimated_descendant(nodes: nodes, entries: entries, node: c.node)
+  )
+}
+
+// THE SIDE THE REFUSAL NAMES BESIDE THE AUTHORED ONE: the nearest estimated descendant, and the number that makes
+// it estimated -- its own row's days, or the days its decomposition declares for its pieces.
+type DescendantSide {
+  node: RoadmapNodeId
+  identity: RoadmapNodeIdentity
+  days: Int
+  basis: String
+  from_pieces: Bool
+}
+
+fn descendant_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, c: RoadmapNode) -> Optional<DescendantSide> {
+  match current_estimate(entries: entries, subject: c.identity) {
+    Present { value: r } => match estimate_form_days(t: estimate_table, v: r.value) {
+      Present { value: days } => optional_present(value: DescendantSide {
+        node: c.node, identity: c.identity, days: days, basis: r.basis, from_pieces: false
+      })
+      Absent => pieces_side(node: c)
+    }
+    Absent => pieces_side(node: c)
+  }
+}
+
+fn pieces_side(node: RoadmapNode) -> Optional<DescendantSide> {
+  if has_decomposition(node: node.node) {
+    optional_present(value: DescendantSide {
+      node: node.node,
+      identity: node.identity,
+      days: decomposition_work_days(node: node.node),
+      basis: "the days its own decomposition declares for its pieces",
+      from_pieces: true,
+    })
+  } else {
+    optional_absent()
+  }
+}
+
+fn first_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> Optional<DescendantSide> {
+  match first(flat_map(contained_children(nodes: nodes, parent: node), c => match descendant_side(nodes: nodes, entries: entries, c: c) {
+    Present { value: side } => [side]
+    Absent => if has_estimated_descendant(nodes: nodes, entries: entries, node: c.node) {
+      flat_map([c], deeper => match first_estimated_descendant(nodes: nodes, entries: entries, node: deeper.node) {
+        Present { value: side } => [side]
+        Absent => [] as List<DescendantSide>
+      })
+    } else {
+      [] as List<DescendantSide>
+    })) {
+    Present { value: side } => optional_present(value: side)
+    Absent => optional_absent()
+  }
+}
+
+// ============================== THE VALIDATION PASS ==============================
+// Collected rather than short-circuited: the report is a deliverable of this lane, so one bad row must not hide the
+// next one, and the answer refuses on the whole list rather than on its first entry.
+
+fn estimate_refusals(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+  let cycles = containment_cycles(nodes: nodes)
+  let cycle_refusals = match cycles {
+    Empty => [] as List<EstimateRefusal>
+    Cons { head: _, tail: _ } => [ContainmentCycle { nodes: cycles }]
+  }
+  let carrier_refusals = if dated_rows_are_closed_to_the_ruling() { [] as List<EstimateRefusal> } else { [DatedCarrierReopened] }
+  let row_refusals = flat_map(recorded_rows(entries: entries), r => match estimate_row_refusal(nodes: nodes, entries: entries, row: r) {
+    Present { value: r2 } => [r2]
+    Absent => [] as List<EstimateRefusal>
+  })
+  let revocation_refusals = flat_map(revocations(entries: entries), v => match revocation_refusal(entries: entries, revocation: v) {
+    Present { value: r2 } => [r2]
+    Absent => [] as List<EstimateRefusal>
+  })
+  let restatements = restated_piece_days(nodes: nodes, entries: entries)
+  let conflicts = flat_map(estimate_contradictions(nodes: nodes, entries: entries), c => [ContradictionFound { contradiction: c }])
+  concat(
+    concat(concat(cycle_refusals, carrier_refusals), row_refusals),
+    concat(revocation_refusals, concat(restatements, conflicts)),
+  )
+}
+
+fn estimate_row_refusal(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
+  match node_by_identity(nodes: nodes, subject: row.subject) {
+    Absent => optional_present(value: EstimateSubjectNamesNoNode { subject: row.subject })
+    Present { value: n } => match basis_refusal(row: row) {
+      Present { value: r } => optional_present(value: r)
+      Absent => match value_refusal(row: row) {
+        Present { value: r } => optional_present(value: r)
+        Absent => same_day_refusal(entries: entries, row: row)
+      }
+    }
+  }
+}
+
+// A basis is not decoration: "the clock is the estimate" only holds if a reader can ask why the number is what it is
+// (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc). A row that states none is refused, in
+// whichever form it names.
+fn basis_refusal(row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
+  if row.basis == "" {
+    optional_present(value: EmptyEstimateBasis { subject: row.subject })
+  } else {
+    optional_absent()
+  }
+}
+
+// THE VALUE'S FAILURES, refused rather than corrected: a duration that is not a positive whole number of working
+// days, a duration past the calibrated top of the line -- which is the finding the sizing lane sends me rather than
+// a number to round down -- and a size the one table has no band for.
+fn value_refusal(row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
+  match row.value {
+    DaysEstimate { working_days } =>
+      if working_days <= 0 {
+        optional_present(value: NonPositiveEstimateDays { subject: row.subject, working_days: working_days })
+      } else {
+        match days_to_size(t: estimate_table, days: working_days) {
+          Absent => optional_present(value: EstimateAboveCeiling {
+            subject: row.subject, working_days: working_days, ceiling: estimate_ceiling()
+          })
+          Present { value: _ } => optional_absent()
+        }
+      }
+    SizedEstimate { size } => match estimate_band(t: estimate_table, s: size) {
+      Present { value: _ } => optional_absent()
+      Absent => optional_present(value: SizeHasNoBand { subject: row.subject, size: size })
+    }
+  }
+}
+
+// `made` is the clock that orders revisions, and it does not order two opinions written the same day. Two rows for
+// one subject made on one day is an ambiguity, refused rather than settled by declaration order.
+fn same_day_refusal(entries: List<EstimateEntry>, row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
+  match filter(filter(recorded_rows(entries: entries), r => r.subject == row.subject), r => r.made == row.made && not_same_row(a: r, b: row)) {
+    Empty => optional_absent()
+    Cons { head: r, tail: _ } => optional_present(value: TwoEstimatesOneDay { subject: row.subject, made: r.made })
+  }
+}
+
+// Rows are records and this language gives me no structural equality to lean on, so two rows are the same statement
+// when all four fields agree -- which is also the honest test, since rows differing nowhere else differ in nothing.
+fn not_same_row(a: RoadmapEstimateRow, b: RoadmapEstimateRow) -> Bool {
+  !(a.subject == b.subject) || !(a.made == b.made) || !(a.basis == b.basis) || not_same_form(a: a.value, b: b.value)
+}
+
+fn not_same_form(a: EstimateForm, b: EstimateForm) -> Bool {
+  match a {
+    SizedEstimate { size: sa } => match b {
+      SizedEstimate { size: sb } => !(sa == sb)
+      DaysEstimate { working_days: _ } => true
+    }
+    DaysEstimate { working_days: da } => match b {
+      SizedEstimate { size: _ } => true
+      DaysEstimate { working_days: db } => !(da == db)
+    }
+  }
+}
+
+// THE REVOCATION'S THREE FAILURES. The release merry-moth-343 asked for is the only way a price stops pricing a
+// node without editing history, so it cannot be a hole through which facts disappear: a revocation must name a row
+// that exists, must come after it, and must say why.
+fn revocation_refusal(entries: List<EstimateEntry>, revocation: EstimateRevocation) -> Optional<EstimateRefusal> {
+  match revocation_named_row(entries: entries, revocation: revocation) {
+    Absent => optional_present(value: RevocationNamesNoRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
+    Present { value: row } =>
+      if date_precedes(a: revocation.made, b: row.made) {
+        optional_present(value: RevocationPrecedesItsRow { subject: revocation.subject, revocation_made: revocation.made, row_made: row.made })
+      } else {
+        if revocation.reason == "" {
+          optional_present(value: EmptyRevocationReason { subject: revocation.subject })
+        } else {
+          optional_absent()
+        }
+      }
+  }
+}
+
+fn revocation_named_row(entries: List<EstimateEntry>, revocation: EstimateRevocation) -> Optional<RoadmapEstimateRow> {
+  match filter(filter(recorded_rows(entries: entries), r => r.subject == revocation.subject), r => r.made == revocation.withdraws_made) {
+    Empty => optional_absent()
+    Cons { head: r, tail: _ } => optional_present(value: r)
+  }
+}
+
+// THE CONTRADICTIONS: an authored estimate on a node with an estimated descendant. The operator's rule, and the
+// reason both sides are carried. Read over CURRENT estimates, so a withdrawn price cannot contradict anything --
+// it simply stays readable, which is the whole point of appending rather than deleting.
+fn estimate_contradictions(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateContradiction> {
+  flat_map(nodes, n => match current_estimate(entries: entries, subject: n.identity) {
+    Absent => [] as List<EstimateContradiction>
+    Present { value: row } => match contradiction_for_node(nodes: nodes, entries: entries, ancestor: n, row: row) {
+      Present { value: c } => [c]
+      Absent => [] as List<EstimateContradiction>
+    }
+  })
+}
+
+fn contradiction_for_node(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, ancestor: RoadmapNode, row: RoadmapEstimateRow) -> Optional<EstimateContradiction> {
+  match estimate_form_days(t: estimate_table, v: row.value) {
+    Absent => optional_absent()
+    Present { value: ancestor_days } => match first_estimated_descendant(nodes: nodes, entries: entries, node: ancestor.node) {
+      Absent => optional_absent()
+      Present { value: side } => optional_present(value: EstimateContradiction {
+        ancestor: ancestor.node,
+        ancestor_identity: ancestor.identity,
+        ancestor_form: row.value,
+        ancestor_days: ancestor_days,
+        ancestor_basis: row.basis,
+        descendant: side.node,
+        descendant_identity: side.identity,
+        descendant_days: side.days,
+        descendant_basis: side.basis,
+        descendant_from_pieces: side.from_pieces,
+      })
+    }
+  }
+}
+
+// AN AUTHORED ESTIMATE BESIDE A DECOMPOSITION THAT ALREADY PRICES THE SAME WORK: the pieces are that item's leaf
+// estimates, and restating them is a second representation of one fact rather than a second opinion about it.
+fn restated_piece_days(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+  flat_map(nodes, n => match current_estimate(entries: entries, subject: n.identity) {
+    Absent => [] as List<EstimateRefusal>
+    Present { value: row } => if has_decomposition(node: n.node) {
+      match estimate_form_days(t: estimate_table, v: row.value) {
+        Absent => [] as List<EstimateRefusal>
+        Present { value: days } => [RestatedPieceDays {
+          node: n.node,
+          authored_days: days,
+          pieces_days: decomposition_work_days(node: n.node),
+          pieces: decomposition_leaf_count(node: n.node),
+        }]
+      }
+    } else {
+      [] as List<EstimateRefusal>
+    }
+  })
+}
+
+// ============================== THE DERIVATION ==============================
+
+// WHERE A NODE'S NUMBER COMES FROM: exactly the four states the ruling names. Unsized is a state rather than a
+// number -- listed, never priced at zero, never defaulted to a band's floor.
+type EstimateSource
+  = AuthoredSize { size: EstimateSize, scheduled_days: Int, made: Iso8601CivilDate, basis: String }
+  | AuthoredDuration { working_days: Int, made: Iso8601CivilDate, basis: String }
+  | Derived { work_days: Int, contributed: List<RoadmapNodeId>, from_pieces: Bool }
+  | Unsized { why: UnsizedWhy }
+
+type UnsizedWhy
+  = NothingEstimated
+  | ContainedChildUnsized { child: RoadmapNodeId }
+
+type NodeEstimate {
+  node: RoadmapNodeId
+  identity: RoadmapNodeIdentity
+  source: EstimateSource
+}
+
+fn node_estimate(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> NodeEstimate {
+  NodeEstimate { node: n.node, identity: n.identity, source: node_source(nodes: nodes, entries: entries, n: n) }
+}
+
+// THE ONE DERIVATION. A current row prices the node only where the node owns the work -- nothing contained under it
+// is priced, which is the same rule seen from the other side of the contradiction. Otherwise the pieces the item's
+// own decomposition declares are its leaves and the total is their sum. Otherwise the total is the sum over the
+// contained children, and only when EVERY contained child is itself priced: a parent that summed around an unsized
+// child would be pricing work it cannot see at zero, and that is the default this module exists to refuse.
+fn node_source(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> EstimateSource {
+  match current_estimate(entries: entries, subject: n.identity) {
+    Present { value: row } => match estimate_form_days(t: estimate_table, v: row.value) {
+      Present { value: days } => authored_source(form: row.value, days: days, made: row.made, basis: row.basis)
+      Absent => Unsized { why: NothingEstimated }
+    }
+    Absent => if has_decomposition(node: n.node) {
+      Derived {
+        work_days: decomposition_work_days(node: n.node),
+        contributed: [] as List<RoadmapNodeId>,
+        from_pieces: true,
+      }
+    } else {
+      from_contained_children(nodes: nodes, entries: entries, n: n)
+    }
+  }
+}
+
+fn authored_source(form: EstimateForm, days: Int, made: Iso8601CivilDate, basis: String) -> EstimateSource {
+  match form {
+    SizedEstimate { size } => AuthoredSize { size: size, scheduled_days: days, made: made, basis: basis }
+    DaysEstimate { working_days } => AuthoredDuration { working_days: working_days, made: made, basis: basis }
+  }
+}
+
+fn from_contained_children(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> EstimateSource {
+  match contained_children(nodes: nodes, parent: n.node) {
+    Empty => Unsized { why: NothingEstimated }
+    Cons { head: _, tail: _ } => {
+      let children = contained_children(nodes: nodes, parent: n.node)
+      let sources = map(children, c => node_source(nodes: nodes, entries: entries, n: c))
+      match first_unsized_child(children: children, sources: sources) {
+        Present { value: why } => Unsized { why: why }
+        Absent => Derived {
+          work_days: fold(sources, init: 0, f: fn(acc, s) { acc + source_work_days(s: s) }),
+          contributed: map(children, c => c.node),
+          from_pieces: false,
+        }
+      }
+    }
+  }
+}
+
+fn first_unsized_child(children: List<RoadmapNode>, sources: List<EstimateSource>) -> Optional<UnsizedWhy> {
+  let pairs = zip_map(a: children, b: sources, f: fn(c, src) { ChildSource { child: c.node, source: src } })
+  match first(flat_map(pairs, p => match unsized_child(p: p) {
+    Present { value: c } => [c]
+    Absent => [] as List<RoadmapNodeId>
+  })) {
+    Present { value: c } => optional_present(value: ContainedChildUnsized { child: c })
+    Absent => optional_absent()
+  }
+}
+
+// WHICH CHILD IS UNPRICED, named. Every priced arm answers Absent by name rather than by wildcard, so a new source
+// state cannot arrive here and be silently read as priced.
+fn unsized_child(p: ChildSource) -> Optional<RoadmapNodeId> {
+  match p.source {
+    Unsized { why: _ } => optional_present(value: p.child)
+    AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => optional_absent()
+    AuthoredDuration { working_days: _, made: _, basis: _ } => optional_absent()
+    Derived { work_days: _, contributed: _, from_pieces: _ } => optional_absent()
+  }
+}
+
+type ChildSource { child: RoadmapNodeId, source: EstimateSource }
+
+// THE ARITHMETIC IN ONE PLACE: what a priced source is worth in working days. The Unsized clause answers zero and is
+// unreachable by construction -- from_contained_children refuses to total while any child is unsized -- so the total
+// of a Derived node is never quietly reduced by a node nobody priced.
+fn source_work_days(s: EstimateSource) -> Int {
+  match s {
+    AuthoredSize { size: _, scheduled_days: d, made: _, basis: _ } => d
+    AuthoredDuration { working_days: d, made: _, basis: _ } => d
+    Derived { work_days: d, contributed: _, from_pieces: _ } => d
+    Unsized { why: _ } => 0
+  }
+}
+
+// ============================== THE ANSWER ==============================
+
+type EstimateAnswer
+  = Answered {
+      rows: List<NodeEstimate>,
+      unsized: List<RoadmapNodeId>,
+      dangling_containment: List<RoadmapNodeId>,
+      redundant_revocations: List<RoadmapNodeId>,
+    }
+  | Refused { refusals: List<EstimateRefusal> }
+
+// THE READ. Anything malformed refuses with the whole list named; otherwise every node is answered, the unsized are
+// LISTED rather than priced, and the dangling containments are reported rather than absorbed.
+fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> EstimateAnswer {
+  let refusals = estimate_refusals(nodes: nodes, entries: entries)
+  let answered = map(nodes, n => node_estimate(nodes: nodes, entries: entries, n: n))
+  match refusals {
+    Cons { head: _, tail: _ } => Refused { refusals: refusals }
+    Empty => Answered {
+      rows: answered,
+      unsized: flat_map(answered, e => match e.source { Unsized { why: _ } => [e.node]; _ => [] as List<RoadmapNodeId> }),
+      dangling_containment: containment_dangling(nodes: nodes),
+      redundant_revocations: flat_map(nodes, n => match redundant_revocations(entries: entries, subject: n.identity) {
+        Cons { head: _, tail: _ } => [n.node]
+        Empty => [] as List<RoadmapNodeId>
+      }),
+    }
+  }
+}
+
+// THE LIVE READS, and the only ones.
+fn live_estimate_answer() -> EstimateAnswer {
+  estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+}
+
+fn live_estimate_contradictions() -> List<EstimateContradiction> {
+  estimate_contradictions(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+}
+
+fn live_estimate_refusals() -> List<EstimateRefusal> {
+  estimate_refusals(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+}
+
+// ============== THE DATED CARRIER, READ THROUGH THE SAME ONE DERIVATION ==============
+// The rows appended to gunbc.roadmap.roadmap_effort_estimate before the ruling are HISTORY: this section reads them
+// and rewrites nothing (the ruling's clause, and the brief's). Each dated row asserts a duration -- the span its
+// start and done dates carry, counted in WORKING days by the same calendar the Gantt binds with -- and is rebuilt as
+// an entry so the ONE contradiction check can be run over the roadmap as it stands. Nothing is invented: a dated row
+// naming no declared node contributes nothing, and the entry-stream well-formedness refusals (two rows one subject
+// one day) are NOT re-asserted backwards over the dated lane, which has its own append-ordered revision history and
+// legitimately carries a second round of the same subject on the same day.
+fn dated_row_days(e: EffortEstimate) -> Int {
+  working_days_between(start: e.start, finish: e.done)
+}
+
+fn dated_entries(nodes: List<RoadmapNode>) -> List<EstimateEntry> {
+  flat_map(roadmap_effort_estimates, e => match node_by_node(nodes: nodes, target: e.subject) {
+    Absent => [] as List<EstimateEntry>
+    Present { value: n } => [estimate_recorded(row: estimate_row(
+      subject: n.identity,
+      made: e.made_on,
+      value: days_estimate(working_days: dated_row_days(e: e)),
+      basis: "dated carrier row read as the duration it asserts",
+    ))]
+  })
+}
+
+// THE CONTRADICTION CHECK OVER THE ROADMAP AS IT STANDS. This is the report the handback carries: every conflict,
+// both sides named, history untouched.
+fn dated_contradictions(nodes: List<RoadmapNode>) -> List<EstimateContradiction> {
+  estimate_contradictions(nodes: nodes, entries: dated_entries(nodes: nodes))
+}
+
+// A PAIR THE CHECK CLEARED, and why: two priced nodes related ONLY by prerequisite reachability. A naive check that
+// followed the dependency DAG upward would call these contradictions and refuse legitimate prices on consecutive
+// tasks -- which is exactly what merry-moth-343 caught before this was built, and why the red control below keeps the
+// cleared list in the witnesses. Prerequisites order siblings; they do not contain them.
+type ClearedPrerequisitePair {
+  senior: RoadmapNodeId
+  senior_days: Int
+  junior: RoadmapNodeId
+  junior_days: Int
+}
+
+fn cleared_prerequisite_pairs(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<ClearedPrerequisitePair> {
+  let priced = flat_map(nodes, n => match current_estimate(entries: dated_entries(nodes: nodes), subject: n.identity) {
+    Absent => [] as List<PricedSubject]
+    Present { value: row } => [PricedSubject { node: n.node, days: dated_row_days_of(nodes: nodes, n: n) }]
+  })
+  flat_map(priced, a => flat_map(priced, b =>
+    if a.node == b.node {
+      [] as List<ClearedPrerequisitePair>
+    } else if prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: []) && !contained_under(nodes: nodes, node: b.node, ancestor: a.node) {
+      [ClearedPrerequisitePair { senior: a.node, senior_days: a.days, junior: b.node, junior_days: b.days }]
+    } else {
+      [] as List<ClearedPrerequisitePair>
+    }
+  ))
+}
+
+type PricedSubject {
+  node: RoadmapNodeId
+  days: Int
+}
+
+fn dated_row_days_of(nodes: List<RoadmapNode>, n: RoadmapNode) -> Int {
+  match last_recorded_row(entries: dated_entries(nodes: nodes), subject: n.identity) {
+    Absent => 0
+    Present { value: row } => match row.value {
+      DaysEstimate { working_days } => working_days
+      SizedEstimate { size } => 0
+    }
+  }
+}
+
+// IS `target` one of the prerequisites of `from`, directly or through a chain? One walk with a visited set, over the
+// dependency DAG -- used ONLY to name pairs this check clears, never to price or gate anything.
+fn prerequisite_reachable(edges: List<RoadmapEdge>, from: RoadmapNodeId, target: RoadmapNodeId, visited: List<String>) -> Bool {
+  let key = from as String
+  if any(visited, v => v == key) {
+    false
+  } else {
+    let parents = filter(edges, e => e.child == from)
+    any(parents, e => e.parent == target || prerequisite_reachable(edges: edges, from: e.parent, target: target, visited: list_push(xs: visited, item: key)))
+  }
+}
+
+// IS `node` CONTAINED under `ancestor`, at any depth? The same containment walk the derivation follows, and the only
+// way a pair becomes a contradiction.
+fn contained_under(nodes: List<RoadmapNode>, node: RoadmapNodeId, ancestor: RoadmapNodeId) -> Bool {
+  any(parent_chain(nodes: nodes, from: node), p => p == ancestor)
+}
+
+fn parent_chain(nodes: List<RoadmapNode>, from: RoadmapNodeId) -> List<RoadmapNodeId> {
+  chain_above(nodes: nodes, current: from, visited: [from as String])
+}
+
+// The chain of containment parents above `current`, guarded by a visited set so a malformed cycle stops here
+// (reported by `containment_cycles`) instead of looping.
+fn chain_above(nodes: List<RoadmapNode>, current: RoadmapNodeId, visited: List<String>) -> List<RoadmapNodeId> {
+  match node_by_node(nodes: nodes, target: current) {
+    Absent => [] as List<RoadmapNodeId>
+    Present { value: n } => match containment_parent(nodes: nodes, n: n) {
+      Absent => [] as List<RoadmapNodeId>
+      Present { value: parent } =>
+        if any(visited, v => v == (parent as String)) {
+          [] as List<RoadmapNodeId>
+        } else {
+          concat([parent] as List<RoadmapNodeId>, chain_above(nodes: nodes, current: parent, visited: list_push(xs: visited, item: parent as String)))
+        }
+    }
+  }
+}
