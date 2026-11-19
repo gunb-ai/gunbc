@@ -405,10 +405,12 @@ fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map
       let lane_free = look_key(m: state.lanes, key: lane, dflt: 0)
       let dep = dep_finish(n: n, pred: pred, finish: state.finish)
       let ready = if dep > lane_free { dep } else { lane_free }
-      // `earliest_start` is the day the BELT has room for one more leaf, and it is 0 whenever the pins already
-      // running leave room (roadmap-schedule-from-now): an unclaimed leaf never starts on top of a belt that is at
-      // or over its cap. It joins the two gates the policy already had -- lane free day and predecessor finishes --
-      // and changes nothing when it is 0, which is every read with no pins.
+      // `earliest_start` is the CALLER's floor on a start day -- the day its pins leave the belt room for one more
+      // leaf (roadmap-schedule-from-now) -- and it is 0 for every read with no pins, which is what every caller
+      // before roadmap-schedule-from-now passes, byte for byte unchanged. The cap itself is not enforced here: it is
+      // enforced per placement by the lane state, whose seeded lanes hold every pin including the ones parked past
+      // the cap (`reserve_over_cap_lanes`). A floor is one number for the whole schedule and stops holding the
+      // moment more rows are in flight than it counted; the lane state is what each placement actually reads.
       let start_day = if earliest_start > ready { earliest_start } else { ready }
       let finish_day = start_day + n.days
       let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
@@ -588,7 +590,10 @@ fn schedule_pinned(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, re
           // no node above, so every pin resolves to a priced node here.
           let pinned_rows = pin_rows(nodes: nodes, pinned: pinned)
           let pin_finish = pin_finish_days(pinned: pinned)
-          let pin_lanes = pin_lane_free_days(pinned: pinned)
+          // The lanes busy at the start of the placement: every pin's own lane, PLUS a reservation for every pin
+          // whose lane number the lane scan will never reach (see `reserve_over_cap_lanes`).
+          let pin_lanes = reserve_over_cap_lanes(
+            lanes: pin_lane_free_days(pinned: pinned), pinned: pinned, workers: worker_count)
             let adj = adjacency(nodes: nodes, edges: edges)
             let indeg = indegrees(nodes: nodes, succ: adj.succ)
             let empty_nodes: List<SchedNode> = []
@@ -656,7 +661,11 @@ fn pins_not_occurrences(occs: List<Occurrence>, pinned: List<PinnedLeaf>) -> Lis
 
 fn pins_placed_badly(pinned: List<PinnedLeaf>) -> List<LeafPath> {
   let lane_count = count(distinct_by_key(xs: pinned, key: p => to_string(p.lane)))
-  let malformed = filter(pinned, p => p.lane < 0 || p.start_day < 0 || p.finish_day <= p.start_day)
+  // A pin is work ALREADY RUNNING at the read date, so it runs from day 0 of the read to its finish: a pin starting
+  // later would hold a lane over days it is not working, and the lane reservation that enforces the cap per
+  // placement reads exactly that prefix shape. A lane below zero, a bar that runs no day, or a lane two pins share
+  // are refused the same way.
+  let malformed = filter(pinned, p => p.lane < 0 || p.start_day != 0 || p.finish_day <= p.start_day)
   if count(pinned) != lane_count {
     map(pinned, p => p.path)
   } else {
@@ -685,10 +694,41 @@ fn pin_lane_free_days(pinned: List<PinnedLeaf>) -> Map<Int, Int> {
   fold(pinned, init: empty_map(), f: fn(m, p) { map_insert(m: m, key: p.lane, value: p.finish_day) })
 }
 
-// THE FIRST DAY THE BELT HAS ROOM FOR ONE MORE LEAF. Pins are facts: k of them hold k lanes whether or not k fits
-// the cap, and the read that derived them says so by name (roadmap_schedule_from_now's `pins_over_capacity`). What
-// the policy still owes an unclaimed leaf is a START day on which fewer than `workers` lanes are held by pins, so a
-// new leaf is never launched onto a belt that is already at or over its cap. ONE pass turns the pins into day
+// THE CAP HOLDS PER PLACEMENT, NOT ONCE AS A FLOOR. Pins are facts: k of them hold k lanes whether or not k fits the
+// cap, and the read that derived them names the excess (roadmap_schedule_from_now's `pins_over_capacity`). But the
+// lane scan looks at lanes `0..workers-1` only, so a pin parked on lane `workers` or beyond is a lane the placement
+// never sees -- and a belt already full of such pins would otherwise launch an unclaimed leaf on top of it, which is
+// a plan that breaks its own limit and says nothing. So each pin whose lane is at or past the cap has its days
+// folded onto the LEAST-LOADED lane below the cap, closing that lane until the pin finishes: the closed lane is the
+// capacity the pin consumes, and the gate that already serializes a lane then checks it at every placement, not once
+// for the whole schedule. Cost: one fold over the pins, each step a `scan_lanes` across the cap's own width -- the
+// shape the lane choice already pays per placement.
+//
+// WHY FOLDING IN ANY ORDER IS SAFE. Every pin row is a prefix of the read -- it runs from day 0 to its finish day,
+// which `pins_placed_badly` now insists on -- so a closure of [0, finish) covers every day that pin covers. A fold
+// that lands on a lane already held at least as long records nothing new, and that is sound: the fold chose the
+// least-loaded lane, so every OTHER lane is held at least as long too, which is exactly when the pins alone already
+// fill the cap and no unclaimed leaf may start at all. A fold absorbed by a leaf's own finish day only ever closes a
+// lane for longer than the pin needed, which delays placements and never launches an extra one.
+fn reserve_over_cap_lanes(lanes: Map<Int, Int>, pinned: List<PinnedLeaf>, workers: Int) -> Map<Int, Int> {
+  fold(pinned, init: lanes, f: fn(m, p) {
+    if p.lane < workers {
+      m
+    } else {
+      let lane = scan_lanes(i: 0, workers: workers, lanes: m, best_lane: 0, best_free: look_key(m: m, key: 0, dflt: 0))
+      let held = look_key(m: m, key: lane, dflt: 0)
+      if p.finish_day > held { map_insert(m: m, key: lane, value: p.finish_day) } else { m }
+    }
+  })
+}
+
+// THE CALLER'S FLOOR ON A START DAY: the first day on which fewer than `workers` pins are running. It is a floor
+// and nothing more -- a single day for the whole schedule, so it cannot by itself keep the cap: pins parked past
+// the cap sit on lanes the lane scan never reads, and two unclaimed leaves launched on the first day this answers
+// can still crowd a pin that runs past it. `reserve_over_cap_lanes` is what makes the cap hold at every placement;
+// this is the day the caller additionally refuses to start anything before. Pins are facts: k of them hold k lanes
+// whether or not k fits the cap, and the read that derived them says so by name
+// (roadmap_schedule_from_now's `pins_over_capacity`). ONE pass turns the pins into day
 // deltas and ONE walk folds them -- the shape `in_flight` already uses -- and the walk is bounded by the last pin's
 // finish day, past which no pin runs at all. With no pins it answers 0, which is the gate every read before
 // roadmap-schedule-from-now ran under: `start_day` is then exactly `max(dep, lane_free)`, byte for byte.

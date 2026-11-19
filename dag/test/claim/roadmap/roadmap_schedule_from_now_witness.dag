@@ -27,7 +27,7 @@ module test.claim.roadmap.roadmap_schedule_from_now_witness
 // LOCAL RECIPE (claims are executed, not parsed; --functions as an explicit CSV because a whole-module run is slow):
 //   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry dag/test/claim/roadmap/roadmap_schedule_from_now_witness.dag \
-//     --functions two_in_flight_and_four_unclaimed_are_pinned_and_scheduled_around_each_other,a_leaf_claimed_three_working_days_ago_with_a_five_day_prior_finishes_at_day_two_of_the_read,an_unclaimed_leaf_waiting_on_a_pin_starts_when_the_pin_finishes,a_pin_whose_prior_the_elapsed_days_already_exhausted_refuses_by_name_and_is_never_pinned_at_zero,a_claim_stamp_that_is_not_the_instant_its_producers_write_refuses_that_pin_by_name,a_claim_recorded_after_the_read_day_refuses_that_pin_by_name,everything_behind_a_refused_pin_is_listed_as_blocked_and_independent_leaves_still_schedule,a_pin_naming_a_leaf_this_expansion_never_emitted_refuses_by_name,three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_nothing_starts_while_the_belt_is_full,the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten,a_released_hold_closes_and_a_reclaim_anchors_the_pin_at_the_newest_hold,a_pathless_claim_pins_nothing_and_is_counted_visibly,a_log_that_will_not_order_itself_refuses_the_whole_read,a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_the_answer,with_nothing_in_flight_the_read_answers_exactly_what_the_one_scheduler_answers,the_handback_names_the_pinned_rows_the_day_two_control_and_the_diff
+//     --functions two_in_flight_and_four_unclaimed_are_pinned_and_scheduled_around_each_other,a_leaf_claimed_three_working_days_ago_with_a_five_day_prior_finishes_at_day_two_of_the_read,an_unclaimed_leaf_waiting_on_a_pin_starts_when_the_pin_finishes,a_pin_whose_prior_the_elapsed_days_already_exhausted_refuses_by_name_and_is_never_pinned_at_zero,a_claim_stamp_that_is_not_the_instant_its_producers_write_refuses_that_pin_by_name,a_claim_recorded_after_the_read_day_refuses_that_pin_by_name,everything_behind_a_refused_pin_is_listed_as_blocked_and_independent_leaves_still_schedule,a_pin_naming_a_leaf_this_expansion_never_emitted_refuses_by_name,three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_nothing_starts_while_the_belt_is_full,pins_past_the_cap_never_let_the_belt_launch_a_leaf_on_top_of_them,the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten,a_released_hold_closes_and_a_reclaim_anchors_the_pin_at_the_newest_hold,a_pathless_claim_pins_nothing_and_is_counted_visibly,a_log_that_will_not_order_itself_refuses_the_whole_read,a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_the_answer,with_nothing_in_flight_the_read_answers_exactly_what_the_one_scheduler_answers,the_handback_names_the_pinned_rows_the_day_two_control_and_the_diff
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -210,6 +210,40 @@ fn cap_log() -> List<String> {
 fn cap_read() -> FromNowRead {
   schedule_from_now(d: cap_carrier(), e: cap_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
     logs: [ItemLog { node: cap_item(), lines: cap_log() }])
+}
+
+// THE OVER-CAP BELT, WITH MORE THAN ONE LEAF TO LAUNCH. Three leaves in flight under a cap of two, pinned at 2, 4
+// and 6 days of remaining work, and TWO unclaimed peers in the same stage waiting to be placed. This is the shape a
+// single global floor cannot hold: the first day fewer than two pins run is day 4, and a leaf launched there, plus a
+// second launched on the same day, crowd the pin still running on the lane the lane scan never reads.
+fn belt_item() -> RoadmapNodeId { "gantt.belt" as RoadmapNodeId }
+
+fn belt_carrier() -> WorkDecomposition {
+  decomposition(node: "gantt.belt", waits_on: [], stages: [
+    [leaf(label: "held one", days: 5), leaf(label: "held two", days: 4), leaf(label: "held three", days: 6),
+      leaf(label: "free one", days: 2), leaf(label: "free two", days: 2)],
+  ])
+}
+
+fn belt_expansion() -> Expansion { expand_decomposition(d: belt_carrier(), findings_count: 1) }
+
+fn belt_leaf(piece: Int) -> LeafPath { LeafPath { item: belt_item(), stage: 0, piece: piece, member: 0 } }
+
+// Pinned remaining days 2, 4 and 6: the first claimed Tue 2026-11-17 (three working days of its five already gone),
+// the other two claimed on the read day itself with four and six days declared.
+fn belt_log() -> List<String> {
+  let a = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: none)
+  let b = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 1) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: a.id })
+  let c = claim_env(node: belt_item(), path: Present { value: belt_leaf(piece: 2) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: b.id })
+  wire([a, b, c])
+}
+
+fn belt_read() -> FromNowRead {
+  schedule_from_now(d: belt_carrier(), e: belt_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
+    logs: [ItemLog { node: belt_item(), lines: belt_log() }])
 }
 
 // THE WEEKEND ITEM: claimed Fri 2026-11-13, read Mon 2026-11-23 -- ten calendar days, six of them working.
@@ -398,6 +432,29 @@ test fn three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_noth
   }
 }
 
+// PINS PAST THE CAP NEVER LET THE BELT LAUNCH A LEAF ON TOP OF THEM. The pins are facts, so all three hold lanes and
+// the answer names the one that does not fit -- that part is allowed. What is NOT allowed is a plan that quietly
+// runs three leaves on days 4 to 6 under a cap of two because the cap was checked once, as a floor, and never again
+// per placement. One pin holds a lane the lane scan cannot see, so the capacity it consumes closes a lane the
+// placement CAN see, and the second free leaf waits for the belt rather than being launched onto it. The per-day
+// series is the assertion: days 0-1 run three because the PINS alone do (reported, not hidden), and from day 2 on
+// nothing ever exceeds the cap -- a read that launched both free leaves on day 4 would show 3 there.
+test fn pins_past_the_cap_never_let_the_belt_launch_a_leaf_on_top_of_them() -> Bool {
+  match belt_read() {
+    FromNowScheduled { answer: a } =>
+      count(a.pins) == 3 && a.pins_over_capacity == 1
+        && pin_remaining(a: a, piece: 0) == 2 && pin_remaining(a: a, piece: 1) == 4 && pin_remaining(a: a, piece: 2) == 6
+        && a.schedule.in_flight_per_day == [3, 3, 2, 2, 2, 2, 1, 1]
+        && count(filter(a.schedule.in_flight_per_day, c => c > 2)) == 2
+        && a.schedule.horizon == 8
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 3)), start: 4)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 3)), finish: 6)
+        && row_starts_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 4)), start: 6)
+        && row_finishes_at(placed: scheduled_at(a: a.schedule, path: belt_leaf(piece: 4)), finish: 8)
+    _ => false
+  }
+}
+
 // THE ELAPSED COUNT IS THE CALENDAR'S WORKING DAYS: Friday to Monday is TEN calendar days and SIX working ones, so
 // an eight-day prior leaves two and the pin ends on day 2. The calendar's own counter is named beside it, because
 // the difference between 10 and 6 is the whole claim and it belongs to #16697, not to this unit.
@@ -568,6 +625,13 @@ fn refusal_for(refusals: List<PinRefusal>, path: LeafPath) -> PinRefusal? {
 fn pin_lane(a: FromNowAnswer, piece: Int) -> Int {
   match pin_for(pins: a.pins, path: cap_leaf(stage: 0, piece: piece)) {
     Present { value: p } => p.lane
+    Absent => -1
+  }
+}
+
+fn pin_remaining(a: FromNowAnswer, piece: Int) -> Int {
+  match pin_for(pins: a.pins, path: belt_leaf(piece: piece)) {
+    Present { value: p } => p.remaining
     Absent => -1
   }
 }
