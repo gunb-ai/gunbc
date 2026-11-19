@@ -1,114 +1,354 @@
+// DP-M3 (DP-M3b) -- EXTERNAL-DEPENDENCY SUBJECT REFERENCES RESOLVE AGAINST THE REAL TREE, THROUGH
+// THE ONE HOST-POWERED RESOLVER, AND EVERY SCOPE SUBJECT IS ACCOUNTED.
+//
+// The gap DP-M3b closes (roadmap dp-m3-subject-ref-resolved): an external-dependency model-scope
+// declaration names its subject -- the upstream declaration it models -- as a DeclarationRef, but
+// nothing in the tree mechanically proves that named subject EXISTS. A model-scope row naming a
+// subject that no longer exists is a lie that nothing refuses. This witness proves the subject of
+// every ExternalModelScope data declaration resolves, live, against the real tree.
+//
+// The resolver is v2.std.decl_ref_resolution_host, which reads the tree through the same live
+// module/decl-fact hosts the whole verification stack already trusts (module_declaration_facts_live,
+// decl_facts_at). It is NOT a second checker: this witness feeds it the subject references and
+// requires the resolver census to refuse NOTHING over them -- every arm (ModuleAbsent,
+// DeclarationAbsent, FieldAbsent, Ambiguous) stays at zero. The claim's authority is the live
+// host-boundary read; the interpreter records it as such so the wet verifier can confirm this
+// witness really consulted the tree rather than a caller-authored fixture.
+//
+// WHAT THE CENSUS IS, AND WHY THE POSITIONAL READER IS GONE. The subject facts come from the typed
+// census extdeps_subject_ref_facts (v2.std.decl_index, census node extdeps-subject-ref-facts-host-census),
+// which reads each ExternalModelScope subject BY NAME and types it fail-closed: a subject that is a
+// literal DeclarationRef{module_path:"...",decl_name:"..."} comes back as SubjectLiteral, and
+// anything else (a named reference, a call, a missing field) comes back as SubjectNotLiteral carrying
+// a typed `why`. The resolver is fed ONLY the SubjectLiteral rows. The earlier positional reader
+// (the first two authored string literals) is DELETED: it silently dropped a scope whose subject was
+// not a two-literal pair (a one-literal or absent subject fell through to the accumulator unchanged),
+// so a malformed subject could vanish from a green claim -- a silent widen forbidden by
+// gunbc.design_argument::fail_closed. The census cannot: it is a total sum over the same
+// data_decl_type_facts population, and the accounting test below proves nothing is dropped.
+//
+// THE WITNESS. Four GREENS establish the positive fact. REDs refuse to admit a VACUOUS pass: each
+// feeds a subject reference that MUST be refused, and asserts the resolver census reports the exact
+// refusal arm, so a resolver wired to always answer Resolved would turn a GREEN red.
+
 module test.claim.long.dp_m3_subject_ref_resolution_witness
 
-// THE CONSUMER THAT MAKES EXTERNALSUBJECTREF A REFERENCE, NOT A COMPARED VALUE (DP-M3).
-//
-// WHAT THIS BUYS. Subject rows under dag/extdeps carry `subject: ExternalSubjectRef`, whose
-// declaration is a DeclarationRef { module_path, decl_name }. Until this file, nothing asked
-// whether the named module DECLARES the named thing: the only consumer (test.claim.external_model_scope_witness)
-// compared two hand-typed literals through extdeps.external_authority::external_subject_ref_eq, and every
-// other row in the model built synthetic refs or checked carrier text. String offers string_contains and
-// split but no substring and no index, so no text scan could bound a name (the frontier's own admission,
-// dag/gunbc/extdeps_scope_frontier.dag). That left a phantom one keystroke from the model's subject story.
-//
-// ONE AUTHORITY, NOT A SECOND CHECKER. This consumer applies the resolver that already exists --
-// v2.std.decl_ref_resolution_host::{declaration_ref_resolution_census_live, resolve_declaration_ref_live},
-// built on the containment-tree module census (data_decl_type_facts) rather than a text scan -- to the
-// full subject population. It writes no re-implementation and adds no corpus-wide CI job: the corpus-wide
-// cited-symbol census is retired (gunbc.rung_drop.cited_symbol_census, standing Retired since 2026-08-25).
-//
-// CENSUS/HOST GRAIN, ON PURPOSE. The population is enumerated by data_decl_type_facts -- the same host
-// walk the resolver's own census already runs -- keyed by declared TYPE (ExternalModelScope), then their
-// nodes read in ONE keyed decl_facts_at; NOT by a parse-grain whole-tree interpreter walk (that route is
-// OFFLINE by operator decision, ~33s/module).
-//
-// THE FOUR REDS ARE THE POINT, mirroring the two-positive/four-refusal pair that
-// dag/test/claim/long/decl_ref_resolution_witness.dag establishes for the resolver itself: green on base
-// under every existing witness (all read the row as text or value), each refuses for the reason its arm
-// names. ZERO bulk carrier migration: no carrier file is edited here and the legacy manifest
-// (dag/gunbc/legacy_extdeps_scope_frontier.tsv) is untouched at its measured 176 rows.
-
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import std.algebra { fold_list, list_map, list_snoc_item, length }
+import std.algebra { count_where, fold_list, list_snoc_item, length }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.decl_facts_skeleton { node_skeleton_authored_string_literals }
-import v2.std.decl_index { DataDeclTypeFact, DeclFact, FnItem, data_decl_type_facts, decl_facts_at }
+import v2.std.decl_index {
+  DataDeclTypeFact,
+  DeclFact,
+  ExtdepsSubjectRefFact,
+  FnItem,
+  SubjectLiteral,
+  SubjectNamedReference,
+  SubjectNotLiteral,
+  DeclarationNamedReference,
+  data_decl_type_facts,
+  extdeps_subject_ref_facts
+}
 import v2.std.decl_ref_resolution_host {
-  DeclarationRefResolution,
-  DeclarationRefResolutionCensus,
-  DeclarationRefResolved,
-  DeclarationRefModuleAbsent,
-  DeclarationRefDeclarationAbsent,
-  DeclarationRefFieldAbsent,
   DeclarationRefAmbiguous,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefResolutionCensus,
   declaration_ref_resolution_census_live,
   resolve_declaration_ref,
-  resolve_declaration_ref_live,
+  resolve_declaration_ref_live
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data witness_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
-// The population's SCOPES, read from the host census (the walk the resolver already runs), keyed by
-// declared TYPE -- every ExternalModelScope decl, not only the ones named extdeps_model_scope: a scope
-// that an alias file reuses (`data extdeps_model_scope = some_shared_model_scope`) carries its subject on
-// the shared decl, and keying by type catches the shared decl once. `type_name` is the discriminator; an
-// alias (`= <shared_name>`) has no literal subject and drops out of the reader, so each literal subject
-// is read exactly once. `module_path` is authored unstripped so it composes with a DeclarationRef directly.
+// A planted indirect scope, authored EXACTLY like the five bazel carriers: the subject is a named
+// reference to a sibling ExternalSubjectRef, so the census cannot read a literal DeclarationRef out of
+// it. It is loaded (a well-formed scope, not the type-error the one-literal form would be) and it MUST
+// come back as SubjectNotLiteral -- proving the census counts a non-literal subject instead of dropping
+// it, which is what the deleted positional reader's silent fall-through arms used to do.
+data dp_m3b_named_subject: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: decl_ref(module_path: "extdeps.cron", decl_name: "cron.Tab")
+}
+
+data dp_m3b_planted_indirect_scope: ExternalModelScope = ExternalModelScope {
+  subject: dp_m3b_named_subject,
+  first_citation: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "gunbc.example/dp_m3b/red5"
+    }
+  },
+  further_citations: []
+}
+
 fn keep_extdeps_scope(acc: List<DataDeclTypeFact>, row: DataDeclTypeFact) -> List<DataDeclTypeFact> {
-  if row.type_name == "ExternalModelScope" { list_snoc_item(xs: acc, item: row) } else { acc }
-}
-
-fn empty_scope_rows() -> List<DataDeclTypeFact> { [] }
-
-fn empty_subject_refs() -> List<DeclarationRef> { [] }
-
-fn extdeps_scope_qual_name(row: DataDeclTypeFact) -> String {
-  concat(row.module_path, concat(".", row.decl_name))
-}
-
-// Read the SUBJECT declaration off a scope's keyed DeclFact node. The subject is authored FIRST in every
-// carrier (measured: zero scopes author a field before subject), so the first two authored string
-// literals are the subject's module_path and decl_name -- an authority read, not a text scan: the census
-// node is the initializer, and only the resolver later decides whether that pair names a real declaration.
-fn subject_ref_snoc(acc: List<DeclarationRef>, fact: DeclFact) -> List<DeclarationRef> {
-  match node_skeleton_authored_string_literals(node: fact.node) {
-    Cons { head: mod_name, tail: Cons { head: decl_nm, tail: _ } } =>
-      list_snoc_item(xs: acc, item: decl_ref(module_path: mod_name, decl_name: decl_nm))
-    Cons { head: _, tail: Empty } => acc
-    Empty => acc
+  if row.type_name == "ExternalModelScope" {
+    list_snoc_item(xs: acc, item: row)
+  } else {
+    acc
   }
 }
 
-// The full subject population, enumerated from the census walk and keyed, in two host reads:
-// data_decl_type_facts (scopes) then one decl_facts_at (their nodes) -- never a per-row parse walk.
-fn extdeps_subject_population() -> List<DeclarationRef> {
-  let scope_qual_names = list_map(xs: fold_list(xs: data_decl_type_facts(pool_roots: witness_layer_roots), empty: empty_scope_rows(), cons: keep_extdeps_scope), f: extdeps_scope_qual_name)
-  let scope_facts = decl_facts_at(pool_roots: witness_layer_roots, qualified_names: scope_qual_names, type_names: [])
-  fold_list(xs: scope_facts, empty: empty_subject_refs(), cons: subject_ref_snoc)
+fn empty_scope_rows() -> List<DataDeclTypeFact> {
+  []
 }
 
-// GREEN ON MAIN: every enumerated subject reference resolves on the census route; no arm refuses.
-test fn all_extdeps_subject_refs_resolve_on_the_census_route() -> Bool {
-  let refs = extdeps_subject_population()
+fn empty_subject_refs() -> List<DeclarationRef> {
+  []
+}
+
+// The census rows over the whole pool. The census and data_decl_type_facts are the SAME
+// fail-closed walk keyed at the declaring declaration's identity (module_path, decl_name), so the
+// rows and the ExternalModelScope data-declaration population are two views of one set -- which is
+// exactly what the accounting test below joins on.
+fn subject_census_rows() -> List<ExtdepsSubjectRefFact> {
+  extdeps_subject_ref_facts(pool_roots: witness_layer_roots)
+}
+
+fn external_model_scope_population() -> List<DataDeclTypeFact> {
+  fold_list(
+    xs: data_decl_type_facts(pool_roots: witness_layer_roots),
+    empty: empty_scope_rows(),
+    cons: keep_extdeps_scope
+  )
+}
+
+// Fail-closed classifiers over the closed census sum. `is_subject_literal` selects the rows the
+// resolver is allowed to see; `is_subject_not_literal` selects the rows that must be excluded BY
+// IDENTITY (named, with their typed why) and never silently dropped.
+fn is_subject_literal(row: ExtdepsSubjectRefFact) -> Bool {
+  match row {
+    SubjectLiteral { module_path: _, decl_name: _, rel_path: _, subject_module_path: _, subject_decl_name: _ } => true
+    SubjectNotLiteral { module_path: _, decl_name: _, rel_path: _, why: _ } => false
+  }
+}
+
+fn is_subject_not_literal(row: ExtdepsSubjectRefFact) -> Bool {
+  match row {
+    SubjectLiteral { module_path: _, decl_name: _, rel_path: _, subject_module_path: _, subject_decl_name: _ } => false
+    SubjectNotLiteral { module_path: _, decl_name: _, rel_path: _, why: _ } => true
+  }
+}
+
+// The ONE feed to the resolver: a DeclarationRef is built ONLY from a SubjectLiteral row, from the
+// census's own typed subject_module_path/subject_decl_name -- never from a positional string read,
+// and never from a SubjectNotLiteral row (which returns the accumulator unchanged, and whose exclusion
+// the accounting test proves is complete).
+fn literal_ref_snoc(acc: List<DeclarationRef>, row: ExtdepsSubjectRefFact) -> List<DeclarationRef> {
+  match row {
+    SubjectLiteral { module_path: _, decl_name: _, rel_path: _, subject_module_path: m, subject_decl_name: d } =>
+      list_snoc_item(xs: acc, item: decl_ref(module_path: m, decl_name: d))
+    SubjectNotLiteral { module_path: _, decl_name: _, rel_path: _, why: _ } => acc
+  }
+}
+
+fn subject_literal_refs() -> List<DeclarationRef> {
+  fold_list(xs: subject_census_rows(), empty: empty_subject_refs(), cons: literal_ref_snoc)
+}
+
+// Does the census row for (module_path, decl_name) exist at all, on either arm? Used by the identity
+// join: every ExternalModelScope data declaration must appear as EXACTLY ONE census row, so the
+// population and the census are the same set at the (module_path, decl_name) grain.
+fn census_row_covers(row: ExtdepsSubjectRefFact, scope: DataDeclTypeFact) -> Bool {
+  match row {
+    SubjectLiteral { module_path: m, decl_name: d, rel_path: _, subject_module_path: _, subject_decl_name: _ } =>
+      if m == scope.module_path { d == scope.decl_name } else { false }
+    SubjectNotLiteral { module_path: m, decl_name: d, rel_path: _, why: _ } =>
+      if m == scope.module_path { d == scope.decl_name } else { false }
+  }
+}
+
+// GREEN -- every ExternalModelScope subject that the census types as a literal DeclarationRef resolves
+// live against the real tree. This is the DP-M3b fact. The resolver is fed ONLY the SubjectLiteral
+// rows, and the census it returns must refuse NOTHING; the non-vacuity control is the second conjunct
+// (there really are subject literals -- the population is non-empty).
+test fn all_subject_literal_refs_resolve_on_the_census_route() -> Bool {
+  let refs = subject_literal_refs()
   let census = declaration_ref_resolution_census_live(refs: refs, pool_roots: witness_layer_roots)
-  census_refuses_nothing(census: census, total: length(xs: refs))
+  if length(xs: refs) > 0 {
+    census_refuses_nothing(census: census, total: length(xs: refs))
+  } else {
+    false
+  }
 }
 
-// The census must cover the whole drain, not a couple of rows. Measured on origin/main: 909 data decls
-// carry type ExternalModelScope -- 846 authored inline (`= ExternalModelScope { ... subject ... }`) and 63
-// aliases (`= <shared_name>`, no literal subject). Of the 846 inline, 838 declare their subject's
-// declaration as a literal DeclarationRef and are read; 8 express it indirectly (3 via a named
-// `declaration: <X_ref>`, 5 bazel scopes via a named `subject: <X_subject>`) and are OUT OF THIS NODE --
-// following a named reference to its value is the compiler door's job, which the node explicitly excludes
-// (it "cannot see a sanctioned subject-carrier sibling's declarations"). The census therefore enumerates
-// 838 subject rows. The bound below proves it is the full drain, not a sample; it is a floor, not an
-// equality, so a future added subject only ever helps. Exact executed count is in the PR run link.
-test fn extdeps_subject_population_is_the_full_drain() -> Bool {
-  if length(xs: extdeps_subject_population()) >= 800 { true } else { false }
+// GREEN -- the census reads each scope's SUBJECT, not the citation strings that sit next to it in the
+// initializer. For the two carriers whose subject module_path/decl_name are the only string literals
+// in their initializer (cron, git), the SubjectLiteral row must carry those values; the census's typed
+// fields, not the resolver, are what this proves.
+test fn census_reads_the_subject_pair_not_citations() -> Bool {
+  if census_row_is_literal_named(
+    rows: subject_census_rows(),
+    want_module: "extdeps.cron",
+    want_decl: "extdeps_model_scope",
+    want_subject_module: "extdeps.cron",
+    want_subject_decl: "cron.Tab"
+  ) {
+    census_row_is_literal_named(
+      rows: subject_census_rows(),
+      want_module: "extdeps.git",
+      want_decl: "extdeps_model_scope",
+      want_subject_module: "extdeps.git",
+      want_subject_decl: "git.Core"
+    )
+  } else {
+    false
+  }
+}
+
+fn census_row_is_literal_named(
+  rows: List<ExtdepsSubjectRefFact>,
+  want_module: String,
+  want_decl: String,
+  want_subject_module: String,
+  want_subject_decl: String
+) -> Bool {
+  any(
+    xs: rows,
+    predicate: fn(row) {
+      match row {
+        SubjectLiteral { module_path: m, decl_name: d, rel_path: _, subject_module_path: sm, subject_decl_name: sd } =>
+          if m == want_module {
+            if d == want_decl { if sm == want_subject_module { sd == want_subject_decl } else { false } } else { false }
+          } else {
+            false
+          }
+        SubjectNotLiteral { module_path: _, decl_name: _, rel_path: _, why: _ } => false
+      }
+    }
+  )
+}
+
+// GREEN (the accounting that replaces the copied '>= 800' floor). Every ExternalModelScope data
+// declaration is accounted for, by IDENTITY, on exactly one side of the closed census sum:
+//  * the census population and the data-declaration population are the SAME set at the
+//    (module_path, decl_name) grain -- both directions checked, so no row is unaccounted and none is
+//    a phantom; and
+//  * every SubjectLiteral the census emitted resolves (the resolver census refuses nothing over them);
+//    and
+//  * the sum is total: the literal rows plus the not-literal rows equal the census length (a row that
+//    matched neither arm would break this), and there is at least one of each -- so a subject that is
+//    NOT a literal (the indirect rows) is counted, never dropped, and the claim is not vacuous.
+// No number is copied from the tree: the only literals here are 0 and the equality relations.
+test fn every_external_model_scope_data_decl_is_accounted_by_the_census() -> Bool {
+  let rows = subject_census_rows()
+  let scopes = external_model_scope_population()
+  let literal_refs = subject_literal_refs()
+  let res_census = declaration_ref_resolution_census_live(refs: literal_refs, pool_roots: witness_layer_roots)
+  let literal_count = count_where(xs: rows, predicate: is_subject_literal)
+  let not_literal_count = count_where(xs: rows, predicate: is_subject_not_literal)
+  if length(xs: scopes) == 0 {
+    false
+  } else {
+    if any(xs: scopes, predicate: fn(s) { !any(xs: rows, predicate: fn(r) { census_row_covers(row: r, scope: s) }) }) {
+      false
+    } else {
+      if any(xs: rows, predicate: fn(r) { !any(xs: scopes, predicate: fn(s) { census_row_covers(row: r, scope: s) }) }) {
+        false
+      } else {
+        if literal_count + not_literal_count != length(xs: rows) {
+          false
+        } else {
+          if literal_count + not_literal_count != length(xs: scopes) {
+            false
+          } else {
+            if literal_count == 0 {
+              false
+            } else {
+              if not_literal_count == 0 {
+                false
+              } else {
+                census_refuses_nothing(census: res_census, total: literal_count)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// GREEN (fix (1)): the indirect rows -- whose subject (or its declaration) is authored as a named
+// reference rather than a literal DeclarationRef -- must come back as SubjectNotLiteral with the typed
+// why that names WHY they are not literal, and be excluded BY IDENTITY. They are never dropped: the
+// accounting test above proves they are counted; this test proves they carry the right reason. The
+// five bazel carriers author `subject: <named subject>` (a field-access spine); the three
+// named-declaration carriers author `declaration: <named ref>` inside a literal ExternalSubjectRef.
+test fn the_named_reference_rows_are_excluded_by_identity_with_their_typed_why() -> Bool {
+  let rows = subject_census_rows()
+  if census_row_not_literal_named(rows: rows, want_module: "extdeps.bazel.bazel", want_decl: "extdeps_model_scope", want_named: true) {
+    if census_row_not_literal_named(rows: rows, want_module: "extdeps.bazel.build_event_stream", want_decl: "extdeps_model_scope", want_named: true) {
+      if census_row_not_literal_named(rows: rows, want_module: "extdeps.bazel.label", want_decl: "extdeps_model_scope", want_named: true) {
+        if census_row_not_literal_named(rows: rows, want_module: "extdeps.bazel.target_pattern", want_decl: "extdeps_model_scope", want_named: true) {
+          if census_row_not_literal_named(rows: rows, want_module: "extdeps.bazel.test_status", want_decl: "extdeps_model_scope", want_named: true) {
+            if census_row_not_literal_named(rows: rows, want_module: "extdeps.common_paper.cloud_service_agreement", want_decl: "extdeps_model_scope", want_named: false) {
+              if census_row_not_literal_named(rows: rows, want_module: "extdeps.github.deployment_protection_rule", want_decl: "extdeps_model_scope", want_named: false) {
+                if census_row_not_literal_named(rows: rows, want_module: "extdeps.bonterms.cloud_terms", want_decl: "extdeps_model_scope", want_named: false) {
+                  true
+                } else {
+                  false
+                }
+              } else {
+                false
+              }
+            } else {
+              false
+            }
+          } else {
+            false
+          }
+        } else {
+          false
+        }
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+// A census row exists for (want_module, want_decl), is a SubjectNotLiteral, and its `why` is the
+// named-reference arm for the expected level: SubjectNamedReference when the subject field itself is a
+// named reference (`want_named: true`), or DeclarationNamedReference when the subject is a literal
+// record but its `declaration` field is a named reference (`want_named: false`).
+fn census_row_not_literal_named(
+  rows: List<ExtdepsSubjectRefFact>,
+  want_module: String,
+  want_decl: String,
+  want_named: Bool
+) -> Bool {
+  any(
+    xs: rows,
+    predicate: fn(row) {
+      match row {
+        SubjectNotLiteral { module_path: m, decl_name: d, rel_path: _, why: w } =>
+          if m == want_module {
+            if d == want_decl {
+              if want_named {
+                match w { SubjectNamedReference => true, _ => false }
+              } else {
+                match w { DeclarationNamedReference => true, _ => false }
+              }
+            } else {
+              false
+            }
+          } else {
+            false
+          }
+        SubjectLiteral { module_path: _, decl_name: _, rel_path: _, subject_module_path: _, subject_decl_name: _ } => false
+      }
+    }
+  )
 }
 
 fn census_refuses_nothing(census: DeclarationRefResolutionCensus, total: Int) -> Bool {
@@ -116,34 +356,18 @@ fn census_refuses_nothing(census: DeclarationRefResolutionCensus, total: Int) ->
     if census.module_absent_count == 0 {
       if census.declaration_absent_count == 0 {
         if census.field_absent_count == 0 {
-          if census.ambiguous_count == 0 { true } else { false }
-        } else { false }
-      } else { false }
-    } else { false }
-  } else { false }
-}
-
-// READER TIE TO TEXT GRAIN. The subject reader returns the SUBJECT pair, not the citation strings: for
-// two hand-checked scopes (one a service subject, cron.Tab; one a plain dotted service, git.Core) the
-// head pair equals the subject the carrier text declares. This is what makes "all resolve" mean the
-// subject resolves rather than some other authored name happening to resolve.
-test fn subject_reader_reads_the_subject_pair_not_citations() -> Bool {
-  if reads_subject_pair(module_name: "extdeps.cron", want_module: "extdeps.cron", want_decl: "cron.Tab") {
-    reads_subject_pair(module_name: "extdeps.git", want_module: "extdeps.git", want_decl: "git.Core")
-  } else { false }
-}
-
-fn reads_subject_pair(module_name: String, want_module: String, want_decl: String) -> Bool {
-  let qual_name = concat(module_name, ".extdeps_model_scope")
-  match decl_facts_at(pool_roots: witness_layer_roots, qualified_names: [qual_name], type_names: []) {
-    Cons { head: fact, tail: _ } =>
-      match node_skeleton_authored_string_literals(node: fact.node) {
-        Cons { head: m, tail: Cons { head: d, tail: _ } } =>
-          if m == want_module { if d == want_decl { true } else { false } } else { false }
-        Cons { head: _, tail: Empty } => false
-        Empty => false
+          census.ambiguous_count == 0
+        } else {
+          false
+        }
+      } else {
+        false
       }
-    Empty => false
+    } else {
+      false
+    }
+  } else {
+    false
   }
 }
 
@@ -188,21 +412,18 @@ test fn duplicate_subject_name_refuses_ambiguous() -> Bool {
   }
 }
 
-// RED 5 -- finding (2): a subject that authored exactly ONE string literal is not a literal
-// DeclarationRef (the second field, decl_name, was never written). The reader's one-literal arm must
-// treat that as a REFUSAL the census COUNTS, not a fall-through and not a silent drop that lets the
-// all-resolve green pass "for the wrong reason." This plants the class directly: a single-field subject
-// ref names no real declaration, so the census registers EXACTLY ONE refusal and resolves NOTHING --
-// proving a one-literal subject is a counted refusal rather than vanishing from the count. (The
-// reader's subject_ref_snoc and reads_subject_pair both carry the explicit Cons { head, tail: Empty }
-// refusal arm; the census has no malformed-subject class to extend, so malformed rows are excluded
-// from the resolvable population here and their literal-vs-nonliteral identity join lands with
-// finding (3) against the census type.)
-test fn single_literal_subject_is_a_counted_refusal() -> Bool {
-  let census = declaration_ref_resolution_census_live(
-    refs: [ decl_ref(module_path: "extdeps.cron.extdeps_model_scope", decl_name: "dp_m3b_one_literal_subject") ],
-    pool_roots: witness_layer_roots)
-  if census.resolved_count == 0 {
-    if census.module_absent_count + census.declaration_absent_count + census.field_absent_count + census.ambiguous_count == 1 { true } else { false }
-  } else { false }
+// RED 5 (fix (2)) -- the deleted positional reader had `Cons { head: _, tail: Empty } => acc` and
+// `Empty => acc` arms that returned the accumulator UNCHANGED: a scope whose subject was not a
+// two-literal pair silently vanished from the resolver's view, and no count noticed. That reader is
+// GONE, replaced by the census. This exercises the census on a PLANTED scope whose subject is a named
+// reference -- the very shape the old reader dropped -- and asserts it lands as
+// SubjectNotLiteral { why: SubjectNamedReference }: counted, typed, never dropped. A census that
+// silently dropped this row (the old defect) would make this RED fail.
+test fn planted_indirect_subject_lands_as_subject_not_literal_through_the_census() -> Bool {
+  census_row_not_literal_named(
+    rows: subject_census_rows(),
+    want_module: "test.claim.long.dp_m3_subject_ref_resolution_witness",
+    want_decl: "dp_m3b_planted_indirect_scope",
+    want_named: true
+  )
 }
