@@ -1,0 +1,43 @@
+### t10-power-cap.service
+[Unit]
+Description=Cap every Tesla T10 (three on ken) at its minimum power limit
+After=systemd-modules-load.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/sbin/modprobe nvidia
+ExecStart=/usr/local/sbin/t10-power-cap.sh
+[Install]
+WantedBy=multi-user.target
+### ken-strata.service
+[Unit]
+Description=Strata engine on ken: one server over all three Tesla T10s (strata-main 8c5fafc1 sm_75, IQ3_S, layer split auto, port 18081)
+After=network-online.target t10-power-cap.service
+Wants=network-online.target
+Requires=t10-power-cap.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/strata-test/strata-main
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/strata-test/strata/.venv/bin/python serve/server.py --engine strata --config /home/ubuntu/strata-pool/cfg-ken.json --host 0.0.0.0 --port 18081
+# The expert GGUF is mmapped and its page cache is charged here, so the cap leaves room for it (125 GB host).
+MemoryMax=112G
+MemorySwapMax=2G
+Restart=on-failure
+RestartSec=20
+TimeoutStartSec=420
+
+[Install]
+WantedBy=multi-user.target
+### gpu-manager.service path
+ls: cannot access '/etc/systemd/system/gpu-manager.service': No such file or directory
+-rw-r--r-- 1 root root 332 Oct 20  2025 /usr/lib/systemd/system/gpu-manager.service
+### sysfs nvidia devices
+0000:01:00.0 vendor=0x10de device=0x1e37 class=0x030200
+0000:81:00.0 vendor=0x10de device=0x1e37 class=0x030200
+0000:c1:00.0 vendor=0x10de device=0x1e37 class=0x030200
+### nvidia-smi -L
+GPU 0: Tesla T10 (UUID: GPU-c4177907-3dc8-12be-4146-431ea120f818)
+GPU 1: Tesla T10 (UUID: GPU-8327ce9a-6011-f8cf-0012-4af9596c3124)
+GPU 2: Tesla T10 (UUID: GPU-a56f81eb-df65-ec75-e5ee-06c01ce8509e)
