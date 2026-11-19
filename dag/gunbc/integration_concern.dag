@@ -3996,7 +3996,7 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
-  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express]
+  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands]]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
@@ -4491,6 +4491,100 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 // made against. The digests are the committed files under
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
+
+// The revision the two Spark-endpoint rows below were read against: main, after gunbc.fleet.fleet_intent_network's
+// srv9 retirement (#16712) landed and before the srv14/srv11 address move in PR #16655.
+data spark_endpoint_rows_sighting_revision: CommitSha = "7c7526f116276f67b9a183d33b1a3f4f09901364"
+
+// THREE ENDPOINT ROWS ANSWER, THE TOPOLOGY ROSTER DOES NOT. srv10_host_lan_endpoint, srv11_host_lan_endpoint and
+// srv12_host_lan_endpoint each name a LAN address for a Spark unit, and none of the three is carried in
+// gunbc.fleet.fleet_intent_network::endpoints. Two places in one module therefore answer one question
+// differently: the row says the unit has an address, and the roster -- which is what
+// gunbc.fleet.fleet_intent_network::host_lan_address folds over -- says it has none. Nothing in the corpus says
+// which answer is meant: no row records those units as reserved rather than in service, and no row records the
+// omission as deliberate.
+data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConcern = IntegrationConcern {
+  identity: "three_spark_lan_endpoint_rows_answer_their_addresses_twice",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "endpoints"),
+      rest: [
+        decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint"),
+        decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "endpoints"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "host_lan_address"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint"),
+    ],
+  },
+  question: "Are these three Spark units IN SERVICE, in which case their endpoint rows belong in the topology roster and host_lan_address should answer for them, or RESERVED, in which case the rows should say so and the roster's silence is the answer? Read 2026-11-19: host_lan_address folds over the roster only, so today it answers absent for all three hosts while a row naming each address exists beside it. The consequence is not cosmetic. The address-uniqueness guard added in test.claim.fleet.fleet_intent_network_witness (fleet_intent_network_no_two_endpoint_rows_hold_one_address) ranges over the roster, so a collision on one of these three addresses is invisible to every executed check the repo has: two hosts could name 192.168.1.238 and nothing would red. Nobody has ruled which answer is intended, so both stay open here rather than this row choosing one.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: spark_endpoint_rows_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint"),
+          },
+        ],
+      },
+      account: "Read on main at the revision named above: three data rows of type gunbc.product.network_topology::NetworkEndpoint declare 192.168.1.237 (srv10), 192.168.1.238 (srv11) and one further address (srv12), and none of the three names appears in the endpoints roster of the same module. Counted on the roster itself: 16 rows carried, all addresses distinct; the three Spark rows sit outside that count.",
+    },
+  },
+  disposition: Open,
+}
+
+// A SOLD UNIT STILL HOLDS AN ADDRESS. The operator reported on 2026-11-17 that srv11 (spark-b66c) is sold, and the
+// tailnet-anchor work in PR #16655 moves 192.168.1.238 to srv14/butch as a dated lease observation retired from
+// that same cage. The model still answers the other way: srv11_host_lan_endpoint stands as a live host endpoint at
+// that address, and gunbc.fleet.fleet_host_identity::operator_host_srv11 keeps the unit in the fleet. Two hosts at
+// one address is the shape that routes an effect to the wrong machine, and the retirement belongs to a run, not to
+// a hand edit -- this row does not perform either.
+data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: IntegrationConcern = IntegrationConcern {
+  identity: "srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+      rest: [
+        decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "endpoints"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+      decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv14_host_lan_endpoint"),
+    ],
+  },
+  question: "Which run retires srv11_host_lan_endpoint, and where does 192.168.1.238's holdership move with it? The operator reported the unit sold on 2026-11-17 (relayed by smart-crane-730), and PR #16655 rewrites srv14_host_lan_endpoint to that address as a DHCP lease observation. Until the row is retired the ledger says srv11 and srv14 hold one address, and the guard on the roster (test.claim.fleet.fleet_intent_network_witness::fleet_intent_network_no_two_endpoint_rows_hold_one_address) cannot see the pair because srv11's row is not in the roster -- see three_spark_lan_endpoint_rows_answer_their_addresses_twice. What is NOT decided here: whether srv11's HostIdentity row also retires. A sold unit's identity may stay in the register as history; an endpoint row naming a live address may not. srv11's identity row is deliberately kept pinned by fleet_intent_network_srv10_enrolled_at_its_reserved_address so the two cannot move together by accident.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: spark_endpoint_rows_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv11"),
+          },
+        ],
+      },
+      account: "Read on main at the revision named above: srv11_host_lan_endpoint stands with address 192.168.1.238, role gunbc.product.network_topology::HostOperatingSystem and subject EndpointHost { host: operator_host_srv11 }. The operator's sale report (2026-11-17) is relayed in the tailnet-anchor PR's own body rather than carried as a datum of this repo, so this sighting cites the two model declarations that answer against it, not the report itself -- that is the weaker form and is stated here rather than hidden.",
+    },
+  },
+  disposition: Open,
+}
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },

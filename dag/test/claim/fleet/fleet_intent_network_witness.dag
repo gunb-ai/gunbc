@@ -9,7 +9,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv10, operator_host_srv11, operator_host_srv9, operator_host_e2d4b7,
 }
 import gunbc.fleet.fleet_intent_network {
-  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv10_host_lan_endpoint, srv11_host_lan_endpoint, srv12_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
+  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv10_host_lan_endpoint, srv12_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
 }
 import product.network_topology {
   BmcManagement,
@@ -84,7 +84,6 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv3_host_lan_endpoint,
   srv4_host_lan_endpoint,
   ken_host_lan_endpoint,
-  srv14_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,
   srv3_bmc_endpoint,
@@ -141,14 +140,40 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
 // later reader conclude the address belongs to the sold cage. The claim was renamed rather than silently
 // narrowed, so the rung drop's comment and any later audit see that this fixture population shrank.
 
-test fn fleet_intent_network_srv10_and_srv11_enrolled_at_their_reserved_addresses() -> Bool {
+// srv11's conjuncts came OUT on 2026-11-19 and the claim's name went with them, for the same reason the srv9 cut
+// above gives: the operator reported srv11 (spark-b66c) SOLD (2026-11-17, relayed in the ledger row
+// gunbc.integration_concern::srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands), and the unit that is about
+// to answer at 192.168.1.238 is srv14/butch, as a dated lease observation retired from that same cage (the
+// tailnet-anchor work in PR #16655). Pinning .238 to a sold cage would keep the sold host on the ledger as a live
+// holder, and would stop resolving the moment that endpoint row is retired. The claim is renamed rather than
+// silently narrowed. srv11's IDENTITY row stays pinned on purpose: retiring an endpoint row is not deleting a host
+// from gunbc.fleet.fleet_host_identity, and this pins that the two did not move together.
+test fn fleet_intent_network_srv10_enrolled_at_its_reserved_address() -> Bool {
   srv10_host_lan_endpoint.address == "192.168.1.237"
     && srv10_host_lan_endpoint.role == HostOperatingSystem
     && srv10_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv10 }
-    && srv11_host_lan_endpoint.address == "192.168.1.238"
-    && srv11_host_lan_endpoint.role == HostOperatingSystem
-    && srv11_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv11 }
     && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10" && operator_host_srv11 == "srv11"
+}
+
+// ONE ADDRESS, ONE HOLDER, EXECUTED OVER THE TOPOLOGY ROSTER. The .236 cut above and the pending .238 cut are the
+// same hazard seen twice: a unit is sold, another machine is observed at its address, and if the old endpoint row
+// is left standing the model says two hosts answer at one address -- the exact shape that routes an effect to the
+// wrong machine. The per-address claims pin the known cases one at a time; this one refuses the class, so an
+// endpoint row added without its retirement reds here instead of waiting for someone to notice a pair.
+//
+// HONEST REACH. It ranges over the rows gunbc.fleet.fleet_intent_network.endpoints carries -- host, BMC, asset and
+// tailnet rows together, because a collision between a host NIC and a management port is the same defect in a
+// different hat. It does NOT reach srv10_host_lan_endpoint, srv11_host_lan_endpoint or srv12_host_lan_endpoint:
+// those three rows are declared in the module but not carried in its endpoints roster, which is what makes
+// gunbc.fleet.fleet_intent_network::host_lan_address answer absent for those hosts. That reach gap is recorded as
+// its own ledger row, gunbc.integration_concern::three_spark_lan_endpoint_rows_answer_their_addresses_twice, and
+// closing it belongs there -- a claim over those three rows here would only restate that row's question. So while
+// srv11's row stands next
+// to a rostered srv14 row at the same address, THIS claim cannot see the pair -- it becomes able to the moment
+// srv11 is retired, which is why the ledger row above is the load-bearing object and this one is the backstop.
+test fn fleet_intent_network_no_two_endpoint_rows_hold_one_address() -> Bool {
+  fold(fleet_intent_network.endpoints, init: true, f: (acc, e) =>
+    acc && length(filter(fleet_intent_network.endpoints, other => other.address == e.address)) == 1)
 }
 
 // THE RETIREMENT, MADE CHECKABLE. srv9 keeps its identity row -- retiring an endpoint is not deleting a host
