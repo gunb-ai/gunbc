@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_decomposition {
   expand_node, expand_decomposition, occurrence_is_offered_claimable,
   Declared, Assumed,
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
-  decomposition, waits, leaf, reading_family,
+  decomposition, waits, leaf, reading_family, piece, decision, join,
   Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
 }
 
@@ -35,7 +35,7 @@ import gunbc.roadmap.roadmap_decomposition {
 // The expansion is matched directly: an Expanded carries the occurrences and edges; any ExpansionRejected fails the slice.
 test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_with_their_edges() -> Bool {
   match expand_node(item: nid(s: "literal-elaboration"), findings_count: 3) {
-    Expanded { occurrences, edges } =>
+    Expanded { occurrences, edges, omitted_composites: _ } =>
       count(occurrences) == 4
         && count(filter(occurrences, o => o.count_source == Declared)) == 1
         && count(filter(occurrences, o => o.count_source == Assumed)) == 3
@@ -52,7 +52,7 @@ test fn a_findings_decomposition_expands_into_declared_and_assumed_occurrences_w
 // itself refuses one. Only DECLARED occurrences are offerable.
 test fn no_assumed_findings_member_is_ever_offered_claimable() -> Bool {
   match expand_node(item: nid(s: "literal-elaboration"), findings_count: 5) {
-    Expanded { occurrences, edges } =>
+    Expanded { occurrences, edges, omitted_composites: _ } =>
       count(filter(occurrences, o => o.count_source == Assumed)) == 5
         && count(filter(filter(occurrences, o => o.count_source == Assumed), o => occurrence_is_offered_claimable(o))) == 0
     ExpansionRejected { cause } => false
@@ -86,13 +86,13 @@ test fn a_planted_waits_on_naming_a_stage_the_parent_lacks_refuses_through_the_c
     ],
   ])
   let beyond_ok = match expand_decomposition(d: beyond, findings_count: 3) {
-    Expanded { occurrences, edges } => false
+    Expanded { occurrences, edges, omitted_composites: _ } => false
     ExpansionRejected { cause: DependencyClaimRefused { item } } => item == nid(s: child)
     ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => false
     ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let adm_ok = match expand_decomposition(d: admitted, findings_count: 3) {
-    Expanded { occurrences, edges } =>
+    Expanded { occurrences, edges, omitted_composites: _ } =>
       count(edges) >= 1
         && all(edges, ed => ed.from.item == nid(s: parent) && nat_to_int(n: ed.from.stage) == 0
           && ed.to.item == nid(s: child) && nat_to_int(n: ed.to.stage) == 0 && nat_to_int(n: ed.to.piece) == 0 && nat_to_int(n: ed.to.member) == 0)
@@ -125,19 +125,19 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
     [ reading_family(label: "readings", days: 1, members: 2, on: "mod/x", basis: "b", owner: "o") ],
   ])
   let zero_ok = match expand_decomposition(d: zero_pop, findings_count: 0) {
-    Expanded { occurrences, edges } => false
+    Expanded { occurrences, edges, omitted_composites: _ } => false
     ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-zero-fixture")
     ExpansionRejected { cause: DependencyClaimRefused { item } } => false
     ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let neg_ok = match expand_decomposition(d: neg_pop, findings_count: 0) {
-    Expanded { occurrences, edges } => false
+    Expanded { occurrences, edges, omitted_composites: _ } => false
     ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => item == nid(s: "declared-pop-negative-fixture")
     ExpansionRejected { cause: DependencyClaimRefused { item } } => false
     ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
   }
   let pos_ok = match expand_decomposition(d: pos_pop, findings_count: 0) {
-    Expanded { occurrences, edges } =>
+    Expanded { occurrences, edges, omitted_composites: _ } =>
       count(filter(occurrences, o => o.count_source == Declared)) == 2
         && count(filter(occurrences, o => o.count_source == Assumed)) == 0
     ExpansionRejected { cause } => false
@@ -145,10 +145,149 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
   // A zero ASSUMED (FindingsOf) count is a legitimate simulation input and must still EXPAND, minting zero
   // assumed members -- proving the new refusal targets only the DECLARED Int, never the Nat simulation input.
   let zero_findings_ok = match expand_node(item: nid(s: "literal-elaboration"), findings_count: 0) {
-    Expanded { occurrences, edges } =>
+    Expanded { occurrences, edges, omitted_composites: _ } =>
       count(filter(occurrences, o => o.count_source == Assumed)) == 0
         && count(filter(occurrences, o => o.count_source == Declared)) == 1
     ExpansionRejected { cause } => false
   }
   zero_ok && neg_ok && pos_ok && zero_findings_ok
+}
+
+// THE RED CONTROL for the empty-stage barrier, on the REAL fixture. factory-attempt-execution-on-fabric-lease
+// (carrier line 1197) has an 8-member audit reading family at stage 0, a lone Decision at stage 1 (which emits NO
+// occurrence), and an 8-member cut reading family at stage 2. The OLD barrier linked stage 2 to stage 1 only, so it
+// found nothing at stage 1 and emitted ZERO audit-to-cut edges -- the scheduler let cut start before audit. The FIX
+// carries the barrier down to the nearest NON-EMPTY earlier stage, so every stage-2 cut occurrence now waits on
+// EVERY stage-0 audit occurrence: 8 x 8 = 64 edges, none touching the empty stage 1. Reverting the barrier change
+// drops this count to 0 and reddens the whole slice.
+test fn the_real_fixture_carries_the_stage_barrier_across_its_empty_decision_stage() -> Bool {
+  let fixture = "factory-attempt-execution-on-fabric-lease"
+  let node = nid(s: fixture)
+  match expand_node(item: node, findings_count: 0) {
+    Expanded { occurrences, edges, omitted_composites } =>
+      // 8 audit (stage 0) + 8 cut (stage 2); the stage-1 Decision emits nothing.
+      count(occurrences) == 16
+        && count(filter(occurrences, o => nat_to_int(n: o.path.stage) == 0)) == 8
+        && count(filter(occurrences, o => nat_to_int(n: o.path.stage) == 1)) == 0
+        && count(filter(occurrences, o => nat_to_int(n: o.path.stage) == 2)) == 8
+        // The barrier emits exactly the 8x8 audit-to-cut set: every edge runs stage 0 -> stage 2 within the item.
+        && count(edges) == 64
+        && all(edges, e =>
+             e.from.item == node && e.to.item == node
+               && nat_to_int(n: e.from.stage) == 0 && nat_to_int(n: e.to.stage) == 2)
+        // ...and it is the FULL cross product: each cut leaf takes an edge from every audit leaf (its 8 incoming all
+        // come from stage 0), and each audit leaf feeds every cut leaf. No duplicate edges are minted (one per pair).
+        && all(filter(occurrences, o => nat_to_int(n: o.path.stage) == 2), c =>
+             count(filter(edges, e => nat_to_int(n: e.to.member) == nat_to_int(n: c.path.member))) == 8)
+        && all(filter(occurrences, o => nat_to_int(n: o.path.stage) == 0), a =>
+             count(filter(edges, e => nat_to_int(n: e.from.member) == nat_to_int(n: a.path.member))) == 8)
+        // This fixture has no Composite, so nothing is omitted.
+        && count(omitted_composites) == 0
+    ExpansionRejected { cause } => false
+  }
+}
+
+// AN ALL-STAGES-EMPTY ITEM expands to nothing WITHOUT refusing: every piece is a Decision or a Join (no occurrence,
+// no declared family to trip the non-positive-count check), so all_occurrences builds an empty list and the expansion
+// is a legitimate Expanded { occurrences: [], edges: [], omitted_composites: [] } -- not a crash, not a fabricated
+// leaf, and no barrier edge (fail_closed: the absence is honest, not a dropped refusal).
+test fn an_all_stages_empty_item_expands_to_nothing_rather_than_refusing() -> Bool {
+  let d = decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
+  ], stages: [
+    [ decision(label: "a decision alone", alternatives: ["x", "y"]) ],
+    [ join(label: "a join alone") ],
+    [ decision(label: "another decision", alternatives: ["p", "q"]) ],
+  ])
+  match expand_decomposition(d: d, findings_count: 3) {
+    Expanded { occurrences, edges, omitted_composites } =>
+      count(occurrences) == 0 && count(edges) == 0 && count(omitted_composites) == 0
+    ExpansionRejected { cause } => false
+  }
+}
+
+// A WAITS_ON NAMING AN EMPTY CHILD STAGE resolves to that stage's nearest NON-EMPTY predecessor instead of being
+// silently dropped: the child (calendar-binding -> list-scheduling, an edge the carrier declares) has a leaf at
+// stage 0, a lone Decision at stage 1, and a leaf at stage 2. The row names into_stage 1 -- an empty stage. The OLD
+// code did `Absent => WaitsBuilt { edges }` (a silent drop); the FIX resolves the empty into_stage down to stage 0,
+// so every parent occurrence lands an edge on the child's stage-0 leaf and NONE on the empty stage 1. Reverting the
+// child-side resolve makes count(edges) 0 and reddens the slice. The carrier's OWN gate admits the row (the named
+// stage index is in range), so this is the resolve -- not the gate -- doing the work.
+test fn a_waits_on_naming_an_empty_child_stage_resolves_to_its_nearest_nonempty_predecessor() -> Bool {
+  let child = "roadmap-schedule-calendar-binding"
+  let parent = "roadmap-schedule-list-scheduling"
+  let d = decomposition(node: child, waits_on: [ waits(item: parent, from_stage: 0, into_stage: 1) ], stages: [
+    [ leaf(label: "stage zero work", days: 2) ],
+    [ decision(label: "empty middle", alternatives: ["a", "b"]) ],
+    [ leaf(label: "stage two work", days: 1) ],
+  ])
+  let admitted_by_gate = decomposition_dependencies_well_formed(d: d)
+  match expand_decomposition(d: d, findings_count: 0) {
+    Expanded { occurrences, edges, omitted_composites: _ } =>
+      admitted_by_gate
+        // The WAITS edges are exactly those whose FROM is the parent (barrier edges are child-internal, from the
+        // child itself, so they are excluded here). The old silent-drop emitted none of them; the fix emits them.
+        && count(filter(edges, e => e.from.item == nid(s: parent))) > 0
+        // every waits edge lands on the child's RESOLVED stage 0 -- the nearest non-empty stage below the named
+        // (empty) stage 1 -- and never on the empty stage 1 itself.
+        && all(filter(edges, e => e.from.item == nid(s: parent)), e =>
+             e.to.item == nid(s: child) && nat_to_int(n: e.to.stage) == 0
+               && nat_to_int(n: e.from.stage) == 0)
+    ExpansionRejected { cause } => false
+  }
+}
+
+// A WAITS_ON WHOSE CHILD SPAN AT OR BELOW THE NAMED STAGE IS WHOLLY EMPTY REFUSES BY NAME, never dropped silently:
+// the child's stage 0 is a lone Decision (empty) and the row names into_stage 0 -- no non-empty stage at or below it.
+// The whole item still has an occurrence (the stage-1 leaf), so all_occurrences builds and the refusal is NOT an
+// empty-expansion; it is the resolve locating no predecessor. The carrier's OWN gate ADMITS the row (the index is in
+// range), proving the refusal is the resolve (fail_closed), and it names the child item through the existing typed
+// DependencyClaimRefused.
+test fn a_waits_on_whose_child_span_is_wholly_empty_refuses_by_name() -> Bool {
+  let child = "roadmap-schedule-calendar-binding"
+  let parent = "roadmap-schedule-list-scheduling"
+  let d = decomposition(node: child, waits_on: [ waits(item: parent, from_stage: 0, into_stage: 0) ], stages: [
+    [ decision(label: "empty head", alternatives: ["a", "b"]) ],
+    [ leaf(label: "stage one work", days: 1) ],
+  ])
+  let admitted_by_gate = decomposition_dependencies_well_formed(d: d)
+  match expand_decomposition(d: d, findings_count: 0) {
+    Expanded { occurrences, edges, omitted_composites: _ } => false
+    ExpansionRejected { cause: DependencyClaimRefused { item } } => admitted_by_gate && item == nid(s: child)
+    ExpansionRejected { cause: NonPositiveDeclaredCount { item } } => false
+    ExpansionRejected { cause: NotUniquelyDecomposed { item } } => false
+  }
+}
+
+// THE (b) DEFERRAL REPORT: a Composite the carrier declares with NESTED worker pieces that carry days is NOT expanded
+// into occurrences (LeafPath cannot address inside it), but the expansion SAYS so -- it reports the top-level
+// Composite keyed by that piece's OWN LeafPath with its nested day total (from the ONE count helper), so a schedule
+// over the item omits that work VISIBLY instead of undercounting quietly. The composite here nests two leaves worth
+// 2 + 3 = 5 days; only the sibling leaf at stage 0 becomes an occurrence (piece 0), and the Composite (piece 1) is
+// reported at path (item, stage 0, piece 1, member 0) with nested_days 5. No new path format, and the report is a
+// REPORT: no occurrence is minted for the Composite.
+test fn a_composite_is_not_expanded_but_is_reported_with_its_nested_day_total() -> Bool {
+  let child = "roadmap-schedule-calendar-binding"
+  let node = nid(s: child)
+  let d = decomposition(node: child, waits_on: [
+  ], stages: [
+    [ leaf(label: "real work", days: 1), piece(label: "a hidden bundle", stages: [
+      [ leaf(label: "nested one", days: 2), leaf(label: "nested two", days: 3) ],
+    ]) ],
+  ])
+  match expand_decomposition(d: d, findings_count: 0) {
+    Expanded { occurrences, edges, omitted_composites } =>
+      // only the sibling leaf is an occurrence; the Composite (and its two nested leaves) mint none.
+      count(occurrences) == 1
+        && all(occurrences, o => nat_to_int(n: o.path.piece) == 0)
+        && count(edges) == 0
+        // exactly one top-level Composite reported, at the top-level piece's own path, with the nested day total.
+        && count(omitted_composites) == 1
+        && count(filter(omitted_composites, c =>
+             c.path.item == node
+               && nat_to_int(n: c.path.stage) == 0
+               && nat_to_int(n: c.path.piece) == 1
+               && nat_to_int(n: c.path.member) == 0
+               && c.nested_days == 5)) == 1
+    ExpansionRejected { cause } => false
+  }
 }
