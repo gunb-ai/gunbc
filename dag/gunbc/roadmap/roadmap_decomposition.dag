@@ -76,6 +76,13 @@ type WorkPiece
 
 type WorkStage { pieces: List<WorkPiece> }
 
+// The KIND of a top-level WorkPiece, as a TYPED closed set -- the one projection of the WorkPiece coproduct used
+// wherever only the kind matters (an unresolved-wait report says WHICH kinds filled an occurrence-less span). It is
+// NOT a String: the labels are the coproduct's own constructors, so renaming or adding a WorkPiece variant breaks the
+// TOTAL piece_kind match below at compile time rather than leaving stale text behind (single_authority, minimize_redundancy:
+// a closed set gets one spelling). piece_kind is the ONLY producer; piece_kinds_equal is the ONLY comparator.
+type PieceKind = LeafKind | FamilyKind | JoinKind | DecisionKind | CompositeKind
+
 type StageDependency {
   item: RoadmapNodeId
   from_stage: Int
@@ -1607,7 +1614,7 @@ type WaitSide = From | Into
 // The piece kinds the empty span held, so a reader sees WHY no occurrence emitted (a Join, a Decision, a Composite)
 // rather than an unexplained silence. Only these three kinds ever appear here -- a span that minted an occurrence is
 // never unresolved -- but the producer states what it saw instead of asserting it, so nothing is fabricated.
-type UnresolvedWaitReason = EndpointEmitsNoOccurrence { kinds: List<String> }
+type UnresolvedWaitReason = EndpointEmitsNoOccurrence { kinds: List<PieceKind> }
 
 type UnresolvedWait {
   row: StageDependency
@@ -1788,7 +1795,7 @@ fn unique_decomposition(item: RoadmapNodeId) -> UniqueDecomposition {
 // REFUSED, located at the parent, never silently dropped to "no edges".
 type ParentResolution
   = Resolved { occurrences: List<Occurrence> }
-  | EmitsNoOccurrence { kinds: List<String> }
+  | EmitsNoOccurrence { kinds: List<PieceKind> }
   | Rejected { cause: ExpansionRefusal }
 
 // A stage emits an occurrence EXACTLY when `groups` holds a key for it -- occurrences_by_stage inserts a key only
@@ -1816,45 +1823,63 @@ fn nearest_nonempty_at_or_below(groups: Map<Int, List<Occurrence>>, named: Int) 
   }
 }
 
-// The piece-KIND name a top-level piece contributes to an unresolved-wait report. Only Join / Decision / Composite
-// can ever reach the report (a span that minted an occurrence is never unresolved), but the match names all five
-// kinds so the report states what it actually saw and mints no label for a kind it did not encounter.
-fn piece_kind_name(p: WorkPiece) -> String {
+// The ONE projection of a top-level WorkPiece to its PieceKind. The match is TOTAL over the coproduct -- if a variant
+// is ever added to, or renamed in, WorkPiece this fails to compile, which is the point: the report can never carry a
+// kind the coproduct does not have. Only Join / Decision / Composite can ever reach an unresolved-wait report (a span
+// that minted an occurrence is never unresolved), but the match names all five so the report states what it actually
+// saw rather than special-casing.
+fn piece_kind(p: WorkPiece) -> PieceKind {
   match p {
-    Leaf { label: _, days: _, evidence: _ } => "Leaf"
-    Family { label: _, days: _, population: _, owner: _ } => "Family"
-    Join { label: _ } => "Join"
-    Decision { label: _, alternatives: _ } => "Decision"
-    Composite { label: _, stages: _ } => "Composite"
+    Leaf { label: _, days: _, evidence: _ } => LeafKind
+    Family { label: _, days: _, population: _, owner: _ } => FamilyKind
+    Join { label: _ } => JoinKind
+    Decision { label: _, alternatives: _ } => DecisionKind
+    Composite { label: _, stages: _ } => CompositeKind
   }
 }
 
-fn stage_kind_names(st: WorkStage) -> List<String> {
-  map(st.pieces, piece_kind_name)
+// The ONE comparator for PieceKind -- an exhaustive cross-match, so equality never leans on a derived String form.
+fn piece_kinds_equal(a: PieceKind, b: PieceKind) -> Bool {
+  match a {
+    LeafKind => match b { LeafKind => true FamilyKind => false JoinKind => false DecisionKind => false CompositeKind => false }
+    FamilyKind => match b { LeafKind => false FamilyKind => true JoinKind => false DecisionKind => false CompositeKind => false }
+    JoinKind => match b { LeafKind => false FamilyKind => false JoinKind => true DecisionKind => false CompositeKind => false }
+    DecisionKind => match b { LeafKind => false FamilyKind => false JoinKind => false DecisionKind => true CompositeKind => false }
+    CompositeKind => match b { LeafKind => false FamilyKind => false JoinKind => false DecisionKind => false CompositeKind => true }
+  }
 }
 
-// The distinct piece-kind names across the TOP-LEVEL pieces of stages 0..named. Entered only for an endpoint already
+// The single membership test a reader (or a witness) uses against a reported `kinds`, so no caller re-derives equality.
+fn has_kind(ks: List<PieceKind>, k: PieceKind) -> Bool {
+  count(filter(ks, e => piece_kinds_equal(a: e, b: k))) > 0
+}
+
+fn stage_kinds(st: WorkStage) -> List<PieceKind> {
+  map(st.pieces, piece_kind)
+}
+
+// The distinct piece kinds across the TOP-LEVEL pieces of stages 0..named. Entered only for an endpoint already
 // known to emit no occurrence (named >= 0 is guaranteed by the carrier's well-formedness gate), so it walks DOWN the
 // list by structural recursion (Empty stops it) with an Int budget counting DOWN -- bounded, no unguarded loop. The
 // kinds are de-duplicated by first appearance so the report reads as a small set, not a repetition.
-fn span_kind_names(stages: List<WorkStage>, named: Int) -> List<String> {
-  distinct_kinds(span_kind_names_at(stages: stages, remaining: named))
+fn span_kinds(stages: List<WorkStage>, named: Int) -> List<PieceKind> {
+  distinct_kinds(span_kinds_at(stages: stages, remaining: named))
 }
 
-fn span_kind_names_at(stages: List<WorkStage>, remaining: Int) -> List<String> {
+fn span_kinds_at(stages: List<WorkStage>, remaining: Int) -> List<PieceKind> {
   if remaining < 0 {
     []
   } else {
     match stages {
       Empty => []
-      Cons { head: st, tail: rest } => concat(stage_kind_names(st), span_kind_names_at(stages: rest, remaining: remaining - 1))
+      Cons { head: st, tail: rest } => concat(stage_kinds(st), span_kinds_at(stages: rest, remaining: remaining - 1))
     }
   }
 }
 
-fn distinct_kinds(ks: List<String>) -> List<String> {
+fn distinct_kinds(ks: List<PieceKind>) -> List<PieceKind> {
   fold(ks, init: [], f: fn(acc, k) {
-    if count(filter(acc, e => e == k)) == 0 { concat(acc, [k]) } else { acc }
+    if count(filter(acc, e => piece_kinds_equal(a: e, b: k))) == 0 { concat(acc, [k]) } else { acc }
   })
 }
 
@@ -1882,10 +1907,10 @@ fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_cou
 fn resolve_from_parent_occurrences(item: RoadmapNodeId, occs: List<Occurrence>, from_stage: Int, stages: List<WorkStage>) -> ParentResolution {
   let pgroups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   match nearest_nonempty_at_or_below(groups: pgroups, named: from_stage) {
-    Absent => EmitsNoOccurrence { kinds: span_kind_names(stages: stages, named: from_stage) }
+    Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
     Present { value: j } =>
       match map_lookup(m: pgroups, key: j) {
-        Absent => EmitsNoOccurrence { kinds: span_kind_names(stages: stages, named: from_stage) }
+        Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
         Present { value: ps } => Resolved { occurrences: ps }
       }
   }
@@ -1945,10 +1970,10 @@ fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: 
           WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: From, stage: w.from_stage, reason: EndpointEmitsNoOccurrence { kinds: kinds } } ], unresolved) }
         Resolved { occurrences: ps } => match nearest_nonempty_at_or_below(groups: groups, named: w.into_stage) {
           Absent =>
-            WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kind_names(stages: d.stages, named: w.into_stage) } } ], unresolved) }
+            WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
           Present { value: j } => match map_lookup(m: groups, key: j) {
             Absent =>
-              WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kind_names(stages: d.stages, named: w.into_stage) } } ], unresolved) }
+              WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
             Present { value: cs } =>
               WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges), unresolved: unresolved }
           }

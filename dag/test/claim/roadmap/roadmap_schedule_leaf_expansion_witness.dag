@@ -24,7 +24,7 @@ import gunbc.roadmap.roadmap_decomposition {
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
   decomposition, waits, leaf, reading_family, piece, decision, join,
   Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
-  Into, From, EndpointEmitsNoOccurrence,
+  Into, From, EndpointEmitsNoOccurrence, DecisionKind, has_kind,
 }
 
 // THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
@@ -267,7 +267,7 @@ test fn a_waits_on_whose_child_span_emits_no_occurrence_is_reported_unresolved_n
              (match u.side { Into => true  From => false })
                && u.stage == 0
                && u.row.item == nid(s: parent)
-               && match u.reason { EndpointEmitsNoOccurrence { kinds } => count(filter(kinds, k => k == "Decision")) == 1 })) == 1
+               && match u.reason { EndpointEmitsNoOccurrence { kinds } => has_kind(ks: kinds, k: DecisionKind) })) == 1
     ExpansionRejected { cause } => false
   }
 }

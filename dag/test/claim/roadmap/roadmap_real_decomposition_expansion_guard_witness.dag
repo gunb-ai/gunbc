@@ -20,6 +20,7 @@ import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   roadmap_decompositions, expand_decomposition, expand_node,
   Expanded, ExpansionRejected, UnresolvedWait, Into, From, EndpointEmitsNoOccurrence,
+  PieceKind, CompositeKind, JoinKind, has_kind,
 }
 
 // (1) EVERY real decomposition expands at the simulation findings_count of one -- no item is refused, no item is
@@ -47,13 +48,14 @@ fn side_is_into(u: UnresolvedWait) -> Bool {
 }
 
 // helper: does any reported unresolved wait on this item sit on the given side, name `stage`, wait on `parent`, and
-// give the EndpointEmitsNoOccurrence reason whose kinds include `kind`?
-fn reports_wait(node: String, want_into: Bool, stage: Int, parent: String, kind: String) -> Bool {
+// give the EndpointEmitsNoOccurrence reason whose kinds include `kind`? The kind is a typed PieceKind, matched with the
+// module's own has_kind -- the report is asserted against the coproduct, never a string.
+fn reports_wait(node: String, want_into: Bool, stage: Int, parent: String, kind: PieceKind) -> Bool {
   count(filter(unresolved_of(node: node), u =>
       side_is_into(u) == want_into
         && u.stage == stage
         && u.row.item == nid(s: parent)
-        && match u.reason { EndpointEmitsNoOccurrence { kinds } => count(filter(kinds, k => k == kind)) >= 1 })) > 0
+        && match u.reason { EndpointEmitsNoOccurrence { kinds } => has_kind(ks: kinds, k: kind) })) > 0
 }
 
 // (2a) v1-emitter-quarantine is a lone Composite stage: its wait on native-production-admission lands on its own
@@ -62,7 +64,7 @@ test fn v1_emitter_quarantine_milestone_wait_is_reported_unresolved() -> Bool {
   match expand_node(item: nid(s: "v1-emitter-quarantine"), findings_count: 1) {
     Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
       count(unresolved_waits) == 1
-        && reports_wait(node: "v1-emitter-quarantine", want_into: true, stage: 0, parent: "native-production-admission", kind: "Composite")
+        && reports_wait(node: "v1-emitter-quarantine", want_into: true, stage: 0, parent: "native-production-admission", kind: CompositeKind)
     ExpansionRejected { cause: _ } => false
   }
 }
@@ -73,7 +75,7 @@ test fn native_production_admission_join_wait_is_reported_unresolved() -> Bool {
   match expand_node(item: nid(s: "native-production-admission"), findings_count: 1) {
     Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
       count(unresolved_waits) == 1
-        && reports_wait(node: "native-production-admission", want_into: false, stage: 0, parent: "namespace-unique-on-chain", kind: "Join")
+        && reports_wait(node: "native-production-admission", want_into: false, stage: 0, parent: "namespace-unique-on-chain", kind: JoinKind)
     ExpansionRejected { cause: _ } => false
   }
 }
@@ -84,9 +86,9 @@ test fn factory_join_waits_are_reported_unresolved() -> Bool {
   match expand_node(item: nid(s: "factory"), findings_count: 1) {
     Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
       count(unresolved_waits) == 3
-        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "factory-dogfood-route", kind: "Join")
-        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "work-exec-6-one-ledger-per-host", kind: "Join")
-        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "serve-held-open-response", kind: "Join")
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "factory-dogfood-route", kind: JoinKind)
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "work-exec-6-one-ledger-per-host", kind: JoinKind)
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "serve-held-open-response", kind: JoinKind)
     ExpansionRejected { cause: _ } => false
   }
 }
