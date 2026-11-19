@@ -4577,7 +4577,7 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
-          run: "claim_batch binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built at main a7edfc30d566, entry dag/test/claim/fleet/fleet_intent_network_witness.dag; the head, tree-cleanliness and per-entry counts of every run taken for this change are tabulated in the PR body rather than quoted from memory here",
+          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/fleet_intent_network_witness.dag, taken on a clean tree at head f1b08eb90410f4363ca60c31c02f01877152cc67: 11 witness(es) resolved, 11 pass, 0 fail, this guard among them (log line: PASS fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row, eval_steps=395, subject=4b66765db2f87fa6)",
           conclusion: "No endpoint row carried by the topology roster names srv9, srv10, srv11 or srv12 as its subject, and the four host-identity rows still resolve -- the sold set is unreachable in the modeled topology while staying in the register.",
         },
         tail: [],
@@ -4654,7 +4654,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.fleet_intent_network_witness", decl_name: "fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row"),
-          run: "same claim_batch invocation and binary as the row above; counts tabulated in the PR body",
+          run: "same claim_batch invocation, binary and clean head as three_spark_lan_endpoint_rows_answer_their_addresses_twice above (11 witness(es), 11 pass, 0 fail); the guard is named in that run's PASS list",
           conclusion: "No rostered endpoint names srv11 (or srv9, srv10, srv12) as its subject; srv11's host-identity row still resolves, so the sold unit remains in the register while being unreachable in the modeled topology.",
         },
         tail: [],

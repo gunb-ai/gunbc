@@ -7,7 +7,7 @@ import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { mac_address, mac_addresses_are_equal }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv10, operator_host_srv11, operator_host_srv9, operator_host_e2d4b7,
+  operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv9, operator_host_e2d4b7,
 }
 import gunbc.fleet.fleet_intent_network {
   fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
@@ -150,7 +150,7 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
 // This replaces fleet_intent_network_srv10_enrolled_at_its_reserved_address, which pinned 192.168.1.237 to srv10.
 // That claim was itself part of the defect: a test that kept a sold cage addressable. It is deleted rather than
 // narrowed, because nothing about a sold host's address is worth pinning -- every value it named is an address no
-// fleet mode may dispatch to. What is kept is the identity pin below: srv9, srv10, srv11 and srv12 stay declared in
+// fleet mode may dispatch to. What is kept is the identity pin below -- all four names are imported from gunbc.fleet.fleet_host_identity so the pin binds a declaration rather than a bare word: srv9, srv10, srv11 and srv12 stay declared in
 // gunbc.fleet.fleet_host_identity, which is where a sold unit belongs, and that contrast is the whole difference
 // between an identity row and an endpoint row. The executed half is therefore the absence: no endpoint row the
 // topology roster carries may name a Group B host as its subject, at any address. That is the guard against
