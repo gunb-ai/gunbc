@@ -38,7 +38,7 @@ import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound,
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow, instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow, microvm_shakedown_workflow_triggers }
 
@@ -175,7 +175,8 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
 // THE THREE OMITTED WORKFLOW ARTIFACTS ARE FORCED THERE, not merely declared there (review of
 // 2026-10-24: an identity check alone proves nothing about the reasons). The proof reads each
 // omission reason AT THE LEVEL IT IS STATED, by construction (side-chat ruling, 2026-10-24):
-//   - fleet_converge_workflow is a constant Workflow whose modeled 'on' set carries no autonomous
+//   - fleet_converge_workflow_of is the committed Workflow (emitted through the run-step family) whose
+//     modeled 'on' set carries no autonomous
 //     trigger; if it ever grows one (a schedule, a push), it must join the fold and this goes red;
 //   - the two function-built omissions discharge on their MODULE-LEVEL TRIGGER CONSTANTS
 //     (instrument_dispatch_workflow_triggers / microvm_shakedown_workflow_triggers), which the
@@ -188,10 +189,18 @@ fn omission_autonomous_count_triggers(ts: List<WorkflowTrigger>) -> Int {
 }
 
 test fn fleet_converge_workflow_is_genuinely_dispatch_only_so_its_omission_holds() -> Bool {
-  length(fleet_converge_workflow.jobs) > 0
-    && length(fleet_converge_workflow.on) > 0
-    && omission_autonomous_count_triggers(ts: fleet_converge_workflow.on) == 0
-    && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
+  // The committed fleet-converge workflow is emitted through the retyped run-step invoke family, so its
+  // Workflow value is now an Outcome<Workflow>. Fail-closed: if its emission is ever refused the dispatch-only
+  // omission cannot be established and this claim goes RED -- a refused fleet-converge workflow must never
+  // silently vouch for its own omission.
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      length(wf.jobs) > 0
+        && length(wf.on) > 0
+        && omission_autonomous_count_triggers(ts: wf.on) == 0
+        && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
+  }
 }
 
 test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> Bool {

@@ -40,7 +40,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
-  fleet_converge_workflow, expected_fleet_converge_yml,
+  expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_dispatch_inputs, fleet_converge_dispatchable_modes, fleet_converge_spark_target_options,
 }
