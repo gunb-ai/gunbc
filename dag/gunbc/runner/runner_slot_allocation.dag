@@ -635,6 +635,31 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
   memory_admitted_width_of(f: host_width_facts(host: host))
 }
 
+// THE TOTAL WALL A DEPLOY ROW MAY SIT UNDER, DECLARED ONCE. host_memory_admitted_width alone is the
+// base-only fleet-row PROJECTION -- it counts only the slots the fleet row divides into the envelope --
+// while the committed width fold grants a host whose envelope leaves a sub-25 GiB remainder ONE
+// transitional CI slot on top of that projection. The wall a materialized deploy row must stay under is
+// therefore the projection PLUS that grant. Spelling the sum inline in three places (this fold,
+// test.claim.host.host_allocation_conservation and test.claim.runner.runner_slot_provision_witness) let
+// the base projection and the total wall drift apart; this is the one authority for the sum, and the
+// fold below and both witnesses read it. The transitional addend is written HERE and nowhere else.
+fn memory_admitted_total_width(host: HostIdentity) -> Int {
+  memory_admitted_total_width_over(f: host_width_facts(host: host), rows: microvm_slot_realization_rows)
+}
+
+// THE SAME WALL AGAINST SUPPLIED REALIZATION ROWS, so the committed fold derived_runner_slots_of_over
+// reads the total THROUGH this declaration instead of re-spelling base + transitional. The rows reach the
+// base fold exactly as they reach every other rows-parameterized width fold: a transitional slot released
+// from the authored charge by a positive not-realized reading widens both the base width and, through it,
+// the wall -- so the fold and the default-rows accessor above cannot disagree, they differ only in rows.
+fn memory_admitted_total_width_over(f: HostWidthFacts, rows: List<MicrovmSlotRealizationRow>) -> Int {
+  memory_admitted_width_of_envelope_over(
+    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
+    authored_slots: f.authored_slots,
+    rows: rows,
+  ) + host_transitional_ci_slot_count(host: f.host)
+}
+
 fn memory_admitted_width_of(f: HostWidthFacts) -> Int {
   memory_admitted_width_of_envelope(
     envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
@@ -1432,11 +1457,7 @@ fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
 }
 
 fn derived_runner_slots_of_over(f: HostWidthFacts, by_cpu: Int, rows: List<MicrovmSlotRealizationRow>) -> Int {
-  let by_memory_plus_transitional = memory_admitted_width_of_envelope_over(
-    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
-    authored_slots: f.authored_slots,
-    rows: rows,
-  ) + host_transitional_ci_slot_count(host: f.host)
+  let by_memory_plus_transitional = memory_admitted_total_width_over(f: f, rows: rows)
   let by_mem_cpu = if by_cpu < by_memory_plus_transitional { by_cpu } else { by_memory_plus_transitional }
   match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
