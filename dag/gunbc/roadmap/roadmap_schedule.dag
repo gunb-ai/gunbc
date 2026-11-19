@@ -478,7 +478,7 @@ fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapac
   match e {
     ExpansionRejected { cause: cause } =>
       NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
-    Expanded { occurrences: occs, edges: edges } => {
+    Expanded { occurrences: occs, edges: edges, omitted_composites: _ } => {
       if worker_count <= 0 {
         NotScheduled { refusal: ConcurrencyCapInvalid { cap: workers } }
       } else {
