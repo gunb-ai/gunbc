@@ -941,15 +941,15 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
 // caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
 // over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
 // for elevated writes.
-fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ConvergeStep {
-  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg,target: target, context: context, argv: argv))
+fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, argv: List<String>) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh_posix(kind: kind, target: target, context: context, argv: argv))
 }
 
 // The as-user WRITE transport (review 96039 shape): argv_words(command: sudo_elevate_as_command(
 // user: .., command: argv_words(command: <extdeps builder>))) — the command runs as the serving
 // account through sudo, its argv built by extdeps builders (git, rustup), never hand-typed.
-fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> ConvergeStep {
-  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))))
+fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, user: String, command: ArgvCommand) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))))
 }
 
 // The executor's OWN transport for uploading one local file (the serve binary, the authorized_keys
@@ -1021,7 +1021,7 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
         let remote_staging = concat(stage, "/ak.upload")
         match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
           StepFailed { cause: c } => StepFailed { cause: c }
-          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging, dest: path))) {
+          StepDone => match converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging, dest: path))) {
             StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
             // Readback of the file we JUST sudo-installed — elevation is established (the install above
             // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
@@ -1044,7 +1044,7 @@ fn converge_install_rustup(target: SshTarget, context: FleetSshExecutionContext,
     StageReady { dir: stage } => {
       let installer = concat(stage, "/rustup-init")
       let installed = converge_rustup_from_stage(target: target, context: context, installer: installer, url: url, expected_sha256: expected_sha256, usr: usr, rustup_home: rustup_home, cargo_home: cargo_home)
-      let cleanup = converge_as_user(target: target, context: context, user: usr, command: rm_recursive_force_command(path: stage))
+      let cleanup = converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: rm_recursive_force_command(path: stage))
       match installed {
         StepFailed { cause: c } => StepFailed { cause: c }
         StepDone => match cleanup {
@@ -1057,13 +1057,13 @@ fn converge_install_rustup(target: SshTarget, context: FleetSshExecutionContext,
 }
 
 fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionContext, installer: String, url: String, expected_sha256: String, usr: String, rustup_home: String, cargo_home: String) -> ConvergeStep {
-  match converge_as_user(target: target, context: context, user: usr, command: curl_download_command(url: url, destination: installer)) {
+  match converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: curl_download_command(url: url, destination: installer)) {
     StepFailed { cause: c } => StepFailed { cause: concat("rustup-init download: ", c) }
     StepDone => match converge_readback_step(what: "rustup-init sha256", read: serving_leg_sha256(item: "rustup-init.sha256", target: target, context: context, path: installer), want: expected_sha256) {
       StepFailed { cause: c } => StepFailed { cause: c }
-      StepDone => match converge_as_user(target: target, context: context, user: usr, command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0700" as NonEmptyStr, path: installer)) {
+      StepDone => match converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0700" as NonEmptyStr, path: installer)) {
         StepFailed { cause: c } => StepFailed { cause: concat("chmod rustup-init: ", c) }
-        StepDone => match converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
+        StepDone => match converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
           StepFailed { cause: c } => StepFailed { cause: concat("rustup-init: ", c) }
           StepDone => match serving_leg_test(elevation: ObservationEstablished { observed: true }, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(cargo_home, "/bin/rustup"))) {
             ObservationEstablished { observed: true } => StepDone
@@ -1087,7 +1087,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
       let remote_path = concat(stage, "/serve.upload")
       match converge_upload(target: target, context: context, local_path: upload_path as NonEmptyStr, remote_path: remote_path as NonEmptyStr) {
         StepFailed { cause: c } => StepFailed { cause: c }
-        StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path, dest: install_path))) {
+        StepDone => match converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path, dest: install_path))) {
           StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
           StepDone => converge_readback_step(what: "serve binary sha256", read: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path), want: expected_sha256)
         }
@@ -1119,11 +1119,11 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly — its exit code and stderr
     // (e.g. exit 4, "GID '1006' already exists") are the cause the receipt names — and the wet apply
     // refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_with_gid_argv(name: n as NonEmptyStr, gid: g)))
+    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: groupadd_with_gid_argv(name: n as NonEmptyStr, gid: g)))
     EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } =>
-      converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_declared_account_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: map(usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr), w => w as String)))
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+      converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: useradd_declared_account_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: map(usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr), w => w as String)))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
     EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: d.authorized_keys_mode, content: c)
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
     // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
@@ -1132,10 +1132,10 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // idempotent, so re-applying a settled host is a no-op settle; the absolute rustup path and
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
-    EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
+    EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })
 }
 
@@ -1162,9 +1162,9 @@ fn converge_checkout_step(fetch: ConvergeStep, detach: ConvergeStep) -> Converge
 // IGNORED ON PURPOSE (a fresh clone succeeds but proves nothing about the revision); the fetch and detach
 // steps feed converge_checkout_step.
 fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> ConvergeStep {
-  let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
-  let fetch = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
-  let detach = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
+  let _clone = converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: git_clone_command(url: url, dir: dir))
+  let fetch = converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
+  let detach = converge_as_user(target: target, context: context, kind: ProvisioningLeg, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
   converge_checkout_step(fetch: fetch, detach: detach)
 }
 

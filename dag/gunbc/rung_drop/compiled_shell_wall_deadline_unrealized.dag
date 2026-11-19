@@ -14,7 +14,14 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // from compiling to Rust. No live caller runs fleet ssh legs through the compiled
 // realization today; every fleet-leg caller runs in the v1 interpreter.
 
-data compiled_shell_wall_deadline_unrealized_population: FreeSemigroup<String> = FreeSemigroup { head: "ssh.Session.ExecPortableWordsWithStdin: overran, wall_deadline_seconds", tail: ["ssh.PasswordFileSsh.ExecPortableWordsWithStdin: overran, wall_deadline_seconds"] }
+// THE POPULATION, EXACTLY. Every service operation that gained the overran /
+// wall_deadline_seconds output channels in this PR, and nothing else. Checkable with one grep --
+//   grep -rn --include=*.dag -B14 \'^  overran: Bool from "overran"\' dag/ | grep \'operation \|overran: Bool from\'
+// which returns exactly three operations: ssh.Session.ExecPortableWords (the no-stdin op),
+// ssh.Session.ExecPortableWordsWithStdin, and ssh.PasswordFileSsh.ExecPortableWordsWithStdin.
+// ssh.Session.Exec, ssh.Session.ExecScript and ssh.PasswordSsh.Exec do NOT carry these channels and
+// are correctly absent.
+data compiled_shell_wall_deadline_unrealized_population: FreeSemigroup<String> = FreeSemigroup { head: "ssh.Session.ExecPortableWords: overran, wall_deadline_seconds", tail: ["ssh.Session.ExecPortableWordsWithStdin: overran, wall_deadline_seconds", "ssh.PasswordFileSsh.ExecPortableWordsWithStdin: overran, wall_deadline_seconds"] }
 
 data compiled_shell_wall_deadline_unrealized: RungDrop = RungDrop {
   identity: "compiled_shell_wall_deadline_unrealized" as NonEmptyStr,

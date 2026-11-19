@@ -21,7 +21,7 @@ import gunbc.host.host_effect {
   FleetSsh,
   EmitArtifactThenThinRun,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { 
   typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,
@@ -501,6 +501,48 @@ fn host_operation_exec_ssh(operation: HostOperation, host: NonEmptyStr) -> HostO
   }
 }
 
+// THE LEG KIND, DERIVED -- NOT DECLARED BY THE CALLER. HostOperation is a closed sum declared in
+// this file, and each variant names exactly what its leg does to the host, so the ceiling is a
+// function of the operation rather than a field beside it. That is strictly stronger than taking a
+// required kind parameter: a caller cannot label a read as an actuation to buy itself a longer
+// ceiling, and the match is total -- a new variant fails to compile here instead of silently
+// inheriting a default. Reads and status queries get ProbeLeg (15s: they read a procfs/cgroup/sysfs
+// file, a systemctl property, or `sha256sum` of one); the five that change unit state get
+// ActuationLeg (60s). No variant here installs a package, delivers an image or rebuilds anything, so
+// none needs ProvisioningLeg, and none touches a repository, so none needs
+// RepositoryConvergenceLeg.
+fn host_operation_fleet_leg_kind(operation: HostOperation) -> FleetLegKind {
+  match operation {
+    SystemctlStop { unit: _ }            => ActuationLeg
+    SystemctlStart { unit: _ }           => ActuationLeg
+    SystemctlRestart { unit: _ }         => ActuationLeg
+    SystemctlResetFailed { unit: _ }     => ActuationLeg
+    SystemctlMaskNow { unit: _ }         => ActuationLeg
+    SystemctlIsActive { unit: _ }        => ProbeLeg
+    SystemctlStatus { unit: _ }          => ProbeLeg
+    SystemctlShowProperty { unit: _, property: _ }        => ProbeLeg
+    SystemctlShowUserProperty { unit: _, property: _ }    => ProbeLeg
+    SystemctlShowLoadState { unit: _ }   => ProbeLeg
+    HostnameReadShort                    => ProbeLeg
+    CgroupListChildren { cgroup_path: _ }                 => ProbeLeg
+    CgroupReadInterfaceFile { file_path: _ }              => ProbeLeg
+    CgroupPathIsDirectory { path: _ }                     => ProbeLeg
+    CgroupReadEvents { cgroup_path: _ }                   => ProbeLeg
+    ProcfsReadStat                       => ProbeLeg
+    ProcfsReadMeminfo                    => ProbeLeg
+    ProcfsReadBootId                     => ProbeLeg
+    ProcfsReadPidStat { pid: _ }         => ProbeLeg
+    ProcfsReadPidCgroup { pid: _ }       => ProbeLeg
+    ProcfsReadNetTcp                     => ProbeLeg
+    ProcfsReadNetTcp6                    => ProbeLeg
+    GetconfClockTicksPerSecond           => ProbeLeg
+    Sha256SumFile { path: _ }            => ProbeLeg
+    StatFileType { path: _ }             => ProbeLeg
+    HeadBytes { path: _, count: _ }      => ProbeLeg
+    NvidiaSmiQueryComputeApps            => ProbeLeg
+  }
+}
+
 fn host_operation_exec_fleet_ssh(
   operation: HostOperation,
   target: SshTarget,
@@ -511,7 +553,7 @@ fn host_operation_exec_fleet_ssh(
     ArgvMaterialized { argv: argv } =>
       host_operation_outcome_from_exec(
         operation: operation,
-        outcome: typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(kind: host_operation_fleet_leg_kind(operation: operation),target: target, context: context, argv: argv),
       )
     ArgvMaterializationRefused { at: _, cause: _ } =>
       host_operation_argv_refusal(operation: operation, m: m)

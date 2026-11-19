@@ -41,7 +41,7 @@ import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, SystemdUnmaskUnit, SystemdEnableUnit, SystemdStartUnit, executor_privileged_operation_argv,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_slot_retirement { control_group_property_means_cgroup_absent }
@@ -814,12 +814,12 @@ fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, u
   }
 }
 
-fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, steps: List<List<String>>) -> String?
+fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, steps: List<List<String>>) -> String?
 {
   fold(steps, init: none, f: (acc, step) => match acc {
     Present { value: _ } => acc
     Absent =>
-      match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: slot_actuation_elevated(command: step)) {
+      match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: slot_actuation_elevated(command: step)) {
         TypedArgvExecOverran { deadline: d } => Present { value: join([join(step, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d)], "") }
         TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
         TypedArgvExecConverged { result: r } =>
@@ -830,7 +830,7 @@ fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, ste
 
 // ── The two effects ─────────────────────────────────────────────────────────────────────────────
 
-fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, unit: NonEmptyStr) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
@@ -839,7 +839,7 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
         ActivationRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         ActivationAlreadyActive => SlotActuationNoop { unit: unit, state: "active" }
         ActivationSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "activate", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {
@@ -850,7 +850,7 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
                     // more read after the restart interval has passed. Slow-but-real starts pass on the
                     // second read; a unit whose ExecStart cannot run (a missing target reads 203) is by
                     // then in its auto-restart wait and the second read refuses with the unit's own words.
-                    match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: slot_activation_settle_argv()) {
+                    match typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: slot_activation_settle_argv()) {
                       TypedArgvExecOverran { deadline: d } => SlotActuationRefused { unit: unit, step: "settle", reason: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
                       TypedArgvExecRefused { reason: why } => SlotActuationRefused { unit: unit, step: "settle", reason: why }
                       TypedArgvExecConverged { result: _ } =>
@@ -896,7 +896,7 @@ fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext
       match slot_restart_plan(r: r, standing: standing, lost: lost) {
         RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         RestartSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "restart", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {
@@ -931,17 +931,17 @@ fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionCon
         DrainUnitNotInstalled => SlotNotInstalled { unit: unit }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
-          match run_slot_steps_over(target: target, context: context, steps: m) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
             Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingJobRunning NeverMaskARunningUnit => DrainPendingJobRunningLeftUnmasked } }
           }
         DrainWaitForStop { mask: m } =>
-          match run_slot_steps_over(target: target, context: context, steps: m) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
             Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingStopInProgress NeverMaskARunningUnit => DrainPendingStopInProgressLeftUnmasked } }
           }
         DrainSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "drain", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {

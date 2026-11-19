@@ -6,7 +6,7 @@ import extdeps.ssh.keys { SshPublicKey }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label, known_host_row_field }
 import extdeps.network.endpoint { SocketAddress }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetLegKind,SshTarget }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused,
 }
@@ -45,7 +45,10 @@ type RentedHostAccess
 // THE LEG DIALS THE DECLARED ADDRESS, PORT INCLUDED. A rental behind a provider's port mapping is a
 // different sshd from port 22 on the same host; the target carries the address the key row is pinned
 // under, so the anchor and the dial name one daemon.
-fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: String) -> RentedHostAccess {
+// The transport this returns is handed to whoever runs the legs on it, and its kind field IS the
+// ceiling those legs get -- so the caller declares it. The only consumer today
+// (rented_enrollment -> observe_replica_incarnation) runs a pgrep read, and passes ProbeLeg.
+fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: String, kind: FleetLegKind) -> RentedHostAccess {
   let declared = known_hosts_host_field(address: declaration.address) as String
   if known_host_row_field(k: declaration.host_key) != declared {
     RentedHostAccessRefused {
@@ -67,7 +70,7 @@ fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: Str
       FleetSshContextReady { context: context, receipt: receipt } =>
         RentedHostAccessReady {
           node: declaration.node,
-          transport: FleetSsh {kind: ActuationLeg,
+          transport: FleetSsh {kind: kind,
             target: SshTarget { address: declaration.address, principal: declaration.principal },
             context: context,
           },

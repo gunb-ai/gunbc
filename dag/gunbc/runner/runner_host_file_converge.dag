@@ -3812,7 +3812,7 @@ fn runner_host_slot_actuations(
                       Absent => SlotActuationRefused { unit: u, step: "first-install", reason: "the unit is queued for its first install but no slot-tree target names it" }
                       Present { value: tree_target } =>
                         match rebuild_runner_slot_tree(subject: subject, context: context, target: tree_target) {
-                          RunnerSlotTreeRebuilt { unit: _ } => activate_runner_slot_over(target: subject.target, context: context, unit: u)
+                          RunnerSlotTreeRebuilt { unit: _ } => activate_runner_slot_over(target: subject.target, context: context, kind: ActuationLeg, unit: u)
                           RunnerSlotTreeHeld { unit: _ } => SlotActuationRefused { unit: u, step: "first-install", reason: "the first build reported the tree held without installing it" }
                           RunnerSlotTreeQueuedForFirstInstall { unit: _ } => SlotActuationRefused { unit: u, step: "first-install", reason: "the first build left the slot queued: the tree is still not installed" }
                           RunnerSlotTreePending { unit: _, cause: c } => SlotActuationRefused { unit: u, step: "first-install", reason: c as String }
@@ -3822,10 +3822,10 @@ fn runner_host_slot_actuations(
                   } else {
                     match list_head(xs: list_flat_map(filter(trees, tt => (runner_slot_tree_unit(standing: tt) as String) == (u as String)), tt => match runner_slot_tree_actuation(standing: tt) { Present { value: o } => [o] Absent => [] })) {
                       Present { value: held_back } => held_back
-                      Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
+                      Absent => activate_runner_slot_over(target: subject.target, context: context, kind: ActuationLeg, unit: u)
                     }
                   }
-                Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
+                Absent => activate_runner_slot_over(target: subject.target, context: context, kind: ActuationLeg, unit: u)
               })
             },
             map(

@@ -23,7 +23,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_local_observation_settled,
   slot_local_observation_wire,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget }
 import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterReadUnavailable, observe_slot_registrations, slot_registration_observation_wire, slot_registration_observation_settled, runner_slot_connectivity_verdict_for_incarnation }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess }
@@ -131,7 +131,7 @@ fn runner_lifecycle_realize_activate_runner_slot(
     ActivateRunnerSlot { slot: slot } =>
       match intent.transport {
         FleetSsh { target: t, context: c } =>
-          runner_slot_actuation_reconciliation(intent: intent, outcome: activate_runner_slot_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
+          runner_slot_actuation_reconciliation(intent: intent, outcome: activate_runner_slot_over(target: t, context: c, kind: ActuationLeg, unit: runner_slot_unit_name(slot: slot)))
         LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
         SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
