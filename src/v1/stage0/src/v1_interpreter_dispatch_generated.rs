@@ -78,6 +78,7 @@ pub enum EvalBuiltinArm {
     FreeCallDependencyResolutionFactsAt,
     FreeCallConceptDeclFacts,
     FreeCallDataDeclTypeFacts,
+    FreeCallExtdepsSubjectRefFacts,
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
@@ -203,6 +204,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "dependency_resolution_facts_at" => Some(EvalBuiltinArm::FreeCallDependencyResolutionFactsAt),
         "concept_decl_facts" => Some(EvalBuiltinArm::FreeCallConceptDeclFacts),
         "data_decl_type_facts" => Some(EvalBuiltinArm::FreeCallDataDeclTypeFacts),
+        "extdeps_subject_ref_facts" => Some(EvalBuiltinArm::FreeCallExtdepsSubjectRefFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
@@ -326,6 +328,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.dependency_resolution_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDependencyResolutionFactsAt };
     ("free_call.concept_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConceptDeclFacts };
     ("free_call.data_decl_type_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDataDeclTypeFacts };
+    ("free_call.extdeps_subject_ref_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExtdepsSubjectRefFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
