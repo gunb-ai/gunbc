@@ -1458,7 +1458,7 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
         "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes, stderr_retained_bytes, overran and wall_deadline_seconds")
     ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
       concat("shell output channel '", k, "' is a modeled channel that target ", tn,
-        " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+        " cannot realize -- the compiled path implements no wall-deadline kill and no bounded-capture policy, so answering this channel would assert that an unenforced bound was honoured")
     ShellCapturePolicyInputAbsent { key: k } =>
       concat("shell output channel '", k,
         "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared")
