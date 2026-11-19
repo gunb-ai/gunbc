@@ -18348,15 +18348,22 @@ fn wait_child_honoring_wall_deadline(
                 kill_shell_process_group(pid);
                 // The drain worker returns once the killed child's pipes close.
                 let captured = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    Ok(Ok(output)) => Some(output),
-                    _ => None,
+                    Ok(Ok(output)) => {
+                        let _ = worker.join();
+                        Some(output)
+                    }
+                    _ => {
+                        // Drain did not return within the grace period. Detach the worker: it
+                        // holds a reference to the (killed) child's pipes and may never finish
+                        // (e.g. a setsid daemon holding stderr). Dropping the JoinHandle
+                        // detaches; the thread is cleaned up when the process exits.
+                        drop(worker);
+                        // An overrun is a VALUE, not an error. The streams are empty because
+                        // the drain never returned; the caller sees overran=true with the
+                        // deadline intact, never an InterpError.
+                        None
+                    }
                 };
-                let _ = worker.join();
-                // An overrun is a VALUE, not an error. When the drain never returns (the killed
-                // child held a pipe open in a grandchild that the group-kill reached but the
-                // kernel has not yet reaped), the streams are empty by construction; the caller
-                // sees overran=true with no captured text, which map_shell_outputs renders as
-                // stdout="" stderr="" exit_code absent. The deadline is still carried.
                 return Ok((captured, true));
             }
         }
@@ -29268,10 +29275,13 @@ mod wall_deadline_kill_tests {
     #[test]
     fn drain_stall_on_overrun_never_returns_error() {
         let ctx = wet_ctx();
-        // spawn a shell that backgrounds a child inheriting the pipe, then sleeps
+        // A setsid grandchild escapes the process group, so the group-kill cannot reach it.
+        // It inherits stderr, blocking the drain. Under the old code the unbounded worker.join()
+        // after recv_timeout hung here. The fix drops the JoinHandle on timeout.
+        // Discriminates: red against unbounded join (hangs past 10s), green against drop.
         let mut cmd = Command::new("/bin/sh");
         cmd.arg("-c")
-            .arg("sleep 60 & sleep 30")
+            .arg("setsid sleep 600 >&2 & sleep 600")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -29289,13 +29299,13 @@ mod wall_deadline_kill_tests {
         let elapsed = started.elapsed();
         // Must be Ok — an overrun is never an InterpError.
         let (output_opt, overran) = result.expect("per-leg overrun must return Ok, never Err");
-        assert!(overran, "2s deadline on a 30s sleep must overrun");
+        assert!(overran, "2s deadline on a 600s sleep must overrun");
         assert!(
-            elapsed < std::time::Duration::from_secs(15),
-            "the overrun returns promptly: {elapsed:?}"
+            elapsed < std::time::Duration::from_secs(10),
+            "deadline+grace must bound the wait even with an escaped grandchild: {elapsed:?}"
         );
-        // Whether the drain returned or not, the function produced a value (not an error).
-        // When output_opt is None, the caller builds an empty-stream ShellResult.
+        // The drain may or may not return (the setsid grandchild holds stderr open);
+        // when it does not, capture is None and the caller builds empty-stream ShellResult.
         if let Some(ref output) = output_opt {
             assert!(!output.exit_status.success(), "killed group is not green");
         }

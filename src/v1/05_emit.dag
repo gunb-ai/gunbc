@@ -1428,9 +1428,14 @@ fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget)
   if shell_channel_is_capture_accounting(c: c) {
     target_is_rust(target: target)
   } else if c == ShellChanOverran || c == ShellChanWallDeadlineSeconds {
-    // The wall-deadline kill is implemented by the interpreted sink, not by the compiled
-    // Command. No live fleet-ssh caller runs through the compiled realization today; if one
-    // does, the emitted per-leg kill must be restored before this returns true.
+    // RUNG DROP (gunbc.rung_drop): the overran and wall_deadline_seconds channels are
+    // declared by ssh.Session/ssh.PasswordFileSsh service operations but unrealized on the
+    // compiled target. WHAT IS DROPPED: the per-leg wall-clock kill in emitted Rust code.
+    // WHY: no live caller of the fleet ssh legs runs through the compiled realization today;
+    // they all run in the v1 interpreter whose sink enforces the deadline.
+    // TRIGGER TO CLOSE: the first compiled caller that runs fleet ssh legs.
+    // ACTION: implement the per-leg wall-deadline kill (arm a timer, kill the process group,
+    // set overran/wall_deadline_seconds) in emit_shell_call, then flip this to `true`.
     false
   } else {
     target_renders_shell_transport(target: target)
