@@ -15,9 +15,8 @@ import std.types { Bool, Int, List, String }
 // over a non-empty plan for exactly this reason; the FullHostConverge arm is guarded by these counts.
 //
 // WHY THE FOUR COUNTS ARE ONE TYPE AND NOT FOUR FIELDS. They are read together -- a terminal is
-// FullyApplied only when the three independent ones are all zero -- and they are produced together, by
-// the renderer of one plan. Splitting them across the variant invites a reader to gate on one and ignore
-// the others.
+// FullyApplied only when all four are zero -- and they are produced together, by the renderer of one
+// plan. Splitting them across the variant invites a reader to gate on one and ignore the others.
 //
 // WHY `owed` IS AN OPTION RATHER THAN FOUR ZEROS. A receipt minted before these counts existed carries
 // a wire that says nothing about owed work. Decoding it to zero would be this module asserting "nothing
@@ -26,8 +25,8 @@ import std.types { Bool, Int, List, String }
 // of inheriting a reassuring number.
 //
 // WHY THE TOTAL IS A FIELD AND NOT AN ADDITION. `withheld_line_total_count` is counted from the lines the
-// rendered script actually echoes, and `withheld_row_count` from the plan's own rows; the third number
-// (beyond-plan) is the gap the srv1 run exposed -- 43 withheld lines against 4 listed removals. Making
+// rendered script actually echoes, and `withheld_row_count` from the plan's own rows; `beyond_plan_rows`
+// is the gap the srv1 run exposed -- 43 withheld lines against 4 listed removals. Making
 // the total a field keeps every number on the receipt an OBSERVATION of one of the two artifacts rather
 // than an arithmetic between them: if the renderer ever emits a withheld line for something that is
 // neither a plan row nor a beyond-plan row, the numbers will visibly disagree instead of silently
@@ -121,7 +120,7 @@ fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerm
             value: PartiallyApplied {
               refused_axis_count: refused,
               owed: Present { value: owed },
-              detail: detail_from(segments: segments, counts_consumed: 4),
+              detail: detail_from(segments: segments, counts_consumed: 5),
             },
           }
         Absent =>
