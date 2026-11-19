@@ -102,19 +102,22 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
   )
 }
 
-// THE INSTANCE-SCOPED DEPLOY step script. Two receipts, two locations -- do not conflate them:
-// (1) the run-step's OWN process receipt lands at a fixed per-run path under a stable label
-//     ("desired-instance-deploy"); GitHub isolates each run's workspace, so a stable label cannot
-//     collide across runs, and this is the file the step cats after the run;
-// (2) the transaction receipt the wet fold mints lands in the CHOSEN instance's own receipt dir
-//     (live_deploy_apply_receipt_dir_for(instance)), and the job locates THAT one through the resolve
-//     step (live_deploy_ci_instance_receipt_identity_from_ci), never through this fixed path.
+// THE INSTANCE-SCOPED DEPLOY step script. This is a WET fold; its ONLY receipt is the per-instance
+// transaction receipt that live_deploy_apply_desired_wet_from_ci -> live_deploy_wet_with_access ->
+// live_deploy_write_apply_receipt writes at live_deploy_apply_receipt_artifact_path_for(spec.instance_id),
+// where spec.instance_id is the CHOSEN roster instance (the packed subject's instance id), never a fixed
+// label. There is no static process receipt at a fixed path: the run command is given no write-receipt
+// argument (gunbc_invoke_receipt_steps only cats a path it is handed), so any fixed label such as
+// "desired-instance-deploy" cats a file nothing writes -- "No such file or directory", which fails the step
+// AFTER the wet fold has already mutated the instance. The assert/upload steps locate the real per-instance
+// receipt through the resolve step, so this step passes receipt_rel: none, like every output-only invoke.
+// Pinned by test.claim.gunbc_invoke_witness gunbc_ci_desired_instance_deploy_invoke_has_no_receipt_cat_holds.
 fn gunbc_ci_desired_instance_deploy_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_deploy_target,
     claim_run: false,
-    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: "desired-instance-deploy")
+    receipt_rel: none
   )
 }
 
