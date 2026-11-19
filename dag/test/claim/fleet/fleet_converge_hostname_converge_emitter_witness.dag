@@ -350,7 +350,7 @@ test fn the_act_row_carries_no_default_and_asks_for_nothing() -> Bool {
 // alone must not be enough to rename a machine -- and neither half may be dropped: a gate that lost the mode
 // half would run an apply on any dispatch that happened to send `converge` for some other mode's form.
 test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
-  match step_named_in(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
     Absent => false
     Present { value: apply } =>
       string_contains(
@@ -386,7 +386,7 @@ test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
 // THE RE-ADOPT HAS ITS OWN GATE, separate from actuation: moving the committed baseline is a different
 // authority from writing a hostname, and one dispatch must not reach both by meaning one of them.
 test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
-  match step_named_in(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
     Absent => false
     Present { value: readopt } =>
       string_contains(
