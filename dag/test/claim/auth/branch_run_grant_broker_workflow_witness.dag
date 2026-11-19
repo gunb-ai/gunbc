@@ -136,11 +136,14 @@ fn untitled(r: WorkflowRun) -> WorkflowRun {
 // THE DISPATCH CREDENTIAL IS THE BROKER'S ALONE: its job writes actions and mints no OIDC token, and
 // fleet-converge's shared job -- which runs a branch's code -- only reads actions.
 test fn only_the_broker_holds_actions_write() -> Bool {
-  (match branch_run_grant_broker_job().permissions {
-    Present { value: p } =>
-      match p.actions { Present { value: PermWrite } => true  _ => false }
-        && match p.id_token { Present { value: _ } => false  Absent => true }
+  (match outcome_accepted_value(branch_run_grant_broker_job()) {
     Absent => false
+    Present { value: bj } => match bj.permissions {
+      Present { value: p } =>
+        match p.actions { Present { value: PermWrite } => true  _ => false }
+          && match p.id_token { Present { value: _ } => false  Absent => true }
+      Absent => false
+    }
   })
     && match outcome_accepted_value(fleet_converge_job()) {
       Absent => false

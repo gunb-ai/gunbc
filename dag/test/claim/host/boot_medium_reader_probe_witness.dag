@@ -3,7 +3,7 @@ module test.claim.host.boot_medium_reader_probe_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import v2.std.diagnostic { outcome_accepted_values }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import std.algebra { string_contains }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
@@ -554,22 +554,28 @@ test fn the_committed_mode_option_list_is_the_models_dispatch_modes() -> Bool {
 }
 
 test fn the_committed_shared_job_admission_is_the_models_if_condition() -> Bool {
-  match fleet_converge_job().if_condition {
+  match outcome_accepted_value(fleet_converge_job()) {
     Absent => false
-    Present { value: c } => {
-      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "if", value: yaml_string(s: c))] }, indent: "    ")
-      count(block) == 1 && committed_contains_block(block: block) && string_contains(s: c, pattern: "boot_medium_reader_probe")
+    Present { value: j } => match j.if_condition {
+      Absent => false
+      Present { value: c } => {
+        let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "if", value: yaml_string(s: c))] }, indent: "    ")
+        count(block) == 1 && committed_contains_block(block: block) && string_contains(s: c, pattern: "boot_medium_reader_probe")
+      }
     }
   }
 }
 
 test fn the_committed_shared_job_concurrency_is_the_models_and_serializes_the_probe_on_srv2() -> Bool {
-  match fleet_converge_job().concurrency {
+  match outcome_accepted_value(fleet_converge_job()) {
     Absent => false
-    Present { value: spec } => {
-      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "concurrency", value: concurrency_yaml(spec: spec))] }, indent: "    ")
-      count(block) > 2 && committed_contains_block(block: block)
-        && any(block, l => string_contains(s: l, pattern: "'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2'"))
+    Present { value: j } => match j.concurrency {
+      Absent => false
+      Present { value: spec } => {
+        let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "concurrency", value: concurrency_yaml(spec: spec))] }, indent: "    ")
+        count(block) > 2 && committed_contains_block(block: block)
+          && any(block, l => string_contains(s: l, pattern: "'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2'"))
+      }
     }
   }
 }

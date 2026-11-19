@@ -1327,18 +1327,35 @@ fn fan_step_evaluates_to(github_path: fn(List<String>) -> GithubPathResolution, 
 }
 
 test fn the_fan_policy_step_still_runs_for_every_boot_mode_and_skips_only_the_cold_reset() -> Bool {
-  fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
-    && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
-    && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
-    && step_if_text(s: fleet_converge_fan_policy_phase_step()) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
-    && step_if_text(s: fleet_converge_fan_policy_phase_receipt_upload_step()) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
+  match outcome_accepted_value(fleet_converge_fan_policy_phase_step()) {
+    Absent => false
+    Present { value: fan } => match outcome_accepted_value(fleet_converge_fan_policy_phase_receipt_upload_step()) {
+      Absent => false
+      Present { value: ru } =>
+        fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
+          && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
+          && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
+          && step_if_text(s: fan) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
+          && step_if_text(s: ru) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
+    }
+  }
 }
 
 // The cold reset's own step is not gated on the fan outcome (the fan step does not run in that mode), and the
 // boot and MAC-discovery steps still are: the exclusion did not travel into either boot mode's gate.
 test fn the_cold_reset_step_reads_no_fan_outcome_while_the_boot_step_still_does() -> Bool {
-  !string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "fan_policy_phase")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "mtcollins1_bmc_cold_reset")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_boot_step()), pattern: "steps.fan_policy_phase.outputs.")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_pxe_mac_discovery_step()), pattern: "steps.fan_policy_phase.outputs.")
+  match outcome_accepted_value(fleet_converge_mtcollins1_bmc_cold_reset_step()) {
+    Absent => false
+    Present { value: cr } => match outcome_accepted_value(fleet_converge_mtcollins1_boot_step()) {
+      Absent => false
+      Present { value: bs } => match outcome_accepted_value(fleet_converge_mtcollins1_pxe_mac_discovery_step()) {
+        Absent => false
+        Present { value: pd } =>
+          !string_contains(s: step_if_text(s: cr), pattern: "fan_policy_phase")
+            && string_contains(s: step_if_text(s: cr), pattern: "mtcollins1_bmc_cold_reset")
+            && string_contains(s: step_if_text(s: bs), pattern: "steps.fan_policy_phase.outputs.")
+            && string_contains(s: step_if_text(s: pd), pattern: "steps.fan_policy_phase.outputs.")
+      }
+    }
+  }
 }

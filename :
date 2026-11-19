@@ -1,0 +1,15 @@
+#!/bin/bash
+set -u
+O=/tmp/zesty-bid-f0bd
+R=/tmp
+G=/tmp/zesty-ram-689-target/release/gunbc
+export XDG_RUNTIME_DIR=/run/user/$(id -u) GUNBC_MEMORY_BUDGET_BYTES=34359738368
+mkdir -p $O/out; rm -f $O/out/*
+echo "BID2-START $(date +%s)"
+for pair in "head:zesty-ram-689-build" "maintip:zesty-ram-689-maintip"; do
+  t=${pair%%:*}; d=${pair##*:}
+  echo "== render $t $(date +%T)"
+  systemd-run --user --scope -p MemoryMax=36G --quiet bash -c "cd $R/$d && $G run --source-root dag --source-root src/v2 --entry dag/test/manual/bo603_render.dag --function bo603_render > $O/$t.out 2> $O/$t.err"
+  echo "EXIT[render $t]=$? bytes=$(wc -c <$O/$t.out) $(date +%T)"
+done
+echo "BID2-DONE $(date +%s)"

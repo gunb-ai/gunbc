@@ -595,16 +595,22 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
 // demanding the list constructs every sibling release-bins step. Control: dropping the admission
 // step from the own list turns this red.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
-  any(fleet_converge_build_job_own_steps(), st => st == fleet_converge_reset_observer_dispatch_admission_step())
+  match outcome_accepted_value(fleet_converge_reset_observer_dispatch_admission_step()) {
+    Absent => false
+    Present { value: want } => any(fleet_converge_build_job_own_steps(), st => st == want)
+  }
 }
 
 // THE JOB'S SIDE OF THE SAME GATE, from the real job producer: the host-reset-return job is gated by
 // fleet_converge_host_reset_return_step_if, the gate the dispatch admission step carries. Control:
 // gating the job by any other condition, or ungating it, turns this red.
 test fn the_host_reset_return_job_is_gated_by_the_admissions_gate() -> Bool {
-  match fleet_converge_host_reset_return_job().if_condition {
-    Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
+  match outcome_accepted_value(fleet_converge_host_reset_return_job()) {
     Absent => false
+    Present { value: j } => match j.if_condition {
+      Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
+      Absent => false
+    }
   }
 }
 
@@ -712,9 +718,9 @@ test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
   string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.mode == 'dashboard_deploy'")
     && string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.host == 'srv1'")
     && !string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.ref")
-    && (match fleet_converge_dashboard_deploy_job().environment { Present { value: v } => v == env  Absent => false })
-    && (match fleet_converge_approval_broker_dark_install_job().environment { Present { value: v } => v == env  Absent => false })
-    && (match fleet_converge_microvm_controller_install_job().environment { Present { value: v } => v == env  Absent => false })
+    && (match outcome_accepted_value(fleet_converge_dashboard_deploy_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
+    && (match outcome_accepted_value(fleet_converge_approval_broker_dark_install_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
+    && (match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
 }
 
 // DASHBOARD DEPLOYMENT IS EXPLICITLY OUTSIDE THE SCOPE PROJECTION, and this witness exists so that

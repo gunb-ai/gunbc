@@ -3,7 +3,7 @@ module test.claim.fleet_converge_run_scoped_coverage_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
-import v2.std.diagnostic { outcome_accepted_values }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import gunbc.auth.branch_dispatch_federation { run_scoped_mode_named, run_scoped_modes, RunScopedMode, MainUsesFleetIdentity, run_scoped_mode_eligible }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, expected_fleet_converge_yml,
@@ -147,13 +147,17 @@ fn on_runner(j: Job, labels: List<String>) -> Job {
 // gcp-iam-converge job needs srv1): the wait runs GitHub-hosted, no fleet job holds it, and a wait placed
 // on srv1 refuses emission. The emitted roster is the positive control.
 test fn the_grant_wait_holds_no_fleet_runner_and_a_wait_on_srv1_refuses() -> Bool {
-  (match fleet_converge_branch_run_grant_await_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
-    && all(filter(witness_jobs(), j => j.id != (fleet_converge_branch_run_grant_await_job_id as String)), j => step_index(steps: j.steps, id: "branch_run_grant_await") < 0)
-    && (match fleet_converge_grant_wait_placement_refusal(jobs: witness_jobs()) { Present { value: _ } => false  Absent => true })
-    && (match fleet_converge_grant_wait_placement_refusal(jobs: [on_runner(j: fleet_converge_branch_run_grant_await_job(), labels: ["self-hosted", "linux", "arm64", "srv1"])]) {
-      Present { value: r } => r.contains("branch-run-grant-await")
-      Absent => false
-    })
+  match outcome_accepted_value(fleet_converge_branch_run_grant_await_job()) {
+    Absent => false
+    Present { value: aw } =>
+      (match aw.runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+        && all(filter(witness_jobs(), j => j.id != (fleet_converge_branch_run_grant_await_job_id as String)), j => step_index(steps: j.steps, id: "branch_run_grant_await") < 0)
+        && (match fleet_converge_grant_wait_placement_refusal(jobs: witness_jobs()) { Present { value: _ } => false  Absent => true })
+        && (match fleet_converge_grant_wait_placement_refusal(jobs: [on_runner(j: aw, labels: ["self-hosted", "linux", "arm64", "srv1"])]) {
+          Present { value: r } => r.contains("branch-run-grant-await")
+          Absent => false
+        })
+  }
 }
 
 // RED: dashboard_deploy is outside the relation, so its job has no grant wait and no branch-pool sign-in, and
