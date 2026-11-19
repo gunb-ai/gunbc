@@ -927,20 +927,28 @@ fn openssh_measured_side_wire(side: OpenSshMeasuredSide) -> String {
 // quoted leg's command crosses the shaper as ONE word after `--`, so the string ssh sends is exactly the
 // RemoteExecCommand's rendering (extdeps.ssh.openssh_remote_command openssh_remote_command_string of one argument).
 type FleetRemoteLeg
-  = FleetBareWordLeg { target: SshTarget, words: PortableRemoteWords }
-  | FleetPosixQuotedLeg { route: PosixRemoteRoute, command: RemoteExecCommand }
+  = FleetBareWordLeg { target: SshTarget, words: PortableRemoteWords, kind: FleetLegKind }
+  | FleetPosixQuotedLeg { route: PosixRemoteRoute, command: RemoteExecCommand, kind: FleetLegKind }
 
 fn fleet_remote_leg_target(leg: FleetRemoteLeg) -> SshTarget {
   match leg {
-    FleetBareWordLeg { target: t, words: _ } => t
-    FleetPosixQuotedLeg { route: r, command: _ } => r.proof.target
+    FleetBareWordLeg { target: t, words: _, kind: _ } => t
+    FleetPosixQuotedLeg { route: r, command: _, kind: _ } => r.proof.target
+  }
+}
+
+// THE DECLARED KIND TRAVELS WITH THE LEG; its total-wall ceiling is read from the one authority.
+fn fleet_remote_leg_kind(leg: FleetRemoteLeg) -> FleetLegKind {
+  match leg {
+    FleetBareWordLeg { target: _, words: _, kind: k } => k
+    FleetPosixQuotedLeg { route: _, command: _, kind: k } => k
   }
 }
 
 fn fleet_remote_leg_strings(leg: FleetRemoteLeg) -> List<String> {
   match leg {
-    FleetBareWordLeg { target: _, words: w } => portable_remote_words_strings(words: w)
-    FleetPosixQuotedLeg { route: _, command: c } => [remote_exec_command_rendered(command: c) as String]
+    FleetBareWordLeg { target: _, words: w, kind: _ } => portable_remote_words_strings(words: w)
+    FleetPosixQuotedLeg { route: _, command: c, kind: _ } => [remote_exec_command_rendered(command: c) as String]
   }
 }
 
@@ -953,10 +961,10 @@ fn remote_word_carries_nul(text: String, i: Int, len: Int) -> Bool {
   }
 }
 
-fn fleet_posix_quoted_leg(route: PosixRemoteRoute, argv: List<String>) -> FleetRemoteLeg? {
+fn fleet_posix_quoted_leg(route: PosixRemoteRoute, argv: List<String>, kind: FleetLegKind) -> FleetRemoteLeg? {
   if any(argv, w => w == "" || remote_word_carries_nul(text: w, i: 0, len: length(w))) { Absent } else {
     match remote_exec_command_string(argv: map(argv, w => w as NonEmptyStr), interpretation: PosixShellInterpreted) {
-      RemoteExecCommandBuilt { command: c } => Present { value: FleetPosixQuotedLeg { route: route, command: c } }
+      RemoteExecCommandBuilt { command: c } => Present { value: FleetPosixQuotedLeg { route: route, command: c, kind: kind } }
       RemoteExecCommandRefused { cause: _ } => Absent
     }
   }
@@ -1007,16 +1015,44 @@ fn fleet_ssh_password_client_options(
 // this ONE row rather than each spelling its own number. A dark path now ends the leg with ssh's own
 // 255 within interval x count_max (60 s) of the last reply; the sshd answers keepalives itself, so
 // a remote command that is merely silent is NOT cut off -- only a path that returns nothing is.
+// THE KIND OF A FLEET LEG, DECLARED AT ITS CONSTRUCTION SITE, NEVER INFERRED FROM ARGV. A leg's
+// kind is what the far side does, so only the site that builds the words can name it; the runtime
+// must not classify argv[0] or command text to pick a bound (string-proximity resolution). The kind
+// selects this leg's TOTAL WALL-CLOCK deadline from the one deadline row below, and the transport-
+// shell sink honors exactly the deadline the caller passes. Non-fleet dispatches (gunbc.WitnessBin.Run
+// and any other transport-shell caller) are NOT a fleet leg kind: they carry no FleetLegKind and pass
+// no deadline at all, keeping today's behavior under the outer whole-receipt budget.
+type FleetLegKind
+  = ProbeLeg
+  | ActuationLeg
+  | RepositoryConvergenceLeg
+
+// THE ONE AUTHORITY FOR A FLEET LEG'S BOUNDS. connect/alive_interval/alive_count_max stay exactly as
+// they were: they bound the TCP connect and a path that goes dark (per-master), which is NOT the leg's
+// total wall time -- the sshd answers keepalives itself, so a remote command that is merely silent is
+// never cut off by them. The three wall_* fields are the NEW total-wall-clock ceilings, one per fleet
+// leg kind, enforced by the runtime that owns the child process (there is no ssh keyword for total
+// session wall time). Sizing: ProbeLeg 15s sits far above the 0.26s healthy read yet catches the
+// incident's hung rev-parse in seconds; ActuationLeg 60s covers a systemctl restart; Repository-
+// ConvergenceLeg 300s covers a cold git fetch of the pinned revision. Each stays well under the outer
+// whole-receipt budget. There is deliberately no 'none' row: a leg kind that is a fleet leg always
+// gets a ceiling here, and non-fleet dispatches never consult this table.
 type FleetSshLegDeadline {
   connect: Second
   alive_interval: Second
   alive_count_max: Int
+  wall_probe: Second
+  wall_actuation: Second
+  wall_repository_convergence: Second
 }
 
 data fleet_ssh_leg_deadline: FleetSshLegDeadline = FleetSshLegDeadline {
   connect: second(count: 10),
   alive_interval: second(count: 15),
   alive_count_max: 4,
+  wall_probe: second(count: 15),
+  wall_actuation: second(count: 60),
+  wall_repository_convergence: second(count: 300),
 }
 
 fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClientOption> {
@@ -1025,6 +1061,16 @@ fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClie
     ServerAliveInterval { seconds: deadline.alive_interval },
     ServerAliveCountMax { count: deadline.alive_count_max },
   ]
+}
+
+// THE PER-KIND TOTAL-WALL CEILING, looked up from the declared kind at the single authority. The
+// transport-shell sink enforces this ceiling and returns an overran value when the child overruns it.
+fn fleet_leg_wall_deadline(kind: FleetLegKind) -> Second {
+  match kind {
+    ProbeLeg => fleet_ssh_leg_deadline.wall_probe,
+    ActuationLeg => fleet_ssh_leg_deadline.wall_actuation,
+    RepositoryConvergenceLeg => fleet_ssh_leg_deadline.wall_repository_convergence,
+  }
 }
 
 // ONE AUTHENTICATED CONNECTION PER (CONTEXT, TARGET). Every key-session leg used to open its own
@@ -1210,8 +1256,9 @@ fn shape_fleet_ssh_password_exec_trusting(
   trust: FleetOpenSshTrustPolicy,
   target: SshTarget,
   words: PortableRemoteWords,
+  kind: FleetLegKind,
 ) -> List<String> {
-  shape_fleet_ssh_password_leg_trusting(trust: trust, leg: FleetBareWordLeg { target: target, words: words })
+  shape_fleet_ssh_password_leg_trusting(trust: trust, leg: FleetBareWordLeg { target: target, words: words, kind: kind })
 }
 
 fn shape_fleet_ssh_password_leg_trusting(
@@ -1237,8 +1284,9 @@ fn shape_fleet_ssh_password_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
+  kind: FleetLegKind,
 ) -> List<String> {
-  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
+  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words, kind: kind)
 }
 
 // WHETHER A KEY LEG RIDES THE RUN'S MULTIPLEXED MASTER CONNECTION OR OPENS ITS OWN. A leg whose question is
@@ -1260,8 +1308,9 @@ fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
+  kind: FleetLegKind,
 ) -> List<String> {
-  shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshMultiplexedConnection)
+  shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshMultiplexedConnection, kind: kind)
 }
 
 fn shape_fleet_ssh_exec_over(
@@ -1269,8 +1318,9 @@ fn shape_fleet_ssh_exec_over(
   target: SshTarget,
   words: PortableRemoteWords,
   connection: FleetSshConnection,
+  kind: FleetLegKind,
 ) -> List<String> {
-  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words }, connection: connection)
+  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words, kind: kind }, connection: connection)
 }
 
 fn shape_fleet_ssh_leg(

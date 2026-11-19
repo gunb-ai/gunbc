@@ -1132,7 +1132,7 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1265,7 +1265,7 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1334,7 +1334,7 @@ fn realize_bmcweb_session_login_on_host(
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1465,7 +1465,7 @@ fn realize_bmcweb_token_extract_on_host(
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
@@ -1579,7 +1579,7 @@ fn codex_runtime_observe_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       codex_runtime_typed_argv_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
@@ -1627,7 +1627,7 @@ fn codex_runtime_materialize_step(
         ),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       codex_runtime_typed_argv_step(
         argv: concat(
           [gunbc_binary as String],
@@ -1814,7 +1814,7 @@ fn realize_provision_codex_runtime(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _ } =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
@@ -2075,7 +2075,7 @@ fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3H
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       match apt_binary_path_of(tool: tool) {
         Present { value: declared } =>
           srv3_transport_test_executable(path: declared as String, transport: transport)
@@ -2111,7 +2111,7 @@ fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3Obse
       srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       match apt_binary_path_of(tool: tool) {
         Absent => Srv3TokenUnobserved { reason: srv3_undeclared_apt_path_reason(tool: tool) }
         Present { value: declared } =>
@@ -3290,7 +3290,7 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       srv3_realize_os_install_actuator_toolchain_ensure_body(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
@@ -3635,7 +3635,7 @@ fn realize_provision_build_cache(
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            FleetSsh { target: _, context: _ } =>
+            FleetSsh { target: _, context: _, kind: _ } =>
               realize_provision_build_cache_body(
                 instance: instance,
                 transport: effect_intent.transport,
@@ -4404,7 +4404,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
@@ -4509,7 +4509,7 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
@@ -5016,7 +5016,7 @@ fn observe_slot_population_over_host_effect_transport(
         ),
         edge_noun: "the transport",
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       slot_census_from_typed_argv_outcome(
         host: host,
         outcome: run_typed_argv_transport(
@@ -5709,7 +5709,7 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
         ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
       ], "") }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _ } =>
       Present { value: join([
         "live_deploy retract refused over fleet ssh: the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
@@ -7715,7 +7715,7 @@ fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: Strin
       match i.transport {
         LocalShell => dark_stage_sidecar_readback(i: i, tree_digest: tree_digest, deployed: deployed)
         SshShell { ssh_host: _ } => dark_sidecar_readback_not_local()
-        FleetSsh { target: _, context: _ } => dark_sidecar_readback_not_local()
+        FleetSsh { target: _, context: _, kind: _ } => dark_sidecar_readback_not_local()
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => dark_sidecar_readback_not_local()
       }
   }
@@ -8570,7 +8570,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; SshShell would record a remote transport while executing the probe locally.",
             applied: intent,
           }
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _ } =>
           NotConverged {
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; FleetSsh would record a remote transport while executing the probe locally.",
             applied: intent,
@@ -8964,7 +8964,7 @@ fn build_cache_host_read_observed(
           }
       }
     SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
+    FleetSsh { target: _, context: _, kind: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       BuildCacheReadRefused {
         reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
@@ -9596,7 +9596,7 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
       }
     }
     SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _, kind: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -10316,7 +10316,7 @@ fn realize_ensure_compile_pool_slice(
           }
         LocalShell => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
         SshShell { ssh_host: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
-        FleetSsh { target: _, context: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        FleetSsh { target: _, context: _, kind: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
       }
   }
 }

@@ -52,6 +52,14 @@ type SshSessionExecResult {
   success: Bool
   stdout: String
   stderr: String
+  // A fleet leg that ran PAST its caller-passed total-wall deadline is a VALUE, not an error: the
+  // sink sets overran=true ONLY when its own kill fired -- never inferred from the exit code, because
+  // a real remote command can exit any code. The echoed deadline rides ONLY the overran case as an
+  // Option (Absent otherwise) -- no 0-means-none sentinel. Non-fleet dispatches (no deadline passed)
+  // and the Exec/ExecScript shapes never set these; they default false/Absent and keep today's
+  // behavior. The exit code stays the child's real code, irrelevant when overran is true.
+  overran: Bool = false
+  wall_deadline_seconds: Option<Second> = Absent
 }
 
 service ssh.Session {
@@ -75,12 +83,14 @@ service ssh.Session {
 
   operation ExecPortableWords {
     requires Network
-    input { client_args: List<String> }
+    input { client_args: List<String>, wall_deadline: Option<Second> = Absent }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
+      overran: Bool from "overran"
+      wall_deadline_seconds: Option<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
@@ -90,18 +100,20 @@ service ssh.Session {
       nonzero => String "ssh portable-words exec failed"
     }
     mock_response {
-      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words", stderr: "" } "hermetic ssh.Session.ExecPortableWords"
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words", stderr: "", overran: false } "hermetic ssh.Session.ExecPortableWords"
     }
   }
 
   operation ExecPortableWordsWithStdin {
     requires Network
-    input { client_args: List<String>, stdin_payload: String }
+    input { client_args: List<String>, stdin_payload: String, wall_deadline: Option<Second> = Absent }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
+      overran: Bool from "overran"
+      wall_deadline_seconds: Option<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
@@ -112,7 +124,7 @@ service ssh.Session {
       nonzero => String "ssh portable-words exec with stdin failed"
     }
     mock_response {
-      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "" } "hermetic"
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "", overran: false } "hermetic"
     }
   }
 
@@ -156,12 +168,16 @@ fn ssh_session_exec_result_from_service(
   success: Bool,
   stdout: String,
   stderr: String,
+  overran: Bool = false,
+  wall_deadline_seconds: Option<Second> = Absent,
 ) -> SshSessionExecResult {
   SshSessionExecResult {
     exit_code: exit_code,
     success: success,
     stdout: stdout,
     stderr: stderr,
+    overran: overran,
+    wall_deadline_seconds: wall_deadline_seconds,
   }
 }
 
@@ -175,23 +191,27 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_portable_words(client_args: List<String>) -> SshSessionExecResult {
-  let result = ssh.Session.ExecPortableWords(client_args: client_args)
+fn ssh_session_exec_portable_words(client_args: List<String>, wall_deadline: Option<Second> = Absent) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWords(client_args: client_args, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
+    overran: result.overran,
+    wall_deadline_seconds: result.wall_deadline_seconds,
   )
 }
 
-fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String) -> SshSessionExecResult {
-  let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload)
+fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String, wall_deadline: Option<Second> = Absent) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
+    overran: result.overran,
+    wall_deadline_seconds: result.wall_deadline_seconds,
   )
 }
 
