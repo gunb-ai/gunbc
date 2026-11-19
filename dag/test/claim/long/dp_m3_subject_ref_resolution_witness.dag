@@ -78,6 +78,7 @@ fn subject_ref_snoc(acc: List<DeclarationRef>, fact: DeclFact) -> List<Declarati
   match node_skeleton_authored_string_literals(node: fact.node) {
     Cons { head: mod_name, tail: Cons { head: decl_nm, tail: _ } } =>
       list_snoc_item(xs: acc, item: decl_ref(module_path: mod_name, decl_name: decl_nm))
+    Cons { head: _, tail: Empty } => acc
     Empty => acc
   }
 }
@@ -139,6 +140,7 @@ fn reads_subject_pair(module_name: String, want_module: String, want_decl: Strin
       match node_skeleton_authored_string_literals(node: fact.node) {
         Cons { head: m, tail: Cons { head: d, tail: _ } } =>
           if m == want_module { if d == want_decl { true } else { false } } else { false }
+        Cons { head: _, tail: Empty } => false
         Empty => false
       }
     Empty => false
@@ -184,4 +186,23 @@ test fn duplicate_subject_name_refuses_ambiguous() -> Bool {
     DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
     _ => false
   }
+}
+
+// RED 5 -- finding (2): a subject that authored exactly ONE string literal is not a literal
+// DeclarationRef (the second field, decl_name, was never written). The reader's one-literal arm must
+// treat that as a REFUSAL the census COUNTS, not a fall-through and not a silent drop that lets the
+// all-resolve green pass "for the wrong reason." This plants the class directly: a single-field subject
+// ref names no real declaration, so the census registers EXACTLY ONE refusal and resolves NOTHING --
+// proving a one-literal subject is a counted refusal rather than vanishing from the count. (The
+// reader's subject_ref_snoc and reads_subject_pair both carry the explicit Cons { head, tail: Empty }
+// refusal arm; the census has no malformed-subject class to extend, so malformed rows are excluded
+// from the resolvable population here and their literal-vs-nonliteral identity join lands with
+// finding (3) against the census type.)
+test fn single_literal_subject_is_a_counted_refusal() -> Bool {
+  let census = declaration_ref_resolution_census_live(
+    refs: [ decl_ref(module_path: "extdeps.cron.extdeps_model_scope", decl_name: "dp_m3b_one_literal_subject") ],
+    pool_roots: witness_layer_roots)
+  if census.resolved_count == 0 {
+    if census.module_absent_count + census.declaration_absent_count + census.field_absent_count + census.ambiguous_count == 1 { true } else { false }
+  } else { false }
 }
