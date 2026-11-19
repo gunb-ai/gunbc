@@ -2320,11 +2320,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "work-execution-redesign", contribution: "Closes the last way two allocators can claim the same machine."),
     ),
     roadmap_node(
-      identity: "rn_RBCIBR1D6E0N1NT0BR1D6E5W0RK",
+      identity: "rn_01M7TXSXC3G6ES2BKYBJF0MZ9Y",
       id: "remote-build-ci-bridge",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/compute/remote_build_client.dag"),
-      line: ticket(fields(
+      line: ticket(t: fields(
         headline: "The remote build serves the required check on hosted and placeholder runners",
         boundary: "The operator adopted the work-execution-redesign program on 2026-11-19 and admitted this bridge in the same ruling (@ref(gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign)). CI jobs run on standard GitHub-hosted runners for the public repo (free) and on small self-hosted placeholder runners for the private repo; the runner keeps no fleet state and shells out to the gunbc remote build over the tailnet as tag:ci, joining as an ephemeral tagged node via Tailscale OAuth. It is the admitted scaffold of @ref(gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) with its admitted scope extended to the CI substrate, not its status upgraded: the remote build now carries the required check's substrate, and it still dissolves when work-exec-2's durable route and work-exec-5's verdict-from-receipt serve the same requests. The self-hosted fleet runners are frozen (no new investment) and keep serving the required check until cutover; static slot sizing is frozen beyond the srv3/srv4 six-slot carve (@ref(gunbc.design_argument::replacement_migration)). The hosted shadow job is admitted against @ref(gunbc.design_ruling::job_roster_closed_to_growth); work-exec-5 already records the shadow roster addition as approved.",
         displaced_cost: "A hosted runner lease per required run and a build-pool reservation on srv3 and srv4, standing in for the per-slot MemoryMax and the fixed seat count for the duration of the bridge.",
@@ -5724,7 +5724,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "work-exec-4-local-work-cutover", parent: "work-exec-3-automatic-sizing"),
     edge(child: "work-exec-5-ci-verdict-from-receipt", parent: "work-exec-4-local-work-cutover"),
     edge(child: "work-exec-6-one-ledger-per-host", parent: "work-exec-5-ci-verdict-from-receipt"),
-    edge(child: "remote-build-ci-bridge", parent: "work-exec-5-ci-verdict-from-receipt"),
     edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
     edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
     edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
