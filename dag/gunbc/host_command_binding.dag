@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, FleetSshExecutionContext, ssh_target_wire }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file, typed_remote_file_write_seal,
@@ -38,6 +38,7 @@ type HostLeg
 
 fn host_leg_of_typed_argv(outcome: TypedArgvExecOutcome) -> HostLeg {
   match outcome {
+    TypedArgvExecOverran { deadline: d } => LegNotDispatched { typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d)eason: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
     TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
     TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }

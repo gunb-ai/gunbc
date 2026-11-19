@@ -4,6 +4,8 @@ import std.optional { Absent, Optional, Present }
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { list_head, list_tail }
+import std.measure { second_count }
+import std.integer { int_to_decimal_string }
 import extdeps.ssh.session {
   ssh_session_exec_result_from_service,
   ssh_session_exec_portable_words,
@@ -341,4 +343,15 @@ fn typed_argv_exec_over_fleet_ssh_posix(
           }
       }
   }
+}
+
+// Shared helper: builds the reason string for any consumer that maps Overran to its own failure arm.
+fn typed_argv_exec_overran_reason(leg_hint: String, deadline: Second) -> String {
+  concat(
+    concat(
+      concat(leg_hint, concat(" leg overran its ", int_to_decimal_string(value: second_count(s: deadline)))),
+      "s wall-clock deadline; the process group was killed before the host answered",
+    ),
+    " -- an overrun is neither a refusal nor a completion",
+  )
 }

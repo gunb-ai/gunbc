@@ -34,12 +34,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_lab_dashboard_instance,
 }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   typed_argv_exec_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltNodeLookup,

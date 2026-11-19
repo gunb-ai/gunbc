@@ -67,12 +67,11 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_ssh,
-}
+  typed_argv_exec_over_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   dashboard_exec_ok,

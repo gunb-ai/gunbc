@@ -10,12 +10,11 @@ import gunbc.fleet.fleet_converge_cli {
   fleet_converge_receipt_path,
 }
 import gunbc.host.host_converge { ConvergeVerdict, VerdictConverged, Drifted, VerdictAbsent, converge_verdict_label }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.fleet.fleet_reach_endpoint {
   fleet_probe_target_for,
   fleet_probe_ready_ssh_target,
@@ -160,6 +159,7 @@ fn collect_host_receipt(host: String) -> CollectedHostReceipt {
       } else {
         ReceiptAbsent { host: host, cause: trim(s: r.stderr) }
       }
+    TypedArgvExecOverran { deadline: d } => ReceiptAbsent { host: host, cause: typed_argv_exec_overran_reason(leg_hint: "fleet receipt collector", deadline: d) }
     TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
   }
   }

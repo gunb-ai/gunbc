@@ -13,7 +13,7 @@ import gunbc.runner.runner_slot_allocation {
 }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 
 // THE POPULATION A SHRINK ACTS ON, READ RATHER THAN ASSUMED.
@@ -280,6 +280,8 @@ fn slot_census_from_typed_argv_outcome(
   edge_noun: String,
 ) -> SlotCensus {
   match outcome {
+    TypedArgvExecOverran { deadline: d } =>
+      CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot population census", deadline: d)], "") }
     TypedArgvExecRefused { reason: why } =>
       CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", why], "") }
     TypedArgvExecConverged { result: listed } =>

@@ -171,7 +171,7 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_usable_on,
   tailscale_fleet_node_tag,
 }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmission,
@@ -240,6 +240,7 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 // document, and this module reads a different member of it (extdeps.tailscale.join).
 fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleJoinState {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: tailscale_status_json_argv()) {
+    TypedArgvExecOverran { deadline: d } => JoinStateUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
     TypedArgvExecRefused { reason: reason } => JoinStateUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -263,6 +264,7 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
     context: context,
     argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
   ) {
+    TypedArgvExecOverran { deadline: d } => DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
     TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -558,6 +560,7 @@ fn tailscale_join_observe_name_resolution(
     context: context,
     argv: argv_words(command: getent_hosts_command(name: name)),
   ) {
+    TypedArgvExecOverran { deadline: d } => NameUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
     TypedArgvExecRefused { reason: reason } => NameUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       tailscale_join_name_resolved_verdict(
@@ -600,6 +603,7 @@ fn tailscale_join_observe_answer(
         context: context,
         argv: argv_words(command: command),
       ) {
+        TypedArgvExecOverran { deadline: d } => JoinAnswerUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
         TypedArgvExecRefused { reason: reason } => JoinAnswerUnreadable { cause: reason }
         TypedArgvExecConverged { result: r } =>
           match tailscale_ping_verdict(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {

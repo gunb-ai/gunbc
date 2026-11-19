@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim, Cons, Empty }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -186,6 +186,8 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
       } else {
         join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
       }
+    TypedArgvExecOverran { deadline: d } =>
+      join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -200,6 +202,8 @@ fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> St
       } else {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
       }
+    TypedArgvExecOverran { deadline: d } =>
+      join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -260,6 +264,7 @@ fn agent_backed_probe_success(host: String, principal: String, argv: List<String
   let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
+    TypedArgvExecOverran { deadline: d } => false
     TypedArgvExecRefused { reason: _ } => false
   }
 }

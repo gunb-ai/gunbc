@@ -25,7 +25,7 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -95,6 +95,7 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // be misread as "the file is absent" (see serving_observed_from_reads; review 95915).
 fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: true_command()))) {
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: true }
@@ -105,6 +106,7 @@ fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -
 
 fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv) {
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: r.stdout }
@@ -122,6 +124,7 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
     ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
+      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
       TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
         true => ObservationEstablished { observed: true }
@@ -144,6 +147,7 @@ fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFai
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
     ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
       TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
         true => ObservationEstablished { observed: "" }
@@ -204,6 +208,7 @@ fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionC
 // them without elevation.
 fn serving_leg_stat(item: String, target: SshTarget, context: FleetSshExecutionContext, stat_argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
   match typed_argv_exec_over_fleet_ssh_posix(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: stat_argv)) {
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: trim(s: r.stdout) }
@@ -234,6 +239,7 @@ fn serving_leg_toolchain_list(elevation: ObservationAttempt<Bool, ServingLegFail
         command: rustup_toolchain_list_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup")),
       )
       match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: d.account_name as NonEmptyStr, command: argv_words(command: cmd)))) {
+        TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
         TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("ssh refused: ", reason) } }
         TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
           true => ObservationEstablished { observed: r.stdout.split("\n").any(l => serving_toolchain_line_names_channel(line: l, channel: channel)) }
@@ -923,6 +929,7 @@ type ConvergeStep =
 // A command's exit, as a step: 0 is done; any other exit carries the code and the trimmed stderr.
 fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
   match outcome {
+    TypedArgvExecOverran { deadline: d } => StepFailed { cause: concat("typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)efused before exec: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
     TypedArgvExecRefused { reason: r } => StepFailed { cause: concat("refused before exec: ", r) }
     TypedArgvExecConverged { result: r } => if r.exit_code == 0 { StepDone } else {
       StepFailed { cause: join(["exit ", to_string(r.exit_code), ": ", trim(r.stderr)], "") }
@@ -981,6 +988,7 @@ fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
   match converge_exec_step(outcome: outcome) {
     StepFailed { cause: c } => StageFailed { cause: concat("mktemp -d (private staging dir): ", c) }
     StepDone => match outcome {
+      TypedArgvExecOverran { deadline: d } => StageFailed { cause: concat("mktemp -d (private staging dir): typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)efused before exec: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
       TypedArgvExecRefused { reason: r } => StageFailed { cause: concat("mktemp -d (private staging dir): refused before exec: ", r) }
       TypedArgvExecConverged { result: r } => StageReady { dir: trim(r.stdout) }
     }
