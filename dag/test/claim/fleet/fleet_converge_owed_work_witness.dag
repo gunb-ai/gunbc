@@ -431,3 +431,54 @@ test fn every_withheld_plan_row_names_a_unit_the_script_echoes_as_withheld() -> 
     }
   }
 }
+
+// (12) THE RECONCILIATION IS A GATE, NOT A TAUTOLOGY. The three script-side numbers are read from the
+// artifacts, so `lines == rows + beyond` is a claim about the renderer rather than an identity between two
+// of the numbers themselves. This puts a wire in front of the decoder whose four integers do not add up --
+// the shape a tampered receipt, or a renderer that had lost a withheld line, would produce -- and requires
+// the whole wire be refused. A decoder that accepted it would keep a terminal whose owed work is nonsense,
+// and the receipt would still read `applied`.
+test fn owed_numbers_that_do_not_add_up_are_refused_on_the_wire() -> Bool {
+  let does_not_add_up =
+    "partially_applied|7|withheld=4|plan-only=2|withheld-lines=43|withheld-beyond-plan-rows=40|slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
+  let negative_gap =
+    "partially_applied|7|withheld=5|plan-only=0|withheld-lines=4|withheld-beyond-plan-rows=-1|slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
+  match fleet_converge_apply_terminal_of_wire(text: does_not_add_up) {
+    Absent => match fleet_converge_apply_terminal_of_wire(text: negative_gap) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// (13) AND A WIRE THAT CLAIMS TO CARRY COUNTS AND DOES NOT IS NOT READ BACK AS A LEGACY ONE. Three of the
+// four keys is neither shape; falling through to the pre-count reading would hand an operator a terminal
+// whose detail begins `withheld=4|plan-only=…` and whose owed work is Absent -- the under-report again,
+// wearing the old format.
+test fn a_half_written_count_wire_is_refused_rather_than_read_as_legacy() -> Bool {
+  let missing_one_key =
+    "partially_applied|7|withheld=4|plan-only=2|withheld-lines=43|slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
+  match fleet_converge_apply_terminal_of_wire(text: missing_one_key) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// (14) THE REAL PLAN RECONCILES. Not a fixture of four numbers anyone typed: the plan and the script this
+// branch renders for srv1 with four withheld removals must satisfy the equality the gate checks, and the
+// beyond-plan count must be a non-zero observation of lines the plan never listed. Zero here would mean the
+// obligation gates had gone quiet, and the number would be vacuously passing.
+test fn the_rendered_plan_and_script_reconcile_and_name_a_real_gap() -> Bool {
+  match artifact_with_withheld_teardowns() {
+    Absent => false
+    Present { value: artifact } => match owed_of(terminal: artifact.apply_terminal) {
+      Absent => false
+      Present { value: owed } =>
+        owed.withheld_line_total_count == owed.withheld_row_count + owed.withheld_beyond_plan_rows_count
+          && owed.withheld_row_count > 0
+          && owed.withheld_beyond_plan_rows_count > 0
+          && owed.withheld_line_total_count > owed.withheld_row_count
+    }
+  }
+}

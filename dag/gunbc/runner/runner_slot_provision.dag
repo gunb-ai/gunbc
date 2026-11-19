@@ -339,11 +339,22 @@ fn runner_slot_provision_withheld_line_count(plan: RunnerSlotProvisionPlan) -> I
   )
 }
 
-// WITHHELD LINES WITH NO PLAN ROW BEHIND THEM -- the gap the srv1 receipt hid. They are reported beside
-// the plan-row count, never folded into it, so the receipt still reconciles with plan.txt line for line
-// and the extra 39 are named rather than silent.
+// WITHHELD LINES WITH NO PLAN ROW BEHIND THEM -- the gap the srv1 receipt hid, COUNTED FROM THE SCRIPT
+// RATHER THAN SUBTRACTED FROM THE OTHER TWO. Subtracting is what the first cut did, and it bought a
+// tautology: `lines == rows + beyond` then held by construction, so the reconciliation the terminal claims
+// to check could never fail, and a renderer that dropped a withheld line (or emitted a row that echoed
+// nothing) would have printed numbers that added up anyway. This reads the script's own lines and asks of
+// each one whether it is the echo of any plan row -- a second, independent reading of a different artifact
+// from the one the row count reads. The equality is now a fact about the renderer that can go false, and
+// `fleet_converge_owed_work_reconciles` is where it is enforced: at the mint, and again on the wire.
 fn runner_slot_provision_withheld_beyond_plan_rows_count(plan: RunnerSlotProvisionPlan) -> Int {
-  runner_slot_provision_withheld_line_count(plan: plan) - runner_slot_provision_membership_withheld_count(plan: plan)
+  let row_scripts = map(plan.teardown_rows, r => slot_teardown_row_script(row: r))
+  count(
+    filter(
+      concat(plan.retirement_scripts, plan.teardown_scripts),
+      l => converge_line_is_withheld(line: l) && !any(row_scripts, s => s == l),
+    ),
+  )
 }
 
 fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
