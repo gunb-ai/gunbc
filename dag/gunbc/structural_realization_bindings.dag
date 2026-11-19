@@ -94,34 +94,6 @@ data conversion_plan_rows: List<ConversionPlan> = [
       target: decl_ref(module_path: "std.integer", decl_name: "Int"),
       safety: InjectionSafety { total: true, exact: true, preserves: ["add", "mul", "compare"], pure: true, consent_free: true }
     }
-  },
-  // THE WIDTH-SHAPED TWIN OF THE nat_to_int ROW (gunbc.design_ruling
-  // ::machine_width_unsigned_to_int_is_a_declared_total_injection, 2026-11-15): one row for every
-  // width, keyed on the composition declaration because the route is generic in N -- the safety is
-  // a fact about the composition, not about a width. The interval of Compose<UInt, MachineWidth<N>>
-  // is [0, 2^N - 1] for every N (std.integer_interval integer_machine_interval_spec) and lies
-  // inside the unbounded integers, so the injection is total and exact for every N; it preserves
-  // add, mul and compare for the same reason the Nat -> Int row does (the interval's operations are
-  // the integers' operations); and it is pure and consent-free, being a constructor application.
-  // The converse direction is not declared and stays refused: an Int is not total into a width
-  // (negative values and values above 2^N - 1 fall outside; std.integer_width_construction holds
-  // the checked mints), so this row names the one route and nothing competes with it.
-  // THE ROUTE FIELD NAMES WHAT ACTUALLY EXECUTES (gunbc.design_argument::guarantee_ladder: "the
-  // reported rung equals the rung established by executed evidence ... a plan establishes
-  // nothing"): both consumers of this row -- the checker's resolved_width_cast_verdict and the
-  // emitter's resolved_width_crossing_reaches_target -- answer THROUGH std.literal_elaboration
-  // ::kernel_grounding_width_crossing, which is what this route names. The declaration std.integer
-  // ::uint_width_int_injection_certificate is the injected map's CERTIFICATE (signature + ruling), not its executable
-  // body: its host body is the carrier frontier's dissolution marker (see the declaration's comment),
-  // so naming it as an executable route here would be rung inflation -- a stub cited as a total
-  // route. It stays cited by the ruling; the row cites the crossing.
-  ConversionPlan {
-    route: decl_ref(module_path: "std.literal_elaboration", decl_name: "kernel_grounding_width_crossing"),
-    phase: InjectionPhase {
-      source: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"),
-      target: decl_ref(module_path: "std.integer", decl_name: "Int"),
-      safety: InjectionSafety { total: true, exact: true, preserves: ["add", "mul", "compare"], pure: true, consent_free: true }
-    }
   }
 ]
 

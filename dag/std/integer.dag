@@ -88,12 +88,26 @@ fn nat_to_int(n: Nat) -> Int {
 // integer_width_carrier_realization_frontier's own text; std.machine_word and std.encoding carry the
 // same truth) -- the composition has NO runtime carrier yet, so no host expression of type i64 can
 // be produced from a Compose value, and emitting the mathematical body `nat_to_int(n: n)` was proven
-// to fail to build (E0308 PhantomData vs i64, the class the frontier text names). THE INJECTION
-// ITSELF IS THE DECLARATION ABOVE (the CERTIFICATE), THE RULING, AND THE conversion_plan_rows ROW --
-// a row whose route field names the EXECUTED crossing, std.literal_elaboration
-// ::kernel_grounding_width_crossing, never this certificate (gunbc.design_argument
-// ::guarantee_ladder: a plan reports executed evidence, and a stub may not be cited as a total
-// route). Every consumer of the route (the checker's resolved-width admit, the emitter's crossing,
+// to fail to build (E0308 PhantomData vs i64, the class the frontier text names). THE INJECTION IS
+// DECLARED BY THE CERTIFICATE ABOVE AND BY THE RULING, AND BY NOTHING ELSE: no
+// gunbc.structural_realization_bindings conversion_plan_rows row carries it, and none can be written
+// for it as that table is keyed. A ConversionPlan source is a DECLARATION REFERENCE -- a head -- and
+// the width of this composition lives on the INSTANCE (Compose<UInt, MachineWidth<N>>), so a row
+// keyed on std.machine_constraints Compose would claim a total exact injection into Int for EVERY
+// Compose: signed widths, PointerWidth and any future composition, which is wider than either ruling
+// says. That table is not decorative either: the compiler's own arithmetic operand-carrier rule
+// (src/v1 04_types carrier_reaches_field) walks InjectionPhase rows through std.coercion
+// injection_targets, matching by declaration identity. Keying one row per width alias instead would
+// be honest about the injection and would at the same time silently extend carrier selection for
+// arithmetic over width-typed operands -- a meaning change no ruling behind this certificate covers
+// and no witness here pins. Both keys are therefore refused here (review 96570), and the keying gap
+// is recorded as a capability trigger on gunbc.integration_concern
+// ::integer_width_compose_has_no_runtime_carrier_for_native_serve. What decides the crossing at
+// compile time is the EXECUTED fact, std.literal_elaboration::kernel_grounding_width_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows, consulted by the checker's
+// resolved_width_cast_verdict and by the emitter's resolved_width_crossing_reaches_target -- never
+// this body (gunbc.design_argument::guarantee_ladder: a plan reports executed evidence, and a stub
+// may not be cited as a total route). Every consumer of the route (the checker's resolved-width admit, the emitter's crossing,
 // the interpreter's cast) reads those, never this body. A DIRECT CALL therefore answers the typed dissolution marker on
 // both paths and NEVER an Int value: the interpreter evaluates to UnboundDissolution, and any use
 // of that marker as an Int is a typed error; on the native path the signature itself refuses an Int

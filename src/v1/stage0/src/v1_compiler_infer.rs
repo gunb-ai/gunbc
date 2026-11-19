@@ -14496,7 +14496,10 @@ pub fn validate_cast(
                 } {
                     std::option::Option::None
                 } else {
-                    if match (*resolved_width_cast_verdict(
+                    if match (*grounded.clone()).clone() {
+                        GroundedCastVerdict::GroundedCastNotDecided => true,
+                        _ => false,
+                    } && match (*resolved_width_cast_verdict(
                         src_node.clone(),
                         source_declaration.clone(),
                         target_declaration.clone(),

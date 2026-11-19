@@ -9343,17 +9343,19 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         Absent => source_name == target_name
       }
       // The width crossing decides ONLY the population its ruling reaches (see
-      // resolved_width_cast_verdict); it is consulted after the grounded verdict and the identity
-      // rule, and it can admit and never refuse, so no cast that walks the arms below today is
-      // disturbed by it. It is also ASKED only there: the call sits in the arm that needs it, not in
-      // a binding above the chain, because the walk it performs -- a declaration ref of the source,
-      // then that declaration's alias right-hand-side head -- is cost paid per cast over the whole
-      // corpus, and the two arms above answer most casts (every `x as Int` whose source already names
-      // Int, every grounded admit) without ever needing it. Same decision order, same verdicts; the
-      // only thing removed is the population that never reaches the arm.
+      // resolved_width_cast_verdict), and its place in the chain IS the claim: it sits BELOW both
+      // grounded arms, so a GroundedCastRefused always wins and the width verdict is reached only where
+      // the identity rule did not fire AND the grounded verdict had no answer (NotDecided). It can admit
+      // a cast the grounded verdict left undecided; it can never override a grounded refusal -- a future
+      // grounding row that refuses a source stays refused even once a width grounding row admits the same
+      // source, which is what makes "this verdict can never add a refusal" true of the arm and not just
+      // of the function. It is also ASKED only where it is consulted: the call sits in the arm that needs
+      // it, not in a binding above the chain, because the walk it performs -- a declaration ref of the
+      // source, then that declaration's alias right-hand-side head -- is cost paid per cast over the whole
+      // corpus, and the arms above answer most casts (every `x as Int` whose source already names Int,
+      // every grounded admit, every grounded refusal) without ever needing it.
       if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
-      else if (match resolved_width_cast_verdict(src_node: src_node, source_declaration: source_declaration, target_declaration: target_declaration, source_indices: source_indices, env: env) { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
         let cause = match grounded {
           GroundedCastRefused { cause: c } => c
@@ -9362,6 +9364,7 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- ", cause)
         Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
       }
+      else if (match resolved_width_cast_verdict(src_node: src_node, source_declaration: source_declaration, target_declaration: target_declaration, source_indices: source_indices, env: env) { GroundedCastAdmitted => true  _ => false }) { none }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
