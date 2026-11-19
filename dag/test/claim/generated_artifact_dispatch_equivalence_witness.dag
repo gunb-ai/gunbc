@@ -28,6 +28,7 @@ fn discriminant(a: GeneratedArtifact) -> String =
     DriftWatchWorkflowYamlArtifact => "DriftWatchWorkflowYamlArtifact"
     BranchRunGrantBrokerWorkflowYamlArtifact => "BranchRunGrantBrokerWorkflowYamlArtifact"
     HostedRunnerShadowGateYamlArtifact => "HostedRunnerShadowGateYamlArtifact"
+    ReleaseBinsConsumerCheckScriptArtifact => "ReleaseBinsConsumerCheckScriptArtifact"
     GitignoreArtifact => "GitignoreArtifact"
     GitattributesArtifact => "GitattributesArtifact"
     CargoConfigArtifact => "CargoConfigArtifact"
