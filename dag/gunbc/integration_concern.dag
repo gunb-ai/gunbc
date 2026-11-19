@@ -4504,10 +4504,9 @@ data machine_width_uint8_int_crossing_revision: CommitSha = "d3e46b86c4ef4236a5d
 // artifacts/host-observations/ken-gpu-read-2026-11-18/ (SHA256SUMS in that directory lists all five files).
 data h11ssl_unit3_gpu_rows_revision: CommitSha = "9b8801afdd2d57b23ca27cfaffdcab6b19db6ce6"
 
-// The main revision these answers were filed against and every measurement in these rows ran on. The branch commit
-// that carries the new rows is deliberately NOT quoted: PRs land by squash, so a branch sha in the register resolves
-// on nobody's checkout but its author's. The integration itself lands with this change, and the rows say that in
-// words rather than inventing the sha of a commit that does not exist yet.
+// The main revision these answers were filed against and every measurement in these rows ran on -- a sighting
+// revision, which is what a sighting is allowed to name. The branch commit that carries the new rows is deliberately
+// NOT quoted: PRs land by squash, so a branch sha in the register resolves on nobody's checkout but its author's.
 data h11ssl_unit3_operator_answers_revision: CommitSha = "b156ebb3c225"
 
 // The revision the two Spark-endpoint rows below were read against: main, after gunbc.fleet.fleet_intent_network's
@@ -4728,7 +4727,7 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
           },
         ],
       },
-      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids. CLOSED 2026-11-19 by the same source that gave the two-card figure: the operator's own nvidia-smi read on the unit names THREE Tesla T10s, at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, serving as one ken-strata server on :18081 -- the three bus ids the 2026-11-18 receipts already enumerate, so the disagreement was between a report and a later report, and the later one matches what the fleet read. The read receipt stays the authority for the enumeration; the relay is what retires the count question, and it is carried as a report (TranscribedUncited), not minted into an observed standing. The ownership half of the second ask went the same way -- the operator names the machine answering at 192.168.1.236 as this unit, hostname h11-new, tailnet ken.tailecbe08.ts.net at 100.96.80.109 -- and the reads that would confirm it in the fleet's own instruments stay owed where they are written: gunbc.machine_intake::supermicro_h11ssl_unit3_install_nic_address_standing and h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which stay Open.",
+      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids. SETTLED IN FACT 2026-11-19 by the same source that gave the two-card figure, but the row is NOT marked Integrated in this change -- see the last sighting for why, and note that a row whose replacement declarations only exist in the change that closes it cannot name a revision that already carries them: the operator's own nvidia-smi read on the unit names THREE Tesla T10s, at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, serving as one ken-strata server on :18081 -- the three bus ids the 2026-11-18 receipts already enumerate, so the disagreement was between a report and a later report, and the later one matches what the fleet read. The read receipt stays the authority for the enumeration; the relay is what retires the count question, and it is carried as a report (TranscribedUncited), not minted into an observed standing. The ownership half of the second ask went the same way -- the operator names the machine answering at 192.168.1.236 as this unit, hostname h11-new, tailnet ken.tailecbe08.ts.net at 100.96.80.109 -- and the reads that would confirm it in the fleet's own instruments stay owed where they are written: gunbc.machine_intake::supermicro_h11ssl_unit3_install_nic_address_standing and h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which stay Open.",
     },
     tail: [
       ConcernSighting {
@@ -4742,30 +4741,11 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
             h11ssl_unit3_gpu_pci_ids_receipt,
           ],
         },
-        account: "The operator's own read of 2026-11-19 (relayed by chat; the fleet holds no artifact of that session) states three Tesla T10s at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, all serving as one ken-strata server on :18081. The 2026-11-18 receipts in this repo enumerate exactly three driver-visible functions and, through the domain-prefixed sysfs paths, read vendor=0x10de device=0x1e37 on each -- so the two sources that survive disagree about nothing except the earlier report's count, and the earlier report is what the row was opened against. The revision named for this closure is the newest main revision the measurements ran on; the rows that carry the closure land with this change, whose landing revision supersedes it -- no sha is invented for a commit that does not exist yet. WHAT THE RELAY DOES NOT CLOSE, and where those questions live: whether 100 W bounds sustained or peak draw (h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, still Open), and the bus-to-slot pairing, which gunbc.fleet.gpu_device_observation::current_gpu_device_observations keeps unread for each ken board rather than guessing a slot from a domain-prefixed bus id. The enumeration authority remains the receipts; the relay retires only the count question.",
+        account: "The operator's own read of 2026-11-19 (relayed by chat; the fleet holds no artifact of that session) states three Tesla T10s at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, all serving as one ken-strata server on :18081. The 2026-11-18 receipts in this repo enumerate exactly three driver-visible functions and, through the domain-prefixed sysfs paths, read vendor=0x10de device=0x1e37 on each -- so the two sources that survive disagree about nothing except the earlier report's count, and the earlier report is what the row was opened against. THE EXECUTED CONTROL, recorded here rather than in IntegrationEvidence: dag/test/claim/fleet/gpu_board_residence_witness.dag at clean main b156ebb3c2252f1f9ceac45155efb191d10534b6 (claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, which is also the interpreter that tree asks for): 7 witness(es), 7 pass, 0 fail, three read T10 boards resident in ken alone, matching the containment and current-population rows. WHY THIS ROW STAYS OPEN. IntegrationEvidence has one revision field, integrated_at: CommitSha, and no arm for a landing that has not happened: the replacement this closure introduces (the restated accelerator figure) does not exist at any revision main has, so naming the newest measured revision there would make the typed field say something the tree contradicts. Borrowing a nearby revision is the plausible fabrication fail-closed refuses. The closure is therefore recorded as Integrated in the follow-up that can name its own landing revision; until then the answer, the receipts and the run live in this sighting, and Continuous generalization is satisfied by the reconciliation being recorded rather than remembered. WHAT THE RELAY DOES NOT CLOSE, and where those questions live: whether 100 W bounds sustained or peak draw (h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, still Open), and the bus-to-slot pairing, which gunbc.fleet.gpu_device_observation::current_gpu_device_observations keeps unread for each ken board rather than guessing a slot from a domain-prefixed bus id. The enumeration authority remains the receipts; the relay retires only the count question.",
       },
     ],
   },
-  disposition: Integrated {
-    evidence: IntegrationEvidence {
-      integrated_at: "b156ebb3c225" as CommitSha,
-      superseded: [],
-      replacement: FreeSemigroup {
-        head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19"),
-        tail: [
-          decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
-        ],
-      },
-      executions: FreeSemigroup {
-        head: RetainedExecutionResult {
-          control: decl_ref(module_path: "test.claim.fleet.gpu_board_residence_witness", decl_name: "witness_ken_three_read_gpu_boards_reside_in_ken_alone"),
-          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/gpu_board_residence_witness.dag, clean tree at main b156ebb3c2252f1f9ceac45155efb191d10534b6: 7 witness(es), 7 pass, 0 fail; the same entry is green again at the head of the change that closes this row. Nothing between a7edfc30 and either revision touches src/, so that binary is the interpreter both trees ask for. The closure itself lands with this change: b156ebb3c225 is the newest main revision the measurements ran on, not a claim that this row was already integrated there."
-          conclusion: "Three read T10 boards reside in ken and in no other host, each bound to nvidia_tesla_t10_board_catalog through WholeDeclaration, and the current device population agrees with the containment rows -- the count the operator states is the count the inventory carries, so nothing in this row still points at a fork.",
-        },
-        tail: [],
-      },
-    },
-  },
+  disposition: Open,
 }
 
 // THE CAP THE MODEL HOLDS AND THE CAP THE MACHINE RUNS are two different things, and the model has a shape for
