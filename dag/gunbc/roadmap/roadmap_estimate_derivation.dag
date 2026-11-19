@@ -948,11 +948,18 @@ fn decomposition_holders(decompositions: List<WorkDecomposition>, node: RoadmapN
   map(filter(decompositions, d => any(stages_owners(stages: d.stages), o => o == node)), d => d.node)
 }
 
-// ===== THE AUTHORING LAW: NO ROW WAITS ON ITS OWN CONTAINER =====
+// ===== THE GRAPH VALIDATOR'S CONTAINMENT LAW: NO ROW WAITS ON ITS OWN CONTAINER =====
 // A container's span covers everything it contains, so a contained row can never be gated by a thing that already
 // contains it -- waiting on your own project/milestone/decomposition container is a contradiction, not a schedule.
 // The item Gantt read surfaces the same fact as BlockedCause WaitsOnItsOwnContainer (tidy-crane-257, #16729); this
-// lifts it onto the authority graph so authoring refuses it AT THE EDGE, naming both the edge and the container.
+// lifts it onto the authority's own edge graph as a validator property: these edges are refused BY NAME (the edge
+// `child -> parent` and the `container` it waits on), checked over the declared graph on the claim/validator route.
+// FOLLOW-UP (not this change): the required-path `roadmap_authority_projection` should raise
+// RoadmapAuthorityProjectionRefused on the live graph too. That is blocked here because the single containment walk
+// this law reuses lives in this module, which nothing imports (a leaf); importing it from roadmap_authority.dag would
+// create the repo's first cyclic module import. Lifting that walk into a shared base module -- coordinated with the
+// concurrent roadmap_estimate_derivation.dag pricing change -- is the change that puts this refusal on the required
+// path; the law is written so that gate is a one-line call once the walk is liftable.
 
 // A prerequisite edge (child -> parent) whose target is a container holding the child: refused. `container` names the
 // thing the edge points at, which is a containment ancestor of `child` by membership or by holding it as a piece.
@@ -969,11 +976,6 @@ fn prerequisite_edges_into_own_containers(nodes: List<RoadmapNode>, edges: List<
     } else {
       [] as List<EdgeIntoOwnContainer>
     })
-}
-
-// The validator's boolean: does the declared graph carry such an edge?
-fn has_prerequisite_edge_into_own_container(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, decompositions: List<WorkDecomposition>) -> Bool {
-  count(prerequisite_edges_into_own_containers(nodes: nodes, edges: edges, decompositions: decompositions)) > 0
 }
 
 // The live carrier read for the validator claim.
