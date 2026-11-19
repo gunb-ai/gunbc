@@ -31,9 +31,11 @@ module gunbc.roadmap.roadmap_leaf_realized_duration
 // (gunbc.roadmap/roadmap_serve.dag, whose authenticated clock is gunbc.roadmap.clock_read::clock_now_probed_at) and
 // the CLI stamps the same probe (gunbc.roadmap.roadmap_event_cli::roadmap_event_append_command), and
 // extdeps.clock's Clock.Now transport is `date -u +%Y-%m-%dT%H:%M:%SZ` -- a whole-second UTC instant, which
-// extdeps.units.iso8601_calendar::iso8601_utc_epoch_seconds parses strictly. Anything else REFUSES with a typed
-// cause naming the event; a fixture that plants "t3" refuses, and refusing it is the correct answer, not an
-// inconvenience. The instant-to-calendar-day crossing is the one the calendar authority itself sanctions: divide by
+// extdeps.units.iso8601_calendar::iso8601_utc_epoch_seconds parses strictly. Anything else REFUSES -- AND THE
+// REFUSAL IS SCOPED TO THE LEAF ITS CLAIM NAMED: that leaf is priced at its carrier prior with a typed cause naming
+// the event and the stamp, counted in the fold's unreadable_stamp_claims, while every other leaf on the item still
+// realizes. One blank stamp must never blank an item's whole set of realized durations. A fixture that plants "t3"
+// refuses, and refusing it is the correct answer, not an inconvenience. The instant-to-calendar-day crossing is the one the calendar authority itself sanctions: divide by
 // iso8601_calendar's OWN day length and read the date back out of its day count, the way
 // gunbc.roadmap.roadmap_operator_acceptance::roadmap_operator_date_from_epoch_secs does.
 //
@@ -107,6 +109,13 @@ type NoRealizedCause
   // Claimed AFTER the acceptance was recorded: the span would run backwards, so no duration is readable from it.
   // The prior stands and this row says the ORDER is what made the span unreadable.
   | ClaimedAfterAcceptance { claimed_on: Iso8601CivilDate, accepted_on: Iso8601CivilDate }
+  // Claimed on a line whose recorded_at is not the whole-second UTC instant its producers write (an empty stamp from
+  // an auth route that never reads the clock, or any other stamp this unit cannot read), so THIS leaf's clock could
+  // not be started. THE REFUSAL IS SCOPED TO THIS LEAF: one blank stamp must not blank the realized durations of
+  // every leaf on the item, so this leaf is priced at its carrier prior and NAMES the line that left it unreadable,
+  // counted in the fold's unreadable_stamp_claims, while every other leaf folds normally. Still never zero, and
+  // never the ordinary prior arm -- a reader sees the cause beside the count.
+  | ClaimInstantUnreadable { event: String, recorded_at: String }
 
 // WHAT THE FOLD ANSWERS FOR ONE LEAF OCCURRENCE, and the count the schedule was given for it. The three arms are
 // deliberately not collapsed: "the realized value", "the prior", and "no realized value, and here is why" are three
@@ -145,6 +154,10 @@ type RealizedSchedule {
   // Claims recorded after the item's standing was already retired: they start no clock, and are COUNTED here
   // rather than being passed off as Pathless or quietly ignored.
   retired_standing_claims: Int
+  // Claims whose recorded_at this unit cannot read -- an empty stamp, or a stamp that is not the whole-second UTC
+  // instant its producers write. COUNTED here, and each such leaf's row carries the cause naming its OWN line: the
+  // refusal is scoped to the leaf, never a reason to blank the item's whole fold.
+  unreadable_stamp_claims: Int
   // Whether the item's acceptance stands in these lines. A fold with no acceptance is a different answer
   // from "the accepted leaves took their priors", and a reader must be able to tell them apart.
   accepted: Bool
@@ -160,7 +173,6 @@ type RealizedSchedule {
 // will not order itself has no FIRST claim to read.
 type RealizedFoldRefusal
   = UndecodableLine { line_number: Int, reason: String }
-  | ClaimInstantUnreadable { event_id: String, recorded_at: String }
   | AcceptanceDayUnreadable { event_id: String, accepted_on: String }
   | ForkedOrDanglingCausalChain
   // #16695's scheduler refused at the realized duration input. Its order is untouched and its refusal is passed
@@ -189,8 +201,21 @@ type ClaimStamp
   | PathlessClaim
   | RetiredStandingClaim
   | NotAClaim
-  | StampRefused { refusal: RealizedFoldRefusal }
-type ClaimReading = ClaimsRead { first: List<FirstClaim>, pathless: Int, retired: Int } | ClaimReadRefused { refusal: RealizedFoldRefusal }
+  | StampUnreadable { claim: UnreadableClaim }
+type ClaimReading = ClaimsRead {
+  first: List<FirstClaim>, unreadable: List<UnreadableClaim>, pathless: Int, retired: Int
+} | ClaimReadRefused { refusal: RealizedFoldRefusal }
+
+// A CLAIM WHOSE STAMP CANNOT BE READ, kept together with the leaf it NAMES so the refusal can be scoped to THAT
+// leaf: the event that wrote the unreadable recorded_at, and the stamp itself, so the row can name the line it
+// refused to read. It starts no clock, and no later claim of the same leaf may start one either -- a start read off
+// a line AFTER the unreadable one would be a fabricated first.
+type UnreadableClaim {
+  key: String
+  path: LeafPath
+  event: String
+  recorded_at: String
+}
 type AcceptanceReading = AcceptanceFound { accepted_on: Iso8601CivilDate } | NoAcceptance | AcceptanceReadRefused { refusal: RealizedFoldRefusal }
 
 // THE FOLD: read one item's log LINES, price the schedule those lines realize, and say per leaf which value was
@@ -228,16 +253,16 @@ fn decode_all(rest: List<String>, number: Int, acc: List<RoadmapEventEnvelope>) 
 // standing fold, so a retired standing starts no clock), then the acceptance (asked of the same fold), then the
 // schedule is priced at the duration input and every leaf occurrence gets its row.
 fn fold_ordered(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item: RoadmapNodeId, mine: List<RoadmapEventEnvelope>) -> RealizedFold {
-  match read_claims(ordered: mine, seen: [], first: [], pathless: 0, retired: 0) {
+  match read_claims(ordered: mine, seen: [], first: [], unreadable: [], pathless: 0, retired: 0) {
     ClaimReadRefused { refusal: refusal } => Refused { refusal: refusal }
-    ClaimsRead { first: first, pathless: pathless, retired: retired } => match read_acceptance(mine: mine) {
+    ClaimsRead { first: first, unreadable: unreadable, pathless: pathless, retired: retired } => match read_acceptance(mine: mine) {
       AcceptanceReadRefused { refusal: refusal } => Refused { refusal: refusal }
       NoAcceptance => fold_priced(
-        d: d, e: e, workers: workers, item: item, first: first, pathless: pathless, retired: retired,
-        stamp: none)
+        d: d, e: e, workers: workers, item: item, first: first, unreadable: unreadable, pathless: pathless,
+        retired: retired, stamp: none)
       AcceptanceFound { accepted_on: accepted_on } => fold_priced(
-        d: d, e: e, workers: workers, item: item, first: first, pathless: pathless, retired: retired,
-        stamp: Present { value: accepted_on })
+        d: d, e: e, workers: workers, item: item, first: first, unreadable: unreadable, pathless: pathless,
+        retired: retired, stamp: Present { value: accepted_on })
     }
   }
 }
@@ -250,30 +275,50 @@ fn fold_ordered(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item:
 // roadmap_retired_node_ids_of_events and the in-flight read feed it -- answers what the item's standing was. The
 // fold's answer decides whether the claim starts a clock; nothing here re-derives terminality or retirement (@ref
 // gunbc.design_argument::fail_closed).
-fn read_claims(ordered: List<RoadmapEventEnvelope>, seen: List<RoadmapEventEnvelope>, first: List<FirstClaim>, pathless: Int, retired: Int) -> ClaimReading {
+fn read_claims(ordered: List<RoadmapEventEnvelope>, seen: List<RoadmapEventEnvelope>, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, pathless: Int, retired: Int) -> ClaimReading {
   match ordered.first() {
-    Absent => ClaimsRead { first: first, pathless: pathless, retired: retired }
+    Absent => ClaimsRead { first: first, unreadable: unreadable, pathless: pathless, retired: retired }
     Present { value: env } => match claim_stamp(env: env, history: list_push(seen, item: env)) {
-      StampRefused { refusal: refusal } => ClaimReadRefused { refusal: refusal }
       NotAClaim => read_claims(
         ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
-        first: first, pathless: pathless, retired: retired)
+        first: first, unreadable: unreadable, pathless: pathless, retired: retired)
       PathlessClaim => read_claims(
         ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
-        first: first, pathless: pathless + 1, retired: retired)
+        first: first, unreadable: unreadable, pathless: pathless + 1, retired: retired)
       RetiredStandingClaim => read_claims(
         ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
-        first: first, pathless: pathless, retired: retired + 1)
+        first: first, unreadable: unreadable, pathless: pathless, retired: retired + 1)
+      StampUnreadable { claim: claim } =>
+        if any(first, c => c.key == claim.key) || any(unreadable, c => c.key == claim.key) {
+          // This leaf already has its answer -- a clock, or the refusal to start one.
+          read_claims(
+            ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
+            first: first, unreadable: unreadable, pathless: pathless, retired: retired)
+        } else {
+          // THE REFUSAL IS SCOPED TO THIS LEAF: recorded against the leaf it names, and the walk goes on, so every
+          // other leaf on the item still gets its realized duration.
+          read_claims(
+            ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
+            first: first, unreadable: list_push(unreadable, item: claim), pathless: pathless, retired: retired)
+        }
       StampRead { claim: claim } =>
         if any(first, c => c.key == claim.key) {
           // Not this leaf's first claim: the clock is already running from the earlier one.
           read_claims(
             ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
-            first: first, pathless: pathless, retired: retired)
+            first: first, unreadable: unreadable, pathless: pathless, retired: retired)
         } else {
-          read_claims(
-            ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
-            first: list_push(first, item: claim), pathless: pathless, retired: retired)
+          if any(unreadable, c => c.key == claim.key) {
+            // This leaf's FIRST claim was the unreadable one: a later, tidier line does not rescue it, because a
+            // start read off a line after the unreadable one would be a fabricated first.
+            read_claims(
+              ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
+              first: first, unreadable: unreadable, pathless: pathless, retired: retired)
+          } else {
+            read_claims(
+              ordered: ordered.skip(n: 1), seen: list_push(seen, item: env),
+              first: list_push(first, item: claim), unreadable: unreadable, pathless: pathless, retired: retired)
+          }
         }
     }
   }
@@ -281,8 +326,10 @@ fn read_claims(ordered: List<RoadmapEventEnvelope>, seen: List<RoadmapEventEnvel
 
 // ONE LINE'S CLAIM, as far as this fold reads it: NotAClaim for anything that is not a claim; RetiredStandingClaim
 // for a claim the standing says started nothing (asked of the fold over the item's history through this line);
-// PathlessClaim for a claim that names no leaf (counted, never guessed at); and the leaf plus the day its
-// recorded_at instant falls on otherwise. The grain comes through #16683's decoder, never off the line's wire shape.
+// PathlessClaim for a claim that names no leaf (counted, never guessed at); StampUnreadable for a claim whose own
+// recorded_at is not the instant its producers write -- which refuses THAT leaf, not the fold; and the leaf plus the
+// day its recorded_at instant falls on otherwise. The grain comes through #16683's decoder, never off the line's
+// wire shape.
 fn claim_stamp(env: RoadmapEventEnvelope, history: List<RoadmapEventEnvelope>) -> ClaimStamp {
   match env.event.kind {
     Claimed { grain: grain } =>
@@ -292,8 +339,8 @@ fn claim_stamp(env: RoadmapEventEnvelope, history: List<RoadmapEventEnvelope>) -
         match grain {
           Pathless => PathlessClaim
           AtPath { path: path } => match claim_day(env: env) {
-            Absent => StampRefused { refusal: ClaimInstantUnreadable {
-              event_id: env.id as String, recorded_at: env.event.recorded_at } }
+            Absent => StampUnreadable { claim: UnreadableClaim {
+              key: path_key(p: path), path: path, event: env.id as String, recorded_at: env.event.recorded_at } }
             Present { value: day } => StampRead { claim: FirstClaim {
               key: path_key(p: path), path: path, claimed_on: day } }
           }
@@ -344,18 +391,21 @@ fn read_acceptance(mine: List<RoadmapEventEnvelope>) -> AcceptanceReading {
 
 // THE PRICED FOLD. The realized counts become the scheduler's duration input; the answer comes back from #16695's
 // ONE scheduler; the rows are then read off that answer against the SAME list of first claims and the SAME
-// acceptance the pricing used -- so the report and the schedule cannot disagree, because they consult one reading.
-fn fold_priced(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item: RoadmapNodeId, first: List<FirstClaim>, pathless: Int, retired: Int, stamp: Iso8601CivilDate?) -> RealizedFold {
+// acceptance the pricing used. The report and the schedule cannot disagree because they share one reading AND one
+// span rule: `realized_span` is the only place that decides whether a (first claim, acceptance) pair makes a
+// duration and what it counts (@ref gunbc.design_argument::single_authority).
+fn fold_priced(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item: RoadmapNodeId, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, pathless: Int, retired: Int, stamp: Iso8601CivilDate?) -> RealizedFold {
   match schedule_with_realized(d: d, e: e, workers: workers, realized: realized_input(first: first, stamp: stamp)) {
     NotScheduled { refusal: refusal } => Refused { refusal: ScheduleRefusedAtRealizedInput { refusal: refusal } }
     Scheduled { answer: answer } => match build_rows(
-      d: d, first: first, stamp: stamp, leaves: answer.leaves, rows: [], unpriced: []) {
+      d: d, first: first, unreadable: unreadable, stamp: stamp, leaves: answer.leaves, rows: [], unpriced: []) {
       RowBuild { rows: rows, unpriced: unpriced } => Folded { fold: RealizedSchedule {
         answer: answer,
         rows: rows,
         unpriced: unpriced,
         pathless_claims: pathless,
         retired_standing_claims: retired,
+        unreadable_stamp_claims: count(unreadable),
         // The flag and the day it reports come out of ONE match on the stamp, so they cannot drift apart.
         accepted: match stamp { Absent => false Present { value: _ } => true },
         accepted_on: stamp
@@ -369,17 +419,37 @@ fn fold_priced(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item: 
 // a count it does not have, and it never disappears, because a Gantt missing a leaf quietly is a Gantt lying.
 type RowBuild { rows: List<LeafDurationRow>, unpriced: List<LeafPath> }
 
-fn build_rows(d: WorkDecomposition, first: List<FirstClaim>, stamp: Iso8601CivilDate?, leaves: List<ScheduledLeaf>, rows: List<LeafDurationRow>, unpriced: List<LeafPath>) -> RowBuild {
+fn build_rows(d: WorkDecomposition, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, stamp: Iso8601CivilDate?, leaves: List<ScheduledLeaf>, rows: List<LeafDurationRow>, unpriced: List<LeafPath>) -> RowBuild {
   match leaves.first() {
     Absent => RowBuild { rows: rows, unpriced: unpriced }
-    Present { value: hd } => match duration_row(d: d, first: first, stamp: stamp, leaf_of: hd) {
+    Present { value: hd } => match duration_row(d: d, first: first, unreadable: unreadable, stamp: stamp, leaf_of: hd) {
       Absent => build_rows(
-        d: d, first: first, stamp: stamp, leaves: leaves.skip(n: 1),
+        d: d, first: first, unreadable: unreadable, stamp: stamp, leaves: leaves.skip(n: 1),
         rows: rows, unpriced: list_push(unpriced, item: hd.path))
       Present { value: row } => build_rows(
-        d: d, first: first, stamp: stamp, leaves: leaves.skip(n: 1),
+        d: d, first: first, unreadable: unreadable, stamp: stamp, leaves: leaves.skip(n: 1),
         rows: list_push(rows, item: row), unpriced: unpriced)
     }
+  }
+}
+
+// THE ONE DECISION about whether a first claim and an acceptance make a realized span, and what that span counts.
+// BOTH readers -- the scheduler's duration input and the per-leaf row -- ask this and nothing else, so the count the
+// schedule was priced at and the count the row reports cannot drift apart. (@ref
+// gunbc.design_argument::single_authority; the drift this prevents is the one the header records happening twice
+// already in this lineage, and review 38602 caught a second copy of this rule in the first revision here.)
+type RealizedSpan
+  = RealizedSpanFromLog { duration: LeafDuration }
+  | SpanRunsBackwards { claimed_on: Iso8601CivilDate, accepted_on: Iso8601CivilDate }
+
+fn realized_span(claim: FirstClaim, accepted_on: Iso8601CivilDate) -> RealizedSpan {
+  if days_between(from: claim.claimed_on, to: accepted_on) < 0 {
+    // Claimed AFTER the acceptance: the span would run backwards, so no duration is readable from it.
+    SpanRunsBackwards { claimed_on: claim.claimed_on, accepted_on: accepted_on }
+  } else {
+    RealizedSpanFromLog { duration: RealizedFromLog {
+      working_days: working_days_between(start: claim.claimed_on, finish: accepted_on),
+      claimed_on: claim.claimed_on, accepted_on: accepted_on } }
   }
 }
 
@@ -396,17 +466,16 @@ fn realized_input(first: List<FirstClaim>, stamp: Iso8601CivilDate?) -> Realized
 fn realized_input_step(first: List<FirstClaim>, accepted_on: Iso8601CivilDate, acc: RealizedDays) -> RealizedDays {
   match first.first() {
     Absent => acc
-    Present { value: hd } =>
-      if days_between(from: hd.claimed_on, to: accepted_on) < 0 {
-        // Claimed AFTER the acceptance: not a claimed-to-accepted span, so no realized entry for it -- which leaves
-        // the schedule on the prior AND makes duration_row name the refusal, instead of printing a negative span.
-        realized_input_step(first: first.skip(n: 1), accepted_on: accepted_on, acc: acc)
-      } else {
-        realized_input_step(
-          first: first.skip(n: 1), accepted_on: accepted_on,
-          acc: map_insert(m: acc, key: hd.key,
-            value: working_days_between(start: hd.claimed_on, finish: accepted_on)))
-      }
+    Present { value: hd } => match realized_span(claim: hd, accepted_on: accepted_on) {
+      // The count the map gets IS the count the row will report, because both come out of `realized_span`.
+      RealizedSpanFromLog { duration: duration } => realized_input_step(
+        first: first.skip(n: 1), accepted_on: accepted_on,
+        acc: map_insert(m: acc, key: hd.key, value: duration_days(duration: duration)))
+      // Claimed AFTER the acceptance: no realized entry, which leaves the leaf at the prior -- and its row says so
+      // rather than going quiet.
+      SpanRunsBackwards { claimed_on: _, accepted_on: _ } => realized_input_step(
+        first: first.skip(n: 1), accepted_on: accepted_on, acc: acc)
+    }
   }
 }
 
@@ -418,34 +487,45 @@ fn realized_input_step(first: List<FirstClaim>, accepted_on: Iso8601CivilDate, a
 // invent a prior to be printed is REFUSED instead -- `none`, counted in the fold's `unpriced` -- because a row
 // zero-filled to keep the types tidy would be a fabricated day count, and the whole point of this unit is that the
 // numbers in its output came from somewhere.
-fn duration_row(d: WorkDecomposition, first: List<FirstClaim>, stamp: Iso8601CivilDate?, leaf_of: ScheduledLeaf) -> LeafDurationRow? {
+fn duration_row(d: WorkDecomposition, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, stamp: Iso8601CivilDate?, leaf_of: ScheduledLeaf) -> LeafDurationRow? {
   let prior = piece_member_days(d: d, path: leaf_of.path)
-  match first_claim_for(first: first, path: leaf_of.path) {
-    Absent => match stamp {
-      // THE RED CONTROL: the item's acceptance stands and this leaf was never claimed. Not zero, and not the
-      // ordinary prior arm -- the fold says out loud that there is no realized duration here.
-      Present { value: _ } => prior_row(leaf_of: leaf_of, prior: prior,
-        cause: Present { value: AcceptedWithoutClaim })
-      // Nothing claimed, nothing accepted: the carrier's prior stands untouched and nothing is owed.
-      Absent => prior_row(leaf_of: leaf_of, prior: prior, cause: none)
-    }
-    Present { value: hd } => match stamp {
-      // Claimed, not yet accepted: in flight, so no claimed-to-accepted span exists yet.
-      Absent => prior_row(leaf_of: leaf_of, prior: prior,
-        cause: Present { value: WorkInFlight { claimed_on: hd.claimed_on } })
-      Present { value: accepted_on } =>
-        if days_between(from: hd.claimed_on, to: accepted_on) < 0 {
-          prior_row(leaf_of: leaf_of, prior: prior, cause: Present { value: ClaimedAfterAcceptance {
-            claimed_on: hd.claimed_on, accepted_on: accepted_on } })
-        } else {
-          Present { value: LeafDurationRow {
+  match unreadable_claim_for(unreadable: unreadable, path: leaf_of.path) {
+    // THIS leaf's own stamp could not be read: it is priced at its prior and SAYS which line did it, while every
+    // other leaf on the item is untouched.
+    Present { value: bad } => prior_row(leaf_of: leaf_of, prior: prior,
+      cause: Present { value: ClaimInstantUnreadable { event: bad.event, recorded_at: bad.recorded_at } })
+    Absent => match first_claim_for(first: first, path: leaf_of.path) {
+      Absent => match stamp {
+        // THE RED CONTROL: the item's acceptance stands and this leaf was never claimed. Not zero, and not the
+        // ordinary prior arm -- the fold says out loud that there is no realized duration here.
+        Present { value: _ } => prior_row(leaf_of: leaf_of, prior: prior,
+          cause: Present { value: AcceptedWithoutClaim })
+        // Nothing claimed, nothing accepted: the carrier's prior stands untouched and nothing is owed.
+        Absent => prior_row(leaf_of: leaf_of, prior: prior, cause: none)
+      }
+      Present { value: hd } => match stamp {
+        // Claimed, not yet accepted: in flight, so no claimed-to-accepted span exists yet.
+        Absent => prior_row(leaf_of: leaf_of, prior: prior,
+          cause: Present { value: WorkInFlight { claimed_on: hd.claimed_on } })
+        // THE SAME `realized_span` answer the duration input was built from, wrapped in a row: one decision, two
+        // readers, so a row cannot report a count the schedule was not priced at.
+        Present { value: accepted_on } => match realized_span(claim: hd, accepted_on: accepted_on) {
+          RealizedSpanFromLog { duration: duration } => Present { value: LeafDurationRow {
             path: leaf_of.path, start_day: leaf_of.start_day, finish_day: leaf_of.finish_day, prior: prior,
-            duration: RealizedFromLog {
-              working_days: working_days_between(start: hd.claimed_on, finish: accepted_on),
-              claimed_on: hd.claimed_on, accepted_on: accepted_on } } }
+            duration: duration } }
+          SpanRunsBackwards { claimed_on: claimed_on, accepted_on: accepted_on } => prior_row(
+            leaf_of: leaf_of, prior: prior, cause: Present { value: ClaimedAfterAcceptance {
+              claimed_on: claimed_on, accepted_on: accepted_on } })
         }
+      }
     }
   }
+}
+
+// THE UNREADABLE STAMP FOR THIS LEAF, if its first claim was recorded on a line whose instant this unit could not
+// read. Keyed by the schedule's own key, imported and never re-spelled.
+fn unreadable_claim_for(unreadable: List<UnreadableClaim>, path: LeafPath) -> UnreadableClaim? {
+  first_where(unreadable, c => c.key == path_key(p: path))
 }
 
 // A ROW PRICED FROM THE PRIOR -- the ordinary one when nothing is owed, and the NAMED one when a realized duration
@@ -500,6 +580,7 @@ fn realized_schedule_output(fold: RealizedFold) -> String {
       to_string(named_rows(fold: fold)), " named out loud), ",
       to_string(fold.pathless_claims), " Pathless claims (no leaf named, no realized value), ",
       to_string(fold.retired_standing_claims), " claims under a retired standing (no clock started), ",
+      to_string(fold.unreadable_stamp_claims), " claims whose recorded_at could not be read (that leaf alone at its prior), ",
       to_string(count(fold.unpriced)), " leaves refused a row (no prior declared, nothing realized); unit: ",
       realized_duration_unit_note()], "")
   }
@@ -589,6 +670,10 @@ fn cause_text(cause: NoRealizedCause) -> String {
     ClaimedAfterAcceptance { claimed_on: claimed_on, accepted_on: accepted_on } => join(["the leaf was claimed on ",
       date_text(date: claimed_on), ", AFTER the acceptance of ", date_text(date: accepted_on),
       ": the span runs backwards, so no duration is readable from it"], "")
+    ClaimInstantUnreadable { event: event, recorded_at: recorded_at } => join(["the claim on this leaf was recorded",
+      " by event ", event, " with recorded_at \"", recorded_at, "\", which is not the whole-second UTC instant the",
+      " producers write (extdeps.clock's `date -u +%Y-%m-%dT%H:%M:%SZ`); this leaf alone is at its prior, and no",
+      " claim day is invented"], "")
   }
 }
 
@@ -597,10 +682,6 @@ fn refusal_output(refusal: RealizedFoldRefusal) -> String {
   match refusal {
     UndecodableLine { line_number: line_number, reason: reason } =>
       join(["refused: line ", to_string(line_number), " is not a readable roadmap event: ", reason], "")
-    ClaimInstantUnreadable { event_id: event_id, recorded_at: recorded_at } => join([
-      "refused: claim ", event_id, " carries recorded_at \"", recorded_at,
-      "\", which is not the whole-second UTC instant the producers write (extdeps.clock's `date -u",
-      " +%Y-%m-%dT%H:%M:%SZ`); no claim day is invented"], "")
     AcceptanceDayUnreadable { event_id: event_id, accepted_on: accepted_on } => join([
       "refused: acceptance ", event_id, " carries the day \"", accepted_on,
       "\", which the log's own date reader will not read; no acceptance day is invented"], "")

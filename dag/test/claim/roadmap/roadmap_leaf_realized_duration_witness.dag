@@ -22,7 +22,9 @@ module test.claim.roadmap.roadmap_leaf_realized_duration
 // sequence of leaves, same lane per leaf, and only the day numbers move); no estimate is re-issued (the carrier still
 // declares 5 after the fold realized 4); a Pathless claim names no leaf and is COUNTED; a claim under a retired
 // standing starts no clock and is COUNTED, the standing being ASKED of the log's own fold rather than re-decided
-// here; an instant that is not the one the producers write REFUSES by name; a log that will not order itself REFUSES
+// here; an instant that is not the one the producers write REFUSES ITS OWN LEAF -- typed, counted, and named, while
+// every other leaf on the item still realizes -- and a later tidier claim cannot rescue that leaf; a log that will
+// not order itself REFUSES
 // rather than fabricating a first claim; an undecodable line REFUSES with its number; a revoked acceptance is no
 // acceptance; the working-day count is #16697's calendar rule (a Monday-to-Monday span is five working days across
 // seven calendar ones); and the fold is COMPUTED ON READ -- the same lines re-read answer identically, and one more
@@ -31,7 +33,7 @@ module test.claim.roadmap.roadmap_leaf_realized_duration
 // LOCAL RECIPE (claims are executed, not parsed):
 //   claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry dag/test/claim/roadmap/roadmap_leaf_realized_duration_witness.dag \
-//     --functions first_slice_folds_one_items_completed_leaves_into_its_schedule_and_prints_per_leaf_whether_the_realized_value_or_the_prior_was_used,red_control_an_accepted_leaf_with_no_claim_has_no_realized_duration_and_never_reads_as_zero_days,red_control_an_accepted_leaf_with_no_claim_does_not_fall_back_to_the_prior_silently,the_handback_outputs_are_the_realized_row_the_no_claim_row_and_the_diff,the_realized_value_replaces_only_the_day_count_and_leaves_the_schedulers_order_untouched,the_carriers_prior_is_never_overwritten_by_a_realized_value,a_pathless_claim_names_no_leaf_yields_no_realized_value_and_is_counted_visibly,a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_visibly,a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_with_a_typed_cause_naming_the_event,a_log_that_will_not_order_itself_refuses_the_fold_rather_than_inventing_a_first_claim,an_undecodable_line_refuses_the_whole_fold_naming_the_line_number,a_revoked_acceptance_is_no_acceptance_and_no_realized_span_is_read_from_it,a_leaf_with_no_prior_is_refused_by_name_and_never_priced_at_zero_days,the_working_day_count_is_the_calendar_s_rule_and_crosses_a_weekend_by_five_days_not_seven,the_fold_is_computed_on_read_from_the_same_lines_and_is_never_authoritative_between_reads
+//     --functions first_slice_folds_one_items_completed_leaves_into_its_schedule_and_prints_per_leaf_whether_the_realized_value_or_the_prior_was_used,red_control_an_accepted_leaf_with_no_claim_has_no_realized_duration_and_never_reads_as_zero_days,red_control_an_accepted_leaf_with_no_claim_does_not_fall_back_to_the_prior_silently,the_handback_outputs_are_the_realized_row_the_no_claim_row_and_the_diff,the_realized_value_replaces_only_the_day_count_and_leaves_the_schedulers_order_untouched,the_carriers_prior_is_never_overwritten_by_a_realized_value,a_pathless_claim_names_no_leaf_yields_no_realized_value_and_is_counted_visibly,a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_visibly,a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_that_leaf_with_a_typed_cause_naming_the_event,an_empty_stamped_claim_blanks_one_leaf_and_no_other,a_later_readable_claim_does_not_rescue_a_leaf_whose_first_stamp_was_unreadable,a_log_that_will_not_order_itself_refuses_the_fold_rather_than_inventing_a_first_claim,an_undecodable_line_refuses_the_whole_fold_naming_the_line_number,a_revoked_acceptance_is_no_acceptance_and_no_realized_span_is_read_from_it,a_leaf_with_no_prior_is_refused_by_name_and_never_priced_at_zero_days,the_working_day_count_is_the_calendar_s_rule_and_crosses_a_weekend_by_five_days_not_seven,the_fold_is_computed_on_read_from_the_same_lines_and_is_never_authoritative_between_reads
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -540,26 +542,99 @@ fn a_claim_recorded_after_the_item_was_retired_starts_no_clock_and_is_counted_vi
 }
 
 // ─── FAIL CLOSED, TYPED REFUSALS ──────────────────────────────────────────────────────────────────
-// A CLAIM WHOSE recorded_at IS NOT THE WHOLE-SECOND UTC INSTANT ITS PRODUCERS WRITE REFUSES, with a typed cause
-// naming the event and the text. A claim carries no day of its own, so the instant is the only evidence there is; a
-// fixture that plants the placeholder "t3" is refused rather than having a day invented for it -- which is the point
-// of the check, not an inconvenience to work around.
-fn a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_with_a_typed_cause_naming_the_event() -> Bool {
+// A CLAIM WHOSE recorded_at IS NOT THE WHOLE-SECOND UTC INSTANT ITS PRODUCERS WRITE REFUSES THAT LEAF, with a typed
+// cause naming the event and the text. A claim carries no day of its own, so the instant is the only evidence there
+// is; a fixture that plants the placeholder "t3", or the "" a writer can persist on an auth route that never reads
+// the clock, is refused rather than having a day invented for it -- which is the point of the check, not an
+// inconvenience to work around. THE SCOPING IS THE CLAIM: one blank stamp must not blank the realized durations of
+// every leaf on the item, so the fold still folds, the clean leaves still realize, and the blank leaf is priced at
+// its prior with its cause named and counted.
+fn a_claim_whose_recorded_at_is_not_the_instant_its_producers_write_refuses_that_leaf_with_a_typed_cause_naming_the_event() -> Bool {
   let first = claim_env(path: Present { value: leaf_first() }, at: "t3", parent: none)
   let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z",
     parent: Present { value: first.id })
-  match fold_lines(lines: wire(envs: [first, accepted])) {
-    Folded { fold: _ } => false
-    Refused { refusal: refusal } =>
-      (match refusal {
-        ClaimInstantUnreadable { event_id: event_id, recorded_at: recorded_at } =>
-          event_id == (first.id as String) && recorded_at == "t3"
-        _ => false
-      })
-      // The refusal prints what it refused, so nobody has to read the source to know which line to fix.
-      && string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }), pattern: "t3")
-      && string_contains(s: realized_schedule_output(fold: Refused { refusal: refusal }),
-           pattern: (first.id as String))
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: first.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z", parent: Present { value: third.id })
+  match fold_lines(lines: wire(envs: [first, third, accepted])) {
+    // The unreadable stamp refuses its OWN leaf and nothing else: the fold still folds.
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.unreadable_stamp_claims == 1
+        // THE REFUSAL, typed and located: the event that wrote the stamp, and the stamp itself.
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+             PriorNamedOutLoud { working_days: days, cause: ClaimInstantUnreadable {
+               event: event, recorded_at: recorded_at } } =>
+               days == 5 && event == (first.id as String) && recorded_at == "t3"
+             _ => false
+           })
+        // The leaf is priced at its prior -- never zero, never a silent fallback.
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 5
+        && is_named_out_loud(row: row_or_none(fold: fold, key: "gantt.item#0#0#0"))
+        // AND EVERY OTHER LEAF STILL REALIZES: one blank stamp does not blank the item.
+        && is_realized(row: row_or_none(fold: fold, key: "gantt.item#2#0#0"))
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#2#0#0").duration) == 3
+        && fold.answer.critical_length == 10
+        // Printed, so a reader can find the line to fix without reading this unit's source.
+        && string_contains(s: realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")),
+             pattern: "t3")
+        && string_contains(s: realized_row_output(row: row_or_none(fold: fold, key: "gantt.item#0#0#0")),
+             pattern: (first.id as String))
+  }
+}
+
+// AN EMPTY-STAMPED CLAIM BLANKS ONE LEAF AND NO OTHER -- the shape the log's own writers can actually produce (the
+// auth routes that never read the clock persist recorded_at ""; the live daily-workspace log holds only whole-second
+// Zulu instants today). The clean claim beside it MUST still realize: a fold that answered Refused here would be
+// holding every leaf hostage to one line, and a fold that priced the blank leaf at 0 days would be inventing a
+// duration it never read.
+fn an_empty_stamped_claim_blanks_one_leaf_and_no_other() -> Bool {
+  let blank = claim_env(path: Present { value: leaf_first() }, at: "", parent: none)
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: blank.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z", parent: Present { value: third.id })
+  match fold_lines(lines: wire(envs: [blank, third, accepted])) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.accepted
+        && fold.unreadable_stamp_claims == 1
+        // The clean leaf realized; the blank one did not, and says so with its cause.
+        && count(filter(fold.rows, r => is_realized(row: r))) == 1
+        && is_realized(row: row_or_none(fold: fold, key: "gantt.item#2#0#0"))
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#2#0#0").duration) == 3
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 5
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+             PriorNamedOutLoud { working_days: _, cause: ClaimInstantUnreadable {
+               event: event, recorded_at: recorded_at } } =>
+               event == (blank.id as String) && recorded_at == ""
+             _ => false
+           })
+        // The printed fold counts the refusal, so the blank is visible without reading rows one by one.
+        && string_contains(s: realized_schedule_output(fold: Folded { fold: fold }),
+             pattern: "1 claims whose recorded_at could not be read")
+  }
+}
+
+// A LATER, TIDIER CLAIM DOES NOT RESCUE A LEAF whose FIRST claim was the unreadable one: the first claim is what
+// started the clock, and a start read off a line AFTER the unreadable one would be a fabricated first.
+fn a_later_readable_claim_does_not_rescue_a_leaf_whose_first_stamp_was_unreadable() -> Bool {
+  let blank = claim_env(path: Present { value: leaf_first() }, at: "", parent: none)
+  let tidier = claim_env(path: Present { value: leaf_first() }, at: "2026-11-16T09:00:00Z",
+    parent: Present { value: blank.id })
+  let third = claim_env(path: Present { value: leaf_third() }, at: "2026-11-17T09:00:00Z",
+    parent: Present { value: tidier.id })
+  let accepted = acceptance_env(day: "2026-11-20", at: "2026-11-20T17:00:00Z", parent: Present { value: third.id })
+  match fold_lines(lines: wire(envs: [blank, tidier, third, accepted])) {
+    Refused { refusal: _ } => false
+    Folded { fold: fold } =>
+      fold.unreadable_stamp_claims == 1
+        && !is_realized(row: row_or_none(fold: fold, key: "gantt.item#0#0#0"))
+        && duration_days(duration: row_or_none(fold: fold, key: "gantt.item#0#0#0").duration) == 5
+        && (match row_or_none(fold: fold, key: "gantt.item#0#0#0").duration {
+             PriorNamedOutLoud { working_days: _, cause: ClaimInstantUnreadable { event: event } } =>
+               event == (blank.id as String)
+             _ => false
+           })
   }
 }
 
