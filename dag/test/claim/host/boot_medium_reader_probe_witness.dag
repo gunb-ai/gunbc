@@ -485,19 +485,27 @@ fn probe_step_if(st: Step) -> String {
 // THE PROBE IS A DISPATCH, NOT A SIDE EFFECT: exactly one job carries its step, the step runs only under its
 // own mode, and the receipt -- the finding, refusal included -- uploads under `always()`, the same gate shape
 // that review 87458 taught this lane about receipt survival.
-test fn the_probe_is_one_gated_step_in_one_job_and_its_receipt_uploads_under_always() -> Bool {
+// fleet_converge_jobs() now yields List<Outcome<Job>>; accept the jobs once at the top level (a refusal
+// yields [], which makes every cardinality assertion below false -- fail-closed, never a silent pass).
+// Hoisting here rather than matching inline keeps the builtin any() at function-body scope, where the
+// checker resolves it (the same idiom fleet_converge_run_scoped_coverage_witness's witness_jobs uses).
+fn accepted_fleet_converge_jobs() -> List<Job> {
   match outcome_accepted_values(fleet_converge_jobs()) {
-    Absent => false
-    Present { value: jobs } => {
-      let jobs_with = filter(jobs, j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe"))
-      let uploads = filter(jobs, j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe_receipt_upload"))
-      jobs_with.count() == 1
-        && uploads.count() == 1
-        && jobs_with.first().value.id == uploads.first().value.id
-        && probe_step_if(st: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
-        && probe_step_if(st: fleet_converge_boot_medium_reader_probe_receipt_upload_step()) == "always() && github.event.inputs.mode == 'boot_medium_reader_probe'"
-    }
+    Present { value: jobs } => jobs
+    Absent => []
   }
+}
+
+test fn the_probe_is_one_gated_step_in_one_job_and_its_receipt_uploads_under_always() -> Bool {
+  let jobs = accepted_fleet_converge_jobs()
+  let jobs_with = filter(jobs, j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe"))
+  let uploads = filter(jobs, j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe_receipt_upload"))
+  jobs.count() > 0
+    && jobs_with.count() == 1
+    && uploads.count() == 1
+    && jobs_with.first().value.id == uploads.first().value.id
+    && probe_step_if(st: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
+    && probe_step_if(st: fleet_converge_boot_medium_reader_probe_receipt_upload_step()) == "always() && github.event.inputs.mode == 'boot_medium_reader_probe'"
 }
 
 // THE COMMITTED PROBE YAML IS THE MODEL'S EMISSION (review of #15383: the probe hunks of fleet-converge.yml
