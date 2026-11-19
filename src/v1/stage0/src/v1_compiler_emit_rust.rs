@@ -108,7 +108,7 @@ use crate::v1_compiler_emit::NativeEffectContract::{NativeServiceEffect, NativeR
 use crate::v1_compiler_emit::NativeEffectHandler::{NativeTransportHandler, NativeCapabilityToken};
 use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable};
 use crate::v1_compiler_emit::ShellEmissionRefusal::{ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent};
-use crate::v1_compiler_emit::ShellResultChannel::{ShellChanStdout, ShellChanStderr, ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines, ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes};
+use crate::v1_compiler_emit::ShellResultChannel::{ShellChanStdout, ShellChanStderr, ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines, ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes, ShellChanOverran, ShellChanWallDeadlineSeconds};
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{DataVariantSpellingRefused};
 use crate::v1_compiler_infer_emit_info::TypeDeclOccurrenceBinding::*;
 use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared};
@@ -44311,6 +44311,12 @@ pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -
             ShellResultChannel::ShellChanStderrTruncated => "stderr_truncated".to_string(),
             ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
             ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
+            ShellResultChannel::ShellChanOverran => {
+                emit_unrealizable_shell_channel(ShellResultChannel::ShellChanOverran)
+            }
+            ShellResultChannel::ShellChanWallDeadlineSeconds => {
+                emit_unrealizable_shell_channel(ShellResultChannel::ShellChanWallDeadlineSeconds)
+            }
         };
         let captured_stream = match channel.clone() {
             ShellResultChannel::ShellChanStdout => true,
