@@ -60,7 +60,7 @@ type SshSessionExecResult {
   // and the Exec/ExecScript shapes never set these; they default false/Absent and keep today's
   // behavior. The exit code stays the child's real code, irrelevant when overran is true.
   overran: Bool = false
-  wall_deadline_seconds: Option<Second> = Absent
+  wall_deadline_seconds: Optional<Second> = Absent
 }
 
 // THE MODEL VIEW OF A FLEET LEG'S SESSION EXEC.
@@ -68,7 +68,7 @@ type SshSessionExecResult {
 // A leg either COMPLETED (a real remote exit code, with whatever stdout/stderr came back) or it
 // OVERRAN the total-wall deadline its CALLER passed (the sink's kill fired), in which case the
 // deadline is a VALUE it carries. The wire record `SshSessionExecResult` keeps `overran: Bool` +
-// `wall_deadline_seconds: Option<Second>` because that pair is the service JSON shape; this SUM is
+// `wall_deadline_seconds: Optional<Second>` because that pair is the service JSON shape; this SUM is
 // what the model consumes. It is produced at exactly ONE site (`ssh_session_exec_outcome` below),
 // which REFUSES, by name, the two combinations the wire admits but the model forbids: an overrun
 // with no deadline, and a completed leg carrying a deadline. After this, no consumer reads the Bool.
@@ -130,14 +130,14 @@ service ssh.Session {
 
   operation ExecPortableWords {
     requires Network
-    input { client_args: List<String>, wall_deadline: Option<Second> = Absent }
+    input { client_args: List<String>, wall_deadline: Optional<Second> = Absent }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
       overran: Bool from "overran"
-      wall_deadline_seconds: Option<Second> from "wall_deadline_seconds"
+      wall_deadline_seconds: Optional<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
@@ -153,14 +153,14 @@ service ssh.Session {
 
   operation ExecPortableWordsWithStdin {
     requires Network
-    input { client_args: List<String>, stdin_payload: String, wall_deadline: Option<Second> = Absent }
+    input { client_args: List<String>, stdin_payload: String, wall_deadline: Optional<Second> = Absent }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
       overran: Bool from "overran"
-      wall_deadline_seconds: Option<Second> from "wall_deadline_seconds"
+      wall_deadline_seconds: Optional<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
@@ -216,7 +216,7 @@ fn ssh_session_exec_result_from_service(
   stdout: String,
   stderr: String,
   overran: Bool = false,
-  wall_deadline_seconds: Option<Second> = Absent,
+  wall_deadline_seconds: Optional<Second> = Absent,
 ) -> SshSessionExecResult {
   SshSessionExecResult {
     exit_code: exit_code,
@@ -238,7 +238,7 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_portable_words(client_args: List<String>, wall_deadline: Option<Second> = Absent) -> SshSessionExecResult {
+fn ssh_session_exec_portable_words(client_args: List<String>, wall_deadline: Optional<Second> = Absent) -> SshSessionExecResult {
   let result = ssh.Session.ExecPortableWords(client_args: client_args, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
@@ -250,7 +250,7 @@ fn ssh_session_exec_portable_words(client_args: List<String>, wall_deadline: Opt
   )
 }
 
-fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String, wall_deadline: Option<Second> = Absent) -> SshSessionExecResult {
+fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String, wall_deadline: Optional<Second> = Absent) -> SshSessionExecResult {
   let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,

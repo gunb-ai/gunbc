@@ -1427,6 +1427,11 @@ fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
 fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
   if shell_channel_is_capture_accounting(c: c) {
     target_is_rust(target: target)
+  } else if c == ShellChanOverran || c == ShellChanWallDeadlineSeconds {
+    // The wall-deadline kill is implemented by the interpreted sink, not by the compiled
+    // Command. No live fleet-ssh caller runs through the compiled realization today; if one
+    // does, the emitted per-leg kill must be restored before this returns true.
+    false
   } else {
     target_renders_shell_transport(target: target)
   }

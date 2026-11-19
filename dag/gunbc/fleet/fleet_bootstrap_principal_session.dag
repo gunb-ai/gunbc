@@ -268,7 +268,7 @@ fn password_exec_result_as_session_result(
   stdout: String,
   stderr: String,
   overran: Bool = false,
-  wall_deadline_seconds: Option<Second> = Absent,
+  wall_deadline_seconds: Optional<Second> = Absent,
 ) -> SshSessionExecResult {
   SshSessionExecResult { exit_code: exit_code, success: success, stdout: stdout, stderr: stderr, overran: overran, wall_deadline_seconds: wall_deadline_seconds }
 }
