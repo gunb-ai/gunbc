@@ -3,6 +3,7 @@ module gunbc.live_deploy.deployed_tree_observation
 import std.integer { int_to_decimal_string }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.measure { Second, second_count }
 import std.algebra { list_append, string_concat_join, trim }
 import extdeps.git
 import extdeps.git { git_in_trusted_repository_args }
@@ -14,6 +15,7 @@ import gunbc.host.host_effect_realize {
   run_typed_argv_transport,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
+  TypedArgvExecOverran,
   TypedArgvExecRefused,
   HostEffectTransport,
   FleetSsh,
@@ -232,11 +234,19 @@ fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<Str
 // every downstream reader then cannot distinguish "the command ran and failed" from "no command ran".
 type DeployedTreeLegOutcome
   = DeployedTreeLegRan { result: SshSessionExecResult }
+  | DeployedTreeLegOverran { deadline: Second }
   | DeployedTreeLegNotAttempted { reason: String }
+
+// The host string a deadline receipt names. Derived from the locus's own resolved target, so the
+// host a leg overran on is spelled the one way it can be.
+fn deployed_tree_locus_host_text(locus: DeployedTreeLocus) -> String {
+  ssh_target_wire(target: locus.target) as String
+}
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
   match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
     TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
+    TypedArgvExecOverran { deadline: d } => DeployedTreeLegOverran { deadline: d }
     TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
   }
 }
@@ -263,6 +273,10 @@ fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTr
 type DeployedTreeUnobservableCause
   = TreeLegNotAttempted { leg: String, reason: String }
   | TreeCommandFailed { leg: String, exit_code: Int, stderr: String }
+  // The leg RAN and was killed by its own total-wall deadline. It is neither a refusal (something
+  // was asked of the host) nor a command failure (the host never answered), so it is its own arm,
+  // and it carries the deadline as a VALUE alongside the host and the exact argv it tripped on.
+  | TreeLegDeadlineExceeded { leg: String, host: String, argv: List<String>, deadline: Second }
   | TreeRevisionUndecodable { text: String }
   | TreeStatusUnreadable { detail: String }
 
@@ -278,11 +292,28 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
       join(["the ", leg, " leg was never attempted, so the host was not asked: ", why], "")
     TreeCommandFailed { leg: leg, exit_code: code, stderr: err } =>
       join(["the ", leg, " leg ran and failed (exit ", int_to_decimal_string(value: code), "): ", err], "")
+    TreeLegDeadlineExceeded { leg: leg, host: host, argv: argv, deadline: d } =>
+      join([
+        "the ", leg, " leg on host ", host, " overran its ", int_to_decimal_string(value: second_count(s: d)),
+        "s wall-clock deadline (argv=", join(argv, " "),
+        "); it ran too long and its process group was killed before the host answered -- an overrun is neither a refusal nor a command failure",
+      ], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
     TreeStatusUnreadable { detail: d } =>
       join(["the deployed tree answered, but its state is not readable and is not assumed clean: ", d], "")
   }
+}
+
+// The ONE construction of the deadline cause. Every deadline-bearing leg routes through here so the
+// shape (leg, host, argv, deadline) has a single spelling and a single witness.
+fn deployed_tree_leg_overran_cause(
+  leg: String,
+  host: String,
+  argv: List<String>,
+  deadline: Second,
+) -> DeployedTreeUnobservableCause {
+  TreeLegDeadlineExceeded { leg: leg, host: host, argv: argv, deadline: deadline }
 }
 
 // MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
@@ -359,9 +390,20 @@ fn observe_deployed_tree_at(context: FleetSshExecutionContext, target: SshTarget
 }
 
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
-  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
+  let revision_argv = deployed_tree_revision_argv(repo: locus.repo)
+  match deployed_tree_leg(locus: locus, argv: revision_argv) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
+    DeployedTreeLegOverran { deadline: d } =>
+      DeployedTreeUnobservable {
+        cause:
+          deployed_tree_leg_overran_cause(
+            leg: "revision",
+            host: deployed_tree_locus_host_text(locus: locus),
+            argv: revision_argv,
+            deadline: d,
+          ),
+      }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -375,6 +417,16 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
             match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: locus.repo)) {
               DeployedTreeLegNotAttempted { reason: why } =>
                 DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
+              DeployedTreeLegOverran { deadline: d } =>
+                DeployedTreeUnobservable {
+                  cause:
+                    deployed_tree_leg_overran_cause(
+                      leg: "root tree",
+                      host: deployed_tree_locus_host_text(locus: locus),
+                      argv: deployed_tree_root_tree_argv(repo: locus.repo),
+                      deadline: d,
+                    ),
+                }
               DeployedTreeLegRan { result: tr } =>
                 if tr.exit_code != 0 {
                   DeployedTreeUnobservable {
@@ -417,6 +469,16 @@ fn observe_deployed_tree_against_revision(
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
+    DeployedTreeLegOverran { deadline: d } =>
+      DeployedTreeUnobservable {
+        cause:
+          deployed_tree_leg_overran_cause(
+            leg: "index materialization",
+            host: deployed_tree_locus_host_text(locus: locus),
+            argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
+            deadline: d,
+          ),
+      }
     DeployedTreeLegRan { result: rt } =>
       if rt.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -431,6 +493,16 @@ fn observe_deployed_tree_against_revision(
             DeployedTreeUnobservable {
               cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
             }
+          DeployedTreeLegOverran { deadline: d } =>
+            DeployedTreeUnobservable {
+              cause:
+                deployed_tree_leg_overran_cause(
+                  leg: "worktree comparison",
+                  host: deployed_tree_locus_host_text(locus: locus),
+                  argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
+                  deadline: d,
+                ),
+            }
           DeployedTreeLegRan { result: st } =>
             if st.exit_code != 0 {
               DeployedTreeUnobservable {
@@ -444,6 +516,16 @@ fn observe_deployed_tree_against_revision(
                 DeployedTreeLegNotAttempted { reason: why3 } =>
                   DeployedTreeUnobservable {
                     cause: TreeLegNotAttempted { leg: "ignored deployed paths", reason: why3 },
+                  }
+                DeployedTreeLegOverran { deadline: d } =>
+                  DeployedTreeUnobservable {
+                    cause:
+                      deployed_tree_leg_overran_cause(
+                        leg: "ignored deployed paths",
+                        host: deployed_tree_locus_host_text(locus: locus),
+                        argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
+                        deadline: d,
+                      ),
                   }
                 DeployedTreeLegRan { result: ig } =>
                   if ig.exit_code != 0 {

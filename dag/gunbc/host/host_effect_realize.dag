@@ -191,6 +191,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
+  TypedArgvExecOverran,
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
@@ -491,7 +492,8 @@ import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file 
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.host.managed_host_boot_once { boot_once_read_back_sleep }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.measure { second_count, ByteSize, byte_size_count }
+import std.measure { second_count, Second, ByteSize, byte_size_count }
+import std.integer { int_to_decimal_string }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
@@ -1550,6 +1552,22 @@ type CodexRuntimeStepResult
   = CodexRuntimeStepRan { observed: ShellExecObserved }
   | CodexRuntimeStepRefused { reason: String }
 
+// The fail-closed reason for a typed-argv leg that overran its per-leg wall deadline. The host was
+// asked and never answered before the ceiling, so it is neither a refusal (nothing was asked) nor a
+// completion. The deadline VALUE is named so the overrun is not silently indistinguishable from a
+// plain failure.
+fn host_effect_typed_argv_overran_reason(leg_hint: String, deadline: Second) -> String {
+  join(
+    [
+      leg_hint,
+      " leg overran its ",
+      int_to_decimal_string(value: second_count(s: deadline)),
+      "s wall-clock deadline; the process group was killed before the host answered -- an overrun is neither a refusal nor a completion",
+    ],
+    "",
+  )
+}
+
 fn codex_runtime_typed_argv_step(
   argv: List<String>,
   transport: HostEffectTransport,
@@ -1558,6 +1576,10 @@ fn codex_runtime_typed_argv_step(
     TypedArgvExecConverged { result: r } =>
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
+      }
+    TypedArgvExecOverran { deadline: d } =>
+      CodexRuntimeStepRefused {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
       }
     TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
@@ -1913,6 +1935,10 @@ fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPred
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { Srv3PredicateHolds } else { Srv3PredicateFails }
+    TypedArgvExecOverran { deadline: d } =>
+      Srv3PredicateUnobserved {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 predicate", deadline: d),
+      }
     TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
@@ -1939,6 +1965,8 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
       } else {
         Srv3TokenAbsent
       }
+    TypedArgvExecOverran { deadline: d } =>
+      Srv3TokenUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 token", deadline: d) }
     TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
@@ -2678,6 +2706,8 @@ fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransp
   }
   match outcome {
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecOverran { deadline: d } } =>
+      Srv3PredicateUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "dpkg query", deadline: d) }
     Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
     Present { value: TypedArgvExecConverged { result: r } } =>
       match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
@@ -3815,6 +3845,10 @@ type RunArgvTransportOutcome
 // transport's carrier meet, and it is written once so the two arms cannot drift.
 fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
+    TypedArgvExecOverran { deadline: d } =>
+      RunArgvTransportRefused {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+      }
     TypedArgvExecRefused { reason: why } =>
       RunArgvTransportRefused {
         reason: join(
@@ -4556,6 +4590,11 @@ fn reconcile_ssh_argv_exec_outcome(
         },
         intent: intent,
       )
+    TypedArgvExecOverran { deadline: d } =>
+      NotConverged {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "ssh argv exec", deadline: d),
+        applied: intent,
+      }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4702,6 +4741,11 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
         ),
         intent: intent,
       )
+    TypedArgvExecOverran { deadline: d } =>
+      NotConverged {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "sudo nopasswd grant list", deadline: d),
+        applied: intent,
+      }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -8458,6 +8502,10 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+        TypedArgvExecOverran { deadline: d } => NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (ssh)", deadline: d),
+          applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
     FleetSsh { target: t, context: c, kind: kind } =>
@@ -8475,6 +8523,10 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+        TypedArgvExecOverran { deadline: d } => NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
+          applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => NotConverged {
@@ -8985,6 +9037,8 @@ fn build_cache_typed_argv_read(
       BuildCacheReadRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
+    TypedArgvExecOverran { deadline: d } =>
+      BuildCacheReadRefused { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
     TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
   }
 }

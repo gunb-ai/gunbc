@@ -28686,7 +28686,7 @@ mod map_shell_outputs_optional_stream_tests {
     };
 
     use super::bounded_shell_host_drain::CapturedStreamEvidence;
-    use super::{map_shell_outputs, str_value, ExecutionMode, InterpContext, ShellResult, Value};
+    use super::{map_shell_outputs, str_value, ExecutionMode, InterpContext, ShellLegExec, ShellResult, Value};
 
     fn map_shell_outputs_test_context() -> InterpContext {
         let graph = ResolvedGraph {
