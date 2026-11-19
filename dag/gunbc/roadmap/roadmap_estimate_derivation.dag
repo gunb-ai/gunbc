@@ -284,7 +284,7 @@ type IndexedEntry {
 }
 
 fn indexed_entries(entries: List<EstimateEntry>) -> List<IndexedEntry> {
-  fold(entries, init: [] as List<IndexedEntry>, f: fn(acc: List<IndexedEntry>, e: EstimateEntry) { acc |> list_push(IndexedEntry { at: count(acc), entry: e }) })
+  fold(entries, init: [] as List<IndexedEntry>, f: fn(acc, e) { acc |> list_push(IndexedEntry { at: count(acc), entry: e }) })
 }
 
 fn is_row_entry(e: EstimateEntry, subject: RoadmapNodeIdentity, made: Iso8601CivilDate) -> Bool {
