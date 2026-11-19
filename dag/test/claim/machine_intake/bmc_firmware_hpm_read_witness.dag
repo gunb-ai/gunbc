@@ -1,0 +1,48 @@
+module test.claim.machine_intake.bmc_firmware_hpm_read_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { string_contains }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  megarac_boot_hpm_check_source,
+  megarac_boot_hpm_check_refusal,
+}
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+
+// THE SHARED hpm READ, WITNESSED AT ITS RENDERINGS. The read itself (bmc_hpm_check_transport in
+// gunbc.machine_intake.bmc_firmware_hpm_read) is one ipmitool call plus one retained write -- it
+// executes only where a controller answers, and the boot's wet step and the arrival's wet leg are
+// that place. What CAN be established hermetically is the lift's contract: the lane's source line
+// names exactly what ran, against which committed controller endpoint, at which instant; the lane's
+// refusal line names the transport's own cause and NEVER a credential (the password reached the
+// tool only as a file path, and no path or secret appears in any refusal text); and two different
+// transport failures render two different causes -- a timeout is not a session failure is not a
+// refused read, so an operator is never sent to inspect the wrong component. If the delegating boot
+// stopped naming the endpoint, or a credential ever leaked into these strings, or the two causes
+// collapsed into one generic error, the arms below go red while the ordinary retention and read-back
+// claims (mtcollins1_boot_build_reading_witness) stay green.
+
+data at_instant: NonEmptyStr = "2026-11-19T05:00:00Z"
+
+test fn w_the_pre_power_source_line_names_the_command_the_controller_and_the_instant() -> Bool {
+  let source = megarac_boot_hpm_check_source(row: mtcollins1_boot_row_value, at: at_instant) as String
+  string_contains(s: source, pattern: "ipmitool hpm check on ")
+    && string_contains(s: source, pattern: mtcollins1_boot_row_value.controller.host as String)
+    && string_contains(s: source, pattern: at_instant as String)
+    && !string_contains(s: source, pattern: "password")
+}
+
+test fn w_a_failed_hpm_check_names_the_transport_cause_and_no_credential() -> Bool {
+  let timeout = megarac_boot_hpm_check_refusal(
+    row: mtcollins1_boot_row_value, at: at_instant, exit_code: 124, transport_stderr: "",
+  ) as String
+  let other = megarac_boot_hpm_check_refusal(
+    row: mtcollins1_boot_row_value, at: at_instant, exit_code: 1, transport_stderr: "unable to establish a session",
+  ) as String
+  string_contains(s: timeout, pattern: "hpm check was not read: ")
+    && string_contains(s: timeout, pattern: "timed out")
+    && string_contains(s: timeout, pattern: "exit 124")
+    && string_contains(s: timeout, pattern: mtcollins1_boot_row_value.controller.host as String)
+    && !string_contains(s: timeout, pattern: "password")
+    && string_contains(s: other, pattern: "hpm check was not read: ")
+    && timeout != other
+}
