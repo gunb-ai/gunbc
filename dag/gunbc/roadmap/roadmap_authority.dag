@@ -5415,6 +5415,27 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "the estimates the planning page prices with: one representation per node, parents that cannot contradict their children, and one Gantt answer over the whole roadmap"),
     ),
     roadmap_node(
+      identity: "rn_O7KR37AVRN6K46KKYTTZQ5XPQQ",
+      id: "roadmap-unprobed-findings-are-unsized",
+      owner: "planning",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_decomposition.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag" },
+        Pointer { label: "witness", path: "dag/test/claim/roadmap/roadmap_estimate_derivation_witness.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "an unprobed FindingsOf family is unsized, never priced as one member",
+        boundary: "A FindingsOf family's member count is not known until its probe runs, so the pricing must not answer it with an Int. @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward) rules that unsized is listed, never priced; the current population_members answers FindingsOf with 1 and piece_leaf_days multiplies the family's days by it, so every unprobed findings family is silently priced as exactly one member and that fabricated count reaches the portfolio totals unmarked. The fix removes the fabricated Int at its source (the population cardinality becomes typed, so stages_leaf_days and stages_leaf_count never see a member count for a findings family), and the one derivation refuses to price an item whose pieces include an unprobed FindingsOf family: it returns Unsized with a typed UnsizedWhy::FindingsUnprobed { family, probe } naming both the family and its probe. The leaf-rule check treats a findings family as non-empty by construction rather than by inventing a count of one. There is still exactly ONE pricing function; the item Gantt already refuses these as PiecesFindingsCount, so after this the Gantt and the derivation answer alike.",
+        displaced_cost: "Unprobed findings families reach the portfolio totals priced as one member each: 18 of them at this HEAD, unmarked, so every number the planning page and the portfolio total quote carries 18 fabricated single-member prices, and the item Gantt and the estimate derivation give two different answers for the same item.",
+        first_slice: "Add the UnsizedWhy::FindingsUnprobed { family, probe } arm and a typed population cardinality; make the derivation return Unsized for any item whose decomposition carries an unprobed FindingsOf family; red first, an item with a findings family answers Unsized naming its probe, and Produced/Reading families still price members x days.",
+        red_control: "Red against today's code, which prices a findings family at 1 x days: an item whose pieces include a FindingsOf family answers Unsized { FindingsUnprobed { family, probe } } naming the probe, NOT Derived at 1 x days; a Produced or Reading family still prices members x days; the live roadmap still derives; stages_leaf_count and the leaf-rule check report no invented member count for a findings family. List which live items flip to unsized.",
+        out_of_scope: "no change to how Produced/Reading families price; no change to the scheduler's order; no new pricing function; the probe execution itself and the findings table it writes are unchanged; sizing the roughly 290 nodes is its own lane",
+        handback: "a PR against main with a green dag-check gate and a red-first witness; the UnsizedWhy::FindingsUnprobed arm with its witness naming the probe; the list of live items that flip to unsized (measured, not asserted); and confirmation the estimates witnesses and the item Gantt's estimate-derivation consumers answer the same, coordinated with tidy-crane-257's #16729",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "the estimates that cannot contradict must also never price what has not been measured: an unprobed findings family is listed as unsized, not defaulted to one member"),
+    ),
+    roadmap_node(
       identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
       id: "roadmap-schedule-from-now",
       owner: "planning",

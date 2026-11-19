@@ -5,6 +5,15 @@
 // THE CONTROLS THE ROW PROMISES, one per witness, plus the two that keep the grain honest: an item that owns pieces
 // takes its elapsed from the LEAF scheduler's own answer and nothing else, and a contradiction refuses the picture
 // rather than being drawn around.
+//
+// TWO DISTINCT FACTS, deliberately kept apart (do not collapse them): `PiecesFindingsCount` (a BlockedCause, and its
+// row state RowNoFindingsCount) is the LEAF GRAIN'S OWN ANSWER -- the leaf scheduler was asked for a makespan over
+// this item's pieces and answered with a findings POPULATION instead, so it REFUSED and its count is carried unaltered
+// ("the leaf grain refused"). `Unsized { why: FindingsUnprobed { family, probe } }` (row state RowUnsized) is a
+// DIFFERENT fact from a different authority -- the PRICING authority (roadmap_estimate_derivation) never priced the
+// item, because one of its pieces is a FindingsOf family whose probe has not run, so nobody knows the member count and
+// it is listed, never priced ("nobody priced"). A row is one or the other depending on which authority spoke, and the
+// two are never paraphrased into each other.
 module test.claim.roadmap.roadmap_item_gantt_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -15,11 +24,11 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, Roadmap
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid, edge }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, WorkStage, WorkPiece, StageDependency, decomposition_for, expand_decomposition, roadmap_decompositions, decomposition, leaf, Join }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, WorkStage, WorkPiece, StageDependency, decomposition_for, expand_decomposition, roadmap_decompositions, decomposition, leaf, findings_family, Join }
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
-import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug, UnsizedWhy, NothingEstimated, ContainedChildUnsized }
+import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug, UnsizedWhy, NothingEstimated, ContainedChildUnsized, FindingsUnprobed }
 import gunbc.roadmap.roadmap_item_gantt {
   GanttInput, GanttAnswer, GanttRow, GanttRowState, GanttRefusal, gantt_answer, gantt_answer_live, gantt_rows,
   gantt_refusal, gantt_unpriced_count,
@@ -262,6 +271,7 @@ test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
         NotEstimated { node: n, why: why } => n == nid(s: "fixture-leaf-c") && match why {
           NothingEstimated => true
           ContainedChildUnsized { child: _ } => false
+          FindingsUnprobed { family: _, probe: _ } => false
         }
         NotEstimated { node: _, why: ContainedChildUnsized { child: _ } } => false
         RollupBelow { node: _, work_days: _ } => false
@@ -297,6 +307,7 @@ test fn an_empty_milestone_blocks_its_dependent_naming_the_no_priced_descendants
         NotEstimated { node: n, why: why } => n == nid(s: "fixture-empty-milestone") && match why {
           NothingEstimated => true
           ContainedChildUnsized { child: _ } => false
+          FindingsUnprobed { family: _, probe: _ } => false
         }
         NotEstimated { node: _, why: ContainedChildUnsized { child: _ } } => false
         RollupBelow { node: _, work_days: _ } => false
@@ -379,6 +390,7 @@ test fn an_unpriced_container_names_the_child_that_stops_it_being_totalled() -> 
       RowUnsized { why: why } => match why {
         ContainedChildUnsized { child: c } => c == nid(s: "fixture-milestone")
         NothingEstimated => false
+        FindingsUnprobed { family: _, probe: _ } => false
       }
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
@@ -410,6 +422,7 @@ test fn a_dependent_of_a_blocked_row_is_blocked_naming_it_as_blocked_below() -> 
         NotEstimated { node: _, why: why } => match why {
           NothingEstimated => false
           ContainedChildUnsized { child: _ } => false
+          FindingsUnprobed { family: _, probe: _ } => false
         }
         RollupBelow { node: _, work_days: _ } => false
         PiecesRefused { node: _, cause: _ } => false
@@ -589,12 +602,52 @@ test fn an_item_whose_pieces_price_nothing_is_blocked_naming_its_own_pieces() ->
   }
 }
 
+// AN UNPROBED FINDINGS FAMILY IS LISTED, NEVER PRICED. An item whose pieces include a FindingsOf family whose probe has
+// not run: the PRICING AUTHORITY (node_source, via decomposition_work_days_in) answers Unsized { FindingsUnprobed }
+// naming the family's label and its probe, so the row is RowUnsized -- never a bar, and NOT the leaf grain's
+// PiecesFindingsCount (that is the leaf grain REFUSING to answer; here nobody priced it at all, so the row is unsized and
+// the leaf scheduler is never even run over it -- owns_work is false for an Unsized source). This is the item-grain view
+// agreeing with the derivation's view: the same typed cause reaches the page (unsized is listed, never priced --
+// @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+test fn an_unprobed_findings_item_is_listed_as_unsized_naming_its_family_and_probe() -> Bool {
+  let nodes = [fixture_node(slug: "fixture-item-findings", parent: AdmittedRoot)]
+  let plan = decomposition(node: "fixture-item-findings", waits_on: [] as List<StageDependency>, stages: [
+    [findings_family(label: "fixture-findings-family", days: 2, probe: "enumerate the members (probe)", owner: "fixture-item-findings")],
+  ])
+  let a = read_with_pieces(nodes: nodes, edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: [plan])
+  match row_of_in(nodes: nodes, a: a, slug: "fixture-item-findings") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowUnsized { why: why } => match why {
+        FindingsUnprobed { family: f, probe: p } => f == "fixture-findings-family" && p == "enumerate the members (probe)"
+        NothingEstimated => false
+        ContainedChildUnsized { child: _ } => false
+      }
+      RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+      RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+      RowBlocked { behind: _ } => false
+      RowLeafGrainRefused { cause: _ } => false
+      RowUnplaced => false
+      RowNoFindingsCount { count: _ } => false
+    }
+  }
+}
+
 // THE SAME MEETING ON THE LIVE ROADMAP, where the item shares the belt with every other item: it may start later than
 // day zero, but it can only ever SPAN its leaf grain's makespan. This is an invariant over the declared data, not a
 // claim about what the data happens to look like: if it fails, the leaf grain's answer for this item and the item
 // row's span disagree, and BOTH sides are read before anything in the Gantt is touched.
+//
+// The item MUST be one whose pieces hold no unprobed FindingsOf family: an item whose pieces include such a family is
+// no longer priced by the leaf grain at all -- the PRICING authority (node_source) answers Unsized { FindingsUnprobed }
+// for it, so it is listed RowUnsized and the leaf grain is never run over it (owns_work is false). That is a different
+// fact from a different authority and is asserted by the synthetic findings witness above; asserting a makespan span
+// over a findings-carrying item would re-price the very population the ruling says is listed, never priced. So this
+// invariant rides a findings-free item -- here namespace-reference-derived-producer-bounded, the findings-free sibling
+// of namespace-reference-derived-closure (whose "one demand kind enters the closure, claim green" family is unprobed
+// and now lists it unsized).
 test fn the_live_item_that_owns_pieces_spans_exactly_its_leaf_grain_makespan() -> Bool {
-  let item = "namespace-reference-derived-closure"
+  let item = "namespace-reference-derived-producer-bounded"
   let a = read_with_pieces(nodes: declared_roadmap_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: roadmap_decompositions)
   match leaf_grain_answer(item: item) {
     Absent => false
