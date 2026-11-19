@@ -1,0 +1,543 @@
+module gunbc.roadmap.roadmap_schedule_from_now
+
+// A SCHEDULE READ FROM TODAY (roadmap-schedule-from-now), a unit of gunb-ai/gunbc#16650's chain to the roadmap
+// Gantt. The schedule #16695 answers is a plan drawn from an empty belt: every leaf starts at day 0 of the read and
+// nothing is running yet. The daily workspace is not that item -- some of its leaves are being worked RIGHT NOW. So
+// this read pins the leaves the log says are in flight, at the day their hold was claimed, priced at the working days
+// that REMAIN, and schedules only the leaves that are not claimed, around them, under the same policy and the same
+// worker count.
+//
+// THERE IS ONE SCHEDULER, AND THIS UNIT WIDENED IT RATHER THAN COPYING IT (@ref
+// gunbc.design_argument::single_authority). The placement is gunbc.roadmap.roadmap_schedule::schedule_pinned, which
+// #16695's `schedule` and #16709's `schedule_with_realized` already delegate to with no pins: the ranks, the lane
+// picking, the dependency gating, the horizon, the critical path and the completeness check are that one function's,
+// imported whole, and this unit calls it. It adds NO policy of its own -- no new ranking, no new lane rule, no
+// second belt -- and its ticket rules out bottlenecks and the next-leaf offer, which are the next node's answers.
+// A second scheduler beside #16695 would be a second place deciding "when", which is exactly the drift the log and
+// the one-scheduler rule exist to remove; that is why the pinned occupancy was added as an INPUT to the existing
+// policy (gunbc.roadmap.roadmap_schedule::PinnedLeaf) instead of being reproduced here.
+//
+// WHAT A PIN IS, AND WHERE EACH OF ITS PARTS COMES FROM (@ref gunbc.design_argument::single_authority -- this unit
+// derives NOTHING that an upstream unit already answers; it imports every part):
+//   * WHICH LEAVES ARE IN FLIGHT: gunbc.roadmap.roadmap_event_log::roadmap_leaf_in_flight_set (#16703). The set is
+//     DERIVED from the log on this read and is never written down anywhere; this unit keeps it that way.
+//   * THE DAY THE HOLD WAS CLAIMED: the entry's `since`, which is the recorded_at of the claim the set reports --
+//     the newest claim, i.e. the hold that stands NOW. It is read through the same path #16709 reads a claim stamp:
+//     extdeps.units.iso8601_calendar::iso8601_utc_epoch_seconds admits only the whole-second UTC instant the
+//     producers write, and gunbc.roadmap.roadmap_leaf_realized_duration::civil_of_instant crosses it to a calendar
+//     day by the calendar authority's own day length. A NEWEST claim rather than the FIRST one, because the pin is
+//     about the hold that stands: the log records no work done while a leaf was released, so counting the released
+//     days as elapsed would fabricate progress the log never recorded.
+//   * HOW MANY WORKING DAYS HAVE ELAPSED SINCE THEN: gunbc.roadmap.roadmap_leaf_realized_duration::realized_span
+//     (#16709), the ONLY span rule in this chain, asked with the read date in the acceptance position. It is not
+//     restated here: it answers the working-day count and the "this span runs backwards" case.
+//   * HOW MANY DAYS REMAIN: the carrier's declared prior (gunbc.roadmap.roadmap_decomposition::piece_member_days)
+//     MINUS that elapsed count. The subtraction is this unit's -- it is the question the ticket asks -- and it is
+//     performed exactly once, here, and the result is the ONLY day count a pin contributes.
+//   * THE WEEK RULE: gunbc.roadmap.roadmap_schedule_calendar::working_days_between (#16697), reached through
+//     realized_span. Working days are Mon..Fri; NO holiday calendar exists anywhere in this repository, and every
+//     number this unit prints says so.
+//   * THE WORKER CAP: gunbc.roadmap.roadmap_belt::BeltCapacity, the same cap #16695 refuses at. This unit neither
+//     raises it nor works around it: when the pins alone fill more lanes than the cap holds, the excess is REPORTED
+//     by name (`pins_over_capacity`) and unclaimed leaves wait until the belt has room -- a floor #16695's placement
+//     applies, not a policy invented here.
+//
+// THE CLAIM DAY STAYS A DATE, AND THE PIN DAY SPAN STARTS AT THE READ. The scheduler's day numbers are working days
+// counted FROM THE READ (day 0 = today, #16697's rule), so a pin occupies [0, remaining) there: the days already
+// worked are not occupancy in a from-now read, and a negative start day would corrupt the answer's own in-flight
+// count. The claim day travels beside it as a DATE in this unit's own row (PinRow.claimed_on), so a Gantt can draw
+// the bar back to the day the work was taken up without a day number being invented for the past.
+//
+// FAIL CLOSED (@ref gunbc.design_argument::fail_closed). A pin whose remaining days cannot be worked out is REFUSED
+// BY NAME, never pinned at zero: an unreadable claim stamp, a prior the carrier never declared, a claim recorded
+// after the read date, and -- the one a running item hits first -- a prior already exhausted by the elapsed days,
+// which says the leaf is overdue and cannot be shown as a bar of zero length or as work that has finished. Each
+// refused pin takes its transitive DEPENDENTS out of the schedule too: they are listed as `blocked` (named, with the
+// refused pin behind them) rather than scheduled as if nothing stood in front of them, while independent leaves
+// schedule normally. A claim that names no leaf at all (the historical Pathless grain) names no pin and is COUNTED
+// (`pathless_claims`), never folded into the pinned set and never reported as zero claims. Whole-read refusal is
+// reserved for whole-read causes: a log the in-flight read refuses, or the scheduler's own refusal (a refused
+// expansion, an invalid cap, an unpriced leaf, a cycle) -- passed through as the scheduler's own arm, never reworded.
+//
+// COMPUTED ON READ, NEVER CACHED AS AUTHORITATIVE (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// `schedule_from_now` is pure: it takes the carriers, the read date and the log LINES, and computes the whole answer
+// every call. Nothing here persists a schedule, a pin or an in-flight set; a cached copy stays a copy, and the next
+// read recomputes from the lines. That is what makes a stale Gantt merely stale rather than wrong.
+//
+// OUT OF SCOPE, AS THE TICKET BINDS: no new scheduling policy (the pins and the room floor go INTO #16695's one
+// placement; nothing here ranks, orders or lanes a leaf), no bottlenecks (which leaf on the critical path is
+// in flight is the next node's answer, off this unit's `schedule.answer.critical_path` and its `pins`), and no
+// offer (the next leaf to claim stays #roadmap-belt's).
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.algebra { empty_map, map_contains_key, map_insert }
+import std.list { first_where }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_utc_epoch_seconds }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_model { LeafPath, RoadmapNodeId }
+import gunbc.roadmap.roadmap_decomposition {
+  Expansion, ExpansionRejected, Expanded, Occurrence, OccurrenceEdge, WorkDecomposition, piece_member_days,
+}
+import gunbc.roadmap.roadmap_event_log {
+  InFlightClaimGrainUnreadable, InFlightEventOfAnotherItem, InFlightHistoryUnordered, InFlightLeaves,
+  InFlightLeafOfAnotherItem, InFlightLineUnreadable, InFlightRefused, LeafInFlightEntry, LeafInFlightRead,
+  LeafInFlightRefusal, roadmap_leaf_in_flight_set,
+}
+import gunbc.roadmap.roadmap_leaf_realized_duration {
+  FirstClaim, RealizedSpan, RealizedSpanFromLog, SpanRunsBackwards, civil_of_instant, duration_days, realized_span,
+}
+import gunbc.roadmap.roadmap_schedule_calendar { date_text }
+import gunbc.roadmap.roadmap_schedule {
+  NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
+  path_key, schedule, schedule_pinned,
+}
+
+// THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
+// Monday..Friday week is #16697's rule, and no holiday calendar exists anywhere in this repository.
+fn from_now_unit_note() -> String { "working days (Mon-Fri, no holiday calendar), counted from the read date" }
+
+// ONE ITEM AND THE WIRE LINES OF ITS OWN LOG, as this read is handed them. LINES, never a pre-digested in-flight
+// set: #16703's rule is that the set is derived from the log and never written, so a caller that hands in a set
+// instead would be a second authority over which leaves are held.
+type ItemLog {
+  node: RoadmapNodeId
+  lines: List<String>
+}
+
+// ONE IN-FLIGHT LEAF, AS THIS READ PINs IT. The claim day is a DATE off the log, not a day number: the past is not
+// re-numbered by a from-now read. `prior` is what the carrier declared, `elapsed` the working days the span rule
+// counts from the claim day to the read date, `remaining` the days that stand between the read and the pin's end --
+// the ONLY day count a pin contributes -- and `lane` the worker the pin holds, assigned in the order the in-flight
+// read reports its holds (claim order), lowest index first.
+type PinRow {
+  leaf: LeafPath
+  claimed_on: Iso8601CivilDate
+  prior: Int
+  elapsed: Int
+  remaining: Int
+  lane: Int
+}
+
+// A PIN THIS READ COULD NOT PRICE: named, with its cause, and never pinned at zero. Every arm is reachable from a
+// log shape, and every arm carries the leaf it refuses so the Gantt can say WHICH bar is missing and why.
+type PinRefusal
+  // The claim's recorded_at is not the whole-second UTC instant its producers write, so the claim day cannot be
+  // read and no elapsed count exists.
+  = ClaimStampUnreadable { leaf: LeafPath, claim: String, recorded_at: String }
+  // The hold was recorded AFTER the read date: the span would run backwards, which realized_span answers rather
+  // than this unit re-deciding.
+  | ClaimDayAfterRead { leaf: LeafPath, claimed_on: Iso8601CivilDate, read_on: Iso8601CivilDate }
+  // THE PRIOR IS ALREADY EXHAUSTED by the days that have elapsed. The leaf is overdue: it is still held (nothing
+  // released or accepted it), so showing it as a bar that ends at day 0 would claim it finished. Refused per leaf.
+  | OverduePriorExhausted { leaf: LeafPath, claimed_on: Iso8601CivilDate, prior: Int, elapsed: Int }
+  // The carrier declares no working-day prior for the leaf the log claims, so there is nothing to subtract from.
+  | NoDeclaredPrior { leaf: LeafPath, claimed_on: Iso8601CivilDate }
+  // The log claims a leaf this expansion does not emit. Pinning it would hold a lane and gate starts for a leaf the
+  // decomposition never declared; that is the expansion's or the log's inconsistency, said here by name.
+  | ClaimedLeafNotInExpansion { leaf: LeafPath, claimed_on: Iso8601CivilDate }
+
+// AN OCCURRENCE THIS READ DOES NOT SCHEDULE, because a pin it refused stands somewhere in front of it. Named, with
+// the refused pin behind it: an absence from `schedule.answer.leaves` that carries no reason would be exactly the
+// silent drop fail_closed forbids.
+type BlockedOccurrence {
+  leaf: LeafPath
+  behind: LeafPath
+}
+
+// THE READ'S ANSWER. The scheduler's own answer is carried through untouched -- its leaves list holds the pinned
+// rows first (in claim order) and then the unclaimed leaves, and its horizon, in-flight counts and critical path
+// already include the pins, because the pins ARE in the placement. What this unit adds beside it is the part only a
+// from-now read knows: the claim day each pin stands on, the pins that exceeded the cap, and the leaves it refused.
+type FromNowAnswer {
+  read_on: Iso8601CivilDate
+  workers: BeltCapacity
+  pins: List<PinRow>
+  pins_over_capacity: Int
+  refused_pins: List<PinRefusal>
+  blocked: List<BlockedOccurrence>
+  pathless_claims: Int
+  absorbed_claims: Int
+  closed_holds: Int
+  schedule: ScheduleAnswer
+}
+
+// THE READ: an answer, or ONE typed reason there is none. The causes here are whole-read causes only -- a log the
+// in-flight read refused, or the scheduler's own refusal, carried through as the scheduler's own arm.
+type FromNowRead
+  = FromNowScheduled { answer: FromNowAnswer }
+  | FromNowRefused { cause: FromNowCause }
+
+type FromNowCause
+  = InFlightReadRefused { item: String, cause: LeafInFlightRefusal }
+  | ScheduleRefused { refusal: ScheduleRefusal }
+
+// THE READ ITSELF: pin what the logs say is in flight, and schedule everything else around the pins. Pure, and
+// recomputed on every call -- see the header's computed-on-read ruling.
+fn schedule_from_now(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, read_on: Iso8601CivilDate, logs: List<ItemLog>) -> FromNowRead {
+  match e {
+    ExpansionRejected { cause: cause } =>
+      FromNowRefused { cause: ScheduleRefused { refusal: OverRefusedExpansion { cause: cause } } }
+    Expanded { occurrences: occs, edges: edges } => match holds_over_logs(logs: logs) {
+      HoldReadRefused { item: item, cause: cause } => FromNowRefused { cause: InFlightReadRefused { item: item, cause: cause } }
+      HoldsRead { holds: holds, pathless: pathless, absorbed: absorbed, closed: closed } =>
+        schedule_priced(d: d, e: e, occs: occs, edges: edges, workers: workers, read_on: read_on,
+          holds: holds, pathless: pathless, absorbed: absorbed, closed: closed)
+    }
+  }
+}
+
+// THE IN-FLIGHT SETS OF EVERY ITEM ON THE DECOMPOSITION, read from each item's own lines in ONE pass over the logs.
+// A log the read refuses refuses the whole read: a held leaf this read cannot see would leave an unclaimed leaf
+// scheduled onto a lane somebody is already standing in.
+type HoldReading
+  = HoldsRead { holds: List<LeafInFlightEntry>, pathless: Int, absorbed: Int, closed: Int }
+  | HoldReadRefused { item: String, cause: LeafInFlightRefusal }
+
+fn holds_over_logs(logs: List<ItemLog>) -> HoldReading {
+  match logs.first() {
+    Absent => HoldsRead { holds: [], pathless: 0, absorbed: 0, closed: 0 }
+    Present { value: log } => match holds_over_logs(logs: logs.skip(n: 1)) {
+      HoldReadRefused { item: item, cause: cause } => HoldReadRefused { item: item, cause: cause }
+      HoldsRead { holds: rest, pathless: pathless, absorbed: absorbed, closed: closed } =>
+        match roadmap_leaf_in_flight_set(node: log.node, lines: log.lines) {
+          InFlightRefused { cause: cause } => HoldReadRefused { item: log.node as String, cause: cause }
+          // Item order, and inside an item the in-flight read's own claim order: pins are numbered in that order,
+          // so the answer never depends on a map iteration.
+          InFlightLeaves { leaves: leaves, closed: closed_by, pathless_claims: pathless_claims, absorbed_claims: absorbed_claims } =>
+            HoldsRead {
+              holds: concat(leaves, rest),
+              pathless: pathless + pathless_claims,
+              absorbed: absorbed + absorbed_claims,
+              closed: closed + count(closed_by),
+            }
+        }
+    }
+  }
+}
+
+// PRICE EVERY HOLD, in the order the reads reported them: a pin if its remaining days can be worked out, a named
+// refusal if they cannot. ONE pass over the holds, ONE key-set built over the occurrences first; no hold is
+// re-scanned per hold. The lane a pin gets is the count of pins priced so far -- claim order, lowest index first.
+type PinPricing {
+  pins: List<PinRow>
+  refused: List<PinRefusal>
+}
+
+fn price_holds(d: WorkDecomposition, occ_keys: Map<String, Bool>, read_on: Iso8601CivilDate, holds: List<LeafInFlightEntry>, acc: PinPricing) -> PinPricing {
+  match holds.first() {
+    Absent => acc
+    Present { value: hold } => price_holds(
+      d: d, occ_keys: occ_keys, read_on: read_on, holds: holds.skip(n: 1),
+      acc: price_one_hold(d: d, occ_keys: occ_keys, read_on: read_on, hold: hold, lane: count(acc.pins), acc: acc))
+  }
+}
+
+fn price_one_hold(d: WorkDecomposition, occ_keys: Map<String, Bool>, read_on: Iso8601CivilDate, hold: LeafInFlightEntry, lane: Int, acc: PinPricing) -> PinPricing {
+  match claimed_on_day(stamp: hold.since) {
+    Absent => refuse_pin(acc: acc, refusal: ClaimStampUnreadable {
+      leaf: hold.leaf, claim: hold.claim as String, recorded_at: hold.since })
+    Present { value: claimed_on } =>
+      if !map_contains_key(m: occ_keys, key: path_key(p: hold.leaf)) {
+        refuse_pin(acc: acc, refusal: ClaimedLeafNotInExpansion { leaf: hold.leaf, claimed_on: claimed_on })
+      } else {
+        match piece_member_days(d: d, path: hold.leaf) {
+          Absent => refuse_pin(acc: acc, refusal: NoDeclaredPrior { leaf: hold.leaf, claimed_on: claimed_on })
+          Present { value: prior } => match realized_span(
+            claim: FirstClaim { key: path_key(p: hold.leaf), path: hold.leaf, claimed_on: claimed_on },
+            accepted_on: read_on) {
+            // The span rule answers the backwards case; this unit does not re-decide it.
+            SpanRunsBackwards { claimed_on: start, accepted_on: read } => refuse_pin(acc: acc,
+              refusal: ClaimDayAfterRead { leaf: hold.leaf, claimed_on: start, read_on: read })
+            RealizedSpanFromLog { duration: duration } => {
+              // The count comes from the span authority's own day count, never re-picked out of its arms.
+              let elapsed = duration_days(duration: duration)
+              if prior - elapsed <= 0 {
+                refuse_pin(acc: acc, refusal: OverduePriorExhausted {
+                  leaf: hold.leaf, claimed_on: claimed_on, prior: prior, elapsed: elapsed })
+              } else {
+                PinPricing {
+                  pins: list_push(xs: acc.pins, item: PinRow {
+                    leaf: hold.leaf, claimed_on: claimed_on, prior: prior, elapsed: elapsed,
+                    remaining: prior - elapsed, lane: lane }),
+                  refused: acc.refused,
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn refuse_pin(acc: PinPricing, refusal: PinRefusal) -> PinPricing {
+  PinPricing { pins: acc.pins, refused: list_push(xs: acc.refused, item: refusal) }
+}
+
+// THE LEAF A REFUSED PIN NAMES: every arm of PinRefusal carries its leaf, so no refusal can be nameless.
+fn refused_leaf(refusal: PinRefusal) -> LeafPath {
+  match refusal {
+    ClaimStampUnreadable { leaf: leaf } => leaf
+    ClaimDayAfterRead { leaf: leaf } => leaf
+    OverduePriorExhausted { leaf: leaf } => leaf
+    NoDeclaredPrior { leaf: leaf } => leaf
+    ClaimedLeafNotInExpansion { leaf: leaf } => leaf
+  }
+}
+
+// THE DAY A CLAIM STAMP FELL ON, through #16709's own reading path: the whole-second UTC instant the producers
+// write, crossed to a calendar date by the calendar authority's day length. This is `claim_day`'s two steps applied
+// to the stamp the in-flight entry carries (the entry holds the stamp text, not the envelope). Anything the parser
+// refuses answers `none`, and the caller turns that into a typed refusal naming the claim.
+fn claimed_on_day(stamp: String) -> Iso8601CivilDate? {
+  match iso8601_utc_epoch_seconds(text: stamp) {
+    Absent => none
+    Present { value: instant } => civil_of_instant(instant: instant)
+  }
+}
+
+// PIN, PRICE, SCHEDULE. The pins' remaining days go to the scheduler as its ordinary DURATION input (the same map
+// #16709 feeds it), so a pin brings no second day-count path; the pins themselves go as occupancy; the refused pins
+// and everything standing behind them go as held out. ONE call, and the scheduler underneath is #16695's.
+fn schedule_priced(d: WorkDecomposition, e: Expansion, occs: List<Occurrence>, edges: List<OccurrenceEdge>, workers: BeltCapacity, read_on: Iso8601CivilDate, holds: List<LeafInFlightEntry>, pathless: Int, absorbed: Int, closed: Int) -> FromNowRead {
+  let occ_keys = fold(occs, init: empty_map(), f: fn(m, o) { map_insert(m: m, key: path_key(p: o.path), value: true) })
+  let priced = price_holds(d: d, occ_keys: occ_keys, read_on: read_on, holds: holds, acc: PinPricing { pins: [], refused: [] })
+  let refused = map(priced.refused, r => refused_leaf(r: r))
+  let blocked = blocked_behind(edges: edges, refused: refused)
+  let realized = fold(priced.pins, init: empty_map(), f: fn(m, p) { map_insert(m: m, key: path_key(p: p.leaf), value: p.remaining) })
+  let pinned = map(priced.pins, p => PinnedLeaf { path: p.leaf, lane: p.lane, start_day: 0, finish_day: p.remaining })
+  let held_out = concat(refused, map(blocked, b => b.leaf))
+  match schedule_pinned(d: d, e: e, workers: workers, realized: realized, pinned: pinned, unschedulable: held_out) {
+    NotScheduled { refusal: refusal } => FromNowRefused { cause: ScheduleRefused { refusal: refusal } }
+    Scheduled { answer: answer } => FromNowScheduled { answer: FromNowAnswer {
+      read_on: read_on,
+      workers: workers,
+      pins: priced.pins,
+      pins_over_capacity: over_capacity_pins(pins: priced.pins, workers: workers),
+      refused_pins: priced.refused,
+      blocked: blocked,
+      pathless_claims: pathless,
+      absorbed_claims: absorbed,
+      closed_holds: closed,
+      schedule: answer,
+    } }
+  }
+}
+
+// HOW MANY PINS THE BELT CANNOT HOLD: pins are facts, so k of them occupy k lanes whether or not the cap fits them,
+// and the read says the excess rather than letting it vanish into a lane number. The scheduler still refuses to
+// START an unclaimed leaf while the pins alone fill the cap (roadmap_schedule's earliest_day_with_room); naming the
+// excess is this unit's part.
+fn over_capacity_pins(pins: List<PinRow>, workers: BeltCapacity) -> Int {
+  if count(pins) > workers.max_concurrent { count(pins) - workers.max_concurrent } else { 0 }
+}
+
+// EVERYTHING STANDING BEHIND A REFUSED PIN, over the expansion's OWN edges: a refused pin's successors, and their
+// successors, transitively. They are not scheduled, because scheduling them would place work whose front-end never
+// happened; they are not dropped, because each is named with the refused pin behind it. Independent branches are
+// untouched and schedule normally.
+//
+// Cost: the successor map is built ONCE from the edges, and each occurrence is visited at most once -- a key already
+// `seen` is never walked again, so a diamond is walked once and the walk cannot be re-entered by a cycle in a
+// malformed carrier (the scheduler refuses that expansion by name anyway, on its own cycle check).
+type BlockedWalk {
+  seen: Map<String, Bool>
+  blocked: List<BlockedOccurrence>
+}
+
+fn blocked_behind(edges: List<OccurrenceEdge>, refused: List<LeafPath>) -> List<BlockedOccurrence> {
+  let no_leaves: List<LeafPath> = []
+  let succ = fold(edges, init: empty_map(), f: fn(m, e) {
+    map_insert(m: m, key: path_key(p: e.from), value: list_push(xs: look_or(m: m, key: path_key(p: e.from), dflt: no_leaves), item: e.to))
+  })
+  // A refused pin is itself reported as a refusal, never as blocked, so it starts the walk already seen.
+  let state = fold(refused, init: BlockedWalk { seen: empty_map(), blocked: [] }, f: fn(acc, p) {
+    BlockedWalk { seen: map_insert(m: acc.seen, key: path_key(p: p), value: true), blocked: acc.blocked }
+  })
+  let walked = fold(refused, init: state, f: fn(acc, p) { mark_dependents(path: p, behind: p, succ: succ, state: acc, fuel: count(edges) + 1) })
+  walked.blocked
+}
+
+fn mark_dependents(path: LeafPath, behind: LeafPath, succ: Map<String, List<LeafPath>>, state: BlockedWalk, fuel: Int) -> BlockedWalk {
+  let no_leaves: List<LeafPath> = []
+  if fuel <= 0 {
+    state
+  } else {
+    fold(look_or(m: succ, key: path_key(p: path), dflt: no_leaves), init: state, f: fn(acc, to) {
+      if map_contains_key(m: acc.seen, key: path_key(p: to)) {
+        acc
+      } else {
+        mark_dependents(path: to, behind: behind, succ: succ, fuel: fuel - 1, state: BlockedWalk {
+          seen: map_insert(m: acc.seen, key: path_key(p: to), value: true),
+          blocked: list_push(xs: acc.blocked, item: BlockedOccurrence { leaf: to, behind: behind }),
+        })
+      }
+    })
+  }
+}
+
+// ================================================================================================
+// OUTPUT -- the strings the handback asks for: the from-now output with the pinned rows named, and the DIFF against
+// the read this link replaces. Text only; every number in it was computed above.
+// ================================================================================================
+
+// THE WHOLE READ, as lines a Gantt reader can act on: the read date and cap, then one line per PIN, then the
+// scheduler's answer (pinned rows first, then the leaves it scheduled), then what was refused, what was blocked, and
+// what the logs counted without pinning anything.
+fn from_now_output(read: FromNowRead) -> String {
+  match read {
+    FromNowRefused { cause: cause } => join(["from-now read refused: ", from_now_cause_text(cause: cause)], "")
+    FromNowScheduled { answer: answer } => join([
+      join([
+        "read ", date_text(date: answer.read_on), "; cap ", to_string(answer.workers.max_concurrent),
+        " workers; ", to_string(count(answer.pins)), " pinned in flight; ",
+        to_string(answer.pins_over_capacity), " pins over capacity; ", from_now_unit_note()], "; "),
+      join(map(answer.pins, p => pin_row_output(pin: p)), "\n"),
+      join(map(answer.schedule.leaves, l => leaf_row_output(leaf: l)), "\n"),
+      join([
+        "critical path ", to_string(answer.schedule.critical_length), " working days; horizon ",
+        to_string(answer.schedule.horizon), " working days"], ""),
+      join(map(answer.refused_pins, r => pin_refusal_text(refusal: r)), "\n"),
+      join(map(answer.blocked, b => blocked_text(blocked: b)), "\n"),
+      join([
+        "counted, not pinned: ", to_string(answer.pathless_claims), " pathless claim(s), ",
+        to_string(answer.absorbed_claims), " absorbed claim(s), ", to_string(answer.closed_holds),
+        " closed hold(s)"], "")],
+      "\n")
+  }
+}
+
+// ONE PIN: the leaf, the DATE its hold was claimed, the prior the carrier declared, the working days elapsed since,
+// the days that remain, and the lane it holds. The claim day is printed as a date because a from-now read does not
+// re-number the past.
+fn pin_row_output(pin: PinRow) -> String {
+  join([
+    "pinned ", path_key(p: pin.leaf), " claimed ", date_text(date: pin.claimed_on),
+    ": prior ", to_string(pin.prior), ", elapsed ", to_string(pin.elapsed), ", remaining ",
+    to_string(pin.remaining), " working days, holding lane ", to_string(pin.lane)], "")
+}
+
+// ONE LEAF OF THE SCHEDULER'S ANSWER, pinned or scheduled: a pin is told as a pin, so the Gantt can draw it from the
+// claim day rather than from day 0.
+fn leaf_row_output(leaf: ScheduledLeaf) -> String {
+  join([
+    path_key(p: leaf.path), " days ", to_string(leaf.start_day), " -> ", to_string(leaf.finish_day),
+    " on lane ", to_string(leaf.lane)], "")
+}
+
+fn pin_refusal_text(refusal: PinRefusal) -> String {
+  match refusal {
+    ClaimStampUnreadable { leaf: leaf, claim: claim, recorded_at: recorded_at } => join([
+      "refused pin ", path_key(p: leaf), ": claim ", claim, " recorded_at \"", recorded_at,
+      "\" is not the whole-second UTC instant the producers write, so no claim day and no elapsed count"], "")
+    ClaimDayAfterRead { leaf: leaf, claimed_on: claimed_on, read_on: read_on } => join([
+      "refused pin ", path_key(p: leaf), ": claimed ", date_text(date: claimed_on), " is after the read date ",
+      date_text(date: read_on), ", so the span runs backwards"], "")
+    OverduePriorExhausted { leaf: leaf, claimed_on: claimed_on, prior: prior, elapsed: elapsed } => join([
+      "refused pin ", path_key(p: leaf), ": claimed ", date_text(date: claimed_on), ", prior ",
+      to_string(prior), " working days already elapsed (", to_string(elapsed),
+      ") and the leaf is still held -- overdue, never a zero-length bar"], "")
+    NoDeclaredPrior { leaf: leaf, claimed_on: claimed_on } => join([
+      "refused pin ", path_key(p: leaf), ": claimed ", date_text(date: claimed_on),
+      " and the carrier declares no working-day prior, so remaining days cannot be worked out"], "")
+    ClaimedLeafNotInExpansion { leaf: leaf, claimed_on: claimed_on } => join([
+      "refused pin ", path_key(p: leaf), ": claimed ", date_text(date: claimed_on),
+      " and this expansion emits no such occurrence"], "")
+  }
+}
+
+fn blocked_text(blocked: BlockedOccurrence) -> String {
+  join(["not scheduled, behind a refused pin ", path_key(p: blocked.leaf), " waits on ",
+    path_key(p: blocked.behind)], "")
+}
+
+fn from_now_cause_text(cause: FromNowCause) -> String {
+  match cause {
+    InFlightReadRefused { item: item, cause: cause } => join([
+      "the in-flight read refused item ", item, ": ", in_flight_refusal_text(cause: cause)], "")
+    ScheduleRefused { refusal: refusal } => join(["the scheduler refused: ", schedule_refusal_words(refusal: refusal)], "")
+  }
+}
+
+// The in-flight read's own causes, in words. Nothing is re-decided here: each arm of #16703's coproduct is spelled,
+// so adding an arm there stops this compiling.
+fn in_flight_refusal_text(cause: LeafInFlightRefusal) -> String {
+  match cause {
+    InFlightClaimGrainUnreadable { line: line, field: field } =>
+      join(["line ", to_string(line), ": an unreadable claim grain (", field, ")"], "")
+    InFlightLineUnreadable { line: line, reason: reason } =>
+      join(["line ", to_string(line), ": ", reason], "")
+    InFlightEventOfAnotherItem { line: line, event_node: event_node, asked: asked } => join([
+      "line ", to_string(line), ": an event of ", (event_node as String), ", not of ", (asked as String)], "")
+    InFlightLeafOfAnotherItem { line: line, leaf_item: leaf_item, asked: asked } => join([
+      "line ", to_string(line), ": a leaf of ", (leaf_item as String), ", not of ", (asked as String)], "")
+    InFlightHistoryUnordered {} => "the log is not a single causal chain",
+  }
+}
+
+// The scheduler's own refusals, spelled arm for arm -- the coupling is the scheduler's: adding an arm to
+// gunbc.roadmap.roadmap_schedule::ScheduleRefusal stops this compiling on purpose.
+fn schedule_refusal_words(refusal: ScheduleRefusal) -> String {
+  match refusal {
+    OverRefusedExpansion { cause: cause } => "the decomposition's expansion was refused"
+    ConcurrencyCapInvalid { cap: cap } => join(["the worker cap is invalid: ", to_string(cap.max_concurrent)], "")
+    NoWorkingDayPrior { paths: paths } => join(["no working-day prior for ", to_string(count(paths)), " leaf(s)"], "")
+    CyclicOccurrenceGraph => "the occurrence graph has a cycle"
+    UnplacedOccurrences { paths: paths } => join(["unplaced occurrences: ", to_string(count(paths)), " leaf(s)"], "")
+    MemberIndexBeyondExpansion { paths: paths } => join(["member index beyond the expansion: ", to_string(count(paths)), " leaf(s)"], "")
+    PinnedLeafNotAnOccurrence { paths: paths } => join(["a pinned leaf is no occurrence here: ", to_string(count(paths)), " leaf(s)"], "")
+    PinnedPlacementInvalid { paths: paths } => join(["a pinned leaf states an impossible placement: ", to_string(count(paths)), " leaf(s)"], "")
+  }
+}
+
+// THE DIFF THIS LINK OWES: the same carriers read by #16695's plain `schedule` -- every leaf restarted at day 0 at
+// its prior, nothing in flight -- against the from-now read. A pinned leaf's bar shortens to its remaining days,
+// everything behind it moves, and a leaf this read refused says so here rather than vanishing from the comparison.
+fn from_now_diff(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, read: FromNowRead) -> String {
+  match read {
+    FromNowRefused { cause: cause } => join(["no diff is claimed: the from-now read refused (",
+      from_now_cause_text(cause: cause), ")"], "")
+    FromNowScheduled { answer: answer } => match schedule(d: d, e: e, workers: workers) {
+      NotScheduled { refusal: refusal } => join(["no diff is claimed: the scheduler refused the same carriers at the ",
+        "prior input (", schedule_refusal_words(refusal: refusal), ")"], "")
+      Scheduled { answer: prior } => join([
+        join(["critical length ", to_string(prior.critical_length), " -> ",
+          to_string(answer.schedule.critical_length), " working days; horizon ",
+          to_string(prior.horizon), " -> ", to_string(answer.schedule.horizon)], "; "),
+        join(map(prior.leaves, b => diff_leaf(
+          before: b, pins: answer.pins, blocked: answer.blocked, refused: answer.refused_pins)), "; ")],
+        " | ")
+    }
+  }
+}
+
+// ONE LEAF'S CHANGE. Bar length is what is compared: a pinned leaf's bar runs `remaining` days from the read, where
+// the plain read showed its whole prior, and a scheduled leaf may move out because a pin is holding a lane or
+// gating its start.
+fn diff_leaf(before: ScheduledLeaf, pins: List<PinRow>, blocked: List<BlockedOccurrence>, refused: List<PinRefusal>) -> String {
+  let after = leaf_for(pins: pins, path: before.path)
+  match after {
+    Absent =>
+      if any(blocked, b => b.leaf == before.path) {
+        join([path_key(p: before.path), " ", to_string(before.finish_day - before.start_day),
+          " -> not scheduled: a refused pin stands in front of it"], "")
+      } else {
+        if any(refused, r => refused_leaf(refusal: r) == before.path) {
+          join([path_key(p: before.path), " ", to_string(before.finish_day - before.start_day),
+            " -> not scheduled: this read refused its pin by name"], "")
+        } else {
+          join([path_key(p: before.path), " ", to_string(before.finish_day - before.start_day),
+            " -> not scheduled at all"], "")
+        }
+      }
+    Present { value: pin } => join([
+      path_key(p: pin.leaf), " ", to_string(before.finish_day - before.start_day), " -> ",
+      to_string(pin.remaining), " working days (pinned: claimed ", date_text(date: pin.claimed_on),
+      ", elapsed ", to_string(pin.elapsed), ", remaining ", to_string(pin.remaining), ")"], "")
+  }
+}
+
+// THE PIN FOR A LEAF, by the schedule's own key -- one lookup per leaf, no second spelling of the key.
+fn leaf_for(pins: List<PinRow>, path: LeafPath) -> PinRow? {
+  first_where(xs: pins, keep: p => path_key(p: p.leaf) == path_key(p: path))
+}
