@@ -687,6 +687,15 @@ type EstimateAnswer
 
 // THE READ. Anything malformed refuses with the whole list named; otherwise every node is answered, the unsized are
 // LISTED rather than priced, and the dangling containments are reported rather than absorbed.
+// A ROW IS UNSIZED when its source says so, and contributes its id to the answer's unsized list. Split out because
+// an inline match across a `flat_map` closure hides what an unsized row is: this is the state, named.
+fn unsized_row(node: NodeEstimate) -> List<RoadmapNodeId> {
+  match node.source {
+    Unsized { why: _ } => [node.node]
+    _ => [] as List<RoadmapNodeId>
+  }
+}
+
 fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> EstimateAnswer {
   let refusals = estimate_refusals(nodes: nodes, entries: entries)
   let answered = map(nodes, n => node_estimate(nodes: nodes, entries: entries, n: n))
@@ -694,7 +703,7 @@ fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> Es
     Cons { head: _, tail: _ } => Refused { refusals: refusals }
     Empty => Answered {
       rows: answered,
-      unsized: flat_map(answered, e => match e.source { Unsized { why: _ } => [e.node]; _ => [] as List<RoadmapNodeId> }),
+      unsized: flat_map(answered, e => unsized_row(node: e)),
       dangling_containment: containment_dangling(nodes: nodes),
       redundant_revocations: flat_map(nodes, n => match redundant_revocations(entries: entries, subject: n.identity) {
         Cons { head: _, tail: _ } => [n.node]
