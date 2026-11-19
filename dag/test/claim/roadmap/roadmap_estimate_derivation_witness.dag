@@ -19,11 +19,13 @@ import gunbc.roadmap.roadmap_effort_estimate {
   EstimateSize, EstimateForm, EstimateEntry, RoadmapEstimateRow, estimate_row, estimate_recorded, estimate_revoked,
   sized_estimate, days_estimate, estimate_table, estimate_table_partitions_the_line, size_round_trips,
   days_round_trip_inside_band, estimate_ceiling, band_scheduled_days, estimate_band, size_label, d,
+  SizeXs, SizeS, SizeM, SizeL, SizeXl, SizeXxl, SizedEstimate, DaysEstimate,
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
   EstimateSource, EstimateContradiction, EstimateRefusal, UnsizedWhy, Unsized, AuthoredSize, AuthoredDuration, Derived,
   estimate_contradictions, estimate_refusals, restated_piece_days, node_source, node_by_slug, current_estimate,
   dated_contradictions, cleared_prerequisite_pairs,
+  EmptyEstimateBasis, EmptyRevocationReason, EstimateAboveCeiling, EstimateSubjectNamesNoNode, RevocationNamesNoRow, RevocationPrecedesItsRow, TwoEstimatesOneDay,
 }
 
 // ============================== THE FIXTURE POPULATION ==============================
@@ -85,7 +87,18 @@ test fn the_table_partitions_the_working_day_line() -> Bool {
 // every duration's band contains the days it came from. This is the red control the brief names -- a size and its
 // bucketed duration round-trip consistently.
 test fn a_size_and_its_bucketed_duration_round_trip() -> Bool {
-  size_round_trips(t: estimate_table) && days_round_trip_inside_band(t: estimate_table)
+  all(every_size(), s => size_round_trips(t: estimate_table, s: s))
+    && all(every_band_edge_and_reading(), d => days_round_trip_inside_band(t: estimate_table, days: d))
+}
+
+// EVERY SIZE, and one duration per band plus every band boundary plus every duration the sizing lane has actually
+// read. The round trip is only worth calling a law if it holds at the seams, where two bands could disagree.
+fn every_size() -> List<EstimateSize> {
+  [SizeXs, SizeS, SizeM, SizeL, SizeXl, SizeXxl]
+}
+
+fn every_band_edge_and_reading() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 16, 20, 25, 30, 35, 40, 45, 49, 50, 60, 70, 75, 80, 81, 90, 100, 120, 160]
 }
 
 // A duration above the declared ceiling resolves to NO SIZE -- it is refused by `estimate_refusals` below, never
@@ -391,6 +404,30 @@ test fn a_same_day_withdrawal_before_its_row_is_refused_and_clears_nothing() -> 
   }
 }
 
+// AN EARLY WITHDRAWAL DOES NOT BORROW A LATE ONE'S STANDING. In [withdraw A, record A, withdraw A] the late
+// withdrawal correctly releases the row, and the early one is STILL refused: each withdrawal is validated at its own
+// position in the stream, not at the position of any withdrawal aimed at the same day (merry-moth-343's case).
+test fn an_early_withdrawal_is_refused_even_when_a_late_one_clears_the_row() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: aimed before its row"),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: the release that works"),
+  ]
+  let cleared = match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  cleared && any(estimate_refusals(nodes: fixture_nodes(), entries: entries), r => is_early_withdrawal_refusal(r: r))
+}
+
+fn is_early_withdrawal_refusal(r: EstimateRefusal) -> Bool {
+  match r {
+    RevocationPrecedesItsRow { subject: _, withdraws_made: _ } => true
+    _ => false
+  }
+}
+
 // A REVOCATION THAT NAMES NO ROW IS REFUSED: a withdrawal is a fact about a row, and one that matches nothing is a
 // reader being told something was retracted that was never said.
 test fn a_revocation_naming_no_row_is_refused() -> Bool {
@@ -454,12 +491,19 @@ test fn two_estimates_one_day_are_refused() -> Bool {
 
 // ============================== THE MECHANISM, GREEN WITH NO DATA ==============================
 
-// THE MECHANISM IS GREEN WITH AN EMPTY STREAM: the sizing lane owns the roughly 290 nodes, so the live answer must
-// carry zero contradictions and zero refusals over zero rows, and every node must still be listed -- unsized, not
-// defaulted. `size_label` is here so the fixture's vocabulary is exercised too: XS through XXL all name themselves.
+// THE LIVE READ IS CLEAN, OVER THE STREAM THAT ACTUALLY EXISTS. This reads `roadmap_estimate_entries` itself rather
+// than being handed a list: a witness that passes `[]` proves only that the empty stream is empty, and stays green
+// forever while a real contradiction sits in the carrier (merry-moth-343's finding). The sizing lane owns the roughly
+// 290 nodes, so today the carrier is empty and this read is clean; the day their rows land, this SAME assertion runs
+// over all of them and goes red on any contradiction or malformed row -- without anyone editing this file.
+// `size_label` is here so the fixture's vocabulary is exercised too: XS through XXL all name themselves.
 test fn the_live_reads_are_clean_while_the_sizing_lane_is_open() -> Bool {
-  count(filter(estimate_contradictions(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), c => true)) == 0
-    && count(filter(estimate_refusals(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), r => true)) == 0
+  count(filter(estimate_contradictions(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries), c => true)) == 0
+    && count(filter(estimate_refusals(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries), r => true)) == 0
     && size_label(s: SizeXs) == "XS"
+    && size_label(s: SizeS) == "S"
+    && size_label(s: SizeM) == "M"
+    && size_label(s: SizeL) == "L"
+    && size_label(s: SizeXl) == "XL"
     && size_label(s: SizeXxl) == "XXL"
 }

@@ -21,6 +21,8 @@ import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug }
 import gunbc.roadmap.roadmap_item_gantt {
   GanttInput, GanttAnswer, GanttRow, GanttRowState, GanttRefusal, gantt_answer, gantt_answer_live, gantt_rows,
   gantt_refusal, gantt_unpriced_count,
+  GanttAnswered, GanttContradictionsPresent, GanttNoWorkers, RowBlocked, RowLeafGrainRefused, RowNoFindingsCount, RowPlaced, RowRollup, RowUnplaced, RowUnsized,
+  GanttRefused,
 }
 
 // ============================== THE FIXTURE ==============================

@@ -54,8 +54,11 @@ module gunbc.roadmap.roadmap_estimate_derivation
 
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.algebra { list_push, zip_map }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, NodeParent, RoadmapEdge }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, NodeParent, RoadmapEdge,
+  MemberOf, AdmittedRoot, Closes,
+ }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 import gunbc.roadmap.roadmap_schedule_calendar { working_days_between }
 import gunbc.roadmap.roadmap_decomposition {
@@ -64,8 +67,9 @@ import gunbc.roadmap.roadmap_decomposition {
 import gunbc.roadmap.roadmap_effort_estimate {
   EstimateSize, EstimateForm, RoadmapEstimateRow, EstimateEntry, EstimateRevocation, estimate_table,
   estimate_form_days, days_to_size, estimate_ceiling, estimate_band, sized_estimate, days_estimate,
-  roadmap_estimate_entries, dated_rows_are_closed_to_the_ruling,
+  roadmap_estimate_entries, dated_rows_are_closed_to_the_ruling, date_precedes,
   EffortEstimate, roadmap_effort_estimates, estimate_row, estimate_recorded,
+  SizedEstimate, DaysEstimate, EstimateRecorded, EstimateRevoked,
 }
 
 // ============================== THE REFUSALS ==============================
@@ -271,10 +275,7 @@ fn last_recorded_row(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity)
 // finding. Record-then-revoke on one day is allowed; revoke-then-record is not, and is refused, not ignored.
 fn revocation_clears(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow) -> Bool {
   let indexed = indexed_entries(entries: entries)
-  any_strictly_before(
-    after: revocation_positions(indexed: indexed, subject: subject, withdraws_made: row.made),
-    before: row_positions(indexed: indexed, subject: subject, made: row.made)
-  )
+  any(revocations(entries: entries), v => withdrawal_releases_row(indexed: indexed, subject: subject, row: row, v: v))
 }
 
 // A POSITION IN THE APPENDED STREAM, so the stream can order what a calendar day cannot.
@@ -294,19 +295,32 @@ fn is_row_entry(e: EstimateEntry, subject: RoadmapNodeIdentity, made: Iso8601Civ
   }
 }
 
-fn is_revocation_entry(e: EstimateEntry, subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate) -> Bool {
-  match e {
-    EstimateRecorded { row: _ } => false
-    EstimateRevoked { revocation } => revocation.subject == subject && revocation.withdraws_made == withdraws_made
-  }
+fn same_withdrawal(a: EstimateRevocation, b: EstimateRevocation) -> Bool {
+  a.subject == b.subject && a.made == b.made && a.withdraws_made == b.withdraws_made && a.reason == b.reason
+}
+
+// THE POSITIONS OF THIS ONE WITHDRAWAL, matched on all four of its fields. Matching on the aim alone would let an
+// early withdrawal borrow a late one's standing: in [withdraw A, record A, withdraw A] the second withdrawal sits
+// after the row and the first does not, and both facts have to survive (merry-moth-343).
+fn own_withdrawal_positions(indexed: List<IndexedEntry>, v: EstimateRevocation) -> List<Int> {
+  flat_map(indexed, i => match i.entry {
+    EstimateRevoked { revocation } => if same_withdrawal(a: revocation, b: v) { [i.at] } else { [] as List<Int> }
+    EstimateRecorded { row: _ } => [] as List<Int>
+  })
+}
+
+// DOES THIS WITHDRAWAL ACTUALLY RELEASE THE ROW: it must aim at the row AND sit after it in the appended stream.
+fn withdrawal_releases_row(indexed: List<IndexedEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow, v: EstimateRevocation) -> Bool {
+  v.subject == subject
+    && v.withdraws_made == row.made
+    && any_strictly_before(
+         after: own_withdrawal_positions(indexed: indexed, v: v),
+         before: row_positions(indexed: indexed, subject: subject, made: row.made)
+       )
 }
 
 fn row_positions(indexed: List<IndexedEntry>, subject: RoadmapNodeIdentity, made: Iso8601CivilDate) -> List<Int> {
   flat_map(indexed, i => if is_row_entry(e: i.entry, subject: subject, made: made) { [i.at] } else { [] as List<Int> })
-}
-
-fn revocation_positions(indexed: List<IndexedEntry>, subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate) -> List<Int> {
-  flat_map(indexed, i => if is_revocation_entry(e: i.entry, subject: subject, withdraws_made: withdraws_made) { [i.at] } else { [] as List<Int> })
 }
 
 fn any_strictly_before(after: List<Int>, before: List<Int>) -> Bool {
@@ -326,7 +340,7 @@ fn redundant_revocations(entries: List<EstimateEntry>, subject: RoadmapNodeIdent
 // DOES THIS PARTICULAR WITHDRAWAL RELEASE THE EFFECTIVE ROW. Not `does some withdrawal`: a stream can hold both a
 // live one and a dead one for the same subject, and the dead one still has to be reported rather than dropped.
 fn revocation_clears_row(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow, v: EstimateRevocation) -> Bool {
-  v.subject == subject && v.withdraws_made == row.made && revocation_clears(entries: entries, subject: subject, row: row)
+  withdrawal_releases_row(indexed: indexed_entries(entries: entries), subject: subject, row: row, v: v)
 }
 
 // THE LAST ENTRY in append order. Rows are appended and never edited, so the stream's order is the record's order;
@@ -544,7 +558,7 @@ fn not_same_form(a: EstimateForm, b: EstimateForm) -> Bool {
 fn revocation_refusal(entries: List<EstimateEntry>, revocation: EstimateRevocation) -> Optional<EstimateRefusal> {
   let indexed = indexed_entries(entries: entries)
   let rows = row_positions(indexed: indexed, subject: revocation.subject, made: revocation.withdraws_made)
-  let withdrawals = revocation_positions(indexed: indexed, subject: revocation.subject, withdraws_made: revocation.withdraws_made)
+  let withdrawals = own_withdrawal_positions(indexed: indexed, v: revocation)
   if count(rows) == 0 {
     optional_present(value: RevocationNamesNoRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
   } else if !any_strictly_before(after: withdrawals, before: rows) {
@@ -686,7 +700,7 @@ fn from_contained_children(nodes: List<RoadmapNode>, entries: List<EstimateEntry
 }
 
 fn first_unsized_child(children: List<RoadmapNode>, sources: List<EstimateSource>) -> Optional<UnsizedWhy> {
-  let pairs = zip_map(a: children, b: sources, f: fn(c, src) { ChildSource { child: c.node, source: src } })
+  let pairs: List<ChildSource> = zip_map(a: children, b: sources, f: fn(c, src) { ChildSource { child: c.node, source: src } })
   match first(flat_map(pairs, p => match unsized_child(p: p) {
     Present { value: c } => [c]
     Absent => [] as List<RoadmapNodeId>

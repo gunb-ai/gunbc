@@ -48,7 +48,7 @@ import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_fo
 import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, ScheduleRefusal, schedule, horizon_of }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_placement {
-  Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, PlacementPlaced, PlacementRefused,
+  place, Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, PlacementPlaced, PlacementRefused,
   PlacementAnswer, PlacementRefusal, PlacementCyclic, PlacementUnplaced,
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
