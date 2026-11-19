@@ -83,7 +83,7 @@ fn fleet_converge_full_host_terminal(
         "",
       ),
     }
-  } else if refused_axis_count == 0 && fleet_converge_owed_work_is_clear(owed: owed) {
+  } else if refused_axis_count == 0 {
     FullyApplied
   } else {
     PartiallyApplied {
