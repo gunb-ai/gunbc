@@ -45,9 +45,18 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadma
 // the claim then names its item and its path here. Not a schedule: no leaf carries a date
 // (gunbc.design_ruling planning_scheduling_is_cut). Not a count the tree must keep: a realized claimed-to-accepted
 // duration replaces a leaf's days when it lands, a Produced reading is refreshed from its producer, and a Reading
-// retires when its producer is homed. Per-name day counts are priors for the first calibration batch (ten
-// native-seven names, stratified by whether a compatible home exists, a signature must be reconciled, or the name
-// is an operation or sugar), not measurements.
+// retires when its producer is homed.
+//
+// WORK BASIS (operator, 2026-11-19): a counted spelling, module, law or acceptance clause is an inspection
+// population, not evidence that each member needs an implementation. Price shared tooling and batch verification
+// once; reuse landed declarations, mappings and readers; split actual exceptions by contract and semantic owner.
+// The revised leaves below are working-day priors for their named deliverables, not measured durations. FindingsOf
+// deliberately leaves the residual population unknown: its per-member days are a simulation assumption, NOT a
+// completed estimate. Before dispatch, replace a finding with a named, independently sized repair (or split it).
+// A total containing FindingsOf is provisional; reducing an invented population is not a measured speedup.
+// Read on 9e9994480d1: roster_head_rows already maps first to list_head, but roster_import_row_home still emits
+// imports; service_evidence_inputs_for_attempt already gathers placement, metering and result-returned. Neither
+// the old bare-name count nor the old seven-reader count describes the remaining implementation.
 
 type Population
   = Produced { producer: DeclarationRef, members: Int, on: String }
@@ -485,7 +494,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       ]),
     ],
     [
-      reading_family(label: "remaining arm of the acceptance witness", days: 5, members: 4, on: "2026-11-17", basis: "the four arms named in the acceptance witness text", owner: "namespace-reference-derived-closure"),
+      probe(label: "run the six-clause production admission seam after the closure changes; distinguish one shared missing occurrence producer from independent failed clauses (probe)", days: 2, module_path: "test.claim.namespace_reference_derived_closure_acceptance", decl_name: "witness_namespace_reference_derived_closure_closing_contract_holds"),
+    ],
+    [
+      findings_family(label: "one remaining producer or projection gap, named by the production admission; one repair may discharge several clauses, reprice by cause", days: 3, probe: "run the six-clause production admission seam after the closure changes; distinguish one shared missing occurrence producer from independent failed clauses (probe)", owner: "namespace-reference-derived-closure"),
     ],
   ]),
   decomposition(node: "namespace-reference-derived-producer-bounded", waits_on: [
@@ -510,7 +522,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "names-bind-to-the-unique-declaration", waits_on: [
-    waits(item: "namespace-reference-derived-closure", from_stage: 2, into_stage: 0),
+    waits(item: "namespace-reference-derived-closure", from_stage: 3, into_stage: 0),
     waits(item: "namespace-reference-derived-producer-bounded", from_stage: 1, into_stage: 0),
   ], stages: [
     [
@@ -546,7 +558,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "namespace-ambiguity-discharge", waits_on: [
-    waits(item: "namespace-reference-derived-closure", from_stage: 2, into_stage: 0),
+    waits(item: "namespace-reference-derived-closure", from_stage: 3, into_stage: 0),
   ], stages: [
     [
       leaf(label: "retire as vacuous under the qualified rule, with the receipt", days: 2),
@@ -613,58 +625,61 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "native-seven-names-homed", waits_on: [
   ], stages: [
     [
-      leaf(label: "generator route: rewrite one closure to qualified spellings, byte-stable on a no-op", days: 5),
+      leaf(label: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", days: 3),
+      leaf(label: "extend the existing sweep from import insertion to resolved qualified references: preserve lexical binders, qualify appended callees, refuse changed bindings and prove a second run is byte-stable; one shared generator change", days: 5),
     ],
     [
-      reading_family(label: "one name: its home declared by the semantic owner (std type, operation or text carrier)", days: 1, members: 54, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row that binds its sites to that home", days: 1, members: 54, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "native-seven-names-homed"),
+      findings_family(label: "one missing semantic contract: name the owning std or operation/text declaration, actual caller requirement and discriminating claims; reprice individually, never redeclare an existing home", days: 3, probe: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", owner: "one-standard-library"),
     ],
     [
-      leaf(label: "closure rewrite run and native-seven rerun", days: 3),
+      findings_family(label: "one uncovered rewrite contract after its home exists: exact labels, carrier crossing or appended argument, occurrence-scoped where types differ; reuse first and list_push rows without charging a new row", days: 2, probe: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", owner: "native-seven-names-homed"),
+    ],
+    [
+      leaf(label: "run the closure sweep once; compare resolved bindings and calling-module claims under seed and native routes, classify every difference and report native-seven's first stop before and after; a compiler stop is not proof the rewrite failed", days: 3),
     ],
   ]),
   decomposition(node: "compiler-closure-names-homed-and-types-merged", waits_on: [
-    waits(item: "native-seven-names-homed", from_stage: 2, into_stage: 0),
+    waits(item: "native-seven-names-homed", from_stage: 3, into_stage: 0),
     waits(item: "declaration-identity-switchover", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one name: its home declared by the semantic owner", days: 1, members: 80, on: "2026-11-17", basis: "the 2026-11-16 reading of the two closures: 80 names, 2,316 sites, beyond layer 1", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row", days: 1, members: 80, on: "2026-11-17", basis: "the 2026-11-16 reading of the two closures", owner: "compiler-closure-names-homed-and-types-merged"),
+      leaf(label: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", days: 2),
     ],
     [
-      leaf(label: "closures rewritten, self-host instrument rerun", days: 3),
+      findings_family(label: "one additional semantic contract absent after layer 1, with its actual callers and owner; independently size before dispatch", days: 3, probe: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", owner: "one-standard-library"),
+    ],
+    [
+      findings_family(label: "one additional mapping or signature exception after its contract lands; existing policy rows and earlier-layer names are reused", days: 2, probe: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", owner: "compiler-closure-names-homed-and-types-merged"),
+    ],
+    [
+      leaf(label: "one generated rewrite of the remaining compiler closures, binding comparison and self-host emission/build receipt; std type mergers stay with one-standard-library", days: 3),
     ],
   ]),
   decomposition(node: "corpus-names-homed-and-collisions-discharged", waits_on: [
-    // Stage 0 is a lone Composite (the generator oracle) -- declared, but it mints no schedulable occurrence, so a
-    // wait aimed INTO it would attach to nothing (see the barrier/empty-stage rule: the first EMITTING stage is what
-    // waits). Aim both waits at stage 1 (the reading families), the item's first occurrence-bearing stage -- the same
-    // shape as its structural twin v1-interpreter-quarantine, whose waits aim at its stage-1 leaves. (operator ruling 2026-11-19)
-    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 1),
-    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 1),
+    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
+    waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      piece(label: "the generator oracle: bindings by occurrence identity before and after", stages: [
-        [
-          leaf(label: "dump bindings by occurrence identity, before", days: 3),
-          leaf(label: "dump bindings, after", days: 3),
-        ],
-        [
-          leaf(label: "diff refuses on any changed binding; planted change goes red", days: 4),
-        ],
-      ]),
+      leaf(label: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", days: 5),
     ],
     [
-      reading_family(label: "one name: its home declared by the semantic owner", days: 1, members: 432, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet); about 432 corpus names beyond the closures", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row", days: 1, members: 432, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "corpus-names-homed-and-collisions-discharged"),
+      findings_family(label: "one residual semantic contract with a real corpus caller and no existing home; group by contract rather than spelling, name its semantic owner and reprice", days: 3, probe: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", owner: "one-standard-library"),
+      leaf(label: "classify live_tree_disposition, extdeps_external_authority_anchor, extdeps_model_scope and non_fold_residue_frontier by governed declaration, namespace or subject; specify generated relocation and cases needing judgment (probe)", days: 4),
     ],
     [
-      leaf(label: "corpus-wide generator run", days: 5),
-      leaf(label: "per-module verification, automated over 5,910 modules", days: 5),
+      findings_family(label: "one residual mapping or caller compatibility exception after its contract exists; no charge per unchanged module", days: 2, probe: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", owner: "corpus-names-homed-and-collisions-discharged"),
+      findings_family(label: "one policy fact whose governing subject is undecided: resolve that authority once before generated relocation, with its current consumer and acceptance evidence", days: 2, probe: "classify live_tree_disposition, extdeps_external_authority_anchor, extdeps_model_scope and non_fold_residue_frontier by governed declaration, namespace or subject; specify generated relocation and cases needing judgment (probe)", owner: "corpus-names-homed-and-collisions-discharged"),
+    ],
+    [
+      leaf(label: "generate policy-subject relocations from the classified subjects, retaining each fact once and refusing an undecided subject", days: 5),
+      leaf(label: "one corpus sweep including tests and fixtures; binding comparison reports each changed binding with its reason", days: 3),
+    ],
+    [
+      leaf(label: "automated module verification and calling-module claims under both compilers; publish failures by cause, never infer success from a count of rewritten modules", days: 5),
     ],
   ]),
   decomposition(node: "import-grammar-and-lines-deleted", waits_on: [
-    waits(item: "corpus-names-homed-and-collisions-discharged", from_stage: 2, into_stage: 0),
+    waits(item: "corpus-names-homed-and-collisions-discharged", from_stage: 4, into_stage: 0),
     waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
     waits(item: "namespace-ambiguity-discharge", from_stage: 0, into_stage: 0),
   ], stages: [
@@ -740,7 +755,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "shared-check-lets-and-matches", from_stage: 2, into_stage: 0),
     waits(item: "native-test-verdict-realization", from_stage: 2, into_stage: 1),
     waits(item: "declaration-provider-outcomes", from_stage: 2, into_stage: 0),
-    waits(item: "native-seven-names-homed", from_stage: 2, into_stage: 0),
+    waits(item: "native-seven-names-homed", from_stage: 3, into_stage: 0),
   ], stages: [
     [
       leaf(label: "run the label through infer at the landing head; receipt", days: 1),
@@ -828,7 +843,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "second-generation", waits_on: [
     waits(item: "v2-emitter-native-crate-partition", from_stage: 4, into_stage: 0),
     waits(item: "native-seven", from_stage: 0, into_stage: 0),
-    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 0),
+    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
   ], stages: [
     [
       leaf(label: "missing root exits 2; directory root walked", days: 3),
@@ -949,7 +964,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "v1-rust-source-observation", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "name the authority for one of the four questions", days: 3, members: 4, on: "2026-11-17", basis: "the four questions in the node text", owner: "v1-honest-frontier"),
+      leaf(label: "compare the four existing frontier producers once: distinguish discovery completeness from disposition completeness, name the authority for each and the concrete disagreement that requires a join", days: 3),
     ],
     [
       leaf(label: "delete or project the others", days: 5),
@@ -1085,8 +1100,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       leaf(label: "the declaration-to-text mapping", days: 5),
     ],
     [
-      reading_family(label: "one stage after ingest made file-free", days: 3, members: 6, on: "2026-11-17", basis: "the six stages after ingest in the compiler pipeline", owner: "universe-ingest-replaces-file-acquisition"),
+      leaf(label: "trace the ingested universe through resolve, infer, check, lower and emit; distinguish semantic file acquisition from diagnostic source mapping and list only acquisition dependencies (probe)", days: 3),
       leaf(label: "duplicate path refuses at ingest", days: 3),
+    ],
+    [
+      findings_family(label: "one actual post-ingest acquisition dependency removed at its owner, preserving declaration-to-text diagnostics; independently size by interface change", days: 3, probe: "trace the ingested universe through resolve, infer, check, lower and emit; distinguish semantic file acquisition from diagnostic source mapping and list only acquisition dependencies (probe)", owner: "universe-ingest-replaces-file-acquisition"),
     ],
   ]),
   decomposition(node: "one-declaration-identity-carrier", waits_on: [
@@ -1097,7 +1115,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
           leaf(label: "merged DeclarationRef with the dotted path", days: 4),
         ],
         [
-          reading_family(label: "one law as a claim: uniqueness, display, parse round-trip", days: 3, members: 3, on: "2026-11-17", basis: "the three laws", owner: "one-declaration-identity-carrier"),
+          leaf(label: "one carrier-law suite: equal identity renders equally, distinct member coordinates stay distinct, parse/display round-trip and malformed paths refuse; share fixtures and reuse existing DeclarationRef claims", days: 3),
         ],
       ]),
     ],
@@ -1139,7 +1157,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "typed-refusals-own-control-flow", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one production module moved from a reason symbol to a typed refusal", days: 1, members: 32, on: "2026-11-17", basis: "the plan reading of 2026-11-17: 32 production modules branch on a reason symbol", owner: "typed-refusals-own-control-flow"),
+      leaf(label: "inspect the reason-symbol branches in the retained closures; group consumers by the typed outcome that already owns each decision, separate diagnostic rendering and identify missing outcome variants (probe)", days: 3),
+    ],
+    [
+      findings_family(label: "one missing typed outcome at its semantic producer, then its consumers switched together and a diagnostic-text mutation shown not to change control flow; price by shared contract, not by the old 32-module count", days: 4, probe: "inspect the reason-symbol branches in the retained closures; group consumers by the typed outcome that already owns each decision, separate diagnostic rendering and identify missing outcome variants (probe)", owner: "typed-refusals-own-control-flow"),
+    ],
+    [
+      leaf(label: "rewrite compatible consumers in one batch using existing outcomes; run affected claims and inspect the remaining reason reads for genuine control decisions", days: 3),
     ],
   ]),
   decomposition(node: "one-text-carrier", waits_on: [
@@ -1158,13 +1182,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     [
       piece(label: "the second String declaration deleted in the native-seven closure", stages: [
         [
-          leaf(label: "list the sites using the second String (probe)", days: 2),
+          leaf(label: "classify the second String consumers by host/scalar carrier and declared unfold; compatible path changes form one batch, only unsupported crossings are findings (probe)", days: 2),
         ],
         [
-          findings_family(label: "one site moved", days: 1, probe: "list the sites using the second String (probe)", owner: "one-text-carrier"),
+          findings_family(label: "one distinct unsupported text-crossing contract, with non-literal input and refusal evidence; independently size by contract rather than call site", days: 3, probe: "classify the second String consumers by host/scalar carrier and declared unfold; compatible path changes form one batch, only unsupported crossings are findings (probe)", owner: "one-text-carrier"),
         ],
         [
-          leaf(label: "delete the declaration", days: 2),
+          leaf(label: "batch the compatible path changes, execute affected text claims and delete the duplicate declaration", days: 2),
         ],
       ]),
     ],
@@ -1175,7 +1199,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "operations-are-declarations", waits_on: [
   ], stages: [
     [
-      produced_family(label: "one CanonicalOperation arm becomes a declared operation with target rows", days: 2, members: 5, on: "2026-11-17", module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", owner: "operations-are-declarations"),
+      leaf(label: "Add vertical: reuse the operand algebra's declared add, with checker, serializer and one target consuming that declaration; missing algebra operation refuses; inspect residual canonical operation contracts (probe)", days: 5),
+    ],
+    [
+      findings_family(label: "one uncovered operation contract: distinguish AlgebraPrimitive, AlgebraInverseCompose, OrderingComparison, EqualityComparison and CoercionCrossing; shared realization wiring once, independent semantics repriced before dispatch", days: 3, probe: "Add vertical: reuse the operand algebra's declared add, with checker, serializer and one target consuming that declaration; missing algebra operation refuses; inspect residual canonical operation contracts (probe)", owner: "operations-are-declarations"),
     ],
     [
       leaf(label: "primitive contracts folded into declarations", days: 5),
@@ -1189,18 +1216,24 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "one-standard-library", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one dual std type pair merged on its own claims", days: 5, members: 8, on: "2026-11-17", basis: "the 2026-11-17 import-member reading: 8 dual std type declarations", owner: "one-standard-library"),
-      reading_family(label: "one further type pair classified and merged or renamed", days: 5, members: 4, on: "2026-11-17", basis: "the plan reading: about a dozen dual declarations, 8 of them typed pairs", owner: "one-standard-library"),
+      leaf(label: "classify actual pairs in the retained closures by meaning and consumers: std.integer versus v2.std.integer first; distinguish aliases, role wrappers and genuinely different compiler types; String belongs with one-text-carrier (probe)", days: 3),
+    ],
+    [
+      leaf(label: "resolve the Int pair under the kernel-type layer rule: reuse the semantic integer or rename a distinct compiler concern, migrate its consumers together and execute its boundary claims", days: 4),
+      findings_family(label: "one other same-concept pair or role distinction requiring a semantic decision, with named consumers and claims; exclude text-owner work and simple path aliases, independently size the repair", days: 3, probe: "classify actual pairs in the retained closures by meaning and consumers: std.integer versus v2.std.integer first; distinguish aliases, role wrappers and genuinely different compiler types; String belongs with one-text-carrier (probe)", owner: "one-standard-library"),
+    ],
+    [
+      leaf(label: "batch qualified-path rewrites for compatible aliases and verify both retained closures; report remaining same-concept pairs by identity, not twelve presumed mergers", days: 3),
     ],
   ]),
   decomposition(node: "external-specimen-compiles", waits_on: [
-    waits(item: "universe-ingest-replaces-file-acquisition", from_stage: 1, into_stage: 0),
+    waits(item: "universe-ingest-replaces-file-acquisition", from_stage: 2, into_stage: 0),
     waits(item: "one-declaration-identity-carrier", from_stage: 2, into_stage: 0),
     waits(item: "sealed-phases-and-the-checked-carrier", from_stage: 2, into_stage: 0),
-    waits(item: "typed-refusals-own-control-flow", from_stage: 0, into_stage: 0),
+    waits(item: "typed-refusals-own-control-flow", from_stage: 2, into_stage: 0),
     waits(item: "one-text-carrier", from_stage: 2, into_stage: 0),
-    waits(item: "operations-are-declarations", from_stage: 2, into_stage: 0),
-    waits(item: "one-standard-library", from_stage: 0, into_stage: 0),
+    waits(item: "operations-are-declarations", from_stage: 3, into_stage: 0),
+    waits(item: "one-standard-library", from_stage: 2, into_stage: 0),
     waits(item: "v1-products-v1-free", from_stage: 1, into_stage: 0),
   ], stages: [
     [
@@ -1213,13 +1246,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "factory-attempt-execution-on-fabric-lease", waits_on: [
   ], stages: [
     [
-      reading_family(label: "audit one belt module: what execution needs, what fabric answers, what is deleted", days: 2, members: 8, on: "2026-11-17", basis: "the eight belt modules named in the node text", owner: "factory-attempt-execution-on-fabric-lease"),
+      leaf(label: "trace one attempt through belt dispatch, lease, execution, result return and cleanup; map duplicated decisions to existing fabric authorities and name consumers of each root proposed for deletion (probe)", days: 4),
     ],
     [
       decision(label: "the realization home", alternatives: ["fabric lease as the one execution route", "a named exception per belt module"]),
     ],
     [
-      reading_family(label: "one belt module cut into fabric", days: 3, members: 8, on: "2026-11-17", basis: "the eight belt modules named in the node text", owner: "factory-attempt-execution-on-fabric-lease"),
+      findings_family(label: "one execution authority cut at its root with its consumers moved together; attempt state, lease lifecycle and result publication need different evidence, so independently size each finding rather than eight module cuts", days: 4, probe: "trace one attempt through belt dispatch, lease, execution, result return and cleanup; map duplicated decisions to existing fabric authorities and name consumers of each root proposed for deletion (probe)", owner: "factory-attempt-execution-on-fabric-lease"),
     ],
   ]),
   decomposition(node: "dogfood-g1-shared-computation-record", waits_on: [
@@ -1304,13 +1337,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "work-exec-1-placement-backend-selection", waits_on: [
   ], stages: [
     [
-      leaf(label: "criteria written", days: 2),
+      leaf(label: "prepare the node's seven fixed spike criteria and obtain the operator's host grant; record which machinery each candidate would delete; no infrastructure work before the grant", days: 1),
     ],
     [
-      reading_family(label: "one backend evaluated against them", days: 3, members: 3, on: "2026-11-17", basis: "the three candidate backends named in the node text", owner: "work-exec-1-placement-backend-selection"),
+      leaf(label: "bounded k3s/Kueue spike: ordinary build, memory attribution, full-node waiting, cancel, controller restart, thermal taint, architecture placement and operator-step receipts (probe)", days: 5),
     ],
     [
-      decision(label: "the placement backend", alternatives: ["k3s with kueue", "systemd units", "the existing runner slots"]),
+      decision(label: "select k3s if its criteria pass; otherwise authorize the node's conditional Nomad evaluation or retained systemd/cgroup allocator, and amend downstream scope", alternatives: ["k3s with Kueue", "evaluate Nomad after a failed criterion", "retain systemd/cgroup and finish allocator"]),
     ],
   ]),
   decomposition(node: "work-exec-2-durable-route-first-consumer", waits_on: [
@@ -1324,7 +1357,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
           leaf(label: "state machine type", days: 3),
         ],
         [
-          reading_family(label: "one transition realized", days: 2, members: 4, on: "2026-11-17", basis: "the four transitions of the state machine", owner: "work-exec-2-durable-route-first-consumer"),
+          leaf(label: "accept one build and create its keyed backend attempt, projecting capacity delay as Waiting; receipt binds source, work and attempt", days: 4),
+        ],
+        [
+          leaf(label: "resume after controller loss and fence unresolved attempts; an unreachable pod is not stopped", days: 4),
+          leaf(label: "publish a result create-only by attempt; duplicate starts publish once and a stale receipt refuses", days: 3),
         ],
       ]),
     ],
@@ -1349,14 +1386,17 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "work-exec-3-automatic-sizing", from_stage: 2, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one consumer moved to the durable route", days: 3, members: 3, on: "2026-11-17", basis: "the three local-work consumers named in the node text", owner: "work-exec-4-local-work-cutover"),
+      leaf(label: "move validate_worktree through durable submission and readback, identifying the direct launch it replaces; restart preserves accepted work", days: 3),
+    ],
+    [
+      leaf(label: "reuse the submission binding for build and test, preserving their distinct verdicts; full joined fleet waits and planted direct launch refuses", days: 3),
     ],
     [
       leaf(label: "old launch routes deleted", days: 5),
     ],
   ]),
   decomposition(node: "work-exec-5-ci-verdict-from-receipt", waits_on: [
-    waits(item: "work-exec-4-local-work-cutover", from_stage: 1, into_stage: 0),
+    waits(item: "work-exec-4-local-work-cutover", from_stage: 2, into_stage: 0),
   ], stages: [
     [
       leaf(label: "shadow comparison", days: 5),
@@ -1395,13 +1435,20 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "factory-dogfood-route", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one reader bound and its fields moved from owed to observed", days: 3, members: 7, on: "2026-11-17", basis: "the seven readers in the service plan", owner: "service-evidence-capture"),
+      leaf(label: "run one qualifying attempt through service_evidence_observe_for_attempt: compare its 21 field standings with durable inputs; reuse the landed placement, metering and result readers, list only missing bindings and producers by owner (probe)", days: 2),
+    ],
+    [
+      leaf(label: "bind the shared-computation observation once its producer is available: cache counts and artifact bytes come from its typed input, foreign attempt refuses; do not implement the G1 producer here", days: 3),
+      findings_family(label: "one owned missing observation contract for wait time, seat utilization, egress, recovery action or intervention time: name source event and units, size separately; hardware health, credits and workspace recovery producers remain other nodes' work", days: 4, probe: "run one qualifying attempt through service_evidence_observe_for_attempt: compare its 21 field standings with durable inputs; reuse the landed placement, metering and result readers, list only missing bindings and producers by owner (probe)", owner: "service-evidence-capture"),
+    ],
+    [
+      leaf(label: "join available external-owner observations without rebuilding their producers; execute foreign/missing/refused controls and a qualifying-run receipt, keeping unavailable evidence explicitly owed", days: 3),
     ],
   ]),
   decomposition(node: "debt-payoff", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one obligation: authority transition with one witness", days: 5, members: 7, on: "2026-11-17", basis: "the seven obligations of the 2026 batch", owner: "debt-payoff"),
+      join(label: "campaign join over the contained debt nodes and their acceptance evidence; the seven done-when conditions are not seven five-day repairs, and their implementation is charged only to their owning work items"),
     ],
   ]),
   // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17): one
