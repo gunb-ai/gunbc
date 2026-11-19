@@ -31,8 +31,25 @@
 // -- and every later pass reads those. Nothing re-scans the roadmap per node, and the leaf grain is asked once per
 // item that owns pieces.
 //
-// CONSUMER: the ctrl dashboard's planning timeline, per the_ctrl_dashboard_renders_the_planning_page -- it reads
-// these rows (source, days, start, finish, lane, state) to draw the roadmap's bars.
+// CONSUMER (gunbc.design_argument::consumption): the planning timeline the ctrl dashboard renders through
+// gunbc.roadmap.roadmap_page, per gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page -- the ruling that
+// keeps that page the ONE renderer, so ctrl adds no planning view of its own. What it decides from each field, field by
+// field: `state` decides whether a bar is drawn at all and what the row says in words (a placed row is drawn; an
+// unsized row says "not priced"; a blocked row names what it waits on; a refused read is shown AS the refusal, with
+// both sides of the contradiction); `work_days` decides the bar's width and its day count; `start_day`/`finish_day`
+// and the dates they bind to decide where the bar sits and over which working days it spans; `lane` decides which
+// line of the drawing it occupies; and `source` decides how the number is labelled -- someone's estimate with its
+// basis, or derived from the children -- which is what a reader uses to decide whether to trust the bar or go ask the
+// person who priced it.
+//
+// THE FRONTIER, declared with its trigger (gunbc.design_argument::how_to_work): this module lands first because the
+// page change needs an answer to exist before it can draw one. TRIGGER -- this module on main: the roadmap-page
+// timeline change imports gunbc.roadmap.roadmap_item_gantt and calls gantt_answer_live once per page read, drawing one
+// row per node. This is the route this family has already taken: gunbc.roadmap.roadmap_forecast sits on main today
+// imported only by its witness, and it reached the page the same way -- answer first, renderer second, with the row in
+// gunbc.roadmap/roadmap_authority declaring which page consumes it. Until that change lands, nothing here is a field
+// anything decides from, and the witnesses below exercise the BEHAVIOUR of the answer (a bar placed at a day, a node
+// listed as unpriced, a read refused by name) rather than the existence of a type.
 module gunbc.roadmap.roadmap_item_gantt
 
 import std.types { Bool, Int, List, Map, String }
@@ -55,6 +72,7 @@ import gunbc.roadmap.roadmap_estimate_derivation {
   EstimateSource, EstimateContradiction, EstimateRefusal, UnsizedWhy,
   AuthoredSize, AuthoredDuration, Derived, Unsized,
   estimate_contradictions, estimate_refusals, restated_piece_days, node_source, source_work_days, contained_children,
+  estimate_contradictions_in, estimate_refusals_in, restated_piece_days_in, node_source_in,
 }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry }
 
