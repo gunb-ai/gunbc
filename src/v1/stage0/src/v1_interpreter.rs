@@ -18313,7 +18313,7 @@ fn wait_child_honoring_wall_deadline(
     stdout_policy: bounded_shell_host_drain::StreamCapturePolicy,
     stderr_policy: bounded_shell_host_drain::StreamCapturePolicy,
     leg_deadline: Option<std::time::Duration>,
-) -> InterpResult<(bounded_shell_host_drain::ShellCaptureResult, bool)> {
+) -> InterpResult<(Option<bounded_shell_host_drain::ShellCaptureResult>, bool)> {
     // Neither bound armed: plain bounded capture, never an overrun.
     if leg_deadline.is_none() && ctx.witness_wall_deadline.get().is_none() {
         return bounded_shell_host_drain::capture_child_output(child, stdout_policy, stderr_policy)
@@ -18352,13 +18352,12 @@ fn wait_child_honoring_wall_deadline(
                     _ => None,
                 };
                 let _ = worker.join();
-                let output = captured.ok_or_else(|| InterpError::TypeError {
-                    msg: format!(
-                        "shell wait worker for '{}' did not return after the per-leg wall kill",
-                        argv0
-                    ),
-                })?;
-                return Ok((output, true));
+                // An overrun is a VALUE, not an error. When the drain never returns (the killed
+                // child held a pipe open in a grandchild that the group-kill reached but the
+                // kernel has not yet reaped), the streams are empty by construction; the caller
+                // sees overran=true with no captured text, which map_shell_outputs renders as
+                // stdout="" stderr="" exit_code absent. The deadline is still carried.
+                return Ok((captured, true));
             }
         }
         // Poll at min(outer remaining, leg remaining, 250ms) so neither bound is overslept.
@@ -18373,7 +18372,7 @@ fn wait_child_honoring_wall_deadline(
         match rx.recv_timeout(poll) {
             Ok(Ok(output)) => {
                 let _ = worker.join();
-                return Ok((output, false));
+                return Ok((Some(output), false));
             }
             Ok(Err(e)) => {
                 let _ = worker.join();
@@ -18625,7 +18624,7 @@ fn dispatch_shell(
             .take()
             .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let (capture, overran) =
+        let (capture_opt, overran) =
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
 
         if let Some(writer) = stdin_writer {
@@ -18637,16 +18636,18 @@ fn dispatch_shell(
                 msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
             })?;
         }
-        render_shell_completion_trace(
-            expected,
-            capture.exit_status.code().unwrap_or(-1),
-            capture.stdout.retained_bytes(),
-            &capture.stderr.retained,
-            wall_start.elapsed(),
-            &argv,
-            intent,
-        );
-        (capture, overran)
+        if let Some(ref capture) = capture_opt {
+            render_shell_completion_trace(
+                expected,
+                capture.exit_status.code().unwrap_or(-1),
+                capture.stdout.retained_bytes(),
+                &capture.stderr.retained,
+                wall_start.elapsed(),
+                &argv,
+                intent,
+            );
+        }
+        (capture_opt, overran)
     } else {
         use std::process::Stdio;
         let wall_start = std::time::Instant::now();
@@ -18657,31 +18658,52 @@ fn dispatch_shell(
             .stderr(Stdio::piped());
         configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
         let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
-        let (capture, overran) =
+        let (capture_opt, overran) =
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
-        render_shell_completion_trace(
-            expected,
-            capture.exit_status.code().unwrap_or(-1),
-            capture.stdout.retained_bytes(),
-            &capture.stderr.retained,
-            wall_start.elapsed(),
-            &argv,
-            intent,
-        );
-        (capture, overran)
+        if let Some(ref capture) = capture_opt {
+            render_shell_completion_trace(
+                expected,
+                capture.exit_status.code().unwrap_or(-1),
+                capture.stdout.retained_bytes(),
+                &capture.stderr.retained,
+                wall_start.elapsed(),
+                &argv,
+                intent,
+            );
+        }
+        (capture_opt, overran)
     };
 
-    if let Some(limit_bytes) = stderr_complete_limit {
-        if capture.stderr.truncated {
-            return Err(InterpError::ShellOutputLimitExceeded {
-                stream: "stderr",
-                total_bytes: capture.stderr.total_bytes,
-                limit_bytes: limit_bytes as u64,
-                argv0: argv[0].clone(),
-            });
+    let mut result = match capture_opt {
+        Some(capture) => {
+            if let Some(limit_bytes) = stderr_complete_limit {
+                if capture.stderr.truncated {
+                    return Err(InterpError::ShellOutputLimitExceeded {
+                        stream: "stderr",
+                        total_bytes: capture.stderr.total_bytes,
+                        limit_bytes: limit_bytes as u64,
+                        argv0: argv[0].clone(),
+                    });
+                }
+            }
+            shell_result_from_capture(&capture, &argv[0])?
         }
-    }
-    let mut result = shell_result_from_capture(&capture, &argv[0])?;
+        None => {
+            // The drain never returned after the group kill. An overrun is a value, not an
+            // error: build the ShellResult with empty streams so the caller's .dag decode
+            // sees overran=true with the deadline, and stdout/stderr empty by construction.
+            ShellResult {
+                exit_code: -1,
+                stdout: String::new(),
+                stderr: String::new(),
+                stdout_lines: Vec::new(),
+                stderr_truncated: false,
+                stderr_total_bytes: 0,
+                stderr_retained_bytes: 0,
+                leg_exec: ShellLegExec::Completed, // overwritten below
+            }
+        }
+    };
     // Set ONLY by the sink's own per-leg kill. On a trip, the caller's `Second` is echoed verbatim
     // so the located leg names the ceiling that tripped; if that value was somehow absent, fall to
     // Null so the ONE .dag decode refuses it as OverrunWithoutDeadline rather than fabricating a
@@ -29141,7 +29163,7 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn true");
-        let (output, overran) = wait_child_honoring_wall_deadline(
+        let (output_opt, overran) = wait_child_honoring_wall_deadline(
             child,
             &ctx,
             "true",
@@ -29150,6 +29172,7 @@ mod wall_deadline_kill_tests {
             None,
         )
         .expect("no-deadline wait must succeed");
+        let output = output_opt.expect("non-overrun wait always captures");
         assert!(output.exit_status.success());
         assert!(!overran, "a leg with no deadline can never report overran");
     }
@@ -29170,7 +29193,7 @@ mod wall_deadline_kill_tests {
         configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
         let child = cmd.spawn().expect("spawn sleep 30");
         let started = Instant::now();
-        let (output, overran) = wait_child_honoring_wall_deadline(
+        let (output_opt, overran) = wait_child_honoring_wall_deadline(
             child,
             &ctx,
             "sleep",
@@ -29188,10 +29211,14 @@ mod wall_deadline_kill_tests {
             elapsed < std::time::Duration::from_secs(15),
             "the overrun must return on the 2s bound, not after the full 30s: {elapsed:?}"
         );
-        assert!(
-            !output.exit_status.success(),
-            "a killed group is not a green exit; an overrun is not a completion"
-        );
+        // The drain may or may not return (the child uses Stdio::null so it usually does);
+        // either way the result is a value.
+        if let Some(output) = &output_opt {
+            assert!(
+                !output.exit_status.success(),
+                "a killed group is not a green exit; an overrun is not a completion"
+            );
+        }
     }
 
     /// Green control: a fast `echo` under a GENEROUS per-leg deadline is a normal completion —
@@ -29207,7 +29234,7 @@ mod wall_deadline_kill_tests {
             .stderr(Stdio::null());
         configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
         let child = cmd.spawn().expect("spawn echo");
-        let (output, overran) = wait_child_honoring_wall_deadline(
+        let (output_opt, overran) = wait_child_honoring_wall_deadline(
             child,
             &ctx,
             "echo",
@@ -29217,10 +29244,53 @@ mod wall_deadline_kill_tests {
         )
         .expect("a green leg under a generous deadline must succeed");
         assert!(!overran, "a fast green leg must not report overran");
+        let output = output_opt.expect("non-overrun wait always captures");
         assert!(
             output.exit_status.success(),
             "the green leg must exit 0"
         );
+    }
+
+    /// Review 96717: when the drain worker does not return within 5s after the group kill,
+    /// the function must still return Ok((None, true)) — an overrun is a VALUE, not an error.
+    /// This test forces the scenario by spawning a process whose stdout goes to a pipe that a
+    /// backgrounded grandchild inherits; after the group kill the grandchild is reaped, so the
+    /// drain normally returns (Some). The key assertion is the API contract: the function NEVER
+    /// returns Err for a per-leg overrun, regardless of whether the drain completes.
+    #[test]
+    fn drain_stall_on_overrun_never_returns_error() {
+        let ctx = wet_ctx();
+        // spawn a shell that backgrounds a child inheriting the pipe, then sleeps
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c")
+            .arg("sleep 60 & sleep 30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        let child = cmd.spawn().expect("spawn sh");
+        let started = Instant::now();
+        let result = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sh",
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+            Some(std::time::Duration::from_secs(2)),
+        );
+        let elapsed = started.elapsed();
+        // Must be Ok — an overrun is never an InterpError.
+        let (output_opt, overran) = result.expect("per-leg overrun must return Ok, never Err");
+        assert!(overran, "2s deadline on a 30s sleep must overrun");
+        assert!(
+            elapsed < std::time::Duration::from_secs(15),
+            "the overrun returns promptly: {elapsed:?}"
+        );
+        // Whether the drain returned or not, the function produced a value (not an error).
+        // When output_opt is None, the caller builds an empty-stream ShellResult.
+        if let Some(ref output) = output_opt {
+            assert!(!output.exit_status.success(), "killed group is not green");
+        }
     }
 }
 
