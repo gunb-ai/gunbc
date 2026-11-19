@@ -585,16 +585,18 @@ fn waiting_on(facts: GanttFacts, held: List<BlockedCause>, target: String) -> Li
   } else {
     [] as List<BlockedCause>
   })
-  // A row ordered behind its own container carries its cause itself, with no edge to walk: the edge was held back in
-  // build_facts precisely because it was that row waiting on itself. Only this arm reads by the row's own key -- the
-  // others still arrive through the prerequisite they belong to.
+  // A row's OWN causes come back with it, not only the causes reached along an edge. The arms that describe the row
+  // itself -- what its leaf grain did, or an edge against its own container -- have no prerequisite to walk to, and a
+  // held row that came back with an empty cause list would be a fabricated "unplaced" (fail_closed: no plausible
+  // output). The arms that describe a PREREQUISITE (an unpriced key, a rollup, a transitive block) still arrive
+  // through the edge they belong to, so they are not doubled here.
   let own = filter(held, c => match c {
     WaitsOnItsOwnContainer { node: n, container: _ } => (n as String) == target
+    PiecesRefused { node: n, cause: _ } => (n as String) == target
+    PiecesFindingsCount { node: n, count: _ } => (n as String) == target
+    PiecesZeroDays { node: n } => (n as String) == target
     NotEstimated { node: _, why: _ } => false
     RollupBelow { node: _, work_days: _ } => false
-    PiecesRefused { node: _, cause: _ } => false
-    PiecesFindingsCount { node: _, count: _ } => false
-    PiecesZeroDays { node: _ } => false
     BlockedBelow { node: _ } => false
   })
   concat(via_edges, own)
@@ -626,7 +628,7 @@ fn find_placement(placed: PlacementAnswer, key: String) -> Optional<Placement> {
 fn rollup_or_refusal(facts: GanttFacts, placed: PlacementAnswer, behind: List<BlockedCause>, p: PricedNode) -> GanttRowState {
   match p.source {
     Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces {
-      leaf_refusal_state(facts: facts, node: p.node.node)
+      leaf_refusal_state(facts: facts, behind: behind, node: p.node.node)
     } else {
       rollup_bar(facts: facts, placed: placed, behind: behind, p: p)
     }
@@ -679,12 +681,18 @@ fn blocked_or_unplaced(behind: List<BlockedCause>) -> GanttRowState {
 // away unaltered: never paraphrased into a duration, never rounded down to a bar of zero days. `LeafMakespan` here
 // means the leaf grain priced the item and the core still drew no bar for it, which is the unplaced state the core
 // itself reports -- not a stand-in for a cause the leaf grain handed over.
-fn leaf_refusal_state(facts: GanttFacts, node: RoadmapNodeId) -> GanttRowState {
+// THE UNPLACED STATES OF AN ITEM THAT OWNS PIECES, read off the ONE leaf-grain result the facts stored. A refusal is
+// carried UNALTERED -- the leaf scheduler's cause is not re-narrated here (single_authority). A makespan of ZERO means
+// the leaf grain scheduled no occurrence at all, which is what a decomposition of nothing but reported Composites and
+// bare waits expands to: nothing was priced, so a zero-day bar would be a price nobody computed. Such a row is blocked
+// and names its own pieces -- the cause the derivation already gives, surfacing through `behind`. A POSITIVE makespan
+// the core still did not place is a different fact and stays RowUnplaced.
+fn leaf_refusal_state(facts: GanttFacts, behind: List<BlockedCause>, node: RoadmapNodeId) -> GanttRowState {
   match map_lookup(m: facts.leaf_reads, key: node as String) {
     Present { value: read } => match read {
       LeafReadRefused { cause: cause } => RowLeafGrainRefused { cause: cause }
       LeafNoFindingsCount { count: n } => RowNoFindingsCount { count: n }
-      LeafMakespan { days: _ } => RowUnplaced
+      LeafMakespan { days: d } => if d > 0 { RowUnplaced } else { blocked_or_unplaced(behind: behind) }
     }
     Absent => RowUnplaced
   }

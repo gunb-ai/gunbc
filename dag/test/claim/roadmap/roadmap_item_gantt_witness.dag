@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, Roadmap
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid, edge }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition, roadmap_decompositions }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, StageDependency, decomposition_for, expand_decomposition, roadmap_decompositions, decomposition, leaf, join }
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
@@ -517,19 +517,91 @@ test fn a_read_with_no_workers_refuses_naming_the_capacity() -> Bool {
 
 // ============================== WHERE THE TWO GRAINS MEET ==============================
 
-// THE ONE DECLARED MEETING: an item that owns pieces takes its elapsed from the LEAF scheduler's own answer over its
-// own decomposition -- `gunbc.roadmap.roadmap_schedule::schedule`, the same call the belt makes, with the same worker
-// capacity. This witness does not re-implement the leaf grain to check it: it asks the leaf scheduler the same
-// question and requires the item row to agree with it, or to carry the leaf read's own refusal.
+// THE ONE DECLARED MEETING, at full strength on a HERMETIC input: an item that owns pieces takes its elapsed from the
+// LEAF scheduler's own answer over its own decomposition -- `gunbc.roadmap.roadmap_schedule::schedule`, the same call
+// the belt makes, under the same worker capacity -- and holds no lane of its own. The witness does not re-implement the
+// leaf grain: it asks the leaf scheduler the same question and requires ONE outcome from the row. The fixture is
+// synthetic and alone in the read (a synthetic item, a synthetic decomposition of two leaves, nothing else), so nothing
+// can delay the item behind unrelated work: the bar must start at day zero and finish on exactly the leaf grain's day.
+// Sizing work on the real roadmap cannot move this control.
 test fn an_item_that_owns_pieces_borrows_its_elapsed_from_the_leaf_scheduler() -> Bool {
-  let item = "namespace-reference-derived-closure"
-  let leaf_read = leaf_grain_answer(item: item)
-  let a = read_with_pieces(nodes: declared_roadmap_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: roadmap_decompositions)
-  match row_of_live(a: a, slug: item) {
+  let plan = decomposition(node: "fixture-item-rows", waits_on: [] as List<StageDependency>, stages: [
+    [leaf(label: "fixture-leaf-first", days: 2), leaf(label: "fixture-leaf-second", days: 3)],
+  ])
+  let a = read_with_pieces(nodes: pieces_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: [plan])
+  match row_of_in(nodes: pieces_nodes(), a: a, slug: "fixture-item-rows") {
     Absent => false
-    Present { value: row } => match leaf_read {
-      Present { value: days } => match row.state {
-        RowPlaced { start_day: _, finish_day: f, lane: _, start: _, finish: _ } => f == days
+    Present { value: row } => match leaf_horizon(plan: plan) {
+      Absent => false
+      Present { value: days } => if days > 0 {
+        match row.state {
+          RowPlaced { start_day: s, finish_day: f, lane: _, start: _, finish: _ } => s == 0 && f == days && f - s == days
+          RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+          RowUnsized { why: _ } => false
+          RowBlocked { behind: _ } => false
+          RowLeafGrainRefused { cause: _ } => false
+          RowUnplaced => false
+          RowNoFindingsCount { count: _ } => false
+        }
+      } else {
+        false
+      }
+    }
+  }
+}
+
+// A DECOMPOSITION THAT PRICES NOTHING is not a zero-day bar. A decomposition of nothing but a bare wait expands to no
+// schedulable occurrence at all -- the leaf grain answers a makespan of zero -- so there is no elapsed to draw, and
+// drawing one would be a price nobody computed. The row is blocked and NAMES its own pieces as the reason, which is the
+// case where a held row has no prerequisite edge to lean on: the cause is about the row itself, and it still arrives
+// typed (gunbc.design_argument::fail_closed -- "a wrong answer is a loud, typed, located error").
+test fn an_item_whose_pieces_price_nothing_is_blocked_naming_its_own_pieces() -> Bool {
+  let plan = decomposition(node: "fixture-item-zero", waits_on: [] as List<StageDependency>, stages: [
+    [join(label: "fixture-wait-only")],
+  ])
+  let a = read_with_pieces(nodes: pieces_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: [plan])
+  match leaf_horizon(plan: plan) {
+    Present { value: days } => if days == 0 {
+      match row_of_in(nodes: pieces_nodes(), a: a, slug: "fixture-item-zero") {
+        Absent => false
+        Present { value: row } => match row.state {
+          RowBlocked { behind: b } => count(filter(b, c => match c {
+            PiecesZeroDays { node: n } => n == nid(s: "fixture-item-zero")
+            NotEstimated { node: _, why: _ } => false
+            RollupBelow { node: _, work_days: _ } => false
+            PiecesRefused { node: _, cause: _ } => false
+            PiecesFindingsCount { node: _, count: _ } => false
+            BlockedBelow { node: _ } => false
+            WaitsOnItsOwnContainer { node: _, container: _ } => false
+          })) == 1
+          RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+          RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+          RowUnsized { why: _ } => false
+          RowLeafGrainRefused { cause: _ } => false
+          RowUnplaced => false
+          RowNoFindingsCount { count: _ } => false
+        }
+      }
+    } else {
+      false
+    }
+    Absent => false
+  }
+}
+
+// THE SAME MEETING ON THE LIVE ROADMAP, where the item shares the belt with every other item: it may start later than
+// day zero, but it can only ever SPAN its leaf grain's makespan. This is an invariant over the declared data, not a
+// claim about what the data happens to look like: if it fails, the leaf grain's answer for this item and the item
+// row's span disagree, and BOTH sides are read before anything in the Gantt is touched.
+test fn the_live_item_that_owns_pieces_spans_exactly_its_leaf_grain_makespan() -> Bool {
+  let item = "namespace-reference-derived-closure"
+  let a = read_with_pieces(nodes: declared_roadmap_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: roadmap_decompositions)
+  match leaf_grain_answer(item: item) {
+    Absent => false
+    Present { value: days } => match row_of_live(a: a, slug: item) {
+      Absent => false
+      Present { value: row } => match row.state {
+        RowPlaced { start_day: s, finish_day: f, lane: _, start: _, finish: _ } => f - s == days
         RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
         RowUnsized { why: _ } => false
         RowBlocked { behind: _ } => false
@@ -537,35 +609,51 @@ test fn an_item_that_owns_pieces_borrows_its_elapsed_from_the_leaf_scheduler() -
         RowUnplaced => false
         RowNoFindingsCount { count: _ } => false
       }
-      Absent => match row.state {
-        RowLeafGrainRefused { cause: _ } => true
-        _ => false
-      }
     }
   }
 }
 
-// THE LEAF SCHEDULER'S OWN HORIZON for one item's decomposition, asked directly: Present when the leaf read placed
-// every leaf, Absent when it refused (in which case the item row must carry that refusal, not a duration).
-fn leaf_grain_answer(item: String) -> Optional<Int> {
-  let decs = decomposition_for(node: nid(s: item))
-  match first(decs) {
-    Absent => Absent
-    Present { value: d0 } => match schedule(d: d0, e: expand_decomposition(d: d0, findings_count: 1), workers: lanes(3)) {
-      Scheduled { answer: s } => Present { value: s.horizon }
-      NotScheduled { refusal: _ } => Absent
-    }
-  }
+// THE TWO SYNTHETIC ITEMS the controls above need: each owns a decomposition, and neither is a real slug, so the
+// declared roadmap's 290-odd nodes cannot leak into either answer.
+fn pieces_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(slug: "fixture-item-rows", parent: AdmittedRoot),
+    fixture_node(slug: "fixture-item-zero", parent: AdmittedRoot),
+  ]
 }
 
-fn row_of_live(a: GanttAnswer, slug: String) -> Optional<GanttRow> {
-  match filter(declared_roadmap_nodes(), n => n.node == nid(s: slug)) {
+fn row_of_in(nodes: List<RoadmapNode>, a: GanttAnswer, slug: String) -> Optional<GanttRow> {
+  match filter(nodes, n => n.node == nid(s: slug)) {
     Empty => Absent
     Cons { head: n, tail: _ } => match filter(gantt_rows(a: a), r => r.node == n.node) {
       Empty => Absent
       Cons { head: r, tail: _ } => Present { value: r }
     }
   }
+}
+
+
+// THE LEAF SCHEDULER'S OWN HORIZON for one item's decomposition, asked directly: Present when the leaf read placed
+// every leaf, Absent when it refused (in which case the item row must carry that refusal, not a duration).
+fn leaf_grain_answer(item: String) -> Optional<Int> {
+  match first(decomposition_for(node: nid(s: item))) {
+    Absent => Absent
+    Present { value: d0 } => leaf_horizon(plan: d0)
+  }
+}
+
+// ASK THE LEAF SCHEDULER, the same call the item grain makes and the belt makes -- `schedule` over
+// `expand_decomposition`, under the same worker capacity this witness reads with. It takes the decomposition as a
+// VALUE, so a control can ask it about a synthetic plan without touching the declared table.
+fn leaf_horizon(plan: WorkDecomposition) -> Optional<Int> {
+  match schedule(d: plan, e: expand_decomposition(d: plan, findings_count: 1), workers: lanes(3)) {
+    Scheduled { answer: s } => Present { value: s.horizon }
+    NotScheduled { refusal: _ } => Absent
+  }
+}
+
+fn row_of_live(a: GanttAnswer, slug: String) -> Optional<GanttRow> {
+  row_of_in(nodes: declared_roadmap_nodes(), a: a, slug: slug)
 }
 
 // ============================== THE WHOLE ROADMAP, AT THE READ ==============================
