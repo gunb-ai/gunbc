@@ -56,7 +56,7 @@ on:
         required: false
         type: string
       expected_revision:
-        description: Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not.
+        description: "Optional cross-check of the checked-out revision (RLM_EXPECTED_REVISION). Omit to admit the checkout. Present must equal the checkout. Malformed refuses. AT apply, dashboard_deploy and desired_instance_deploy the checkout is the PLAN's revision P (emitted by the plan-revision job, checked out by build), so the value to pass is that plan revision P — NEVER the current main tip: a main tip M that has moved since P is refused by name. At every other mode the checkout is the event sha (github.sha). qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not."
         required: false
         type: string
       apply_workflow_run_id:

@@ -1050,6 +1050,13 @@ data imports_are_deleted_before_v2_is_accepted: DesignRuling = DesignRuling {
   provenance: "Operator, 2026-11-16, direct to session eloquent-albattani (gunb-ai/gunbc#16604), closing the clause that gunbc.design_ruling::v2_landing_waits_on_the_namespace_program held open against gunbc.design_ruling::imports_are_the_terminal_name_mechanism. Operator words, verbatim: \"thanks, for keeping me consistent on the import stuff - i think my contradiction is basically that - i need to keep v2 moving, but also by the time v2 accepts, we should have killed imports for good - they cause a lot of problems - and i honestly feel that project has been consistently mishandled (by me mostly)\". RULED, in those words: deleting the import concept is restored as a goal, and it is sequenced: it must be done by the time v2 is accepted as the production route, and it does not stop v2 moving before then. SUPERSEDES the withdrawal half of the 2026-11-08 D2 ruling (import-grammar deletion withdrawn as a goal); D2's binding rule (a name binds by declaration, explicit import or qualified path) stands until the cut lands, and the 2026-11-08 D1 ruling (native-seven depends only on its own closure) stands in full. INTERPRETATION (not operator words): the intention is gunbc.plans.names_without_imports; the roadmap edge native-production-admission <- namespace-unique-on-chain already declared under v2_landing_waits_on_the_namespace_program is the only ordering fixed; the interlock milestone NamespaceGrammarRetired, superseded 2026-11-08, is to be re-admitted as a prerequisite on its carrier by the realization that picks the program up, not by the plan change recording this ruling; the roadmap texts that say XL-7 is withdrawn carry a dated note rather than a rewrite."
 }
 
+data production_namespace_admission_precedes_seed_mirror_removal: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_namespace_admission_precedes_seed_mirror_removal"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority"),
+  provenance: "The dashboard approved the recommended option by default on 2026-11-19: \"Sole active resolver now, remove unused mirror with interpreter\" (decision msg_a9045090-303e-41a8-b39e-784034fbfc57 on msg_f2d4d9fd-86da-4a35-970b-255de401eec0). Production admission consumes evidence that the qualified resolver alone decides production declaration references and that both parsers reject imports. The old interpreter can still contain an unused bootstrap mirror. Its physical removal is verified with interpreter retirement."
+}
+
 data no_ratchets_names_bind_now_and_meaning_migrates_later: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "no_ratchets_names_bind_now_and_meaning_migrates_later"),
   decided: "2026-11-16",
@@ -1186,6 +1193,7 @@ fn design_rulings() -> List<DesignRuling> {
     operations_are_declarations_with_realizations,
     declaration_references_are_fully_qualified,
     no_ratchets_names_bind_now_and_meaning_migrates_later,
+    production_namespace_admission_precedes_seed_mirror_removal,
     imports_are_deleted_before_v2_is_accepted,
     native_frontier_step_budget_may_rise_once_its_checks_are_stated,
     seed_deletion_observation_is_the_v1_programs_acceptance_gate,

@@ -155,17 +155,17 @@ test fn a_nonpositive_declared_population_refuses_while_a_positive_one_expands()
   zero_ok && neg_ok && pos_ok && zero_findings_ok
 }
 
-// THE RED CONTROL for the empty-stage barrier, on the REAL fixture. factory-attempt-execution-on-fabric-lease
-// (carrier line 1197) has an 8-member audit reading family at stage 0, a lone Decision at stage 1 (which emits NO
-// occurrence), and an 8-member cut reading family at stage 2. The OLD barrier linked stage 2 to stage 1 only, so it
-// found nothing at stage 1 and emitted ZERO audit-to-cut edges -- the scheduler let cut start before audit. The FIX
-// carries the barrier down to the nearest NON-EMPTY earlier stage, so every stage-2 cut occurrence now waits on
-// EVERY stage-0 audit occurrence: 8 x 8 = 64 edges, none touching the empty stage 1. Reverting the barrier change
-// drops this count to 0 and reddens the whole slice.
-test fn the_real_fixture_carries_the_stage_barrier_across_its_empty_decision_stage() -> Bool {
-  let fixture = "factory-attempt-execution-on-fabric-lease"
-  let node = nid(s: fixture)
-  match expand_node(item: node, findings_count: 0) {
+// The original belt decomposition exposed this defect: a Decision between two nonempty stages erased the
+// barrier. Keep that 8x8 controlled shape even when the real work is replanned; the real-carrier expansion
+// guard separately runs every current decomposition. Reverting the barrier fix still removes all 64 edges.
+test fn a_decision_between_two_work_stages_preserves_every_barrier_edge() -> Bool {
+  let node = nid(s: "factory-attempt-execution-on-fabric-lease")
+  let fixture = decomposition(node: "factory-attempt-execution-on-fabric-lease", waits_on: [], stages: [
+    [reading_family(label: "supplied audit", days: 1, members: 8, on: "2026-11-19", basis: "controlled barrier fixture", owner: "factory-attempt-execution-on-fabric-lease")],
+    [decision(label: "supplied decision", alternatives: ["a", "b"])],
+    [reading_family(label: "supplied cut", days: 1, members: 8, on: "2026-11-19", basis: "controlled barrier fixture", owner: "factory-attempt-execution-on-fabric-lease")],
+  ])
+  match expand_decomposition(d: fixture, findings_count: 0) {
     Expanded { occurrences, edges, omitted_composites, unresolved_waits: _ } =>
       // 8 audit (stage 0) + 8 cut (stage 2); the stage-1 Decision emits nothing.
       count(occurrences) == 16
@@ -186,6 +186,22 @@ test fn the_real_fixture_carries_the_stage_barrier_across_its_empty_decision_sta
         // This fixture has no Composite, so nothing is omitted.
         && count(omitted_composites) == 0
     ExpansionRejected { cause } => false
+  }
+}
+
+// Inhabitance companion: the current belt row still has real work on both sides of its Decision.
+// The invariant is the full dependency relation, not a frozen count of modules from an old plan.
+test fn the_real_fixture_carries_the_stage_barrier_across_its_empty_decision_stage() -> Bool {
+  match expand_node(item: nid(s: "factory-attempt-execution-on-fabric-lease"), findings_count: 2) {
+    Expanded { occurrences, edges, omitted_composites: _, unresolved_waits: _ } => {
+      let audits = filter(occurrences, o => nat_to_int(n: o.path.stage) == 0)
+      let cuts = filter(occurrences, o => nat_to_int(n: o.path.stage) == 2)
+      count(audits) > 0 && count(cuts) > 0
+        && count(filter(occurrences, o => nat_to_int(n: o.path.stage) == 1)) == 0
+        && all(cuts, c => all(audits, a =>
+             count(filter(edges, e => e.from == a.path && e.to == c.path)) == 1))
+    }
+    ExpansionRejected { cause: _ } => false
   }
 }
 
