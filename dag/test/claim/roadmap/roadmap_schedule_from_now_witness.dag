@@ -40,8 +40,8 @@ import gunbc.roadmap.roadmap_decomposition {
   Expansion, WorkDecomposition, decomposition, expand_decomposition, leaf,
 }
 import gunbc.roadmap.roadmap_event_log {
-  Claimed, EventPrincipal, EventPrincipalAuthenticated, Released, RoadmapEvent, RoadmapEventEnvelope,
-  RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
+  Claimed, EventPrincipal, EventPrincipalAuthenticated, InFlightHistoryUnordered, Released, RoadmapEvent,
+  RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
 }
 import gunbc.roadmap.roadmap_schedule {
   Schedule, ScheduleAnswer, ScheduledLeaf, critical_path_keys, path_key, scheduled_at, scheduled_leaf_count,
@@ -49,9 +49,9 @@ import gunbc.roadmap.roadmap_schedule {
 }
 import gunbc.roadmap.roadmap_schedule_calendar { date_text, days_between }
 import gunbc.roadmap.roadmap_schedule_from_now {
-  BlockedOccurrence, FromNowAnswer, FromNowRead, FromNowScheduled, ItemLog, PinRefusal, PinRow, blocked_text,
-  counted_line, from_now_diff, from_now_head, from_now_output, over_capacity_pins, pin_row_output, refused_leaf,
-  schedule_from_now,
+  BlockedOccurrence, FromNowAnswer, FromNowRead, FromNowRefused, FromNowScheduled, InFlightReadRefused, ItemLog,
+  PinRefusal, PinRow, ScheduleRefused, blocked_text, counted_line, from_now_cause_text, from_now_diff, from_now_head,
+  from_now_output, over_capacity_pins, pin_row_output, refused_leaf, schedule_from_now,
 }
 
 // ─── THE FIXTURES ─────────────────────────────────────────────────────────────────────────────────
@@ -448,16 +448,29 @@ test fn a_pathless_claim_pins_nothing_and_is_counted_visibly() -> Bool {
   }
 }
 
-// A LOG THAT WILL NOT ORDER ITSELF REFUSES THE WHOLE READ. A held leaf this read cannot see would leave another
-// leaf scheduled onto a lane somebody is already standing in, so the read refuses with the in-flight read's own
-// cause rather than inventing an empty in-flight set.
+// A LOG THAT WILL NOT ORDER ITSELF REFUSES THE WHOLE READ. Two claims hanging off the same parent are a fork, and
+// #16703's causal-chain reader answers that with no chain at all; a from-now read that folded it anyway would be
+// choosing which hold survives, and a held leaf it dropped would leave another leaf scheduled onto a lane somebody
+// is standing in. So the refusal passes through with the in-flight read's own cause named, and nothing is answered.
 test fn a_log_that_will_not_order_itself_refuses_the_whole_read() -> Bool {
-  let orphan = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
-    parent: Present { value: "eb2f-never-appended" as RoadmapEventId })
-  let read = pin_read(lines: wire([orphan]))
+  let root = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-16T09:00:00Z",
+    parent: none)
+  let left = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: Present { value: root.id })
+  let right = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-18T09:00:00Z",
+    parent: Present { value: root.id })
+  let read = pin_read(lines: wire([root, left, right]))
   match read {
     FromNowScheduled { answer: _ } => false
-    _ => true
+    FromNowRefused { cause: cause } => match cause {
+      InFlightReadRefused { item: item, cause: inner } =>
+        item == (pin_item() as String)
+          && match inner { InFlightHistoryUnordered {} => true  _ => false }
+          && from_now_output(read: read)
+               == join(["from-now read refused: ", from_now_cause_text(cause: cause)], "")
+          && contains_text(text: from_now_output(read: read), needle: "the log is not a single causal chain")
+      ScheduleRefused { refusal: refusal } => false
+    }
   }
 }
 
@@ -465,14 +478,20 @@ test fn a_log_that_will_not_order_itself_refuses_the_whole_read() -> Bool {
 // form -- and ONE MORE LINE changes the answer. That is what keeps a cached copy a copy and never an authority
 // between reads.
 test fn a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_the_answer() -> Bool {
-  let log = pin_log(stamp: "2026-11-17T09:00:00Z")
-  let one = pin_read(lines: log)
-  let again = pin_read(lines: log)
-  let deeper = pin_read(lines: concat(log, wire([claim_env(node: pin_item(),
-    path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-19T09:00:00Z", parent: none)])))
+  let first = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: none)
+  let second = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: first.id })
+  let one = pin_read(lines: wire([first]))
+  let again = pin_read(lines: wire([first]))
+  let deeper = pin_read(lines: wire([first, second]))
   from_now_output(read: one) == from_now_output(read: again)
     && from_now_output(read: one) != from_now_output(read: deeper)
-    && match deeper { FromNowScheduled { answer: a } => count(a.pins) == 2  _ => false }
+    && match one { FromNowScheduled { answer: a } => count(a.pins) == 1  _ => false }
+    // Both pins stand at their own claim day with their own remaining days -- a pinned leaf is a fact, not a
+    // placement the barrier gets to move -- so the deeper read answers two bars of two working days each.
+    && match deeper { FromNowScheduled { answer: a } => count(a.pins) == 2 && a.schedule.horizon == 2
+         && all(a.pins, p => p.remaining == 2)  _ => false }
 }
 
 // NO NEW POLICY, IN THE SENSE THE TICKET BINDS: with nothing in flight the from-now read answers EXACTLY what
