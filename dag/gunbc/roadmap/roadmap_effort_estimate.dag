@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_effort_estimate
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
 
 // THE CLOCK IS THE ESTIMATE, NOT THE MILESTONE (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc,
@@ -127,4 +127,258 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
     Present { value: e } => !accepted && date_le(a: e.done, b: today) && !(e.done.year == today.year && e.done.month == today.month && e.done.day == today.day)
     Absent => false
   }
+}
+
+// ======================= THE ONE REPRESENTATION (operator, 2026-11-19) =======================
+// gunbc.design_ruling::estimates_are_one_representation_derived_upward: an estimate names EITHER a T-shirt
+// size OR a duration in working days, at the author's choice, and the other form is derived from it through
+// ONE table. A row carries no start, no done and no pessimistic date: those are derived from the duration,
+// the dependency edges and the worker count, and are bound to dates at the read
+// (gunbc.roadmap.roadmap_schedule_calendar::bound_day_to_date) -- an authored date beside a duration is the
+// dual representation the ruling closes. `EffortEstimate` above keeps its 18 appended rows untouched as
+// history and takes no new one (`dated_rows_are_closed_to_the_ruling` below seals it).
+// THE SUBJECT IS THE DURABLE IDENTITY, NOT THE SLUG -- the same law the sizing adapter follows
+// (gunbc.roadmap.roadmap_model::roadmap_node_identity_law, and node_sizing_subject_id one line of it): a slug
+// can change under the evidence that was joined to it. A row is appended and never edited, so a revision is a
+// NEW row with a later `made`, exactly the discipline the dated carrier already kept.
+// HOURS APPEAR NOWHERE: the duration carrier is an Int of working days, the grain
+// gunbc.roadmap.roadmap_schedule schedules in, marked with its own feature/dissolve-on markers there. There is
+// no hour field to write, so there is no hour to refuse.
+
+type EstimateSize = SizeXs | SizeS | SizeM | SizeL | SizeXl | SizeXxl
+
+fn size_label(s: EstimateSize) -> String {
+  match s {
+    SizeXs => "XS",
+    SizeS => "S",
+    SizeM => "M",
+    SizeL => "L",
+    SizeXl => "XL",
+    SizeXxl => "XXL"
+  }
+}
+
+// THE ONE REPRESENTATION, and the only constructor pair: a row that named a size AND a duration would not
+// typecheck, because there is no carrier for both.
+// feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+type EstimateForm = SizedEstimate { size: EstimateSize } | DaysEstimate { working_days: Int }
+
+type RoadmapEstimateRow {
+  subject: RoadmapNodeIdentity
+  made: Iso8601CivilDate
+  value: EstimateForm
+  basis: String
+}
+
+fn estimate_row(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, value: EstimateForm, basis: String) -> RoadmapEstimateRow {
+  RoadmapEstimateRow { subject: subject, made: made, value: value, basis: basis }
+}
+
+// THE STREAM, and the only carrier of authored estimates: entries are appended and never edited, and an entry is
+// either a ROW (a price, in one of the two forms) or a REVOCATION (a price withdrawn, with its reason). The
+// revocation is what keeps the append-only discipline from becoming a trap -- merry-moth-343's lifecycle case is a
+// leaf priced, then split into priced children: without a release the former price would contradict its children
+// forever, and with one it stops pricing the node while staying readable in the stream. Same shape as the roadmap
+// event log: append the event, never rewrite the earlier one.
+//
+// EMPTY THE DAY THIS LANDS, on purpose and not by omission: sizing the roughly 290 nodes is its own lane and its own
+// session (the operator assigned it 2026-11-19), and this mechanism must be green with zero rows in it -- an unsized
+// node is a LISTED state in the Gantt answer, never a price, never a default
+// (gunbc.design_argument::fail_closed). Rows arrive from the sizing lane only, appended by whoever holds the basis
+// for them; the consumer is the ctrl dashboard planning timeline
+// (gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page), reading through
+// gunbc.roadmap.roadmap_estimate_derivation and gunbc.roadmap.roadmap_item_gantt, which is the only reader that turns
+// a duration into dates.
+type EstimateRevocation {
+  subject: RoadmapNodeIdentity
+  made: Iso8601CivilDate
+  withdraws_made: Iso8601CivilDate
+  reason: String
+}
+
+type EstimateEntry
+  = EstimateRecorded { row: RoadmapEstimateRow }
+  | EstimateRevoked { revocation: EstimateRevocation }
+
+fn estimate_revoked(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, withdraws_made: Iso8601CivilDate, reason: String) -> EstimateEntry {
+  EstimateRevoked { revocation: EstimateRevocation { subject: subject, made: made, withdraws_made: withdraws_made, reason: reason } }
+}
+
+fn estimate_recorded(row: RoadmapEstimateRow) -> EstimateEntry { EstimateRecorded { row: row } }
+
+data roadmap_estimate_entries: List<EstimateEntry> = []
+
+// STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
+// and "after" has to mean strictly after rather than the antisymmetric collapse of <= onto itself.
+fn date_precedes(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  date_le(a: a, b: b) && !date_le(a: b, b: a)
+}
+
+// ======================= THE ONE CONVERSION TABLE (single authority) =======================
+// Each size names an INCLUSIVE working-day range; the ranges PARTITION the positive whole numbers, so every
+// duration lies in exactly one band (`estimate_table_partitions_the_line` checks it, and the witnesses check
+// the round-trip both ways). The scheduled duration of a size is its midpoint rounded up -- a single Int,
+// because the scheduler places Int days -- and it always lands inside its own band, which is what makes the
+// round-trip hold by construction rather than by test. The RANGE itself stays readable beside it
+// (`estimate_band`), so an answer can show "L, 16 to 49 days" without inventing a second number.
+// THE TOP BAND IS OPEN ABOVE; its `high` is the table's declared planning ceiling, carried there and nowhere
+// else, so the open top still has a midpoint. It is not a cap on what a node may cost: a duration above it
+// resolves to NO size and the caller refuses rather than clamping -- see `days_to_size`.
+// BASIS (measured, from this file's own header and its appended history): an easy node is about a week, and
+// the quick wins measured 3 to 5 working days, which is SizeS; a hard compiler node is 10 to 16 weeks, and
+// native-seven's first estimate carries exactly 50 working days to its realistic done and 80 to its
+// pessimistic done, which is SizeXl. Nothing measured sits under 3 days, so SizeXs is DECLARED for the work
+// under a week rather than inferred from data nobody has. The ceiling is twice the measured top of the hard
+// band (2 x 80), a declaration and not a measurement, because nothing measured as WORK reaches past it.
+// RE-CALIBRATION TRIGGER: realized durations -- gunbc.roadmap.roadmap_leaf_realized_duration. When a band's
+// realized working days fall outside its range, the bands move; a realized duration at or above the ceiling
+// moves the ceiling. Re-calibration is an edit to THIS table and nowhere else, because it is the single
+// authority (gunbc.design_argument::single_authority).
+type SizeBand {
+  size: EstimateSize
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+  low: Int
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+  high: Int
+}
+
+type EstimateTable {
+  bands: List<SizeBand>
+  basis: String
+  recalibration: String
+}
+
+data estimate_table: EstimateTable = EstimateTable {
+  bands: [
+    SizeBand { size: SizeXs, low: 1, high: 2 },
+    SizeBand { size: SizeS, low: 3, high: 5 },
+    SizeBand { size: SizeM, low: 6, high: 15 },
+    SizeBand { size: SizeL, low: 16, high: 49 },
+    SizeBand { size: SizeXl, low: 50, high: 80 },
+    SizeBand { size: SizeXxl, low: 81, high: 160 }
+  ],
+  basis: "measured from this carrier's own header and history: an easy node is about a week and the quick wins measured 3 to 5 working days (SizeS); a hard compiler node is 10 to 16 weeks and native-seven's first estimate carries 50 working days to done, 80 to pessimistic (SizeXl); SizeXs is declared, not measured, and the ceiling is twice the measured top of the hard band",
+  recalibration: "realized durations from gunbc.roadmap.roadmap_leaf_realized_duration: a band whose realized days fall outside its range moves the range, and a realized duration at or above the top band's high moves the ceiling"
+}
+
+fn estimate_band(t: EstimateTable, s: EstimateSize) -> Optional<SizeBand> {
+  match filter(t.bands, b => b.size == s) {
+    Empty => optional_absent()
+    Cons { head: b, tail: _ } => optional_present(value: b)
+  }
+}
+
+// THE MIDPOINT, ROUNDED UP. Integer division truncates, so (low + high + 1) / 2 is the ceiling of the
+// midpoint, and for a non-empty band it always lies within [low, high].
+fn band_scheduled_days(b: SizeBand) -> Int {
+  (b.low + b.high + 1) / 2
+}
+
+// DURATION TO SIZE: the bucket that contains it. A non-positive duration has no size and a duration above the
+// ceiling has NO SIZE -- the caller refuses both rather than clamping to the nearest band (a silent clamp
+// would price the biggest item in the roadmap at the table's own ceiling, which is the contradiction this
+// whole carrier exists to refuse).
+fn days_to_size(t: EstimateTable, days: Int) -> Optional<EstimateSize> {
+  match filter(t.bands, b => days >= b.low && days <= b.high) {
+    Empty => optional_absent()
+    Cons { head: b, tail: _ } => optional_present(value: b.size)
+  }
+}
+
+// THE ONE DERIVATION FROM THE ROW TO THE NUMBER THE SCHEDULER PLACES. A stated size gives its band's
+// midpoint; a stated duration gives itself, unchanged -- there is no second conversion and no rounding of a
+// literal. Non-positive and above-ceiling both answer Absent, and the caller names the side that failed.
+fn estimate_form_days(t: EstimateTable, v: EstimateForm) -> Optional<Int> {
+  match v {
+    DaysEstimate { working_days } => if working_days >= 1 { optional_present(value: working_days) } else { optional_absent() }
+    SizedEstimate { size } => match estimate_band(t: t, s: size) {
+      Absent => optional_absent()
+      Present { value: b } => optional_present(value: band_scheduled_days(b: b))
+    }
+  }
+}
+
+// THE RANGE A SIZE NAMES, for the answer that reports a band rather than a single number.
+fn estimate_form_range(t: EstimateTable, v: EstimateForm) -> Optional<SizeBand> {
+  match v {
+    DaysEstimate { working_days } => match days_to_size(t: t, days: working_days) {
+      Present { value: s } => estimate_band(t: t, s: s)
+      Absent => optional_absent()
+    }
+    SizedEstimate { size } => estimate_band(t: t, s: size)
+  }
+}
+
+// THE PARTITION, checked rather than asserted: ascending bands starting at one working day, no gap and no
+// overlap, every band non-empty, and every scheduled midpoint inside its own band.
+fn estimate_table_partitions_the_line(t: EstimateTable) -> Bool {
+  all(t.bands, b => b.low >= 1 && b.high >= b.low && band_scheduled_days(b: b) >= b.low && band_scheduled_days(b: b) <= b.high)
+    && partition_is_contiguous(bands: t.bands)
+}
+
+// THE BANDS START AT ONE WORKING DAY AND CONTINUE WITHOUT A GAP OR AN OVERLAP. The list is authored in
+// ascending order (declaration order is the order); a gap or an overlap means some duration lands in no band
+// or in two, which is the table contradicting itself.
+fn partition_is_contiguous(bands: List<SizeBand>) -> Bool {
+  let walked = fold(bands, init: optional_present(value: 0), f: fn(acc, b) {
+    match acc {
+      Absent => optional_absent()
+      Present { value: prev_high } => if b.low == prev_high + 1 { optional_present(value: b.high) } else { optional_absent() }
+    }
+  })
+  let starts_at_one = match bands {
+    Empty => false
+    Cons { head: b, tail: _ } => b.low == 1
+  }
+  match walked {
+    Absent => false
+    Present { value: _ } => starts_at_one
+  }
+}
+
+// THE CEILING, read from the one table rather than restated anywhere: the top band's own high. It is not a cap on
+// what work may cost -- a duration above it resolves to NO size and the caller refuses (see `days_to_size`); it is
+// the declared top of the calibrated line, and the realized duration that reaches it is the trigger to raise it.
+fn estimate_ceiling() -> Int {
+  match estimate_band(t: estimate_table, s: SizeXxl) {
+    Present { value: b } => b.high
+    Absent => 0
+  }
+}
+
+// ROUND-TRIP, SIZE FIRST: the size the scheduler's number buckets back into is the size it came from.
+fn size_round_trips(t: EstimateTable, s: EstimateSize) -> Bool {
+  match estimate_form_days(t: t, v: sized_estimate(size: s)) {
+    Present { value: days } => match days_to_size(t: t, days: days) {
+      Present { value: back } => back == s
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// ROUND-TRIP, DURATION FIRST: a duration bucketed into a band still lies inside that band, so bucketing never
+// relocates work to a cheaper or dearer range than the one the number says it is in.
+fn days_round_trip_inside_band(t: EstimateTable, days: Int) -> Bool {
+  match days_to_size(t: t, days: days) {
+    Present { value: s } => match estimate_band(t: t, s: s) {
+      Present { value: b } => days >= b.low && days <= b.high
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn sized_estimate(size: EstimateSize) -> EstimateForm { SizedEstimate { size: size } }
+
+fn days_estimate(working_days: Int) -> EstimateForm { DaysEstimate { working_days: working_days } }
+
+// THE DATED CARRIER IS CLOSED. The 18 rows appended on 2026-11-17 and 2026-11-18 are history and stay as they
+// are -- the ruling forbids deleting or rewriting them, and the contradiction report reads them as they stand.
+// It takes no new row: a new row would author a start, a done and a pessimistic date, and under the ruling
+// those are DERIVED. This is the seal, so the closure is a check and not a comment.
+data dated_rows_closed_on: Iso8601CivilDate = d(y: 2026, m: 11, day: 19)
+
+fn dated_rows_are_closed_to_the_ruling() -> Bool {
+  all(roadmap_effort_estimates, e => date_le(a: e.made_on, b: dated_rows_closed_on))
 }
