@@ -119,14 +119,12 @@ test fn the_arrival_converge_step_ships_the_fold() -> Bool {
 // the ledger must hold the ruling row that authorizes them, governing the CI contract; if that row is ever
 // removed or re-pointed, the raised figures go RED and the lane must either restore the row or come back
 // down (coming down needs no sign-off). Nothing here inspects a string inside a ruling.
-// DesignRuling.governs is Optional<DeclarationRef>: a ruling either governs a document or it
-// governs nothing. The pairing needs the governing edge present AND pointed at the CI contract,
-// so the absence case is refused here rather than defaulted.
+// The row's `governs` is a resolved DeclarationRef (design_ruling.dag), so the key comparison is
+// direct. The optionality is in the LIST, not the field: indexing a List yields an Optional
+// element, so the caller binds `rows.first()` and refuses the Absent case rather than defaulting
+// it -- a ledger that has lost the row, or holds it twice, fails the pairing here.
 fn governs_the_ci_contract(row: DesignRuling) -> Bool {
-  match row.governs {
-    Present { value: g } => declaration_ref_display_key(ref: g) == "gunbc.design_document::ci_contract_blocks"
-    Absent => false
-  }
+  declaration_ref_display_key(ref: row.governs) == "gunbc.design_document::ci_contract_blocks"
 }
 
 test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
@@ -137,7 +135,10 @@ test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
   let step = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
   let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
   rows.length() == 1
-    && governs_the_ci_contract(row: rows[0])
+    && match rows.first() {
+         Present { value: row } => governs_the_ci_contract(row: row)
+         Absent => false
+       }
     && step.length() == 1
     && all(step, m => m >= 0)
     && all(step, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
