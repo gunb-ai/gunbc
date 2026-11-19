@@ -1430,6 +1430,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "roadmap-leaf-realized-duration", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
     waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-schedule-calendar-binding", from_stage: 0, into_stage: 0),
   ], stages: [
     [
       leaf(label: "claimed-to-accepted working days read from the log, taken where they exist, with the used-value reported", days: 3),
