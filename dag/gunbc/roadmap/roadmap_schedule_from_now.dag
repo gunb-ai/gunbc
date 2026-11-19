@@ -48,6 +48,35 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // count. The claim day travels beside it as a DATE in this unit's own row (PinRow.claimed_on), so a Gantt can draw
 // the bar back to the day the work was taken up without a day number being invented for the past.
 //
+// CONSUMERS (gunbc.design_argument::consumption). Consumed in this change: the witness
+// test.claim.roadmap.roadmap_schedule_from_now_witness -- 17 claims over planted logs, carrying the ticket's red controls (the leaf
+// claimed three days ago with five days of work finishing at DAY TWO of the read; the prior already exhausted being
+// REFUSED by name rather than pinned at zero) and printing the ticket's handback (the pinned rows named, the
+// day-two control output, the diff), which is what from_now_output and from_now_diff exist for: the handback IS the
+// acceptance record of this row. DECLARED FRONTIER, the production consumers, in the order the carrier's own edges
+// put them (dag/gunbc/roadmap/roadmap_authority.dag: edge(child: "roadmap-schedule-bottlenecks-and-offer", parent:
+// "roadmap-schedule-from-now"), then roadmap-work-item-projection, then roadmap-timeline-page): the next row reads
+// THIS answer -- its ticket asks for bottlenecks and the offer "computed from the schedule as of today", which is
+// this read's ScheduleAnswer and its pinned rows -- the projection shows it, and the timeline page draws the Gantt
+// the operator asked for. The trigger is this module being on main; those rows are dispatchable and each waits on
+// this one. Until then this read is answered only by the witnesses, and that is the frontier, not a decoration:
+// building the offer or the page here would be the next row's work, which this ticket's out_of_scope forbids
+// ("no bottlenecks and no offer, which is the next row's answer").
+//
+// WHY A READ FROM TODAY CARRIES DATES. gunbc.design_argument::plans_are_intentions, over the 2026-11-17 narrowing
+// gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc, inside the boundary that
+// gunbc.design_ruling::planning_scheduling_is_cut keeps: this unit is not a second planning home and stores no
+// plan. It is the read of a
+// plan already carried in this repository's one planning home (the roadmap carriers) at the moment the read happens.
+// Its ticket's boundary states the fact in those words -- "the answer is the schedule as of the read" -- and its red
+// control is a day number, so a read carrying no date cannot state the fact the row asks for. The date it anchors on
+// is not a forecast: claimed_on is the recorded_at of the hold that STANDS, an event the producers wrote into the item
+// log (#16703), turned into elapsed working days by #16709's one span rule; that is the whole point of the row
+// ("the pin rests on a realized fact and not on a forecast"). Nothing here becomes a dependency or a gate, and no
+// schedule is stored: the answer is recomputed from the carrier and the log on every call, and #16695's cache form
+// stays derived and never authoritative (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// What is decided from those dates is the next row's question -- what to start next, and what is holding the line.
+//
 // FAIL CLOSED (@ref gunbc.design_argument::fail_closed). A pin whose remaining days cannot be worked out is REFUSED
 // BY NAME, never pinned at zero: an unreadable claim stamp, a prior the carrier never declared, a claim recorded
 // after the read date, and -- the one a running item hits first -- a prior already exhausted by the elapsed days,
