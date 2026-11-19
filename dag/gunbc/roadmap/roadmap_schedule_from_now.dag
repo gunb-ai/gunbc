@@ -90,8 +90,14 @@ import gunbc.roadmap.roadmap_leaf_realized_duration {
 import gunbc.roadmap.roadmap_schedule_calendar { date_text }
 import gunbc.roadmap.roadmap_schedule {
   NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
-  look_or, path_key, schedule, schedule_pinned,
+  path_key, schedule, schedule_pinned,
 }
+
+// `look_or` MOVED with the placement extraction. It is the shared core's total map read now, so this caller
+// reads it at its new address rather than through roadmap_schedule, which no longer owns it: the same function,
+// the same total-read semantics, only the publishing module changed. The repoint lives in the change that moves
+// the helper, so no branch carries an alias for it and no tree imports a module its own base does not have.
+import gunbc.roadmap.roadmap_placement { look_or }
 
 // THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
 // Monday..Friday week is #16697's rule, and no holiday calendar exists anywhere in this repository.
