@@ -174,15 +174,31 @@ data fan_policy_phase_supplied_boot: String = "SUPPLIED-BOOT-STEP"
 // THE PHASE NAME IS THE IPMI SERIES, BECAUSE THAT IS THE INVOKE. A Cooling Manager / PWM REST
 // label on this run would report a MegaRAC GET that never ran.
 test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
-  fan_policy_phase_step_name(s: fleet_converge_fan_policy_phase_step())
-    == fleet_converge_fan_observe_ipmi_series_step_name
-    && fan_policy_phase_step_name(s: fleet_converge_mtcollins1_fan_observe_step())
-      == fleet_converge_fan_observe_ipmi_series_step_name
-    && fan_policy_phase_step_run_text(s: fleet_converge_fan_policy_phase_step())
-      == gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
-    && fan_policy_phase_step_run_text(s: fleet_converge_mtcollins1_fan_observe_step())
-      == gunbc_ci_mtcollins1_fan_observe_invoke()
-    && !string_contains(s: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(), pattern: "dissolve-on")
+  match fleet_converge_fan_policy_phase_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: policy_step } =>
+      match fleet_converge_mtcollins1_fan_observe_step() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: observe_step } =>
+          match outcome_accepted_value(gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()) {
+            Absent => false
+            Present { value: boot_phase_script } =>
+              match outcome_accepted_value(gunbc_ci_mtcollins1_fan_observe_invoke()) {
+                Absent => false
+                Present { value: observe_script } =>
+                  fan_policy_phase_step_name(s: policy_step)
+                    == fleet_converge_fan_observe_ipmi_series_step_name
+                    && fan_policy_phase_step_name(s: observe_step)
+                      == fleet_converge_fan_observe_ipmi_series_step_name
+                    && fan_policy_phase_step_run_text(s: policy_step)
+                      == boot_phase_script
+                    && fan_policy_phase_step_run_text(s: observe_step)
+                      == observe_script
+                    && !string_contains(s: boot_phase_script, pattern: "dissolve-on")
+              }
+          }
+      }
+  }
 }
 
 // THE PHASE IS A PRIOR JOB STEP, NOT A CHILD OF THE BOOT INVOKE. GitHub Actions runs job steps

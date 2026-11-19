@@ -148,17 +148,25 @@ fn index_of_from(ids: List<String>, wanted: String, i: Int) -> Optional<Int> {
 // beyond the gate's own echo. (The invoke strings are the entries' identities: the gate not containing
 // them is the gate not invoking them.)
 test fn the_split_gate_step_carries_the_refusal_and_no_act_entry() -> Bool {
-  match fleet_converge_executor_subject_split_gate_step() {
-    RunStep { name: _, id: Present { value: i }, run: r, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
-      i == "fleet_converge_executor_subject_split_gate"
-        && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
-        && string_contains(s: r, pattern: "exit 1")
-        && !string_contains(s: r, pattern: gunbc_ci_runner_host_withdraw_invoke())
-        && !string_contains(s: r, pattern: gunbc_ci_runner_host_restore_invoke())
-        && !string_contains(s: r, pattern: "--entry")
-        && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
-        && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
-    _ => false
+  match outcome_accepted_value(gunbc_ci_runner_host_withdraw_invoke()) {
+    Absent => false
+    Present { value: withdraw_script } =>
+      match outcome_accepted_value(gunbc_ci_runner_host_restore_invoke()) {
+        Absent => false
+        Present { value: restore_script } =>
+          match fleet_converge_executor_subject_split_gate_step() {
+            RunStep { name: _, id: Present { value: i }, run: r, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
+              i == "fleet_converge_executor_subject_split_gate"
+                && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
+                && string_contains(s: r, pattern: "exit 1")
+                && !string_contains(s: r, pattern: withdraw_script)
+                && !string_contains(s: r, pattern: restore_script)
+                && !string_contains(s: r, pattern: "--entry")
+                && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
+                && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
+            _ => false
+          }
+      }
   }
 }
 
