@@ -177,12 +177,24 @@ fn tailscale_auth_key_kind_wire(kind: TailscaleAuthKeyKind) -> String {
 // classifier outside it would be a second, consumer-less answer to the same question
 // (gunbc.design_argument::minimize_redundancy).
 
-type TailscaleAuthKeyApproval = AuthKeyPreApproved | AuthKeyApprovalRequired
+// Device approval is a per-TAILNET switch, not only a per-key setting. When the tailnet's device approval
+// is OFF, an auth key has no pre-approved option to set: every key on that tailnet enrolls without approval,
+// so "pre-approved" would misreport a property the key never had (the console offers no such checkbox). That
+// state is its own value -- AuthKeyApprovalNotApplicable -- so the record says what the console can show,
+// rather than borrowing "pre-approved" to mean "approval did not gate this join"
+// (@ref(gunbc.design_argument::epistemic_humility): do not assert as a key property what is really a tailnet
+// setting). Upstream: device approval on/off is a tailnet ACL/setting, and a key minted while it is off
+// carries no approval attribute.
+type TailscaleAuthKeyApproval =
+    AuthKeyPreApproved
+  | AuthKeyApprovalRequired
+  | AuthKeyApprovalNotApplicable
 
 fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> String {
   match approval {
     AuthKeyPreApproved => "pre-approved"
     AuthKeyApprovalRequired => "approval-required"
+    AuthKeyApprovalNotApplicable => "not-applicable"
   }
 }
 
