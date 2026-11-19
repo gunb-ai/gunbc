@@ -641,9 +641,10 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
 // transitional CI slot on top of that projection. The wall a materialized deploy row must stay under is
 // therefore the projection PLUS that grant, and the + transitional addend is written exactly once, here.
 // The committed fold derived_runner_slots_of_over reads it through the rows-parameterized form below, and
-// the allocation witnesses that assert the wall (test.claim.host.host_allocation_conservation and
-// test.claim.runner.runner_slot_allocation_witness) read this accessor rather than re-spelling the sum --
-// so the base projection and the total wall cannot drift apart across separate spellings.
+// the witnesses that assert the wall (test.claim.host.host_allocation_conservation,
+// test.claim.runner.runner_slot_allocation_witness and test.claim.runner.runner_slot_provision_witness)
+// read this accessor rather than re-spelling the sum -- so the base projection and the total wall cannot
+// drift apart across separate spellings.
 fn memory_admitted_total_width(host: HostIdentity) -> Int {
   memory_admitted_total_width_over(f: host_width_facts(host: host), rows: microvm_slot_realization_rows)
 }
