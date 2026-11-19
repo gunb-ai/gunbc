@@ -112,14 +112,18 @@ fn env_pairs_of(st: Step) -> List<YamlKeyValue> {
 // all sit after fleet_converge_executor_subject_split_gate in the emitted job, so nothing can actuate
 // before the precondition has run. Positions are computed, not remembered.
 test fn the_split_gate_precedes_every_drain_and_mask_step() -> Bool {
-  let ids = job_step_ids(j: fleet_converge_job())
-  match index_of(ids: ids, wanted: "fleet_converge_executor_subject_split_gate") {
+  match outcome_accepted_value(fleet_converge_job()) {
     Absent => false
-    Present { value: gate } =>
-      all(["runner_host_file_converge", "runner_host_withdraw", "runner_host_restore"], a => match index_of(ids: ids, wanted: a) {
+    Present { value: j } =>
+      { let ids = job_step_ids(j: j)
+      match index_of(ids: ids, wanted: "fleet_converge_executor_subject_split_gate") {
         Absent => false
-        Present { value: i } => gate < i
-      })
+        Present { value: gate } =>
+          all(["runner_host_file_converge", "runner_host_withdraw", "runner_host_restore"], a => match index_of(ids: ids, wanted: a) {
+            Absent => false
+            Present { value: i } => gate < i
+          })
+      } }
   }
 }
 

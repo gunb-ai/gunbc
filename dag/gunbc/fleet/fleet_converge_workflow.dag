@@ -8874,6 +8874,19 @@ fn fleet_converge_workflow_jobs_of() -> Outcome<List<Job>> {
   sequence_outcome(xs: fleet_converge_jobs(), policy: StageDiagnosticPolicy { accumulation: ShortCircuit })
 }
 
+// THE COMMITTED WORKFLOW as a typed carrier. A structural reader (the review-sheet witness) needs the
+// whole Workflow -- its .on triggers and .jobs -- without re-deriving the record; this mirrors
+// heal_workflow_of. It binds fleet_converge_workflow_jobs_of so a step that refuses surfaces as a typed
+// Rejected carrying its diagnostics (rung 3, no sentinel), and the accepted jobs flow through the single
+// authority fleet_converge_assemble_workflow -- the same builder expected_fleet_converge_yml renders from,
+// so what a witness inspects is byte-for-byte what the artifact boundary emits.
+fn fleet_converge_workflow_of() -> Outcome<Workflow> {
+  bind_outcome(
+    o: fleet_converge_workflow_jobs_of(),
+    f: fn(zesty_jobs) { outcome_accepted(value: fleet_converge_assemble_workflow(jobs: zesty_jobs)) }
+  )
+}
+
 type FleetConvergeYamlGenerationOutcome
   = FleetConvergeYamlGenerated { content: String }
   | FleetConvergeYamlGenerationRefused { reason: String }
