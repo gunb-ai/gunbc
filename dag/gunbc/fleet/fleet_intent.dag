@@ -556,8 +556,9 @@ data supermicro_h11ssl_unit3_baseboard: ServerBaseboard = ServerBaseboard {
 // derives to unresolved rather than invented, exactly as mtcollins1's offer shows width arriving from a
 // measured HostUsableRam read rather than from DIMM nominal capacity this box has never given us.
 // Its install NIC MAC is on record in the intake module, but the ADDRESS standing there is a stale neighbour
-// entry that this module already assigns to srv9 (fleet_intent_network::srv9_host_lan_endpoint), so no
-// NetworkInterface is minted across that collision; the read that settles it is named on that row.
+// entry whose address is held in this module only by the dated observation
+// fleet_intent_network::ken_host_lan_endpoint, which reserves nothing; no NetworkInterface is minted across an
+// unconfirmed address, and the read that settles it is named on that standing row.
 data supermicro_h11ssl_unit3_host: ComputeHost = ComputeHost {
   identity: operator_host_e2d4b7,
   baseboard: Present { value: supermicro_h11ssl_unit3_baseboard },

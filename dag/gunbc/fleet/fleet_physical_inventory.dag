@@ -29,7 +29,7 @@ import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog 
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_01, chassis_02, chassis_03, chassis_04, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_01, cooler_02 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -495,7 +495,54 @@ data gpu_board_10_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset, gpu_board_07_asset, gpu_board_08_asset, gpu_board_09_asset, gpu_board_10_asset]
+// ken (host-e2d4b7), three NVIDIA GPU functions read ON THE CARDS 2026-11-18 (artifacts/host-
+// observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt: bus id, GPU UUID and serial per function;
+// SHA256SUMS in that directory). WHAT THE READ DOES NOT ESTABLISH, stated rather than glossed: the read
+// covers identity -- serial, UUID, bus function -- while the MODEL of each card is still the operator's
+// report -- and on a read that now corroborates it: with domain-prefixed sysfs paths each of the three
+// functions reads vendor=0x10de device=0x1e37 class=0x030200 (unit_read2.txt in the receipt directory), and
+// 1e37 is the pci_device_id of the catalog row these assets bind to. An earlier attempt in the same session
+// used un-prefixed paths and failed; both attempts are in the receipts. What is still the report's alone is
+// the MODEL NAME: no read of a board label or product name was taken. The operator reported TWO Tesla T10 in
+// this box (gunbc.machine_intake.
+// supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_gpu_report), while the unit enumerates
+// THREE driver-visible NVIDIA functions whose power ranges are identical to one another. The register row
+// gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards carries the
+// count discrepancy. Procurement unrecorded.
+data gpu_board_11_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_11,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_t10",
+    decl_name: "nvidia_tesla_t10_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1322720003956" },
+  procurement: none,
+}
+
+data gpu_board_12_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_12,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_t10",
+    decl_name: "nvidia_tesla_t10_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1323619011509" },
+  procurement: none,
+}
+
+data gpu_board_13_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_13,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_t10",
+    decl_name: "nvidia_tesla_t10_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1323019027149" },
+  procurement: none,
+}
+
+data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset, gpu_board_07_asset, gpu_board_08_asset, gpu_board_09_asset, gpu_board_10_asset, gpu_board_11_asset, gpu_board_12_asset, gpu_board_13_asset]
 
 // Only installed cards are contained; an owned card with no row here is in inventory, not in a host.
 data installed_gpu_board_containments: List<PhysicalContainment> = [
@@ -511,6 +558,11 @@ data installed_gpu_board_containments: List<PhysicalContainment> = [
   // no longer contained in any host. The dated record is above gpu_board_07_asset.
   HostContainsComponent { host: operator_host_6ce85c, component: gpu_board_02 },
   HostContainsComponent { host: operator_host_6ce85c, component: gpu_board_03 },
+  // ken's three cards, read on the cards 2026-11-18 as above. The residence is what the read establishes:
+  // three driver-enumerated functions inside one host. No physical slot is claimed for any of them.
+  HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_11 },
+  HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_12 },
+  HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_13 },
 ]
 
 
