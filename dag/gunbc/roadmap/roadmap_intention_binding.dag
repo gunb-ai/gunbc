@@ -37,6 +37,7 @@ data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
+data derived_types_keep_their_name_intention: String = "gunbc.plans.derived_types_keep_their_name"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
@@ -144,6 +145,11 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "roadmap-work-item-projection", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
   serves(node: "roadmap-timeline-page", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 6),
   serves(node: "roadmap-return-to-principal-records-acceptance", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
+  // gunbc.plans.derived_types_keep_their_name, sections 1-3 (sharp-stag-549, 2026-11-19).
+  serves(node: "derived-type-argument-inhabitance-root", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "nonempty-str-becomes-a-checked-nominal", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "brands-reached-by-checked-constructors", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "nickname-aliases-retire-to-one-authority", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
