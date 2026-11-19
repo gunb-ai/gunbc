@@ -29,7 +29,7 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.tailscale.acl { tag_ci, tag_serving }
 import extdeps.tailscale.join {
-  AuthKeyApprovalNotApplicable,
+  TailscaleAuthKeyApproval,
   AuthKeyExpiryUnverifiable,
   AuthKeyExpiredOn,
   AuthKeyReusable,
@@ -157,13 +157,16 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // it, and it is the only classifier join.dag keeps (a separate per-kind "permanent membership" helper
 // was deliberately left out rather than kept as a second answer to one question).
 //
-// APPROVAL NOT APPLICABLE, because THIS tailnet has device approval OFF: an auth key minted while device
-// approval is off carries no pre-approved attribute at all -- the admin console offers no such option -- so
-// every key on this tailnet enrolls without approval. This is deliberately NOT recorded as "pre-approved":
-// that would assert a property the key never had (the console could not show it). A host must still never
-// land in NeedsMachineAuth, and on a tailnet with device approval off it cannot; tailscale_join_host fails
-// closed on NeedsMachineAuth regardless (@ref(gunbc.tailscale_join_converge::tailscale_join_host)), so the join is no less
-// guarded for not claiming a pre-approval the key does not carry.
+// APPROVAL IS ABSENT, because THIS tailnet has device approval OFF -- and that fact is TYPED, at
+// tailscale_fleet_device_approval_enabled below, not left in prose. The tailnet's device-approval switch is
+// not a key attribute: gunbc.design_argument::external_upstreams forbids putting this repository's
+// observation inside the upstream module, so "no approval applies" is carried as the ABSENCE of the policy's
+// approval field (Absent<TailscaleAuthKeyApproval>()), not as a value of extdeps' TailscaleAuthKeyApproval.
+// It is deliberately NOT recorded as "pre-approved": that would assert a property the key never had (the
+// admin console offered no such option). A host must still never land in NeedsMachineAuth, and on a tailnet
+// with device approval off it cannot; tailscale_join_host fails closed on NeedsMachineAuth regardless
+// (@ref(gunbc.tailscale_join_converge::tailscale_join_host)), so the join is no less guarded for not claiming
+// a pre-approval the key does not carry.
 //
 // TAGGED tag:ci, which is the setting that bounds what a leaked key can do. Upstream: a node created by a
 // tagged key "assumes the identity of the auth key's tags", so the tag the key carries IS the identity the
@@ -187,9 +190,26 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 
 data tailscale_fleet_node_tag: NonEmptyStr = tag_ci
 
+// THE TAILNET'S DEVICE-APPROVAL SWITCH, AS ITS OWN TYPED RECEIPT (review 96792: this was load-bearing but
+// lived only in comments). Whether a joining node lands in NeedsMachineAuth is governed by the TAILNET's
+// device-approval (pre-auth) setting, not by anything on the key. Observed from the operator's admin console
+// on 2026-11-19: device approval is OFF on this tailnet (tailecbe08), so no join ever waits on a human
+// approval and no fleet key needs a pre-approved attribute. Per
+// gunbc.design_argument::external_upstreams this is a RECEIPT in the observing layer, never a fact of the
+// upstream extdeps.tailscale module -- so the tailscale join route and this model's approval-absence both
+// read THIS typed value, not a comment. Flipping it is an operator console action; the moment it reads true,
+// the fleet key must be re-observed for its upstream requires_approval and tailscale_fleet_auth_key_policy's
+// approval field filled in (the fail-closed witness tailscale_fleet_auth_key_witness refuses if the fact and
+// the absent field ever disagree).
+data tailscale_fleet_device_approval_enabled: Bool = false
+
 data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_key_policy_of(
   kind: AuthKeyReusable,
-  approval: AuthKeyApprovalNotApplicable,
+  // Absent because the tailnet has no device-approval mechanism (tailscale_fleet_device_approval_enabled ==
+  // false): the key carries no approval attribute, and per external_upstreams that absence is modeled here in
+  // the observing layer rather than as a value of extdeps' TailscaleAuthKeyApproval. NOT "pre-approved" -- the
+  // key was never pre-approved by anything; there was nothing to approve against.
+  approval: Absent<TailscaleAuthKeyApproval>(),
   key_tags: [tailscale_fleet_node_tag],
   expires_after: second(count: 30 * seconds_per_day()),
 )
@@ -256,7 +276,13 @@ fn tailscale_fleet_auth_key_kind_wire() -> String {
 }
 
 fn tailscale_fleet_auth_key_approval_wire() -> String {
-  tailscale_auth_key_approval_wire(approval: tailscale_fleet_auth_key_policy.approval)
+  match tailscale_fleet_auth_key_policy.approval {
+    // A gunbc-layer DESCRIPTION of the observing-layer receipt (this tailnet has no device approval), NOT an
+    // extdeps wire word -- it is never asserted by the upstream-words witness, which tests only the two real
+    // upstream words. Where the key does carry an approval attribute, defer to the upstream word.
+    Absent => "approval-not-applicable (tailnet device approval is off)"
+    Present { value: value } => tailscale_auth_key_approval_wire(approval: value)
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────

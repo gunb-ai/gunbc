@@ -2,7 +2,8 @@ module test.claim.tailscale_fleet_auth_key_witness
 
 // THE WITNESSES FOR THE FLEET TAILNET JOIN (node adhoc-977efa46-965, 2026-11-15). What they hold the model
 // to: the secret is ONE pinned version of one named secret; the key is the operator's decided shape
-// (reusable, approval not-applicable -- device approval is off on this tailnet -- exactly one tag, a 30-day
+// (reusable, NO approval attribute -- the tailnet's device approval is off, recorded as the typed receipt
+// tailscale_fleet_device_approval_enabled -- exactly one tag, a 30-day
 // window ending 2026-12-19); the key material NEVER
 // appears in an argument vector; the custody row is root-only on disk; and each member this work ADDED to
 // a shared ledger is present EXACTLY ONCE. The ledgers are deliberately NOT asserted by number (smart-
@@ -26,7 +27,9 @@ import extdeps.units.iso8601_calendar {
 }
 import extdeps.tailscale.join {
   AuthKeyReusable,
-  AuthKeyApprovalNotApplicable,
+  TailscaleAuthKeyApproval,
+  AuthKeyPreApproved,
+  AuthKeyApprovalRequired,
   AuthKeyPolicyAccepted,
   tailscale_auth_key_expiry_window_is_upstream,
   tailscale_auth_key_expiry_verdict,
@@ -52,6 +55,7 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_expected_project,
   tailscale_fleet_node_tag,
   tailscale_fleet_auth_key_policy,
+  tailscale_fleet_device_approval_enabled,
   tailscale_fleet_auth_key_admitted,
   tailscale_fleet_auth_key_console_observed_expiry,
   tailscale_fleet_auth_key_expiry_days,
@@ -129,23 +133,27 @@ test fn w_pin_is_not_latest() -> Bool {
 
 // ── THE KEY: the operator's decided shape, exactly ───────────────────────────────────────────────────
 
-test fn w_key_is_reusable_not_applicable_single_tag_30_days() -> Bool {
-  match tailscale_fleet_auth_key_policy {
-    policy =>
-      match policy.kind {
-        AuthKeyReusable =>
-          match policy.approval {
-            AuthKeyApprovalNotApplicable =>
-              policy.key_tags.count() == 1
-                && second_count(policy.expires_after) == 30 * seconds_per_day()
-                && tailscale_auth_key_expiry_window_is_upstream(
-                  expires_after: policy.expires_after,
-                )
-            _ => false
-          }
-        _ => false
-      }
-  }
+// The absent approval is JUSTIFIED BY the typed tailnet fact, and the two are asserted TOGETHER so they
+// cannot drift: if tailscale_fleet_device_approval_enabled ever reads true, this claim refuses until the
+// key's requires_approval is re-observed and the approval field filled in.
+test fn w_key_is_reusable_approval_absent_single_tag_30_days() -> Bool {
+  tailscale_fleet_device_approval_enabled == false
+    && match tailscale_fleet_auth_key_policy {
+      policy =>
+        match policy.kind {
+          AuthKeyReusable =>
+            match policy.approval {
+              Absent =>
+                policy.key_tags.count() == 1
+                  && second_count(policy.expires_after) == 30 * seconds_per_day()
+                  && tailscale_auth_key_expiry_window_is_upstream(
+                    expires_after: policy.expires_after,
+                  )
+              _ => false
+            }
+          _ => false
+        }
+    }
 }
 
 test fn w_key_carries_exactly_the_ci_tag() -> Bool {
@@ -164,7 +172,8 @@ test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
 
 test fn w_key_wires_are_the_upstream_words() -> Bool {
   tailscale_auth_key_kind_wire(kind: AuthKeyReusable) == "reusable"
-    && tailscale_auth_key_approval_wire(approval: AuthKeyApprovalNotApplicable) == "not-applicable"
+    && tailscale_auth_key_approval_wire(approval: AuthKeyPreApproved) == "pre-approved"
+    && tailscale_auth_key_approval_wire(approval: AuthKeyApprovalRequired) == "approval-required"
 }
 
 // ── THE EXPIRY: ONE DERIVED FACT, PINNED TO THE POLICY AND TO THE CONSOLE OBSERVATION ────────────────
