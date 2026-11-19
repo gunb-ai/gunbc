@@ -1990,12 +1990,13 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       if workdir == "/" {
         srv3_predicate_from_typed_argv(
           outcome: typed_argv_exec_over_fleet_ssh(
             target: t,
             context: c,
+            kind: kind,
             argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
           ),
         )
@@ -2021,11 +2022,12 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: shell_test_is_executable_argv(path: path)),
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
+          kind: kind,
           argv: shell_test_is_executable_argv(path: path),
         ),
       )
@@ -2219,9 +2221,9 @@ fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> S
     LocalShell => srv3_local_token_from_argv(argv: argv)
     SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
@@ -2669,7 +2671,7 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   let argv = dpkg_query_status_argv(package: package)
   let outcome = match transport {
-    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    FleetSsh { target: t, context: c, kind: kind } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
     LocalShell => none
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
@@ -3902,8 +3904,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
     }
     SshShell { ssh_host: h } =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv_words(command: command)))
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
@@ -3926,8 +3928,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 fn run_argv_posix_quoted_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => run_argv_over_host_effect_transport(command: command, transport: LocalShell)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, kind: kind, argv: argv_words(command: command)))
     SshShell { ssh_host: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: SshShell has no measured POSIX route (no login-shell proof, no OpenSSH release reading), so no word is quoted over it.",
@@ -4324,10 +4326,11 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_with_stdin(
         target: t,
         context: c,
+        kind: kind,
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
@@ -4575,8 +4578,8 @@ fn run_typed_argv_transport(
       }
     SshShell { ssh_host: h } =>
       typed_argv_exec_over_ssh(host: h, argv: argv)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
+    FleetSsh { target: t, context: c, kind: kind } =>
+      typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
@@ -4608,9 +4611,9 @@ fn realize_effective_principal_read_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4645,9 +4648,9 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4730,10 +4733,10 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -8457,10 +8460,11 @@ fn realize_live_deploy_digest_readback_on_host(
           )
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind } =>
       match typed_argv_exec_over_fleet_ssh(
         target: t,
         context: c,
+        kind: kind,
         argv: live_deploy_digest_readback_argv(port: port),
       ) {
         TypedArgvExecConverged { result: r } =>
