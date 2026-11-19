@@ -14501,7 +14501,7 @@ pub fn validate_cast(
                         source_declaration.clone(),
                         target_declaration.clone(),
                         source_indices.clone(),
-                        env.clone(),
+                        env,
                     ))
                     .clone()
                     {
