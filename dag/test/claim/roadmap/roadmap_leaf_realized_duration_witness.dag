@@ -1,4 +1,4 @@
-module test.claim.roadmap.roadmap_leaf_realized_duration
+module test.claim.roadmap.roadmap_leaf_realized_duration_witness
 
 // THE DECLARATION of the realized-duration unit (roadmap-leaf-realized-duration), a unit of
 // gunb-ai/gunbc#16650's chain to the roadmap Gantt. A leaf's PRIOR is the day count its carrier declared
