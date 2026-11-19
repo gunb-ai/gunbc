@@ -37,6 +37,12 @@ import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 type BmcHpmCheckTransport
   = HpmCheckTransportOk { table: HpmCheckTable, retained_path: NonEmptyStr, at: NonEmptyStr }
   | HpmCheckTransportFailed { exit_code: Int, transport_stderr: String, at: NonEmptyStr }
+  // The controller ANSWERED and the table parsed; only the local retention failed, so the retained
+  // bytes are gone and nothing consumes the parsed table. Its own arm, not the transport arm (review
+  // 96635): a full disk must never be dressed in the controller's exit code and stderr, which is how
+  // a wrong-component blame ("exit 0" on the endpoint) was formed. Lanes refuse on this arm: the
+  // evidence chain needs the retained file, and without it no build reading can be established.
+  | HpmCheckRetentionFailed { retained_path: NonEmptyStr, write_error: String, at: NonEmptyStr }
 
 // The read itself, byte-for-byte the argv the boot's pre-power phase always sent (timeout wall,
 // lanplus, the retry bound's words, -f with the FILE, "hpm check"), now reachable by any lane. The
@@ -63,22 +69,17 @@ fn bmc_hpm_check_transport(
   )
   if r.success {
     let retained = Filesystem.Write(path: retained_path, content: r.stdout)
-    // The Ok arm reports the retained path, so the write's effect is established
-    // here, not assumed: an Ok never answers yes to a retention it could not
-    // perform (DESIGN Fail-closed; review 96634 non-blocking note). The boot's
-    // pre-lift version ignored this result; ignoring is not carried over.
+    // The Ok arm reports the retained path, so the write's effect is established here, not assumed:
+    // an Ok never answers yes to a retention it could not perform (DESIGN Fail-closed; review 96634).
+    // The failed-write state is its OWN typed arm (review 96635): the controller answered, the table
+    // is real, and the local write error is reported as such -- never in the transport arm's fields,
+    // which are the controller's facts and would blame the endpoint for a local disk.
     if retained.success {
       HpmCheckTransportOk { table: hpm_check_table_of(stdout: r.stdout), retained_path: retained_path, at: at }
     } else {
-      HpmCheckTransportFailed { exit_code: r.exit_code, transport_stderr: bmc_hpm_retention_failure_text(retained_path: retained_path, write_error: retained.error), at: at }
+      HpmCheckRetentionFailed { retained_path: retained_path, write_error: retained.error, at: at }
     }
   } else {
     HpmCheckTransportFailed { exit_code: r.exit_code, transport_stderr: r.transport_stderr, at: at }
   }
-}
-
-// Pure rendering of the retention-failure cause: the transport composes it and the
-// witness asserts against it, so the text an operator reads is the text claimed.
-fn bmc_hpm_retention_failure_text(retained_path: NonEmptyStr, write_error: String) -> String {
-  join(["hpm table read but could not be retained at ", retained_path as String, ": ", write_error], "")
 }
