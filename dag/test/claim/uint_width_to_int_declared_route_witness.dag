@@ -20,6 +20,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_blocking_rows_of_class,
   census_total_count
 }
 import std.types { String, Bool, Int }
@@ -61,6 +62,23 @@ fn blocking_count(source: String) -> Int {
   }
 }
 
+// A refusal PINNED to its class, plus the DIFFERENTIAL the module says is exact
+// (gunbc.compile_diagnostic_census header: "a bare blocking-total ... cannot say WHICH judgment fired").
+// The cast wall refuses an un-emittable cast as CastRealizationRefused -- src/v1/00_core.dag's Display
+// arm whose text starts "cast cannot be emitted for target", recorded by v1.compiler.emit's cast
+// realization arms (src/v1/05_emit.dag). Its subject_name is the refusal FACT (the uncastable pair), a
+// message string, so the discrimination here is class-scoped and differential: the probe source with
+// the cast must carry at least one such row, and the same shape WITHOUT the cast must carry none. That
+// is what makes the REDs below say "this cast refused, for the cast wall's reason" rather than "some
+// compile failed" (review 96603, finding 2).
+fn cast_wall_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "CastRealizationRefused"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 data uint8_as_int_emit_source: String = "module probe_uint8_as_int_emit\nimport std.integer { UInt8 }\nfn octet(o: UInt8) -> Int { o as Int }\n"
 
 // EMISSION: the pair casts natively with the declared route -- no refusal spelling in the emitted
@@ -76,18 +94,25 @@ test fn uint8_as_int_emits_with_the_declared_route() -> Bool {
 }
 
 data int_as_uint8_source: String = "module probe_int_as_uint8_emit\nimport std.integer { UInt8 }\nfn octet(i: Int) -> UInt8 { i as UInt8 }\n"
+// The control arm of the differential: the SAME declaration with only the cast removed. Whatever the
+// probe's compile decides, the control's compile cannot produce a cast-realization refusal -- so the
+// probe's row is about the cast, not about the probe text.
+data int_as_uint8_control_source: String = "module probe_int_as_uint8_emit_control\nimport std.integer { UInt8 }\nfn octet(i: Int) -> UInt8 { i }\n"
 
 // THE RED, EMITTED DIRECTION: Int as UInt8 is not total (negatives and values above 2^N - 1 fall
 // outside the intersection) and no route is declared for it, so the emitter's cast wall still refuses
-// it -- the refusal spelling must appear (its absence from a run module means the wall let an
-// un-routed cast through, which is this claim's opposite failure).
+// it. The refusal is PINNED, not merely negated (review 96603, finding 2): the emitted pair does not
+// compile clean; the census carries at least one blocking CastRealizationRefused row for the probe;
+// and the same declaration with the cast removed carries none. A bare negation would be satisfied by
+// any unrelated compile failure -- that is not what this claim says.
 test fn int_as_uint8_still_refuses_emission() -> Bool {
   !compile_dag_rust_emit_check(
     int_as_uint8_source,
     "src/probe_int_as_uint8_emit.rs",
     ["fn octet"],
     []
-  )
+  ) && cast_wall_refusal_count(source: int_as_uint8_source) > 0 &&
+       cast_wall_refusal_count(source: int_as_uint8_control_source) == 0
 }
 
 data uint32_as_int_emit_source: String = "module probe_uint32_as_int_emit\nimport std.integer { UInt32 }\nfn word32(o: UInt32) -> Int { o as Int }\n"
@@ -104,21 +129,27 @@ test fn uint32_as_int_emits_with_the_declared_route() -> Bool {
 }
 
 data uint64_as_int_emit_source: String = "module probe_uint64_as_int_emit\nimport std.integer { UInt64 }\nfn word64(o: UInt64) -> Int { o as Int }\n"
+// The control arm: same declaration, cast removed -- no cast-realization refusal is possible there.
+data uint64_as_int_control_source: String = "module probe_uint64_as_int_emit_control\nimport std.integer { UInt64 }\nfn word64(o: UInt64) -> UInt64 { o }\n"
 
 // THE RED, HOST CAPACITY (review 95725, finding 2): UInt64 holds values to 2^64 - 1, past the i64
 // host carrier's 2^63 - 1, so the emitter's realization arm (v1.compiler.emit
 // width_fits_host_carrier) REFUSES to realize the identity -- emitting it today would be the silent
 // wrap fail_closed forbids. Legality is untouched (the checker test above admits it); realization
 // refuses until the carrier frontier lands (std.machine_constraints
-// ::integer_width_carrier_realization_frontier). The negation pins: the emitted pair does NOT
-// compile clean, and the cast wall's refusal spelling is what stands there.
+// ::integer_width_carrier_realization_frontier). The refusal is pinned three ways (review 96603,
+// finding 2): the emitted pair does NOT compile clean; the census carries at least one blocking
+// CastRealizationRefused row for the probe (the cast wall's own class -- the refusal text is
+// "no declared conversion route from UInt64<UInt, MachineWidth<>> to i64: ..."); and the same
+// declaration WITHOUT the cast carries none, so the row is about this cast.
 test fn uint64_as_int_still_refuses_emission() -> Bool {
   !compile_dag_rust_emit_check(
     uint64_as_int_emit_source,
     "src/probe_uint64_as_int_emit.rs",
     ["fn word64"],
     []
-  )
+  ) && cast_wall_refusal_count(source: uint64_as_int_emit_source) > 0 &&
+       cast_wall_refusal_count(source: uint64_as_int_control_source) == 0
 }
 
 // THE RED, CHECKED POPULATION: the census for the un-routed pair is reported (not unroutable), and
