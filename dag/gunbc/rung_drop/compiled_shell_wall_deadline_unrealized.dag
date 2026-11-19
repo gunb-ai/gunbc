@@ -20,7 +20,7 @@ data compiled_shell_wall_deadline_unrealized: RungDrop = RungDrop {
   identity: "compiled_shell_wall_deadline_unrealized" as NonEmptyStr,
   subject: "the compiled (emitted Rust) shell transport does not enforce the per-leg wall-clock deadline; the overran and wall_deadline_seconds channels are unrealized on the compiled target",
   declared: "2026-11-19",
-  standing: Active {
+  standing: Standing {
     declaration: TypedDeclaration {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
