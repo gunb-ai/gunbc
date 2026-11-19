@@ -39,7 +39,7 @@ import gunbc.auth.approval_keyring_pins {
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -185,7 +185,7 @@ fn keyring_elevated_exec(
   step: String,
 ) -> ProcessExit
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: keyring_elevated_argv(command: command)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: keyring_elevated_argv(command: command)) {
     TypedArgvExecRefused { reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", why))))
     TypedArgvExecConverged { result: r } =>

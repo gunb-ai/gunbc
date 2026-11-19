@@ -127,8 +127,7 @@ import extdeps.dns.domain_name { DnsLabel }
 import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext,
   SshTarget,
   SshTargetResolution,
   SshTargetRefused,
@@ -240,7 +239,7 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 // THE STATUS READ, from the host itself. The argv row is machine_name's, not a fork: same binary, same
 // document, and this module reads a different member of it (extdeps.tailscale.join).
 fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleJoinState {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: tailscale_status_json_argv()) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: tailscale_status_json_argv()) {
     TypedArgvExecRefused { reason: reason } => JoinStateUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -259,7 +258,7 @@ fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionCo
 // anything that is not exactly `install ok installed` is not-installed, and `unknown`/undecidable stay
 // separate refusals rather than being folded into "not installed".
 fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState {
-  match typed_argv_exec_over_fleet_ssh(
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
     target: target,
     context: context,
     argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
@@ -554,7 +553,7 @@ fn tailscale_join_observe_name_resolution(
   context: FleetSshExecutionContext,
   name: NonEmptyStr,
 ) -> TailscaleJoinNameResolution {
-  match typed_argv_exec_over_fleet_ssh(
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
     target: router,
     context: context,
     argv: argv_words(command: getent_hosts_command(name: name)),
@@ -596,7 +595,7 @@ fn tailscale_join_observe_answer(
   ) {
     TailscalePingCommandRefused { cause: cause } => JoinAnswerUnreadable { cause: cause }
     TailscalePingCommandBuilt { command: command } =>
-      match typed_argv_exec_over_fleet_ssh(
+      match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
         target: router,
         context: context,
         argv: argv_words(command: command),

@@ -9,7 +9,7 @@ import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {
@@ -95,7 +95,7 @@ fn hostname_set_fleet_ssh(
   desired: DnsLabel,
 ) -> HostnameSetCasOutcome {
   hostname_set_cas_from_outcome(
-    outcome: typed_argv_exec_over_fleet_ssh(
+    outcome: typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,
       target: target,
       context: context,
       argv: hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),

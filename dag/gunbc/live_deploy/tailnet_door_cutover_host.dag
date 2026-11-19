@@ -63,7 +63,7 @@ fn live_deploy_serve_route_observe(spec: DeploymentSpec, transport: HostEffectTr
           else { ServeRouteUnreadable { detail: join(["tailscale serve status exited ", to_string(o.exit_code), ": ", trim(o.stderr)], "") } }
       }
     SshShell { ssh_host: h } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)), spec: spec)
-    FleetSsh { target: t, context: c } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)), spec: spec)
+    FleetSsh { target: t, context: c , kind: kind} => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: argv_words(command: command)), spec: spec)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ServeRouteUnreadable { detail: "serve status read refused EmitArtifactThenThinRun transport" }
   }
 }

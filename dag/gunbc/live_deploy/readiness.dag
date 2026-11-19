@@ -61,7 +61,7 @@ import gunbc.ci.ci_deploy_access {
   DeployAccess,
   deploy_access_decision_reason,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
 import gunbc.host.host_effect {
   HostEffectTransport,
@@ -298,7 +298,7 @@ fn live_deploy_healthz_get_fleet_ssh(
     Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
     Present { value: deadline } =>
       healthz_effective_read_from_status_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(
+        outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
           target: target,
           context: context,
           argv: http_client_get_with_status_argv(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
@@ -373,9 +373,9 @@ fn live_deploy_healthz_get_for_socket(socket: NonEmptyStr, spec: DeploymentSpec,
             Absent => healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
           }
         }
-        FleetSsh { target: t, context: c } =>
+        FleetSsh { target: t, context: c , kind: kind} =>
           healthz_effective_read_from_outcome(
-            outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_unix_socket_argv(socket: socket, url: url, max_time: deadline)),
+            outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: http_client_get_unix_socket_argv(socket: socket, url: url, max_time: deadline)),
           )
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
@@ -434,8 +434,8 @@ fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, trans
           healthz_effective_read_from_status_get(success: got.success, stdout: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
         }
         SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)
-        FleetSsh { target: t, context: c } =>
-          healthz_effective_read_from_status_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_with_status_argv(url: url, max_time: deadline)))
+        FleetSsh { target: t, context: c , kind: kind} =>
+          healthz_effective_read_from_status_outcome(outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: http_client_get_with_status_argv(url: url, max_time: deadline)))
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
       }

@@ -2671,7 +2671,7 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   let argv = dpkg_query_status_argv(package: package)
   let outcome = match transport {
-    FleetSsh { target: t, context: c, kind: kind } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    FleetSsh { target: t, context: c, kind: kind } => Present { value: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
     LocalShell => none
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none

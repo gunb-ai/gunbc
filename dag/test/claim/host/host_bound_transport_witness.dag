@@ -7,7 +7,7 @@ import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.network.endpoint { socket_address }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh }
@@ -39,7 +39,7 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
     Present { value: ctx } =>
       match fleet_locus_ssh_target(host: host) {
         SshTargetRefused { endpoint: _, refusal: _ } => none
-        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+        SshTargetResolved { target: t } => Present { value: FleetSsh {kind: ProbeLeg, target: t, context: ctx } }
       }
   }
 }
@@ -95,7 +95,7 @@ test fn an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_noth
         Absent => false
         Present { value: ctx } =>
           // the same host name at another port is a different sshd
-          (match host_bound_transport_of(transport: FleetSsh { target: SshTarget { address: socket_address(host: t.address.host, port: 2222), principal: t.principal }, context: ctx }) {
+          (match host_bound_transport_of(transport: FleetSsh {kind: ProbeLeg, target: SshTarget { address: socket_address(host: t.address.host, port: 2222), principal: t.principal }, context: ctx }) {
             HostBoundTransportRefused { cause: _ } => true
             HostBoundTransportResolved { bound: _ } => false
           })

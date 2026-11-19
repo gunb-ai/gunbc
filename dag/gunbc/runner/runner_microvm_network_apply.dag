@@ -31,7 +31,7 @@ import gunbc.actions_run_binding {
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
@@ -261,7 +261,7 @@ fn run_admin_leg(
 ) -> ApplyLeg
 {
   match transport {
-    FleetSsh { target, context } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+    FleetSsh { target, context , kind: kind} => match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: argv_words(command: command)) {
       TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
       TypedArgvExecConverged { result: r } => ApplyLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
     }
@@ -873,7 +873,7 @@ fn runner_microvm_network_apply_ci_wet() -> ProcessExit
       match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_apply_attempt_raw) {
         FleetSshContextRefused { cause: c } => exit_failure(reason: c)
         FleetSshContextReady { context: context, receipt: context_receipt } => {
-          let run = run_microvm_network_apply(subject: subject, transport: FleetSsh { target: subject.target, context: context })
+          let run = run_microvm_network_apply(subject: subject, transport: FleetSsh {kind: ActuationLeg, target: subject.target, context: context })
           let body = join([
             "runner_microvm_network_apply probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
             context_receipt,

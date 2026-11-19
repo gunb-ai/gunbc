@@ -94,8 +94,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split {
   SplitOk,
   SplitRefused,
 }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetSshExecutionContext,
   SshTarget,
   SshTargetResolved,
   SshTargetRefused,
@@ -573,7 +572,7 @@ fn tailscale_machine_name_device_names_leg(
   target: SshTarget,
   context: FleetSshExecutionContext,
 ) -> TailscaleMachineNameDeviceNames {
-  match typed_argv_exec_over_fleet_ssh(
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
     target: target,
     context: context,
     argv: argv_words(command: tailscale_status_json_command())
@@ -586,7 +585,7 @@ fn tailscale_machine_name_device_names_leg(
           cause: StatusLegFailed { exit_code: status_result.exit_code, detail: status_result.stderr },
         }
       } else {
-        match typed_argv_exec_over_fleet_ssh(
+        match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
           target: target,
           context: context,
           argv: argv_words(command: hostname_short_read_command())
@@ -626,7 +625,7 @@ fn tailscale_machine_name_set_leg(
   context: FleetSshExecutionContext,
   name: DnsLabel,
 ) -> TailscaleMachineNameSetReading {
-  match typed_argv_exec_over_fleet_ssh(
+  match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,
     target: target,
     context: context,
     argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name)))

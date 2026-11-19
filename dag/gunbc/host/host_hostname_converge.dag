@@ -41,8 +41,7 @@ import gunbc.host.host_effect {
   HostOs,
   NodeControlPlane,
 }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext,
   SshTargetResolution,
   SshTargetRefused,
   SshTargetResolved,
@@ -679,7 +678,7 @@ fn hostname_converge_bind_transport(
           base: base,
           desired: desired,
           host: host,
-          transport: FleetSsh { target: ssh_target, context: context },
+          transport: FleetSsh {kind: ActuationLeg, target: ssh_target, context: context },
         ),
       }
   }

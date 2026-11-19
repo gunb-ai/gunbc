@@ -6,7 +6,7 @@ import extdeps.ssh.keys { SshPublicKey }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label, known_host_row_field }
 import extdeps.network.endpoint { SocketAddress }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTarget }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused,
 }
@@ -67,7 +67,7 @@ fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: Str
       FleetSshContextReady { context: context, receipt: receipt } =>
         RentedHostAccessReady {
           node: declaration.node,
-          transport: FleetSsh {
+          transport: FleetSsh {kind: ActuationLeg,
             target: SshTarget { address: declaration.address, principal: declaration.principal },
             context: context,
           },

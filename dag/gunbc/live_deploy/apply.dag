@@ -114,7 +114,7 @@ import gunbc.host.host_effect_realize { host_effect_apply_gated, live_deploy_pre
 import gunbc.ci.ci_deploy_access { deploy_access_read_principal_effect, deploy_access_principal_line }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_on_the_slot }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
@@ -1210,7 +1210,7 @@ fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
             CandidateObserved { candidate: candidate } => {
               let mutation = host_effect_apply(
                 target: HostOs { node: spec.target.host },
-                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh { target: target, context: context } },
+                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh {kind: ActuationLeg, target: target, context: context } },
                 evidence: host_effect_identity_evidence,
                 transport: LocalShell,
               )

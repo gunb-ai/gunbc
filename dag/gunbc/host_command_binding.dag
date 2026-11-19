@@ -8,7 +8,7 @@ import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.command_runner { run_shell_command_observe_outcome }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, ssh_target_wire }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, FleetSshExecutionContext, ssh_target_wire }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write { NoValidation,
@@ -54,7 +54,7 @@ fn host_run(host: CommandHost, command: ArgvCommand) -> HostLeg {
   match host {
     LocalCommandHost => host_leg_of_local(outcome: run_shell_command_observe_outcome(command: command, transport: LocalExec))
     FleetSshCommandHost { target: t, context: c } =>
-      host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+      host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: t, context: c, argv: argv_words(command: command)))
   }
 }
 

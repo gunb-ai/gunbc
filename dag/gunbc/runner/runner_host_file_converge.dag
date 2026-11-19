@@ -83,7 +83,7 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, anchored_ssh_target, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, anchored_ssh_target, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
@@ -1767,7 +1767,7 @@ data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find",
 
 fn run_fleet_host_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext, leg: FleetHostRemoteLeg) -> TypedArgvExecOutcome
 {
-  typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: fleet_host_leg_argv(leg: leg))
+  typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: subject.target, context: context, argv: fleet_host_leg_argv(leg: leg))
 }
 
 // THE LEGS ONE HOST'S RUN CAN ISSUE, from that host's own subject, desired files and residue, with
@@ -1891,7 +1891,7 @@ fn observe_fleet_host_ancestors(
     PathsUnobservable { reason: r } => {
       let presence = map(chain, a => AncestorPresence {
         path: a,
-        presence: entry_presence(arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }), path: a),
+        presence: entry_presence(arm: observation_arm_elevated_listing(transport: FleetSsh {kind: ProbeLeg, target: subject.target, context: context }), path: a),
       })
       fleet_host_ancestors_after_presence(
         subject: subject,
@@ -2016,7 +2016,7 @@ fn observe_fleet_host_file_path(
       classify_host_file_path(
         reading: reading,
         parent: entry_presence(
-          arm: observation_arm_elevated_listing(transport: FleetSsh { target: subject.target, context: context }),
+          arm: observation_arm_elevated_listing(transport: FleetSsh {kind: ProbeLeg, target: subject.target, context: context }),
           path: path,
         ),
       )
@@ -2823,7 +2823,7 @@ fn rebuild_runner_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
         archive: tarball as NonEmptyStr,
         pin: ArchiveSha256 { hex: actions_runner_release_digest(artifact: a).hex },
         install: runner_slot_tree_rebuild_commands(target: target, stage: stage, tarball: tarball),
-        transport: FleetSsh { target: subject.target, context: context },
+        transport: FleetSsh {kind: ActuationLeg, target: subject.target, context: context },
       )
       if !verified_archive_install_holds(outcome: outcome) {
         RunnerSlotTreeRefused { unit: unit, cause: verified_archive_install_text(outcome: outcome) as NonEmptyStr }
@@ -4522,7 +4522,7 @@ fn classify_dropin_override(candidates: List<NonEmptyStr>, exit_code: Int, stdou
 }
 
 fn read_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>, written: List<FleetHostFileDesired>, exempt: List<NonEmptyStr>) -> DropinOverrideReading {
-  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: [DropInPathsProperty])) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: [DropInPathsProperty])) {
     TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("systemctl show DropInPaths: ", r) }
     TypedArgvExecConverged { result: shown } =>
       if shown.exit_code != 0 { DropinsUnread { cause: join(["systemctl show DropInPaths exited ", to_string(shown.exit_code)], "") } }
@@ -4533,7 +4533,7 @@ fn read_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshEx
             let candidates = dropins_that_could_override(written: map(written, f => f.path as NonEmptyStr), loaded: loaded, exempt: exempt)
             let keys = list_flat_map(written, f => dropin_setting_keys(content: f.content))
             if length(candidates) == 0 { DropinsNoLaterSetter } else {
-              match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: grep_files_with_fixed_strings_argv(patterns: keys, paths: candidates)) {
+              match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: subject.target, context: context, argv: grep_files_with_fixed_strings_argv(patterns: keys, paths: candidates)) {
                 TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("grep over the later drop-ins: ", r) }
                 TypedArgvExecConverged { result: g } => classify_dropin_override(candidates: candidates, exit_code: g.exit_code, stdout: g.stdout)
               }
