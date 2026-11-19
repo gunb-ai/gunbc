@@ -334,12 +334,35 @@ fn preplaced_finish(preplaced: List<Placement>) -> Map<String, Int> {
 
 // THE LANES THE PRE-PLACED ROWS HOLD, derived the same way: the latest finish day each lane is held to. A lane with
 // no entry is free at day 0, so the map is seeded only with the lanes something occupies.
-fn preplaced_lanes(preplaced: List<Placement>) -> Map<Int, Int> {
+// THE LANES BUSY BEFORE THE POLICY RUNS. A row the caller already knows the position of holds its lane until it
+// finishes. And THE CAP HOLDS PER PLACEMENT, NOT ONCE AS A FLOOR: these rows are facts -- k of them hold k lanes
+// whether or not k fits the cap, and the read that derived them names the excess (roadmap_schedule_from_now's
+// `pins_over_capacity`). But `scan_lanes` looks at lanes `0..workers-1` only, so a row parked on lane `workers` or
+// beyond is a lane the placement never sees -- and a belt already full of such rows would otherwise launch a new row
+// on top of it, which is a plan that breaks its own limit and says nothing. So each over-cap row has its days folded
+// onto the LEAST-LOADED lane below the cap, closing that lane until it finishes: the closed lane is the capacity the
+// row consumes, and the gate that already serializes a lane checks it at every placement, not once for the whole
+// schedule. Cost: one fold over the rows, each step a `scan_lanes` across the cap's own width -- the shape the lane
+// choice already pays per placement.
+//
+// WHY FOLDING IN ANY ORDER IS SAFE. Every preplaced row runs from day 0 to its finish day (the from-now caller insists
+// on it in `pins_placed_badly`), so a closure of [0, finish) covers every day that row covers. A fold that lands on a
+// lane already held at least as long records nothing new, and that is sound: the fold chose the least-loaded lane, so
+// every OTHER lane is held at least as long too -- exactly when the held rows alone already fill the cap and nothing
+// new may start at all. A fold absorbed by an unclaimed row's own finish day only ever closes a lane for longer than
+// the held row needed, which delays placements and never launches an extra one.
+fn preplaced_lanes(preplaced: List<Placement>, workers: Int) -> Map<Int, Int> {
   fold(preplaced, init: empty_map(), f: fn(acc, p) {
-    if look_key(m: acc, key: p.lane, dflt: 0) < p.finish_day {
-      map_insert(m: acc, key: p.lane, value: p.finish_day)
+    if p.lane < workers {
+      if look_key(m: acc, key: p.lane, dflt: 0) < p.finish_day {
+        map_insert(m: acc, key: p.lane, value: p.finish_day)
+      } else {
+        acc
+      }
     } else {
-      acc
+      let lane = scan_lanes(i: 0, workers: workers, lanes: acc, best_lane: 0, best_free: look_key(m: acc, key: 0, dflt: 0))
+      let held = look_key(m: acc, key: lane, dflt: 0)
+      if p.finish_day > held { map_insert(m: acc, key: lane, value: p.finish_day) } else { acc }
     }
   })
 }
@@ -441,13 +464,13 @@ fn place(input: PlacementInput) -> PlacementOutcome {
       let to_place = filter(order, n => !map_contains_key(m: pre_keys, key: n.key))
       let buckets = rank_buckets(order: order, rank: rank, preplaced_keys: pre_keys)
       let started = match argmax_row_rank(rows: to_place, rank: rank) {
-        Absent => PlaceState { placed: input.preplaced, finish: preplaced_finish(preplaced: input.preplaced), lanes: preplaced_lanes(preplaced: input.preplaced), bucket: [], rank_now: -1 }
+        Absent => PlaceState { placed: input.preplaced, finish: preplaced_finish(preplaced: input.preplaced), lanes: preplaced_lanes(preplaced: input.preplaced, workers: input.workers), bucket: [], rank_now: -1 }
         Present { value: first_row } => {
           let top_rank = look_or(m: rank, key: first_row.key, dflt: 0)
           PlaceState {
             placed: input.preplaced,
             finish: preplaced_finish(preplaced: input.preplaced),
-            lanes: preplaced_lanes(preplaced: input.preplaced),
+            lanes: preplaced_lanes(preplaced: input.preplaced, workers: input.workers),
             bucket: look_key(m: buckets, key: top_rank, dflt: [] as List<PlacementRow>),
             rank_now: top_rank,
           }

@@ -33,7 +33,7 @@ import product.network_topology {
 }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_mtcollins1, operator_host_e2d4b7,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_mtcollins1, operator_host_e2d4b7,
 }
 
 
@@ -228,30 +228,21 @@ data ken_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-data srv10_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv10-host-lan",
-  subject: EndpointHost { host: operator_host_srv10 },
-  address: "192.168.1.237",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
-data srv11_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv11-host-lan",
-  subject: EndpointHost { host: operator_host_srv11 },
-  address: "192.168.1.238",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
-data srv12_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv12-host-lan",
-  subject: EndpointHost { host: operator_host_srv12 },
-  address: "192.168.1.239",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
+// THE OTHER THREE GROUP B SLOTS FOLLOW srv9, ABOVE, FOR THE SAME REASON AND ON THE SAME RULING.
+// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) is the operator's ruling of 2026-10-10:
+// "Group B (srv9-srv12) is sold too: every one of the eight procured units is now sold, and none may remain a
+// reachable fleet host", and @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries each of these
+// router labels at its former slot as a sold asset. srv10_host_lan_endpoint (.237), srv11_host_lan_endpoint
+// (.238) and srv12_host_lan_endpoint (.239) are deleted here for that reason -- not rostered, not annotated as
+// reserved: a sold unit that keeps a LAN endpoint declaration is exactly the "reachable fleet host" the ruling
+// forbids. They were never in the endpoints roster either, which is the actual defect this deletion exposes:
+// three rows naming three addresses that no consumer folded over, so no mode could reach them AND no check could
+// notice an address they named being claimed a second time. Their absence is not the guard; the guard is
+// test.claim.fleet.fleet_intent_network_witness::fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row,
+// which refuses any rostered endpoint whose subject is one of the four sold hosts. The identity rows
+// (operator_host_srv10/11/12 in gunbc.fleet.fleet_host_identity) are KEPT: a sold unit may stay in the register
+// as history, and that is the difference between an identity and an endpoint. 192.168.1.238 is not claimed here
+// as anyone's new address -- srv14/butch's lease at that address is a dated observation carried by PR #16655.
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   subject: EndpointHost { host: operator_host_srv1 },

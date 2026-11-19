@@ -48,6 +48,35 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // count. The claim day travels beside it as a DATE in this unit's own row (PinRow.claimed_on), so a Gantt can draw
 // the bar back to the day the work was taken up without a day number being invented for the past.
 //
+// CONSUMERS (gunbc.design_argument::consumption). Consumed in this change: the witness
+// test.claim.roadmap.roadmap_schedule_from_now_witness -- 17 claims over planted logs, carrying the ticket's red controls (the leaf
+// claimed three days ago with five days of work finishing at DAY TWO of the read; the prior already exhausted being
+// REFUSED by name rather than pinned at zero) and printing the ticket's handback (the pinned rows named, the
+// day-two control output, the diff), which is what from_now_output and from_now_diff exist for: the handback IS the
+// acceptance record of this row. DECLARED FRONTIER, the production consumers, in the order the carrier's own edges
+// put them (dag/gunbc/roadmap/roadmap_authority.dag: edge(child: "roadmap-schedule-bottlenecks-and-offer", parent:
+// "roadmap-schedule-from-now"), then roadmap-work-item-projection, then roadmap-timeline-page): the next row reads
+// THIS answer -- its ticket asks for bottlenecks and the offer "computed from the schedule as of today", which is
+// this read's ScheduleAnswer and its pinned rows -- the projection shows it, and the timeline page draws the Gantt
+// the operator asked for. The trigger is this module being on main; those rows are dispatchable and each waits on
+// this one. Until then this read is answered only by the witnesses, and that is the frontier, not a decoration:
+// building the offer or the page here would be the next row's work, which this ticket's out_of_scope forbids
+// ("no bottlenecks and no offer, which is the next row's answer").
+//
+// WHY A READ FROM TODAY CARRIES DATES. gunbc.design_argument::plans_are_intentions, over the 2026-11-17 narrowing
+// gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc, inside the boundary that
+// gunbc.design_ruling::planning_scheduling_is_cut keeps: this unit is not a second planning home and stores no
+// plan. It is the read of a
+// plan already carried in this repository's one planning home (the roadmap carriers) at the moment the read happens.
+// Its ticket's boundary states the fact in those words -- "the answer is the schedule as of the read" -- and its red
+// control is a day number, so a read carrying no date cannot state the fact the row asks for. The date it anchors on
+// is not a forecast: claimed_on is the recorded_at of the hold that STANDS, an event the producers wrote into the item
+// log (#16703), turned into elapsed working days by #16709's one span rule; that is the whole point of the row
+// ("the pin rests on a realized fact and not on a forecast"). Nothing here becomes a dependency or a gate, and no
+// schedule is stored: the answer is recomputed from the carrier and the log on every call, and #16695's cache form
+// stays derived and never authoritative (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// What is decided from those dates is the next row's question -- what to start next, and what is holding the line.
+//
 // FAIL CLOSED (@ref gunbc.design_argument::fail_closed). A pin whose remaining days cannot be worked out is REFUSED
 // BY NAME, never pinned at zero: an unreadable claim stamp, a prior the carrier never declared, a claim recorded
 // after the read date, and -- the one a running item hits first -- a prior already exhausted by the elapsed days,
@@ -92,11 +121,9 @@ import gunbc.roadmap.roadmap_schedule {
   NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
   path_key, schedule, schedule_pinned,
 }
-
-// `look_or` MOVED with the placement extraction. It is the shared core's total map read now, so this caller
-// reads it at its new address rather than through roadmap_schedule, which no longer owns it: the same function,
-// the same total-read semantics, only the publishing module changed. The repoint lives in the change that moves
-// the helper, so no branch carries an alias for it and no tree imports a module its own base does not have.
+// `look_or` moved with the placement core: this unit reads the successor map the same total read builds, and the core
+// is where that read lives now. The repoint lives HERE (not on still-swift-742's branch) because their base has no
+// roadmap_placement to import from -- their PR landed first, this merge repoints against a main that does.
 import gunbc.roadmap.roadmap_placement { look_or }
 
 // THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
@@ -119,6 +146,12 @@ type ItemLog {
 type PinRow {
   leaf: LeafPath
   claimed_on: Iso8601CivilDate
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family. These three are
+  // WORKING-DAY counts, not calendar days: `prior` is read through roadmap_decomposition::piece_member_days, so it
+  // inherits the grain of the tracked row on WorkPiece.days, and `elapsed`/`remaining` come out of
+  // roadmap_leaf_realized_duration::realized_span, which counts through roadmap_schedule_calendar::
+  // working_days_between. `lane` below is a worker index, not a day count, and carries no marker. This unit mints no
+  // competing working-day type, because std.measure owns that type.
   prior: Int
   elapsed: Int
   remaining: Int
@@ -136,6 +169,9 @@ type PinRefusal
   | ClaimDayAfterRead { leaf: LeafPath, claimed_on: Iso8601CivilDate, read_on: Iso8601CivilDate }
   // THE PRIOR IS ALREADY EXHAUSTED by the days that have elapsed. The leaf is overdue: it is still held (nothing
   // released or accepted it), so showing it as a bar that ends at day 0 would claim it finished. Refused per leaf.
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- `prior` and
+  // `elapsed` here are the same WORKING-DAY counts as PinRow's (carrier prior; calendar-rule span), compared rather
+  // than printed as a schedule row.
   | OverduePriorExhausted { leaf: LeafPath, claimed_on: Iso8601CivilDate, prior: Int, elapsed: Int }
   // The carrier declares no working-day prior for the leaf the log claims, so there is nothing to subtract from.
   | NoDeclaredPrior { leaf: LeafPath, claimed_on: Iso8601CivilDate }

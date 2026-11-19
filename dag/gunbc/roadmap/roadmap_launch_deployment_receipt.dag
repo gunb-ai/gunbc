@@ -5,7 +5,7 @@ import std.algebra { list_head }
 
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
 
-import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability, OwedReportContradiction }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.measure { second_count }
@@ -687,10 +687,14 @@ fn apply_outcome_blockers(s: RoadmapLaunchDeploymentSubject, f: ApplyReceiptFact
       concat(
         match a.terminal {
           FullyApplied => []
-          PartiallyApplied { refused_axis_count: n, detail: d } =>
+          PartiallyApplied { refused_axis_count: n, owed: _, detail: d } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is PartiallyApplied (", to_string(n), " refused axes): ", d], ""))
           AwaitingCapability { capability: c } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is AwaitingCapability: ", c], ""))
+          // A contradiction in the apply's own owed report is a blocker like any other unmet terminal, and
+          // it is NOT reported as a capability to wait for: no grant lifts it.
+          OwedReportContradiction { detail: d } =>
+            blocker(member: "apply_receipt", detail: join(["fleet apply terminal is OwedReportContradiction: ", d], ""))
         },
         if a.expected_revision_admitted != s.revision {
           blocker(member: "apply_receipt", detail: join(["apply admitted expected revision ", a.expected_revision_admitted, ", not R=", s.revision], ""))
