@@ -3,6 +3,7 @@ module extdeps.ssh.session
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit, String }
+import std.measure { Second }
 import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -60,6 +61,52 @@ type SshSessionExecResult {
   // behavior. The exit code stays the child's real code, irrelevant when overran is true.
   overran: Bool = false
   wall_deadline_seconds: Option<Second> = Absent
+}
+
+// THE MODEL VIEW OF A FLEET LEG'S SESSION EXEC.
+//
+// A leg either COMPLETED (a real remote exit code, with whatever stdout/stderr came back) or it
+// OVERRAN the total-wall deadline its CALLER passed (the sink's kill fired), in which case the
+// deadline is a VALUE it carries. The wire record `SshSessionExecResult` keeps `overran: Bool` +
+// `wall_deadline_seconds: Option<Second>` because that pair is the service JSON shape; this SUM is
+// what the model consumes. It is produced at exactly ONE site (`ssh_session_exec_outcome` below),
+// which REFUSES, by name, the two combinations the wire admits but the model forbids: an overrun
+// with no deadline, and a completed leg carrying a deadline. After this, no consumer reads the Bool.
+type SshSessionExecOutcome
+  = SessionCompleted { exit_code: Int, success: Bool, stdout: String, stderr: String }
+  | SessionOverran { deadline: Second }
+  | SessionWireInconsistent { fault: SshSessionWireFault }
+
+// The two illegal wire combinations, named. Each is a sink/transport bug surfaced as a typed
+// refusal, never silently coerced into completion or a fabricated deadline.
+type SshSessionWireFault = OverrunWithoutDeadline | DeadlineWithoutOverrun
+
+fn ssh_session_exec_wire_refusal_text(fault: SshSessionWireFault) -> String {
+  match fault {
+    OverrunWithoutDeadline => "ssh session reported overran=true but echoed no wall deadline: a tripped per-leg deadline must be echoed as its value"
+    DeadlineWithoutOverrun => "ssh session echoed a wall deadline but overran=false: a leg that completed does not report a deadline it never tripped"
+  }
+}
+
+// THE ONE DECODE SITE: wire record -> model sum. The illegal combinations are refused HERE and
+// nowhere else; every consumer matches the sum instead of reading `overran`/`wall_deadline_seconds`.
+fn ssh_session_exec_outcome(result: SshSessionExecResult) -> SshSessionExecOutcome {
+  match result.overran {
+    true => match result.wall_deadline_seconds {
+      Present { value: d } => SessionOverran { deadline: d }
+      Absent => SessionWireInconsistent { fault: OverrunWithoutDeadline }
+    }
+    false => match result.wall_deadline_seconds {
+      Absent =>
+        SessionCompleted {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        }
+      Present { value: _ } => SessionWireInconsistent { fault: DeadlineWithoutOverrun }
+    }
+  }
 }
 
 service ssh.Session {
