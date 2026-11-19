@@ -908,7 +908,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       findings_family(label: "one divergence dispositioned", days: 2, probe: "computed once over the current route; divergences listed (probe)", owner: "native-production-admission"),
     ],
     [
-      leaf(label: "NativeProductionAdmitted receipt", days: 3),
+      leaf(label: "NativeProductionAdmitted receipt with sole-resolver control and import refusals from both parsers", days: 3),
     ],
   ]),
   decomposition(node: "demand-d13-dependency-demand", waits_on: [
