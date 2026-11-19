@@ -478,7 +478,11 @@ fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapac
   match e {
     ExpansionRejected { cause: cause } =>
       NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
-    Expanded { occurrences: occs, edges: edges, omitted_composites: _ } => {
+    // unresolved_waits is NOT consumed here: a wait onto an occurrence-less milestone / project Join is cross-item
+    // ordering, which no lane schedules yet (out_of_scope of roadmap-schedule-barrier-through-empty-stages). It is
+    // reported on the Expansion, not silently dropped here -- the expansion says it, the scheduler simply has no lane
+    // for it yet. Reading the report is a later item; inventing an order for it now would be fabricating an edge.
+    Expanded { occurrences: occs, edges: edges, omitted_composites: _, unresolved_waits: _ } => {
       if worker_count <= 0 {
         NotScheduled { refusal: ConcurrencyCapInvalid { cap: workers } }
       } else {
