@@ -1106,6 +1106,13 @@ data schedule_answers_are_computed_cached_and_re_read: DesignRuling = DesignRuli
   provenance: "Operator, 2026-11-18, answering whether a schedule answer computed at the read -- start and finish per leaf, the lanes, the critical path and the next-leaf offer -- is inside gunbc.design_ruling::planning_scheduling_is_cut, which cut scheduling on 2026-11-11. Operator words, verbatim: \"yeah we cut the schedulinga nd are redoing it now - but yes, you should compute it/cache it/re-read it - the planning we did now is relevant\". RULED, in those words: the schedule is COMPUTED from the carriers and the item event log; it MAY be cached; a cache is derived and NEVER authoritative, so no cached answer is a schedule type, a time-period record, forecast state or a synchronized today list; and the answer is RECOMPUTED ON READ. This narrows gunbc.design_ruling::planning_scheduling_is_cut, whose target was the stored schedule and the operator's own consumption of it, not an answer derived at the read; and it stands beside gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc, which made a dated estimate with a basis the clock. INTERPRETATION (not operator words): \"the planning we did now is relevant\" affirms the brief this lane was given, whose done-when is that the next-leaf offer is accepted by the belt as its spawn input -- so the offer is the belt's selection basis among leaves the readiness predicate already admits, bounded by BeltCapacity, and the readiness predicate stays the gate on what may start at all. Correctable by the operator."
 }
 
+data roadmap_scheduling_units_belong_to_factory: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "roadmap_scheduling_units_belong_to_factory"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "The operator chose \"Existing factory project\" for the containment of the 14 scheduling and dispatch units declared by gunb-ai/gunbc#16650 (decision msg_0b5d7e3d-f565-4acb-adca-e80d4d375669 on msg_47ac36f4-44c1-4a80-ac9f-daf987042dd1). The factory project owns the daily workspace and workers. The units serve gunbc.plans.planning_consolidation."
+}
+
 data the_ctrl_dashboard_renders_the_planning_page: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_ctrl_dashboard_renders_the_planning_page"),
   decided: "2026-11-18",
@@ -1122,6 +1129,7 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    roadmap_scheduling_units_belong_to_factory,
     schedule_answers_are_computed_cached_and_re_read,
     claims_name_their_leaf_from_the_first_landing,
     a_split_handback_is_accepted_by_the_manager,

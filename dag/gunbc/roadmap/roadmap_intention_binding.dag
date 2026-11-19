@@ -135,7 +135,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "roadmap-schedule-calendar-binding", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),
   serves(node: "roadmap-claim-names-leaf", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 0),
   serves(node: "roadmap-leaf-in-flight-set", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
-  serves(node: "roadmap-leaf-realized-duration", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),
+  serves(node: "roadmap-leaf-realized-duration", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 3),
   serves(node: "roadmap-schedule-from-now", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 3),
   serves(node: "roadmap-schedule-bottlenecks-and-offer", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 4),
   serves(node: "roadmap-spawn-frontier-leaf-grain", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 2),

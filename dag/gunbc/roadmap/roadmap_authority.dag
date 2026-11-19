@@ -5234,7 +5234,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
     ),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
-    // the schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
+    // The workspace and its workers belong to factory (@ref(gunbc.design_ruling::roadmap_scheduling_units_belong_to_factory)).
+    // The schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
     // binds its days, claims that name a leaf, the in-flight set and the realized durations derived
     // from the log, the schedule from now, its bottlenecks and its offer, the leaf-grain frontier and
     // the dispatch that carries a leaf, the typed handback, the projection every reader reads and the
@@ -5255,7 +5256,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The occurrence list for one decomposition at a declared count, the refusal output for the planted stage, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
+      parent: in_project(project: "factory", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8N43DQ0V7XT2EZKX04",
@@ -5272,7 +5273,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The schedule output for both fixtures (start and finish per leaf, lanes, in-flight count per day, critical path), the two refusal outputs, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
+      parent: in_project(project: "factory", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8PQK11YFYV0QV0SM74",
@@ -5289,7 +5290,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The dated output for one read, the weekend output and the one-week-later output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
+      parent: in_project(project: "factory", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8QQ2EYRW11GZWGRFTB",
@@ -5306,7 +5307,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted append, the refused append output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
+      parent: in_project(project: "factory", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8R27QGW6MFE9WB6G4F",
@@ -5323,7 +5324,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The derived set for the planted log with and without the release, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
+      parent: in_project(project: "factory", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8S3EY06Q6JCZA2F57G",
@@ -5340,7 +5341,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The fold output for a leaf with a realized duration and for an accepted leaf with no claim, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+      parent: in_project(project: "factory", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
@@ -5357,7 +5358,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The from-now output for the fixture with the pinned rows named, the day-two control output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
+      parent: in_project(project: "factory", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8VN1APM29K9AV9YE29",
@@ -5374,7 +5375,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The bottleneck list and the offer for the fixture, the off-path control output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+      parent: in_project(project: "factory", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
@@ -5391,7 +5392,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The frontier output for the two planted cases, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
+      parent: in_project(project: "factory", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8XJ9DVYGSNMZKP8WKJ",
@@ -5408,7 +5409,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The three outputs, the capacity bound as observed, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
+      parent: in_project(project: "factory", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8Y40BD0A4SBDMW0J60",
@@ -5425,7 +5426,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted and refused handback outputs, the carrier unchanged on the refusals, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
+      parent: in_project(project: "factory", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8ZNA89SDC0ZXCHA2DS",
@@ -5442,7 +5443,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The two JSON rows, the planted-binding refusal output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+      parent: in_project(project: "factory", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR90N2HGC2XA1WMQFRFK",
@@ -5459,7 +5460,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The rendered page for the fixture read, the planted-value refusal output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
+      parent: in_project(project: "factory", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR91VNF088PHY2G7X5PK",
@@ -5476,7 +5477,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted append, the refused append output with the log unchanged, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
+      parent: in_project(project: "factory", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
     ),
   ], guarantee_ladder_nodes())
 }
