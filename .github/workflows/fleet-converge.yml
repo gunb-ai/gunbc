@@ -16,12 +16,12 @@ on:
       host:
         description: "Executor fleet host (runner pinned here; plan mode observes this host). hostname_converge only: the EXECUTING PEER -- this is the one mode whose runner is not the machine it renames, because the target's own runner label is the label the rename window retires; it must not name the same host as subject_host, which the pair law in gunbc.host.host_hostname_converge hostname_converge_select refuses in the build job"
         required: true
-        options: [srv1, srv2, srv3, srv4, srv14, mtcollins1]
+        options: [srv1, srv2, srv3, srv4, srv14, host-e2d4b7, mtcollins1]
         type: choice
       subject_host:
         description: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg. desired_instance_deploy ONLY: the value is PACKED '<host>:<instance_id>' (e.g. srv1:srv1-lab-codex-feedback-v0) -- the host still means the host, and the ONE instance to converge rides on it after the colon; the options list carries those packed rows, derived from the srv1 roster minus the prod-role holder. A typed parser reads both halves and the deploy refuses a malformed value, a host that is not the instance's own roster host, or the prod-role holder."
         required: false
-        options: [srv1, srv2, srv3, srv4, srv14, mtcollins1, srv1:srv1-lab-codex-feedback-v0]
+        options: [srv1, srv2, srv3, srv4, srv14, host-e2d4b7, mtcollins1, srv1:srv1-lab-codex-feedback-v0]
         type: choice
       arrival_subject:
         description: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1"
@@ -36,7 +36,7 @@ on:
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
         required: false
-        options: [srv1, srv2, srv3, srv4, srv14]
+        options: [srv1, srv2, srv3, srv4, srv14, host-e2d4b7]
         type: choice
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names"
@@ -3002,6 +3002,7 @@ jobs:
           cat "$ROOT/target/managed-host-network-install-receipt.txt"
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
         if: github.event.inputs.mode == 'managed_host_network_install'
         timeout-minutes: 45
       - name: Upload managed host network install receipt
@@ -3395,7 +3396,7 @@ jobs:
     timeout-minutes: 115
     if: github.event.inputs.mode == 'host_reset_return'
     concurrency:
-      group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\", \"srv14\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
+      group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\", \"srv14\": \"mtcollins1\", \"host-e2d4b7\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
       cancel-in-progress: false
     steps:
       - name: Checkout (the event sha only; no dispatch input selects these bytes)
