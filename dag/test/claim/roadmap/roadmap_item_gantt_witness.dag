@@ -7,13 +7,14 @@
 // rather than being drawn around.
 module test.claim.roadmap.roadmap_item_gantt_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge, Pointer, NodeParent, MemberOf, AdmittedRoot, NotDispatchable }
+import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid, edge }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import gunbc.roadmap.roadmap_decomposition { decomposition_for, expand_decomposition }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition, roadmap_decompositions }
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
@@ -27,17 +28,55 @@ import gunbc.roadmap.roadmap_item_gantt {
 
 // ============================== THE FIXTURE ==============================
 
-// The same three-level containment chain the derivation witnesses use, taken from the authority by id: debt-payoff >
-// dp-m1-dissolvable-rows-retired > three dissolvable-row nodes. Containment only -- the prerequisite case is built
-// below out of fixture edges, which is what keeps the two relations from being confused in either direction.
+// THE FIXTURE IS SYNTHETIC AND SUPPLIED WHOLE: the nodes, the edges, the entries and the decomposition table are all
+// arguments of the read, never globals it reaches for. The shape is the three-level containment chain the derivation
+// witnesses use -- a project, a milestone under it, three pieces of work under the milestone -- under fixture slugs,
+// so a control says the same thing on the day a production row gains an estimate or a decomposition. A control that
+// filtered the declared roadmap by real slug and asserted "these are unpriced" would be asserting whatever production
+// happens to be that day; that is the brittleness this avoids. The two live controls at the bottom of this file are
+// the deliberate exception: they exist to answer over the DECLARED roadmap, and they pass the DECLARED table.
+fn fixture_fields(headline: String) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: "witness fixture: containment only, no delivery claim",
+    displaced_cost: "fixture displaced cost",
+    current_state: "fixture current state",
+    first_slice: "fixture first slice",
+    red_control: "fixture red control",
+    out_of_scope: "fixture out of scope",
+    handback: "fixture handback",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
+}
+
+fn fixture_node(slug: String, parent: NodeParent?) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["fixture_identity_", slug], "") as RoadmapNodeIdentity,
+    node: slug as RoadmapNodeId,
+    line: TicketLine { ticket: fixture_fields(headline: slug) },
+    carriers: [] as List<Pointer>,
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "item-gantt-fixture",
+    parent: parent,
+    centering: none,
+  }
+}
+
+fn fixture_under(project: String) -> NodeParent? {
+  Present { value: MemberOf { project: project, contribution: "fixture containment" as NonEmptyStr } }
+}
+
 fn fixture_nodes() -> List<RoadmapNode> {
-  filter(declared_roadmap_nodes(), n =>
-    n.node == nid(s: "debt-payoff")
-      || n.node == nid(s: "dp-m1-dissolvable-rows-retired")
-      || n.node == nid(s: "debt-expected-red-mock-totality-dead-rows")
-      || n.node == nid(s: "debt-exclusion-frontier-excludes-nothing")
-      || n.node == nid(s: "debt-rung-drop-measurement-bankruptcy-retire")
-  )
+  [
+    fixture_node(slug: "fixture-payoff", parent: AdmittedRoot),
+    fixture_node(slug: "fixture-milestone", parent: fixture_under(project: "fixture-payoff")),
+    fixture_node(slug: "fixture-leaf-a", parent: fixture_under(project: "fixture-milestone")),
+    fixture_node(slug: "fixture-leaf-b", parent: fixture_under(project: "fixture-milestone")),
+    fixture_node(slug: "fixture-leaf-c", parent: fixture_under(project: "fixture-milestone")),
+  ]
 }
 
 fn node_of(slug: String) -> Optional<RoadmapNode> {
@@ -65,11 +104,18 @@ fn read_date() -> Iso8601CivilDate { d(y: 2026, m: 11, day: 19) }
 
 fn lanes(count: Int) -> BeltCapacity { BeltCapacity { max_concurrent: count } }
 
+// A FIXTURE READ: the empty pieces table, because no fixture item owns pieces. The decomposition table is an
+// argument of the read (see GanttInput.pieces), which is what makes "prices none" a fact about the input.
 fn read(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, entries: List<EstimateEntry>) -> GanttAnswer {
+  read_with_pieces(nodes: nodes, edges: edges, entries: entries, pieces: [] as List<WorkDecomposition>)
+}
+
+fn read_with_pieces(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>) -> GanttAnswer {
   gantt_answer(input: GanttInput {
     nodes: nodes,
     edges: edges,
     entries: entries,
+    pieces: pieces,
     workers: lanes(3),
     findings_count: 1,
     read_date: read_date(),
@@ -119,8 +165,8 @@ test fn an_unpriced_roadmap_lists_every_node_and_prices_none() -> Bool {
 // A PRICED LEAF IS PLACED, and its days bind to dates through the SAME calendar the leaf grain binds with
 // (gunbc.roadmap.roadmap_schedule_calendar), so one calendar answers both grains and no date is authored anywhere.
 test fn a_priced_leaf_is_placed_and_its_days_bind_to_dates() -> Bool {
-  let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10)])
-  match row_of(a: a, slug: "debt-expected-red-mock-totality-dead-rows") {
+  let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [planted(slug: "fixture-leaf-a", days: 10)])
+  match row_of(a: a, slug: "fixture-leaf-a") {
     Absent => false
     Present { value: row } => match row.state {
       RowPlaced { start_day: s, finish_day: f, lane: l, start: sd, finish: fd } => s == 0 && f == 10 && l == 0
@@ -141,12 +187,12 @@ test fn a_priced_leaf_is_placed_and_its_days_bind_to_dates() -> Bool {
 // workers" means.
 test fn independent_leaves_start_together_on_different_lanes() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
-    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12),
+    planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 12),
   ])
-  match row_of(a: a, slug: "debt-expected-red-mock-totality-dead-rows") {
+  match row_of(a: a, slug: "fixture-leaf-a") {
     Absent => false
-    Present { value: x } => match row_of(a: a, slug: "debt-exclusion-frontier-excludes-nothing") {
+    Present { value: x } => match row_of(a: a, slug: "fixture-leaf-b") {
       Absent => false
       Present { value: y } => match x.state {
         RowPlaced { start_day: xs, finish_day: _, lane: xl, start: _, finish: _ } => match y.state {
@@ -173,12 +219,12 @@ test fn independent_leaves_start_together_on_different_lanes() -> Bool {
 // which is the whole point of containment-only rollup. Ordering is the only thing an edge is allowed to do here
 // (gunbc.design_ruling::planning_scheduling_is_cut: a date or an estimate is never a gate; a waiting relation is).
 test fn a_prerequisite_delays_the_task_that_waits_on_it() -> Bool {
-  let a = read(nodes: fixture_nodes(), edges: [edge(child: "debt-exclusion-frontier-excludes-nothing", parent: "debt-expected-red-mock-totality-dead-rows")], entries: [
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
-    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12),
+  let a = read(nodes: fixture_nodes(), edges: [edge(child: "fixture-leaf-b", parent: "fixture-leaf-a")], entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 12),
   ])
-  match placed_days(r: row_of(a: a, slug: "debt-exclusion-frontier-excludes-nothing")) {
-    Present { value: d1 } => d1 == 12 && start_of(a: a, slug: "debt-exclusion-frontier-excludes-nothing") == 10
+  match placed_days(r: row_of(a: a, slug: "fixture-leaf-b")) {
+    Present { value: d1 } => d1 == 12 && start_of(a: a, slug: "fixture-leaf-b") == 10
     Absent => false
   }
 }
@@ -201,13 +247,13 @@ fn start_of(a: GanttAnswer, slug: String) -> Int {
 // A ROW WAITING ON SOMETHING UNPRICED IS BLOCKED AND NAMES IT, rather than being placed at day 0 as if the missing
 // price were a missing dependency: the start this read cannot earn is not drawn.
 test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
-  let a = read(nodes: fixture_nodes(), edges: [edge(child: "debt-expected-red-mock-totality-dead-rows", parent: "debt-rung-drop-measurement-bankruptcy-retire")], entries: [
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
+  let a = read(nodes: fixture_nodes(), edges: [edge(child: "fixture-leaf-a", parent: "fixture-leaf-c")], entries: [
+    planted(slug: "fixture-leaf-a", days: 10),
   ])
-  match row_of(a: a, slug: "debt-expected-red-mock-totality-dead-rows") {
+  match row_of(a: a, slug: "fixture-leaf-a") {
     Absent => false
     Present { value: row } => match row.state {
-      RowBlocked { behind: b } => count(filter(b, x => x == nid(s: "debt-rung-drop-measurement-bankruptcy-retire"))) == 1
+      RowBlocked { behind: b } => count(filter(b, x => x == nid(s: "fixture-leaf-c"))) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
       RowUnsized { why: _ } => false
@@ -222,10 +268,10 @@ test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
 // listed, so an answer never quietly drops the work nobody looked at.
 test fn an_unpriced_sibling_is_listed_beside_a_placed_one() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
-    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12),
+    planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 12),
   ])
-  match row_of(a: a, slug: "debt-rung-drop-measurement-bankruptcy-retire") {
+  match row_of(a: a, slug: "fixture-leaf-c") {
     Absent => false
     Present { value: row } => match row.state {
       RowUnsized { why: _ } => match row.work_days { Absent => true, Present { value: _ } => false }
@@ -244,11 +290,11 @@ test fn an_unpriced_sibling_is_listed_beside_a_placed_one() -> Bool {
 // the same double-representation the ruling forbids on the pricing side.
 test fn a_derived_parent_spans_its_children_and_holds_no_lane() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
-    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12),
-    planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8),
+    planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 12),
+    planted(slug: "fixture-leaf-c", days: 8),
   ])
-  match row_of(a: a, slug: "dp-m1-dissolvable-rows-retired") {
+  match row_of(a: a, slug: "fixture-milestone") {
     Absent => false
     Present { value: row } => match row.state {
       RowRollup { start_day: s, finish_day: f, start: _, finish: _ } => s == 0 && f == 12
@@ -269,8 +315,8 @@ test fn a_derived_parent_spans_its_children_and_holds_no_lane() -> Bool {
 // refusal the ruling demands).
 test fn a_contradiction_refuses_the_whole_picture_by_name() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [
-    planted(slug: "dp-m1-dissolvable-rows-retired", days: 5),
-    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10),
+    planted(slug: "fixture-milestone", days: 5),
+    planted(slug: "fixture-leaf-a", days: 10),
   ])
   match gantt_refusal(a: a) {
     Absent => false
@@ -278,7 +324,7 @@ test fn a_contradiction_refuses_the_whole_picture_by_name() -> Bool {
       GanttContradictionsPresent { contradictions: clashes } => count(clashes) == 1
         && match first(clashes) {
           Absent => false
-          Present { value: c } => c.ancestor == nid(s: "dp-m1-dissolvable-rows-retired") && c.descendant == nid(s: "debt-expected-red-mock-totality-dead-rows")
+          Present { value: c } => c.ancestor == nid(s: "fixture-milestone") && c.descendant == nid(s: "fixture-leaf-a")
         }
       _ => false
     }
@@ -291,7 +337,8 @@ test fn a_read_with_no_workers_refuses_naming_the_capacity() -> Bool {
   let a = gantt_answer(input: GanttInput {
     nodes: fixture_nodes(),
     edges: [] as List<RoadmapEdge>,
-    entries: [planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10)],
+    entries: [planted(slug: "fixture-leaf-a", days: 10)],
+    pieces: [] as List<WorkDecomposition>,
     workers: lanes(0),
     findings_count: 1,
     read_date: read_date(),
@@ -314,7 +361,7 @@ test fn a_read_with_no_workers_refuses_naming_the_capacity() -> Bool {
 test fn an_item_that_owns_pieces_borrows_its_elapsed_from_the_leaf_scheduler() -> Bool {
   let item = "namespace-reference-derived-closure"
   let leaf_read = leaf_grain_answer(item: item)
-  let a = read(nodes: declared_roadmap_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>)
+  let a = read_with_pieces(nodes: declared_roadmap_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: roadmap_decompositions)
   match row_of_live(a: a, slug: item) {
     Absent => false
     Present { value: row } => match leaf_read {

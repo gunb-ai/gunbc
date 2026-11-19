@@ -44,7 +44,7 @@ import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decompositions_in, roadmap_decompositions, expand_decomposition }
 import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, ScheduleRefusal, schedule }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_placement {
@@ -118,6 +118,10 @@ type GanttInput {
   nodes: List<RoadmapNode>
   edges: List<RoadmapEdge>
   entries: List<EstimateEntry>
+  // THE DECOMPOSITION TABLE this read prices against, carried as a value and never read as a hidden global: the live
+  // read passes `roadmap_decompositions` and answers exactly what it always did, and a witness passes the empty list
+  // to get a roadmap with no pieces under it. Same filter, same totals, one table (single_authority).
+  pieces: List<WorkDecomposition>
   workers: BeltCapacity
   findings_count: Int
   read_date: Iso8601CivilDate
@@ -129,6 +133,9 @@ type GanttFacts {
   input: GanttInput
   priced: List<PricedNode>
   days: List<NodeDays>
+  // THE LEAF-GRAIN READ, once per item that owns pieces, keyed by that item. Both consumers -- the duration and the
+  // refusal -- read this map; neither re-runs the leaf scheduler.
+  leaf_reads: Map<String, LeafGrainRead>
   work_keys: Map<String, Bool>
   children: Map<String, List<RoadmapNode>>
   expanded: List<PlacementEdge>
@@ -150,10 +157,10 @@ type NodeDays {
 // over an estimate that contradicts its own child is not a schedule, it is a picture -- so it is reported instead
 // (the ruling's clause, and the operator's 1w-over-2w case, are the witnesses).
 fn gantt_answer(input: GanttInput) -> GanttAnswer {
-  let clashes = estimate_contradictions(nodes: input.nodes, entries: input.entries)
+  let clashes = estimate_contradictions_in(nodes: input.nodes, entries: input.entries, pieces: input.pieces)
   let malformed = concat(
-    estimate_refusals(nodes: input.nodes, entries: input.entries),
-    restated_piece_days(nodes: input.nodes, entries: input.entries)
+    estimate_refusals_in(nodes: input.nodes, entries: input.entries, pieces: input.pieces),
+    restated_piece_days_in(nodes: input.nodes, entries: input.entries, pieces: input.pieces)
   )
   if count(clashes) > 0 {
     GanttRefused { refusal: GanttContradictionsPresent { contradictions: clashes } }
@@ -170,8 +177,11 @@ fn gantt_answer(input: GanttInput) -> GanttAnswer {
 
 // THE INDEXES, built once per read.
 fn build_facts(input: GanttInput) -> GanttFacts {
-  let priced = map(input.nodes, n => PricedNode { node: n, source: node_source(nodes: input.nodes, entries: input.entries, n: n) })
-  let days = map(priced, p => NodeDays { node: p.node.node, days: row_days(input: input, p: p) })
+  let priced = map(input.nodes, n => PricedNode { node: n, source: node_source_in(nodes: input.nodes, entries: input.entries, pieces: input.pieces, n: n) })
+  // THE LEAF GRAIN IS ASKED ONCE PER ITEM THAT OWNS PIECES, here and nowhere else: the same stored read answers the
+  // item's duration AND its refusal, so no second pass re-runs the leaf scheduler over the same decomposition.
+  let leaf_reads = leaf_grain_index(input: input, priced: priced)
+  let days = map(priced, p => NodeDays { node: p.node.node, days: row_days(input: input, reads: leaf_reads, p: p) })
   let work = fold(priced, init: empty_map(), f: fn(acc, p) { if owns_work(p: p) { map_insert(m: acc, key: p.node.node as String, value: true) } else { acc } })
   let kids = fold(input.nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.node as String, value: contained_children(nodes: input.nodes, parent: n.node)) })
   let expanded = flat_map(input.edges, e => {
@@ -183,11 +193,11 @@ fn build_facts(input: GanttInput) -> GanttFacts {
     let none_yet: List<String> = []
     map_insert(m: acc, key: e.from, value: list_push(xs: look_string(m: acc, key: e.from, dflt: none_yet), item: e.to))
   })
-  GanttFacts { input: input, priced: priced, days: days, work_keys: work, children: kids, expanded: expanded, successor: successor }
+  GanttFacts { input: input, priced: priced, days: days, leaf_reads: leaf_reads, work_keys: work, children: kids, expanded: expanded, successor: successor }
 }
 
-// A total read over a String-keyed map of String lists (the successor index). The map is the only authority for
-// which rows wait on which, so this is the one place its shape is read.
+// THE ONE TOTAL READ of a String-keyed map of String lists: the successor index built above and the closure walk
+// below both read it through here, so the map shape is read in exactly one place (minimize_redundancy).
 fn look_string(m: Map<String, List<String>>, key: String, dflt: List<String>) -> List<String> {
   match map_lookup(m: m, key: key) {
     Present { value: v } => v
@@ -249,11 +259,11 @@ fn days_of(facts: GanttFacts, node: RoadmapNodeId) -> Optional<Int> {
 // item that owns pieces is worth its leaf-grain makespan -- the leaf scheduler's own horizon over its own
 // decomposition, which is where the two grains meet and the only place a decomposed item's elapsed is answered.
 // A rollup is not placed, so it is asked for no duration at all.
-fn row_days(input: GanttInput, p: PricedNode) -> Optional<Int> {
+fn row_days(input: GanttInput, reads: Map<String, LeafGrainRead>, p: PricedNode) -> Optional<Int> {
   match p.source {
     AuthoredSize { size: _, scheduled_days: d, made: _, basis: _ } => optional_present(value: d)
     AuthoredDuration { working_days: d, made: _, basis: _ } => optional_present(value: d)
-    Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces { leaf_grain_days(input: input, node: p.node.node) } else { optional_absent() }
+    Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces { leaf_grain_days(reads: reads, node: p.node.node) } else { optional_absent() }
     Unsized { why: _ } => optional_absent()
   }
 }
@@ -277,6 +287,34 @@ type LeafGrainRead
   | LeafReadRefused { cause: ScheduleRefusal }
   | LeafNoFindingsCount { count: Int }
 
+// THE ONE PASS THAT ASKS THE LEAF GRAIN: every item whose source says its work IS its pieces, exactly once. Items
+// that own no pieces are never asked, which is what the module header promises about cost.
+fn leaf_grain_index(input: GanttInput, priced: List<PricedNode>) -> Map<String, LeafGrainRead> {
+  fold(priced, init: empty_map(), f: fn(acc, p) {
+    match p.source {
+      Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces {
+        map_insert(m: acc, key: p.node.node as String, value: leaf_grain_read(input: input, node: p.node.node))
+      } else { acc }
+      AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => acc
+      AuthoredDuration { working_days: _, made: _, basis: _ } => acc
+      Unsized { why: _ } => acc
+    }
+  })
+}
+
+// THE STORED LEAF READ OF ONE ITEM. Absent means this read never asked -- an item reached here without a stored read
+// has no duration to be drawn with, which is the same state a refused leaf read leaves the row in.
+fn leaf_grain_days(reads: Map<String, LeafGrainRead>, node: RoadmapNodeId) -> Optional<Int> {
+  match map_lookup(m: reads, key: node as String) {
+    Present { value: read } => match read {
+      LeafMakespan { days: d } => if d > 0 { optional_present(value: d) } else { optional_absent() }
+      LeafReadRefused { cause: _ } => optional_absent()
+      LeafNoFindingsCount { count: _ } => optional_absent()
+    }
+    Absent => optional_absent()
+  }
+}
+
 fn leaf_grain_read(input: GanttInput, node: RoadmapNodeId) -> LeafGrainRead {
   match checked_int_to_nat(n: input.findings_count) {
     Absent => LeafNoFindingsCount { count: input.findings_count }
@@ -288,7 +326,7 @@ fn leaf_grain_read(input: GanttInput, node: RoadmapNodeId) -> LeafGrainRead {
 // are separate bodies of work under the same item and no piece of either is scheduled twice. Any one of them
 // refusing refuses the item's duration, carrying that leaf read's refusal.
 fn leaf_grain_expansions(input: GanttInput, node: RoadmapNodeId, findings: Nat) -> LeafGrainRead {
-  fold(decomposition_for(node: node), init: LeafMakespan { days: 0 }, f: fn(acc, d) {
+  fold(decompositions_in(pieces: input.pieces, node: node), init: LeafMakespan { days: 0 }, f: fn(acc, d) {
     match acc {
       LeafReadRefused { cause: cause } => acc
       LeafNoFindingsCount { count: n } => acc
@@ -311,14 +349,6 @@ fn read_one_decomposition(input: GanttInput, d: WorkDecomposition, findings: Nat
     // per grain, computed where the rows live (single_authority).
     Scheduled { answer: answer } => LeafMakespan { days: answer.horizon }
     NotScheduled { refusal: refusal } => LeafReadRefused { cause: refusal }
-  }
-}
-
-fn leaf_grain_days(input: GanttInput, node: RoadmapNodeId) -> Optional<Int> {
-  match leaf_grain_read(input: input, node: node) {
-    LeafMakespan { days: d } => if d > 0 { optional_present(value: d) } else { optional_absent() }
-    LeafReadRefused { cause: _ } => optional_absent()
-    LeafNoFindingsCount { count: _ } => optional_absent()
   }
 }
 
@@ -386,16 +416,9 @@ fn closure(queue: List<String>, seen: Map<String, Bool>, visited: List<String>, 
       closure(queue: rest, seen: seen, visited: visited, successor: successor)
     } else {
       let none_yet: List<String> = []
-      let next = fold(look_list_string(m: successor, key: k, dflt: none_yet), init: rest, g: fn(q, s) { list_push(xs: q, item: s) })
+      let next = fold(look_string(m: successor, key: k, dflt: none_yet), init: rest, g: fn(q, s) { list_push(xs: q, item: s) })
       closure(queue: next, seen: map_insert(m: seen, key: k, value: true), visited: list_push(xs: visited, item: k), successor: successor)
     }
-  }
-}
-
-fn look_list_string(m: Map<String, List<String>>, key: String, dflt: List<String>) -> List<String> {
-  match map_lookup(m: m, key: key) {
-    Present { value: v } => v
-    Absent => dflt
   }
 }
 
@@ -478,13 +501,19 @@ fn blocked_or_unplaced(behind: List<RoadmapNodeId>) -> GanttRowState {
   }
 }
 
-// THE LEAF-GRAIN REFUSAL, re-read from the SAME call the duration came from: the leaf scheduler's own typed refusal,
-// carried unaltered. It is never paraphrased into a duration and never rounded down to a bar of zero days.
+// THE LEAF-GRAIN REFUSAL, read from the ONE stored leaf read of this item -- the same read its duration came from,
+// so the leaf scheduler is never run twice over one decomposition. The leaf scheduler's own typed refusal is carried
+// away unaltered: never paraphrased into a duration, never rounded down to a bar of zero days. `LeafMakespan` here
+// means the leaf grain priced the item and the core still drew no bar for it, which is the unplaced state the core
+// itself reports -- not a stand-in for a cause the leaf grain handed over.
 fn leaf_refusal_state(facts: GanttFacts, node: RoadmapNodeId) -> GanttRowState {
-  match leaf_grain_read(input: facts.input, node: node) {
-    LeafReadRefused { cause: cause } => RowLeafGrainRefused { cause: cause }
-    LeafNoFindingsCount { count: n } => RowNoFindingsCount { count: n }
-    LeafMakespan { days: _ } => RowUnplaced
+  match map_lookup(m: facts.leaf_reads, key: node as String) {
+    Present { value: read } => match read {
+      LeafReadRefused { cause: cause } => RowLeafGrainRefused { cause: cause }
+      LeafNoFindingsCount { count: n } => RowNoFindingsCount { count: n }
+      LeafMakespan { days: _ } => RowUnplaced
+    }
+    Absent => RowUnplaced
   }
 }
 
@@ -534,6 +563,7 @@ fn gantt_answer_live(workers: BeltCapacity, findings_count: Int, at: Iso8601Civi
     nodes: declared_roadmap_nodes(),
     edges: declared_roadmap_edges(),
     entries: [] as List<EstimateEntry>,
+    pieces: roadmap_decompositions,
     workers: workers,
     findings_count: findings_count,
     read_date: at,
