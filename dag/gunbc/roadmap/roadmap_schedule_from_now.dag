@@ -178,7 +178,10 @@ fn schedule_from_now(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, 
   match e {
     ExpansionRejected { cause: cause } =>
       FromNowRefused { cause: ScheduleRefused { refusal: OverRefusedExpansion { cause: cause } } }
-    Expanded { occurrences: occs, edges: edges } => match holds_over_logs(logs: logs) {
+    // #16716's Expansion carries the top-level Composites it did NOT expand. They are the expansion's own report
+    // and the scheduler's own deferral (roadmap-schedule-composite-nested-addressing holds the nested addressing),
+    // so this read neither mints an occurrence for one nor invents a second report beside the carrier's.
+    Expanded { occurrences: occs, edges: edges, omitted_composites: _ } => match holds_over_logs(logs: logs) {
       HoldReadRefused { item: item, cause: cause } => FromNowRefused { cause: InFlightReadRefused { item: item, cause: cause } }
       HoldsRead { holds: holds, pathless: pathless, absorbed: absorbed, closed: closed } =>
         schedule_priced(d: d, e: e, occs: occs, edges: edges, workers: workers, read_on: read_on,
