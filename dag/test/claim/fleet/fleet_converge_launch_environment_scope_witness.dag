@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_converge_launch_environment_scope_witness
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
-import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
+import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire, OwedReportContradiction }
 
 import std.types { String, Bool, NonEmptyStr, List, Int }
 import std.algebra { length }
@@ -106,8 +106,9 @@ fn witness_launch_environment_request() -> FleetConvergeRequest {
 fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
   match t {
     FullyApplied => true
-    PartiallyApplied { refused_axis_count: _, detail: _ } => false
+    PartiallyApplied { refused_axis_count: _, owed: _, detail: _ } => false
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
 }
 
@@ -143,9 +144,10 @@ test fn the_launch_environment_terminal_wire_is_the_token_the_rlm_join_requires(
 test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() -> Bool {
   match fleet_converge_apply_terminal(request: witness_full_host_request()) {
     FullyApplied => false
-    PartiallyApplied { refused_axis_count: _, detail: d } =>
+    PartiallyApplied { refused_axis_count: _, owed: _, detail: d } =>
       string_contains(s: d, pattern: "slot=1") && string_contains(s: d, pattern: "activation=")
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
 }
 
@@ -558,7 +560,7 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
   let fabric = srv1_fabric_refusals()
   match fleet_converge_apply_terminal(request: srv1_full_host_request()) {
     FullyApplied => false
-    PartiallyApplied { refused_axis_count: n, detail: d } =>
+    PartiallyApplied { refused_axis_count: n, owed: _, detail: d } =>
       n == 33 + fabric
         && string_contains(s: d, pattern: "slot=31")
         && string_contains(s: d, pattern: "activation=2")
@@ -566,6 +568,7 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
         && string_contains(s: d, pattern: "timer=0")
         && string_contains(s: d, pattern: join(["fabric-cell=", to_string(fabric)], ""))
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
     && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
          request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
