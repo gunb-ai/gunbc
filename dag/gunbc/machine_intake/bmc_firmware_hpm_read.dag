@@ -63,8 +63,22 @@ fn bmc_hpm_check_transport(
   )
   if r.success {
     let retained = Filesystem.Write(path: retained_path, content: r.stdout)
-    HpmCheckTransportOk { table: hpm_check_table_of(stdout: r.stdout), retained_path: retained_path, at: at }
+    // The Ok arm reports the retained path, so the write's effect is established
+    // here, not assumed: an Ok never answers yes to a retention it could not
+    // perform (DESIGN Fail-closed; review 96634 non-blocking note). The boot's
+    // pre-lift version ignored this result; ignoring is not carried over.
+    if retained.success {
+      HpmCheckTransportOk { table: hpm_check_table_of(stdout: r.stdout), retained_path: retained_path, at: at }
+    } else {
+      HpmCheckTransportFailed { exit_code: r.exit_code, transport_stderr: bmc_hpm_retention_failure_text(retained_path: retained_path, write_error: retained.error), at: at }
+    }
   } else {
     HpmCheckTransportFailed { exit_code: r.exit_code, transport_stderr: r.transport_stderr, at: at }
   }
+}
+
+// Pure rendering of the retention-failure cause: the transport composes it and the
+// witness asserts against it, so the text an operator reads is the text claimed.
+fn bmc_hpm_retention_failure_text(retained_path: NonEmptyStr, write_error: String) -> String {
+  join(["hpm table read but could not be retained at ", retained_path as String, ": ", write_error], "")
 }

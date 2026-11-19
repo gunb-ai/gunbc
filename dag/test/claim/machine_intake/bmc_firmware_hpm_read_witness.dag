@@ -2,6 +2,7 @@ module test.claim.machine_intake.bmc_firmware_hpm_read_witness
 
 import std.types { Bool, NonEmptyStr }
 import std.algebra { string_contains }
+import gunbc.machine_intake.bmc_firmware_hpm_read { bmc_hpm_retention_failure_text }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_hpm_check_source,
   megarac_boot_hpm_check_refusal,
@@ -45,4 +46,13 @@ test fn w_a_failed_hpm_check_names_the_transport_cause_and_no_credential() -> Bo
     && !string_contains(s: timeout, pattern: "password")
     && string_contains(s: other, pattern: "hpm check was not read: ")
     && timeout != other
+}
+
+test fn w_a_retention_failure_names_the_path_and_the_write_error_and_no_credential() -> Bool {
+  // The Ok arm reports the retained path, so a failed retention must name the path and the
+  // write error instead of answering yes (review 96634; Fail-closed). The transport composes
+  // exactly this rendering, so this claim is the arm's hermetic discriminator.
+  let cause = bmc_hpm_retention_failure_text(retained_path: "/artifacts/bmc/srv15-hpm-check-44134741714.txt", write_error: "no space left on device")
+  string_contains(s: cause, pattern: "could not be retained at ") && string_contains(s: cause, pattern: "/artifacts/bmc/srv15-hpm-check-44134741714.txt")
+    && string_contains(s: cause, pattern: "no space left on device") && !string_contains(s: cause, pattern: "password")
 }
