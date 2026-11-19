@@ -187,6 +187,34 @@ fn anchored_dir_matches(dir: String, path: String) -> Bool {
   path == dir || starts_with(path, prefix: concat(dir, "/"))
 }
 
+// THE ONE PLACE the emitted file can carry a glob is the cargo target arm `/target-*/`, and the single
+// is-ignored predicate must answer it the way git does -- otherwise the model calls a directory tree
+// ignored while the predicate reports it stageable, two answers to one question, the defect
+// anchored_dir_matches above exists to stop, one level up.
+//
+// SUPPORTED FORM, stated plainly: a single TRAILING `*` on a root-anchored segment (`<prefix>*/`). The
+// leading `/` binds to the root, so only the FIRST path segment is tested -- a nested
+// `sub/target-private/x` is not ignored, which is what keeps the anchor real -- and every path under a
+// top-level segment beginning with `prefix` is. The dash in the prefix is what leaves a sibling that
+// merely begins with the word (`targets/`, `targetish/`) trackable; a looser `/target*/` would have
+// swallowed them, the over-general prohibition DESIGN's epistemic_humility declines (see the arm's
+// rationale in gunbc.repo_workspace).
+//
+// NOT CLAIMED -- so the prose says exactly what the matcher does: a `*` anywhere else in a segment is
+// matched LITERALLY here, not as a wildcard (git's `*` is broader). No emitted arm spells one, so
+// generalising the matcher would add a branch no witness can drive, and code that cannot go red carries
+// no information -- so it is deliberately absent. And, exactly like the exact-name sibling above, the
+// predicate answers on the path STRING with no stat: it cannot tell a directory from a same-named
+// top-level file the way git's trailing `/` can. No emitted arm's prefix names a tracked top-level file,
+// so nothing is mis-reported in practice -- but that capability is not asserted here.
+fn anchored_dir_glob_matches(dir: String, path: String) -> Bool {
+  let prefix = without_suffix(s: dir, suffix: "*")
+  let head = fold(split(s: path, delimiter: "/"), init: "", f: fn(acc, seg) {
+    if acc == "" { seg } else { acc }
+  })
+  prefix.length() > 0 && starts_with(head, prefix: prefix)
+}
+
 fn dir_pattern_matches(dir: String, path: String) -> Bool {
   let anchored = concat(dir, "/")
   path == dir
@@ -202,7 +230,12 @@ fn strip_slashes(p: String) -> String {
 fn pattern_matches(pattern: String, path: String) -> Bool {
   if ends_with(s: pattern, suffix: "/") {
     if starts_with(pattern, prefix: "/") {
-      anchored_dir_matches(dir: strip_slashes(p: pattern), path: path)
+      let dir = strip_slashes(p: pattern)
+      if ends_with(s: dir, suffix: "*") {
+        anchored_dir_glob_matches(dir: dir, path: path)
+      } else {
+        anchored_dir_matches(dir: dir, path: path)
+      }
     } else {
       dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
     }

@@ -1,0 +1,13 @@
+module gunbc.run_step_target_function_first_step
+
+import std.types { Int }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE RED (function-first): the entry argument is written BEFORE the module argument. A hand-written matcher that
+// only recognised the fixed order `module:` then `function:` would fail to parse this call and SILENTLY SKIP it --
+// the typo would pass. Because the check reads the call's labeled children from the AST (order-independent), the
+// module half still resolves to the fixture home and the misspelled entry refuses as RunStepTargetDeclarationAbsent.
+data run_step_target_function_first: Int = gunbc_run_step_target(
+  function: "run_step_target_function_first_TYPO",
+  module: "gunbc.run_step_target_fixture_home",
+)

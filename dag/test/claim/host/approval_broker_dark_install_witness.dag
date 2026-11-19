@@ -311,7 +311,7 @@ fn counter_install_args() -> List<String> {
       mode: managed_directory_permissions(d: approval_assertion_counter_directory()).mode,
       owner: fleet_posix_operator_user.name,
       group: fleet_posix_operator_user.name,
-      path: assertion_counter_slots_path(tree: host_state_tree()) as String,
+      path: assertion_counter_slots_path(tree: host_state_tree()),
     ),
   )
 }

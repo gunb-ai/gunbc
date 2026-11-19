@@ -22,7 +22,13 @@ import gunbc.fleet.fleet_host_backing {
   provisioning_over_bmc_via_virtual_media, provisioning_over_bmc_via_ram_image,
   provisioning_self_installed_from_appliance_image,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_183527 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_183527,
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
 import gunbc.fleet.fleet_enrollment {
   enrollment_for_host,
   fleet_enrollments,
@@ -377,8 +383,24 @@ fn step_is_inference_serving_provision(s: HostStandupStep) -> Bool {
 // InferenceServingProvision is owed by inference-serving participation alone, so a CI-runner program is
 // the spine minus guest adoption AND minus that phase. The exclusion is stated here by phase, not
 // derived from step_in_program, so a CI program that wrongly gained the phase makes the claims below red.
+fn owned_bmc_full_program_steps() -> List<HostStandupStep> {
+  filter(host_standup_spine, s => !step_is_guest_adoption(s: s) && !step_is_inference_serving_provision(s: s))
+}
+
 fn owned_bmc_full_program_length() -> Int {
-  filter(host_standup_spine, s => !step_is_guest_adoption(s: s) && !step_is_inference_serving_provision(s: s)).length()
+  owned_bmc_full_program_steps().length()
+}
+
+// WHICH ENROLLMENTS OWE THE WHOLE OWNED-BMC PROGRAM IS ANSWERED BY STEP IDENTITY, NOT BY A COUNT. The filter
+// that used to select this population asked whether a program had the same NUMBER of steps as the full
+// program. The hand-installed H11SSL-i (host-e2d4b7) proved the two come apart: an enrollment carrying both
+// participations gains the inference-serving phase and drops session placement, so it counts the same while
+// owing a different SET. Membership is therefore asserted over the steps themselves, which also makes the
+// next enrollment's arrival a fact about its program rather than an edit in this file.
+fn program_owes_exactly_the_owned_bmc_full_program(intent: HostEnrollmentIntent) -> Bool {
+  let owed = assimilation_program_for(intent: intent).steps
+  let full = owned_bmc_full_program_steps()
+  all(owed, s => any(full, f => f.label == s.label)) && all(full, f => any(owed, s => s.label == f.label))
 }
 
 // The whole provisioning-plus-roles program is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
@@ -518,12 +540,30 @@ test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
   spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
 }
 
-// The admission is keyed on the declared phase: the real spine has an unclaimed step ONLY for the
-// frontier-named phase, and the same spine with the frontier emptied is red.
+// The admission is keyed on the declared frontier phase, not on how many enrollments happen to exist.
+// THE FRONTIER HAS DISSOLVED (gunbc.host.host_assimilation_program::phases_awaiting_a_real_enrollment is
+// empty because a real enrollment now owes the phase it named), so the old first conjunct -- "the live spine
+// still has an unclaimed step" -- was asserting today's population size and is replaced by a guard against a
+// population this claim supplies, plus a receipt that the discharged phase really is owed now.
 test fn witness_unclaimed_step_is_admitted_only_by_a_declared_frontier_phase() -> Bool {
-  !spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: [])
-    && spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+  // ONE: every unclaimed step of the real spine is admitted by the ledger's frontier-named phase set.
+  spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+    // TWO: TEETH, held against a supplied population. With no enrollment on offer an assimilation step is
+    // unclaimed, and the (now empty) frontier does not admit it -- a step cannot pass by being unmentioned.
     && !spine_steps_all_claimed(spine: host_standup_spine, enrollments: [], awaiting: phases_awaiting_a_real_enrollment)
+    // THREE: THE DISSOLUTION RECEIPT. A real enrollment owes the phase the frontier used to name. If none
+    // does, this goes red and the frontier must be re-opened rather than left quietly empty.
+    && any(
+      fleet_enrollments,
+      e => any(
+        filter(host_standup_spine, s => match s.phase {
+          Prefix { phase: _ } => false
+          Assimilation { phase: InferenceServingProvision } => true
+          Assimilation { phase: _ } => false
+        }),
+        s => step_in_program(step: s, intent: e),
+      ),
+    )
 }
 
 // A RENTED GUEST OWES ITS ADOPTION AND ITS ROLES, AND NO BMC OR INSTALL STEP. The CAX guest's program
@@ -557,16 +597,20 @@ test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
   let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let runners = filter(
     fleet_enrollments,
-    e => {
-      let owed = program_step_count(program: assimilation_program_for(intent: e))
-      owed == owned_bmc_full_program_length()
-    },
+    e => program_owes_exactly_the_owned_bmc_full_program(intent: e),
   )
   let intact = filter(
     runners,
     e => filter(matrix, c => c.cell.host == e.host).length() == owned_bmc_full_program_length(),
   )
-  runners.length() == 4 && intact.length() == runners.length()
+  // THE POPULATION IS NAMED, NOT COUNTED. `runners.length() == 4` was a number copied off the tree, and this
+  // claim's own comment says the assertion must "stay true no matter how many non-runner hosts join the
+  // roster" -- a copied count cannot do that. The full-program runners are named by identity, in both
+  // directions; the substance (each carries its whole program in the matrix) is untouched.
+  let full_program_runner_hosts = [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  all(full_program_runner_hosts, h => any(runners, e => (e.host as String) == (h as String)))
+    && all(runners, e => any(full_program_runner_hosts, h => (h as String) == (e.host as String)))
+    && intact.length() == runners.length()
 }
 
 test fn witness_fleet_matrix_has_no_duplicated_cells() -> Bool {

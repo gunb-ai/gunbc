@@ -558,3 +558,21 @@ data serving_shared_host_frontier: DissolutionCondition = unbound_dissolution(
 data serving_cold_session_tier_frontier: DissolutionCondition = unbound_dissolution(
   description: "Delete this frontier when a serving engine's disk tier for parked sessions is modeled here as its own budget beside the RAM tree, sized against the disk it lives on." as NonEmptyStr
 )
+
+// THE H11SSL-i UNIT 3 STRATA ENGINE (host-e2d4b7). One engine spans all three T10 cards on :18081; its
+// resident ceiling is the figure that binds the host's CI seat, charged in
+// gunbc.serving.serving_reservation, the way butch's two replicas are. Only the cgroup ceilings this read
+// actually observed are ServingMemoryRead; every figure a cgroup cap does not give -- the soft MemoryHigh, the
+// loaded-and-idle base, the parked-session cache budget -- stays ServingMemoryUnread with the read that would
+// settle it named, so no consumer is handed a number nobody measured
+// (gunbc.design_argument::fail_closed). This mirrors srv3, srv4 and butch: a reading with a producer, not a
+// copied literal; the ssh read in the provenance is its referent.
+data ken_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
+  name: "ken-strata" as NonEmptyStr,
+  memory_cap: ServingMemoryUnread { reason: "ken-strata soft ceiling (MemoryHigh): only the hard MemoryMax was read on 2026-11-18T21:21Z; the service carries no separate MemoryHigh drop-in in this read, so the soft bound is unset-or-unobserved and is not invented; read obligation: systemctl show ken-strata.service -p MemoryHigh" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 112)), provenance: "ken-strata.service MemoryMax = 112G, read over read-only ssh (ubuntu@192.168.1.236) 2026-11-18T21:21Z systemctl show ken-strata.service -p MemoryMax=120259084288; the cgroup memory.max agrees; gunbc.serving.serving_reservation charges this ceiling against the host's CI seat" as NonEmptyStr },
+  swap_cap: ServingMemoryUnread { reason: "ken-strata MemorySwapMax not read on 2026-11-18T21:21Z; read obligation: systemctl show ken-strata.service -p MemorySwapMax (swap is an overrun guard, never a cache, so its bound is owed a read before it is relied on)" as NonEmptyStr },
+  base: ServingMemoryUnread { reason: "ken-strata base (loaded-and-idle, nothing parked): the 2026-11-18T21:21Z memory.current 115788308480 was under live load with sessions resident, so it is not base; read obligation: ken-strata.service memory.stat anon with the batch warmed and nothing retained" as NonEmptyStr },
+  conversation_cache: ServingMemoryUnread { reason: "the ken-strata unit's parked-session cache budget is unread on 2026-11-18T21:21Z; its effective value is not read from a cgroup cap" as NonEmptyStr },
+  conversation_slots: Absent,
+}

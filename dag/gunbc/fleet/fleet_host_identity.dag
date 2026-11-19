@@ -99,6 +99,28 @@ data operator_host_3dde7f: HostIdentity = "host-3dde7f"
 // above: neither the board nor its GPUs are read off this spelling, and either can change under it.
 data operator_host_6ce85c: HostIdentity = "host-6ce85c"
 
+// SUPERMICRO H11SSL UNIT 3 (operator statement, 2026-11-15). The board is the third H11SSL-i in the fleet;
+// its OS was installed BY HAND from srv4's PXE edge, and this row is what puts the converge, rather than a
+// person, in charge of it from here. Its NAME lives in the allocation authority, not here: the operator
+// approved "ken" for this slot on 2026-11-16 (gunbc.hostname_allocation::fleet_machine_registry). OPAQUE per the rule above: the handle is a fresh six-hex draw taken
+// 2026-11-15 from /dev/urandom, confirmed free against host-183527, host-3dde7f and host-6ce85c, and it
+// encodes nothing. NOTHING on this row is read off the machine -- every figure below is the operator's
+// dated statement, and each one carries the read that would confirm it in
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation, whose rows are the receipts.
+//   Board Supermicro H11SSL-i; the board SERIAL has never been read (`ipmitool`-free in-band read
+//     `dmidecode -t baseboard` owed), which is why its machine standing in gunbc.fleet.machine_board is
+//     identity-stated on the 6ce85c precedent rather than observed.
+//   BIOS 2.0a and BMC firmware 1.52; both TranscribedUncited there, with the confirming read named.
+//   BMC at 192.168.1.249; before this row the only sighting of that address in the corpus was a test
+//     literal in gunbc.machine_intake.bmc_recovery_route. Its standing on THIS unit is BasisUnobserved
+//     there, and its controller MAC is known only from srv1's neighbour table.
+//   Install NIC LAN2 ac:1f:6b:e6:75:eb; forced PXE over IPMI lands on LAN1 on this board, so the install
+//     needed a BIOS Boot Override -- the quirk is modeled where boot selection lives, in extdeps.bmc.
+//   The BMC still answers with its factory credential, so the rotation route is modeled as pending and no
+//     read against it is taken with a published credential. The CMOS battery needs replacing (the
+//     operator's, physical), and that bears on the boot-path standing rather than being filed as trivia.
+data operator_host_e2d4b7: HostIdentity = "host-e2d4b7"
+
 // THE ROSTER IS NOT LISTED HERE. operator_hosts and operator_host_named are derived from the fleet machine
 // registry (gunbc.hostname_allocation fleet_machine_registry), so a machine is a member exactly when it has a
 // registry row (gunbc.plans.fleet_machine_authority 2.1). This module keeps only the stable handles.

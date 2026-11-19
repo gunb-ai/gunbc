@@ -340,6 +340,22 @@ pub type Email = String;
 
 pub type Port = i64;
 
+pub fn port_min() -> i64 {
+    1
+}
+
+pub fn port_max() -> i64 {
+    65535
+}
+
+pub fn checked_port(n: i64) -> Option<i64> {
+    if ((n.clone() < port_min()) || (n.clone() > port_max())) {
+        crate::std_optional::optional_absent()
+    } else {
+        crate::std_optional::optional_present(n.clone())
+    }
+}
+
 pub type GistId = String;
 
 pub type Secret = std::string::String;

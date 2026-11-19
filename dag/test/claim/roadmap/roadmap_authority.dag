@@ -1158,8 +1158,10 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
 // an attempt's events from the fabric event log, so it waits on fabric-worker-event-log publishing
 // them there. Readiness fires only from declared edges, so the claim reads the ONE readiness the
 // page and the dispatcher read (node_readiness_in_graph over the declared graph): the dependent row
-// names the prerequisite among its dependency blockers, and the prerequisite, which depends on
-// nothing, names no dependency gap -- so the blocker is the edge's, not a gap every row carries.
+// names the prerequisite among its dependency blockers, and the prerequisite's own blockers are
+// exactly its two declared parents -- factory-attempt-execution-on-fabric-lease and
+// factory-dogfood-route -- with no gap blocker beside them, so the blocker the dependent sees is the
+// edge's and not an unsatisfied-dependency gap that every row would carry.
 fn declared_dependency_blockers(id: String) -> List<String> {
   let graph = readiness_graph(nodes: nodes(), edges: edges(), accepted: [], withheld: [])
   fold(declared_node(id: id), init: [], f: (acc, n) => match node_readiness_in_graph(node: n, graph: graph, merged: []) {
@@ -1175,5 +1177,7 @@ test fn witness_serve_held_open_response_waits_on_the_fabric_worker_event_log() 
   count(declared_node(id: "serve-held-open-response")) == 1
     && count(declared_node(id: "fabric-worker-event-log")) == 1
     && (declared_dependency_blockers(id: "serve-held-open-response") |> any(b => b == "fabric-worker-event-log"))
-    && count(declared_dependency_blockers(id: "fabric-worker-event-log")) == 0
+    && count(declared_dependency_blockers(id: "fabric-worker-event-log")) == 2
+    && (declared_dependency_blockers(id: "fabric-worker-event-log") |> any(b => b == "factory-attempt-execution-on-fabric-lease"))
+    && (declared_dependency_blockers(id: "fabric-worker-event-log") |> any(b => b == "factory-dogfood-route"))
 }

@@ -86,7 +86,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 // lists, the racing listeners) -- each is a distinct diagnosis with a distinct next action (gunbc.design_argument::fail_closed). NO arm
 // can mean "half withdrawn": every refusal reports, in `left`, what the host was READ to be after the
 // undo -- never what the undo was expected to produce.
-type WithdrawalRefusal = WithdrawalRefusalSubject { cause: String } | WithdrawalRefusalSplit { reason: String } | WithdrawalRefusalBudget { cause: String } | WithdrawalRefusalUnrecordable { cause: String } | WithdrawalRefusalHeldRecord { cause: String } | WithdrawalRefusalOwnershipUnproven { cause: String } | WithdrawalRefusalDrainNotClosed { listeners: List<NonEmptyStr>, causes: List<String> } | WithdrawalRefusalDrainBound { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second } | WithdrawalRefusalMaskNotHeld { units: List<NonEmptyStr> } | WithdrawalRefusalStopRefused { units: List<NonEmptyStr>, causes: List<String> }
+type WithdrawalRefusal = WithdrawalRefusalSubject { cause: String } | WithdrawalRefusalSplit { reason: String } | WithdrawalRefusalBudget { cause: String } | WithdrawalRefusalUnrecordable { cause: String } | WithdrawalRefusalHeldRecord { cause: String } | WithdrawalRefusalOwnershipUnproven { cause: String } | WithdrawalRefusalDrainNotClosed { listeners: List<NonEmptyStr>, causes: List<String> } | WithdrawalRefusalDrainBound { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second, stop_causes: List<String> } | WithdrawalRefusalMaskNotHeld { units: List<NonEmptyStr> } | WithdrawalRefusalStopRefused { units: List<NonEmptyStr>, causes: List<String> }
 
 // WHAT THE HOST WAS READ TO BE AFTER A REFUSAL. HostLeftReadAdmitting only when every unit was read
 // again and reads unmasked; otherwise the read-back itself found units still masked or unreadable, and
@@ -176,14 +176,14 @@ fn withdraw_legs(target: SshTarget, context: FleetSshExecutionContext, key: Stri
     BracketNotAcquired { refusal: r } =>
       WithdrawalRefused { refusal: WithdrawalRefusalOwnershipUnproven { cause: bracket_refusal_wire(r: r) }, left: read_back_host_state(target: target, context: context, units: units) }
     BracketAcquired { owned: owned } =>
-      match drain_until_quiescent_over(target: target, context: context, observed: units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+      match drain_until_quiescent_over(target: target, context: context, host: host, observed: units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
         BracketDrained { certified: cs } => complete_withdraw(target: target, context: context, key: key, host: host, units: units, owned: owned, certified: cs)
         BracketAdmissionNotClosed { listeners: ls, causes: cs } =>
           undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainNotClosed { listeners: ls, causes: cs })
         BracketWaiting { ticks_left: _ } =>
-          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: [], unproven: [], waited: runner_host_cap_drain_policy.wait_bound })
-        BracketBoundExceeded { busy: b, unproven: u } =>
-          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: runner_host_cap_drain_policy.wait_bound })
+          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: [], unproven: [], waited: runner_host_cap_drain_policy.wait_bound, stop_causes: [] })
+        BracketBoundExceeded { busy: b, unproven: u, stop_causes: sc } =>
+          undo_then_refuse(target: target, context: context, host: host, owned: owned, units: units, refusal: WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: runner_host_cap_drain_policy.wait_bound, stop_causes: sc })
       }
   }
 }
@@ -385,7 +385,7 @@ fn withdrawal_refusal_wire(r: WithdrawalRefusal) -> String {
     WithdrawalRefusalHeldRecord { cause: c } => join(["held-record: ", c], "")
     WithdrawalRefusalOwnershipUnproven { cause: c } => join(["ownership-unproven: ", c], "")
     WithdrawalRefusalDrainNotClosed { listeners: ls, causes: cs } => join(["drain-admission-not-closed listeners=", join(map(ls, u => u as String), ","), " causes=[", join(cs, "; "), "]"], "")
-    WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: w } => join(["drain-bound busy=", join(map(b, x => x as String), ","), " unproven=", join(map(u, x => x as String), ","), " waited=", to_string(second_count(s: w))], "")
+    WithdrawalRefusalDrainBound { busy: b, unproven: u, waited: w, stop_causes: sc } => join(["drain-bound busy=", join(map(b, x => x as String), ","), " unproven=", join(map(u, x => x as String), ","), " waited=", to_string(second_count(s: w)), if length(sc) > 0 { concat(" stop-refused=", join(sc, " ; ")) } else { "" }], "")
     WithdrawalRefusalMaskNotHeld { units: us } => join(["mask-not-held units=", join(map(us, u => u as String), ",")], "")
     WithdrawalRefusalStopRefused { units: us, causes: cs } => join(["listener-stop-refused units=", join(map(us, u => u as String), ","), " causes=[", join(cs, "; "), "]"], "")
   }

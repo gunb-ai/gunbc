@@ -62,9 +62,9 @@ fn srv15_arrival_dedicated_federation() -> DedicatedFederation {
 }
 
 // THE PIN'S STANDING IS THE COMMITTED CitedFigureStanding TYPE, not a per-host sum (review 94085):
-// gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version is TranscribedUncited until the
-// operator read lands -- the metadata-only versions read on the gcp-iam-converge job (the artifact
-// the pin will cite) is the read that moves it -- and gunbc.secret_provision.accessor_ref_from_pin
+// gunbc.secret_provision.srv15_bmc_gunbc_arrival_accessor_version WAS TranscribedUncited until the
+// metadata-only versions read on the gcp-iam-converge job cited its run-44134741714 receipt into it --
+// and gunbc.secret_provision.accessor_ref_from_pin
 // is the ONLY gate: while the figure is Absent or the standing uncited, no SecretRef, no secret
 // grant, and no fetch can exist for srv15. The frontier states that law over the committed pin
 // itself; the gate is a function OF THE PIN, so no second authority decides srv15's arrival.
