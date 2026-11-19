@@ -15,10 +15,6 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid, edge }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_decomposition { decomposition_for, expand_decomposition }
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
-// horizon_of is the placement core's, since the extraction: the leaf scheduler no longer owns a day counter.
-// The witness reads it at the same address the item grain does, so this file tests the core rather than a
-// remembered copy of where the helper used to live.
-import gunbc.roadmap.roadmap_placement { horizon_of }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
 import gunbc.roadmap.roadmap_estimate_derivation { node_by_slug }
@@ -346,7 +342,7 @@ fn leaf_grain_answer(item: String) -> Optional<Int> {
   match first(decs) {
     Absent => Absent
     Present { value: d0 } => match schedule(d: d0, e: expand_decomposition(d: d0, findings_count: 1), workers: lanes(3)) {
-      Scheduled { answer: s } => Present { value: horizon_of(leaves: s.leaves) }
+      Scheduled { answer: s } => Present { value: s.horizon }
       NotScheduled { refusal: _ } => Absent
     }
   }

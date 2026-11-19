@@ -48,7 +48,7 @@ import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_fo
 import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, ScheduleRefusal, schedule }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_placement {
-  place, horizon_of, Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, PlacementPlaced, PlacementRefused,
+  place, Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, PlacementPlaced, PlacementRefused,
   PlacementAnswer, PlacementRefusal, PlacementCyclic, PlacementUnplaced,
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
@@ -301,7 +301,10 @@ fn leaf_grain_expansions(input: GanttInput, node: RoadmapNodeId, findings: Nat) 
 
 fn read_one_decomposition(input: GanttInput, d: WorkDecomposition, findings: Nat) -> LeafGrainRead {
   match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings), workers: input.workers) {
-    Scheduled { answer: answer } => LeafMakespan { days: horizon_of(leaves: answer.leaves) }
+    // The leaf read carries its OWN horizon: the schedule answer reports the day its last leaf finishes, so this
+    // grain reads the figure the scheduler computed instead of folding the rows again at item grain. One horizon
+    // per grain, computed where the rows live (single_authority).
+    Scheduled { answer: answer } => LeafMakespan { days: answer.horizon }
     NotScheduled { refusal: refusal } => LeafReadRefused { cause: refusal }
   }
 }
