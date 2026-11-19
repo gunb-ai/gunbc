@@ -1,6 +1,5 @@
 module gunbc.machine_intake.megarac_boot_diagnostic_bundle
 
-import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacVersionEstablishment, MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
   MegaRacReleaseEstablishmentRefused, MegaRacVersionFromFirmwareRead, megarac_version_establishment,
@@ -229,6 +228,7 @@ import gunbc.host.boot_attempt {
 
 }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
+import gunbc.machine_intake.bmc_firmware_hpm_read { bmc_hpm_check_transport, HpmCheckTransportOk, HpmCheckTransportFailed, HpmCheckRetentionFailed }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
 // said about the machine around the attempt, recorded on every terminal arm so that a remote
@@ -3347,22 +3347,50 @@ fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, 
 // Taken by the boot run after admission and before actuation. hpm check's table is parsed by
 // extdeps.bmc.ipmitool_hpm_check; a failed read carries the controller's own cause.
 fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr, clearance: BootAttemptClearance, run_attempt: NonEmptyStr) -> PrePowerFirmware {
-  let at = clock_now_probed_at_or_unknown()
-  let retained_path = megarac_boot_hpm_check_path(row: row, run_attempt: run_attempt)
-  let r = diagnostic.ipmi.Tool.HpmCheck(
-    bmc_host: row.controller.host,
+  // THE READ IS THE SHARED UNIT-PARAMETERIZED FUNCTION (gunbc.machine_intake.bmc_firmware_hpm_read);
+  // this lane supplies its row's endpoint, wall bounds, cipher suite and artifact prefix, and renders
+  // the transport's own facts into this lane's carrier -- identical bytes and refusal text to the
+  // pre-lift implementation.
+  match bmc_hpm_check_transport(
+    controller_host: row.controller.host,
     username: username,
     password_file: password_file,
-    deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
-  )
-  if r.success {
-    let retained = Filesystem.Write(path: retained_path, content: r.stdout)
-    pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", row.controller.host as String, " at ", at as String], "") as NonEmptyStr)
-  } else {
-    PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
+    deadline: row.ipmi.deadline,
+    kill_after: row.ipmi.kill_after,
+    cipher_suite: row.ipmi_cipher_suite,
+    retained_path: megarac_boot_hpm_check_path(row: row, run_attempt: run_attempt),
+  ) {
+    HpmCheckTransportOk { table: table, retained_path: retained_path, at: at } =>
+      pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: table, source: megarac_boot_hpm_check_source(row: row, at: at))
+    HpmCheckTransportFailed { exit_code: exit_code, transport_stderr: transport_stderr, at: at } =>
+      PrePowerFirmwareUnread { reason: megarac_boot_hpm_check_refusal(row: row, at: at, exit_code: exit_code, transport_stderr: transport_stderr) }
+    // Review 96635: the controller answered; only the local retention failed. This is its own typed,
+    // located cause -- it never passes through the ipmitool cause classifier, so a full disk cannot be
+    // reported as a controller failure "exit 0". The boot is refused because the evidence chain needs
+    // the retained file; without it no build reading can be established.
+    HpmCheckRetentionFailed { retained_path: retained_path, write_error: write_error, at: at } =>
+      PrePowerFirmwareUnread { reason: megarac_boot_hpm_retention_refusal(at: at, retained_path: retained_path, write_error: write_error) }
   }
+}
+
+// The read's source line: what was run, against which controller, at which probed instant. Pure, so
+// the witness corpus asserts its shape without a live controller.
+fn megarac_boot_hpm_check_source(row: MegaRacBootRow, at: NonEmptyStr) -> NonEmptyStr {
+  join(["ipmitool hpm check on ", row.controller.host as String, " at ", at as String], "") as NonEmptyStr
+}
+
+// The read's refusal line: the lane prefix plus the transport cause rendered from the endpoint, the
+// instant and ipmitool's own exit facts. Pure, and it names NO credential: the password reached the
+// tool only as a file path, and that path appears nowhere in this text.
+fn megarac_boot_hpm_check_refusal(row: MegaRacBootRow, at: NonEmptyStr, exit_code: Int, transport_stderr: String) -> NonEmptyStr {
+  concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: exit_code, stderr: transport_stderr))) as NonEmptyStr
+}
+
+// The boot lane's own wording for the retention arm (review 96635). Deliberately NOT run through the
+// ipmitool cause classifier: the controller answered, so the only fault to name is the local write;
+// no controller exit code is claimed and the endpoint is not blamed.
+fn megarac_boot_hpm_retention_refusal(at: NonEmptyStr, retained_path: NonEmptyStr, write_error: String) -> NonEmptyStr {
+  join(["hpm check answered but its evidence could not be retained at ", retained_path as String, " (", at as String, "): ", write_error, " -- the controller answered; the boot is refused until the evidence file can be written"], "") as NonEmptyStr
 }
 
 // THE BUILD READING, FROM THE RETAINED BYTES. The pre-power read above keeps the controller's own hpm check

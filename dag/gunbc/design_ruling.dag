@@ -1306,6 +1306,10 @@ fn design_rulings() -> List<DesignRuling> {
     serve_entry_verdict_step_raised_to_45_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     srv15_arrival_reviewer_selected_by_operator,
+    // The srv15 versions-read backstop row (#16640) was missing from the roster, so
+    // documentary_refs never checked its citation or what it governs (manager ruling
+    // msg_482f43bc, 2026-11-19). Listed with its budget-row neighbours above.
+    srv15_versions_read_backstop_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
     pair_delivery_shell_as_medium_steps_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,

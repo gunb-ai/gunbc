@@ -1,0 +1,85 @@
+module gunbc.machine_intake.bmc_firmware_hpm_read
+
+// THE UNIT-PARAMETERIZED hpm check READ -- ONE IMPLEMENTATION FOR EVERY LANE THAT ASKS A CONTROLLER
+// WHO IT IS.
+//
+// WHY THIS EXISTS (gunbc.design_argument::root_generalization; manager ruling 2026-11-19, the srv15
+// arrival leg): the hpm check was written once, for the mtcollins1 boot's pre-power phase, keyed to
+// that host's row (gunbc.machine_intake.megarac_boot_diagnostic_bundle megarac_boot_hpm_check). The
+// srv15 arrival needs the SAME read as one more read-only leg -- the firmware release capability row
+// is an arrival observation, and no other modeled hpm instrument exists. Spelling the argv, the wall
+// bounds, the retention and the table parse a second time beside the boot's copy would be a second
+// path beside the modeled route; instead the boot's row-keyed function now DELEGATES here and the
+// arrival leg will call the same function with its own parameters.
+//
+// WHAT THE CALLER SUPPLIES: the controller endpoint; the managed account name; a credential FILE the
+// caller opened and will shred -- only the path ever reaches argv (-f), never the secret
+// (gunbc.auth.private_secret_file is the bracket that produces it); the two wall bounds from the
+// caller's own read policy (Second rows, rendered through the one coreutils renderer -- a hand-spelled
+// duration string is banned); the cipher suite; and the retained path, so the RUN THAT READS BACK
+// what it wrote names the file, inside the caller's own artifact prefix.
+//
+// WHAT IT RETURNS: the transport's own facts. A read that succeeded carries the parsed table and the
+// retained path; a failed read carries exit code, stderr and the probed instant, so each lane renders
+// its OWN typed refusal from the transport cause (the boot maps to PrePowerFirmwareUnread, the arrival
+// leg will render its door refusal). No lane's refusal vocabulary is baked in here, and no failure
+// here ever yields a table.
+
+import std.types { Int, NonEmptyStr, String }
+import std.measure { Second }
+import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
+import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of, HpmCheckTable }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
+
+type BmcHpmCheckTransport
+  = HpmCheckTransportOk { table: HpmCheckTable, retained_path: NonEmptyStr, at: NonEmptyStr }
+  | HpmCheckTransportFailed { exit_code: Int, transport_stderr: String, at: NonEmptyStr }
+  // The controller ANSWERED and the table parsed; only the local retention failed, so the retained
+  // bytes are gone and nothing consumes the parsed table. Its own arm, not the transport arm (review
+  // 96635): a full disk must never be dressed in the controller's exit code and stderr, which is how
+  // a wrong-component blame ("exit 0" on the endpoint) was formed. Lanes refuse on this arm: the
+  // evidence chain needs the retained file, and without it no build reading can be established.
+  | HpmCheckRetentionFailed { retained_path: NonEmptyStr, write_error: String, at: NonEmptyStr }
+
+// The read itself, byte-for-byte the argv the boot's pre-power phase always sent (timeout wall,
+// lanplus, the retry bound's words, -f with the FILE, "hpm check"), now reachable by any lane. The
+// retry bound is the single shared row (gunbc.machine_intake.bmc_read_policy); the wall bounds are
+// the CALLER's, because that is where the lanes genuinely differ (boot row policy vs the arrival
+// door's read policy) and where the fold counts.
+fn bmc_hpm_check_transport(
+  controller_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  deadline: Second,
+  kill_after: Second,
+  cipher_suite: IpmiCipherSuite?,
+  retained_path: NonEmptyStr,
+) -> BmcHpmCheckTransport {
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.HpmCheck(
+    bmc_host: controller_host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+  )
+  if r.success {
+    let retained = Filesystem.Write(path: retained_path, content: r.stdout)
+    // The Ok arm reports the retained path, so the write's effect is established here, not assumed:
+    // an Ok never answers yes to a retention it could not perform (DESIGN Fail-closed; review 96634).
+    // The failed-write state is its OWN typed arm (review 96635): the controller answered, the table
+    // is real, and the local write error is reported as such -- never in the transport arm's fields,
+    // which are the controller's facts and would blame the endpoint for a local disk.
+    if retained.success {
+      HpmCheckTransportOk { table: hpm_check_table_of(stdout: r.stdout), retained_path: retained_path, at: at }
+    } else {
+      HpmCheckRetentionFailed { retained_path: retained_path, write_error: retained.error, at: at }
+    }
+  } else {
+    HpmCheckTransportFailed { exit_code: r.exit_code, transport_stderr: r.transport_stderr, at: at }
+  }
+}

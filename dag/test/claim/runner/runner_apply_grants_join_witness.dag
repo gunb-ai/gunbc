@@ -101,10 +101,10 @@ fn join_apply_text(deploy: RunnerHostDeploy) -> String {
 fn join_foreign_apply_text(deploy: RunnerHostDeploy) -> String {
   join_apply_text_over(
     deploy: deploy,
-    slots: [join_retired_member(instance_name: "srv4-13")],
+    slots: [join_retired_member(instance_name: "srv4-16")],
     evidence: SlotRetirementEvidencePresent {
       authorization: srv4_transition_interruption_authorization,
-      standings: [join_pending(unit: "actions-runner@srv4-13.service")],
+      standings: [join_pending(unit: "actions-runner@srv4-16.service")],
     },
   )
 }
@@ -172,8 +172,8 @@ test fn a_candidate_outside_the_hosts_grants_is_withheld_and_not_masked() -> Boo
     Absent => false
     Present { value: d } =>
       let t = join_unquoted(l: join_foreign_apply_text(deploy: d))
-      !string_contains(s: t, pattern: "mask --now actions-runner@srv4-13.service")
-        && string_contains(s: t, pattern: "runner-slot retirement: unit=actions-runner@srv4-13.service")
+      !string_contains(s: t, pattern: "mask --now actions-runner@srv4-16.service")
+        && string_contains(s: t, pattern: "runner-slot retirement: unit=actions-runner@srv4-16.service")
   }
 }
 
