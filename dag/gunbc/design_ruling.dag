@@ -1173,11 +1173,8 @@ data tailscale_fleet_key_untagged_join_causality_2026_11_18: DesignRuling = Desi
 
 fn design_rulings() -> List<DesignRuling> {
   [
-<<<<<<< HEAD
     estimates_are_one_representation_derived_upward,
-=======
     roadmap_scheduling_units_belong_to_factory,
->>>>>>> origin/main
     schedule_answers_are_computed_cached_and_re_read,
     claims_name_their_leaf_from_the_first_landing,
     a_split_handback_is_accepted_by_the_manager,
