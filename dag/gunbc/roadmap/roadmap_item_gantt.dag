@@ -158,6 +158,7 @@ type GanttRefusal
   // A NODE WITH NO DURATION AND NO STATE EXPLAINING WHY. Unreachable by construction -- every arm of EstimateSource
   // names a cause above -- and its only job is to make that unreachability a REFUSAL rather than a gap the read walks
   // past. It is the opposite of a catch-all: a catch-all answers without the cause, this one stops answering.
+  | GanttUnpricedWithoutCause { nodes: List<RoadmapNodeId> }
   | GanttRowsUnplaced { nodes: List<RoadmapNodeId> }
 
 type GanttAnswer
@@ -546,7 +547,7 @@ fn waiting_on(facts: GanttFacts, held: List<BlockedCause>, target: String) -> Li
   })
 }
 
-fn row_state(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode, key: String) -> GanttRowState {
+fn row_state(facts: GanttFacts, placed: PlacementAnswer, behind: List<BlockedCause>, p: PricedNode, key: String) -> GanttRowState {
   match find_placement(placed: placed, key: key) {
     Present { value: row } => RowPlaced {
       start_day: row.start_day,
@@ -569,7 +570,7 @@ fn find_placement(placed: PlacementAnswer, key: String) -> Optional<Placement> {
 // THE STATES THAT ARE NOT A PLACED BAR, in the order a reader should see them: a leaf-grain refusal (an item whose
 // own pieces refused, carrying the leaf scheduler's reason), then an unsized node, then a row gated by something
 // unplacable, then a rollup spanning the work beneath it.
-fn rollup_or_refusal(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
+fn rollup_or_refusal(facts: GanttFacts, placed: PlacementAnswer, behind: List<BlockedCause>, p: PricedNode) -> GanttRowState {
   match p.source {
     Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces {
       leaf_refusal_state(facts: facts, node: p.node.node)
@@ -639,7 +640,7 @@ fn leaf_refusal_state(facts: GanttFacts, node: RoadmapNodeId) -> GanttRowState {
 // THE ROLLUP BAR: a derived node is drawn over the placement of the work it contains -- its first day is the earliest
 // day any of that work starts and its last is the latest any of it finishes. It spends no days of its own and holds
 // no lane, which is what keeps a parent's number and its children's numbers one fact and not two.
-fn rollup_bar(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
+fn rollup_bar(facts: GanttFacts, placed: PlacementAnswer, behind: List<BlockedCause>, p: PricedNode) -> GanttRowState {
   let mine = spanned_rows(facts: facts, placed: placed, p: p)
   if count(mine) == 0 {
     blocked_or_unplaced(behind: behind)
