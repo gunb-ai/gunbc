@@ -823,7 +823,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "fabric-bringup", contribution: "Write down how Git really stores things."),
+      parent: in_project(project: "factory", contribution: "Write down how Git really stores things."),
     ),
     roadmap_node(
       identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
@@ -840,7 +840,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "fabric-bringup", contribution: "Write down how Mercurial really works, in its own words."),
+      parent: in_project(project: "factory", contribution: "Write down how Mercurial really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
@@ -857,7 +857,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "fabric-bringup", contribution: "Write down how Pijul really works, in its own words."),
+      parent: in_project(project: "factory", contribution: "Write down how Pijul really works, in its own words."),
     ),
     roadmap_node(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
@@ -874,7 +874,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "fabric-bringup", contribution: "Say once what counts as evidence for a claim."),
+      parent: in_project(project: "factory", contribution: "Say once what counts as evidence for a claim."),
     ),
     roadmap_node(
       identity: "rnfx_DQV1HD42VR40BA8WBP1Y",
@@ -2091,7 +2091,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Fabric bring-up: our own fleet, its storage and the VM service on it, each observed rather than assumed",
           boundary: "Container for the fabric (operator ruling 2026-10-03: the VM service and fabric storage are both members of the fabric bring-up). Allocation, placement and serving follow the fabric/compute conformance domain (gunbc.design_argument::conformance); storage follows the materialization/realization domain. Host bring-up itself stays operator-driven.",
           approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's checkpointed workspace, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
-          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work gated on the fabric (the SCM rows, as members of this project) does not dispatch until this node is accepted.",
+          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row.",
           displaced_cost: "With the VM service as a top-level project and storage parentless, the largest fabric risk had no place on the public roadmap and the service read as independent of the fabric it runs on.",
           handback: "Per member project: its acceptance receipts, named by their instruments."
         )),
