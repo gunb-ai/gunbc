@@ -1,0 +1,468 @@
+// THE ONE PLACEMENT CORE: list scheduling over keyed rows. Every policy line lives here and nowhere else
+// (gunbc.design_argument::single_authority) -- the leaf-grain scheduler in gunbc.roadmap.roadmap_schedule and the
+// item-grain Gantt in gunbc.roadmap.roadmap_item_gantt are two CALLS of this one policy under two grains, which is
+// why the repo has one scheduler and not two. The core knows rows as a String key and a working-day Int; it knows
+// nothing about LeafPaths or RoadmapNodeIds, and neither caller is allowed a second copy of the policy.
+//
+// WHAT THE CORE DOES, in this exact order, so no structural fact is ever computed over rows the read refused to
+// place:
+//   1. filter `held_out` keys out of the rows -- a held-out row appears NOWHERE after this: no lane, no gate, no
+//      unplaced report. Placing a row and then dropping it from the answer would leave its lane occupancy and its
+//      gating behind, which is a different scheduler than the one this file describes;
+//   2. build adjacency over the surviving rows, dropping edges whose endpoints did not survive;
+//   3. order it (Kahn, FIFO ready queue). An order that comes out short IS a cycle on this graph, reported by name;
+//   4. rank it (rank(k) = days(k) + max rank over successors), group it into rank buckets;
+//   5. place it by descending rank on the lane that frees earliest, no earlier than its placed predecessors and no
+//      earlier than the caller's `earliest_start`.
+//
+// PRE-PLACED ROWS are rows the read already knows the position of (a leaf being worked now, its days read off the
+// item log). Their finish days and their lane occupancy are DERIVED BY THE CORE from the rows it is given -- one
+// pass, before the bucket walk -- and seeded into the same maps its own placements write, so a waiting row is gated
+// by a pre-placed predecessor through the SAME `dep_finish` read. A caller that passed a finish map of its own would
+// be a second authority over one fact; a caller that omitted it would silently lose pre-placed-to-unplaced gating.
+//
+// COST SHAPE (gunbc.design_argument::how_to_work forbids a quadratic that is "fine at the realized n"): adjacency,
+// indegrees, the ordering pass and the rank pass are each one walk of the graph; placement is one walk of the rows
+// plus a day scan bounded by the critical length; `in_flight` is one pass over the rows into a delta map plus one
+// walk of the days. Nothing re-scans the rows per row.
+module gunbc.roadmap.roadmap_placement
+
+import std.types { Bool, Int, List, Map, String }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push, list_reverse }
+
+// A ROW TO PLACE: a stable key and its working-day duration. The key is the caller's own identity for the row (a
+// leaf-occurrence path key, or a roadmap node id) -- the core never interprets it, so one policy serves both grains.
+type PlacementRow {
+  key: String
+  days: Int
+}
+
+// A WAITING RELATION: `to` cannot start before `from` has finished. Sibling ordering at item grain and a leaf's
+// waits_on edges at leaf grain are the same shape here, which is the whole reason the core is keyed and not typed.
+type PlacementEdge {
+  from: String
+  to: String
+}
+
+// WHERE A ROW SITS in the answer: half-open [start_day, finish_day) on lane `lane`, days counted from the read.
+type Placement {
+  key: String
+  start_day: Int
+  finish_day: Int
+  lane: Int
+}
+
+// THE INPUT, all of it read-supplied and none of it derived twice. `workers` is the declared worker count (the same
+// BeltCapacity.max_concurrent the leaf scheduler takes); `earliest_start` is the caller-derived floor on any NEW
+// start (a pinned-day floor at leaf grain, 0 at item grain -- the core does not know why it exists and the item
+// grain never has to say the word "pin"); `held_out` names the rows this read refuses to place.
+type PlacementInput {
+  rows: List<PlacementRow>
+  edges: List<PlacementEdge>
+  workers: Int
+  preplaced: List<Placement>
+  earliest_start: Int
+  held_out: List<String>
+}
+
+// WHY THERE IS NO PLACEMENT. Both arms name the rows, so a refusal can be reported instead of a schedule that is
+// quietly incomplete (fail_closed: a failure arm refuses, it never widens).
+type PlacementRefusal
+  = Cyclic { keys: List<String> }
+  | Unplaced { keys: List<String> }
+
+// THE ANSWER: the placed rows in placement order (highest rank first), the horizon (the day the rows empty), the
+// per-day in-flight series over ALL placed rows including the pre-placed ones, and the critical path as keys.
+type PlacementAnswer {
+  rows: List<Placement>
+  horizon: Int
+  in_flight: List<Int>
+  critical: List<String>
+}
+
+type PlacementOutcome
+  = Placed { answer: PlacementAnswer }
+  | Refused { refusal: PlacementRefusal }
+
+// THE BOOKKEEPING THE ORDERING PASS CARRIES. `ready` holds the rows whose predecessors have ALL been emitted;
+// `order` is the emitted sequence, one append per emit, so it is a FORWARD topological order -- every predecessor
+// before its successor -- and the pass that needs the other direction asks std.algebra's `list_reverse` once rather
+// than pretending an accumulator is backwards. (std.algebra:176 is explicit that `list_push` is FreeMonoid's SNOC.)
+type TopoState {
+  ready: List<PlacementRow>
+  order: List<PlacementRow>
+  indeg: Map<String, Int>
+  unemitted: Int
+}
+
+// WHAT THE ORDERING PASS ANSWERS: an emission order in which every predecessor precedes its successor, or the typed
+// fact that the graph has a cycle. There is no third arm and no partial order handed back as if it were complete.
+type TopoOutcome
+  = Ordered { order: List<PlacementRow> }
+  | Cyclic { keys: List<String> }
+
+// THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
+// is free at day 0, the same default the lane scan reads, so the map is never pre-seeded by index and never
+// rewritten by index), each placed row's finish day, the rows in the order they were placed -- which IS the
+// answer's order -- the bucket currently at the rank being placed, and that rank.
+type PlaceState {
+  placed: List<Placement>
+  finish: Map<String, Int>
+  lanes: Map<Int, Int>
+  bucket: List<PlacementRow>
+  rank_now: Int
+}
+
+// A total read over a String-keyed map: the stored value, or `dflt` when the key is absent.
+fn look_or<V>(m: Map<String, V>, key: String, dflt: V) -> V {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
+  }
+}
+
+// A total read over an Int-keyed map (the lane-free-day map and the rank-bucket map).
+fn look_key<V>(m: Map<Int, V>, key: Int, dflt: V) -> V {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
+  }
+}
+
+// Add one row to the successor / predecessor list stored at `key`. `list_push` is std.algebra's declared home of the
+// single-item append; the `concat(acc, [x])` form that stood here copied the whole accumulated list at every edge.
+fn push_row(m: Map<String, List<PlacementRow>>, key: String, n: PlacementRow) -> Map<String, List<PlacementRow>> {
+  let none_yet: List<PlacementRow> = []
+  map_insert(m: m, key: key, value: list_push(xs: look_or(m: m, key: key, dflt: none_yet), item: n))
+}
+
+// THE SUCCESSOR / PREDECESSOR ADJACENCY over the surviving rows, held as the neighbouring ROWS so the ordering,
+// ranking and placement passes never look a key up again. An edge whose either endpoint was held out (or names a
+// row that was never given) is dropped here, which is what keeps a held-out row from gating anything. An edge whose
+// `from` lies outside the given rows entirely is an already-done predecessor: it is satisfied before this read
+// begins, so it is not a day this placement pays for.
+type Adjacency {
+  succ: Map<String, List<PlacementRow>>
+  pred: Map<String, List<PlacementRow>>
+}
+
+fn adjacency(rows: List<PlacementRow>, edges: List<PlacementEdge>) -> Adjacency {
+  let member: Map<String, PlacementRow> = fold(rows, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
+  let internal = filter(edges, e => map_contains_key(m: member, key: e.from) && map_contains_key(m: member, key: e.to))
+  let succ: Map<String, List<PlacementRow>> = fold(internal, init: empty_map(), f: fn(acc, e) {
+    match map_lookup(m: member, key: e.to) {
+      Absent => acc
+      Present { value: n } => push_row(m: acc, key: e.from, n: n)
+    }
+  })
+  let pred: Map<String, List<PlacementRow>> = fold(internal, init: empty_map(), f: fn(acc, e) {
+    match map_lookup(m: member, key: e.from) {
+      Absent => acc
+      Present { value: n } => push_row(m: acc, key: e.to, n: n)
+    }
+  })
+  Adjacency { succ: succ, pred: pred }
+}
+
+// THE OUTSTANDING-PREDECESSOR COUNT of each row, read off the adjacency its own edges built.
+fn indegrees(rows: List<PlacementRow>, succ: Map<String, List<PlacementRow>>) -> Map<String, Int> {
+  let no_succs: List<PlacementRow> = []
+  let seeded = fold(rows, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: 0) })
+  fold(rows, init: seeded, f: fn(acc, n) {
+    fold(look_or(m: succ, key: n.key, dflt: no_succs), init: acc, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) + 1) })
+  })
+}
+
+// EMIT one ready row: append it to the order, take one outstanding predecessor off each of its successors, and put
+// on the ready queue exactly those successors that just ran out of predecessors (the fold appends, so the queue is
+// FIFO; which ready row is emitted next cannot change the answer, because placement is driven by rank, not by
+// emission order). Each edge is touched once, so the ordering pass costs one walk of the graph.
+fn topo_step(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoState {
+  match state.ready {
+    Empty => state
+    Cons { head: n, tail: rest } => {
+      let no_succs: List<PlacementRow> = []
+      let succs = look_or(m: succ, key: n.key, dflt: no_succs)
+      let dec = fold(succs, init: state.indeg, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) - 1) })
+      let freed = fold(succs, init: rest, h: fn(acc, s) { if look_or(m: dec, key: s.key, dflt: 0) == 0 { list_push(xs: acc, item: s) } else { acc } })
+      TopoState { ready: freed, order: list_push(xs: state.order, item: n), indeg: dec, unemitted: state.unemitted - 1 }
+    }
+  }
+}
+
+// Run the ordering pass to exhaustion. `unemitted` is carried rather than recounted, and an order that ends with
+// rows still unemitted IS a cycle on this graph: the same pass that would have produced the order reports it short,
+// naming the rows it could not emit, so nothing rests on a second pass agreeing with the first.
+fn topo_run(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoOutcome {
+  match state.ready {
+    Empty => if state.unemitted > 0 {
+      Cyclic { keys: [] }
+    } else {
+      Ordered { order: state.order }
+    }
+    Cons { head: n, tail: rest } => topo_run(state: topo_step(state: state, succ: succ), succ: succ)
+  }
+}
+
+// THE KEYS THE ORDERING PASS COULD NOT EMIT: the given rows minus the emitted ones. Computed over the FILTERED rows
+// only, so a held-out row never appears here.
+fn unemitted_keys(rows: List<PlacementRow>, outcome: TopoOutcome) -> List<String> {
+  match outcome {
+    Ordered { order: order } => map(filter(rows, n => !in_order(order: order, key: n.key)), n => n.key)
+    Cyclic { keys: _ } => map(rows, n => n.key)
+  }
+}
+
+fn in_order(order: List<PlacementRow>, key: String) -> Bool {
+  any(order, n => n.key == key)
+}
+
+// ONE rank pass over the emission order read BACKWARDS -- the reversal taken once, from std.algebra's own
+// `list_reverse`. A successor is emitted only after every one of its predecessors has been, so the reversed order
+// puts every successor before its predecessor and rank(k) = days(k) + max rank over successors is already settled
+// when k is visited.
+fn rank_pass(order_back: List<PlacementRow>, succ: Map<String, List<PlacementRow>>) -> Map<String, Int> {
+  let no_succs: List<PlacementRow> = []
+  fold(order_back, init: empty_map(), f: fn(rank, n) {
+    let best = fold(look_or(m: succ, key: n.key, dflt: no_succs), init: 0, g: fn(m, s) {
+      let r = look_or(m: rank, key: s.key, dflt: 0)
+      if r > m { r } else { m }
+    })
+    map_insert(m: rank, key: n.key, value: n.days + best)
+  })
+}
+
+// The largest rank over the rows to place -- the critical length, the shortest span any placement of these rows
+// under any worker count can cover.
+fn max_rank_of(order: List<PlacementRow>, rank: Map<String, Int>) -> Int {
+  fold(order, init: 0, f: fn(m, n) {
+    let r = look_or(m: rank, key: n.key, dflt: 0)
+    if r > m { r } else { m }
+  })
+}
+
+// The rows grouped by rank, EXCLUDING the pre-placed keys: a row whose position the read already knows is not put in
+// a bucket, because nothing is left to decide about it. Its lane and its gating still reach the policy, through the
+// seeds the core takes from `preplaced`. The groups are built by appending while walking the FORWARD topological
+// order, so each group is itself predecessor-first: equal ranks are placed deterministically, and a zero-day tie
+// (where rank stops strictly decreasing along an edge) still cannot place a successor before its predecessor.
+fn rank_buckets(order: List<PlacementRow>, rank: Map<String, Int>, preplaced_keys: Map<String, Bool>) -> Map<Int, List<PlacementRow>> {
+  let empty_bucket: List<PlacementRow> = []
+  fold(order, init: empty_map(), f: fn(acc, n) {
+    if map_contains_key(m: preplaced_keys, key: n.key) {
+      acc
+    } else {
+      let r = look_or(m: rank, key: n.key, dflt: 0)
+      map_insert(m: acc, key: r, value: list_push(xs: look_key(m: acc, key: r, dflt: empty_bucket), item: n))
+    }
+  })
+}
+
+// The row with the largest rank, stable on ties (the first in the list wins); `none` on an empty list, so no
+// placeholder row is ever emitted.
+fn argmax_row_rank(rows: List<PlacementRow>, rank: Map<String, Int>) -> PlacementRow? {
+  let seed: PlacementRow? = none
+  fold(rows, init: seed, f: fn(best, n) {
+    match best {
+      Present { value: b } => if look_or(m: rank, key: n.key, dflt: 0) > look_or(m: rank, key: b.key, dflt: 0) { Present { value: n } } else { best }
+      Absent => Present { value: n }
+    }
+  })
+}
+
+// THE CRITICAL PATH as keys: start at the maximum-rank row and follow its maximum-rank successor until it has none.
+// rank(n) = days(n) + max rank over successors, so every step stays on a longest path. The walk halts because the
+// ordering pass refused every cycle before this could be called.
+fn follow_critical(n: PlacementRow, succ: Map<String, List<PlacementRow>>, rank: Map<String, Int>, acc: List<String>) -> List<String> {
+  let no_succs: List<PlacementRow> = []
+  let succs = look_or(m: succ, key: n.key, dflt: no_succs)
+  match argmax_row_rank(rows: succs, rank: rank) {
+    Absent => list_push(xs: acc, item: n.key)
+    Present { value: s } => follow_critical(n: s, succ: succ, rank: rank, acc: list_push(xs: acc, item: n.key))
+  }
+}
+
+// THE LANE THAT FREES EARLIEST, lowest index winning ties. `workers` is the declared capacity; a lane with no entry
+// is free at day 0.
+fn pick_lane(lanes: Map<Int, Int>, workers: Int) -> Int {
+  scan_lanes(i: 0, workers: workers, lanes: lanes, best_lane: 0, best_free: look_key(m: lanes, key: 0, dflt: 0))
+}
+
+fn scan_lanes(i: Int, workers: Int, lanes: Map<Int, Int>, best_lane: Int, best_free: Int) -> Int {
+  if i >= workers {
+    best_lane
+  } else {
+    let f = look_key(m: lanes, key: i, dflt: 0)
+    if f < best_free { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: i, best_free: f) }
+    else { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: best_lane, best_free: best_free) }
+  }
+}
+
+// The finish day of the latest already-placed predecessor of `n` (0 when it has none placed). A predecessor cannot
+// be placed after its successor: placement walks ranks downwards and every predecessor ranks above its successor.
+// Pre-placed predecessors reach this SAME read through the finish map the core seeded from `preplaced`, which is why
+// a row waiting on a pre-placed one starts when that one finishes.
+fn dep_finish(n: PlacementRow, pred: Map<String, List<PlacementRow>>, finish: Map<String, Int>) -> Int {
+  let no_preds: List<PlacementRow> = []
+  fold(look_or(m: pred, key: n.key, dflt: no_preds), init: 0, g: fn(m, p) {
+    let f = look_or(m: finish, key: p.key, dflt: 0)
+    if f > m { f } else { m }
+  })
+}
+
+// THE FINISH DAYS OF THE PRE-PLACED ROWS, derived here and nowhere else: one pass over the rows the caller says are
+// already placed. Seeding them into the same map the policy writes its own finishes into is what makes a row waiting
+// on a pre-placed predecessor start when that predecessor finishes.
+fn preplaced_finish(preplaced: List<Placement>) -> Map<String, Int> {
+  fold(preplaced, init: empty_map(), f: fn(acc, p) { map_insert(m: acc, key: p.key, value: p.finish_day) })
+}
+
+// THE LANES THE PRE-PLACED ROWS HOLD, derived the same way: the latest finish day each lane is held to. A lane with
+// no entry is free at day 0, so the map is seeded only with the lanes something occupies.
+fn preplaced_lanes(preplaced: List<Placement>) -> Map<Int, Int> {
+  fold(preplaced, init: empty_map(), f: fn(acc, p) {
+    if look_key(m: acc, key: p.lane, dflt: 0) < p.finish_day {
+      map_insert(m: acc, key: p.lane, value: p.finish_day)
+    } else {
+      acc
+    }
+  })
+}
+
+// THE KEYS THE READ ALREADY KNOWS THE POSITION OF, as a set, so the bucket build can drop them in one lookup.
+fn preplaced_keys(preplaced: List<Placement>) -> Map<String, Bool> {
+  fold(preplaced, init: empty_map(), f: fn(acc, p) { map_insert(m: acc, key: p.key, value: true) })
+}
+
+// THE LIST SCHEDULE: place rows by descending rank (longest remaining path first), each on the lane that frees
+// earliest, no earlier than all its placed predecessors have finished and no earlier than `earliest_start`. Every
+// bucketed row lands in exactly one bucket, so walking the buckets from the top down covers the whole set; whether
+// it did is CHECKED by `unplaced_keys` in `place`, not assumed here. The row list is pushed and read back once; the
+// rank walk over empty buckets is bounded by the critical length, which the answer's own per-day series spans.
+fn place_all(state: PlaceState, pred: Map<String, List<PlacementRow>>, buckets: Map<Int, List<PlacementRow>>, workers: Int, earliest_start: Int) -> PlaceState {
+  match state.bucket {
+    Cons { head: n, tail: rest } => {
+      let lane = pick_lane(lanes: state.lanes, workers: workers)
+      let lane_free = look_key(m: state.lanes, key: lane, dflt: 0)
+      let dep = dep_finish(n: n, pred: pred, finish: state.finish)
+      let after_deps = if dep > lane_free { dep } else { lane_free }
+      let start_day = if earliest_start > after_deps { earliest_start } else { after_deps }
+      let finish_day = start_day + n.days
+      let row = Placement { key: n.key, start_day: start_day, finish_day: finish_day, lane: lane }
+      place_all(
+        state: PlaceState {
+          placed: list_push(xs: state.placed, item: row),
+          finish: map_insert(m: state.finish, key: n.key, value: finish_day),
+          lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
+          bucket: rest,
+          rank_now: state.rank_now,
+        },
+        pred: pred, buckets: buckets, workers: workers, earliest_start: earliest_start
+      )
+    }
+    Empty =>
+      if state.rank_now < 0 {
+        state
+      } else {
+        let empty_bucket: List<PlacementRow> = []
+        place_all(
+          state: PlaceState { placed: state.placed, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
+          pred: pred, buckets: buckets, workers: workers, earliest_start: earliest_start
+        )
+      }
+  }
+}
+
+// THE COMPLETENESS CHECK, read off the placement's own finish map: the rows it did not place. A truncated placement
+// is never handed back as a complete one, and the reachability of that arm is established by this pass rather than
+// assumed of two passes that were never compared. Checked over the FILTERED rows: a held-out row is not unplaced, it
+// is absent, and the caller names it in its own answer.
+fn unplaced_keys(rows: List<PlacementRow>, finish: Map<String, Int>) -> List<String> {
+  map(filter(rows, n => !map_contains_key(m: finish, key: n.key)), n => n.key)
+}
+
+// The maximum finish day over the placed rows -- the horizon, the day the rows empty.
+fn horizon_of(rows: List<Placement>) -> Int {
+  fold(rows, init: 0, g: fn(m, l) { if l.finish_day > m { l.finish_day } else { m } })
+}
+
+// How many rows are in flight on each day, indexed from day 0 to horizon-1. ONE pass over the rows turns each
+// interval [start, finish) into a +1 at its start day and a -1 at its finish day; ONE walk over the days, appending
+// the running count in day order, folds those deltas into the series. What stood here filtered every row once per
+// day. A row spanning no day adds its +1 and its -1 on the same day and is counted on none.
+fn in_flight(rows: List<Placement>, horizon: Int) -> List<Int> {
+  let delta = fold(rows, init: empty_map(), f: fn(m, l) {
+    let opened = map_insert(m: m, key: l.start_day, value: look_key(m: m, key: l.start_day, dflt: 0) + 1)
+    map_insert(m: opened, key: l.finish_day, value: look_key(m: opened, key: l.finish_day, dflt: 0) - 1)
+  })
+  count_days(d: 0, horizon: horizon, running: 0, delta: delta, acc: [])
+}
+
+fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: List<Int>) -> List<Int> {
+  if d >= horizon {
+    acc
+  } else {
+    let now = running + look_key(m: delta, key: d, dflt: 0)
+    count_days(d: d + 1, horizon: horizon, running: now, delta: delta, acc: list_push(xs: acc, item: now))
+  }
+}
+
+// THE ONE PLACEMENT. Rows named in `held_out` are filtered out at the top and appear nowhere in what follows, so no
+// answer inherits lane occupancy or gating from work this read refused to do. The structural facts (cycle, unplaced)
+// are computed over the FILTERED rows. `workers` is the declared capacity; `earliest_start` is the caller's floor on
+// any new start, and it returns 0 -- and so changes nothing -- whenever the caller has no reason to hold the read.
+fn place(input: PlacementInput) -> PlacementOutcome {
+  let held: Map<String, Bool> = fold(input.held_out, init: empty_map(), f: fn(acc, k) { map_insert(m: acc, key: k, value: true) })
+  let rows = filter(input.rows, r => !map_contains_key(m: held, key: r.key))
+  let graph = adjacency(rows: rows, edges: input.edges)
+  let seeded_indeg = indegrees(rows: rows, succ: graph.succ)
+  let ready_rows = filter(rows, n => look_or(m: seeded_indeg, key: n.key, dflt: 0) == 0)
+  let outcome = topo_run(state: TopoState { ready: ready_rows, order: [], indeg: seeded_indeg, unemitted: count(rows, r => true) }, succ: graph.succ)
+  match outcome {
+    Cyclic { keys: _ } => Refused { refusal: Cyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
+    Ordered { order: order } => {
+      let rank = rank_pass(order_back: list_reverse(xs: order), succ: graph.succ)
+      let pre_keys = preplaced_keys(preplaced: input.preplaced)
+      let to_place = filter(order, n => !map_contains_key(m: pre_keys, key: n.key))
+      let buckets = rank_buckets(order: order, rank: rank, preplaced_keys: pre_keys)
+      let started = match argmax_row_rank(rows: to_place, rank: rank) {
+        Absent => PlaceState { placed: input.preplaced, finish: preplaced_finish(preplaced: input.preplaced), lanes: preplaced_lanes(preplaced: input.preplaced), bucket: [], rank_now: -1 }
+        Present { value: first_row } => {
+          let top_rank = look_or(m: rank, key: first_row.key, dflt: 0)
+          PlaceState {
+            placed: input.preplaced,
+            finish: preplaced_finish(preplaced: input.preplaced),
+            lanes: preplaced_lanes(preplaced: input.preplaced),
+            bucket: look_key(m: buckets, key: top_rank, dflt: [] as List<PlacementRow>),
+            rank_now: top_rank,
+          }
+        }
+      }
+      let done = place_all(state: started, pred: graph.pred, buckets: buckets, workers: input.workers, earliest_start: input.earliest_start)
+      let missing = unplaced_keys(rows: rows, finish: done.finish)
+      if count(missing, k => true) > 0 {
+        Refused { refusal: Unplaced { keys: missing } }
+      } else {
+        let h = horizon_of(rows: done.placed)
+        Placed {
+          answer: PlacementAnswer {
+            rows: done.placed,
+            horizon: h,
+            in_flight: in_flight(rows: done.placed, horizon: h),
+            critical: critical_keys(order: order, rank: rank, succ: graph.succ),
+          },
+        }
+      }
+    }
+  }
+}
+
+// The critical path over the rows to place, as keys, from the row of largest rank. Empty when there is nothing to
+// place (a read that gave only pre-placed rows has no new critical path to name).
+fn critical_keys(order: List<PlacementRow>, rank: Map<String, Int>, succ: Map<String, List<PlacementRow>>) -> List<String> {
+  let no_rows: List<PlacementRow> = []
+  match argmax_row_rank(rows: order, rank: rank) {
+    Absent => no_rows
+    Present { value: n } => follow_critical(n: n, succ: succ, rank: rank, acc: [])
+  }
+}

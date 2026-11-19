@@ -173,14 +173,45 @@ fn estimate_row(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, value: Est
   RoadmapEstimateRow { subject: subject, made: made, value: value, basis: basis }
 }
 
-// THE LIVE ESTIMATE ROWS. EMPTY THE DAY THIS LANDS, on purpose and not by omission: sizing the roughly 290
-// nodes is its own lane and its own session (the operator assigned it 2026-11-19), and this mechanism must be
-// green with zero rows in it -- an unsized node is a LISTED state in the Gantt answer, never a price, never a
-// default (gunbc.design_argument::fail_closed). Rows arrive from the sizing lane only, appended by whoever
-// holds the basis for them; the consumer is the ctrl dashboard planning timeline
-// (gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page), through
-// gunbc.roadmap.roadmap_item_gantt, which is the only reader that turns them into dates.
-data roadmap_estimates: List<RoadmapEstimateRow> = []
+// THE STREAM, and the only carrier of authored estimates: entries are appended and never edited, and an entry is
+// either a ROW (a price, in one of the two forms) or a REVOCATION (a price withdrawn, with its reason). The
+// revocation is what keeps the append-only discipline from becoming a trap -- merry-moth-343's lifecycle case is a
+// leaf priced, then split into priced children: without a release the former price would contradict its children
+// forever, and with one it stops pricing the node while staying readable in the stream. Same shape as the roadmap
+// event log: append the event, never rewrite the earlier one.
+//
+// EMPTY THE DAY THIS LANDS, on purpose and not by omission: sizing the roughly 290 nodes is its own lane and its own
+// session (the operator assigned it 2026-11-19), and this mechanism must be green with zero rows in it -- an unsized
+// node is a LISTED state in the Gantt answer, never a price, never a default
+// (gunbc.design_argument::fail_closed). Rows arrive from the sizing lane only, appended by whoever holds the basis
+// for them; the consumer is the ctrl dashboard planning timeline
+// (gunbc.design_ruling::the_ctrl_dashboard_renders_the_planning_page), reading through
+// gunbc.roadmap.roadmap_estimate_derivation and gunbc.roadmap.roadmap_item_gantt, which is the only reader that turns
+// a duration into dates.
+type EstimateRevocation {
+  subject: RoadmapNodeIdentity
+  made: Iso8601CivilDate
+  withdraws_made: Iso8601CivilDate
+  reason: String
+}
+
+type EstimateEntry
+  = EstimateRecorded { row: RoadmapEstimateRow }
+  | EstimateRevoked { revocation: EstimateRevocation }
+
+fn estimate_revoked(subject: RoadmapNodeIdentity, made: Iso8601CivilDate, withdraws_made: Iso8601CivilDate, reason: String) -> EstimateEntry {
+  EstimateRevoked { revocation: EstimateRevocation { subject: subject, made: made, withdraws_made: withdraws_made, reason: reason } }
+}
+
+fn estimate_recorded(row: RoadmapEstimateRow) -> EstimateEntry { EstimateRecorded { row: row } }
+
+data roadmap_estimate_entries: List<EstimateEntry> = []
+
+// STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
+// and "after" has to mean strictly after rather than the antisymmetric collapse of <= onto itself.
+fn date_precedes(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
+  date_le(a: a, b: b) && !date_le(a: b, b: a)
+}
 
 // ======================= THE ONE CONVERSION TABLE (single authority) =======================
 // Each size names an INCLUSIVE working-day range; the ranges PARTITION the positive whole numbers, so every
@@ -347,15 +378,4 @@ data dated_rows_closed_on: Iso8601CivilDate = d(y: 2026, m: 11, day: 19)
 
 fn dated_rows_are_closed_to_the_ruling() -> Bool {
   all(roadmap_effort_estimates, e => date_le(a: e.made_on, b: dated_rows_closed_on))
-}
-
-// THE LIVE ROWS, read by subject. Appended, never edited: the last row for a subject is its current estimate,
-// and two rows for one subject made on the SAME day is an ambiguity the answer refuses rather than resolves by
-// declaration order (the dated carrier's `made` is the clock; it does not order one day's two opinions).
-fn roadmap_estimates_for(subject: RoadmapNodeIdentity) -> List<RoadmapEstimateRow> {
-  filter(roadmap_estimates, e => e.subject == subject)
-}
-
-fn latest_roadmap_estimate(subject: RoadmapNodeIdentity) -> Optional<RoadmapEstimateRow> {
-  fold(roadmap_estimates_for(subject: subject), init: optional_absent(), f: fn(acc, e) { optional_present(value: e) })
 }
