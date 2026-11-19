@@ -642,7 +642,7 @@ test fn witness_authoring_refuses_prerequisite_into_own_memberof_container() -> 
   let into_own = [RoadmapEdge { child: tnid(s: "own-leaf"), parent: tnid(s: "own-container") }]
   let found = prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: [] as List<WorkDecomposition>)
   count(found) == 1
-    && any(found, r => r.child == tnid(s: "own-leaf") && r.parent == tnid(s: "own-container") && r.container == tnid(s: "own-container"))
+    && any(found, r => r.child == tnid(s: "own-leaf") && r.parent == tnid(s: "own-container"))
 }
 
 // A DECOMPOSITION-PIECE violation refuses identically, even though MemberOf alone does not link leaf to container:
@@ -690,17 +690,18 @@ test fn witness_live_authority_has_no_prerequisite_into_own_container() -> Bool 
   count(live_prerequisite_edges_into_own_containers()) == 0
 }
 
-// The live redundant read (a container waiting on something it contains) is a REAL consumer, not a
-// dangling read: it must surface the flagged edges on the live graph, and every edge it flags must be
-// a genuine container-waits-on-what-it-contains relation that the containment law does NOT refuse
-// (the two live reads stay consistent: redundant is flagged, never refused). This is the model-side
-// report the planning page will render.
+// The live redundant read (a container waiting on something it contains) has a named consumer: this claim route
+// calls it and checks the invariant over whatever the live graph holds -- an edge the redundant read flags is NEVER
+// also refused by the containment law (the two live reads stay consistent: redundant is flagged, never refused).
+// Consumption is shown by the named consumer + executing route, not by forcing the live population to be non-empty
+// (DESIGN *Fail-closed*: a live count against a literal is a change detector; the flag exists precisely to prompt
+// removing these edges, so requiring them to exist would punish the fix). The fixture witness
+// witness_authoring_flags_parent_on_own_child_without_refusing proves the flag arm works.
 test fn witness_live_redundant_prerequisites_are_flagged_not_refused() -> Bool {
   let flagged = live_prerequisite_edges_onto_own_contained()
   let refused = live_prerequisite_edges_into_own_containers()
-  count(flagged) > 0
-    && all(flagged, f => f.container != f.waited_on
-         && !any(refused, r => r.child == f.container && r.parent == f.waited_on))
+  all(flagged, f => f.container != f.waited_on
+    && !any(refused, r => r.child == f.container && r.parent == f.waited_on))
 }
 
 // Every declared TICKET row is a complete, unsigned, open ticket with a carrier and an owner; a

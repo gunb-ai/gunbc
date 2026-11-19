@@ -961,18 +961,18 @@ fn decomposition_holders(decompositions: List<WorkDecomposition>, node: RoadmapN
 // concurrent roadmap_estimate_derivation.dag pricing change -- is the change that puts this refusal on the required
 // path; the law is written so that gate is a one-line call once the walk is liftable.
 
-// A prerequisite edge (child -> parent) whose target is a container holding the child: refused. `container` names the
-// thing the edge points at, which is a containment ancestor of `child` by membership or by holding it as a piece.
+// A prerequisite edge (child -> parent) whose target is a container holding the child: refused. The edge's TARGET
+// (parent) IS the container it waits on -- a containment ancestor of `child` by membership or by holding it as a
+// piece -- so naming the edge (child -> parent) already names the container; no separate container field is stored.
 type EdgeIntoOwnContainer {
   child: RoadmapNodeId
   parent: RoadmapNodeId
-  container: RoadmapNodeId
 }
 
 fn prerequisite_edges_into_own_containers(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, decompositions: List<WorkDecomposition>) -> List<EdgeIntoOwnContainer> {
   flat_map(edges, e =>
     if contained_under(nodes: nodes, decompositions: decompositions, node: e.child, ancestor: e.parent, count_pieces: true) {
-      [EdgeIntoOwnContainer { child: e.child, parent: e.parent, container: e.parent }]
+      [EdgeIntoOwnContainer { child: e.child, parent: e.parent }]
     } else {
       [] as List<EdgeIntoOwnContainer>
     })
