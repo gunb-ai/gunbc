@@ -22,6 +22,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegCommand, ApplyLegInstallFile, FileSource, Payload, Staged, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, apply_systemctl_leg, systemctl_action_argv,
+  systemctl_leg_render_command, systemctl_leg_render_diagnosis, ApplyLegInstallDirectory,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_unit_plan, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
   deploy_artifact_closure_gate,
@@ -29,7 +30,8 @@ import gunbc.live_deploy.apply_legs {
   gpu_cap_report_legs,
   deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec, DesiredDeployment }
+import gunbc.live_deploy.spec { NotPairDelivered }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names, deployment_tree_remote_unit_name }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan, ConvergedMember, PublishTree, WriteUnit, DaemonReload, CreateRoot, WriteOidcConfig, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, UnitFile, OidcConfigFile, DirectoryRoot, TreePublication, UnitManager, GitWorkerSubtree, RepositorySharedPosture }
 import gunbc.live_deploy.spec { deployment_attempt_unit_drain_path_unit_path, tailscale_default_https_port }
@@ -448,7 +450,10 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => true
-    ApplyLegBrokerTree { locus: _, executables: _ } => true
+    ApplyLegBrokerTree { revision: _ } => true
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => command_within_grants(c: c)
+    ApplyLegSystemctl { step: _, action: a, unit: u } => command_within_grants(c: systemctl_leg_render_command(action: a, unit: u))
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => command_within_grants(c: systemctl_leg_render_command(action: a, unit: u)) && command_within_grants(c: systemctl_leg_render_diagnosis(unit: u))
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
@@ -527,7 +532,7 @@ test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
 fn owned_broker_spec_on_unregistered_machine() -> DeploymentSpec {
   let unregistered = macbook_local_dashboard_instance()
   let realized = prod_role_realization_in(selection: ProdRoleHeldBy { deployment: unregistered.deployment }, instances: [unregistered])
-  deployment_spec_for(realization: realized, instance: unregistered, target: deployment_srv1_target(), names: srv1_live_deployment_names(instance: unregistered))
+  deployment_spec_for(realization: realized, instance: unregistered, target: deployment_srv1_target(), names: srv1_live_deployment_names(instance: unregistered), pair_delivery: NotPairDelivered)
 }
 
 test fn an_owned_broker_on_an_unregistered_machine_refuses_the_whole_apply_plan() -> Bool {
@@ -637,7 +642,10 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
         ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => env_binary(legs: rest)
-        ApplyLegBrokerTree { locus: _, executables: _ } => env_binary(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
+        ApplyLegInstallDirectory { step: _, command: _, dest: _ } => env_binary(legs: rest)
+        ApplyLegSystemctl { step: _, action: _, unit: _ } => env_binary(legs: rest)
+        ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => env_binary(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
         ApplyLegDependency { dep: _ } => env_binary(legs: rest)
       }
@@ -916,7 +924,10 @@ fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
     ApplyLegObjectSource => []
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
-    ApplyLegBrokerTree { locus: _, executables: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => argv_words(command: c)
+    ApplyLegSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } => systemctl_leg_render_command(action: a, unit: u).arguments
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
@@ -936,7 +947,10 @@ fn leg_payload(leg: DeployApplyLeg) -> String {
     ApplyLegObjectSource => ""
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => ""
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ""
-    ApplyLegBrokerTree { locus: _, executables: _ } => ""
+    ApplyLegBrokerTree { revision: _ } => ""
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => ""
+    ApplyLegSystemctl { step: _, action: _, unit: _ } => ""
+    ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => ""
     ApplyLegRetract { step: _, leg: _ } => ""
     ApplyLegDependency { dep: _ } => ""
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
@@ -1207,7 +1221,10 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
         ApplyLegBrokerStateDirectories { revision: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegObjectSource => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => launcher_snapshot_owner(legs: rest)
-        ApplyLegBrokerTree { locus: _, executables: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallDirectory { step: _, command: _, dest: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegSystemctl { step: _, action: _, unit: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)
@@ -1347,3 +1364,53 @@ test fn a_pending_card_is_a_report_leg_and_srv1_now_has_none() -> Bool {
       }
     }
 }
+
+// THE RELEASE-PAIR APPLY-LEGS REGISTRATION (node://lab-converges-release-pair). The lab declares a release pair
+// (spec.dag::PairDelivered), so apply installs the pair-delivery service+timer beside the slice and serve unit,
+// with the slice leg ordered BEFORE the serve and pair-delivery units start (condition (i) of the deploy gate).
+// A non-pair instance gains NEITHER leg (the red control), and removing the lab's declaration drops the legs.
+
+fn lab_spec_unpaired() -> DeploymentSpec {
+  let lab = srv1_lab_desired_deployment()
+  selected_deployment_spec(row: DesiredDeployment {
+    instance: lab.instance,
+    target: lab.target,
+    names: lab.names,
+    selected_identity: lab.selected_identity,
+    admitted_branch: lab.admitted_branch,
+    pair_delivery: NotPairDelivered,
+  })
+}
+
+test fn the_lab_apply_legs_install_the_release_pair_with_slice_and_serve() -> Bool {
+  let legs = full_legs(spec: lab_spec())
+  has_step(legs: legs, step: "instance-slice")
+    && has_step(legs: legs, step: "serve-unit")
+    && has_step(legs: legs, step: "belt-pair-delivery-service")
+    && has_step(legs: legs, step: "belt-pair-delivery-timer")
+    && has_step(legs: legs, step: "belt-pair-delivery-timer-enable")
+    && step_index(legs: legs, step: "instance-slice") < step_index(legs: legs, step: "serve-restart")
+    && step_index(legs: legs, step: "instance-slice") < step_index(legs: legs, step: "belt-pair-delivery-timer-restart")
+}
+
+test fn a_non_pair_instance_gains_no_pair_delivery_leg() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  !has_step(legs: legs, step: "belt-pair-delivery-service")
+    && !has_step(legs: legs, step: "belt-pair-delivery-timer")
+    && has_step(legs: legs, step: "serve-unit")
+}
+
+test fn srv2_deploy_gains_no_pair_delivery_leg() -> Bool {
+  let legs = full_legs(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment()))
+  !has_step(legs: legs, step: "belt-pair-delivery-service")
+    && !has_step(legs: legs, step: "belt-pair-delivery-timer")
+}
+
+test fn removing_the_declaration_from_the_lab_drops_the_pair_legs() -> Bool {
+  let legs = full_legs(spec: lab_spec_unpaired())
+  !has_step(legs: legs, step: "belt-pair-delivery-service")
+    && !has_step(legs: legs, step: "belt-pair-delivery-timer")
+    && has_step(legs: legs, step: "instance-slice")
+    && has_step(legs: legs, step: "serve-unit")
+}
+

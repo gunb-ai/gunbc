@@ -46,7 +46,7 @@ import gunbc.runner.runner_width_transition {
   TransitionPopulationDisagrees,
   slot_width_transition_26_25,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.host.host_operation_exec {
   SystemctlMaskNow,
   CgroupReadEvents,
@@ -1434,13 +1434,27 @@ test fn no_fabric_execution_member_is_inside_the_authored_interruption_scope() -
 // handed that host permission text for a decision it had not been granted (review 69334). Now that the
 // fabric reason row is Absent -- its authorizing decision of 2026-09-19 was superseded along with the
 // cells it named -- a unit named in a scope with no reason on record must refuse rather than be issued
-// an authorization with a caption nobody wrote. srv3 is the case the ruling produced: it owed this
-// permission to the deleted cells and holds none now, so its standing is Absent while its width
-// transition still owes retirees.
-test fn srv3_holds_no_interruption_authorization_after_the_fabric_slots_returned_to_ci() -> Bool {
-  match interruption_authorization_for_host(host: operator_host_srv3) {
+// an authorization with a caption nobody wrote. srv2 holds neither a width row nor a fabric cell, so its
+// standing is Absent.
+test fn a_host_with_no_width_row_and_no_fabric_cell_holds_no_interruption_authorization() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv2) {
     HostInterruptionAuthorizationAbsent { host: h, cause: _ } =>
-      (h as String) == (operator_host_srv3 as String)
+      (h as String) == (operator_host_srv2 as String)
     HostInterruptionAuthorizationPresent { authorization: _ } => false
+  }
+}
+
+// srv3's permission is exactly its 2026-11-18 width row: the eight surplus units srv3-14..21, under the
+// width reason alone (its fabric part is empty), and none of its committed slots 01..13.
+test fn srv3_permission_is_its_width_cut_row_and_nothing_more() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv3) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: a } =>
+      length(xs: a.scope) == 8
+        && interruption_authorization_covers(auth: a, unit: "actions-runner@srv3-14.service")
+        && interruption_authorization_covers(auth: a, unit: "actions-runner@srv3-21.service")
+        && !interruption_authorization_covers(auth: a, unit: "actions-runner@srv3-13.service")
+        && !interruption_authorization_covers(auth: a, unit: "actions-runner@srv3-01.service")
+        && string_contains(s: a.operator_reason as String, pattern: "msg_69d4410c")
   }
 }

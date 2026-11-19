@@ -60,8 +60,14 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 // endpoint a controller never reported -- where 192.168.1.249 appears today only as a FIXTURE address
 // in that refusal, never as a row about a real machine. This row is the first time this repository
 // writes that address as a fact about a unit, and it is written as a LAN-side observation, with the
-// self-report owed: `ipmitool lan print 1` over a channel that cannot be pointed at another machine,
-// or Redfish EthernetInterfaces.
+// self-report owed. WHAT OWED MEANS HERE, because a BMC read authenticates: the obligation is the IN-BAND
+// form -- `ipmitool lan print 1` over the host's LOCAL KCS interface, which points at no network and needs
+// no BMC credential -- or the LAN form only once the credential rotation has landed. It is never a LAN read
+// with the factory credential this controller still uses; that rule is a standing instruction in this lane
+// (relayed by smart-crane-730, 2026-11-16), and it is also why the rotation route in this module is planned
+// ahead of any read. Redfish is not a substitute either: see
+// extdeps.bmc.supermicro::supermicro_supported_protocols_floor, which lists Ipmi as the only protocol this
+// family serves unlicensed.
 data supermicro_h11ssl_unit3_bmc_lan_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 249)
 
 // The address's basis is unobserved: whether the router leases .249 to this BMC or the BMC was set to
@@ -73,7 +79,7 @@ type BmcAddressBasisStanding
   | BasisUnobserved { read_obligation: NonEmptyStr }
 
 data supermicro_h11ssl_unit3_bmc_address_basis: BmcAddressBasisStanding = BasisUnobserved {
-  read_obligation: "ipmitool lan print 1 on the BMC's own LAN channel, or Redfish EthernetInterfaces: it returns IP Address Source (Static vs DHCP) and the MAC the controller names for itself, which is also the read that retires the neighbour-table-only standing of supermicro_h11ssl_unit3_bmc_mac." as NonEmptyStr,
+  read_obligation: "ipmitool lan print 1 IN BAND over the host's local KCS interface, or over LAN only after the credential rotation: it returns IP Address Source (Static vs DHCP) and the MAC the controller names for itself, which is also the read that retires the neighbour-table-only standing of supermicro_h11ssl_unit3_bmc_mac. Not a LAN read today: the only credential this controller holds is the factory one, and a LAN read authenticates. Redfish EthernetInterfaces is not an available substitute -- extdeps.bmc.supermicro::supermicro_supported_protocols_floor lists Ipmi alone, this family's Redfish service root being licence-gated (OemLicenseNotPassed)." as NonEmptyStr,
 }
 
 // THE INSTALL NIC, like gunbc.machine_intake.srv15_host_nic_observation for srv15: the port the unit's
@@ -124,7 +130,13 @@ data supermicro_h11ssl_unit3_install_nic_address_standing: H11sslUnit3InstallNic
     // gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models 192.168.1.236 as srv9's host LAN
     // address -- which is why this pairing is a collision and not a free lease.
     claimed_by_authority: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint"),
-    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS; until then the address belongs to no row." as NonEmptyStr,
+    // The operator's report of 2026-11-16 puts THIS unit's ssh answer at this exact address, which is
+    // reported there and carried in the register as
+    // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat. An ssh
+    // answer says a host answers at an address, not which host, and no host key for this unit is
+    // confirmed, so the report does not resolve the collision below -- it makes two live claims on one
+    // address, and this read is what separates them.
+    read_obligation: "the lease table read (srv4's dnsmasq leases file, or the router's client list) naming which MAC holds .236 now, plus an in-band address read on this unit's installed OS, plus a host key for this unit confirmed from its own console -- until those agree, the address belongs to no row. The 2026-11-16 report raises the urgency of this read rather than lowering it: this unit is now reported to answer ssh at the very address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's." as NonEmptyStr,
   }
 
 // THE NAME THE LAN CALLS THIS BOX, and what it resolves to from here. The operator refers to the unit
@@ -166,8 +178,11 @@ data supermicro_h11ssl_unit3_lan_name_sighting: H11sslUnit3LanNameSighting = H11
 // The same run REFUSED before writing anything (terminal=REFUSED): the pinned Aarch64 chainloader is not on
 // srv4 (sha256sum of /srv/gunbc-site-pxe-edge/tftp/snponly.efi: No such file or directory), so that member
 // is member-unobservable and the chain is withheld. Nothing on srv4 was changed by it, and the hand-staged
-// seed this row lists is still there. That obstacle is carried in the register as
-// gunbc.integration_concern::site_pxe_edge_pinned_aarch64_chainloader_member_absent_from_srv4.
+// seed this row lists is still there. That obstacle is NOT carried in the register: no row of
+// gunbc.integration_concern names it (checked against the ledger 2026-11-17), and it is not this unit's to
+// file -- the member that refused is the Aarch64 chainloader, which nothing in this lane reads. Its only
+// record is this comment and the observe receipt at
+// artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/.
 type H11sslUnit3EdgeSighting {
   mac: Eui48Address,
   request_lines: Nat,
@@ -215,23 +230,62 @@ type H11sslUnit3BaseboardRowStanding {
 data supermicro_h11ssl_unit3_baseboard_row_standing: H11sslUnit3BaseboardRowStanding = H11sslUnit3BaseboardRowStanding {
   owed_reads: [
     "dmidecode -t baseboard on the installed OS: the product name, serial and firmware revisions the BOARD reports, which is what turns the operator's H11SSL-i / 2.0a / 1.52 reports into board-reported figures" as NonEmptyStr,
-    "ipmitool lan print, or Redfish EthernetInterfaces, on the management controller at 192.168.1.249: the controller's own MAC and address, which is what a BmcEndpoint needs and what a neighbour table can never give" as NonEmptyStr,
-    "gunbc.hostname_allocation naming this unit's slot: a fleet intent row is keyed by a host, and no name has been approved for this one yet" as NonEmptyStr,
+    "ipmitool lan print IN BAND (local KCS) on the host, or over LAN only after the credential rotation -- never with the factory credential still in force. It gives the controller's own MAC and address, which is what a BmcEndpoint wants and what a neighbour table can never give. Redfish is out at family grain: extdeps.bmc.supermicro::supermicro_supported_protocols_floor lists Ipmi alone" as NonEmptyStr,
+    "ipmitool sel elist IN BAND (local KCS) on the host: the system event log, captured BEFORE anyone clears it. The operator has not cleared it (2026-11-16), and a cleared SEL cannot be recovered; it also carries this board's own power and boot history, which is the evidence that separates the dead-CMOS-battery confounder from a deliberate boot override. Its capture home is the per-unit manifest in gunbc.machine_intake.supermicro_bmc_reading -- beside supermicro_h11ssl_unit1_captures_2026_10_27 and supermicro_h11ssl_unit2_captures, where a unit3 manifest belongs" as NonEmptyStr,
+    "the fan duty read the cooling lane owns: the GetFanMode and GetZoneDuty operations of extdeps.bmc.supermicro_oem_fan, reached read-only through gunbc.machine_intake.fan_observe under the family authority gunbc.fleet.fleet_fan_converge_routes::fan_observation_authority_for_family(SupermicroAten). Read-only: nothing in this lane writes to this BMC" as NonEmptyStr,
   ],
-  home: "the row belongs in gunbc.fleet.fleet_intent beside srv15_baseboard, not here: this module is receipts, that one is intent, and writing the row here would let a receipt masquerade as an intent row" as NonEmptyStr,
-  account: "Held, not forgotten. Nothing about this board has been read off the board -- there is no in-band route, the hand install seeded no fleet authorized_keys roster (recorded in the register as its own concern), and the address this lane can reach is seen only in a neighbour table at a stale state. So the baseboard row and its BMC-control standing wait on the three reads above, in that order: name first, then the key, then the reads. The CMOS battery item is the operator's physical task and can confound boot-related reads until it is done." as NonEmptyStr,
+  home: "the row belongs in gunbc.fleet.fleet_intent beside srv15_baseboard, not here: this module is receipts, that one is intent, and writing the row here would let a receipt masquerade as an intent row. IT IS NOW THERE -- supermicro_h11ssl_unit3_baseboard, at catalog grain, its BMC protocol taken from extdeps.bmc.supermicro::supermicro_supported_protocols_floor rather than assumed -- which is why the debt that remains is the board's OWN serial, not the row's existence." as NonEmptyStr,
+  account: "Held, not forgotten. Nothing about this board has been read OFF the board. The first of what this row owed is closed: the name -- the operator approved ken on 2026-11-16 and gunbc.hostname_allocation::fleet_machine_registry carries it with the allocator's ticket. The key moved too, by the operator's hand: three principals' keys now sit on the ubuntu account, on the operator's report, and the modeled route that can read the board is a fleet-converge dispatch as the fleet-automation principal (the register row gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat), which is why this host's identity row had to be minted first. What is still true is that no board-reported figure exists: everything this module says about BIOS, BMC firmware, the accelerators and the fans is the operator's report, typed as such, and the address this lane can reach is seen only in a neighbour table at a stale state. The CMOS battery item is the operator's physical task and can confound boot-related reads until it is done." as NonEmptyStr,
 }
 
-// THE ACCELERATORS, as the operator reports them: two Tesla T10 in this box. They matter to the serving
-// half of this unit's enrollment, and they matter to the slot topology jolly-otter-830's cooling lane
-// needs -- which is a read of the installed OS (lspci -vv for the bus ids, dmidecode -t slot for the
-// physical slots), and that read is blocked behind OS access this unit does not yet grant.
+// THE ACCELERATORS, AS THE OPERATOR REPORTS THEM: two Tesla T10 in this box, and separately (2026-11-17) the
+// same operator reporting them idle at 43-44 C with a 100 W power cap applied at boot. They matter to the
+// serving half of this unit's enrollment -- placement will consume GPU identity later -- and to the slot
+// topology jolly-otter-830's cooling lane needs. Neither is read off this board by anything in this corpus.
+//
+// THE INSTRUMENT, CHOSEN AGAINST WHAT THE CORPUS HAS: the card ids and bus addresses come over the sysfs PCI
+// route this repository already models (extdeps.linux.sysfs_pci: sysfs_pci_devices_dir, sysfs_pci_vendor_path,
+// sysfs_pci_device_path, sysfs_pci_id_digits), which is exactly what
+// gunbc.fleet.board_function_converge::observe_pcie_function reads over a PcieFunctionIdentity
+// (gunbc.fleet.board_function_topology) before it acts. An `lspci` program is NOT modeled anywhere here and no
+// consumer needs one, so no dependency is invented for it. The BUS-TO-SLOT pairing is a different matter: the
+// corpus has no route for it (extdeps.linux.dmi_id carries no slot attributes), so that half stays a named gap
+// rather than an instrument this row pretends to have.
 data supermicro_h11ssl_unit3_gpu_report: H11sslReportedFigure = H11sslReportedFigure {
   value: "two Tesla T10 accelerators" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "an in-band read once the fleet can log in: `lspci -nn` for the device ids and bus addresses, `lspci -vv -s <bus>` for the link widths, and `dmidecode -t slot` for the physical slot each bus sits in -- the bus-to-slot pairing jolly-otter-830's lane cites, and nothing short of it identifies a GPU to a slot." as NonEmptyStr,
+    read_obligation: "the in-band sysfs read named above: list /sys/bus/pci/devices and read each function's vendor and device attributes, which confirms the two cards and their bus addresses and needs no new dependency. The physical slot each bus sits in stays UNREAD: no modeled route pairs a bus id to a slot on this platform, and the cooling lane's pairing claim waits on that route being built, not on a guess." as NonEmptyStr,
   },
 }
+
+// THE TEMPERATURE AND THE CAP, on the same standing footing as the cards themselves: reported, not read.
+// These are the figures that would otherwise become facts by being repeated.
+data supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported: H11sslReportedFigure =
+  H11sslReportedFigure {
+    value: "the two reported accelerators idle at 43-44 C, with a 100 W power cap applied at boot (operator report, 2026-11-17)" as NonEmptyStr,
+    standing: TranscribedUncited {
+      read_obligation: "NOT YET INSTRUMENTED, and that is stated rather than papered over: the only modeled sysfs power and temperature attributes in this corpus are AMD's (extdeps.linux.amdgpu_hwmon), and no NVIDIA power-limit program (the driver's own query tool) is modeled here at all -- the driver tool appears only as the source a cited figure came from (extdeps/gpu/types.dag). So the figure stays a report, the confirming read is owed to that missing instrument, and nothing in this row may be used as a thermal or power budget." as NonEmptyStr,
+    },
+  }
+
+// THE CAP SETTER IS PRIOR-LIFE STATE FOUND, NOT STATE TO KEEP. A cap that arrives at boot means something
+// installed on this unit applies it -- a unit, a script, or a driver setting; which one is unknown here. This
+// lane does not decide what runs on a host the converge owns; it records what was found and names the read that
+// identifies it. Recording it as a setting to preserve would be the model adopting hand config by silence.
+type H11sslUnit3PriorLifeSetting {
+  setting: NonEmptyStr,
+  standing: NonEmptyStr,
+  bears_on_row: DeclarationRef,
+  read_obligation: NonEmptyStr,
+}
+
+data supermicro_h11ssl_unit3_power_cap_setter_prior_life: H11sslUnit3PriorLifeSetting =
+  H11sslUnit3PriorLifeSetting {
+    setting: "something installed on this unit applies a 100 W cap to the reported accelerators at boot: a unit, a script, or a driver setting -- which, unread" as NonEmptyStr,
+    standing: "prior-life state FOUND, not state to keep. What survives the hand install is a decision for the routes that own a converged host, taken after a read; this row exists so the decision is made against a named unknown instead of against silence." as NonEmptyStr,
+    bears_on_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported"),
+    read_obligation: "an in-band read of the installed OS: enumerate the units and their directives with extdeps.systemd.systemctl (systemctl_binary_name, systemctl_absolute_program -- `systemctl list-unit-files`) and extdeps.systemd.unit_file (SystemdUnitFile, SystemdUnitDirective), then search the unit directories for a power-limit setter. The enumeration is a query; changing or removing whatever it finds is a privileged effect and comes behind that grant, not with this read." as NonEmptyStr,
+  }
 
 // The SSH host key smart-crane-730 met at that address, recorded as an UNCONFIRMED fingerprint and
 // deliberately NOT put in any trust roster. It is here so a later reader can tell an address-reuse
@@ -243,6 +297,77 @@ data supermicro_h11ssl_unit3_seen_host_key_fingerprint: H11sslReportedFigure = H
     read_obligation: "the operator confirming the host key from the unit's own console (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub), after which the fleet's trust route -- not this row -- is where a confirmed key belongs." as NonEmptyStr,
   },
 }
+
+// ── THE FAN FLOOR THE CARDS NEED, TODAY A HAND SETTING ───────────────────────────────────────────
+//
+// THE FACT, FROM THE OPERATOR 2026-11-16: the hand install could not bring the GPUs up, and the cause was
+// thermal -- the board holds its fans at a 20% idle floor until something asks for more, so the cards
+// overheat and drop off the bus. The operator set fan zones A and B to full duty (100%) from the BMC's own
+// control, and reports the setting REVERTS to that floor on every power-off. Full duty is therefore a
+// precondition for the reported cards to function, not a preference.
+//
+// THE LIMITS, STATED BY THE ROWS: they transcribe what the operator said. Nothing from this repository has
+// read the board's fan control, and -- until the mode has a modeled home -- nothing should write to it.
+// They name zones A and B; whether the board has other zones is not known here. And the 20% floor is the
+// operator's word: extdeps.bmc.supermicro_ipmi_raw_oem says the OEM fan protocol is undocumented in
+// Supermicro's public manual, so the only confirmation of a figure is a read against this board or its
+// profile.
+//
+// WHY NO FAN ROW IS MINTED HERE, AND NO PER-UNIT FAN TYPE EITHER. A tach expectation pins RPM at a named
+// tach header, under a fleet-wide check whose standing cites a measured baseline on a different unit
+// (gunbc.fleet.fleet_fan_tach_expectation); minting one from a duty percent would invent both a header and
+// an rpm -- and that module's rule at its expectation rows excludes an authored claim anyway, accepting a
+// figure only behind a receipt (stdout plus sha256), which this has none of. So the duty facts below are
+// rows of the family's general reported-figure type, and the REQUIREMENT they imply is a row in the
+// register: gunbc.integration_concern::h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer, which
+// names where it must land (the cooling lane's board-function and BMC fan-mode rows) and who owns that.
+// The fleet duty floor in gunbc.fleet.fleet_fan_converge_routes is a different, much lower quantity -- the
+// minimum a converged system sustains between passes -- not this unit's requirement.
+//
+// THE READ THAT CLOSES IT: the fan-mode read the board's profile defines, taking mode and duty per zone,
+// beside the profile's own figure for the idle floor.
+
+data supermicro_h11ssl_unit3_fan_zone_duty_needed_reported: H11sslReportedFigure = H11sslReportedFigure {
+  value: "fan zones A and B held at 100 duty by hand on 2026-11-16, because the reported Tesla T10 cards overheat and drop off the bus at the board's idle floor" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "the fan-mode read this board's profile defines -- mode and duty per zone, by the OEM fan command the fan lane carries -- taken with the ROTATED credential, never the factory one, and never written to by this lane. The idle floor beside it is the profile's figure, not this row's word." as NonEmptyStr,
+  },
+}
+
+data supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported: H11sslReportedFigure = H11sslReportedFigure {
+  value: "20 duty -- the floor the hand setting reverts to on every power-off, as reported" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "the same fan-mode read taken once after a power cycle, against the board profile's idle-floor figure: the revert is what makes a hand setting unable to carry the cards, so a reading that only catches the setting while it still holds would misreport this unit." as NonEmptyStr,
+  },
+}
+
+// ── REACH AS REPORTED ON 2026-11-16, AND WHAT NO READ HAS CONFIRMED ──────────────────────────────
+//
+// WHAT IS KNOWN, AND FROM WHOM: the operator reports (2026-11-16) that the three fleet access principals'
+// public keys -- the operator's, fleet-automation's and node-orch's -- now sit on this unit's `ubuntu`
+// account with passwordless sudo, and that ssh answers at 192.168.1.236. That account is the
+// host-administrator account gunbc.fleet.fleet_ssh_access names in its grant rows, so if the report is true
+// it says the host is where the fleet's access model expects it to be -- which is precisely why it is not
+// asserted here.
+//
+// WHY THIS MODULE HOLDS NO STANDING SUM FOR IT. A standing type invented for one machine is per-host
+// machinery, and the general layer already states what this is: an access claim the model may not consume
+// until a receipt repeats it. gunbc.fleet.fleet_posix_accounts refuses a hand-authored account claim
+// outright -- it grounds a principal only from a ProcessReceipt -- and
+// gunbc.fleet.fleet_enrollment::HostReachPolicy mints HostKeyLoginAdmitted only from a read that returns
+// host-authored output. What the intake layer owns is the DATA the report carries: the host key the
+// transport itself showed (supermicro_h11ssl_unit3_seen_host_key_fingerprint), the address the answers are
+// reported at and the authority that address collides with
+// (supermicro_h11ssl_unit3_install_nic_address_standing, whose conflict ref names
+// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint), and the reads that would settle it. The
+// STATUS -- reported, with no read the fleet can repeat -- is an open row in the register:
+// gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat.
+//
+// WHY THE srv1 REFUSALS ARE NOT CONTRARY EVIDENCE. The probes from srv1 (2026-11-15 and 2026-11-16) fail
+// because srv1 holds none of those three principals' private keys: they describe srv1's credentials and say
+// nothing about whether this unit answers. And ssh answering at 192.168.1.236 says a host answers there,
+// not WHICH host answers -- no host key for this unit is confirmed -- so the report makes the srv9
+// collision more live, not less.
 
 // ── BOOT SELECTION, AND THE BOARD QUIRK THAT OUTRUNS IT ──────────────────────────────────────────
 //
@@ -268,7 +393,7 @@ data supermicro_h11ssl_unit3_seen_host_key_fingerprint: H11sslReportedFigure = H
 // WHAT ELSE COULD PRODUCE THE SAME SIGHTING, stated because the model must not silently pick one: a
 // dead or removed CMOS battery resets this board's BIOS setup, including its boot order and its UEFI
 // boot entries -- and the operator reports the CMOS battery on this unit NEEDS REPLACING. A reset boot
-// order would land a PXE attempt on the first enabled port, which is what was seen. So the sightng is
+// order would land a PXE attempt on the first enabled port, which is what was seen. So the sighting is
 // sound; its EXPLANATION is open, and it is open in a way that changes the fix: if it is the battery, a
 // BIOS Boot Override entry will not survive a power loss, and if it is the board, it will not need to.
 // The read that discriminates them is one capture: an SOL transcript of a forced-PXE attempt showing
@@ -296,7 +421,7 @@ type H11sslUnit3IpxeBootPathStanding
       board_port_the_install_needed: H11sslBoardPortLabel,
       port_the_install_needed: Eui48Address,
       route_that_reached_the_install_port: H11sslReportedFigure,
-      // The alternative explanation for this sightng is not a sentence in this row: it is the row that
+      // The alternative explanation for this sighting is not a sentence in this row: it is the row that
       // carries it. A typed edge to that row is what keeps the standing honest when the battery is replaced.
       confounder_row: DeclarationRef,
       read_obligation: NonEmptyStr,
@@ -372,10 +497,10 @@ data supermicro_h11ssl_unit3_bmc_credential_standing: H11sslUnit3BmcCredentialSt
       // The credential name carries the fleet name, so no concrete secret id can be written here until the
       // allocation authority fills this slot -- naming it here would mint an identity through a side door.
       secret_name_convention: "bmc-<the fleet name the allocation authority gives this slot>-admin, the form of srv15's bmc-srv15-admin" as NonEmptyStr,
-      secret_name_blocked_on: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "allocate_unique_hostname"),
-      route_authority: decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "BmcRotationRouteStanding"),
+      secret_name_blocked_on: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission"),
+      route_authority: decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding"),
       secret_ref_precedent: decl_ref(module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref"),
-      gate_precedent: decl_ref(module_path: "gunbc.auth", decl_name: "srv15_arrival_federation_provision"),
+      gate_precedent: decl_ref(module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier"),
       secret_placement: "Secret Manager, gunbai-secrets project, added by stdin -- never argv, never logs" as NonEmptyStr,
       who_owes_which_step: "the operator places the factory credential and creates the deployment environment; the rotation itself runs through the modeled BmcSecure route on the fleet runner, gated by that environment, the way srv15's arrival is gated. Nothing here may probe the factory credential to find out what it is." as NonEmptyStr,
     },
@@ -388,14 +513,14 @@ data supermicro_h11ssl_unit3_bmc_credential_standing: H11sslUnit3BmcCredentialSt
 data supermicro_h11ssl_unit3_bios_version: H11sslReportedFigure = H11sslReportedFigure {
   value: "2.0a" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "Redfish /redfish/v1/UpdateService/FirmwareInventory, or the BIOS setup header read over the BMC's console (KVM+SOL), on THIS controller." as NonEmptyStr,
+    read_obligation: "the BIOS setup header read over the BMC's console (KVM+SOL), or `dmidecode -t bios` from the installed OS, on THIS controller. Redfish /redfish/v1/UpdateService/FirmwareInventory is NOT a route here: extdeps.bmc.supermicro::supermicro_supported_protocols_floor lists Ipmi as the only protocol this family serves unlicensed, and its Redfish root refuses with OemLicenseNotPassed." as NonEmptyStr,
   },
 }
 
 data supermicro_h11ssl_unit3_bmc_firmware_version: H11sslReportedFigure = H11sslReportedFigure {
   value: "1.52" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "`ipmitool mc info` (Firmware Revision) or Redfish Managers/v1/Managers/bmc, on THIS controller -- the BMC's own answer, which is also what a rotation route standing would need to be keyed to." as NonEmptyStr,
+    read_obligation: "`ipmitool mc info` (Firmware Revision) IN BAND over the host's local KCS interface, or over LAN only with the ROTATED secret, on THIS controller -- the BMC's own answer, which is also what a rotation route standing would need to be keyed to. Not over LAN with the factory credential, and not over Redfish Managers/v1/Managers/bmc on this family while its service root is licence-gated." as NonEmptyStr,
   },
 }
 
@@ -417,7 +542,7 @@ data supermicro_h11ssl_unit3_cmos_battery_outstanding: H11sslUnit3PhysicalMainte
     item: "CMOS battery needs replacing on this unit (operator-reported, 2026-11-15)" as NonEmptyStr,
     owner: "the operator: a physical action on the board, not an effect any converge run can produce" as NonEmptyStr,
     bears_on_row: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing"),
-    account: "a dead CMOS battery resets BIOS boot order and UEFI entries, which is the open alternative explanation for the forced-PXE sightng. The boot-path standing names THIS row back as its confounder, so the two move together." as NonEmptyStr,
+    account: "a dead CMOS battery resets BIOS boot order and UEFI entries, which is the open alternative explanation for the forced-PXE sighting. The boot-path standing names THIS row back as its confounder, so the two move together." as NonEmptyStr,
   }
 
 // ── WHAT THE ABOVE RULES OUT, AS A CHECK THE WITNESS RUNS ────────────────────────────────────────

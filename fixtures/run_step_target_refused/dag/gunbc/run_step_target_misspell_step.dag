@@ -1,0 +1,13 @@
+module gunbc.run_step_target_misspell_step
+
+import std.types { Int }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE RED: a run-step target whose entry is MISSPELLED. The callee resolves to the real constructor (it imports
+// it), the module half names a real module, but the entry half names a function that module never declares. This
+// refuses located as RunStepTargetDeclarationAbsent -- the exact typo that, before this check, rendered a workflow
+// step that failed only when CI ran it.
+data run_step_target_misspell: Int = gunbc_run_step_target(
+  module: "gunbc.run_step_target_fixture_home",
+  function: "run_step_target_fixture_entry_TYPO",
+)

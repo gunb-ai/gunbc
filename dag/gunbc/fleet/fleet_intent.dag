@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_intent
 
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog, samsung_970_evo_500gb_catalog }
 import extdeps.storage.types {
@@ -24,6 +24,7 @@ import extdeps.container.docker_engine { docker_engine }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
 import extdeps.memory.types { MemoryKind, Dram, HostMemoryPopulation, MemoryPopulationRow }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
@@ -37,7 +38,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { ServerBaseboard }
 import gunbc.bmc.bmc_intent { BmcControlPlaneIntent, fleet_bmc_valid_state }
-import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
+import extdeps.bmc.endpoint { BmcEndpoint, Redfish, Ipmi }
 import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
@@ -111,23 +112,68 @@ type ComputeHost {
   network_interfaces: List<NetworkInterface>
 }
 
-fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
-  match host.processors.first() {
-    Absent => none
-    Present { value: kind } =>
-      match kind {
-        CpuProcessor { cpu: c } => Present { value: c }
-        GpuProcessor { gpu: _ } => none
-        AcceleratorProcessor { accelerator: _ } => none
-      }
+// WHETHER EACH AXIS OF THIS BOARD HAS BEEN READ. A ComputeHost's processor/memory/storage lists are a census only
+// when somebody has read the board, and EACH AXIS IS READ OR UNREAD ON ITS OWN: mtcollins1's row carries a processor
+// row and an empty memory list, and that empty list is not a measurement of zero DIMMs -- nobody read that board's
+// memory, so the RAM read must refuse rather than fold to byte_size(0) (fail_closed; the cardinality/absence domain's
+// absent-is-not-zero). The question is asked ONCE per axis, here, and every read derives its refusal from its own
+// axis rather than testing emptiness as its own sibling leaf (gunbc.design_argument::root_generalization): a rule
+// repeated at each consumer is a rule each future consumer can forget.
+//
+// WHAT THIS SHAPE CANNOT YET SAY is "the axis WAS read, and it really holds nothing": an empty list reads as Unread
+// for every axis. A host whose memory had been surveyed and found absent would need the axis standing DECLARED on
+// the row instead of derived from its list. No host in this corpus makes that claim, so the shape is not stretched
+// to cover one; it is recorded on gunbc.integration_concern::h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing.
+// The census covers the two axes something reads today. The DISK axis joins it WITH its consumer: no fold reads a
+// ComputeHost's storage list yet, so a StorageAxis would be a case nothing consumes
+// (gunbc.design_argument::consumption) -- the lsblk/sfdisk read this unit's intake rows name brings both the axis and
+// the read that answers it. ComputeHost's storage list itself is unchanged.
+fn host_hardware_census_of(host: ComputeHost) -> HostHardwareCensus {
+  HostHardwareCensus {
+    processors: processor_axis(rows: host.processors),
+    memory: memory_axis(rows: host.memory),
   }
 }
 
-// EVERY CPU PROCESSOR THE HOST CARRIES, NOT THE FIRST ONE. A ComputeHost lists one CpuProcessor per
-// populated socket, so a two-socket host and a one-socket host of the same part differ here and
-// nowhere else; compute_host_primary_cpu answers which part, this answers how many threads.
-fn compute_host_cpu_threads(host: ComputeHost) -> HardwareThreadCount {
-  hardware_thread_count(count: fold(host.processors, init: 0, f: (acc, kind) =>
+type HostHardwareCensus {
+  processors: ProcessorAxis
+  memory: MemoryAxis
+}
+
+type ProcessorAxis
+  = ProcessorsSurveyed { rows: List<ProcessorKind> }
+  // NOBODY HAS READ THIS BOARD'S PROCESSORS -- not "the board carries none".
+  | ProcessorsUnread
+
+type MemoryAxis
+  = MemorySurveyed { rows: List<MemoryDevice> }
+  // NOBODY HAS READ THIS BOARD'S MEMORY. mtcollins1 sits here today: its row lists a CPU and no DIMM row, and its
+  // nominal DRAM is catalogued elsewhere (the Redfish population its witness reads) without ever being admitted as a
+  // memory axis of the supply facts.
+  | MemoryUnread
+
+
+fn processor_axis(rows: List<ProcessorKind>) -> ProcessorAxis {
+  match rows.first() {
+    Absent => ProcessorsUnread
+    Present { value: _ } => ProcessorsSurveyed { rows: rows }
+  }
+}
+
+fn memory_axis(rows: List<MemoryDevice>) -> MemoryAxis {
+  match rows.first() {
+    Absent => MemoryUnread
+    Present { value: _ } => MemorySurveyed { rows: rows }
+  }
+}
+
+
+// THE THREAD FOLD OF A READ PROCESSOR AXIS. The CPU width axis reads the census ONCE and folds threads out of the
+// axis it established; leaving the fold private to compute_host_cpu_threads would force the axis to ask the census
+// again and re-test emptiness on the way (gunbc.design_argument::root_generalization). Only reached with a read axis,
+// so its init: 0 is the start of a real sum, not an answer.
+fn processor_rows_thread_total(rows: List<ProcessorKind>) -> HardwareThreadCount {
+  hardware_thread_count(count: fold(rows, init: 0, f: (acc, kind) =>
     match kind {
       CpuProcessor { cpu: c } => acc + hardware_thread_count_value(t: cpu_facts_threads(cpu: c))
       GpuProcessor { gpu: _ } => acc
@@ -136,14 +182,74 @@ fn compute_host_cpu_threads(host: ComputeHost) -> HardwareThreadCount {
   ))
 }
 
-fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
-  byte_size(
-    host.memory
-      |> fold(
-        init: 0,
-        f: (acc, dev) => acc + byte_size_count(dev.capacity),
-      ),
-  )
+// WHICH CPU THE HOST IS BUILT FROM -- AND WHETHER ANYBODY READ IT. Absent-from-survey and never-surveyed are
+// different facts that used to land in the same `none`, which is how a board nobody has read came to be described
+// as having no CPU (review 96379). The refusal now states which of the two it is. Consumers that can only carry
+// an option still answer none; what changes is that they no longer have to claim a reason they did not read.
+type PrimaryCpuStanding
+  = PrimaryCpuMeasured { cpu: CpuFacts }
+  | PrimaryCpuAbsentFromSurvey { host: HostIdentity }
+  | PrimaryCpuCensusUnread { host: HostIdentity }
+
+fn compute_host_primary_cpu(host: ComputeHost) -> PrimaryCpuStanding {
+  let census = host_hardware_census_of(host: host)
+  match census.processors {
+    ProcessorsUnread => PrimaryCpuCensusUnread { host: host.identity }
+    ProcessorsSurveyed { rows: rows } =>
+      match rows.first() {
+        Absent => PrimaryCpuAbsentFromSurvey { host: host.identity }
+        Present { value: kind } =>
+          match kind {
+            CpuProcessor { cpu: c } => PrimaryCpuMeasured { cpu: c }
+            GpuProcessor { gpu: _ } => PrimaryCpuAbsentFromSurvey { host: host.identity }
+            AcceleratorProcessor { accelerator: _ } => PrimaryCpuAbsentFromSurvey { host: host.identity }
+          }
+      }
+  }
+}
+
+// EVERY CPU PROCESSOR THE HOST CARRIES, NOT THE FIRST ONE. A ComputeHost lists one CpuProcessor per
+// populated socket, so a two-socket host and a one-socket host of the same part differ here and
+// nowhere else; compute_host_primary_cpu answers which part, this answers how many threads. THE PROCESSOR
+// AXIS IS ASKED BEFORE THE FOLD: the fold starts at init: 0, so a host whose processors were never read would
+// arrive as "a machine of zero threads" -- a measurement the fleet never took.
+type CpuThreadRead
+  = CpuThreadsMeasured { threads: HardwareThreadCount }
+  | CpuThreadsCensusUnread { host: HostIdentity }
+
+fn compute_host_cpu_threads(host: ComputeHost) -> CpuThreadRead {
+  let census = host_hardware_census_of(host: host)
+  match census.processors {
+    ProcessorsUnread => CpuThreadsCensusUnread { host: host.identity }
+    ProcessorsSurveyed { rows: rows } =>
+      CpuThreadsMeasured { threads: processor_rows_thread_total(rows: rows) }
+  }
+}
+
+// HOW MUCH RAM THE MEMORY AXIS COUNTS, IF ANYBODY READ IT. Unread is ABSENCE, not zero (the cardinality/absence
+// domain), and the memory axis is its OWN question: a host may have a read processor axis and an unread memory axis
+// (mtcollins1 is that host today), and this read refuses for it rather than answering byte_size(0) to a placement,
+// budget or capacity reader that cannot tell "no DIMM row was ever admitted" from "the board has no memory"
+// (review 96379; the controls live in test.claim.fleet.fleet_intent_memory_witness).
+type HostRamRead
+  = HostRamMeasured { bytes: ByteSize }
+  | HostRamCensusUnread { host: HostIdentity }
+
+fn compute_host_ram_bytes_total(host: ComputeHost) -> HostRamRead {
+  let census = host_hardware_census_of(host: host)
+  match census.memory {
+    MemoryUnread => HostRamCensusUnread { host: host.identity }
+    MemorySurveyed { rows: rows } =>
+      HostRamMeasured {
+        bytes: byte_size(
+          rows
+            |> fold(
+              init: 0,
+              f: (acc, dev) => acc + byte_size_count(dev.capacity),
+            ),
+        )
+      }
+  }
 }
 
 fn memory_devices_from_population(pop: HostMemoryPopulation) -> List<MemoryDevice> {
@@ -414,6 +520,51 @@ data srv4_host: ComputeHost = ComputeHost {
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv4_memory_population),
   storage: [srv4_nvme0],
+  network_interfaces: [],
+}
+
+// SUPERMICRO H11SSL UNIT 3 (host-e2d4b7): the third H11SSL-i in the fleet, and the only one whose operating
+// system was put on by HAND at srv4's PXE edge. This row is what that hand install never produced: the
+// fleet's own statement of the machine it intends to supply, so the converge -- not the person who installed
+// it -- holds the box from here.
+//
+// The board is stated at FAMILY grain on the operator's 2026-11-15 report. No `dmidecode -t baseboard` read
+// of THIS board is on record, which is why its machine standing in gunbc.fleet.machine_board is
+// identity_stated_board and why a serial is absent here rather than borrowed from its siblings.
+//
+// The BMC address is the operator's (192.168.1.249 -- before this row that address existed in the corpus
+// only as a test literal in gunbc.machine_intake.bmc_recovery_route). Its PROTOCOL is not a preference:
+// extdeps.bmc.supermicro::supermicro_supported_protocols_floor lists Ipmi ALONE, because on this family
+// Redfish is licence-gated and an unlicensed service root refuses with OemLicenseNotPassed; the receipts
+// behind that floor are the two sibling H11SSL units in gunbc.machine_intake.supermicro_bmc_reading, which
+// answered IPMI Get Device ID with manufacturer 10876. NO address or protocol read has been taken against
+// .249 itself. The read that closes it is `ipmitool mc info` IN BAND over the host's local KCS interface, or
+// over LAN only after the credential rotation -- never with the factory credential the box still uses. That
+// rotation is modeled as pending (RotationRouteNotYetRunnable in
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation), so what this row carries is the fleet's
+// intent for the control plane, not a control plane this repository has established.
+data supermicro_h11ssl_unit3_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: supermicro_h11ssl_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.249", protocol: Ipmi },
+}
+
+// THE SAME HONESTY ABOUT WHAT HAS NEVER BEEN READ. No CPU census, no memory census and no storage census
+// exists for this box: the hand install left no receipt, and the fleet SSH roster was never seeded on it, so
+// those reads are OWED, not skipped -- the missing roster is itself a register row
+// (gunbc.integration_concern::h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster).
+// Empty lists state that standing, and the cost is paid where it lands: the host's committed runner width
+// derives to unresolved rather than invented, exactly as mtcollins1's offer shows width arriving from a
+// measured HostUsableRam read rather than from DIMM nominal capacity this box has never given us.
+// Its install NIC MAC is on record in the intake module, but the ADDRESS standing there is a stale neighbour
+// entry that this module already assigns to srv9 (fleet_intent_network::srv9_host_lan_endpoint), so no
+// NetworkInterface is minted across that collision; the read that settles it is named on that row.
+data supermicro_h11ssl_unit3_host: ComputeHost = ComputeHost {
+  identity: operator_host_e2d4b7,
+  baseboard: Present { value: supermicro_h11ssl_unit3_baseboard },
+  bmc_intent: Present { value: fleet_bmc_valid_state },
+  processors: [],
+  memory: [],
+  storage: [],
   network_interfaces: [],
 }
 

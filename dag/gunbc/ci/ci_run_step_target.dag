@@ -60,21 +60,32 @@ import gunbc.source_layout { layout_module_storage_path }
 // workflow. So: a row naming a module NO registered storage root contains cannot reach a committed
 // workflow. That is enforced by code that executes.
 //
-// WHAT NOTHING CHECKS, stated plainly because the comment must not overclaim (the earlier revision of
-// this comment promised a decl_facts witness that had been removed): the declaration half is still
-// literals the substrate does NOT resolve. Nothing at claim time or render time checks that the named
-// module actually DECLARES a function of the given name -- `decl_name` is an unchecked literal. A row
-// naming a real module and a nonexistent function derives a path, renders, and fails only at workflow
-// RUN time, when `gunbc run <derived-path> <function>` cannot resolve the entry. v2.cli.reference_check
-// resolves @ref comment markers, not DeclarationRef data rows; src/v2/cli/decl_ref_resolution.dag
-// resolves corpus refs but is a whole-corpus CLI verb (~3833 modules, ~8s), so it cannot serve the fast
-// lane either. The gunbc#8377 class "exists but does not define the named function" therefore still
-// needs a real index. NEXT-RUNG TRIGGER: resolving (module_path, decl_name) against a parse-once
-// declaration index cheap enough for the artifact gate -- never a corpus walk from a fast-lane claim --
-// at which point a wrong target cannot be written at all. A SIBLING RUNG on this wall is already filed:
-// the refusal family (this poison plus the emitter's word-wall and orchestration poisons) is refused by
-// the Tier O prefix SCAN, and the typed threading that deletes all three sentinels and the scan together
-// is integration concern `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
+// BOTH HALVES ARE NOW CHECKED, stated plainly because the comment must not overclaim. The module half is
+// checked at emit (it derives a path or __GUNBC_INVOKE_EMIT_REFUSED__). The DECLARATION half -- `decl_name` -- was
+// the residue: a row naming a real module and a nonexistent function derived a path, rendered, and failed only at
+// workflow RUN time, when `gunbc run <derived-path> <function>` could not resolve the entry. That gap is now
+// closed at the required job: v2.cli.reference_check check_references treats a call to THIS constructor as a
+// resolution site and resolves its (module_path, decl_name) pair through the SAME target universe and native
+// resolver it already builds for @ref markers, so a misspelled entry refuses there -- located at the constructing
+// row -- instead of surviving to CI run time. The site is keyed on the callee's RESOLVED identity (it must
+// resolve, through the caller's imports in the check's own ResolutionContext, to this constructor's declaring
+// home), never on the call's spelling, and a non-literal argument refuses typed rather than being skipped
+// (fail_closed). The gunbc#8377 class "exists but does not define the named function" is therefore refused in the
+// required fast-lane step.
+//
+// THE RUNG THIS IS, AND THE RUNG THAT IS NOT (the rung ladder, @ref(gunbc.design_argument::guarantee_ladder)).
+// This is rung 2, mechanically preventable: the gate reliably exposes and blocks the typo, but the entry is still
+// an authored string, so the safety depends on the check RUNNING and staying enrolled -- it is the check
+// executing, not a guarantee in the types. The TERMINAL form is rung 3: a TYPED declaration reference, in which
+// the entry is not a string at all but a reference that names a declaration through its import, so a bad entry is
+// a compile error and no check need run. That is the compiler's resolved symbol identity (v2.compiler name_resolve
+// ResolutionContext / SymbolIndex, or the demand engine once it supplies a declaration index); until that lands,
+// this required-job resolution is the rung that actually catches the typo. NOTE the fast-lane constraint that
+// shaped this and still holds: check_references resolves only the DEMANDED modules (the cited targets, each
+// caller, and this constructor's home) -- never a corpus walk from a fast-lane claim. A SIBLING RUNG on this wall
+// is already filed: the refusal family (this poison plus the emitter's word-wall and orchestration poisons) is
+// refused by the Tier O prefix SCAN, and the typed threading that deletes all three sentinels and the scan
+// together is integration concern `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
 type GunbcRunStepTarget {
   declaration: DeclarationRef
 }

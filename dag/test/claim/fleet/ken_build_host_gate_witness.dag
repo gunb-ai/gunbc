@@ -1,0 +1,48 @@
+module test.claim.fleet.ken_build_host_gate_witness
+
+// THE GATE THAT KEEPS HOST-E2D4B7 (ken) OFF THE REMOTE-BUILD ROSTER. It serves Strata over its three T10
+// cards, and serving has priority: a build seat may be carved only from what the serving charge leaves, and
+// the serving charge is never shrunk to make room. These tests read the two figures from their own homes --
+// the reserved serving charge through gunbc.serving.serving_reservation::host_memory_reserved, and the usable
+// RAM through gunbc.host.host_memory_observation::host_usable_ram_ceiling_bytes -- and assert only their
+// RELATIONSHIP to the one build slot in gunbc.runner.runner_slot_desired. No figure here is a hand-kept copy of
+// a carrier's own literal; the referent is the ssh read recorded in each row's provenance, and each row has a
+// single home (gunbc.design_argument::single_authority). Each arm that cannot observe what it needs returns
+// false rather than a plausible width (gunbc.design_argument::fail_closed): a missing reservation row or an
+// unmeasured ceiling must RED, never pass by defaulting.
+
+import std.types { Bool, Int }
+import std.measure { byte_size_count }
+import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import gunbc.serving.serving_reservation { host_memory_reserved }
+import gunbc.serving.serving_host_memory { ServingMemoryRead, ken_strata_engine_memory }
+import gunbc.host.host_memory_observation { host_usable_ram_ceiling_bytes }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
+
+// The fold must actually carry the engine's declared ceiling. Reaching the ceiling through the serving row --
+// not a copied number -- means the check cannot pass on a value nobody wired in: a deleted reservation row
+// makes the fold report zero (its no-row arm), and an Unread/Assumed ceiling has no bytes to fold, so both red.
+test fn ken_serving_charge_is_read_into_its_ci_seat() -> Bool {
+  match ken_strata_engine_memory.memory_max {
+    ServingMemoryRead { bytes: ceiling, provenance: _ } => match host_memory_reserved(host: operator_host_e2d4b7) {
+      Present { value: reserved } => byte_size_count(b: reserved) as Int == byte_size_count(b: ceiling) as Int
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+// The gate itself. Fails closed if the reservation fold refuses (an unpriced serving charge is not "roomless",
+// it is unknown), and fails closed if the usable ceiling is unmeasured -- host_usable_ram_ceiling_bytes reports
+// zero for an unmeasured host, which would otherwise saturate the residual to zero and fake a full seat. The
+// pass condition is: usable covers the serving charge, and what it leaves is under one build slot.
+test fn ken_cannot_carve_a_build_seat_over_its_serving_charge() -> Bool {
+  match host_memory_reserved(host: operator_host_e2d4b7) {
+    Absent => false,
+    Present { value: serving } => {
+      let usable = byte_size_count(b: host_usable_ram_ceiling_bytes(host: operator_host_e2d4b7)) as Int
+      let charge = byte_size_count(b: serving) as Int
+      usable >= charge && usable - charge < gunbc_runner_slot_memory_max_bytes
+    }
+  }
+}
