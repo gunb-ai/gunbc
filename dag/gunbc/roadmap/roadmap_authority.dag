@@ -5397,6 +5397,26 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The whole schedule chain reads the expansion's edges; a barrier that silently vanishes across an empty stage makes the critical path, the bottleneck and the offer all wrong for any item with a Decision-only or Composite-only stage."),
     ),
+    // DECLARED, NOT DISPATCHED: the frontier that gives the expander's unresolved_waits report a CONSUMER. Until it
+    // lands, roadmap_schedule carries the report on the Expansion but no schedule answer reads it (the Consumption
+    // authority: a declaration must be consumed now or by a NAMED later change). It waits on the barrier row, which is
+    // what creates the report, and bottlenecks-and-offer waits on IT so the surfaced report has a downstream reader.
+    roadmap_node(
+      identity: "rn_HED0W6FHP53P26Z4RVR45AGWSV",
+      id: "roadmap-schedule-surfaces-unresolved-waits",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_schedule.dag"),
+      line: ticket(t: fields(
+        headline: "A schedule surfaces the unresolved waits its expansion reported",
+        boundary: "The one expander records every waits_on whose endpoint span is WELL-FORMED (the stage index EXISTS and the parent edge is DECLARED, so the carrier's own well-formedness claim admits the row) but whose span emits NO occurrence -- a wait onto a milestone / project Join -- on the Expansion as unresolved_waits (side, stage, EndpointEmitsNoOccurrence kinds) beside omitted_composites (roadmap-schedule-barrier-through-empty-stages). This frontier gives that report a CONSUMER: the schedule answer carries unresolved_waits beside its placed leaves, so a reader SEES the cross-item ordering a lane cannot yet place. It orders nothing and mints no edge -- surfacing, not scheduling -- so no lane gains the ability to schedule cross-item ordering here (@ref(gunbc.design_argument::single_authority)); it simply stops the report from being a dangling declaration the scheduler throws away (@ref(gunbc.design_argument::fail_closed)).",
+        displaced_cost: "Without a named consumer the unresolved_waits field is a dangling declaration (Consumption: red). The report exists on the Expansion but no schedule answer reads it, so the cross-item-ordering gap it was added to make visible goes unseen again -- the very silence the barrier fix was made to end.",
+        first_slice: "The schedule answer for one real item (factory) carries its unresolved_waits beside its placed leaves -- the three milestone / project-Join waits reported, none scheduled.",
+        red_control: "An expansion with an unresolved wait yields a schedule answer that NAMES that wait; an expansion with none names none; and no edge or ordering is minted from an unresolved wait -- the placed-leaf set and every edge are identical to the schedule computed without the report. Reverting the surfacing blanks the named waits and turns this control red.",
+        out_of_scope: "No lane schedules cross-item ordering; no edge or order is invented for an unresolved wait. Actually SCHEDULING such waits is a further frontier, not this one. Which waits are unresolved is decided in roadmap-schedule-barrier-through-empty-stages, not here.",
+        handback: "The schedule answer for factory with its three unresolved waits listed beside the placed leaves, the empty-report item's answer naming none, and the diff showing no new edge or ordering was minted.",
+      )),
+      parent: in_project(project: "factory", contribution: "The frontier keeps the cross-item-ordering gap visible in the schedule answer until a lane can place it; bottlenecks-and-offer then reads it downstream."),
+    ),
     // DECLARED, NOT DISPATCHED: the LeafPath model change that would let expansion reach a Composite's nested
     // stages. It must land as a model change to LeafPath BEFORE any nested expansion, so it is held (dispatch
     // defaults to NotDispatchable) until the path change is itself scheduled.
@@ -5566,6 +5586,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-schedule-barrier-through-empty-stages", parent: "roadmap-schedule-leaf-expansion"),
     edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-barrier-through-empty-stages"),
     edge(child: "roadmap-schedule-composite-nested-addressing", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    // The unresolved-wait report the barrier creates gets its CONSUMER here: the surfacing frontier waits on the
+    // barrier (the report must exist first), and bottlenecks-and-offer -- the offer already reads the barrier's edges
+    // -- additionally waits on the surfacing frontier, so a schedule that dropped the report cannot reach the offer.
+    edge(child: "roadmap-schedule-surfaces-unresolved-waits", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-surfaces-unresolved-waits"),
     edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),

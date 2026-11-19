@@ -17,6 +17,7 @@ module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
 
 import std.types { Bool }
 import std.integer { nat_to_int }
+import std.algebra { contains }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   expand_node, expand_decomposition, occurrence_is_offered_claimable,
@@ -24,7 +25,7 @@ import gunbc.roadmap.roadmap_decomposition {
   decomposition_has_leaf_path, decomposition_dependencies_well_formed,
   decomposition, waits, leaf, reading_family, piece, decision, join,
   Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
-  Into, From, EndpointEmitsNoOccurrence, DecisionKind, has_kind,
+  Into, From, EndpointEmitsNoOccurrence, DecisionKind, piece_kind_eq,
 }
 
 // THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
@@ -267,7 +268,7 @@ test fn a_waits_on_whose_child_span_emits_no_occurrence_is_reported_unresolved_n
              (match u.side { Into => true  From => false })
                && u.stage == 0
                && u.row.item == nid(s: parent)
-               && match u.reason { EndpointEmitsNoOccurrence { kinds } => has_kind(ks: kinds, k: DecisionKind) })) == 1
+               && match u.reason { EndpointEmitsNoOccurrence { kinds } => contains(xs: kinds, item: DecisionKind, eq: piece_kind_eq) })) == 1
     ExpansionRejected { cause } => false
   }
 }

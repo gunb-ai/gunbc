@@ -16,11 +16,12 @@ module test.claim.roadmap.roadmap_real_decomposition_expansion_guard_witness
 // that quietly drops a milestone wait from the report (instead of recording it) goes red, not merely non-refused.
 
 import std.types { Bool }
+import std.algebra { contains }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   roadmap_decompositions, expand_decomposition, expand_node,
   Expanded, ExpansionRejected, UnresolvedWait, Into, From, EndpointEmitsNoOccurrence,
-  PieceKind, CompositeKind, JoinKind, has_kind,
+  PieceKind, CompositeKind, JoinKind, piece_kind_eq,
 }
 
 // (1) EVERY real decomposition expands at the simulation findings_count of one -- no item is refused, no item is
@@ -48,14 +49,15 @@ fn side_is_into(u: UnresolvedWait) -> Bool {
 }
 
 // helper: does any reported unresolved wait on this item sit on the given side, name `stage`, wait on `parent`, and
-// give the EndpointEmitsNoOccurrence reason whose kinds include `kind`? The kind is a typed PieceKind, matched with the
-// module's own has_kind -- the report is asserted against the coproduct, never a string.
+// give the EndpointEmitsNoOccurrence reason whose kinds include `kind`? The kind is a typed PieceKind, tested with
+// std.algebra.contains over the module's canonical piece_kind_eq (which is just structural `==`) -- the report is
+// asserted against the coproduct, never a string.
 fn reports_wait(node: String, want_into: Bool, stage: Int, parent: String, kind: PieceKind) -> Bool {
   count(filter(unresolved_of(node: node), u =>
       side_is_into(u) == want_into
         && u.stage == stage
         && u.row.item == nid(s: parent)
-        && match u.reason { EndpointEmitsNoOccurrence { kinds } => has_kind(ks: kinds, k: kind) })) > 0
+        && match u.reason { EndpointEmitsNoOccurrence { kinds } => contains(xs: kinds, item: kind, eq: piece_kind_eq) })) > 0
 }
 
 // (2a) v1-emitter-quarantine is a lone Composite stage: its wait on native-production-admission lands on its own

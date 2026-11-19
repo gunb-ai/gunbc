@@ -5,7 +5,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -80,7 +80,8 @@ type WorkStage { pieces: List<WorkPiece> }
 // wherever only the kind matters (an unresolved-wait report says WHICH kinds filled an occurrence-less span). It is
 // NOT a String: the labels are the coproduct's own constructors, so renaming or adding a WorkPiece variant breaks the
 // TOTAL piece_kind match below at compile time rather than leaving stale text behind (single_authority, minimize_redundancy:
-// a closed set gets one spelling). piece_kind is the ONLY producer; piece_kinds_equal is the ONLY comparator.
+// a closed set gets one spelling). piece_kind is the ONLY producer; equality is the language's structural `==`
+// (exposed once as piece_kind_eq solely to satisfy std.algebra.contains's eq: parameter).
 type PieceKind = LeafKind | FamilyKind | JoinKind | DecisionKind | CompositeKind
 
 type StageDependency {
@@ -1838,20 +1839,12 @@ fn piece_kind(p: WorkPiece) -> PieceKind {
   }
 }
 
-// The ONE comparator for PieceKind -- an exhaustive cross-match, so equality never leans on a derived String form.
-fn piece_kinds_equal(a: PieceKind, b: PieceKind) -> Bool {
-  match a {
-    LeafKind => match b { LeafKind => true FamilyKind => false JoinKind => false DecisionKind => false CompositeKind => false }
-    FamilyKind => match b { LeafKind => false FamilyKind => true JoinKind => false DecisionKind => false CompositeKind => false }
-    JoinKind => match b { LeafKind => false FamilyKind => false JoinKind => true DecisionKind => false CompositeKind => false }
-    DecisionKind => match b { LeafKind => false FamilyKind => false JoinKind => false DecisionKind => true CompositeKind => false }
-    CompositeKind => match b { LeafKind => false FamilyKind => false JoinKind => false DecisionKind => false CompositeKind => true }
-  }
-}
-
-// The single membership test a reader (or a witness) uses against a reported `kinds`, so no caller re-derives equality.
-fn has_kind(ks: List<PieceKind>, k: PieceKind) -> Bool {
-  count(filter(ks, e => piece_kinds_equal(a: e, b: k))) > 0
+// The ONE equality for PieceKind: it delegates to the language's structural `==` (data types derive it; see the
+// RolePending/RoleHandedOff comparisons in roadmap_belt_actuate for the fieldless-coproduct precedent). It exists only
+// to feed std.algebra.contains's `eq:` parameter -- the same role std's own string_eq plays -- so there is exactly one
+// equality authority (`==`) and no hand-written predicate over the coproduct.
+fn piece_kind_eq(a: PieceKind, b: PieceKind) -> Bool {
+  a == b
 }
 
 fn stage_kinds(st: WorkStage) -> List<PieceKind> {
@@ -1879,7 +1872,7 @@ fn span_kinds_at(stages: List<WorkStage>, remaining: Int) -> List<PieceKind> {
 
 fn distinct_kinds(ks: List<PieceKind>) -> List<PieceKind> {
   fold(ks, init: [], f: fn(acc, k) {
-    if count(filter(acc, e => piece_kinds_equal(a: e, b: k))) == 0 { concat(acc, [k]) } else { acc }
+    if !contains(xs: acc, item: k, eq: piece_kind_eq) { concat(acc, [k]) } else { acc }
   })
 }
 
