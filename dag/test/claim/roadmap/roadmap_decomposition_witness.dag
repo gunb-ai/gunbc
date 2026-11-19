@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_decomposition_witness
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, List, String }
 import gunbc.roadmap.roadmap_authority { nid }
 import gunbc.roadmap.roadmap_decomposition {
   roadmap_decompositions, decompositions_all_have_nodes, decomposition_has_node, decomposition, decomposition_nodes_unique,
@@ -9,6 +9,30 @@ import gunbc.roadmap.roadmap_decomposition {
   piece_leaf_count, piece_leaf_days, piece_findings_families, decompositions_findings_probes_exist, decomposition_findings_probes_exist,
   decompositions_owners_declared, decompositions_dependencies_well_formed, dependency_is_well_formed,
   decompositions_wait_on_every_decomposed_parent, decomposition_waits_on_every_decomposed_parent,
+  LeafCount, LeafPricing, UnprobedFamily, Counted, Uncounted, Priced, Unpriced,
+}
+
+// ---- single-match predicates (a match cannot be an operand of && in this dialect; arms are newline-separated) ----
+fn counted_members(v: LeafCount, want: Int) -> Bool {
+  match v {
+    Counted { members: m } => m == want
+    Uncounted { families: _ } => false
+  }
+}
+fn priced_days(v: LeafPricing, want: Int) -> Bool {
+  match v {
+    Priced { days: d } => d == want
+    Unpriced { families: _ } => false
+  }
+}
+fn uncounted_naming(v: LeafCount, family: String, probe: String) -> Bool {
+  match v {
+    Uncounted { families: fams } => match fams {
+      Cons { head: f, tail: _ } => f.family == family && f.probe == probe
+      Empty => false
+    }
+    Counted { members: _ } => false
+  }
 }
 
 // A decomposition whose node id is not a declared roadmap node is the undefined variable this carrier refuses.
@@ -49,15 +73,23 @@ test fn an_empty_stage_is_refused() -> Bool {
   !piece_stages_nonempty(p: piece(label: "outer", stages: [[leaf(label: "fine", days: 1)], []]))
 }
 
-// Populations: a family counts one leaf per member; a findings family counts as one until its probe has run; a join is no work.
+// Populations: a Produced or Reading family prices and counts one leaf per member; a FindingsOf family leaves the
+// pricing and the count UNPRICED / UNCOUNTED (its population is unknown until the probe runs); a join is no work.
 test fn a_family_counts_one_leaf_per_member() -> Bool {
   let f = reading_family(label: "members", days: 2, members: 7, on: "2026-11-17", basis: "planted", owner: "native-seven")
-  piece_leaf_count(p: f) == 7 && piece_leaf_days(p: f) == 14 && piece_leaf_count(p: join(label: "j")) == 0 && piece_leaf_days(p: join(label: "j")) == 0
+  counted_members(v: piece_leaf_count(p: f), want: 7)
+    && priced_days(v: piece_leaf_days(p: f), want: 14)
+    && counted_members(v: piece_leaf_count(p: join(label: "j")), want: 0)
+    && priced_days(v: piece_leaf_days(p: join(label: "j")), want: 0)
 }
 
+// RED FIRST (the count side): an item whose pieces include a FindingsOf family is UNCOUNTED -- the count names the
+// family and its probe -- never Counted at leaf+1 as a fabricated one-member price. The findings family is still
+// REPORTED (stages_findings_families / piece_findings_families count families, an honest count, not a member count).
 test fn a_findings_family_is_counted_as_unknown_and_reported() -> Bool {
   let p = piece(label: "outer", stages: [[leaf(label: "enumerate (probe)", days: 2)], [findings_family(label: "one member", days: 3, probe: "enumerate (probe)", owner: "native-seven")]])
-  piece_leaf_count(p: p) == 2 && piece_findings_families(p: p) == 1 && piece_findings_families(p: leaf(label: "sure", days: 1)) == 0
+  uncounted_naming(v: piece_leaf_count(p: p), family: "one member", probe: "enumerate (probe)")
+    && piece_findings_families(p: p) == 1 && piece_findings_families(p: leaf(label: "sure", days: 1)) == 0
 }
 
 // A findings family names a probe leaf of its own item, exactly once.
@@ -100,7 +132,7 @@ test fn a_child_that_drops_a_decomposed_parent_is_refused() -> Bool {
 // The emitter door is its written-file residual, with its closing claim cited as the probe; the grammar is not its population.
 test fn the_direct_rust_door_is_its_residual() -> Bool {
   let ds = decomposition_for(node: nid(s: "v2-emitter-direct-rust-door"))
-  count(ds) == 1 && all(ds, d => stages_leaf_count(stages: d.stages) == 6 && stages_findings_families(stages: d.stages) == 0)
+  count(ds) == 1 && all(ds, d => counted_members(v: stages_leaf_count(stages: d.stages), want: 6) && stages_findings_families(stages: d.stages) == 0)
 }
 
 test fn an_item_with_no_decomposition_reads_as_none() -> Bool {
