@@ -211,7 +211,6 @@ fn answer_priced(facts: GanttFacts) -> GanttAnswer {
   }) {
     PlacementRefused { refusal: PlacementCyclic { keys: keys } } => GanttRefused { refusal: GanttPrerequisitesCyclic { nodes: map(keys, k => nid(s: k)) } }
     PlacementRefused { refusal: PlacementUnplaced { keys: keys } } => GanttRefused { refusal: GanttRowsUnplaced { nodes: map(keys, k => nid(s: k)) } }
-    PlacementRefused { refusal: _ } => GanttRefused { refusal: GanttRowsUnplaced { nodes: [] as List<RoadmapNodeId> } }
     PlacementPlaced { answer: placed } => GanttAnswered {
       rows: map(facts.priced, p => gantt_row(facts: facts, placed: placed, held: held, p: p)),
       horizon: placed.horizon,
