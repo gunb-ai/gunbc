@@ -7499,6 +7499,22 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "Per-class rungs rendered from the carrier make the floor readable on the page."),
     ),
     roadmap_node(
+      identity: "rn_READSETCONVPROG00000000000",
+      id: "read-set-convergence",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: level_fields(
+        headline: "Regenerate exactly what is needed from exactly what changed (the read-set convergence program)",
+        boundary: "One read-set validation authority, consumed through the existing convergence modality (gunbc.ensure ensure_decide), replaces every bespoke affected-set check: each generated product (a stage0 mirror, a seed-build artifact, a parse verdict, a required-job verdict) stays valid while nothing its generator read has changed and the generator is unchanged, and is otherwise regenerated alone. Heal's forced recheck (the emission-scope base mirror) is the remaining whole-pool cost this program owns down to the change. The authority lives in the plan gunbc.plans.read_set_convergence; this node is the roadmap lane for its executable work (gunbc.design_argument::planning_has_one_home).",
+        approach: "Phase by phase (the plan's P0..P7), switch one production consumer onto the one authority and delete what it displaces; heal's remaining whole-pool cost is P7.",
+        red_control: "A generated product that is regenerated when nothing it read changed, or kept stale when something it read changed, keeps this red. A fourth bespoke affected-set check outside the one authority keeps this red.",
+        displaced_cost: "Heal regenerates the whole population on every same-repository pull request touching dag/**, src/v1/** or src/v2/** -- all 172 stage0 mirrors and 13 seed-build artifacts, median 65 minutes -- paid even for a plan-only change, because the round does no change selection and its scope reads WholePopulation.",
+        handback: "Every affected-set mechanism consolidated onto the one authority or deleted, and heal's forced recheck bounded by the pull request's own diff (P7)."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunbc-project-root", contribution: "Converging the read set -- regenerating exactly what changed and nothing more -- is what makes the self-host round (heal) and every generated product cheap enough to run on every pull request (the plan gunbc.plans.read_set_convergence)."),
+    ),
+    roadmap_node(
       identity: "rn_HEALFORKSEEDP7000000000000",
       id: "heal-forced-recheck-seeds-from-the-fork-point",
       owner: "self-host",
@@ -7513,7 +7529,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The change, its two hermetic controls with their PASS lines, the regenerated heal.yml matching its generator, and the heal round's seed-size/base line on the PR's own CI."
       ), on: "2026-11-19", note: "Realized by the implementation PR (fix(heal): seed the forced recheck from the merge-base); operator approved the direction 2026-11-19.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "read_set_convergence", contribution: "heal's forced recheck is bounded by the PR's own diff, not the branch's distance from main's tip."),
+      parent: in_project(project: "read-set-convergence", contribution: "P7: heal's forced recheck is bounded by the pull request's own diff, not the branch's distance from main's tip (the plan gunbc.plans.read_set_convergence)."),
     ),
   ]
 }
