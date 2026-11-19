@@ -175,6 +175,16 @@ type UnprobedFamily {
   probe: String
 }
 
+// WHY LeafPricing and LeafCount stay SEPARATE types (answers gunbc.design_argument::root_generalization, which
+// rejects a repeated pattern "until the author answers why it should not be generalized"). They are the same SHAPE
+// (a known Int, or a nonempty sequence of unprobed families) and merge_count parallels merge_pricing on purpose --
+// but a portfolio day total and a member count are DIFFERENT quantities, and collapsing them into one Int-carrying
+// carrier is exactly the defect this change removes: it would let an unpriced population's member count be summed as
+// a day total and reach the portfolio unmarked. The two carriers are the type-level guard that a count can never be
+// read as a price. The one genuinely-shared operation -- merging two nonempty unprobed-family sequences -- is NOT
+// duplicated: both folds call the single fs_append. PopulationCardinality is a third shape only superficially: it is
+// per-population grain, its Unprobed carries the probe STRING (a single population was not measured), it has no fold,
+// and it is the INPUT that the aggregates are built from -- not a second implementation of the aggregate rule.
 // The days total over a piece/stage: Priced only when no FindingsOf family in it is unprobed; otherwise Unpriced,
 // naming every unprobed family and its probe. THE pricing authority the estimates read. `families` is a
 // FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup), ruling
@@ -207,15 +217,6 @@ fn population_cardinality(p: Population) -> PopulationCardinality {
   }
 }
 
-// Whether a population's cardinality is unknown (a findings population). Derived from the ONE cardinality
-// authority, not re-matched -- so the answer "is this population's size known?" has exactly one source.
-fn population_is_findings(p: Population) -> Bool {
-  match population_cardinality(p: p) {
-    Known { members } => false
-    Unprobed { probe: _ } => true
-  }
-}
-
 // the one finding a FindingsOf family contributes to an Unpriced / Uncounted total: its label and its probe, in a
 // nonempty carrier (a single family makes the whole total unpriced, and it always names itself).
 fn findings_unprobed(label: String, probe: String) -> FreeSemigroup<UnprobedFamily> {
@@ -243,8 +244,9 @@ fn merge_pricing(a: LeafPricing, b: LeafPricing) -> LeafPricing {
   }
 }
 
-// the ONE fold that totals the member count over a population; mirrors merge_pricing so an unmeasured population
-// makes the whole count uncounted rather than reporting a fabricated member count.
+// the ONE fold that totals the member count over a population; parallels merge_pricing (separate carriers by
+// design -- see the root_generalization answer above LeafPricing) so an unmeasured population makes the whole count
+// uncounted rather than reporting a fabricated member count. The shared step -- merging unprobed families -- is fs_append.
 fn merge_count(a: LeafCount, b: LeafCount) -> LeafCount {
   match a {
     Counted { members: ma } => match b {
@@ -295,7 +297,10 @@ fn stages_leaf_days(stages: List<WorkStage>) -> LeafPricing {
 fn piece_findings_families(p: WorkPiece) -> Int {
   match p {
     Leaf { label, days, evidence } => 0
-    Family { label, days, population, owner } => if population_is_findings(p: population) { 1 } else { 0 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => 0
+      Unprobed { probe: _ } => 1
+    }
     Join { label } => 0
     Decision { label, alternatives } => 0
     Composite { label, stages } => stages_findings_families(stages: stages)
