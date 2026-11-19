@@ -1192,6 +1192,13 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
   provenance: "Operator decision 2026-11-19, escalation msg_dd4f5177 decided in msg_5d6b035d, option chosen verbatim: \"Lift it (I record a design_ruling row quoting you; rows 894/911 drop the gate)\". Supersedes the default-approved msg_91e05714, which was approved by default, not by the operator. WHAT THIS LIFTS: the 2026-10-03 fabric-bring-up-first gate on native SCM. Four deliverable rows (2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence) were held behind the fabric bring-up by a prerequisite edge onto the fabric-bringup project node; two sibling rows (2-scm-compatibility-shape, 2-scm-p0-landing-spine) carried the same 'revisited after the fabric bring-up (operator ruling 2026-10-03)' only in their contribution text. HISTORY: no 2026-10-03 design_ruling row ever existed -- that gate was asserted only in roadmap row text, never recorded in this ledger; this row is both its first record and its lifting record. The prerequisite edges onto the fabric-bringup project are deleted, the rows stay factory members, and the fabric-bringup red_control dispatch-gate sentence is removed.",
 }
 
+
+data hosted_runner_shadow_gate_ci_dispatch_tag_2026_11_19: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "hosted_runner_shadow_gate_ci_dispatch_tag_2026_11_19"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", decl_name: "shadow_gate_workflow"),
+  provenance: "Operator, 2026-11-19, via session clever-raven-401 (msg_c03f7fd9): asked to approve a dedicated tag:ci-dispatch for the hosted-runner shadow gate (the member-baseline grant does not reach ephemeral OAuth-minted nodes, and tag:ci is quarantined to the dashboard only), the operator said verbatim: \"OK for ci-dispatch, as long as its all modeled/recorded for tailscale convergence\". WHAT THIS ADMITS: (1) tag:ci-dispatch in the emitted ACL (extdeps.tailscale.acl), tagOwners autogroup:admin; (2) the grant tag:ci-dispatch -> tag:ci tcp:22 (dst is tag:ci because the build hosts carry tailscale_fleet_node_tag = tag:ci; this gives tcp:22 reach to EVERY tag:ci node including ken/dan, accepted because the control is the forced-command SSH key, not the network -- only gunbc-build admits the CI key, and no Tailscale SSH rule names tag:ci-dispatch so even a host running tailscaled --ssh would deny it); (3) the tailscale/github-action OAuth client as a modeled credential with scope auth_keys:write and tags [tag:ci-dispatch]; (4) the shadow gate workflow (gunbc.witness.hosted_runner_shadow_gate_workflow) as a NON-required job on ubuntu-2404. DISSOLVES at cutover: when the fleet runs the remote build natively (work-exec-2), this workflow is deleted. The job roster is closed to growth (DESIGN.md); this entry was admitted by this ruling.",
+}
 fn design_rulings() -> List<DesignRuling> {
   [
     estimates_are_one_representation_derived_upward,
@@ -1340,6 +1347,7 @@ fn design_rulings() -> List<DesignRuling> {
     tailnet_serving_acl_admin_console_additions_2026_11_18,
     tailscale_fleet_key_untagged_join_causality_2026_11_18,
     native_scm_fabric_first_gate_lifted_2026_11_19,
+    hosted_runner_shadow_gate_ci_dispatch_tag_2026_11_19,
   ]
 }
 

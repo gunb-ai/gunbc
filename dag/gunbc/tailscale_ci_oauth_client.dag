@@ -1,0 +1,69 @@
+module gunbc.tailscale_ci_oauth_client
+
+// THE CI-DISPATCH ENROLLMENT CREDENTIAL, AS A PINNED-OAUTH CLIENT WITH ONE RECORD OF WHAT IT IS.
+//
+// The hosted-runner shadow gate joins the tailnet as an ephemeral node tagged tag:ci-dispatch. The
+// tailscale/github-action authenticates via an OAuth client (not an auth key), so the credential's
+// identity is an OAuth client_id (public) and client_secret (private, held as a GitHub repository
+// secret). This module is the single home of the client's identity: which scope, which tag, whether
+// it is ephemeral, and which GitHub secrets hold the material.
+//
+// WHY AN OAUTH CLIENT AND NOT AN AUTH KEY. The tailscale/github-action README at v4.4.0 documents two
+// routes: the deprecated `authkey` input and the current `oauth-client-id`/`oauth-secret` pair. The
+// auth-key route would require the operator's GCP-stored fleet key (which is untagged: one report says
+// the fleet key is untagged, and using an untagged key would join the runner as a personal identity);
+// a new tagged auth key would need Secret Manager custody for a secret consumed only on GitHub-hosted
+// runners, which have no GCP WIF. The OAuth client is scoped (auth_keys:write, one tag), auditable (each
+// mint is a separate API call logged in the admin console), and revocable independently of the user.
+// The action installs the tailscale CLI in the runner's container and logs the node out in its post step.
+//
+// THE FLEET AUTH KEY IS NOT THIS CREDENTIAL. The fleet auth key (gunbc.tailscale_fleet_auth_key) joins
+// the fleet's own hosts (ken, dan, ken/dan carry tag:ci and tag:serving); it lives in GCP Secret Manager
+// and is consumed by the fleet converge. The CI OAuth client joins ONLY ephemeral GitHub-hosted runners;
+// it lives in GitHub Actions secrets and is consumed by the shadow gate workflow.
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tailscale.acl { tag_ci_dispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, Bool }
+
+// ── THE OAUTH CLIENT IDENTITY ──────────────────────────────────────────────────────────────────────
+
+data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-shadow-gate"
+data ci_oauth_client_scope: NonEmptyStr = "auth_keys:write"
+data ci_oauth_client_tags: List<NonEmptyStr> = [tag_ci_dispatch]
+data ci_oauth_client_ephemeral: Bool = true
+data ci_oauth_client_pre_authorized: Bool = true
+
+// ── THE GITHUB SECRETS ─────────────────────────────────────────────────────────────────────────────
+//
+// The OAuth client_id is semi-public (identifies the client, not a secret in the strict sense) but GitHub
+// Actions has no "variable" admission for the tailscale action's oauth-client-id input, so both halves live
+// as secrets. The secret names are the ones the shadow gate workflow references.
+
+data ci_oauth_client_id_github_secret: NonEmptyStr = "TS_OAUTH_CLIENT_ID"
+data ci_oauth_client_secret_github_secret: NonEmptyStr = "TS_OAUTH_SECRET"
+
+// ── THE AUTHORITY ANCHOR ───────────────────────────────────────────────────────────────────────────
+//
+// The upstream authority for the OAuth flow is the tailscale/github-action README at the pinned SHA.
+
+data ci_oauth_extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/tailscale/github-action/blob/064b10558093f38325e838ddea35486bdc6b1d5c/README.md"
+  }
+}
+
+data ci_oauth_extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "gunbc.tailscale_ci_oauth_client",
+      decl_name: "ci_oauth_client_scope",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ci_oauth_extdeps_external_authority_anchor,
+  further_citations: []
+}
