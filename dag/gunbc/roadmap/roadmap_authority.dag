@@ -5609,6 +5609,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
     ),
+    roadmap_node(
+      identity: "rn_01M7T844EWSVQJ6A7XMXC6VZ85",
+      id: "roadmap-authoring-refuses-prerequisite-into-own-container",
+      owner: "planning",
+      carriers: concat(carrier(path: "dag/gunbc/roadmap/roadmap_authority.dag"), carrier(path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag")),
+      line: ticket(t: fields(
+        headline: "Roadmap authority: authoring refuses a prerequisite edge into the source's own container",
+        boundary: "One property of the EXISTING authority graph (dag/gunbc/roadmap/roadmap_authority.dag's edge() / declared_roadmap_edges), not a second walker: it reuses the containment the authority already derives -- MemberOf/UnderParent membership AND the decomposition pieces a container holds (the same pieces the rollup restates in roadmap_estimate_derivation.dag) -- and refuses a prerequisite edge whose TARGET is a containment ancestor of its SOURCE, naming BOTH the edge and the container. The item Gantt read already surfaces this as BlockedCause WaitsOnItsOwnContainer (tidy-crane-257, #16729); this lifts it onto the authority so authoring refuses it at the edge, not a downstream view.",
+        displaced_cost: "Today a row waiting on its own milestone/project/decomposition container is admitted by the authority, so the contradiction is caught only at the Gantt read: an author sees a graph that validates and then a blocked cell that cannot be scheduled, and no name is put on the edge until the view runs. A parent waiting on its own child is the REDUNDANT case, not the contradictory one -- the child already gates the container, so the edge is harmless; it is FLAGged for the planner and NOT refused. The refuse-vs-flag line and the single containment walk (extended with decomposition pieces, keep_all style) live with the edge graph; the Gantt read stays the display.",
+        first_slice: "A model-side claim over the declared edge graph + the derived containment: a planted prerequisite edge whose target is its source's MemberOf parent is REFUSED naming the edge and the container; a planted edge into a container that holds the source only as a decomposition piece is REFUSED identically (same claim, no second walk); a legal cross-item edge still passes; a planted parent-waits-on-own-child edge is reported as redundant and NOT refused. RED-FIRST against live data: run the claim on current main and list every existing violating edge; if any exist, STOP and send the list -- fixing data is a planning decision.",
+        red_control: "A fixture where a leaf declares a prerequisite on its own project/milestone ancestor refuses and names both sides; a fixture where the leaf's only link to the container is decomposition-piece membership refuses identically (the walk counts pieces, proving MemberOf-only is NOT the whole containment); a legal cross-item edge passes; a planted container->contained-child edge is flagged redundant, not refused; and the live authority passes once data is clean.",
+        out_of_scope: "Fixing any live violating edge (a planning data decision, not this row); refusing a container that waits on its own contained child (redundant, not contradictory -- flag only); rewriting the item Gantt read or its BlockedCause enum; a second containment walker beside the authority's own.",
+        handback: "The named-refusal report: each violating edge as (source -> target) plus the container named, and the single containment function reused (the authority's own, now covering decomposition pieces); plus the RED-FIRST live-data verdict listing every existing violating edge."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
