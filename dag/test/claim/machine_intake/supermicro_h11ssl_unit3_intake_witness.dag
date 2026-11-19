@@ -610,7 +610,7 @@ test fn the_address_standing_names_the_row_that_holds_the_address() -> Bool {
 test fn the_held_address_is_an_observation_while_the_standing_and_the_effect_gate_stay_shut() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: held_by, read_obligation: owed } =>
-      ipv4_address_eq(a: seen, b: ken_host_lan_endpoint.address)
+      ipv4_address_eq(a: seen, b: ken_host_lan_endpoint.address as Ipv4Address)
         && decl_ref_names(ref: held_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
         && (text(owed) != "")
         && this_unit_is_enrolled()
