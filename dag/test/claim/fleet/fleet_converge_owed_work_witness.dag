@@ -1,0 +1,388 @@
+// THE RECEIPT CANNOT SAY 'APPLIED' ABOUT WORK IT DID NOT DO.
+//
+// Found on srv1 apply run 44428803079 (plan 44423114994). The plan listed two cap drop-in CHANGEs and
+// four runner-slot REMOVEs (srv1-10/11/12/14). The apply was CORRECTLY fail-closed and did none of them:
+// the cap axis is never emitted into apply.sh, because writing a drop-in is live_deploy's authority, and
+// the four teardowns were withheld -- apply.sh echoed `__GUNBC_CONVERGE_WITHHELD__ ... cause=no
+// retirement evidence`, because srv1-07/08/09 were still running. The receipt read:
+//
+//     partially_applied|7|slot=5 cap=0 timer=0 fabric-cell=0 activation=2
+//
+// with exit 0 and the word `applied` under it. Every number on that line is a refusal, and nothing on it
+// was owed: the terminal was minted from refusal counts alone, so withheld and plan-only rows landed in
+// neither the applied nor the refused column and simply vanished. The LiveDeployMemberBasis arm of the
+// same function already refuses to call a non-empty plan FullyApplied, and its comment names this exact
+// failure -- "the plan says work is needed, nothing does it, the terminal reports applied". The
+// FullHostConverge arm, the one srv1 runs under, had no such guard.
+//
+// THE CONTROL THESE CLAIMS HOLD TOGETHER is that the receipt's numbers are READ OFF the two artifacts the
+// operator already has: the rows come from the plan and the lines come from the script. A claim here
+// compares the receipt against the artifact it was minted with, so a future change that counts something
+// else -- or counts nothing -- has to break one of these rather than quietly re-tune a constant.
+module test.claim.fleet.fleet_converge_owed_work_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_converge_plan {
+  FleetConvergePlanArtifact,
+  fleet_converge_cap_plan_only_row_count,
+  fleet_converge_plan_artifact,
+}
+import gunbc.fleet.fleet_converge_terminal {
+  AwaitingCapability,
+  FleetConvergeApplyTerminal,
+  FleetConvergeOwedWork,
+  FullyApplied,
+  PartiallyApplied,
+  fleet_converge_apply_terminal_of_wire,
+  fleet_converge_apply_terminal_wire,
+  fleet_converge_owed_work_is_clear,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.host.host_axis_caps { CapMember }
+import gunbc.host.host_converge { gunbc_runner_per_slot_dropin_path }
+import gunbc.runner.runner_service_activation {
+  runner_activation_readiness_unobserved_no_transaction,
+  runner_unit_standings_unobserved_no_transaction,
+}
+import gunbc.runner.runner_slot_provision {
+  RunnerSlotMember,
+  SlotProvenanceObserved,
+  SlotUnregistered,
+  converge_line_is_withheld,
+  runner_slot_member_observed,
+}
+import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
+
+data owed_witness_host: NonEmptyStr = "srv1" as NonEmptyStr
+
+// THE FOUR TREES THE 44423114994 PLAN LISTED. The provenance is the one that ADMITS a removal -- in
+// grammar, unregistered, inactive, disabled -- so these members reach the teardown gate instead of being
+// refused before it. Refusing them earlier would test the wrong gate: the srv1 run got four REMOVE rows
+// and four withheld teardowns, not four refusals, and the receipt's silence is only reproducible on the
+// path where the plan really did list the work.
+fn owed_witness_slots() -> List<RunnerSlotMember> {
+  [
+    runner_slot_member_observed(
+      instance_name: "srv1-10",
+      provenance: SlotProvenanceObserved {
+        in_host_grammar: true,
+        registration: SlotUnregistered,
+        unit_active: false,
+        unit_enabled: false,
+      },
+    ),
+    runner_slot_member_observed(
+      instance_name: "srv1-11",
+      provenance: SlotProvenanceObserved {
+        in_host_grammar: true,
+        registration: SlotUnregistered,
+        unit_active: false,
+        unit_enabled: false,
+      },
+    ),
+    runner_slot_member_observed(
+      instance_name: "srv1-12",
+      provenance: SlotProvenanceObserved {
+        in_host_grammar: true,
+        registration: SlotUnregistered,
+        unit_active: false,
+        unit_enabled: false,
+      },
+    ),
+    runner_slot_member_observed(
+      instance_name: "srv1-14",
+      provenance: SlotProvenanceObserved {
+        in_host_grammar: true,
+        registration: SlotUnregistered,
+        unit_active: false,
+        unit_enabled: false,
+      },
+    ),
+  ]
+}
+
+// THE srv1 DROP-INS AS THEY STAND ON DISK, byte for byte, read read-only on 2026-11-19: the 2026-10-30
+// live_deploy render of the SUPERSEDED 22 GiB ceiling. The model has demanded 25 GiB since the 2026-11-04
+// ruling, so the difference is real -- which is what makes the old "content drift" line so damaging: it
+// described a genuine 3 GiB gap in words that could not be told apart from a false positive.
+fn srv1_width_dropin_observed() -> CapMember {
+  CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=23622320128\n",
+  }
+}
+
+fn artifact_with(
+  observed_caps: List<CapMember>,
+  observed_slots: List<RunnerSlotMember>,
+) -> FleetConvergePlanArtifact? {
+  fleet_converge_plan_artifact(
+    host: owed_witness_host,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: observed_caps,
+    observed_slots: observed_slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent {
+      cause: "this fixture binds no retirement observation, exactly as the srv1 run did",
+    },
+    observed_host_grants: witness_grants_rendered(host: owed_witness_host),
+  )
+}
+
+fn artifact_with_withheld_teardowns() -> FleetConvergePlanArtifact? {
+  artifact_with(observed_caps: [], observed_slots: owed_witness_slots())
+}
+
+fn plan_rows_starting_with(plan_body: String, prefix: String) -> Int {
+  count(filter(split(s: plan_body, delimiter: "\n"), l => starts_with(s: l, prefix: prefix)))
+}
+
+// THE WITHHELD LINES IN THE SCRIPT THE OPERATOR ACTUALLY RUNS -- the same predicate the count on the
+// receipt uses, applied here through the exported predicate rather than through the planner, so the two
+// sides of the comparison are genuinely separate readings of one artifact.
+fn withheld_lines_in(shell: String) -> Int {
+  count(filter(split(s: shell, delimiter: "\n"), l => converge_line_is_withheld(line: l)))
+}
+
+fn owed_of(terminal: FleetConvergeApplyTerminal) -> FleetConvergeOwedWork? {
+  match terminal {
+    PartiallyApplied { refused_axis_count: _, owed: o, detail: _ } => o
+    FullyApplied => Absent
+    AwaitingCapability { capability: _ } => Absent
+  }
+}
+
+// (1) THE HEADLINE CONTROL. A plan that lists removals and withholds every one of them is not
+// FullyApplied, and its wire is not `fully_applied`. On main this claim is RED: the same fixture minted
+// FullyApplied whenever no axis refused, because the arm read only refusal counts.
+test fn a_plan_that_withholds_every_teardown_it_lists_is_not_fully_applied() -> Bool {
+  match artifact_with_withheld_teardowns() {
+    Absent => false
+    Present { value: artifact } => {
+      let listed = plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "REMOVE runner-slot ")
+      listed > 0
+        && (match artifact.apply_terminal {
+          FullyApplied => false
+          AwaitingCapability { capability: _ } => false
+          PartiallyApplied { refused_axis_count: _, owed: o, detail: _ } => match o {
+            Absent => false
+            Present { value: owed } =>
+              owed.withheld_row_count == listed
+                && owed.withheld_row_count > 0
+                && fleet_converge_apply_terminal_wire(terminal: artifact.apply_terminal) != "fully_applied"
+          }
+        })
+    }
+  }
+}
+
+// (2) THE RECEIPT RECONCILES WITH PLAN.TXT ROW FOR ROW. The withheld count is the plan's own REMOVE rows
+// -- not a count of script lines wearing a row's clothes. An operator who counts the lines in plan.txt
+// must arrive at the number on the receipt.
+test fn the_withheld_row_count_is_the_plans_own_remove_rows() -> Bool {
+  match artifact_with_withheld_teardowns() {
+    Absent => false
+    Present { value: artifact } => match owed_of(terminal: artifact.apply_terminal) {
+      Absent => false
+      Present { value: owed } =>
+        owed.withheld_row_count
+          == plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "REMOVE runner-slot ")
+    }
+  }
+}
+
+// (3) AND THE SCRIPT'S OWN LINES ARE A SEPARATE, NAMED NUMBER. This is the 39. The apply script echoes
+// withheld lines for obligations the plan never lists -- the required-retiree and ungranted-actuation
+// gates -- so a receipt that reported only the plan's rows would still under-report what the run
+// withheld. Both numbers are on the wire, and the gap between them is on the wire too: nothing here
+// folds one into the other.
+test fn the_withheld_lines_the_script_echoes_are_counted_from_the_script() -> Bool {
+  match artifact_with_withheld_teardowns() {
+    Absent => false
+    Present { value: artifact } => {
+      let lines = withheld_lines_in(shell: artifact.apply_shell)
+      match owed_of(terminal: artifact.apply_terminal) {
+        Absent => false
+        Present { value: owed } =>
+          owed.withheld_line_total_count == lines
+            && owed.withheld_beyond_plan_rows_count == lines - owed.withheld_row_count
+            && owed.withheld_beyond_plan_rows_count >= 0
+      }
+    }
+  }
+}
+
+// (4) A CAP ROW IS PLAN-ONLY AND SAYS SO, AND IT NAMES THE AUTHORITY THAT WOULD ACT. Converge has never
+// emitted a cap line into apply.sh; the rows existed only as mutations the plan could not perform. The
+// row stays -- deleting it would make the plan and the receipt disagree about the same fact, and the 25
+// GiB envelope srv1 still owes is real outstanding work -- but it is no longer a promise.
+test fn a_cap_row_is_rendered_as_plan_only_and_never_as_a_mutation() -> Bool {
+  match artifact_with(observed_caps: [srv1_width_dropin_observed()], observed_slots: []) {
+    Absent => false
+    Present { value: artifact } => {
+      let rows = plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "PLAN-ONLY cap ")
+      rows > 0
+        && string_contains(s: artifact.plan_body, pattern: "plan-only: live_deploy authority")
+        && !string_contains(s: artifact.plan_body, pattern: "content drift")
+        && !string_contains(s: artifact.plan_body, pattern: "CHANGE cap ")
+        && !string_contains(s: artifact.plan_body, pattern: "ADD cap ")
+        && !string_contains(s: artifact.plan_body, pattern: "REMOVE cap ")
+        && match owed_of(terminal: artifact.apply_terminal) {
+          Absent => false
+          Present { value: owed } => owed.plan_only_row_count == rows
+        }
+    }
+  }
+}
+
+// (5) THE DRIFT LINE SPEAKS. The old line was `CHANGE cap <path> -> content drift`, which named no
+// directive and no value on either side -- so a genuine 22 GiB-vs-25 GiB gap was indistinguishable from a
+// false positive, and the operator reading it had no way to ask which. The wanted value is read from the
+// model's own settings list and the observed side is the bytes the whole-file compare actually saw.
+test fn the_cap_row_names_the_directive_and_both_values_rather_than_drift() -> Bool {
+  match artifact_with(observed_caps: [srv1_width_dropin_observed()], observed_slots: []) {
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "23622320128")
+        && string_contains(s: artifact.plan_body, pattern: "26843545600")
+        && string_contains(s: artifact.plan_body, pattern: "MemoryMax=")
+  }
+}
+
+// (6) RED CONTROL, THE OLD SHAPE. The pre-count wire -- the byte string 44428803079 actually carried --
+// still decodes, still says nothing about owed work, and re-mints to itself. THIS CLAIM PASSES ON MAIN
+// AND MUST: its point is that the old wire had nowhere to put a withheld count, so the under-report was
+// not a misreading of the receipt but the only thing that receipt could ever have said.
+test fn the_44428803079_wire_decodes_with_nothing_to_say_about_owed_work() -> Bool {
+  let wire = "partially_applied|7|slot=5 cap=0 timer=0 fabric-cell=0 activation=2"
+  match fleet_converge_apply_terminal_of_wire(raw: wire) {
+    Absent => false
+    Present { value: terminal } => match terminal {
+      PartiallyApplied { refused_axis_count: n, owed: o, detail: d } =>
+        n == 7
+          && (match o {
+            Absent => true
+            Present { value: _ } => false
+          })
+          && string_contains(s: d, pattern: "slot=5")
+          && string_contains(s: d, pattern: "activation=2")
+          && fleet_converge_apply_terminal_wire(terminal: terminal) == wire
+      FullyApplied => false
+      AwaitingCapability { capability: _ } => false
+    }
+  }
+}
+
+// (7) THE OTHER HALF OF THAT CONTROL: a wire that DOES carry the counts is not confused with the old
+// shape, and it survives the trip. `withheld=` is the first thing after the refusal count, so a detail
+// that opens with an axis name cannot be read as a count.
+test fn a_count_carrying_wire_round_trips_and_is_not_the_legacy_shape() -> Bool {
+  let owed = FleetConvergeOwedWork {
+    withheld_row_count: 4,
+    plan_only_row_count: 2,
+    withheld_line_total_count: 43,
+    withheld_beyond_plan_rows_count: 39,
+  }
+  let terminal = PartiallyApplied {
+    refused_axis_count: 7,
+    owed: Present { value: owed },
+    detail: "slot=5 cap=0 timer=0 fabric-cell=0 activation=2",
+  }
+  let wire = fleet_converge_apply_terminal_wire(terminal: terminal)
+  match fleet_converge_apply_terminal_of_wire(raw: wire) {
+    Absent => false
+    Present { value: back } => match back {
+      PartiallyApplied { refused_axis_count: n, owed: o, detail: d } =>
+        n == 7
+          && string_contains(s: d, pattern: "activation=2")
+          && (match o {
+            Absent => false
+            Present { value: got } =>
+              got.withheld_row_count == 4
+                && got.plan_only_row_count == 2
+                && got.withheld_line_total_count == 43
+                && got.withheld_beyond_plan_rows_count == 39
+          })
+          && fleet_converge_apply_terminal_wire(terminal: back) == wire
+      FullyApplied => false
+      AwaitingCapability { capability: _ } => false
+    }
+  }
+}
+
+// (8) NOTHING IS CLEARED BY A ZERO IN ONE COLUMN. Each owed count gates on its own: a receipt with only
+// plan-only rows, only withheld rows, or only beyond-plan lines is still not clear. The srv1 run had all
+// three non-zero at once, which is why no single-number check would have caught it.
+test fn every_owed_count_gates_fully_applied_on_its_own() -> Bool {
+  let zero = FleetConvergeOwedWork {
+    withheld_row_count: 0,
+    plan_only_row_count: 0,
+    withheld_line_total_count: 0,
+    withheld_beyond_plan_rows_count: 0,
+  }
+  let withheld = FleetConvergeOwedWork {
+    withheld_row_count: 1,
+    plan_only_row_count: 0,
+    withheld_line_total_count: 1,
+    withheld_beyond_plan_rows_count: 0,
+  }
+  let plan_only = FleetConvergeOwedWork {
+    withheld_row_count: 0,
+    plan_only_row_count: 2,
+    withheld_line_total_count: 0,
+    withheld_beyond_plan_rows_count: 0,
+  }
+  let beyond = FleetConvergeOwedWork {
+    withheld_row_count: 0,
+    plan_only_row_count: 0,
+    withheld_line_total_count: 39,
+    withheld_beyond_plan_rows_count: 39,
+  }
+  fleet_converge_owed_work_is_clear(owed: zero)
+    && !fleet_converge_owed_work_is_clear(owed: withheld)
+    && !fleet_converge_owed_work_is_clear(owed: plan_only)
+    && !fleet_converge_owed_work_is_clear(owed: beyond)
+}
+
+// (9) A PLAN THAT OWES WORK AND REFUSES NOTHING IS STILL NOT FULLY APPLIED -- the shape the guard is for.
+// Zero refusals was exactly what made the srv1 case survivable for so long: every axis reported itself
+// clean, because none of them had been asked to do anything.
+test fn zero_refusals_with_owed_work_is_not_fully_applied() -> Bool {
+  let owed = FleetConvergeOwedWork {
+    withheld_row_count: 4,
+    plan_only_row_count: 2,
+    withheld_line_total_count: 43,
+    withheld_beyond_plan_rows_count: 39,
+  }
+  let terminal = PartiallyApplied {
+    refused_axis_count: 0,
+    owed: Present { value: owed },
+    detail: "slot=0 cap=0 timer=0 fabric-cell=0 activation=0",
+  }
+  let wire = fleet_converge_apply_terminal_wire(terminal: terminal)
+  wire != "fully_applied"
+    && string_contains(s: wire, pattern: "withheld=4")
+    && string_contains(s: wire, pattern: "plan-only=2")
+    && string_contains(s: wire, pattern: "withheld-lines=43")
+    && string_contains(s: wire, pattern: "withheld-beyond-plan-rows=39")
+    && !fleet_converge_owed_work_is_clear(owed: owed)
+}
+
+// (10) THE PLAN-ONLY COUNT COMES FROM THE AXIS THAT RENDERS THE ROWS, not from a count of the rendered
+// text, so the receipt and plan.txt agree by construction rather than by two parsers agreeing. This
+// compares the planner's own count against the rows a reader would count in the plan body.
+test fn the_plan_only_count_and_the_plan_lines_agree_by_construction() -> Bool {
+  let observed = [srv1_width_dropin_observed()]
+  match artifact_with(observed_caps: observed, observed_slots: []) {
+    Absent => false
+    Present { value: artifact } =>
+      fleet_converge_cap_plan_only_row_count(host: owed_witness_host, observed_caps: observed)
+        == plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "PLAN-ONLY cap ")
+  }
+}
