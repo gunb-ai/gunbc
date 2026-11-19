@@ -21,6 +21,7 @@ import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   fleet_converge_srv15_read_wif_auth_step, fleet_converge_srv15_bmc_secret_versions_read_step, fleet_converge_srv15_versions_read_wif_step_id,
+  fleet_converge_srv15_bmc_secret_versions_receipt_upload_step, fleet_converge_gcp_iam_bootstrap_request_job, fleet_converge_gcp_iam_converge_job_on, fleet_converge_srv15_versions_read_step_id,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   Srv1RootMutation, fleet_converge_approval_broker_dark_install_step_if,
@@ -56,7 +57,7 @@ import extdeps.languages.yaml.types {
 }
 import extdeps.languages.yaml.types { yaml_string }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
-import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource }
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource, gcp_iam_converge_environment }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
@@ -976,4 +977,38 @@ test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
     // a `||` fallback (the class the no-'||' ruling msg_dacad7be rejected) or a binding in another
     // step -- lifts it to 2 and flips this claim.
     && (fold(split(s: yml, delimiter: "steps.wif_auth_srv15_read.outputs.access_token"), init: 0, f: fn(acc, _part) { acc + 1 }) - 1) == 1
+}
+
+// THE READ IS NOT A HOSTAGE OF THE CEREMONY (manager ruling after the gcp_iam_converge run
+// 44134741714 on main 7f27f475982: the versions read sat in the gcp-iam-converge job, whose needs
+// waited on gcp-iam-bootstrap-request -- and that job's operator broker wait (up to 259 minutes)
+// stranded the very evidence the srv15 arrival pin needs. A read gated behind an unrelated
+// approval is the same contingency class as the rejected "||" fallback: its availability is chosen
+// by someone else's step history. The trio now runs INSIDE the request job, before its wait step,
+// under the mode-only gate. This claim pins that: the job gate and the read's own gate mention the
+// mode and no approval; the mint, the read and the (id-less) upload step form a contiguous block
+// immediately before the wait step "gcp_iam_bootstrap_request"; they are absent from the converge
+// job; and the request job still carries the gcp-iam-converge environment the mint's credential
+// universe lives in. A mutation re-adding an approval gate, or moving the steps back into the
+// converge job, must flip this claim.
+test fn the_srv15_read_runs_without_any_approval_gate() -> Bool {
+  let request = fleet_converge_gcp_iam_bootstrap_request_job()
+  let converge = fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)
+  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
+  let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
+  string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
+  && !any(xs: converge.steps, where: st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String))
+  && match request.if_condition {
+       Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
+       Absent => false
+     }
+  && match read {
+       RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: ric }, continue_on_error: _, timeout_minutes: _ } =>
+         string_contains(s: ric, pattern: "gcp_iam_converge") && !string_contains(s: ric, pattern: "approved")
+       _ => false
+     }
+  && match request.environment {
+       Present { value: e } => e == (gcp_iam_converge_environment as String)
+       Absent => false
+     }
 }

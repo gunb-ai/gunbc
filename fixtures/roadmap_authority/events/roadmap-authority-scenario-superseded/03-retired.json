@@ -1,0 +1,1 @@
+{"id": "ec7f26f77a721323", "event": {"schema": "roadmap-event/v3", "node": "roadmap-authority-scenario-superseded", "author": "principal:google-oidc/accounts/sub-roadmap-authority-scenario", "parent": "095c0c63c6374b40", "kind": "retired", "recorded_at": "2026-11-18T00:00:00Z", "reason": "the scenario closed the node"}}

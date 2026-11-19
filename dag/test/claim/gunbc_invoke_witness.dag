@@ -1,6 +1,11 @@
 module test.claim.gunbc_invoke_witness
 
-import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_live_deploy_apply_srv1_invoke }
+import gunbc.live_deploy.live_deploy_ci_step {
+  gunbc_ci_live_deploy_apply_srv1_invoke,
+  gunbc_ci_desired_instance_receipt_identity_invoke,
+  gunbc_ci_desired_instance_deploy_invoke,
+  gunbc_ci_live_deploy_transaction_invoke
+}
 import gunbc.ci.ci_release_build { ci_floor_build_verify_script }
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_shell,
@@ -175,4 +180,48 @@ test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
   argv == invocation_words_bare(words: words)
     && transport_argv_contains_flag(argv: argv, flag: "--entry")
     && !transport_argv_contains_flag(argv: argv, flag: "--claim-run")
+}
+
+// THE RECEIPT-CAT CONTRACT FOR INVOKE STEPS (the #16687 cutover defect, executed -- not declared).
+// An invoke step's receipt_rel makes gunbc_invoke_receipt_steps (v2.workflow.gunbc_invoke_step_emit)
+// append a `cat "$ROOT/<receipt>"`. The run command itself is NEVER told to write a receipt (it takes no
+// write-receipt argument), so the file the cat reads must be one the invoked FUNCTION writes, at exactly
+// the path the builder hands over. When it is not, the step dies with "No such file or directory" and, for
+// a wet fold, the instance has already been mutated when the step then fails. Three steps share this
+// module and this helper and differ ONLY in whether their function writes a receipt at the given path:
+//   - gunbc_ci_desired_instance_receipt_identity_invoke runs the OUTPUT-ONLY resolver
+//     (live_deploy_ci_instance_receipt_identity_from_ci), which writes ONLY $GITHUB_OUTPUT and no receipt
+//     file, so it must carry NO cat;
+//   - gunbc_ci_desired_instance_deploy_invoke runs the instance-scoped WET fold, whose only receipt is the
+//     per-instance transaction receipt live_deploy_write_apply_receipt writes at the CHOSEN instance's
+//     dir -- never a fixed "desired-instance-deploy" label -- so it must carry NO cat (the assert/upload
+//     steps reach that receipt through the resolve step);
+//   - gunbc_ci_live_deploy_transaction_invoke runs the dashboard WET fold bound to srv1_dashboard_live_id,
+//     whose receipt live_deploy_write_apply_receipt DOES write at exactly that label, so its cat must be
+//     PRESENT. This third arm is the positive control: it proves the helper really does emit a cat when a
+//     step passes a receipt_rel that names a file its function writes, so the two no-cat arms above are
+//     measurements and not the artifact of a helper that never cats.
+// The two no-cat arms are the RED that was missing: with the original receipt_rel values (both pointed at
+// live_deploy_apply_receipt_artifact_path_for(...)) they go red -- exactly the two steps that failed the
+// live deploy run before/after the fold.
+
+test fn gunbc_ci_desired_instance_receipt_identity_invoke_has_no_receipt_cat_holds() -> Bool {
+  let script = gunbc_ci_desired_instance_receipt_identity_invoke()
+  string_contains(s: script, pattern: "live_deploy_ci_instance_receipt_identity_from_ci")
+    && !string_contains(s: script, pattern: "cat ")
+    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+}
+
+test fn gunbc_ci_desired_instance_deploy_invoke_has_no_receipt_cat_holds() -> Bool {
+  let script = gunbc_ci_desired_instance_deploy_invoke()
+  string_contains(s: script, pattern: "live_deploy_apply_desired_wet_from_ci")
+    && !string_contains(s: script, pattern: "cat ")
+    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+}
+
+test fn gunbc_ci_live_deploy_transaction_invoke_keeps_its_receipt_cat_holds() -> Bool {
+  let script = gunbc_ci_live_deploy_transaction_invoke()
+  string_contains(s: script, pattern: "live_deploy_apply_prod_role_transaction_wet")
+    && string_contains(s: script, pattern: "cat ")
+    && string_contains(s: script, pattern: "live_deploy_receipt.json")
 }
