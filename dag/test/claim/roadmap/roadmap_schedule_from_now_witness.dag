@@ -31,6 +31,7 @@ module test.claim.roadmap.roadmap_schedule_from_now_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
@@ -112,10 +113,10 @@ fn slice_leaf(stage: Int, piece: Int) -> LeafPath {
 // The slice's log: the stage-0 leaf claimed Tue 2026-11-17 (three working days before the read), the stage-1 leaf
 // claimed Thu 2026-11-19 (one working day before it). The read date is Fri 2026-11-20.
 fn slice_log() -> List<String> {
-  let first = claim_env(node: slice_item(), path: present(slice_leaf(stage: 0, piece: 0)),
+  let first = claim_env(node: slice_item(), path: Present { value: slice_leaf(stage: 0, piece: 0) },
     stamp: "2026-11-17T09:00:00Z", parent: none)
-  let second = claim_env(node: slice_item(), path: present(slice_leaf(stage: 1, piece: 0)),
-    stamp: "2026-11-19T09:00:00Z", parent: present(first.id))
+  let second = claim_env(node: slice_item(), path: Present { value: slice_leaf(stage: 1, piece: 0) },
+    stamp: "2026-11-19T09:00:00Z", parent: Present { value: first.id })
   wire([first, second])
 }
 
@@ -139,7 +140,7 @@ fn pin_expansion() -> Expansion { expand_decomposition(d: pin_carrier(), finding
 fn pin_leaf(stage: Int) -> LeafPath { LeafPath { item: pin_item(), stage: stage, piece: 0, member: 0 } }
 
 fn pin_log(stamp: String) -> List<String> {
-  wire([claim_env(node: pin_item(), path: present(pin_leaf(stage: 0)), stamp: stamp, parent: none)])
+  wire([claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: stamp, parent: none)])
 }
 
 fn pin_read(lines: List<String>) -> FromNowRead {
@@ -168,7 +169,7 @@ fn late_leaf(stage: Int, piece: Int) -> LeafPath {
 // A refusal-item log whose stage-0 claim was recorded at `stamp`. Fri 2026-11-13 is five working days before the
 // Fri 2026-11-20 read, which exhausts the leaf's five-day prior.
 fn late_log(stamp: String) -> List<String> {
-  wire([claim_env(node: late_item(), path: present(late_leaf(stage: 0, piece: 0)), stamp: stamp, parent: none)])
+  wire([claim_env(node: late_item(), path: Present { value: late_leaf(stage: 0, piece: 0) }, stamp: stamp, parent: none)])
 }
 
 fn late_read(stamp: String) -> FromNowRead {
@@ -197,12 +198,12 @@ fn cap_leaf(stage: Int, piece: Int) -> LeafPath {
 // Three holds taken up at different distances from the read, so their pins free their lanes on three different
 // days: remaining 2 (claimed Wed), remaining 3 (claimed Thu), remaining 4 (claimed on the read day itself).
 fn cap_log() -> List<String> {
-  let a = claim_env(node: cap_item(), path: present(cap_leaf(stage: 0, piece: 0)), stamp: "2026-11-18T09:00:00Z",
+  let a = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 0) }, stamp: "2026-11-18T09:00:00Z",
     parent: none)
-  let b = claim_env(node: cap_item(), path: present(cap_leaf(stage: 0, piece: 1)), stamp: "2026-11-19T09:00:00Z",
-    parent: present(a.id))
-  let c = claim_env(node: cap_item(), path: present(cap_leaf(stage: 0, piece: 2)), stamp: "2026-11-20T09:00:00Z",
-    parent: present(b.id))
+  let b = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 1) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: a.id })
+  let c = claim_env(node: cap_item(), path: Present { value: cap_leaf(stage: 0, piece: 2) }, stamp: "2026-11-20T09:00:00Z",
+    parent: Present { value: b.id })
   wire([a, b, c])
 }
 
@@ -366,7 +367,7 @@ test fn everything_behind_a_refused_pin_is_listed_as_blocked_and_independent_lea
 // expansion is not quietly widened to fit the log.
 test fn a_pin_naming_a_leaf_this_expansion_never_emitted_refuses_by_name() -> Bool {
   let ghost = LeafPath { item: slice_item(), stage: 9, piece: 0, member: 0 }
-  let log = wire([claim_env(node: slice_item(), path: present(ghost), stamp: "2026-11-17T09:00:00Z", parent: none)])
+  let log = wire([claim_env(node: slice_item(), path: Present { value: ghost }, stamp: "2026-11-17T09:00:00Z", parent: none)])
   match schedule_from_now(d: slice_carrier(), e: slice_expansion(), workers: lanes(2), read_on: d(2026, 11, 20),
     logs: [ItemLog { node: slice_item(), lines: log }]) {
     FromNowScheduled { answer: a } =>
@@ -401,7 +402,7 @@ test fn three_pins_under_two_workers_all_hold_lanes_the_excess_is_named_and_noth
 // an eight-day prior leaves two and the pin ends on day 2. The calendar's own counter is named beside it, because
 // the difference between 10 and 6 is the whole claim and it belongs to #16697, not to this unit.
 test fn the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten() -> Bool {
-  let log = wire([claim_env(node: week_item(), path: present(week_leaf(stage: 0)), stamp: "2026-11-13T09:00:00Z",
+  let log = wire([claim_env(node: week_item(), path: Present { value: week_leaf(stage: 0) }, stamp: "2026-11-13T09:00:00Z",
     parent: none)])
   match schedule_from_now(d: week_carrier(), e: week_expansion(), workers: lanes(2), read_on: d(2026, 11, 23),
     logs: [ItemLog { node: week_item(), lines: log }]) {
@@ -419,11 +420,11 @@ test fn the_elapsed_count_is_the_weekends_working_days_not_the_calendars_ten() -
 // 17th, released on the 18th and taken up again on the 19th. The pin stands on the 19th -- the released days are not
 // counted as elapsed, because the log records no work done in them -- and the closed hold is counted.
 test fn a_released_hold_closes_and_a_reclaim_anchors_the_pin_at_the_newest_hold() -> Bool {
-  let first = claim_env(node: pin_item(), path: present(pin_leaf(stage: 0)), stamp: "2026-11-17T09:00:00Z",
+  let first = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
     parent: none)
-  let released = release_env(node: pin_item(), parent: present(first.id))
-  let again = claim_env(node: pin_item(), path: present(pin_leaf(stage: 0)), stamp: "2026-11-19T09:00:00Z",
-    parent: present(released.id))
+  let released = release_env(node: pin_item(), parent: Present { value: first.id })
+  let again = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-19T09:00:00Z",
+    parent: Present { value: released.id })
   match pin_read(lines: wire([first, released, again])) {
     FromNowScheduled { answer: a } =>
       let pin = first_pin_for(a: a, path: pin_leaf(stage: 0))
@@ -451,8 +452,8 @@ test fn a_pathless_claim_pins_nothing_and_is_counted_visibly() -> Bool {
 // leaf scheduled onto a lane somebody is already standing in, so the read refuses with the in-flight read's own
 // cause rather than inventing an empty in-flight set.
 test fn a_log_that_will_not_order_itself_refuses_the_whole_read() -> Bool {
-  let orphan = claim_env(node: pin_item(), path: present(pin_leaf(stage: 0)), stamp: "2026-11-17T09:00:00Z",
-    parent: present("eb2f-never-appended" as RoadmapEventId))
+  let orphan = claim_env(node: pin_item(), path: Present { value: pin_leaf(stage: 0) }, stamp: "2026-11-17T09:00:00Z",
+    parent: Present { value: "eb2f-never-appended" as RoadmapEventId })
   let read = pin_read(lines: wire([orphan]))
   match read {
     FromNowScheduled { answer: _ } => false
@@ -468,7 +469,7 @@ test fn a_second_read_of_the_same_lines_answers_alike_and_one_more_line_changes_
   let one = pin_read(lines: log)
   let again = pin_read(lines: log)
   let deeper = pin_read(lines: concat(log, wire([claim_env(node: pin_item(),
-    path: present(pin_leaf(stage: 1)), stamp: "2026-11-19T09:00:00Z", parent: none)])))
+    path: Present { value: pin_leaf(stage: 1) }, stamp: "2026-11-19T09:00:00Z", parent: none)])))
   from_now_output(read: one) == from_now_output(read: again)
     && from_now_output(read: one) != from_now_output(read: deeper)
     && match deeper { FromNowScheduled { answer: a } => count(a.pins) == 2  _ => false }
@@ -594,4 +595,4 @@ fn leaf_rows_of(a: FromNowAnswer) -> String {
 
 // A substring test built from `split`: the needle is present when splitting on it yields more than one piece.
 // Used only on this unit's own output text, never on a number re-derived from a carrier.
-fn contains_text(text: String, needle: String) -> Bool { count(split(text: text, on: needle)) > 1 }
+fn contains_text(text: String, needle: String) -> Bool { count(split(s: text, delimiter: needle)) > 1 }
