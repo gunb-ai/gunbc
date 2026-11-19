@@ -428,6 +428,26 @@ fn is_early_withdrawal_refusal(r: EstimateRefusal) -> Bool {
   }
 }
 
+// TWO IDENTICAL WITHDRAWALS ARE TWO STATEMENTS AT TWO POSITIONS. Appending the same withdrawal twice adds no fact,
+// and it must not blur the stream: the copy below the row releases it and the copy above the row is still refused.
+// Matching withdrawals by value would collapse the two and let the upper copy inherit the lower one's standing --
+// merry-moth-343's duplicate control, which matching on all four fields did not close.
+test fn two_identical_withdrawals_are_judged_at_their_own_positions() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let early = estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: same words, two positions")
+  let late = estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: same words, two positions")
+  let entries = [
+    early,
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    late,
+  ]
+  let cleared = match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  cleared && any(estimate_refusals(nodes: fixture_nodes(), entries: entries), r => is_early_withdrawal_refusal(r: r))
+}
+
 // A REVOCATION THAT NAMES NO ROW IS REFUSED: a withdrawal is a fact about a row, and one that matches nothing is a
 // reader being told something was retracted that was never said.
 test fn a_revocation_naming_no_row_is_refused() -> Bool {
