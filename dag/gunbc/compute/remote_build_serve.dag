@@ -36,7 +36,8 @@ import gunbc.compute.remote_build {
   RemoteBuildRequest, RemoteBuildRequestDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
   remote_build_request_refusal_text, remote_build_source_ref_name, remote_build_work_operation,
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key,
+  RemoteBuildCandidate, remote_build_candidates,
+  RemoteBuildClientKey, remote_build_admitted_client_keys,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
   ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code, remote_build_ending_of_outcome, remote_build_serve_header,
   remote_build_probe_text, remote_build_dependency_operation,
@@ -307,13 +308,29 @@ fn remote_build_forced_command(candidate: RemoteBuildCandidate) -> AuthorizedKey
 }
 
 // CONSUMPTION (gunbc.design_argument::consumption): a declared frontier. The installer is the host
-// change that writes this line into the provider account's authorized_keys on each roster host, applied
+// change that writes these lines into the provider account's authorized_keys on each roster host, applied
 // through the fleet converge with operator approval; until it lands the line is read only by the
 // witness and by the operator's install.
-fn remote_build_authorized_entry(candidate: RemoteBuildCandidate) -> AuthorizedKeyEntry? {
+//
+// THE PRIMITIVE: one (candidate, key) pair renders one AuthorizedKeyEntry with restrict + forced command.
+// The serving account's authorized_keys is the admitted list rendered through this primitive and NOTHING
+// ELSE — no hand-added keys (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold).
+fn remote_build_authorized_entry(candidate: RemoteBuildCandidate, client_key: RemoteBuildClientKey) -> AuthorizedKeyEntry? {
   match remote_build_forced_command(candidate: candidate) {
     Absent => none
-    Present { value: c } => Present { value: AuthorizedKeyEntry { options: [RestrictOption, ForcedCommandOption { command: c }], key: remote_build_ssh_key } }
+    Present { value: c } => Present { value: AuthorizedKeyEntry { options: [RestrictOption, ForcedCommandOption { command: c }], key: client_key.public_key } }
+  }
+}
+
+// Render every admitted key for a given candidate host. Returns none (the candidate is unrenderable) when
+// the forced command itself cannot be built; otherwise the list has one entry per admitted key.
+fn remote_build_admitted_entries(candidate: RemoteBuildCandidate) -> Optional<List<AuthorizedKeyEntry>> {
+  match remote_build_forced_command(candidate: candidate) {
+    Absent => none
+    Present { value: _ } => {
+      let rendered = filter_map(remote_build_admitted_client_keys, k => remote_build_authorized_entry(candidate: candidate, client_key: k))
+      if count(rendered) > 0 { Present { value: rendered } } else { none }
+    }
   }
 }
 
@@ -322,23 +339,23 @@ fn remote_build_authorized_entry(candidate: RemoteBuildCandidate) -> AuthorizedK
 // whose forced command could not be rendered.
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/compute/remote_build_serve.dag
 //     --function remote_build_authorized_keys_lines
-// EACH CANDIDATE IS RENDERED ONCE, into a typed result: a host either has its entry or is named as
-// unrenderable, and the printed lines are read off the rendered arm, so there is no second render and
-// no fallback value for one that failed (review 95529).
+// EACH CANDIDATE IS RENDERED ONCE, into a typed result: a host either has its entries (one per admitted
+// key) or is named as unrenderable, and the printed lines are read off the rendered arm, so there is no
+// second render and no fallback value for one that failed (review 95529).
 type RemoteBuildRenderedEntry
-  = RemoteBuildEntryRendered { candidate: RemoteBuildCandidate, entry: AuthorizedKeyEntry }
+  = RemoteBuildEntryRendered { candidate: RemoteBuildCandidate, entries: List<AuthorizedKeyEntry> }
   | RemoteBuildEntryUnrenderable { candidate: RemoteBuildCandidate }
 
 fn remote_build_render_entry(candidate: RemoteBuildCandidate) -> RemoteBuildRenderedEntry {
-  match remote_build_authorized_entry(candidate: candidate) {
+  match remote_build_admitted_entries(candidate: candidate) {
     Absent => RemoteBuildEntryUnrenderable { candidate: candidate }
-    Present { value: e } => RemoteBuildEntryRendered { candidate: candidate, entry: e }
+    Present { value: es } => RemoteBuildEntryRendered { candidate: candidate, entries: es }
   }
 }
 
 fn remote_build_unrenderable_line(r: RemoteBuildRenderedEntry) -> List<String> {
   match r {
-    RemoteBuildEntryRendered { candidate: _, entry: _ } => []
+    RemoteBuildEntryRendered { candidate: _, entries: _ } => []
     RemoteBuildEntryUnrenderable { candidate } => [join([candidate.host as String, ": the forced command could not be rendered; nothing to install"], "")]
   }
 }
@@ -346,8 +363,8 @@ fn remote_build_unrenderable_line(r: RemoteBuildRenderedEntry) -> List<String> {
 fn remote_build_installable_line(r: RemoteBuildRenderedEntry) -> List<String> {
   match r {
     RemoteBuildEntryUnrenderable { candidate: _ } => []
-    RemoteBuildEntryRendered { candidate, entry } =>
-      [join([candidate.host as String, " (", candidate.instance.directory_owner.user as String, "@", candidate.instance.repo_root as String, "): ", authorized_key_entry_line(e: entry)], "")]
+    RemoteBuildEntryRendered { candidate, entries } =>
+      map(entries, e => join([candidate.host as String, " (", candidate.instance.directory_owner.user as String, "@", candidate.instance.repo_root as String, "): ", authorized_key_entry_line(e: e)], ""))
   }
 }
 
